@@ -47,12 +47,33 @@ import {
   type OpportunityStatus,
   type OpportunitySource,
 } from "@/lib/commercial/opportunities/db";
-import { listCommercialAccounts, type CommercialAccount, type CommercialAccountRating, type CommercialPrequalStatus } from "@/lib/commercial/accounts/db";
-import { listAccountTeam, assignmentRoleLabel } from "@/lib/commercial/accounts/assignments";
-import { getInvoiceRollupForAccount, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
-import { listCommercialInvoices, type CommercialInvoice } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, invoiceStatusLabel } from "@/lib/commercial/invoices/constants";
-import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
+import {
+  listCommercialAccounts,
+  type CommercialAccount,
+  type CommercialAccountRating,
+  type CommercialPrequalStatus,
+} from "@/lib/commercial/accounts/db";
+import {
+  listAccountTeam,
+  assignmentRoleLabel,
+} from "@/lib/commercial/accounts/assignments";
+import {
+  getInvoiceRollupForAccount,
+  type AccountInvoiceRollup,
+} from "@/lib/commercial/invoices/rollup";
+import {
+  listCommercialInvoices,
+  type CommercialInvoice,
+} from "@/lib/commercial/invoices/db";
+import {
+  deriveInvoiceStatus,
+  invoiceStatusLabel,
+} from "@/lib/commercial/invoices/constants";
+import {
+  formatCentsFull,
+  formatCentsCompact,
+  fmtEtDate,
+} from "@/lib/commercial/invoices/format";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import {
@@ -90,10 +111,16 @@ import {
   isFollowUpCard,
   isDraftedCard,
 } from "@/lib/commercial/opportunities/kanban-columns";
-import { activeViewKey, filterChips } from "@/lib/commercial/opportunities/saved-views";
+import {
+  activeViewKey,
+  filterChips,
+} from "@/lib/commercial/opportunities/saved-views";
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
-import { OpportunitySheet, type OppSheetRow } from "@/components/commercial/opportunity-sheet";
+import {
+  OpportunitySheet,
+  type OppSheetRow,
+} from "@/components/commercial/opportunity-sheet";
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
@@ -102,7 +129,12 @@ import { nextStep } from "@/lib/commercial/opportunities/attention";
 import { NextStepButton } from "@/components/commercial/next-step-button";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
-import { daysFromTodayEt, etDateOf, relativeAgoEt, daysAgoEt } from "@/lib/date-et";
+import {
+  daysFromTodayEt,
+  etDateOf,
+  relativeAgoEt,
+  daysAgoEt,
+} from "@/lib/date-et";
 import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
@@ -110,13 +142,22 @@ import {
 import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { revalidatePath } from "next/cache";
-import { listPrimaryLeadByOpp, opportunityAssignmentRoleLabel } from "@/lib/commercial/opportunities/assignments";
+import {
+  listPrimaryLeadByOpp,
+  opportunityAssignmentRoleLabel,
+} from "@/lib/commercial/opportunities/assignments";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import {
+  SELECT_CLS,
+  SELECT_BG_STYLE,
+  INPUT_CLS,
+  TEXTAREA_CLS,
+  LABEL_CLS,
+} from "@/lib/commercial/form-classnames";
 import NewDealAccountPicker from "@/components/commercial/new-deal-account-picker";
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
@@ -143,7 +184,7 @@ const MS_PER_DAY = 86_400_000;
  *  "nothing happened" because Won isn't a visual column he was expecting
  *  the card to land in. */
 const MOVE_TO_COLUMNS: { key: string; label: string }[] = KANBAN_COLUMNS.map(
-  (c) => ({ key: c.key, label: kanbanMoveToLabel(c.key) })
+  (c) => ({ key: c.key, label: kanbanMoveToLabel(c.key) }),
 );
 
 /** Which visual column a deal is CURRENTLY sitting in. The Move-to menu
@@ -217,13 +258,19 @@ function accountColorTone(accountId: string | null): AccountTone {
   // island on the dark page). Defaults = light mode; [data-theme="dark"]
   // overrides them in globals.css.
   return {
-    border: { borderLeftColor: `hsl(${hue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))` },
-    headerBg: { backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))` },
+    border: {
+      borderLeftColor: `hsl(${hue}, var(--cust-border-sat, 55%), var(--cust-border-l, 55%))`,
+    },
+    headerBg: {
+      backgroundColor: `hsl(${hue}, var(--cust-sat, 62%), var(--cust-bg-l, 96%))`,
+    },
     avatar: {
       backgroundColor: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-avatar-l, 88%))`,
       color: `hsl(${hue}, var(--cust-sat, 50%), var(--cust-avatar-tx-l, 28%))`,
     },
-    nameText: { color: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-name-l, 32%))` },
+    nameText: {
+      color: `hsl(${hue}, var(--cust-sat, 55%), var(--cust-name-l, 32%))`,
+    },
   };
 }
 
@@ -236,7 +283,11 @@ function accountColorTone(accountId: string | null): AccountTone {
  * /commercial/opportunities page — otherwise flipping status while
  * filtered to "Hot" would dump the user back to the unfiltered list.
  */
-function buildFlipReturnHref(rawReturn: string, param: "status_ok" | "status_error", value: string): string {
+function buildFlipReturnHref(
+  rawReturn: string,
+  param: "status_ok" | "status_error",
+  value: string,
+): string {
   // rawReturn always starts with "/commercial/opportunities" and may
   // or may not have a query string. Preserve everything, append the
   // flash param. Any hash fragment is stripped since the flash banner
@@ -249,7 +300,9 @@ function buildFlipReturnHref(rawReturn: string, param: "status_ok" | "status_err
 async function quickFlipStatusAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -265,16 +318,23 @@ async function quickFlipStatusAction(formData: FormData) {
   const to_status = columnTarget?.status ?? rawToStatus;
   const to_sub_status: string | undefined =
     rawToSubStatus || columnTarget?.sub_status || undefined;
-  const isLostFlip = to_status === "pre_sale_closed" && to_sub_status === "lost";
+  const isLostFlip =
+    to_status === "pre_sale_closed" && to_sub_status === "lost";
   const isWonFlip = to_status === "pre_sale_closed" && to_sub_status === "won";
   // Sanitize return_href: must start with /commercial/opportunities
   // (open-redirect defense — a malicious form input could otherwise
   // send the user to an off-domain URL after the action).
-  const returnRaw = String(formData.get("return_href") ?? "/commercial/opportunities");
-  const returnHref = returnRaw.startsWith("/commercial/opportunities") ? returnRaw : "/commercial/opportunities";
+  const returnRaw = String(
+    formData.get("return_href") ?? "/commercial/opportunities",
+  );
+  const returnHref = returnRaw.startsWith("/commercial/opportunities")
+    ? returnRaw
+    : "/commercial/opportunities";
   if (!UUID_RE.test(opp_id)) redirect(returnHref);
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
-    redirect(buildFlipReturnHref(returnHref, "status_error", "Invalid status."));
+    redirect(
+      buildFlipReturnHref(returnHref, "status_error", "Invalid status."),
+    );
   }
   // Only Lost routes through the debrief page for reason capture. Won stays
   // as a direct transition + placeholder auto-note below.
@@ -284,7 +344,9 @@ async function quickFlipStatusAction(formData: FormData) {
     // more here than anywhere: this redirect exists to capture a LOSS REASON,
     // and landing at the top of a long page meant the form it came for was
     // off-screen.
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&focus=status&to=pre_sale_closed&to_sub=lost#change-status`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&focus=status&to=pre_sale_closed&to_sub=lost#change-status`,
+    );
   }
   const result = await changeOpportunityStatus({
     opp_id,
@@ -296,15 +358,23 @@ async function quickFlipStatusAction(formData: FormData) {
     redirect(buildFlipReturnHref(returnHref, "status_error", result.error));
   }
   if (isWonFlip) {
-    const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
-    await postPlaceholderAutoNote({ opportunityId: opp_id, outcome: "won", actorUserId: user.id });
+    const { postPlaceholderAutoNote } =
+      await import("@/lib/commercial/win-loss/debrief");
+    await postPlaceholderAutoNote({
+      opportunityId: opp_id,
+      outcome: "won",
+      actorUserId: user.id,
+    });
     // Karan 2026-07-13: debrief now lives under the account. Look up the
     // deal's account_id and route the Won-drop celebration into the
     // account-scoped debrief page so the user never leaves the account.
-    const { getCommercialOpportunity } = await import("@/lib/commercial/opportunities/db");
+    const { getCommercialOpportunity } =
+      await import("@/lib/commercial/opportunities/db");
     const flipped = await getCommercialOpportunity(opp_id);
     if (flipped) {
-      redirect(`/commercial/accounts/${flipped.account_id}/debrief/${opp_id}?just_closed=1`);
+      redirect(
+        `/commercial/accounts/${flipped.account_id}/debrief/${opp_id}?just_closed=1`,
+      );
     }
     redirect(buildFlipReturnHref(returnHref, "status_ok", "1"));
   }
@@ -320,7 +390,9 @@ async function quickFlipStatusAction(formData: FormData) {
 async function createDealFromPipelineAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
 
@@ -338,35 +410,54 @@ async function createDealFromPipelineAction(formData: FormData) {
   // Parity with the account's new-deal action (audit #14).
   const rfpReceivedRaw = String(formData.get("rfp_received_at") ?? "").trim();
   const rfp_received_at =
-    rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw) ? rfpReceivedRaw : null;
+    rfpReceivedRaw && /^\d{4}-\d{2}-\d{2}$/.test(rfpReceivedRaw)
+      ? rfpReceivedRaw
+      : null;
   const teamRaw = String(formData.get("team_id") ?? "").trim();
   const team_id = teamRaw && UUID_RE.test(teamRaw) ? teamRaw : null;
   const client_name = String(formData.get("client_name") ?? "").trim() || null;
   // Added with Brendan's field order — the form offered these two and the
   // writer silently dropped them, which is worse than not offering them.
-  const title_override = String(formData.get("title_override") ?? "").trim().slice(0, 200) || null;
+  const title_override =
+    String(formData.get("title_override") ?? "")
+      .trim()
+      .slice(0, 200) || null;
   // Brendan 2026-08-26 — the nickname adds to the name by default now.
   const title_override_mode = String(formData.get("title_override_mode") ?? "");
-  const estimator_name = String(formData.get("estimator_name") ?? "").trim().slice(0, 120) || null;
-  const property_street = String(formData.get("property_street") ?? "").trim() || null;
-  const property_city = String(formData.get("property_city") ?? "").trim() || null;
-  const property_state = String(formData.get("property_state") ?? "").trim() || null;
-  const property_zip = String(formData.get("property_zip") ?? "").trim() || null;
+  const estimator_name =
+    String(formData.get("estimator_name") ?? "")
+      .trim()
+      .slice(0, 120) || null;
+  const property_street =
+    String(formData.get("property_street") ?? "").trim() || null;
+  const property_city =
+    String(formData.get("property_city") ?? "").trim() || null;
+  const property_state =
+    String(formData.get("property_state") ?? "").trim() || null;
+  const property_zip =
+    String(formData.get("property_zip") ?? "").trim() || null;
 
   const backHref = "/commercial/opportunities?new_deal=1#new-deal-sheet";
   if (!UUID_RE.test(account_id)) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a GC (account) from the list.")}#new-deal-sheet`);
+    redirect(
+      `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Pick a GC (account) from the list.")}#new-deal-sheet`,
+    );
   }
   if (!title || title.length > 200) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Opportunity name is required (max 200 chars).")}#new-deal-sheet`);
+    redirect(
+      `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Opportunity name is required (max 200 chars).")}#new-deal-sheet`,
+    );
   }
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(status)) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid status.")}#new-deal-sheet`);
+    redirect(
+      `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid status.")}#new-deal-sheet`,
+    );
   }
   if (source && !(OPPORTUNITY_SOURCES as readonly string[]).includes(source)) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid source.")}#new-deal-sheet`);
+    redirect(
+      `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Invalid source.")}#new-deal-sheet`,
+    );
   }
-
 
   // `proposal_due_at` is a DATE column, so it is stored exactly as typed. The
   // noon-ET anchor that used to be here was defending against a timezone race
@@ -375,7 +466,9 @@ async function createDealFromPipelineAction(formData: FormData) {
   let proposalDueAt: string | null = null;
   if (proposalDueRaw) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(proposalDueRaw)) {
-      redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Proposal due date is malformed.")}#new-deal-sheet`);
+      redirect(
+        `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent("Proposal due date is malformed.")}#new-deal-sheet`,
+      );
     }
     proposalDueAt = proposalDueRaw;
   }
@@ -386,7 +479,8 @@ async function createDealFromPipelineAction(formData: FormData) {
   // halves ship together.
   const forceCreate = String(formData.get("confirm_duplicate") ?? "") === "1";
   if (!forceCreate && client_name && property_street) {
-    const { findDuplicateOpportunities } = await import("@/lib/commercial/opportunities/duplicates");
+    const { findDuplicateOpportunities } =
+      await import("@/lib/commercial/opportunities/duplicates");
     const dups = await findDuplicateOpportunities({
       accountId: account_id,
       clientName: client_name,
@@ -394,9 +488,10 @@ async function createDealFromPipelineAction(formData: FormData) {
     });
     if (dups.length > 0) {
       const first = dups[0];
-      const label = formatOpportunityNumber(first.project_number) || first.title;
+      const label =
+        formatOpportunityNumber(first.project_number) || first.title;
       redirect(
-        `/commercial/opportunities?new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal-sheet`
+        `/commercial/opportunities?new_deal=1&dup_id=${first.id}&dup_label=${encodeURIComponent(label)}#new-deal-sheet`,
       );
     }
   }
@@ -427,7 +522,9 @@ async function createDealFromPipelineAction(formData: FormData) {
     created_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent(result.error)}#new-deal-sheet`);
+    redirect(
+      `/commercial/opportunities?new_deal=1&sheet_error=${encodeURIComponent(result.error)}#new-deal-sheet`,
+    );
   }
   revalidatePath("/commercial/opportunities");
   revalidatePath(`/commercial/accounts/${account_id}`);
@@ -456,7 +553,9 @@ export default async function CommercialOpportunitiesPage({
   const viewerUserId = await (async () => {
     try {
       const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       return user?.id ?? null;
     } catch {
       return null;
@@ -482,11 +581,14 @@ export default async function CommercialOpportunitiesPage({
   // treat "" as falsy today — including `db.ts` doing `if (filters.accountId)` —
   // but that is a coincidence, and one `!== undefined` away from sending an
   // empty string into a uuid column, which errors rather than returning nothing.
+  // One-off work orders only. Karan's chosen way to find them (2026-09-17).
+  const oneOffFilter = pickFirst(sp.oneoff) === "1";
   const accountRaw = pickFirst(sp.account)?.trim() || null;
   // Whitelist-checked like `status` and `sort` are. Without this a hand-typed
   // `?account=foo` reaches `.eq("account_id", "foo")` and returns a PostgREST
   // uuid cast error — a 500 where an empty list was meant.
-  const accountFilter = accountRaw && UUID_RE.test(accountRaw) ? accountRaw : null;
+  const accountFilter =
+    accountRaw && UUID_RE.test(accountRaw) ? accountRaw : null;
   // `?status=` now names a KANBAN COLUMN, not a raw status — that's what
   // the snapshot pills show and what the board is organised by, so a pill
   // labelled "Request for Proposal" has to filter to the same set of cards
@@ -508,13 +610,15 @@ export default async function CommercialOpportunitiesPage({
   const newFilter = pickFirst(sp.new) === "7d" ? 7 : undefined;
   const laneRaw = pickFirst(sp.lane);
   const laneFilter =
-    laneRaw === "under_contract" || laneRaw === "pre_contract" ? laneRaw : undefined;
+    laneRaw === "under_contract" || laneRaw === "pre_contract"
+      ? laneRaw
+      : undefined;
   const validColumn = statusFilter
-    ? (KANBAN_COLUMNS.some((c) => c.key === statusFilter)
-        ? statusFilter
-        : (OPPORTUNITY_STATUSES as readonly string[]).includes(statusFilter)
-          ? columnKeyForOpp(statusFilter, null)
-          : undefined)
+    ? KANBAN_COLUMNS.some((c) => c.key === statusFilter)
+      ? statusFilter
+      : (OPPORTUNITY_STATUSES as readonly string[]).includes(statusFilter)
+        ? columnKeyForOpp(statusFilter, null)
+        : undefined
     : undefined;
   // Phase G Q3 (2026-07-20): `?archived=1` toggle to include archived
   // opps in the active list/kanban. Default hides them so the pipeline
@@ -634,9 +738,8 @@ export default async function CommercialOpportunitiesPage({
   // a code path that skipped the cascade), the parent deal could sit
   // in a stale column. Reconcile scans + fixes those in one pass so
   // both surfaces always show the same state.
-  const { reconcileDealStatesFromProposals } = await import(
-    "@/lib/commercial/proposals/db"
-  );
+  const { reconcileDealStatesFromProposals } =
+    await import("@/lib/commercial/proposals/db");
   await reconcileDealStatesFromProposals().catch((err) => {
     console.warn("[opportunities-page] reconcile failed:", err);
   });
@@ -660,10 +763,12 @@ export default async function CommercialOpportunitiesPage({
   ]);
   const oppsRaw = validColumn
     ? oppsUnfiltered.filter(
-        (o) => columnKeyForOpp(o.status, o.sub_status) === validColumn
+        (o) => columnKeyForOpp(o.status, o.sub_status) === validColumn,
       )
     : oppsUnfiltered;
-  const accountById = new Map<string, CommercialAccount>(accounts.map((a) => [a.id, a]));
+  const accountById = new Map<string, CommercialAccount>(
+    accounts.map((a) => [a.id, a]),
+  );
 
   const oppIds = oppsRaw.map((o) => o.id);
   const [
@@ -689,27 +794,35 @@ export default async function CommercialOpportunitiesPage({
   // stage funnel were all counting those deals as zero.
   const currentProposalByOpp = await listCurrentProposalByOpp(oppIds);
   const proposalTotalByOpp = new Map(
-    Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
+    Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const),
   );
   // For the New-opportunity sheet (audit #14 — it had drifted behind the
   // account's form). Cheap, and only this page renders that sheet.
   const allTeams = await listTeams();
-  const todayEtIso = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const todayEtIso = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
   const oppValue = (o: CommercialOpportunity) =>
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
   let opps = oppsRaw;
   if (staleFilter) {
     opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
+      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status))
+        return false;
       const d = etDateOf(o.updated_at);
       return d !== null && -daysFromTodayEt(d) >= STALE_OPP_DAYS;
     });
   }
   if (hotFilter) {
     opps = opps.filter((o) => {
-      if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
-      if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
+      if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status))
+        return false;
+      if (
+        !o.bid_value_high_cents ||
+        o.bid_value_high_cents < HOT_DEAL_BID_CENTS
+      )
+        return false;
       if (!o.proposal_due_at) return false;
       const daysUntilDue = daysFromTodayEt(o.proposal_due_at);
       return daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
@@ -731,7 +844,14 @@ export default async function CommercialOpportunitiesPage({
   if (newFilter) {
     // Calendar days in ET, matching every other elapsed-time figure on the
     // platform — subtracting timestamps miscounts across the DST change.
-    const cutoff = new Date(Date.UTC(+todayEtIso.slice(0, 4), +todayEtIso.slice(5, 7) - 1, +todayEtIso.slice(8, 10)) - newFilter * 86_400_000)
+    const cutoff = new Date(
+      Date.UTC(
+        +todayEtIso.slice(0, 4),
+        +todayEtIso.slice(5, 7) - 1,
+        +todayEtIso.slice(8, 10),
+      ) -
+        newFilter * 86_400_000,
+    )
       .toISOString()
       .slice(0, 10);
     opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
@@ -744,14 +864,23 @@ export default async function CommercialOpportunitiesPage({
     opps = opps.filter((o) => isUnderContract(o.status, o.sub_status));
   } else if (laneFilter === "pre_contract") {
     const laneKeys = new Set(PRE_CONTRACT_COLUMNS.map((c) => c.key));
-    opps = opps.filter((o) => laneKeys.has(columnKeyForOpp(o.status, o.sub_status)));
+    opps = opps.filter((o) =>
+      laneKeys.has(columnKeyForOpp(o.status, o.sub_status)),
+    );
   }
-  if (overdueFilter) opps = opps.filter((o) => isOverdueProposal(o, attentionToday));
+  if (overdueFilter)
+    opps = opps.filter((o) => isOverdueProposal(o, attentionToday));
   if (coldRfpFilter) opps = opps.filter((o) => isColdRfp(o, attentionToday));
-  if (followupFilter) opps = opps.filter((o) => isFollowUpDue(o, attentionToday));
+  if (followupFilter)
+    opps = opps.filter((o) => isFollowUpDue(o, attentionToday));
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }
+  // `=== true` and not truthiness: on an environment where the migration has
+  // not been pasted in, PostgREST omits the column entirely and every row would
+  // otherwise read as "not a one-off", which is the honest answer anyway — but
+  // being explicit keeps it from ever meaning "undefined is false-ish".
+  if (oneOffFilter) opps = opps.filter((o) => o.is_one_off === true);
 
   const stableTie = (a: CommercialOpportunity, b: CommercialOpportunity) =>
     new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -763,15 +892,22 @@ export default async function CommercialOpportunitiesPage({
       return diff !== 0 ? diff : stableTie(a, b);
     }
     if (sortKey === "oldest") {
-      return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+      return (
+        new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+      );
     }
     if (sortKey === "bid_high") {
-      const diff = (b.bid_value_high_cents ?? -1) - (a.bid_value_high_cents ?? -1);
+      const diff =
+        (b.bid_value_high_cents ?? -1) - (a.bid_value_high_cents ?? -1);
       return diff !== 0 ? diff : stableTie(a, b);
     }
     if (sortKey === "due_soon") {
-      const av = a.proposal_due_at ? new Date(a.proposal_due_at).getTime() : Infinity;
-      const bv = b.proposal_due_at ? new Date(b.proposal_due_at).getTime() : Infinity;
+      const av = a.proposal_due_at
+        ? new Date(a.proposal_due_at).getTime()
+        : Infinity;
+      const bv = b.proposal_due_at
+        ? new Date(b.proposal_due_at).getTime()
+        : Infinity;
       const diff = av - bv;
       return diff !== 0 ? diff : stableTie(a, b);
     }
@@ -801,6 +937,7 @@ export default async function CommercialOpportunitiesPage({
     // other seven were fixed for. `activeViewKey` and `filterChips` read it too,
     // so the picker also stopped claiming "All open" while showing 35 of 132.
     account: accountFilter || undefined,
+    oneoff: oneOffFilter ? "1" : undefined,
     status: statusFilter || undefined,
     lane: laneFilter || undefined,
     mine: mineFilter ? "1" : undefined,
@@ -819,18 +956,32 @@ export default async function CommercialOpportunitiesPage({
   const savedViewCount = opps.length;
   const savedViewTotalCents = opps.reduce(
     (acc, o) => acc + dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null),
-    0
+    0,
   );
   // Only claim a total when there is one. "$0" across a filtered list reads as
   // "these are worth nothing" rather than "none of these are priced yet".
-  const savedViewTotal = savedViewTotalCents > 0 ? formatCentsCompact(savedViewTotalCents) : null;
+  const savedViewTotal =
+    savedViewTotalCents > 0 ? formatCentsCompact(savedViewTotalCents) : null;
   const viewChips = filterChips(viewParams, (k) => kanbanColumnLabel(k) || k);
 
-  const openOpps = opps.filter((o) => (OPEN_OPP_STATUSES as readonly string[]).includes(o.status));
-  const presaleOpenOpps = opps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
-  const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + oppValue(o), 0);
-  const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
-  const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  const openOpps = opps.filter((o) =>
+    (OPEN_OPP_STATUSES as readonly string[]).includes(o.status),
+  );
+  const presaleOpenOpps = opps.filter((o) =>
+    PRE_SALE_OPEN_STATUSES.includes(o.status),
+  );
+  const totalPipelineCents = presaleOpenOpps.reduce(
+    (acc, o) => acc + oppValue(o),
+    0,
+  );
+  const totalBidLowCents = presaleOpenOpps.reduce(
+    (acc, o) => acc + (o.bid_value_low_cents ?? 0),
+    0,
+  );
+  const totalBidHighCents = presaleOpenOpps.reduce(
+    (acc, o) => acc + (o.bid_value_high_cents ?? 0),
+    0,
+  );
   // "—" when nothing is priced, a single figure when low and high agree (which
   // is every deal in the book today), a real range only when they differ.
   const bidHeadline =
@@ -842,7 +993,7 @@ export default async function CommercialOpportunitiesPage({
   // showing live money from the proposal fallback, on the same screen.
   const totalOpenValueCents = presaleOpenOpps.reduce(
     (acc, o) => acc + dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null),
-    0
+    0,
   );
   // Pipeline value by stage (weighted $) — a funnel of where open deals sit.
   // Bucketed by KANBAN COLUMN, not raw status, so this funnel names the same
@@ -873,14 +1024,18 @@ export default async function CommercialOpportunitiesPage({
     !validColumn && !search && !includeArchived
       ? oppsUnfiltered
       : await listCommercialOpportunities({});
-  const wonThisMonth = winsBase.filter((o) => wasWonInPeriod(o, monthStartDate)).length;
+  const wonThisMonth = winsBase.filter((o) =>
+    wasWonInPeriod(o, monthStartDate),
+  ).length;
 
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
   if (search) baseParams.set("q", search);
   if (accountFilter) baseParams.set("account", accountFilter);
+  if (oneOffFilter) baseParams.set("oneoff", "1");
   if (validColumn) baseParams.set("status", validColumn);
-  if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
+  if (sourceSet.size > 0)
+    baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== DEFAULT_SORT) baseParams.set("sort", sortKey);
   // Sheet is the default, so it needs no param — but list and by-GC do, or
   // changing a filter would silently drop you back into the sheet.
@@ -963,6 +1118,7 @@ export default async function CommercialOpportunitiesPage({
     // Fresh params — `account` must be re-added here or changing the sort
     // silently drops the GC filter. Same class as audit D4.
     if (accountFilter) p.set("account", accountFilter);
+    if (oneOffFilter) p.set("oneoff", "1");
     if (validColumn) p.set("status", validColumn);
     if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
     if (staleFilter) p.set("stale", "1");
@@ -986,14 +1142,18 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
-  const clearFilterHref = (drop: "q" | "status" | "hot" | "stale" | "sources" | "account"): string => {
+  const clearFilterHref = (
+    drop: "q" | "status" | "hot" | "stale" | "sources" | "account" | "oneoff",
+  ): string => {
     const p = new URLSearchParams();
     if (search && drop !== "q") p.set("q", search);
     if (accountFilter && drop !== "account") p.set("account", accountFilter);
+    if (oneOffFilter && drop !== "oneoff") p.set("oneoff", "1");
     if (validColumn && drop !== "status") p.set("status", validColumn);
     if (hotFilter && drop !== "hot") p.set("hot", "1");
     if (staleFilter && drop !== "stale") p.set("stale", "1");
-    if (sourceSet.size > 0 && drop !== "sources") p.set("sources", Array.from(sourceSet).join(","));
+    if (sourceSet.size > 0 && drop !== "sources")
+      p.set("sources", Array.from(sourceSet).join(","));
     if (sortKey !== DEFAULT_SORT) p.set("sort", sortKey);
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
     if (overdueFilter) p.set("overdue", "1");
@@ -1022,22 +1182,45 @@ export default async function CommercialOpportunitiesPage({
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
-    !!search || !!accountFilter || !!validColumn || staleFilter || hotFilter || sourceSet.size > 0 ||
-    overdueFilter || coldRfpFilter || followupFilter ||
-    mineFilter || !!estimatorFilter || !!newFilter || !!laneFilter;
+    !!search ||
+    !!accountFilter ||
+    oneOffFilter ||
+    !!validColumn ||
+    staleFilter ||
+    hotFilter ||
+    sourceSet.size > 0 ||
+    overdueFilter ||
+    coldRfpFilter ||
+    followupFilter ||
+    mineFilter ||
+    !!estimatorFilter ||
+    !!newFilter ||
+    !!laneFilter;
   const sortChanged = sortKey !== DEFAULT_SORT;
   const activeFilterCount =
-    (search ? 1 : 0) + (accountFilter ? 1 : 0) + (validColumn ? 1 : 0) +
-    (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
-    (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0) +
+    (search ? 1 : 0) +
+    (accountFilter ? 1 : 0) +
+    (oneOffFilter ? 1 : 0) +
+    (validColumn ? 1 : 0) +
+    (hotFilter ? 1 : 0) +
+    (staleFilter ? 1 : 0) +
+    sourceSet.size +
+    (overdueFilter ? 1 : 0) +
+    (coldRfpFilter ? 1 : 0) +
+    (followupFilter ? 1 : 0) +
     // mine/estimator/new/lane count toward "Filters (N)" too — they were applied
     // but uncounted, so the badge under-reported the active filters (audit D4).
-    (mineFilter ? 1 : 0) + (estimatorFilter ? 1 : 0) + (newFilter ? 1 : 0) + (laneFilter ? 1 : 0);
+    (mineFilter ? 1 : 0) +
+    (estimatorFilter ? 1 : 0) +
+    (newFilter ? 1 : 0) +
+    (laneFilter ? 1 : 0);
   // Clear a single attention deep-link filter. baseParams carries the
   // OTHER two attention filters (they live there), but NOT stale/hot/
   // archived — those must be re-added manually like every sibling builder,
   // or clearing an attention chip would silently drop them too.
-  const clearAttentionHref = (which: "overdue" | "coldrfp" | "followup"): string => {
+  const clearAttentionHref = (
+    which: "overdue" | "coldrfp" | "followup",
+  ): string => {
     const p = new URLSearchParams(baseParams);
     p.delete(which);
     if (staleFilter) p.set("stale", "1");
@@ -1046,7 +1229,9 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
-  const currentSortLabel = SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated";
+  const currentSortLabel =
+    SORT_OPTIONS.find((o) => o.key === sortKey)?.label ??
+    "Most recently updated";
 
   // Snapshot pills — one per OPEN kanban column, in board order, counted the
   // same way the board buckets. Previously keyed off raw statuses, so the
@@ -1066,12 +1251,12 @@ export default async function CommercialOpportunitiesPage({
     weightedLabel: string | null;
   }> = OPEN_COLUMN_KEYS.map((key) => {
     const inStage = openOpps.filter(
-      (o) => columnKeyForOpp(o.status, o.sub_status) === key
+      (o) => columnKeyForOpp(o.status, o.sub_status) === key,
     );
     // Weighted value is a PRE-SALE idea (value × stage odds); a job already in
     // delivery is won, so quoting an expected value for it would be nonsense.
     const presale = inStage.filter((o) =>
-      presaleOpenOpps.some((p) => p.id === o.id)
+      presaleOpenOpps.some((p) => p.id === o.id),
     );
     const weighted = presale.reduce((a, o) => a + oppValue(o), 0);
     return {
@@ -1159,14 +1344,27 @@ export default async function CommercialOpportunitiesPage({
             current={viewParams}
             totalCount={savedViewCount}
             totalLabel={savedViewTotal}
-            sortLabel={SORT_OPTIONS.find((o) => o.key === sortKey)?.label ?? "Most recently updated"}
+            sortLabel={
+              SORT_OPTIONS.find((o) => o.key === sortKey)?.label ??
+              "Most recently updated"
+            }
             chips={viewChips}
           />
           <Link
             href="?new_deal=1#new-deal-sheet"
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px] shrink-0"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M12 5v14 M5 12h14" />
             </svg>
             New opportunity
@@ -1225,7 +1423,6 @@ export default async function CommercialOpportunitiesPage({
             sub={wonThisMonth === 0 ? "no closes yet" : "and counting"}
           />
         </div>
-
       </header>
 
       {/* ─── Result banners ─── */}
@@ -1236,7 +1433,10 @@ export default async function CommercialOpportunitiesPage({
               <span aria-hidden>✓</span>
               <span className="flex-1">
                 {createdTitle ? (
-                  <><strong>{createdTitle}</strong> logged. Ready for the next bid.</>
+                  <>
+                    <strong>{createdTitle}</strong> logged. Ready for the next
+                    bid.
+                  </>
                 ) : (
                   "Opportunity created."
                 )}
@@ -1246,7 +1446,8 @@ export default async function CommercialOpportunitiesPage({
           {deletedTitle && (
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-xl px-4 py-3 text-sm text-ppp-charcoal-700 flex items-start justify-between gap-3">
               <span>
-                Deleted <strong className="text-ppp-charcoal">{deletedTitle}</strong>.
+                Deleted{" "}
+                <strong className="text-ppp-charcoal">{deletedTitle}</strong>.
               </span>
               <Link
                 href="/commercial/opportunities"
@@ -1304,7 +1505,13 @@ export default async function CommercialOpportunitiesPage({
           <SearchableSelect
             name="account"
             defaultValue={accountFilter ?? ""}
-            options={[{ value: "", label: "Every GC" }, ...accounts.map((a) => ({ value: a.id, label: a.company_name ?? "(unnamed)" }))]}
+            options={[
+              { value: "", label: "Every GC" },
+              ...accounts.map((a) => ({
+                value: a.id,
+                label: a.company_name ?? "(unnamed)",
+              })),
+            ]}
             placeholder="Every GC"
             ariaLabel="Filter by GC"
             className="min-w-[170px]"
@@ -1315,22 +1522,35 @@ export default async function CommercialOpportunitiesPage({
               missed, so it preserved five things and dropped nine — including
               the VIEW itself for By-GC, and lane / mine / estimator / new,
               which are how the attention deep-links and saved views arrive. */}
-          {validColumn && <input type="hidden" name="status" value={validColumn} />}
-          {viewMode !== "sheet" && <input type="hidden" name="view" value={viewMode} />}
+          {validColumn && (
+            <input type="hidden" name="status" value={validColumn} />
+          )}
+          {viewMode !== "sheet" && (
+            <input type="hidden" name="view" value={viewMode} />
+          )}
           {hotFilter && <input type="hidden" name="hot" value="1" />}
           {staleFilter && <input type="hidden" name="stale" value="1" />}
           {includeArchived && <input type="hidden" name="archived" value="1" />}
           {overdueFilter && <input type="hidden" name="overdue" value="1" />}
           {coldRfpFilter && <input type="hidden" name="coldrfp" value="1" />}
           {followupFilter && <input type="hidden" name="followup" value="1" />}
+          {oneOffFilter && <input type="hidden" name="oneoff" value="1" />}
           {mineFilter && <input type="hidden" name="mine" value="1" />}
-          {estimatorFilter && <input type="hidden" name="estimator" value={estimatorFilter} />}
+          {estimatorFilter && (
+            <input type="hidden" name="estimator" value={estimatorFilter} />
+          )}
           {newFilter && <input type="hidden" name="new" value="7d" />}
           {laneFilter && <input type="hidden" name="lane" value={laneFilter} />}
           {sourceSet.size > 0 && (
-            <input type="hidden" name="sources" value={Array.from(sourceSet).join(",")} />
+            <input
+              type="hidden"
+              name="sources"
+              value={Array.from(sourceSet).join(",")}
+            />
           )}
-          {sortKey !== DEFAULT_SORT && <input type="hidden" name="sort" value={sortKey} />}
+          {sortKey !== DEFAULT_SORT && (
+            <input type="hidden" name="sort" value={sortKey} />
+          )}
 
           {/* View toggle — segmented control. SHEET is the default (Karan
               2026-08-17); By-GC and List are the opt-in alternates. */}
@@ -1344,7 +1564,17 @@ export default async function CommercialOpportunitiesPage({
               }`}
               title="By GC — one card per account with all their opportunities + money summary"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M3 21h18 M6 21V7l6-4 6 4v14 M10 9h4 M10 13h4 M10 17h4" />
               </svg>
               By GC
@@ -1358,7 +1588,17 @@ export default async function CommercialOpportunitiesPage({
               }`}
               title="List view — best for scanning + filtering + CSV export"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <line x1="3" y1="6" x2="21" y2="6" />
                 <line x1="3" y1="12" x2="21" y2="12" />
                 <line x1="3" y1="18" x2="21" y2="18" />
@@ -1374,7 +1614,17 @@ export default async function CommercialOpportunitiesPage({
               }`}
               title="Sheet — a dense spreadsheet of every opportunity: title, account, status, source, value, owner"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <rect x="3" y="3" width="18" height="18" rx="1" />
                 <line x1="3" y1="9" x2="21" y2="9" />
                 <line x1="3" y1="15" x2="21" y2="15" />
@@ -1394,11 +1644,28 @@ export default async function CommercialOpportunitiesPage({
                   : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
               </svg>
-              <span>Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</span>
-              <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+              <span>
+                Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+              </span>
+              <span
+                aria-hidden
+                className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform"
+              >
+                ▾
+              </span>
             </summary>
             <div className="absolute right-0 sm:right-auto mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-3 min-w-[320px] max-w-[calc(100vw-1rem)] max-h-[75vh] overflow-y-auto space-y-3">
               <div>
@@ -1458,12 +1725,27 @@ export default async function CommercialOpportunitiesPage({
                   : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
               }`}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M3 6h18 M7 12h10 M11 18h2" />
               </svg>
               <span className="hidden sm:inline">Sort:&nbsp;</span>
               <span className="max-w-[140px] truncate">{currentSortLabel}</span>
-              <span aria-hidden className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform">▾</span>
+              <span
+                aria-hidden
+                className="text-ppp-charcoal-400 group-open:rotate-180 transition-transform"
+              >
+                ▾
+              </span>
             </summary>
             <div className="absolute right-0 mt-2 z-30 bg-surface border border-ppp-charcoal-200 rounded-xl shadow-xl p-2 min-w-[260px] max-w-[calc(100vw-1rem)]">
               <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 pt-2 pb-1">
@@ -1488,7 +1770,17 @@ export default async function CommercialOpportunitiesPage({
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             title="Download the current filter view as CSV"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3" />
             </svg>
             Export
@@ -1501,7 +1793,17 @@ export default async function CommercialOpportunitiesPage({
               href={`/commercial/opportunities?view=${viewMode}`}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 text-[12px] font-medium hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation shrink-0"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M18 6L6 18 M6 6l12 12" />
               </svg>
               Clear
@@ -1516,23 +1818,63 @@ export default async function CommercialOpportunitiesPage({
             <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1">
               Applied:
             </span>
-            {search && <ActiveFilterChip href={clearFilterHref("q")} label={`Search: "${search}"`} />}
+            {search && (
+              <ActiveFilterChip
+                href={clearFilterHref("q")}
+                label={`Search: "${search}"`}
+              />
+            )}
             {accountFilter && (
               <ActiveFilterChip
                 href={clearFilterHref("account")}
                 label={`GC: ${accountById.get(accountFilter)?.company_name ?? "Unknown"}`}
               />
             )}
-            {validColumn && <ActiveFilterChip href={clearFilterHref("status")} label={`Stage: ${kanbanColumnLabel(validColumn)}`} />}
-            {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />}
-            {staleFilter && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${STALE_OPP_DAYS}d`} />}
-            {overdueFilter && <ActiveFilterChip href={clearAttentionHref("overdue")} label="Overdue proposals" />}
-            {coldRfpFilter && <ActiveFilterChip href={clearAttentionHref("coldrfp")} label="Cold RFPs > 7d" />}
-            {followupFilter && <ActiveFilterChip href={clearAttentionHref("followup")} label="Follow-ups due" />}
+            {oneOffFilter && (
+              <ActiveFilterChip
+                href={clearFilterHref("oneoff")}
+                label="One-off work orders"
+              />
+            )}
+            {validColumn && (
+              <ActiveFilterChip
+                href={clearFilterHref("status")}
+                label={`Stage: ${kanbanColumnLabel(validColumn)}`}
+              />
+            )}
+            {hotFilter && (
+              <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />
+            )}
+            {staleFilter && (
+              <ActiveFilterChip
+                href={clearFilterHref("stale")}
+                label={`Stale > ${STALE_OPP_DAYS}d`}
+              />
+            )}
+            {overdueFilter && (
+              <ActiveFilterChip
+                href={clearAttentionHref("overdue")}
+                label="Overdue proposals"
+              />
+            )}
+            {coldRfpFilter && (
+              <ActiveFilterChip
+                href={clearAttentionHref("coldrfp")}
+                label="Cold RFPs > 7d"
+              />
+            )}
+            {followupFilter && (
+              <ActiveFilterChip
+                href={clearAttentionHref("followup")}
+                label="Follow-ups due"
+              />
+            )}
             {sourceSet.size > 0 && (
               <ActiveFilterChip
                 href={clearFilterHref("sources")}
-                label={`Source: ${Array.from(sourceSet).map((s) => opportunitySourceLabel(s)).join(", ")}`}
+                label={`Source: ${Array.from(sourceSet)
+                  .map((s) => opportunitySourceLabel(s))
+                  .join(", ")}`}
               />
             )}
           </div>
@@ -1544,60 +1886,85 @@ export default async function CommercialOpportunitiesPage({
           stage chips would fight its own grouping. This was list-only, which
           silently removed the fastest filter on the platform the moment sheet
           became the default view. ─── */}
-      {(viewMode === "list" || viewMode === "sheet") && statusSnapshot.length > 0 && (
-        <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-          <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
-            <span>Open by stage</span>
-            <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
-              {validColumn ? "Tap active pill to clear" : "Tap to filter"}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
-            {statusSnapshot.map((r) => {
-              const isActive = validColumn === r.status;
-              return (
-                <Link
-                  key={r.status}
-                  href={statusDrillHref(r.status)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors ${
-                    isActive
-                      ? "bg-cc-brand-600 border-cc-brand-700 text-white"
-                      : "bg-surface border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
-                  }`}
-                  title={isActive ? `Showing only ${r.label} — tap to clear` : `Filter to ${r.label}`}
-                >
-                  <span>{r.label}</span>
-                  <strong className={isActive ? "text-white" : "text-ppp-charcoal"}>
-                    {r.count}
-                  </strong>
-                  {r.weightedLabel && (
-                    <span
-                      className={`tabular-nums ${isActive ? "text-white/80" : "text-ppp-charcoal-400"}`}
-                      title="Weighted value — bid value × the odds of this stage"
+      {(viewMode === "list" || viewMode === "sheet") &&
+        statusSnapshot.length > 0 && (
+          <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+            <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
+              <span>Open by stage</span>
+              <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
+                {validColumn ? "Tap active pill to clear" : "Tap to filter"}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              {statusSnapshot.map((r) => {
+                const isActive = validColumn === r.status;
+                return (
+                  <Link
+                    key={r.status}
+                    href={statusDrillHref(r.status)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors ${
+                      isActive
+                        ? "bg-cc-brand-600 border-cc-brand-700 text-white"
+                        : "bg-surface border-ppp-charcoal-100 text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                    }`}
+                    title={
+                      isActive
+                        ? `Showing only ${r.label} — tap to clear`
+                        : `Filter to ${r.label}`
+                    }
+                  >
+                    <span>{r.label}</span>
+                    <strong
+                      className={isActive ? "text-white" : "text-ppp-charcoal"}
                     >
-                      {r.weightedLabel}
-                    </span>
-                  )}
-                  {isActive && <span aria-hidden className="text-white">×</span>}
-                </Link>
-              );
-            })}
+                      {r.count}
+                    </strong>
+                    {r.weightedLabel && (
+                      <span
+                        className={`tabular-nums ${isActive ? "text-white/80" : "text-ppp-charcoal-400"}`}
+                        title="Weighted value — bid value × the odds of this stage"
+                      >
+                        {r.weightedLabel}
+                      </span>
+                    )}
+                    {isActive && (
+                      <span aria-hidden className="text-white">
+                        ×
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* ─── List / Kanban / Empty ─── */}
       {opps.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-12 text-center">
-          <div aria-hidden className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div
+            aria-hidden
+            className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-charcoal-50 text-ppp-charcoal-400 mb-4"
+          >
+            <svg
+              width="26"
+              height="26"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="10" />
               <circle cx="12" cy="12" r="6" />
               <circle cx="12" cy="12" r="2" />
             </svg>
           </div>
           <div className="text-sm font-semibold text-ppp-charcoal">
-            {anyFilterActive ? "No opportunities match these filters" : "No opportunities yet"}
+            {anyFilterActive
+              ? "No opportunities match these filters"
+              : "No opportunities yet"}
           </div>
           <p className="mt-1 text-sm text-ppp-charcoal-500">
             {anyFilterActive
@@ -1609,7 +1976,17 @@ export default async function CommercialOpportunitiesPage({
               href="?new_deal=1#new-deal-sheet"
               className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] shadow-sm shadow-cc-brand-600/30"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M12 5v14 M5 12h14" />
               </svg>
               New opportunity
@@ -1631,15 +2008,18 @@ export default async function CommercialOpportunitiesPage({
             const lead = primaryLeadMap.get(o.id) ?? null;
             const enteredAt = statusEnteredAtMap.get(o.id) ?? null;
             const ageDays = enteredAt ? daysAgoEt(enteredAt) : null;
-            const valueCents = dealValueCents(o, proposalTotalByOpp.get(o.id) ?? null);
+            const valueCents = dealValueCents(
+              o,
+              proposalTotalByOpp.get(o.id) ?? null,
+            );
             const tone: OppSheetRow["statusTone"] =
               o.status === "pre_sale_closed"
                 ? o.sub_status === "won"
                   ? "won"
                   : "lost"
                 : (POST_SALE_STATUSES as readonly string[]).includes(o.status)
-                ? "delivery"
-                : "pre";
+                  ? "delivery"
+                  : "pre";
             return {
               id: o.id,
               href: `/commercial/opportunities/${o.id}`,
@@ -1669,7 +2049,11 @@ export default async function CommercialOpportunitiesPage({
           // Single-opp accounts render without a header — no wasted
           // vertical space. Group order preserves the original sort by
           // taking each account's first-seen index in `opps`.
-          const groups: Array<{ accountId: string; account: CommercialAccount | null; opps: CommercialOpportunity[] }> = [];
+          const groups: Array<{
+            accountId: string;
+            account: CommercialAccount | null;
+            opps: CommercialOpportunity[];
+          }> = [];
           const groupIndex = new Map<string, number>();
           for (const o of opps) {
             const idx = groupIndex.get(o.account_id);
@@ -1689,10 +2073,12 @@ export default async function CommercialOpportunitiesPage({
               <div className="px-4 py-3 border-b border-ppp-charcoal-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-bold text-ppp-charcoal">
-                    {opps.length} opportunit{opps.length === 1 ? "y" : "ies"} · {groups.length} customer{groups.length === 1 ? "" : "s"}
+                    {opps.length} opportunit{opps.length === 1 ? "y" : "ies"} ·{" "}
+                    {groups.length} customer{groups.length === 1 ? "" : "s"}
                   </h2>
                   <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-                    Sorted by {currentSortLabel.toLowerCase()}. Same-customer opportunities are grouped.
+                    Sorted by {currentSortLabel.toLowerCase()}. Same-customer
+                    opportunities are grouped.
                   </p>
                 </div>
               </div>
@@ -1723,90 +2109,107 @@ export default async function CommercialOpportunitiesPage({
                         .join("") || "?"
                     : "?";
                   return (
-                  <li
-                    key={g.accountId}
-                    className="bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
-                    style={tone.border}
-                  >
-                    {/* Karan 2026-07-15 (round 6): each account is a
+                    <li
+                      key={g.accountId}
+                      className="bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm overflow-hidden border-l-4"
+                      style={tone.border}
+                    >
+                      {/* Karan 2026-07-15 (round 6): each account is a
                         collapsible <details> so users can hide
                         customers they aren't working on, saving
                         vertical space. First 3 accounts open by
                         default; rest closed. */}
-                    <details open className="group/acct">
-                    {g.account && (
-                      <summary
-                        className="cursor-pointer px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 list-none [&::-webkit-details-marker]:hidden hover:brightness-95"
-                        style={tone.headerBg}
-                      >
-                        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                          <span
-                            aria-hidden
-                            className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold"
-                            style={tone.avatar}
+                      <details open className="group/acct">
+                        {g.account && (
+                          <summary
+                            className="cursor-pointer px-4 py-3 flex items-center justify-between gap-3 border-b border-ppp-charcoal-100 list-none [&::-webkit-details-marker]:hidden hover:brightness-95"
+                            style={tone.headerBg}
                           >
-                            {initials}
-                          </span>
-                          <Link
-                            href={`/commercial/accounts/${g.account.id}`}
-                            className="text-[14px] font-bold hover:underline underline-offset-2 truncate inline-flex items-center min-h-[44px] touch-manipulation"
-                            style={tone.nameText}
-                            title={`Open ${g.account.company_name}'s account`}
-                          >
-                            {g.account.company_name}
-                          </Link>
-                          {g.account.is_key_relationship && (
-                            <span
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 shrink-0"
-                              title="Key relationship — flagged by admin"
-                            >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
-                            {g.opps.length} opportunit{g.opps.length === 1 ? "y" : "ies"}
-                          </span>
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden
-                            className="text-ppp-charcoal-400 transition-transform group-open/acct:rotate-180"
-                          >
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        </div>
-                      </summary>
-                    )}
-                    <ul className="divide-y divide-ppp-charcoal-100">
-                      {g.opps.map((o) => (
-                        <OpportunityRow
-                          key={o.id}
-                          opportunity={o}
-                          account={g.account}
-                          statusEnteredAt={statusEnteredAtMap.get(o.id) ?? null}
-                          taskStats={taskStatsMap.get(o.id) ?? null}
-                          lastNote={lastNoteMap.get(o.id) ?? null}
-                          primaryLead={primaryLeadMap.get(o.id) ?? null}
-                          fileCount={fileCountMap.get(o.id) ?? 0}
-                          submittalStats={submittalCountMap.get(o.id) ?? null}
-                          finishCount={finishCountMap.get(o.id) ?? 0}
-                          sheetHref={customerSheetHref}
-                          flipReturnHref={flipReturnHref}
-                          currentProposal={currentProposalByOpp.get(o.id) ?? null}
-                          hideAccount={g.account !== null}
-                        />
-                      ))}
-                    </ul>
-                    </details>
-                  </li>
+                            <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                              <span
+                                aria-hidden
+                                className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full text-[11px] font-bold"
+                                style={tone.avatar}
+                              >
+                                {initials}
+                              </span>
+                              <Link
+                                href={`/commercial/accounts/${g.account.id}`}
+                                className="text-[14px] font-bold hover:underline underline-offset-2 truncate inline-flex items-center min-h-[44px] touch-manipulation"
+                                style={tone.nameText}
+                                title={`Open ${g.account.company_name}'s account`}
+                              >
+                                {g.account.company_name}
+                              </Link>
+                              {g.account.is_key_relationship && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 shrink-0"
+                                  title="Key relationship — flagged by admin"
+                                >
+                                  <svg
+                                    width="11"
+                                    height="11"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    aria-hidden
+                                    className="inline-block -mt-0.5"
+                                  >
+                                    <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                                  </svg>{" "}
+                                  Key
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-charcoal-600 bg-surface border border-ppp-charcoal-200 rounded-full px-2 py-0.5 tabular-nums">
+                                {g.opps.length} opportunit
+                                {g.opps.length === 1 ? "y" : "ies"}
+                              </span>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                                className="text-ppp-charcoal-400 transition-transform group-open/acct:rotate-180"
+                              >
+                                <path d="M6 9l6 6 6-6" />
+                              </svg>
+                            </div>
+                          </summary>
+                        )}
+                        <ul className="divide-y divide-ppp-charcoal-100">
+                          {g.opps.map((o) => (
+                            <OpportunityRow
+                              key={o.id}
+                              opportunity={o}
+                              account={g.account}
+                              statusEnteredAt={
+                                statusEnteredAtMap.get(o.id) ?? null
+                              }
+                              taskStats={taskStatsMap.get(o.id) ?? null}
+                              lastNote={lastNoteMap.get(o.id) ?? null}
+                              primaryLead={primaryLeadMap.get(o.id) ?? null}
+                              fileCount={fileCountMap.get(o.id) ?? 0}
+                              submittalStats={
+                                submittalCountMap.get(o.id) ?? null
+                              }
+                              finishCount={finishCountMap.get(o.id) ?? 0}
+                              sheetHref={customerSheetHref}
+                              flipReturnHref={flipReturnHref}
+                              currentProposal={
+                                currentProposalByOpp.get(o.id) ?? null
+                              }
+                              hideAccount={g.account !== null}
+                            />
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
                   );
                 })}
               </ul>
@@ -1847,7 +2250,10 @@ export default async function CommercialOpportunitiesPage({
           sheetError={sheetError}
           duplicateWarning={
             typeof sp.dup_id === "string" && UUID_RE.test(sp.dup_id)
-              ? { id: sp.dup_id, label: typeof sp.dup_label === "string" ? sp.dup_label : "" }
+              ? {
+                  id: sp.dup_id,
+                  label: typeof sp.dup_label === "string" ? sp.dup_label : "",
+                }
               : null
           }
           action={createDealFromPipelineAction}
@@ -1898,7 +2304,12 @@ function NewDealSlideOut({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-ppp-charcoal-100">
           <div>
-            <h2 id="new-deal-sheet-title" className="text-base font-bold text-ppp-charcoal">New opportunity</h2>
+            <h2
+              id="new-deal-sheet-title"
+              className="text-base font-bold text-ppp-charcoal"
+            >
+              New opportunity
+            </h2>
             <p className="text-xs text-ppp-charcoal-500 mt-0.5">
               Pick the GC (account), name the opportunity, click Create.
             </p>
@@ -1908,7 +2319,17 @@ function NewDealSlideOut({
             aria-label="Close"
             className="p-2 -m-2 text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M18 6L6 18 M6 6l12 12" />
             </svg>
           </Link>
@@ -1918,14 +2339,22 @@ function NewDealSlideOut({
             {sheetError}
           </div>
         )}
-        <form id="new-deal-form" action={action} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <form
+          id="new-deal-form"
+          action={action}
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-4"
+        >
           {/* Client-side account picker: visible input is the customer
               name, hidden input carries the resolved UUID that the
               server action reads as account_id. Client component
               needed because <datalist> filters on `value` not `label`,
               so we can't get name-based autocomplete server-only. */}
           <NewDealAccountPicker
-            accounts={accounts.map((a) => ({ id: a.id, company_name: a.company_name, do_not_bid: a.do_not_bid }))}
+            accounts={accounts.map((a) => ({
+              id: a.id,
+              company_name: a.company_name,
+              do_not_bid: a.do_not_bid,
+            }))}
           />
 
           {/* Duplicate match. Without a "Create anyway" path the check would be
@@ -1941,7 +2370,8 @@ function NewDealSlideOut({
                 >
                   {duplicateWarning.label || "a matching opportunity"}
                 </Link>{" "}
-                at the same client and address. Open it, or create this one anyway.
+                at the same client and address. Open it, or create this one
+                anyway.
               </div>
               <input type="hidden" name="confirm_duplicate" value="1" />
             </div>
@@ -1956,9 +2386,13 @@ function NewDealSlideOut({
                 produced a differently-named deal than creating the same deal
                 from the account. builderFieldId lets it read the customer the
                 picker above resolves, since that's chosen client-side here. */}
-            <AutoOpportunityTitle builderFieldId="new-deal-account" className={INPUT_CLS} />
+            <AutoOpportunityTitle
+              builderFieldId="new-deal-account"
+              className={INPUT_CLS}
+            />
             <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
-              Auto-fills as MM-DD-YYYY Builder - Client - Street. Type over it any time.
+              Auto-fills as MM-DD-YYYY Builder - Client - Street. Type over it
+              any time.
             </p>
           </div>
 
@@ -1984,7 +2418,9 @@ function NewDealSlideOut({
               proposal started on a pipeline-created deal had a BLANK address on
               the PDF. They're also the two fields the duplicate check keys on. */}
           <div>
-            <label htmlFor="new-deal-client" className={LABEL_CLS}>Client name</label>
+            <label htmlFor="new-deal-client" className={LABEL_CLS}>
+              Client name
+            </label>
             <input
               id="new-deal-client"
               name="client_name"
@@ -1999,7 +2435,11 @@ function NewDealSlideOut({
               on the RIGHT address, which the ZIP-driven sales-tax lookup then
               depends on. Same input names as before, so the action is unchanged. */}
           <div className="space-y-3">
-            <CommercialAddressFields prefix="property" showStreet2={false} streetLabel="Project address" />
+            <CommercialAddressFields
+              prefix="property"
+              showStreet2={false}
+              streetLabel="Project address"
+            />
           </div>
 
           {/* Same order as the account-scoped form (Brendan 2026-08-12), so the
@@ -2015,7 +2455,10 @@ function NewDealSlideOut({
               lands with the right person on it. */}
           <div>
             <label htmlFor="new-deal-nickname" className={LABEL_CLS}>
-              Project nickname <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+              Project nickname{" "}
+              <span className="font-normal text-ppp-charcoal-400">
+                (optional)
+              </span>
             </label>
             <input
               id="new-deal-nickname"
@@ -2028,7 +2471,9 @@ function NewDealSlideOut({
           </div>
 
           <div>
-            <label htmlFor="new-deal-due" className={LABEL_CLS}>Proposal due</label>
+            <label htmlFor="new-deal-due" className={LABEL_CLS}>
+              Proposal due
+            </label>
             <DateField
               id="new-deal-due"
               name="proposal_due_at"
@@ -2038,7 +2483,9 @@ function NewDealSlideOut({
           </div>
 
           <div>
-            <label htmlFor="new-deal-rfp" className={LABEL_CLS}>RFP received</label>
+            <label htmlFor="new-deal-rfp" className={LABEL_CLS}>
+              RFP received
+            </label>
             {/* Defaults to today, matching the account form — the RFP almost
                 always lands the day it's logged, and this powers
                 time-to-proposal on the opportunity card. */}
@@ -2052,7 +2499,9 @@ function NewDealSlideOut({
           </div>
 
           <div>
-            <label htmlFor="new-deal-estimator" className={LABEL_CLS}>Estimator</label>
+            <label htmlFor="new-deal-estimator" className={LABEL_CLS}>
+              Estimator
+            </label>
             <input
               id="new-deal-estimator"
               name="estimator_name"
@@ -2066,30 +2515,53 @@ function NewDealSlideOut({
           </div>
 
           <div>
-            <label htmlFor="new-deal-source" className={LABEL_CLS}>Lead source</label>
-            <select id="new-deal-source" name="source" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+            <label htmlFor="new-deal-source" className={LABEL_CLS}>
+              Lead source
+            </label>
+            <select
+              id="new-deal-source"
+              name="source"
+              defaultValue=""
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
               <option value="">Choose a source</option>
               {OPPORTUNITY_SOURCES.map((src) => (
-                <option key={src} value={src}>{opportunitySourceLabel(src)}</option>
+                <option key={src} value={src}>
+                  {opportunitySourceLabel(src)}
+                </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label htmlFor="new-deal-team" className={LABEL_CLS}>Team</label>
-            <select id="new-deal-team" name="team_id" defaultValue="" className={SELECT_CLS} style={SELECT_BG_STYLE}>
+            <label htmlFor="new-deal-team" className={LABEL_CLS}>
+              Team
+            </label>
+            <select
+              id="new-deal-team"
+              name="team_id"
+              defaultValue=""
+              className={SELECT_CLS}
+              style={SELECT_BG_STYLE}
+            >
               <option value="">— GC&apos;s team —</option>
               {allTeams.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
               ))}
             </select>
             <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
-              Leave blank to follow the customer&apos;s team. Build teams in Settings → Teams.
+              Leave blank to follow the customer&apos;s team. Build teams in
+              Settings → Teams.
             </p>
           </div>
 
           <div>
-            <label htmlFor="new-deal-desc" className={LABEL_CLS}>Notes (optional)</label>
+            <label htmlFor="new-deal-desc" className={LABEL_CLS}>
+              Notes (optional)
+            </label>
             <textarea
               id="new-deal-desc"
               name="description"
@@ -2231,29 +2703,32 @@ function CustomerBoard({
       // still counts PRE-SALE ONLY (open), matching the KPI above so a $400k
       // job in progress can't reappear as $400k of "pipeline".
       const open = oppsForAccount.filter((o) =>
-        PRE_SALE_OPEN_STATUSES.includes(o.status)
+        PRE_SALE_OPEN_STATUSES.includes(o.status),
       );
       const inDelivery = oppsForAccount.filter((o) =>
-        IN_DELIVERY_STATUSES.includes(o.status)
+        IN_DELIVERY_STATUSES.includes(o.status),
       );
       const closed = oppsForAccount.filter((o) =>
-        TERMINAL_STATUSES.has(o.status)
+        TERMINAL_STATUSES.has(o.status),
       );
       const weightedCents = open.reduce(
-        (sum, o) => sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)),
-        0
+        (sum, o) =>
+          sum + weightedPipelineCents(o, proposalTotalByOpp.get(o.id)),
+        0,
       );
-      const latestUpdate = oppsForAccount
-        .map((o) => o.updated_at ?? "")
-        .filter(Boolean)
-        .sort()
-        .reverse()[0] ?? "";
+      const latestUpdate =
+        oppsForAccount
+          .map((o) => o.updated_at ?? "")
+          .filter(Boolean)
+          .sort()
+          .reverse()[0] ?? "";
       return { account, open, inDelivery, closed, weightedCents, latestUpdate };
     })
     .filter((r): r is Row => r !== null)
     .sort((a, b) => {
       // Sort: biggest weighted pipeline first, then most recently active.
-      if (a.weightedCents !== b.weightedCents) return b.weightedCents - a.weightedCents;
+      if (a.weightedCents !== b.weightedCents)
+        return b.weightedCents - a.weightedCents;
       return b.latestUpdate.localeCompare(a.latestUpdate);
     });
 
@@ -2265,13 +2740,18 @@ function CustomerBoard({
             {rows.length} customer{rows.length === 1 ? "" : "s"} on this list
           </h2>
           <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
-            Grouped by account, biggest weighted pipeline first. Click a customer to open their account, or an opportunity to drill in.
+            Grouped by account, biggest weighted pipeline first. Click a
+            customer to open their account, or an opportunity to drill in.
           </p>
         </div>
       </div>
       <ul className="divide-y divide-ppp-charcoal-100">
         {rows.map((row) => (
-          <CustomerBoardRow key={row.account.id} row={row} sheetHref={sheetHref} />
+          <CustomerBoardRow
+            key={row.account.id}
+            row={row}
+            sheetHref={sheetHref}
+          />
         ))}
       </ul>
     </div>
@@ -2292,20 +2772,19 @@ function CustomerBoardRow({
   };
   sheetHref: (accountId: string, focus?: string) => string;
 }) {
-  const { account, open, inDelivery, closed, weightedCents, latestUpdate } = row;
+  const { account, open, inDelivery, closed, weightedCents, latestUpdate } =
+    row;
   // Latest activity relative label — "today", "5h ago", "3d ago", etc.
   // Uses updated_at which every mutation touches, so it's a real signal.
-  const daysAgo = latestUpdate
-    ? (daysAgoEt(latestUpdate) ?? 0)
-    : null;
+  const daysAgo = latestUpdate ? (daysAgoEt(latestUpdate) ?? 0) : null;
   const activityLabel =
     daysAgo === null
       ? "—"
       : daysAgo === 0
-      ? "today"
-      : daysAgo === 1
-      ? "yesterday"
-      : `${daysAgo}d ago`;
+        ? "today"
+        : daysAgo === 1
+          ? "yesterday"
+          : `${daysAgo}d ago`;
 
   // Karan 2026-07-15: color-per-account left border + avatar chip
   // (djb2-hue helper matches the /commercial/proposals mini-kanban
@@ -2354,7 +2833,17 @@ function CustomerBoardRow({
                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200"
                   title="Key relationship — flagged by admin"
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden
+                    className="inline-block -mt-0.5"
+                  >
+                    <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                  </svg>{" "}
+                  Key
                 </span>
               )}
             </div>
@@ -2376,7 +2865,9 @@ function CustomerBoardRow({
               {inDelivery.length > 0 && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border bg-teal-50 text-teal-800 border-teal-200 tabular-nums">
                   {inDelivery.length}
-                  <span className="font-medium text-teal-700">under contract</span>
+                  <span className="font-medium text-teal-700">
+                    under contract
+                  </span>
                 </span>
               )}
               {weightedCents > 0 && (
@@ -2398,7 +2889,11 @@ function CustomerBoardRow({
                       ? "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200"
                       : "bg-amber-50 text-amber-800 border-amber-200"
                 }`}
-                title={latestUpdate ? new Date(latestUpdate).toLocaleString() : undefined}
+                title={
+                  latestUpdate
+                    ? new Date(latestUpdate).toLocaleString()
+                    : undefined
+                }
               >
                 <span aria-hidden>•</span>
                 Active {activityLabel}
@@ -2417,7 +2912,17 @@ function CustomerBoardRow({
           className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-cc-brand-50 hover:border-cc-brand-300 hover:text-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation transition-colors"
           title={`Quick view of ${account.company_name}`}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
@@ -2461,7 +2966,11 @@ function CustomerBoardRow({
                       {derivedOppName(o, account.company_name)}
                     </span>
                     <span className="shrink-0">
-                      <StageChip status={o.status} sub_status={o.sub_status} compact />
+                      <StageChip
+                        status={o.status}
+                        sub_status={o.sub_status}
+                        compact
+                      />
                     </span>
                   </div>
                   {bidRange && (
@@ -2486,14 +2995,41 @@ function CustomerBoardRow({
                       sub_status==="won" flagged every COMPLETED job (post_sale_closed,
                       whose sub_status is a completion state, not "won") as lost —
                       a finished job read as a loss (audit D17). */}
-                  <span aria-hidden className={`shrink-0 ${isLost(o) ? "text-rose-500" : "text-emerald-700"}`}>
+                  <span
+                    aria-hidden
+                    className={`shrink-0 ${isLost(o) ? "text-rose-500" : "text-emerald-700"}`}
+                  >
                     {isLost(o) ? (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18 M6 6l12 12" /></svg>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 6L6 18 M6 6l12 12" />
+                      </svg>
                     ) : (
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
                     )}
                   </span>
-                  <span className="truncate">{derivedOppName(o, account.company_name)}</span>
+                  <span className="truncate">
+                    {derivedOppName(o, account.company_name)}
+                  </span>
                 </Link>
               ))}
               {closed.length > 3 && (
@@ -2512,7 +3048,6 @@ function CustomerBoardRow({
     </li>
   );
 }
-
 
 /**
  * Slim KPI card — same shape as the accounts page. Consistency across
@@ -2536,7 +3071,16 @@ function KpiCard({
   sub: string;
   icon?: React.ReactNode;
 }) {
-  const toneMap: Record<string, { border: string; glow: string; stripe: string; iconBg: string; iconTx: string }> = {
+  const toneMap: Record<
+    string,
+    {
+      border: string;
+      glow: string;
+      stripe: string;
+      iconBg: string;
+      iconTx: string;
+    }
+  > = {
     "cc-brand": {
       border: "border-cc-brand-100",
       glow: "bg-cc-brand-100/60",
@@ -2578,7 +3122,10 @@ function KpiCard({
     <div
       className={`group/kpi relative bg-surface border ${t.border} rounded-xl px-4 py-3.5 overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}
     >
-      <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`} />
+      <span
+        aria-hidden
+        className={`absolute left-0 top-0 bottom-0 w-1 ${t.stripe}`}
+      />
       <span
         aria-hidden
         className={`absolute -top-8 -right-8 h-24 w-24 rounded-full blur-2xl ${t.glow}`}
@@ -2618,7 +3165,17 @@ function ActiveFilterChip({ href, label }: { href: string; label: string }) {
       title={`Remove filter: ${label}`}
     >
       <span className="truncate max-w-[180px]">{label}</span>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
         <path d="M18 6L6 18 M6 6l12 12" />
       </svg>
     </Link>
@@ -2638,7 +3195,9 @@ function SortOption({
     <Link
       href={href}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg min-h-[40px] touch-manipulation transition-colors ${
-        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
+        active
+          ? "bg-cc-brand-50 hover:bg-cc-brand-100"
+          : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
@@ -2647,9 +3206,13 @@ function SortOption({
         }`}
         aria-hidden
       >
-        {active && <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />}
+        {active && (
+          <span className="block h-2 w-2 rounded-full bg-cc-brand-600" />
+        )}
       </span>
-      <span className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}>
+      <span
+        className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal-700"}`}
+      >
         {label}
       </span>
     </Link>
@@ -2671,21 +3234,36 @@ function FilterOption({
     <Link
       href={href}
       className={`flex items-start gap-3 px-3 py-2.5 rounded-lg min-h-[44px] touch-manipulation transition-colors ${
-        active ? "bg-cc-brand-50 hover:bg-cc-brand-100" : "hover:bg-ppp-charcoal-50"
+        active
+          ? "bg-cc-brand-50 hover:bg-cc-brand-100"
+          : "hover:bg-ppp-charcoal-50"
       }`}
     >
       <span
         className={`mt-0.5 inline-flex items-center justify-center h-4 w-4 rounded border shrink-0 ${
-          active ? "bg-cc-brand-600 border-cc-brand-700 text-white" : "bg-surface border-ppp-charcoal-300 text-transparent"
+          active
+            ? "bg-cc-brand-600 border-cc-brand-700 text-white"
+            : "bg-surface border-ppp-charcoal-300 text-transparent"
         }`}
         aria-hidden
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal"}`}>
+        <div
+          className={`text-[13px] font-semibold ${active ? "text-cc-brand-800" : "text-ppp-charcoal"}`}
+        >
           {label}
         </div>
         <p className="text-[11px] text-ppp-charcoal-500 mt-0.5 leading-snug">
@@ -2728,7 +3306,11 @@ function OpportunityRow({
   statusEnteredAt: string | null;
   taskStats: { open: number; overdue: number; due_soon: number } | null;
   lastNote: { created_at: string; author_label: string | null } | null;
-  primaryLead: { user_email: string; user_full_name: string | null; role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole } | null;
+  primaryLead: {
+    user_email: string;
+    user_full_name: string | null;
+    role: import("@/lib/commercial/opportunities/assignments").OpportunityAssignmentRole;
+  } | null;
   fileCount: number;
   submittalStats: { total: number; awaiting_response: number } | null;
   finishCount: number;
@@ -2741,24 +3323,30 @@ function OpportunityRow({
    *  renders them. Kills the "Bob · Bob · — bid" repetition. */
   hideAccount?: boolean;
 }) {
-  const bid = formatBidRange(opportunity.bid_value_low_cents, opportunity.bid_value_high_cents);
+  const bid = formatBidRange(
+    opportunity.bid_value_low_cents,
+    opportunity.bid_value_high_cents,
+  );
   const dueChip = decisionChip(opportunity.proposal_due_at);
-  const daysInStatus = statusEnteredAt
-    ? daysAgoEt(statusEnteredAt)
-    : null;
+  const daysInStatus = statusEnteredAt ? daysAgoEt(statusEnteredAt) : null;
   const moveToOptions = moveToOptionsFor(opportunity);
   const next = nextStep({
     oppId: opportunity.id,
     status: opportunity.status,
     subStatus: opportunity.sub_status,
     accountId: opportunity.account_id,
-    proposal: currentProposal ? { id: currentProposal.id, status: currentProposal.status } : null,
+    proposal: currentProposal
+      ? { id: currentProposal.id, status: currentProposal.status }
+      : null,
     // Derived from the current proposal rather than counted — the list doesn't
     // load history, and every branch of nextStep turns on presence + newest
     // state, not on how many revisions there have been.
     proposalCount: currentProposal ? 1 : 0,
     sentProposalCount:
-      currentProposal && ["sent", "won", "lost"].includes(currentProposal.status) ? 1 : 0,
+      currentProposal &&
+      ["sent", "won", "lost"].includes(currentProposal.status)
+        ? 1
+        : 0,
     approvedNotSentCount: 0,
   });
   // Karan 2026-07-11 (signature-moments): days-idle heat treatment on
@@ -2777,8 +3365,8 @@ function OpportunityRow({
       ? daysInStatus >= 14
         ? "bg-rose-50/40 hover:bg-rose-100/60"
         : daysInStatus >= 7
-        ? "bg-amber-50/40 hover:bg-amber-100/60"
-        : "hover:bg-ppp-charcoal-50/60"
+          ? "bg-amber-50/40 hover:bg-amber-100/60"
+          : "hover:bg-ppp-charcoal-50/60"
       : "hover:bg-ppp-charcoal-50/60";
   return (
     <li className={`relative group/row transition-colors ${idleTint}`}>
@@ -2810,7 +3398,10 @@ function OpportunityRow({
               <span className="font-bold text-ppp-charcoal text-[15px] leading-tight">
                 {derivedOppName(opportunity, account?.company_name ?? null)}
               </span>
-              <StageChip status={opportunity.status} sub_status={opportunity.sub_status} />
+              <StageChip
+                status={opportunity.status}
+                sub_status={opportunity.sub_status}
+              />
               {dueChip && <DueChip {...dueChip} />}
               {opportunity.archived_at && (
                 <span
@@ -2829,12 +3420,18 @@ function OpportunityRow({
                 the line doesn't read as "Bob · Bob · — bid". */}
             <div className="text-[12px] text-ppp-charcoal-500 mt-1 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
               {!hideAccount && account && (
-                <span className="text-ppp-charcoal-700 font-medium">{account.company_name}</span>
+                <span className="text-ppp-charcoal-700 font-medium">
+                  {account.company_name}
+                </span>
               )}
-              {!hideAccount && account?.rating && <RatingPill rating={account.rating} />}
-              {!hideAccount && account?.prequalification_status && account.prequalification_status !== "not_started" && (
-                <PrequalPill status={account.prequalification_status} />
+              {!hideAccount && account?.rating && (
+                <RatingPill rating={account.rating} />
               )}
+              {!hideAccount &&
+                account?.prequalification_status &&
+                account.prequalification_status !== "not_started" && (
+                  <PrequalPill status={account.prequalification_status} />
+                )}
               {!hideAccount && account && <span aria-hidden>·</span>}
               <span>
                 <strong className="text-ppp-charcoal">{bid}</strong> bid
@@ -2845,7 +3442,13 @@ function OpportunityRow({
                 lead, files, finishes, submittals. Each only renders
                 when data warrants it. Colored tint on urgent signals
                 (overdue tasks, stuck deal). */}
-            {(daysInStatus !== null || taskStats || lastNote || primaryLead || fileCount > 0 || finishCount > 0 || (submittalStats && submittalStats.total > 0)) && (
+            {(daysInStatus !== null ||
+              taskStats ||
+              lastNote ||
+              primaryLead ||
+              fileCount > 0 ||
+              finishCount > 0 ||
+              (submittalStats && submittalStats.total > 0)) && (
               <div className="text-[12px] mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap text-ppp-charcoal-600">
                 {daysInStatus !== null && (
                   <span
@@ -2853,12 +3456,13 @@ function OpportunityRow({
                       daysInStatus > 14
                         ? "text-rose-700 font-medium"
                         : daysInStatus > 7
-                        ? "text-amber-700"
-                        : "text-ppp-charcoal-600"
+                          ? "text-amber-700"
+                          : "text-ppp-charcoal-600"
                     }
                     title={`Entered ${opportunityStatusLabel(opportunity.status)} ${daysInStatus}d ago`}
                   >
-                    {daysInStatus}d in {opportunityStatusLabel(opportunity.status).toLowerCase()}
+                    {daysInStatus}d in{" "}
+                    {opportunityStatusLabel(opportunity.status).toLowerCase()}
                   </span>
                 )}
                 {taskStats && taskStats.open > 0 && (
@@ -2867,8 +3471,8 @@ function OpportunityRow({
                       taskStats.overdue > 0
                         ? "text-rose-700 font-medium"
                         : taskStats.due_soon > 0
-                        ? "text-amber-700"
-                        : "text-ppp-charcoal-600"
+                          ? "text-amber-700"
+                          : "text-ppp-charcoal-600"
                     }
                     title={`${taskStats.open} open · ${taskStats.overdue} overdue · ${taskStats.due_soon} due in 7d`}
                   >
@@ -2878,7 +3482,10 @@ function OpportunityRow({
                   </span>
                 )}
                 {lastNote && (
-                  <span className="text-ppp-charcoal-600" title={new Date(lastNote.created_at).toLocaleString()}>
+                  <span
+                    className="text-ppp-charcoal-600"
+                    title={new Date(lastNote.created_at).toLocaleString()}
+                  >
                     Last note {relativeAgo(lastNote.created_at)}
                     {lastNote.author_label ? ` · ${lastNote.author_label}` : ""}
                   </span>
@@ -2888,21 +3495,60 @@ function OpportunityRow({
                     className="inline-flex items-center gap-1 text-cc-brand-700"
                     title={`${opportunityAssignmentRoleLabel(primaryLead.role)}: ${primaryLead.user_full_name ?? primaryLead.user_email}`}
                   >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>
-                    {(primaryLead.user_full_name ?? primaryLead.user_email).split(" ")[0]}
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden
+                      className="inline-block -mt-0.5"
+                    >
+                      <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                    </svg>
+                    {
+                      (
+                        primaryLead.user_full_name ?? primaryLead.user_email
+                      ).split(" ")[0]
+                    }
                   </span>
                 )}
                 {fileCount > 0 && (
-                  <span className="text-ppp-charcoal-600 inline-flex items-center gap-1" title="Plans & Specs attachments">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <span
+                    className="text-ppp-charcoal-600 inline-flex items-center gap-1"
+                    title="Plans & Specs attachments"
+                  >
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                     </svg>
                     {fileCount} {fileCount === 1 ? "file" : "files"}
                   </span>
                 )}
                 {finishCount > 0 && (
-                  <span className="text-ppp-charcoal-600 inline-flex items-center gap-1" title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined`}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <span
+                    className="text-ppp-charcoal-600 inline-flex items-center gap-1"
+                    title={`${finishCount} finish-schedule code${finishCount === 1 ? "" : "s"} defined`}
+                  >
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
                       <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
                       <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
                       <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
@@ -2921,7 +3567,17 @@ function OpportunityRow({
                         : `${submittalStats.total} submittal${submittalStats.total === 1 ? "" : "s"} closed`
                     }
                   >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                       <polyline points="14 2 14 8 20 8" />
                     </svg>
@@ -2938,7 +3594,18 @@ function OpportunityRow({
           </div>
 
           {/* Right chevron aligns to first line — group-hover tint. */}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-ppp-charcoal-300 group-hover/row:text-cc-brand-600 shrink-0 mt-1 transition-colors"
+            aria-hidden
+          >
             <path d="M9 18l6-6-6-6" />
           </svg>
         </div>
@@ -2954,14 +3621,26 @@ function OpportunityRow({
               href={`/commercial/opportunities/${opportunity.id}?tab=finishes`}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-cc-brand-800 bg-cc-brand-50 border border-cc-brand-100 hover:bg-cc-brand-100 transition-colors min-h-[44px] sm:min-h-[28px] touch-manipulation"
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
                 <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
                 <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
                 <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
                 <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
               </svg>
-              <span>{finishCount} {finishCount === 1 ? "finish" : "finishes"} →</span>
+              <span>
+                {finishCount} {finishCount === 1 ? "finish" : "finishes"} →
+              </span>
             </Link>
           )}
           {submittalStats && submittalStats.total > 0 && (
@@ -2973,14 +3652,27 @@ function OpportunityRow({
                   : "text-ppp-charcoal-700 bg-ppp-charcoal-50 border-ppp-charcoal-100 hover:bg-ppp-charcoal-100/70"
               }`}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
               <span>
-                {submittalStats.total} submittal{submittalStats.total === 1 ? "" : "s"}
+                {submittalStats.total} submittal
+                {submittalStats.total === 1 ? "" : "s"}
                 {submittalStats.awaiting_response > 0 && (
-                  <span className="ml-1 font-semibold">· {submittalStats.awaiting_response} awaiting</span>
+                  <span className="ml-1 font-semibold">
+                    · {submittalStats.awaiting_response} awaiting
+                  </span>
                 )}
                 {" →"}
               </span>
@@ -2993,48 +3685,49 @@ function OpportunityRow({
           status flip after it. Both live outside the row's own <Link> — an
           anchor inside an anchor is invalid and the inner one stops firing. */}
       <div className="px-4 pb-3 -mt-1 flex items-center gap-2 flex-wrap">
-      <NextStepButton step={next} oppId={opportunity.id} />
-      {moveToOptions.length > 0 ? (
-        <form
-          action={quickFlipStatusAction}
-          className="flex items-center gap-2 flex-wrap"
-        >
-          <input type="hidden" name="opp_id" value={opportunity.id} />
-          <input type="hidden" name="return_href" value={flipReturnHref} />
-          <select
-            id={`flip-${opportunity.id}`}
-            name="to_status"
-            defaultValue=""
-            required
-            aria-label={`Move ${opportunity.title} to next stage`}
-            className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
-            style={SELECT_BG_STYLE}
+        <NextStepButton step={next} oppId={opportunity.id} />
+        {moveToOptions.length > 0 ? (
+          <form
+            action={quickFlipStatusAction}
+            className="flex items-center gap-2 flex-wrap"
           >
-            <option value="" disabled>
-              Move to…
-            </option>
-            {moveToOptions.map((col) => (
-              <option key={col.key} value={col.key}>
-                → {col.label}
+            <input type="hidden" name="opp_id" value={opportunity.id} />
+            <input type="hidden" name="return_href" value={flipReturnHref} />
+            <select
+              id={`flip-${opportunity.id}`}
+              name="to_status"
+              defaultValue=""
+              required
+              aria-label={`Move ${opportunity.title} to next stage`}
+              className={`${SELECT_CLS} text-base sm:text-sm py-1.5 min-h-[44px] sm:min-h-[36px]`}
+              style={SELECT_BG_STYLE}
+            >
+              <option value="" disabled>
+                Move to…
               </option>
-            ))}
-          </select>
-          <SubmitButton pendingLabel="…"
-            className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
-          >
-            Go
-          </SubmitButton>
-        </form>
-      ) : (
-        <p className="text-[11px] text-ppp-charcoal-500">
-          <Link
-            href={sheetHref(opportunity.account_id, opportunity.id)}
-            className="underline hover:text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0"
-          >
-            Peek to reopen
-          </Link>
-        </p>
-      )}
+              {moveToOptions.map((col) => (
+                <option key={col.key} value={col.key}>
+                  → {col.label}
+                </option>
+              ))}
+            </select>
+            <SubmitButton
+              pendingLabel="…"
+              className="px-3 py-1.5 rounded-md bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            >
+              Go
+            </SubmitButton>
+          </form>
+        ) : (
+          <p className="text-[11px] text-ppp-charcoal-500">
+            <Link
+              href={sheetHref(opportunity.account_id, opportunity.id)}
+              className="underline hover:text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0"
+            >
+              Peek to reopen
+            </Link>
+          </p>
+        )}
       </div>
     </li>
   );
@@ -3045,7 +3738,9 @@ function relativeAgo(iso: string): string {
   return relativeAgoEt(iso, "just now");
 }
 
-function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" | "overdue" } | null {
+function decisionChip(
+  iso: string | null,
+): { label: string; tone: "ok" | "soon" | "overdue" } | null {
   if (!iso) return null;
   const days = daysFromTodayEt(iso); // whole ET days; was UTC-midnight, overdue 1d early in ET evenings
   if (days < 0) return { label: `${Math.abs(days)}d overdue`, tone: "overdue" };
@@ -3055,15 +3750,23 @@ function decisionChip(iso: string | null): { label: string; tone: "ok" | "soon" 
   return { label: `Due in ${days}d`, tone: "ok" };
 }
 
-function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdue" }) {
+function DueChip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "soon" | "overdue";
+}) {
   const cls =
     tone === "overdue"
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : tone === "soon"
-      ? "bg-amber-50 text-amber-800 border-amber-200"
-      : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
+        ? "bg-amber-50 text-amber-800 border-amber-200"
+        : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${cls}`}
+    >
       {label}
     </span>
   );
@@ -3116,11 +3819,18 @@ function DueChip({ label, tone }: { label: string; tone: "ok" | "soon" | "overdu
  * two dead segments on a 375px row buy nothing.
  */
 const PRE_SALE_STEPPER: { key: string; label: string }[] = [
-  ...PRE_CONTRACT_COLUMNS.filter((c) => c.key !== "won" && c.key !== "lost").map((c) => ({
+  ...PRE_CONTRACT_COLUMNS.filter(
+    (c) => c.key !== "won" && c.key !== "lost",
+  ).map((c) => ({
     key: c.key,
     // "Request for Proposal" is abbreviated purely for width — a stepper has
     // to survive a 375px phone.
-    label: c.key === "rfp" ? "RFP" : c.key === "pending_approval" ? "Approval" : c.label,
+    label:
+      c.key === "rfp"
+        ? "RFP"
+        : c.key === "pending_approval"
+          ? "Approval"
+          : c.label,
   })),
   { key: "pre_sale_closed", label: "Closed" },
 ];
@@ -3178,7 +3888,7 @@ function StageChip({
     isPostSale || status === "pre_sale_closed" ? status : columnKey;
   const currentIdx = Math.max(
     0,
-    stages.findIndex((s) => s.key === stageKey)
+    stages.findIndex((s) => s.key === stageKey),
   );
   const currentLabel = stages[currentIdx]?.label ?? "RFP";
   const subLabel = sub_status ? opportunitySubStatusLabel(sub_status) : "";
@@ -3200,7 +3910,8 @@ function StageChip({
   // Amber is the rule's in-progress color, and it carries "you are here" on
   // its own; the lane is already conveyed by the labels and the aria-label, so
   // it no longer needs its own hue.
-  const currentPillCls = "bg-amber-400 text-ppp-charcoal-900 border-amber-500 shadow-sm";
+  const currentPillCls =
+    "bg-amber-400 text-ppp-charcoal-900 border-amber-500 shadow-sm";
   // Compact: just the current stage as one pill (list rows).
   if (compact) {
     return (
@@ -3210,7 +3921,9 @@ function StageChip({
         title={`${currentLabel}${showSubBelow ? ` · ${subLabel}` : ""}`}
       >
         {currentLabel}
-        {showSubBelow && <span className="font-normal opacity-80 ml-1">· {subLabel}</span>}
+        {showSubBelow && (
+          <span className="font-normal opacity-80 ml-1">· {subLabel}</span>
+        )}
       </span>
     );
   }
@@ -3246,7 +3959,10 @@ function StageChip({
                 {s.label}
               </span>
               {!isLast && (
-                <span aria-hidden className={`h-px w-2.5 sm:w-3.5 mx-0.5 ${connectorCls}`} />
+                <span
+                  aria-hidden
+                  className={`h-px w-2.5 sm:w-3.5 mx-0.5 ${connectorCls}`}
+                />
               )}
             </span>
           );
@@ -3254,7 +3970,9 @@ function StageChip({
       </span>
       {showSubBelow && (
         <span className="text-[10.5px] text-ppp-charcoal-500 pl-1 truncate max-w-[220px]">
-          <span aria-hidden className="text-ppp-charcoal-300 mr-1">└</span>
+          <span aria-hidden className="text-ppp-charcoal-300 mr-1">
+            └
+          </span>
           {subLabel}
         </span>
       )}
@@ -3267,10 +3985,12 @@ function RatingPill({ rating }: { rating: CommercialAccountRating }) {
     rating === "A"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : rating === "B"
-      ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
+        ? "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+        : "bg-amber-50 text-amber-700 border-amber-200";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-bold border ${cls}`}
+    >
       {rating}
     </span>
   );
@@ -3278,14 +3998,28 @@ function RatingPill({ rating }: { rating: CommercialAccountRating }) {
 
 function PrequalPill({ status }: { status: CommercialPrequalStatus }) {
   const map = {
-    not_started: { label: "Prequal: —", cls: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100" },
-    pending: { label: "Prequal: pending", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    approved: { label: "Prequal: Approved", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    rejected: { label: "Prequal: Declined", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+    not_started: {
+      label: "Prequal: —",
+      cls: "bg-ppp-charcoal-50 text-ppp-charcoal-500 border-ppp-charcoal-100",
+    },
+    pending: {
+      label: "Prequal: pending",
+      cls: "bg-amber-50 text-amber-700 border-amber-200",
+    },
+    approved: {
+      label: "Prequal: Approved",
+      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
+    rejected: {
+      label: "Prequal: Declined",
+      cls: "bg-rose-50 text-rose-700 border-rose-200",
+    },
   }[status];
   if (!map) return null;
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${map.cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium border ${map.cls}`}
+    >
       {map.label}
     </span>
   );
@@ -3311,7 +4045,9 @@ function StatusPill({
   // channel carried no information at all).
   const { cls } = statusPillTone(status, subStatus);
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}
+    >
       {/* Won and Lost both map to "Closed" on the status alone, so the board
           could not tell them apart — every other surface uses the display
           label. */}
@@ -3363,7 +4099,10 @@ function CustomerQuickSheet({
   const closedDeals = allDeals.filter((o) => TERMINAL_STATUSES.has(o.status));
   const paidPct =
     rollup.invoiced_cents > 0
-      ? Math.min(100, Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100))
+      ? Math.min(
+          100,
+          Math.round((rollup.paid_cents / rollup.invoiced_cents) * 100),
+        )
       : 0;
   return (
     <div id="customer-sheet" className="fixed inset-0 z-40">
@@ -3379,7 +4118,8 @@ function CustomerQuickSheet({
       <FocusTrapAside
         closeHref={closeHref}
         ariaLabelledBy="customer-sheet-title"
-        className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right">
+        className="absolute right-0 top-0 bottom-0 w-full sm:w-[480px] max-w-full bg-surface border-l border-ppp-charcoal-200 shadow-2xl flex flex-col overflow-hidden animate-slide-in-right"
+      >
         {/* Header — company name + close + right-aligned View Account CTA
             per user's explicit ask ("top right of the sheet it says view
             full account button and brings the user to the account"). */}
@@ -3389,7 +4129,10 @@ function CustomerQuickSheet({
               <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-0.5">
                 GC / Account
               </div>
-              <h2 id="customer-sheet-title" className="text-xl font-bold text-ppp-charcoal leading-tight break-words">
+              <h2
+                id="customer-sheet-title"
+                className="text-xl font-bold text-ppp-charcoal leading-tight break-words"
+              >
                 {account.company_name}
               </h2>
               <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
@@ -3400,7 +4143,17 @@ function CustomerQuickSheet({
                 )}
                 {account.is_key_relationship && (
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-800 border-amber-200">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg> Key
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden
+                      className="inline-block -mt-0.5"
+                    >
+                      <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                    </svg>{" "}
+                    Key
                   </span>
                 )}
               </div>
@@ -3410,7 +4163,17 @@ function CustomerQuickSheet({
               aria-label="Close"
               className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 hover:text-ppp-charcoal-800 touch-manipulation"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M18 6L6 18 M6 6l12 12" />
               </svg>
             </Link>
@@ -3424,7 +4187,17 @@ function CustomerQuickSheet({
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 w-full sm:w-auto"
           >
             View full account
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M5 12h14 M13 5l7 7-7 7" />
             </svg>
           </Link>
@@ -3450,10 +4223,17 @@ function CustomerQuickSheet({
             ) : (
               <ul className="space-y-1.5">
                 {team.map((m) => {
-                  const primary = m.assignments.find((a) => a.is_primary) ?? m.assignments[0];
+                  const primary =
+                    m.assignments.find((a) => a.is_primary) ?? m.assignments[0];
                   return (
-                    <li key={m.user_id} className="flex items-center gap-2 text-[12.5px]">
-                      <span aria-hidden className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-cc-brand-100 text-cc-brand-800 text-[10px] font-bold uppercase">
+                    <li
+                      key={m.user_id}
+                      className="flex items-center gap-2 text-[12.5px]"
+                    >
+                      <span
+                        aria-hidden
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-cc-brand-100 text-cc-brand-800 text-[10px] font-bold uppercase"
+                      >
                         {(m.user_full_name ?? m.user_email).slice(0, 1)}
                       </span>
                       <span className="font-medium text-ppp-charcoal truncate">
@@ -3461,7 +4241,8 @@ function CustomerQuickSheet({
                       </span>
                       <span className="text-ppp-charcoal-500 text-[11px] truncate">
                         · {assignmentRoleLabel(primary.role)}
-                        {m.assignments.length > 1 && ` +${m.assignments.length - 1}`}
+                        {m.assignments.length > 1 &&
+                          ` +${m.assignments.length - 1}`}
                       </span>
                     </li>
                   );
@@ -3479,16 +4260,34 @@ function CustomerQuickSheet({
                 collided and the right one clipped on any 6-figure account. */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-2">
-                <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">Invoiced</div>
-                <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">{formatCentsFull(rollup.invoiced_cents)}</div>
+                <div className="text-[9.5px] text-ppp-charcoal-500 font-medium uppercase tracking-wide">
+                  Invoiced
+                </div>
+                <div className="text-sm font-bold text-ppp-charcoal mt-0.5 tabular-nums break-all">
+                  {formatCentsFull(rollup.invoiced_cents)}
+                </div>
               </div>
               <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-2">
-                <div className="text-[9.5px] text-emerald-800 font-medium uppercase tracking-wide">Paid</div>
-                <div className="text-sm font-bold text-emerald-800 mt-0.5 tabular-nums break-all">{formatCentsFull(rollup.paid_cents)}</div>
+                <div className="text-[9.5px] text-emerald-800 font-medium uppercase tracking-wide">
+                  Paid
+                </div>
+                <div className="text-sm font-bold text-emerald-800 mt-0.5 tabular-nums break-all">
+                  {formatCentsFull(rollup.paid_cents)}
+                </div>
               </div>
-              <div className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-surface"}`}>
-                <div className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}>Balance</div>
-                <div className={`text-sm font-bold mt-0.5 tabular-nums break-all ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}>{formatCentsFull(rollup.open_balance_cents)}</div>
+              <div
+                className={`rounded-lg border px-2.5 py-2 ${rollup.overdue_count > 0 ? "border-rose-200 bg-rose-50/40" : "border-ppp-charcoal-100 bg-surface"}`}
+              >
+                <div
+                  className={`text-[9.5px] font-medium uppercase tracking-wide ${rollup.overdue_count > 0 ? "text-rose-800" : "text-ppp-charcoal-500"}`}
+                >
+                  Balance
+                </div>
+                <div
+                  className={`text-sm font-bold mt-0.5 tabular-nums break-all ${rollup.overdue_count > 0 ? "text-rose-900" : "text-ppp-charcoal"}`}
+                >
+                  {formatCentsFull(rollup.open_balance_cents)}
+                </div>
               </div>
             </div>
             {rollup.invoiced_cents > 0 && (
@@ -3531,10 +4330,10 @@ function CustomerQuickSheet({
                     derived === "paid"
                       ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                       : derived === "overdue"
-                      ? "bg-rose-50 text-rose-800 border-rose-200"
-                      : derived === "void"
-                      ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
-                      : "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
+                        ? "bg-rose-50 text-rose-800 border-rose-200"
+                        : derived === "void"
+                          ? "bg-ppp-charcoal-50 text-ppp-charcoal-600 border-ppp-charcoal-200"
+                          : "bg-cc-brand-50 text-cc-brand-800 border-cc-brand-200";
                   return (
                     <li key={inv.id}>
                       <Link
@@ -3547,14 +4346,18 @@ function CustomerQuickSheet({
                             {inv.invoice_number}
                           </div>
                           <div className="text-[10.5px] text-ppp-charcoal-500">
-                            {inv.due_at ? `Due ${fmtEtDate(inv.due_at)}` : `Created ${fmtEtDate(inv.created_at)}`}
+                            {inv.due_at
+                              ? `Due ${fmtEtDate(inv.due_at)}`
+                              : `Created ${fmtEtDate(inv.created_at)}`}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
                           <div className="text-[12.5px] font-bold text-ppp-charcoal">
                             {formatCentsFull(inv.total_cents)}
                           </div>
-                          <span className={`inline-flex items-center px-1.5 py-0 rounded text-[9.5px] font-semibold border mt-0.5 ${toneCls}`}>
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0 rounded text-[9.5px] font-semibold border mt-0.5 ${toneCls}`}
+                          >
                             {invoiceStatusLabel(derived)}
                           </span>
                         </div>
@@ -3590,7 +4393,9 @@ function CustomerQuickSheet({
                     <li
                       key={d.id}
                       className={`rounded-lg border px-3 py-2 ${
-                        isFocused ? "border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200" : "border-ppp-charcoal-100 bg-surface"
+                        isFocused
+                          ? "border-cc-brand-300 bg-cc-brand-50/40 ring-1 ring-cc-brand-200"
+                          : "border-ppp-charcoal-100 bg-surface"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -3599,8 +4404,16 @@ function CustomerQuickSheet({
                             {derivedOppName(d, account.company_name)}
                           </div>
                           <div className="text-[11px] text-ppp-charcoal-500 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
-                            <StatusPill status={d.status} subStatus={d.sub_status} />
-                            <span>{formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}</span>
+                            <StatusPill
+                              status={d.status}
+                              subStatus={d.sub_status}
+                            />
+                            <span>
+                              {formatBidRange(
+                                d.bid_value_low_cents,
+                                d.bid_value_high_cents,
+                              )}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -3616,9 +4429,16 @@ function CustomerQuickSheet({
                         </Link>
                       )}
                       {moveToOptions.length > 0 && (
-                        <form action={quickFlipStatusAction} className="mt-2 flex items-center gap-1.5">
+                        <form
+                          action={quickFlipStatusAction}
+                          className="mt-2 flex items-center gap-1.5"
+                        >
                           <input type="hidden" name="opp_id" value={d.id} />
-                          <input type="hidden" name="return_href" value={flipReturnHref} />
+                          <input
+                            type="hidden"
+                            name="return_href"
+                            value={flipReturnHref}
+                          />
                           <select
                             name="to_status"
                             defaultValue=""
@@ -3627,14 +4447,17 @@ function CustomerQuickSheet({
                             className={`${SELECT_CLS} flex-1 text-base sm:text-xs py-1.5 min-h-[44px] sm:min-h-[36px]`}
                             style={SELECT_BG_STYLE}
                           >
-                            <option value="" disabled>Move to…</option>
+                            <option value="" disabled>
+                              Move to…
+                            </option>
                             {moveToOptions.map((col) => (
                               <option key={col.key} value={col.key}>
                                 → {col.label}
                               </option>
                             ))}
                           </select>
-                          <SubmitButton pendingLabel="…"
+                          <SubmitButton
+                            pendingLabel="…"
                             className="px-2.5 py-1.5 text-[11px] font-semibold rounded-md bg-cc-brand-600 text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
                           >
                             Go
@@ -3671,7 +4494,9 @@ function CustomerQuickSheet({
                       }`}
                     >
                       <StatusPill status={d.status} subStatus={d.sub_status} />
-                      <span className="truncate flex-1">{derivedOppName(d, account.company_name)}</span>
+                      <span className="truncate flex-1">
+                        {derivedOppName(d, account.company_name)}
+                      </span>
                       {isPostSaleProject(d) && (
                         <Link
                           href={`/commercial/opportunities/${d.id}?tab=project&sub=change-orders`}
@@ -3682,7 +4507,10 @@ function CustomerQuickSheet({
                         </Link>
                       )}
                       <span className="text-ppp-charcoal-500 shrink-0">
-                        {formatBidRange(d.bid_value_low_cents, d.bid_value_high_cents)}
+                        {formatBidRange(
+                          d.bid_value_low_cents,
+                          d.bid_value_high_cents,
+                        )}
                       </span>
                     </li>
                   );
@@ -3699,7 +4527,8 @@ function CustomerQuickSheet({
           {/* Empty state — no deals at all */}
           {allDeals.length === 0 && (
             <section className="text-[12px] text-ppp-charcoal-500 italic text-center py-4">
-              No opportunities on this customer yet. Start one from the account page.
+              No opportunities on this customer yet. Start one from the account
+              page.
             </section>
           )}
         </div>

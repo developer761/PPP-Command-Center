@@ -49,7 +49,9 @@ import type { CommercialJob } from "@/lib/commercial/field-ops/jobs";
  */
 export const ONE_OFF_ACCOUNT_NAME = "Direct / One-off";
 
-async function ensureOneOffAccount(actorUserId: string | null): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+async function ensureOneOffAccount(
+  actorUserId: string | null,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: found, error: findErr } = await sb
     .from("commercial_accounts")
@@ -63,7 +65,10 @@ async function ensureOneOffAccount(actorUserId: string | null): Promise<{ ok: tr
 
   const { data: created, error: insErr } = await sb
     .from("commercial_accounts")
-    .insert({ company_name: ONE_OFF_ACCOUNT_NAME, created_by_user_id: actorUserId })
+    .insert({
+      company_name: ONE_OFF_ACCOUNT_NAME,
+      created_by_user_id: actorUserId,
+    })
     .select("id")
     .maybeSingle();
   // A concurrent create loses the insert race; re-read rather than fail, so two
@@ -77,7 +82,10 @@ async function ensureOneOffAccount(actorUserId: string | null): Promise<{ ok: tr
       .limit(1)
       .maybeSingle();
     if (retry) return { ok: true, id: (retry as { id: string }).id };
-    return { ok: false, error: insErr?.message ?? "Could not create the one-off account." };
+    return {
+      ok: false,
+      error: insErr?.message ?? "Could not create the one-off account.",
+    };
   }
   return { ok: true, id: (created as { id: string }).id };
 }
@@ -94,9 +102,15 @@ async function ensureOneOffAccount(actorUserId: string | null): Promise<{ ok: tr
  */
 async function markOneOff(oppId: string): Promise<{ tagged: boolean }> {
   const sb = commercialDb();
-  const { error } = await sb.from("commercial_opportunities").update({ is_one_off: true }).eq("id", oppId);
+  const { error } = await sb
+    .from("commercial_opportunities")
+    .update({ is_one_off: true })
+    .eq("id", oppId);
   if (error) {
-    console.warn("[one-off] could not set is_one_off (migration 20260917180000 not applied?):", error.message);
+    console.warn(
+      "[one-off] could not set is_one_off (migration 20260917180000 not applied?):",
+      error.message,
+    );
     return { tagged: false };
   }
   return { tagged: true };
@@ -116,11 +130,14 @@ export type CreateOneOffInput = {
   estimated_labor_hours?: number | null;
   prevailing_wage?: boolean;
   notes?: string | null;
+  /** Passed straight through to the job, so nothing the form collected is lost. */
+  status?: string | null;
+  division_tag?: string | null;
   actorUserId: string | null;
 };
 
 export async function createOneOffWorkOrder(
-  input: CreateOneOffInput
+  input: CreateOneOffInput,
 ): Promise<
   | { ok: true; opportunityId: string; job: CommercialJob; tagged: boolean }
   | { ok: false; error: string }
@@ -165,7 +182,9 @@ export async function createOneOffWorkOrder(
   // same sense the status-change path treats it: a failure here leaves a real
   // opportunity that the normal ensure-on-status-change will fix, rather than
   // failing a work order the crew is waiting on.
-  await ensureProjectForOpportunity(opp.opportunity.id, { actingUserId: input.actorUserId }).catch(() => undefined);
+  await ensureProjectForOpportunity(opp.opportunity.id, {
+    actingUserId: input.actorUserId,
+  }).catch(() => undefined);
 
   const job = await createJob({
     // Blank on purpose: `createJob` generates a reportable code from the name
@@ -181,12 +200,12 @@ export async function createOneOffWorkOrder(
     site_city: (input.site_city ?? "").trim() || null,
     site_state: (input.site_state ?? "").trim() || null,
     site_zip: (input.site_zip ?? "").trim() || null,
-    status: "ready_to_schedule",
+    status: (input.status as never) ?? "ready_to_schedule",
     estimated_labor_hours: input.estimated_labor_hours ?? null,
     target_start: input.target_start || null,
     target_end: input.target_end || null,
     prevailing_wage: input.prevailing_wage ?? false,
-    division_tag: "commercial",
+    division_tag: (input.division_tag as never) ?? "commercial",
     notes: (input.notes ?? "").trim() || null,
     actor_user_id: input.actorUserId,
   });

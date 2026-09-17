@@ -184,6 +184,14 @@ export type CommercialOpportunity = {
   // hidden from active pipeline/list by default; toggle "Include
   // archived" filter to see them. Reversible via unarchive.
   archived_at: string | null;
+  /**
+   * Auto-created from a one-off work order rather than won through a bid.
+   *
+   * Optional on the type because there is no migration runner here — the app
+   * has to render on an environment where 20260917180000 has not been pasted
+   * in yet, and PostgREST simply omits a column it does not have.
+   */
+  is_one_off?: boolean | null;
   archived_by_user_id: string | null;
   // Migration 069 (Katie 2026-07-20) — RFP arrival date. Powers the
   // time-to-proposal metric (proposal.sent_at - rfp_received_at).
@@ -242,15 +250,16 @@ export type CommercialOpportunity = {
  */
 function computedOppName(
   opp: { client_name?: string | null; property_street?: string | null },
-  accountName: string | null | undefined
+  accountName: string | null | undefined,
 ): string {
   const parts: string[] = [];
   if (accountName && accountName.trim()) parts.push(accountName.trim());
-  if (opp.client_name && opp.client_name.trim()) parts.push(opp.client_name.trim());
+  if (opp.client_name && opp.client_name.trim())
+    parts.push(opp.client_name.trim());
   const location = (opp.property_street && opp.property_street.trim()) || "";
   if (location) parts.push(location);
   const deduped = parts.filter(
-    (p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()
+    (p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase(),
   );
   return deduped.join(" - ");
 }
@@ -270,7 +279,7 @@ function looseEq(a: string, b: string): boolean {
 export function isAutoFilledTitle(
   title: string | null | undefined,
   opp: { client_name?: string | null; property_street?: string | null },
-  accountName: string | null | undefined
+  accountName: string | null | undefined,
 ): boolean {
   const t = (title ?? "").trim();
   if (!t) return true; // nothing typed at all
@@ -348,7 +357,7 @@ export function derivedOppName(
  *  The year is kept because project_number resets per year. Empty string
  *  when unassigned (pre-migration-046 rows). */
 export function formatOpportunityNumber(
-  projectNumber: string | null | undefined
+  projectNumber: string | null | undefined,
 ): string {
   const raw = projectNumber?.trim();
   if (!raw) return "";
@@ -372,48 +381,50 @@ export type OpportunitiesListFilters = {
  *  account. Returns empty array on error so the page renders the empty
  *  state cleanly. */
 export async function listCommercialOpportunities(
-  filters: OpportunitiesListFilters = {}
+  filters: OpportunitiesListFilters = {},
 ): Promise<CommercialOpportunity[]> {
   const sb = commercialDb();
   // Page past the 1000-row cap so a large pipeline doesn't silently truncate.
   // The thunk rebuilds the filtered query each page so .range() applies cleanly.
-  const data = await paginateAll<CommercialOpportunity & { account: unknown }>(() => {
-    // Inner-join the account so a soft-deleted parent's opps drop out of
-    // the pipeline view (audit fix 2026-06-16 — without this, bulk-deleting
-    // an account leaves its bids orphaned on /commercial/opportunities).
-    // `account:commercial_accounts!inner(deleted_at)` is the Supabase
-    // pattern for "must exist + must match the filter below."
-    let q = sb
-      .from("commercial_opportunities")
-      .select("*, account:commercial_accounts!inner(deleted_at)")
-      .is("deleted_at", null)
-      .is("account.deleted_at", null);
+  const data = await paginateAll<CommercialOpportunity & { account: unknown }>(
+    () => {
+      // Inner-join the account so a soft-deleted parent's opps drop out of
+      // the pipeline view (audit fix 2026-06-16 — without this, bulk-deleting
+      // an account leaves its bids orphaned on /commercial/opportunities).
+      // `account:commercial_accounts!inner(deleted_at)` is the Supabase
+      // pattern for "must exist + must match the filter below."
+      let q = sb
+        .from("commercial_opportunities")
+        .select("*, account:commercial_accounts!inner(deleted_at)")
+        .is("deleted_at", null)
+        .is("account.deleted_at", null);
 
-    // Archive filter — mutually exclusive modes:
-    //   onlyArchived=true  → archived_at IS NOT NULL (archived-view page)
-    //   includeArchived=true → no filter (show both)
-    //   default            → archived_at IS NULL (active pipeline)
-    if (filters.onlyArchived) {
-      q = q.not("archived_at", "is", null);
-    } else if (!filters.includeArchived) {
-      q = q.is("archived_at", null);
-    }
+      // Archive filter — mutually exclusive modes:
+      //   onlyArchived=true  → archived_at IS NOT NULL (archived-view page)
+      //   includeArchived=true → no filter (show both)
+      //   default            → archived_at IS NULL (active pipeline)
+      if (filters.onlyArchived) {
+        q = q.not("archived_at", "is", null);
+      } else if (!filters.includeArchived) {
+        q = q.is("archived_at", null);
+      }
 
-    if (filters.search) {
-      // 2026-07-28 re-audit: search matched only the raw `title` column, but the
-      // UI shows derivedOppName (title_override → account/client/street). So a
-      // renamed deal or a search by client/street returned nothing. Match all the
-      // fields that feed the displayed name. ilikeQuoted guards commas/parens.
-      const term = ilikeQuoted(filters.search);
-      q = q.or(
-        `title.ilike.${term},title_override.ilike.${term},client_name.ilike.${term},property_street.ilike.${term}`
-      );
-    }
-    if (filters.status) q = q.eq("status", filters.status);
-    if (filters.accountId) q = q.eq("account_id", filters.accountId);
+      if (filters.search) {
+        // 2026-07-28 re-audit: search matched only the raw `title` column, but the
+        // UI shows derivedOppName (title_override → account/client/street). So a
+        // renamed deal or a search by client/street returned nothing. Match all the
+        // fields that feed the displayed name. ilikeQuoted guards commas/parens.
+        const term = ilikeQuoted(filters.search);
+        q = q.or(
+          `title.ilike.${term},title_override.ilike.${term},client_name.ilike.${term},property_street.ilike.${term}`,
+        );
+      }
+      if (filters.status) q = q.eq("status", filters.status);
+      if (filters.accountId) q = q.eq("account_id", filters.accountId);
 
-    return q.order("updated_at", { ascending: false });
-  });
+      return q.order("updated_at", { ascending: false });
+    },
+  );
 
   // Strip the join shape — callers want plain CommercialOpportunity[].
   return data.map((r) => {
@@ -424,7 +435,7 @@ export async function listCommercialOpportunities(
 
 /** Load a single opportunity by id, filtering soft-deleted. */
 export async function getCommercialOpportunity(
-  id: string
+  id: string,
 ): Promise<CommercialOpportunity | null> {
   const sb = commercialDb();
   const { data, error } = await sb
@@ -447,7 +458,7 @@ export async function getCommercialOpportunity(
  *  when `deleted_at` is set. Live-only surfaces should keep using
  *  `getCommercialOpportunity`. */
 export async function getCommercialOpportunityIncludingDeleted(
-  id: string
+  id: string,
 ): Promise<CommercialOpportunity | null> {
   const sb = commercialDb();
   const { data, error } = await sb
@@ -456,14 +467,20 @@ export async function getCommercialOpportunityIncludingDeleted(
     .eq("id", id)
     .maybeSingle();
   if (error) {
-    console.warn("[commercial/opportunities] get(inc-deleted) failed:", error.message);
+    console.warn(
+      "[commercial/opportunities] get(inc-deleted) failed:",
+      error.message,
+    );
     return null;
   }
   return (data as CommercialOpportunity | null) ?? null;
 }
 
 /** Bid range as a display string ("$50k–$75k", "$25,000", "—"). */
-export function formatBidRange(low: number | null, high: number | null): string {
+export function formatBidRange(
+  low: number | null,
+  high: number | null,
+): string {
   if (low === null && high === null) return "—";
   // Matches `formatCentsCompact` — one decimal below $100k, whole thousands
   // above. This rounded to whole thousands at every size, so the SAME deal read
@@ -510,7 +527,7 @@ export function formatBidRange(low: number | null, high: number | null): string 
  */
 export function dealValueCents(
   opp: CommercialOpportunity,
-  proposalTotalCents?: number | null
+  proposalTotalCents?: number | null,
 ): number {
   // AUDIT 2026-08-12: once a job is UNDER CONTRACT, the bid is history. The
   // pipeline list, its header total and the delivery views were all still
@@ -529,17 +546,23 @@ export function dealValueCents(
   }
   const low = opp.bid_value_low_cents;
   const high = opp.bid_value_high_cents;
-  if ((low === null || low === undefined) && (high === null || high === undefined)) {
+  if (
+    (low === null || low === undefined) &&
+    (high === null || high === undefined)
+  ) {
     return proposalTotalCents ?? 0;
   }
-  return low !== null && low !== undefined && high !== null && high !== undefined
+  return low !== null &&
+    low !== undefined &&
+    high !== null &&
+    high !== undefined
     ? (low + high) / 2
-    : (low ?? high) ?? 0;
+    : (low ?? high ?? 0);
 }
 
 export function weightedPipelineCents(
   opp: CommercialOpportunity,
-  proposalTotalCents?: number | null
+  proposalTotalCents?: number | null,
 ): number {
   const value = dealValueCents(opp, proposalTotalCents);
   if (value === 0) return 0;
@@ -560,7 +583,7 @@ export function weightedPipelineCents(
  *  doesn't block opportunity creation — the row inserts with
  *  deal_number = NULL and can be repaired later via admin. */
 export async function assignDealNumber(
-  accountId: string
+  accountId: string,
 ): Promise<string | null> {
   const sb = commercialDb();
 
@@ -568,7 +591,10 @@ export async function assignDealNumber(
   // sets next_seq = 1; subsequent calls no-op via ON CONFLICT).
   const { error: seedErr } = await sb
     .from("commercial_account_deal_counter")
-    .upsert({ account_id: accountId }, { onConflict: "account_id", ignoreDuplicates: true });
+    .upsert(
+      { account_id: accountId },
+      { onConflict: "account_id", ignoreDuplicates: true },
+    );
   if (seedErr) {
     console.warn("[assignDealNumber] seed counter failed:", seedErr.message);
     return null;
@@ -594,7 +620,10 @@ export async function assignDealNumber(
     }
     const { data: upd, error: updErr } = await sb
       .from("commercial_account_deal_counter")
-      .update({ next_seq: currentSeq + 1, updated_at: new Date().toISOString() })
+      .update({
+        next_seq: currentSeq + 1,
+        updated_at: new Date().toISOString(),
+      })
       .eq("account_id", accountId)
       .eq("next_seq", currentSeq)
       .select("next_seq")
@@ -605,7 +634,7 @@ export async function assignDealNumber(
     if (updErr) {
       console.warn(
         `[assignDealNumber] attempt ${attempt + 1}/${MAX_TRIES} DB error:`,
-        updErr.message
+        updErr.message,
       );
       return null;
     }
@@ -614,14 +643,14 @@ export async function assignDealNumber(
   }
   console.warn(
     `[assignDealNumber] all ${MAX_TRIES} CAS attempts lost for account`,
-    accountId
+    accountId,
   );
   return null;
 }
 
 async function formatDealNumberForAccount(
   accountId: string,
-  seq: number
+  seq: number,
 ): Promise<string | null> {
   const sb = commercialDb();
   const { data: acc } = await sb
@@ -630,7 +659,9 @@ async function formatDealNumberForAccount(
     .eq("id", accountId)
     .maybeSingle();
   const prefix =
-    (acc as { deal_code_prefix?: string | null } | null)?.deal_code_prefix?.trim() || "GC";
+    (
+      acc as { deal_code_prefix?: string | null } | null
+    )?.deal_code_prefix?.trim() || "GC";
   return `${prefix}-${String(seq).padStart(4, "0")}`;
 }
 
@@ -642,7 +673,7 @@ async function formatDealNumberForAccount(
  *  archived rows return { ok: true } without a re-stamp. */
 export async function archiveOpportunity(
   id: string,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -666,7 +697,13 @@ export async function archiveOpportunity(
   if (error) return { ok: false, error: error.message };
   // Audit trail (2026-07-28 re-audit) — archiving is a pipeline-visibility
   // change and must record who/when, like every other mutation.
-  await logUpdate("commercial_opportunities", id, { archived_at: null }, { archived_at: "now" }, actorUserId);
+  await logUpdate(
+    "commercial_opportunities",
+    id,
+    { archived_at: null },
+    { archived_at: "now" },
+    actorUserId,
+  );
   // Mirror onto the deal's project (migration 131) — archiving hid the deal but
   // left its project live, so an archived job's contract value stayed in scope.
   await syncArchivedProject(id);
@@ -676,7 +713,7 @@ export async function archiveOpportunity(
 /** Unarchive an opp — restores to active pipeline. Idempotent. */
 export async function unarchiveOpportunity(
   id: string,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -703,7 +740,13 @@ export async function unarchiveOpportunity(
     .is("deleted_at", null)
     .not("archived_at", "is", null);
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_opportunities", id, { archived_at: b.archived_at }, { archived_at: null }, actorUserId);
+  await logUpdate(
+    "commercial_opportunities",
+    id,
+    { archived_at: b.archived_at },
+    { archived_at: null },
+    actorUserId,
+  );
   await syncArchivedProject(id);
   return { ok: true };
 }
@@ -717,9 +760,11 @@ export async function unarchiveOpportunity(
  */
 async function syncArchivedProject(id: string): Promise<void> {
   try {
-    const { ensureProjectForOpportunity } = await import("@/lib/commercial/projects/ensure");
+    const { ensureProjectForOpportunity } =
+      await import("@/lib/commercial/projects/ensure");
     const res = await ensureProjectForOpportunity(id);
-    if (!res.ok) console.warn("[opportunities] project archive sync failed:", res.error);
+    if (!res.ok)
+      console.warn("[opportunities] project archive sync failed:", res.error);
   } catch (err) {
     console.warn("[opportunities] project archive sync threw:", err);
   }

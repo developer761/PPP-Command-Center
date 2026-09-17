@@ -3152,6 +3152,17 @@ export default async function OpportunityDetailPage({
               )}
               <span aria-hidden>·</span>
               <StatusPill status={opp.status} subStatus={opp.sub_status} />
+              {/* A one-off was never bid — so its empty Proposals tab and its
+                  missing bid figures are expected rather than a gap somebody
+                  should go and fill in. Says so on the header. */}
+              {opp.is_one_off === true && (
+                <span
+                  title="Created straight from a work order — no bid, no proposal."
+                  className="inline-flex items-center h-[19px] px-1.5 rounded-md bg-ppp-navy-50 text-ppp-navy-700 border border-ppp-navy-100 text-[9.5px] font-bold uppercase tracking-wider"
+                >
+                  One-off
+                </span>
+              )}
               {opp.archived_at && (
                 <>
                   <span aria-hidden>·</span>
