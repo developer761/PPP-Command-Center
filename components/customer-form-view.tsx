@@ -752,9 +752,16 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       );
       return;
     }
-    // Finish is required wherever a color is picked (Katie 2026-05-29). A
-    // default auto-fills on pick, so this only fires if the customer cleared a
-    // finish. Name the exact room → surface so they can find it fast.
+    // A finish missing on one surface used to REFUSE the whole submission
+    // (Katie 2026-05-29's rule, enforced as a block). WO 00317803, 2026-09-17:
+    // a customer filled three rooms correctly, one surface had no finish, and
+    // nothing at all was saved — not even the three good rooms, which they had
+    // to enter again. Everything else about the form is built to keep what a
+    // customer gives us; this was the one place that threw it away.
+    //
+    // The colors still save without a finish, and PPP follows up on the few
+    // that are missing. So it is now a warning carried through the submit,
+    // never a wall.
     const missingFinish: string[] = [];
     formData.lineItems.forEach((li, i) => {
       const st = state[li.id];
@@ -766,10 +773,6 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         }
       }
     });
-    if (missingFinish.length > 0) {
-      setSubmitError(`Please choose a finish for: ${missingFinish.join("; ")}.`);
-      return;
-    }
     submitInFlight.current = true;
     setSubmitError(null);
     setSubmitting(true);
@@ -857,6 +860,17 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       }
       if ((data as { salesforceWriteFailed?: boolean }).salesforceWriteFailed) {
         setSfWriteFailed(true);
+      }
+      // What we kept, and what still needs an answer. Both lists are named on
+      // the thank-you screen so the customer knows their work was saved AND
+      // what is outstanding — rather than being sent back to find it.
+      const dropped = ((data as { droppedFinishes?: Array<{ surface: string; finish: string }> }).droppedFinishes ?? [])
+        .map((d) => `${d.surface} (you chose "${d.finish}")`);
+      const outstanding = [...missingFinish, ...dropped];
+      if (outstanding.length > 0) {
+        setPostSubmitNote(
+          `Your colors are saved. We still need a finish for ${outstanding.join("; ")} — someone from PPP will confirm it with you, or you can reopen this link and choose one.`
+        );
       }
       // Submitted successfully — the draft has done its job. Leaving it would
       // resurrect pre-submit values over the customer's own saved answers the

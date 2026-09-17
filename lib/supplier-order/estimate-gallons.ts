@@ -26,16 +26,15 @@
 /** All tunable constants in one place (Katie: "treat as named config, not
  *  magic numbers — PPP will tune per product / per SW vs BM"). */
 export const COVERAGE_CONFIG = {
-  // 1.75, not 2 (Karan 2026-09-08). A second coat does not cost a full first
-  // coat's worth of paint — it goes onto a sealed, same-color surface and
-  // spreads further. Costing it as 2.0 was the single biggest source of
-  // over-ordering: a 15x20 living room came out at 4 gallons of wall paint
-  // where the crew buys 3, and an 8x10 bedroom at 2 where they buy 1.
+  // 1.5 (Jason + Alex, 2026-09-17), down from 1.75 and originally 2.0. A
+  // second coat goes onto a sealed, same-color surface and spreads much
+  // further than the first, and PPP's crews were still buying less than the
+  // 1.75 assumption ordered.
   //
   // An explicit of_Coats__c on the line still WINS — that is measured data
   // about the job, not a default. This only changes what we assume when
   // Salesforce is silent, which is the overwhelming majority of lines.
-  defaultCoats: 1.75,
+  defaultCoats: 1.5,
   coverageSqftPerGallon: 375,
   bufferPct: 0.10,
   defaultHeightFt: 8,
@@ -51,8 +50,26 @@ export const COVERAGE_CONFIG = {
   casingDoorLf: 17,
   casingWindowLf: 15,
   casingClosetLf: 18,
-  // Trim width: linear ft → paintable sq ft.
+  // Trim width: linear ft → paintable sq ft. Kept for reference and for the
+  // door-face maths; the trim ORDER is no longer sized from it (see below).
   trimWidthFt: 0.25,
+  // TRIM, Jason + Alex 2026-09-17: "it should calculate linear feet total
+  // within the rooms, add 25% for door and window molding. usually when the
+  // trim is the same color through multiple rooms, 2+ is 1 gallon of trim
+  // paint."
+  //
+  // The old model priced trim as a 3-inch-wide painted strip — geometrically
+  // honest, and it produced 1 qt for a whole floor of trim, because it ignores
+  // everything a brush costs: cut-in, back-brushing, what stays in the tray.
+  // These two numbers are a USAGE rate taken from what PPP actually buys, not
+  // a measurement: ~140 linear ft to the gallon at the default coat count.
+  // Calibrated so ONE ordinary room still prices in quarts (Karan's trade
+  // figures, 2026-09-08: a 15x20 living room's trim is not a gallon) while two
+  // rooms cross the existing three-quarts-is-a-gallon line on their own.
+  trimMoldingUpliftPct: 0.25,
+  trimLfPerGallon: 140,
+  /** A trim color spanning this many rooms is at least one gallon. */
+  trimMultiRoomMinRooms: 2,
   // Door FACE area (single-sided), added to trim only when door faces are in scope.
   doorFaceSqft: 20,
   // ROOM-TYPE DEFAULTS (Karan 2026-09-08). Two rooms where the geometry lies:
@@ -137,6 +154,10 @@ export type GallonEstimate = {
   colorName: string;
   colorCode: string | null;
   finish: string | null;
+  /** Bathrooms are ordered separately from the same color elsewhere in the
+   *  house — they take a bathroom product (Jason + Alex 2026-09-17). Optional
+   *  so a stored estimate written before the split still reads as non-bath. */
+  isBathroom?: boolean;
   surfaces: string[];
   rooms: string[];
   /** R4.19: which rooms each surface covers, so the order screen can render
@@ -305,8 +326,18 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
     wallSqft = Math.max(0, grossWall - wallDeduct) * coats;
   }
 
-  const trimLf = perimeter + doors * cfg.casingDoorLf + windows * cfg.casingWindowLf + closets * cfg.casingClosetLf;
-  const trimSqft = trimLf * cfg.trimWidthFt * coats
+  // Jason's model: the room's linear feet plus a flat 25% for door and window
+  // molding. It replaces the per-opening casing constants (17/15/18 lf), which
+  // asked Salesforce for door and window counts that are blank on most lines
+  // and then guessed one of each anyway.
+  const trimLf = perimeter * (1 + cfg.trimMoldingUpliftPct);
+  // Converted into the sq-ft currency the rest of the pipeline divides by
+  // coverageSqftPerGallon, so trim ends up at trimLf / trimLfPerGallon gallons.
+  // Scaled by coats against the default, so a measured 3-coat line still costs
+  // more trim paint than a 1-coat one.
+  const trimSqftPerLf = cfg.coverageSqftPerGallon / Math.max(1, cfg.trimLfPerGallon);
+  const coatFactor = cfg.defaultCoats > 0 ? coats / cfg.defaultCoats : 1;
+  const trimSqft = trimLf * trimSqftPerLf * coatFactor
     + (room.paintDoorFaces ? doors * cfg.doorFaceSqft * coats : 0);
 
   return {
@@ -386,6 +417,9 @@ type Bucket = {
    *  the ceiling — cabinets do not cover that, and a big kitchen ceiling capped
    *  at one gallon would leave the crew short. */
   kinds: Set<PaintSurfaceKind>;
+  /** Bathroom paint is a different PRODUCT in the same color (Regal Select
+   *  Kitchen & Bath, Aura Bath & Spa), so it is bought as its own line. */
+  isBathroom: boolean;
 };
 
 /**
@@ -399,8 +433,23 @@ export function estimateOrderGallons(
 ): GallonEstimate[] {
   const buckets = new Map<string, Bucket>();
 
-  const bucketFor = (s: RoomSurface): Bucket => {
-    const key = `${s.colorId}::${s.finish ?? ""}`;
+  /**
+   * Jason + Alex, 2026-09-17: "Bathrooms in the same color as non-bathrooms
+   * needs to remain broken out for different paint products (regal kitchen &
+   * bath or Aura bath & spa)."
+   *
+   * A bathroom takes a different PRODUCT in the same color, so its gallons are
+   * bought separately. Keyed on color+finish alone, a bathroom sharing the
+   * hall's white merged into one line that could carry only one product — and
+   * the merge also cancelled the bathroom's own 1-gal / 1-qt default, because
+   * that only fires when every contributing room is a bathroom.
+   *
+   * The suffix is appended only for bathrooms, so every other line keeps the
+   * `colorId::finish` key that saved drafts and quantity overrides use.
+   */
+  const bucketFor = (s: RoomSurface, roomLabel: string): Bucket => {
+    const isBathroom = classifyRoomType(roomLabel) === "bathroom";
+    const key = quantityKey(s.colorId, s.finish, isBathroom);
     let b = buckets.get(key);
     if (!b) {
       b = {
@@ -413,6 +462,7 @@ export function estimateOrderGallons(
         kitchenSharedSqft: 0,
         accentWall: false,
         doorsOnly: true, // until a non-door surface joins
+        isBathroom,
       };
       buckets.set(key, b);
     }
@@ -430,7 +480,7 @@ export function estimateOrderGallons(
       room.surfaces.some((x) => mentionsAccentWall(x.surfaceLabel));
     for (const s of room.surfaces) {
       if (!s.colorId) continue;
-      const b = bucketFor(s);
+      const b = bucketFor(s, room.roomLabel);
       b.surfaces.add(s.surfaceLabel);
       if (!isDoorSurface(s.surfaceLabel)) b.doorsOnly = false;
       // Accent detection is per ROOM, not per color. An accent wall is its own
@@ -532,6 +582,19 @@ export function estimateOrderGallons(
         cans = cfg.bathroomWallGallons;
         unit = "gal";
         defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+      } else if (
+        b.kinds.size === 1 && b.kinds.has("trim") &&
+        b.contributingRoomCount >= cfg.trimMultiRoomMinRooms &&
+        bucketsCount === 0 && cans < 1
+      ) {
+        // Jason + Alex: "usually when the trim is the same color through
+        // multiple rooms, 2+ is 1 gallon of trim paint." The rate above
+        // normally gets there on its own; this is the floor for small rooms,
+        // and it is what stops the answer being 1 qt for a whole floor.
+        bucketsCount = 0;
+        cans = 1;
+        unit = "gal";
+        defaultedNote = `Trim in ${b.contributingRoomCount} rooms — at least 1 gal. Please review.`;
       } else if (b.doorsOnly) {
         // Katie item 6: "door is a quart — we need to utilise quarts, not
         // always gallons." A door is a few square feet; rounding it up to a
@@ -567,6 +630,7 @@ export function estimateOrderGallons(
       colorName: b.colorName,
       colorCode: b.colorCode,
       finish: b.finish,
+      isBathroom: b.isBathroom,
       surfaces: Array.from(b.surfaces),
       rooms: Array.from(b.rooms),
       placements: Array.from(b.placements, ([surface, rooms]) => ({ surface, rooms: Array.from(rooms) })),
@@ -627,8 +691,15 @@ export type QuantityOverride = {
 
 /** Canonical key for a color line — shared by the builder, the order-builder
  *  UI and the persisted build payload so all three agree on identity. */
-export function quantityKey(colorId: string, finish: string | null | undefined): string {
-  return `${colorId}::${finish ?? ""}`;
+export function quantityKey(
+  colorId: string,
+  finish: string | null | undefined,
+  isBathroom: boolean = false
+): string {
+  // The suffix is appended only for bathrooms (Jason + Alex 2026-09-17), so
+  // every other key is byte-identical to the pre-split format that saved
+  // drafts, quantity overrides and per-color product overrides already hold.
+  return `${colorId}::${finish ?? ""}${isBathroom ? "::bath" : ""}`;
 }
 
 /** Total container count for an override, in its own unit. */
@@ -668,7 +739,7 @@ export function applyQuantityOverrides(
 ): GallonEstimate[] {
   if (!overrides || overrides.size === 0) return estimates;
   return estimates.map((e) => {
-    const o = overrides.get(quantityKey(e.colorId, e.finish));
+    const o = overrides.get(quantityKey(e.colorId, e.finish, e.isBathroom));
     if (!o) return e;
     // Clamp here as well as at the persistence boundary. The draft endpoint
     // validates paint lines but takes quantities as given, so this is the last

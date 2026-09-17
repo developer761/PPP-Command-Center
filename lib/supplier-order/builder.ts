@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -841,7 +841,10 @@ export function formatOrderSummaryBlock(
   // job-level). Then decide whether ALL colors share one product (single
   // header) or whether the job is mixed (per-line prefix, no header).
   const effective = estimates.map((e) => {
-    const key = `${e.colorId}::${e.finish ?? ""}`;
+    // Bathroom lines carry their own key (they are bought as a different
+    // product — that is the whole reason they are a separate line), so the
+    // product override has to be looked up the same way the UI wrote it.
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     const raw = materialTypeOverrides?.get(key) ?? materialType ?? null;
     // Katie item 11 — an "Other: Behr Premium Plus" value prints the
     // product alone; the prefix is our bookkeeping. A bare "Other" with
@@ -1179,9 +1182,11 @@ export async function buildSupplierOrderDraft(
   );
   if (exteriorLine) {
     for (const e of gallonEstimates) {
-      const key = `${e.colorId}::${e.finish ?? ""}`;
+      const key = quantityKey(e.colorId, e.finish, e.isBathroom);
       if (derivedMaterialTypeOverrides.has(key)) continue;
-      const scopes = scopesByColorKey.get(key);
+      // scopesByColorKey is built from the WOLI rows, which know nothing about
+      // the bathroom split, so it is always read with the plain key.
+      const scopes = scopesByColorKey.get(quantityKey(e.colorId, e.finish));
       // Only a color used EXCLUSIVELY on exterior work. One used on both is
       // ambiguous, and guessing there would be worse than leaving the job
       // default in place for the estimator to correct.

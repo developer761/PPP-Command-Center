@@ -100,16 +100,18 @@ describe("what PPP actually orders", () => {
 });
 
 describe("the two constants that decide the order", () => {
-  it("assumes 1.75 coats, not 2", () => {
-    expect(COVERAGE_CONFIG.defaultCoats).toBe(1.75);
+  it("assumes 1.5 coats, not 2", () => {
+    // Jason + Alex 2026-09-17, down from 1.75. A second coat over a sealed
+    // same-color surface spreads much further than the first.
+    expect(COVERAGE_CONFIG.defaultCoats).toBe(1.5);
   });
 
   it("an explicit coat count from Salesforce still wins", () => {
-    // 1.75 is what we assume when SF is silent. A measured 3 is data.
+    // 1.5 is what we assume when SF is silent. A measured 3 is data.
     const a = byColor([room(15, 20, 8)]).wall.totalSqft;
     const b = byColor([room(15, 20, 8, { coats: 3 })]).wall.totalSqft;
     expect(b).toBeGreaterThan(a);
-    expect(b / a).toBeCloseTo(3 / 1.75, 2);
+    expect(b / a).toBeCloseTo(3 / COVERAGE_CONFIG.defaultCoats, 2);
   });
 
   it("rounds DOWN", () => {
@@ -135,12 +137,13 @@ describe("a line under a gallon is priced in quarts, not dropped", () => {
     // Katie: "if we're ordering 3qts, the price makes sense to just order 1
     // gallon." Four quarts IS a gallon, so at three the tin is cheaper.
     //
-    // A 5x7 hallway computes 0.81 gallons of wall paint — 3.2 quarts, which
-    // floors to exactly 3 and is the only size that exercises the threshold.
-    // The first version used a 15x20 ceiling, which is 1.54 gallons and never
-    // enters the quart path at all: it passed with the threshold set to 99.
+    // A 6x8 hallway computes 0.83 gallons of wall paint — 3.3 quarts, which
+    // floors to exactly 3 and exercises the threshold. It has to be sized
+    // against the CURRENT coat factor: at 1.75 coats the room that did this
+    // was 5x7, and dropping to 1.5 (2026-09-17) quietly moved it to 2.8
+    // quarts, so the test failed on a fixture rather than on the rule.
     // Labelled Hallway on purpose, so the bathroom rule does not answer first.
-    const e = byColor([room(5, 7, 8, { roomLabel: "Hallway" })]);
+    const e = byColor([room(6, 8, 8, { roomLabel: "Hallway" })]);
     expect(e.wall.unit ?? "gal").toBe("gal");
     expect(e.wall.cans).toBe(1);
   });

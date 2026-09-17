@@ -14,6 +14,8 @@ export const STRICT_POSITIVE_KEYS = new Set<string>([
   "bucketSizeGallons",
   "bucketThresholdGallons",
   "defaultCoats",
+  // 0 would divide by zero in the trim rate.
+  "trimLfPerGallon",
 ]);
 
 /** Upper-bound sanity caps. Stops a typo (1000 buffer → 11× order, 999 coats,
@@ -34,6 +36,9 @@ export const MAX_COVERAGE_VALUES: Record<string, number> = {
   casingWindowLf: 100,
   casingClosetLf: 100,
   trimWidthFt: 5,
+  trimMoldingUpliftPct: 2,          // 200% uplift max; Jason's figure is 0.25.
+  trimLfPerGallon: 1000,            // realistic 80-150.
+  trimMultiRoomMinRooms: 20,
   doorFaceSqft: 200,
   bucketSizeGallons: 100,
   bucketThresholdGallons: 100,

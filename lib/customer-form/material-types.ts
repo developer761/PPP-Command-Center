@@ -147,6 +147,19 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
       exterior: ["Low Lustre", "Satin", "Soft Gloss"],
     },
   },
+  // Jason + Alex, 2026-09-17: "need options of Ultra Spec Interior, Ultra Spec
+  // Exterior". Ultra Spec above stays as the scope-agnostic value every saved
+  // work order already carries; these two name the scope the way the product is
+  // actually bought — and they are spelled exactly as the Salesforce picklist
+  // holds them, so they map straight through instead of being derived.
+  {
+    value: "Ultra Spec Interior", group: "Benjamin Moore", category: "interior",
+    finishes: ["Flat", "Eggshell", "Satin", "Semi-Gloss"],
+  },
+  {
+    value: "Ultra Spec Exterior", group: "Benjamin Moore — Exterior", category: "exterior",
+    finishes: ["Low Lustre", "Satin", "Soft Gloss"],
+  },
   {
     value: "Regal Select", group: "Benjamin Moore", category: "interior",
     // §6: "Regal select satin/pearl". Stays INTERIOR — Jason's exterior answer
@@ -167,6 +180,24 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
       interior: ["Matte", "Eggshell", "Satin", "Semi-Gloss", "Bath & Spa (Aura)"],
       exterior: ["Low Lustre", "Satin", "Soft Gloss"],
     },
+  },
+  // Jason + Alex, 2026-09-17: the bathroom products, as PRODUCTS. A bathroom
+  // sharing the hall's color is ordered on its own line (see
+  // estimate-gallons.quantityKey) precisely so it can carry one of these.
+  //
+  // Aura Bath & Spa is Matte — the only finish Jason's sheet lists for it, and
+  // the same thing the legacy "Aura Bath & Spa Matte" value encoded.
+  {
+    value: "Aura Bath & Spa", group: "Benjamin Moore", category: "interior",
+    finishes: ["Matte"],
+  },
+  // Regal Select Kitchen & Bath is sold in Pearl. It is NOT on Jason's sheet,
+  // so the finish list is from the product rather than from him — flagged for
+  // him to confirm, and deliberately narrow: an extra sheen here is an order
+  // the vendor cannot fill.
+  {
+    value: "Regal Select Kitchen & Bath", group: "Benjamin Moore", category: "interior",
+    finishes: ["Pearl"],
   },
   // Jason's Short List, 2026-09-10: "rename mooreglo soft gloss / rename
   // mooreguard low lustre / rename moorlife flat". His spelling, and his call —
@@ -440,6 +471,18 @@ export const SF_MATERIAL_TYPE_VALUES: ReadonlySet<string> = new Set([
 const SCOPED_SF_LINES = ["Ultra Spec", "Regal Select", "Aura"];
 
 /**
+ * The bathroom products (2026-09-17) are not in the org's picklist, but they
+ * ARE the same paint line — and the org already recorded them that way, since
+ * the legacy "Aura Bath & Spa Matte" value collapsed to "Aura" before these
+ * products existed. Without this, adding them would have turned a real
+ * Salesforce write into a skipped one.
+ */
+const SF_LINE_EQUIVALENT: Readonly<Record<string, string>> = {
+  "Aura Bath & Spa": "Aura",
+  "Regal Select Kitchen & Bath": "Regal Select",
+};
+
+/**
  * Translate an app paint line into a value Salesforce will accept, using the
  * work order's own interior/exterior context for the scope.
  *
@@ -451,8 +494,9 @@ export function toSalesforceMaterialType(
   appValue: string | null | undefined,
   context: { workTypeName?: string | null; lineItemProductNames?: ReadonlyArray<string | null> }
 ): string | null {
-  const line = paintLineFromValue(appValue);
-  if (!line) return null;
+  const line0 = paintLineFromValue(appValue);
+  if (!line0) return null;
+  const line = SF_LINE_EQUIVALENT[line0] ?? line0;
   // Already speaks Salesforce (SW grades, "Other", or a legacy scoped value).
   if (SF_MATERIAL_TYPE_VALUES.has(line)) return line;
   if (SF_MATERIAL_TYPE_VALUES.has(appValue ?? "")) return appValue as string;

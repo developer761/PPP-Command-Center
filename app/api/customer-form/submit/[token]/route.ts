@@ -1,4 +1,5 @@
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
+import { sanitizeFinishes } from "@/lib/customer-form/finish-sanitize";
 import { NextResponse } from "next/server";
 import { validateToken, markSubmitted, markResubmitted } from "@/lib/customer-form/tokens";
 import { loadFormRenderData, invalidateFormRenderData } from "@/lib/customer-form/render-data";
@@ -321,26 +322,28 @@ export async function POST(
 
   // 3. Build SF write batch
   const attempts: SfWriteAttempt[] = [];
+  /** Finishes that were not on the list — kept out of Salesforce, recorded in
+   *  the notes, and reported back so the customer is told rather than blocked. */
+  const droppedFinishes: Array<{ lineItemId: string; surface: string; finish: string }> = [];
   for (const submitted of body.lineItems) {
     const freshLi = freshById.get(submitted.id)!;
     const fields: Record<string, string | null> = {};
     // Defensive: a malformed payload could omit/ill-type surfaces. Guard so the
     // loop never throws on a public endpoint.
-    const surfaces = Array.isArray(submitted.surfaces) ? submitted.surfaces : [];
+    const rawSurfaces = Array.isArray(submitted.surfaces) ? submitted.surfaces : [];
 
-    // Reject off-list finishes server-side BEFORE building any fields — the
-    // client picklist is the source of truth and a tampered payload shouldn't
-    // land "Eggshell Gloss" anywhere. Validates the raw form label; the
-    // SF-picklist normalization happens separately below.
-    for (const s of surfaces) {
-      if (s && typeof s === "object" && s.colorId && s.finish && !VALID_FINISHES.has(s.finish)) {
-        return NextResponse.json({
-          error: "invalid_finish",
-          message: `Finish "${s.finish}" isn't a valid choice. Please pick from the list and try again.`,
-          lineItemId: submitted.id,
-          surface: s.surface,
-        }, { status: 400 });
-      }
+    // An off-list finish is DROPPED, not fatal. This used to return 400 from
+    // inside the loop that builds the writes, so WO 00317803's three correctly
+    // filled rooms were discarded along with the one bad value, and the
+    // customer had to enter everything again (2026-09-17).
+    //
+    // The client picklist is still the source of truth — a tampered payload
+    // never lands "Eggshell Gloss" in Salesforce — but the COLOR is real
+    // whatever the finish says, so the color is written, the finish is
+    // recorded in the notes, and the customer is told which ones are open.
+    const { surfaces, dropped } = sanitizeFinishes(rawSurfaces, VALID_FINISHES);
+    for (const d of dropped) {
+      droppedFinishes.push({ lineItemId: submitted.id, surface: d.surface, finish: d.finish });
     }
 
     // Orphan surfaces (no dedicated SF field) are collected here and resolved
@@ -500,6 +503,15 @@ export async function POST(
       if (noteLines.length > 0) noteLines.push("");
       noteLines.push("Finish not available in the Salesforce list — recorded here:");
       for (const f of unstorableFinishes) noteLines.push(`  ${f}`);
+    }
+    // A finish that was not on the list at all. The colors still saved; this is
+    // the record of what the customer had chosen, so nobody has to ask them
+    // again (WO 00317803).
+    const droppedHere = droppedFinishes.filter((d) => d.lineItemId === submitted.id);
+    if (droppedHere.length > 0) {
+      if (noteLines.length > 0) noteLines.push("");
+      noteLines.push("Finish not recognised — please confirm with the customer:");
+      for (const d of droppedHere) noteLines.push(`  ${d.surface} — ${d.finish}`);
     }
     // Kate #09: record each "Don't paint this surface" pick as an explicit note.
     for (const surf of skippedSurfaces) {
@@ -915,5 +927,10 @@ export async function POST(
     // instead of a clean thank-you so the customer doesn't think their
     // paint-line pick was saved when it wasn't. Audit 2026-06-07.
     materialTypeDropped,
+    // Surfaces whose finish was not on the list. The colors were saved anyway
+    // (WO 00317803: one bad value used to discard three good rooms), and the
+    // form tells the customer which ones still need a finish rather than
+    // refusing the whole submission.
+    droppedFinishes,
   });
 }

@@ -106,3 +106,34 @@ export function normalizeBuildPayload(raw: unknown): OrderBuildPayload {
 
   return out;
 }
+
+/**
+ * Keep what the estimator typed while the saved order was still loading.
+ *
+ * The order page fetches this vendor's saved payload when the vendor is
+ * chosen, and the buy-list rows come from a SEPARATE request. Either can win.
+ * When the rows arrived first, every quantity stepped in that window was
+ * overwritten the moment the fetch returned — silently, and most destructively
+ * on a brand-new order, where the saved payload is empty. Karan, 2026-09-17:
+ * "sometimes I add like gallons and stuff and it didn't like save to the
+ * email."
+ *
+ * So the load MERGES rather than replaces: the saved payload is the base, and
+ * anything the estimator has already touched wins over it. Per key for the two
+ * maps, so a quantity typed for one color cannot wipe a saved quantity for
+ * another; whole-list for extras and custom items, because merging those by id
+ * would resurrect a row the estimator had just removed.
+ */
+export function mergeBuildPayloads(
+  saved: OrderBuildPayload,
+  edited: OrderBuildPayload
+): OrderBuildPayload {
+  return {
+    mainMaterialType: edited.mainMaterialType || saved.mainMaterialType,
+    materialTypeOverrides: { ...saved.materialTypeOverrides, ...edited.materialTypeOverrides },
+    quantities: { ...saved.quantities, ...edited.quantities },
+    extras: edited.extras.length > 0 ? edited.extras : saved.extras,
+    customColorItems: edited.customColorItems.length > 0 ? edited.customColorItems : saved.customColorItems,
+    colorNotes: edited.colorNotes !== null ? edited.colorNotes : saved.colorNotes,
+  };
+}

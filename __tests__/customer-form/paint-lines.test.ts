@@ -74,9 +74,15 @@ describe("paint line picklist (#09)", () => {
 describe("paintLineFromValue", () => {
   it("collapses legacy line+finish values to their line", () => {
     expect(paintLineFromValue("Regal Select Eggshell")).toBe("Regal Select");
-    expect(paintLineFromValue("Ultra Spec Interior Flat")).toBe("Ultra Spec");
-    expect(paintLineFromValue("Ultra Spec Exterior Satin")).toBe("Ultra Spec");
-    expect(paintLineFromValue("Aura Bath & Spa Matte")).toBe("Aura");
+    // The scope survives now that "Ultra Spec Interior" / "Ultra Spec
+    // Exterior" are products in their own right (Jason + Alex 2026-09-17) —
+    // and those two strings are exactly what Salesforce's picklist holds, so
+    // the legacy value maps straight through instead of being re-derived.
+    expect(paintLineFromValue("Ultra Spec Interior Flat")).toBe("Ultra Spec Interior");
+    expect(paintLineFromValue("Ultra Spec Exterior Satin")).toBe("Ultra Spec Exterior");
+    // Same for the bathroom product: the line is the bath product, which
+    // toSalesforceMaterialType maps back to "Aura Interior" for the org.
+    expect(paintLineFromValue("Aura Bath & Spa Matte")).toBe("Aura Bath & Spa");
   });
 
   it("passes a line-only value straight through", () => {
@@ -140,7 +146,10 @@ describe("per-work-order filtering", () => {
 
   it("shows everything on a mixed or unknown job", () => {
     const options = filterMaterialTypesForWorkOrder({ workTypeName: null }).flatMap((g) => g.options);
-    expect(options).toEqual([...PAINT_LINE_VALUES]);
+    // Sorted: the flattened order follows the GROUPS, so a product declared
+    // next to its interior sibling but grouped under Exterior moves. What must
+    // hold is that nothing is missing and nothing is invented.
+    expect([...options].sort()).toEqual([...PAINT_LINE_VALUES].sort());
   });
 
   it("never offers a primer (#08)", () => {

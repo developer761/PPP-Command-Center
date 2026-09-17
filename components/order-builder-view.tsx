@@ -21,7 +21,7 @@ import {
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
 import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES } from "@/lib/customer-form/material-types";
-import { emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { emptyBuildPayload, mergeBuildPayloads, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
 /**
@@ -245,13 +245,19 @@ export default function OrderBuilderView({
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (res.ok && data.ok !== false && data.payload) {
-          setPayload({
+          const saved = {
             ...(data.payload as OrderBuildPayload),
             // Keep the work order's paint line as the fallback for a vendor
             // that has no saved order yet (#24).
             mainMaterialType:
               (data.payload as OrderBuildPayload).mainMaterialType || initialPayload.mainMaterialType || "",
-          });
+          };
+          // MERGE, never replace: the buy-list rows come from a different
+          // request, so the estimator can already have typed quantities into
+          // them while this fetch was in flight. Replacing threw those away —
+          // and on a new order the saved payload is empty, so they vanished
+          // with no trace at all.
+          setPayload((cur) => mergeBuildPayloads(saved, cur));
         }
       } catch (err) {
         console.warn("[order-builder] couldn't load this vendor's saved order:", err);
@@ -444,7 +450,7 @@ export default function OrderBuilderView({
     }));
 
   const adjustQuantity = (e: GallonEstimate, delta: number) => {
-    const key = quantityKey(e.colorId, e.finish);
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
       const existing = cur.quantities[key];
       const unit: PaintUnit = existing?.unit ?? e.unit ?? "gal";
@@ -457,7 +463,7 @@ export default function OrderBuilderView({
   };
 
   const setUnit = (e: GallonEstimate, unit: PaintUnit) => {
-    const key = quantityKey(e.colorId, e.finish);
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
       const existing = cur.quantities[key];
       const total = existing
@@ -468,7 +474,7 @@ export default function OrderBuilderView({
   };
 
   const resetQuantity = (e: GallonEstimate) => {
-    const key = quantityKey(e.colorId, e.finish);
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
       const next = { ...cur.quantities };
       delete next[key];
@@ -477,7 +483,7 @@ export default function OrderBuilderView({
   };
 
   const setLineFor = (e: GallonEstimate, value: string) => {
-    const key = quantityKey(e.colorId, e.finish);
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
       const next = { ...cur.materialTypeOverrides };
       if (!value) delete next[key];
@@ -656,7 +662,15 @@ export default function OrderBuilderView({
           {supplier && (
             <button
               type="button"
-              onClick={() => setSupplier(null)}
+              onClick={() => {
+                // Drop the previous vendor's payload with the vendor. Without
+                // this the merge on load would carry Sherwin's quantities onto
+                // the Benjamin Moore order — the contamination the
+                // load-replaces-payload code was there to prevent.
+                setPayload(emptyBuildPayload());
+                setLoadedFor(null);
+                setSupplier(null);
+              }}
               className="text-xs font-medium text-ppp-blue-700 hover:underline px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
             >
               Change vendor
@@ -675,7 +689,11 @@ export default function OrderBuilderView({
           </div>
         ) : (
           <SupplierPickList
-            onPick={(s: ActiveSupplier) => setSupplier({ accountId: s.accountId, name: s.name })}
+            onPick={(s: ActiveSupplier) => {
+              setPayload(emptyBuildPayload());
+              setLoadedFor(null);
+              setSupplier({ accountId: s.accountId, name: s.name });
+            }}
           />
         )}
       </section>
@@ -743,7 +761,7 @@ export default function OrderBuilderView({
 
             <ul className="divide-y divide-ppp-charcoal-100">
               {estimates.map((e) => {
-                const key = quantityKey(e.colorId, e.finish);
+                const key = quantityKey(e.colorId, e.finish, e.isBathroom);
                 const override = payload.quantities[key];
                 const unit: PaintUnit = override?.unit ?? e.unit ?? "gal";
                 // Read the worker's OWN number when they have set one, rather
