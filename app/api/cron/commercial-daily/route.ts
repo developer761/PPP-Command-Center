@@ -5,8 +5,6 @@ import { runExpiringDocumentsReminder } from "@/lib/commercial/cron/expiring-doc
 import { runHotDealsCoolingReminder } from "@/lib/commercial/cron/hot-deals-cooling";
 import { runCustomNotificationRules } from "@/lib/commercial/cron/custom-notification-rules";
 import { runDebriefOverdueReminder } from "@/lib/commercial/cron/debrief-overdue";
-import { runInvoiceDunningReminder } from "@/lib/commercial/cron/invoice-dunning";
-import { runAiaDunningReminder } from "@/lib/commercial/cron/aia-dunning";
 import { runAlexDigests } from "@/lib/commercial/reports/alex-digest";
 import { reportError, reportWarn } from "@/lib/observability";
 
@@ -58,18 +56,26 @@ export async function GET(request: Request) {
   }
 
   const startedAt = Date.now();
-  const [tasksRes, docsRes, hotRes, rulesRes, debriefRes, dunningRes, aiaDunningRes] =
-    await Promise.allSettled([
-      runOverdueTasksReminder(),
-      runExpiringDocumentsReminder(),
-      runHotDealsCoolingReminder(),
-      runCustomNotificationRules(),
-      runDebriefOverdueReminder(),
-      runInvoiceDunningReminder(),
-      // The same reminder for the ledger that raises no invoice. Shares this
-      // slot rather than asking for a cron of its own — Hobby allows one.
-      runAiaDunningReminder(),
-    ]);
+  /**
+   * NO PAST-DUE REMINDER TO GCs.
+   *
+   * Karan 2026-09-17: "take out the notification it sends to GCs 15 days after
+   * an invoice due date — we don't want to bother some of them."
+   *
+   * Both reminders were already behind a `DUNNING_ENABLED = false` flag and
+   * sent nothing, but a flag is one edit away from sending mail to 75 general
+   * contractors. They are no longer called at all, so switching the flag back
+   * on does nothing on its own — a deliberate second step is required, which
+   * is the right shape for anything that emails a customer.
+   */
+  const [tasksRes, docsRes, hotRes, rulesRes, debriefRes] = await Promise.allSettled([
+    runOverdueTasksReminder(),
+    runExpiringDocumentsReminder(),
+    runHotDealsCoolingReminder(),
+    runCustomNotificationRules(),
+    runDebriefOverdueReminder(),
+  ]);
+  const NOT_RUN = { ok: true as const, found: 0, sent: 0, skipped: 0, errors: [] as string[] };
 
   // Settled-shape unwrap. allSettled → fulfilled.value | rejected.reason.
   // Each job's result already has its own ok flag + errors; rejection
@@ -96,14 +102,10 @@ export async function GET(request: Request) {
     debriefRes.status === "fulfilled"
       ? debriefRes.value
       : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(debriefRes.reason)] };
-  const dunning =
-    dunningRes.status === "fulfilled"
-      ? dunningRes.value
-      : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(dunningRes.reason)] };
-  const aiaDunning =
-    aiaDunningRes.status === "fulfilled"
-      ? aiaDunningRes.value
-      : { ok: false, found: 0, sent: 0, skipped: 0, errors: [String(aiaDunningRes.reason)] };
+  // Reported as zero rather than dropped from the response, so anything
+  // reading this cron's output keeps its shape.
+  const dunning = NOT_RUN;
+  const aiaDunning = NOT_RUN;
 
   // R10.7: crew schedule emails - day-of + clock-in nudges (Resend-scheduled) +
   // Sunday week-ahead + office digest. Isolated from the wipe-out detection above

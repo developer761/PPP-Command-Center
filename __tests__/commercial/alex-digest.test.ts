@@ -179,6 +179,43 @@ describe("renderDigestEmail", () => {
     expect(text).toContain("AR SHEET");
   });
 
+  it("the html closes every tag it opens, in order", () => {
+    /**
+     * The AR sheet used to be bolted on with `html.replace("</div>", ...)`,
+     * which replaces the FIRST closing div, not the last. So the whole section
+     * was injected into the middle of the document and the nesting broke —
+     * Alex's actual inbox showed the AR heading drawn on top of the report
+     * title, and the table overlapping the figures. Every unit test passed:
+     * the strings were all present, just in the wrong place.
+     */
+    const { html } = renderDigestEmail(
+      data({
+        ar: [{ jobName: "A job", label: "AIA#1", openCents: 100, isRetention: false }],
+        arTotalCents: 100,
+      })
+    );
+    const stack: string[] = [];
+    for (const m of html.matchAll(/<(\/?)(div|table|tr|td|th|p|a|ul|li)\b[^>]*?(\/?)>/g)) {
+      const [, closing, tag, selfClose] = m;
+      if (selfClose) continue;
+      if (closing) {
+        expect(stack.pop(), `</${tag}> with nothing open`).toBe(tag);
+      } else {
+        stack.push(tag);
+      }
+    }
+    expect(stack, `tags left open: ${stack.join(", ")}`).toEqual([]);
+  });
+
+  it("puts the AR sheet AFTER the figures, not through them", () => {
+    const { html } = renderDigestEmail(
+      data({ ar: [{ jobName: "A job", label: "AIA#1", openCents: 100, isRetention: false }], arTotalCents: 100 })
+    );
+    expect(html.indexOf("Are we making money?")).toBeLessThan(html.indexOf("What we are owed"));
+    expect(html.indexOf("What we are owed")).toBeLessThan(html.indexOf("AR sheet"));
+    expect(html.indexOf("AR sheet")).toBeLessThan(html.indexOf("PPP Commercial Command Center"));
+  });
+
   it("escapes what it prints — the AR sheet carries names people typed", () => {
     // The brief used to be the untrusted text in here and is gone; the job and
     // application labels are now the user-supplied strings landing in an inbox.

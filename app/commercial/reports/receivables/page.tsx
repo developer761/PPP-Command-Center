@@ -276,11 +276,10 @@ export default async function ReceivablesReportPage({
         // something else: an item with no due date can never age into overdue,
         // AR aging files it as Current, and the dunning reminder skips it.
         // Three surfaces quietly agreeing it's fine.
-        <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
-          <strong>{formatCentsFull(report.noDueDateCents)}</strong> across {report.noDueDateCount} open item
-          {report.noDueDateCount === 1 ? " has" : "s have"} no due date, so {report.noDueDateCount === 1 ? "it" : "they"}{" "}
-          can never show as past due and nothing will chase {report.noDueDateCount === 1 ? "it" : "them"}. Set one on the
-          invoice to bring {report.noDueDateCount === 1 ? "it" : "them"} into the ageing.
+        <p className="text-[12px] rounded-lg border px-3 py-2 border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600">
+          <strong className="text-ppp-charcoal">{formatCentsFull(report.noDueDateCents)}</strong> across{" "}
+          {report.noDueDateCount} open item{report.noDueDateCount === 1 ? "" : "s"} has no due date, so nothing here ages
+          into 30/60/90. Salesforce holds payment terms but no invoice date, so these came across without one.
         </p>
       )}
       {report.filtered && (

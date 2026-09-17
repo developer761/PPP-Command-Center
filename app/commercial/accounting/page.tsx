@@ -1283,11 +1283,18 @@ export default async function AccountingPage({
         // something else: an item with no due date can never age into overdue,
         // AR aging files it as Current, and the dunning reminder skips it.
         // Three surfaces quietly agreeing it's fine.
-        <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
-          <strong>{formatCentsFull(receivablesView.noDueDateCents)}</strong> across {receivablesView.noDueDateCount} open item
-          {receivablesView.noDueDateCount === 1 ? " has" : "s have"} no due date, so {receivablesView.noDueDateCount === 1 ? "it" : "they"}{" "}
-          can never show as past due and nothing will chase {receivablesView.noDueDateCount === 1 ? "it" : "them"}. Set one on the
-          invoice to bring {receivablesView.noDueDateCount === 1 ? "it" : "them"} into the ageing.
+        // Karan 2026-09-17: "what is this for?" It was written for a stray
+        // invoice somebody forgot to date. It now fires on all 16, because the
+        // dates these carried were ones the migration INVENTED — Salesforce has
+        // no invoice due date to import, only payment terms — and they were
+        // removed once that came to light. So it is stated as a fact rather
+        // than an alarm: nothing here is wrong, and nothing is being chased
+        // automatically either way.
+        <p className="text-[12px] rounded-lg border px-3 py-2 border-ppp-charcoal-200 bg-ppp-charcoal-50 text-ppp-charcoal-600">
+          <strong className="text-ppp-charcoal">{formatCentsFull(receivablesView.noDueDateCents)}</strong> across{" "}
+          {receivablesView.noDueDateCount} open item{receivablesView.noDueDateCount === 1 ? "" : "s"} has no due date, so
+          nothing here ages into 30/60/90. Salesforce holds payment terms but no invoice date, so these came across
+          without one. Put a due date on an invoice when you bill it and it starts ageing from then.
         </p>
       )}
           {receivablesView.filtered && (

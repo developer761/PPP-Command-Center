@@ -315,6 +315,41 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
   ${note ? `<div style="margin:0 0 10px;font-size:11px;color:#8A97A8;">${escape(note)}</div>` : `<div style="height:8px;"></div>`}
   <div style="height:2px;background:#EE662E;width:34px;margin:0 0 12px;"></div>`;
 
+  // THE AR SHEET, in full. Karan 2026-09-17: "can we send the AR sheet report".
+  // It is the sheet Mary sends on, so Alex gets the same rows she does rather
+  // than a total he has to ask her to break down. Grouped by job, retention on
+  // its own line, exactly as the tab shows it.
+  const arByJob = new Map<string, { label: string; openCents: number; isRetention: boolean }[]>();
+  for (const r of d.ar) {
+    const list = arByJob.get(r.jobName) ?? [];
+    list.push({ label: r.label, openCents: r.openCents, isRetention: r.isRetention });
+    arByJob.set(r.jobName, list);
+  }
+  const arHtml =
+    d.ar.length === 0
+      ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280;">Nothing is certified and waiting.</p>`
+      : `<table style="border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;">
+    <tr>
+      <th align="left" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Job / application</th>
+      <th align="right" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Billed / open</th>
+    </tr>
+    ${[...arByJob.entries()]
+      .map(([job, lines]) => {
+        const sub = lines.reduce((n, l) => n + l.openCents, 0);
+        return `<tr><td colspan="2" style="padding:9px 0 2px;font-weight:700;color:#172B4D;">${escape(job)}</td></tr>
+        ${lines
+          .map(
+            (l) =>
+              `<tr><td style="padding:2px 0 2px 12px;color:#374151;">${escape(l.label)}</td><td align="right" style="padding:2px 0;color:#374151;">${money(l.openCents)}</td></tr>`
+          )
+          .join("")}
+        <tr><td style="padding:2px 0 6px 12px;border-bottom:1px solid #e5e7eb;font-size:11.5px;color:#6b7280;">Subtotal (${lines.length})</td><td align="right" style="padding:2px 0 6px;border-bottom:1px solid #e5e7eb;font-weight:700;">${money(sub)}</td></tr>`;
+      })
+      .join("")}
+    <tr><td style="padding:8px 0;font-weight:700;color:#172B4D;">Total (${d.ar.length})</td><td align="right" style="padding:8px 0;font-weight:700;color:#172B4D;">${money(d.arTotalCents)}</td></tr>
+    ${d.arRetentionCents > 0 ? `<tr><td style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">Of which retention \u2014 held until close-out, not late</td><td align="right" style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">${money(d.arRetentionCents)}</td></tr>` : ""}
+  </table>`;
+
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#3F3E40;max-width:680px;padding:4px 2px;">
   <div style="height:6px;background:#EE662E;margin:0 0 18px;"></div>
   <h2 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#172B4D;">${escape(TITLE[d.cadence])} report</h2>
@@ -377,54 +412,15 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
   </tr></table>
 
   <p style="margin:26px 0 0;"><a href="${link}" style="display:inline-block;padding:11px 20px;background:#EE662E;color:#fff;text-decoration:none;border-radius:4px;font-weight:600;font-size:13px;">Open the money desk &rarr;</a></p>
+  ${head("AR sheet", "Certified and waiting to be paid")}
+  ${arHtml}
+
   <p style="font-size:11px;color:#8A97A8;margin-top:26px;border-top:1px solid #e5e7eb;padding-top:12px;">PPP Commercial Command Center</p>
 </div>`;
 
-  // THE AR SHEET, in full. Karan 2026-09-17: "can we send the AR sheet report".
-  // It is the sheet Mary sends on, so Alex gets the same rows she does rather
-  // than a total he has to ask her to break down. Grouped by job, retention on
-  // its own line, exactly as the tab shows it.
-  const arByJob = new Map<string, { label: string; openCents: number; isRetention: boolean }[]>();
-  for (const r of d.ar) {
-    const list = arByJob.get(r.jobName) ?? [];
-    list.push({ label: r.label, openCents: r.openCents, isRetention: r.isRetention });
-    arByJob.set(r.jobName, list);
-  }
-  const arHtml =
-    d.ar.length === 0
-      ? `<p style="margin:0 0 18px;font-size:13px;color:#6b7280;">Nothing is certified and waiting.</p>`
-      : `<table style="border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;">
-    <tr>
-      <th align="left" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Job / application</th>
-      <th align="right" style="padding:0 0 4px;border-bottom:1px solid #172B4D;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#374151;">Billed / open</th>
-    </tr>
-    ${[...arByJob.entries()]
-      .map(([job, lines]) => {
-        const sub = lines.reduce((n, l) => n + l.openCents, 0);
-        return `<tr><td colspan="2" style="padding:9px 0 2px;font-weight:700;color:#172B4D;">${escape(job)}</td></tr>
-        ${lines
-          .map(
-            (l) =>
-              `<tr><td style="padding:2px 0 2px 12px;color:#374151;">${escape(l.label)}</td><td align="right" style="padding:2px 0;color:#374151;">${money(l.openCents)}</td></tr>`
-          )
-          .join("")}
-        <tr><td style="padding:2px 0 6px 12px;border-bottom:1px solid #e5e7eb;font-size:11.5px;color:#6b7280;">Subtotal (${lines.length})</td><td align="right" style="padding:2px 0 6px;border-bottom:1px solid #e5e7eb;font-weight:700;">${money(sub)}</td></tr>`;
-      })
-      .join("")}
-    <tr><td style="padding:8px 0;font-weight:700;color:#172B4D;">Total (${d.ar.length})</td><td align="right" style="padding:8px 0;font-weight:700;color:#172B4D;">${money(d.arTotalCents)}</td></tr>
-    ${d.arRetentionCents > 0 ? `<tr><td style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">Of which retention \u2014 held until close-out, not late</td><td align="right" style="padding:0 0 8px;font-size:11.5px;color:#6b7280;">${money(d.arRetentionCents)}</td></tr>` : ""}
-  </table>`;
-
-  const htmlWithAr = html.replace(
-    "</div>",
-    `  ${head("AR sheet", "Certified and waiting to be paid")}
-  ${arHtml}
-</div>`
-  );
-
   return { subject, text: `${text}\n\nAR SHEET — certified and waiting\n${d.ar
     .map((r) => `  ${r.jobName} · ${r.label}  ${money(r.openCents)}`)
-    .join("\n")}\n  Total (${d.ar.length})  ${money(d.arTotalCents)}`, html: htmlWithAr };
+    .join("\n")}\n  Total (${d.ar.length})  ${money(d.arTotalCents)}`, html };
 }
 
 /**
