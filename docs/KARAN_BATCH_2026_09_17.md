@@ -25,7 +25,7 @@ Status: `TODO` · `WIP` · `DONE` (with commit) · `DEFERRED` (with why) · `ASK
 
 | # | Item | Status |
 |---|---|---|
-| 13 | Smart projected calendar (nudges, crew capacity, pin/filter, color by stage, attached-vs-projection toggle) | **DEFERRED** — "we can defer for now", but **plan it**, and nothing else in this batch may break it |
+| 13 | Smart projected calendar | **PLANNED** — docs/PROJECTED_CALENDAR_PLAN.md. Steps 0-2 shipped (`b9a38e18`, `d328deaa`). Build deferred as asked. **Key finding: all 46 open deals have no expected start, so a calendar built today shows an empty month — capture comes first** |
 
 ---
 
@@ -47,9 +47,9 @@ Status: `TODO` · `WIP` · `DONE` (with commit) · `DEFERRED` (with why) · `ASK
 | 12 | Calendar week view | **DONE** `efc99e85` | |
 | 14 | AR sheet date filters (30 / 90 days) | **DONE** `bec55d75` | **Trap:** carried-over rows have `issuedYmd = null` and would vanish |
 | 15 | Notifications | TODO | Needs scoping — ask what is wrong with them today |
-| 16 | Add due dates | TODO | Needs scoping — due dates on what? |
+| 16 | Add due dates | **DONE** `b9a38e18` | Due-date fields (RFP received, proposal due, follow-up) were already inline-editable. Expected start/finish were NOT — now are, plus 6 other allowlisted fields that had no control |
 | 17 | Invoices flow into the AR sheet; views by account; notes/editing; account names are the source of truth | PARTIAL `bec55d75` | **Views by account: DONE.** Notes/editing already exist under "Edit the sheet". Remaining: account names as source of truth — blocked, see below |
-| 18 | RFP — when we think the project will happen | TODO | Feeds #13 |
+| 18 | RFP — when we think the project will happen | **DONE** `d328deaa` | Expected start editable + two attention rules. See docs/PROJECTED_CALENDAR_PLAN.md |
 | 24 | "Bid range $2.1M-$2.1M" is confusing | **DONE** `7223ae28` | Added mid-batch. 34 of 34 priced open bids have low === high |
 | 19 | Back button lands on an old/retired page | **DONE** `4eaa8ef9` | Suspect redirect-only routes left in history |
 
