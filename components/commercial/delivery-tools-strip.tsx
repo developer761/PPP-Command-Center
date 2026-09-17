@@ -89,13 +89,20 @@ export function DeliveryToolsStrip({
           sequence, which is what delivery IS; stacking it into four bordered
           blocks turned a timeline into a form. The phase label still prints
           once per group, so the grouping is there without the furniture. */}
-      {/* EACH TOOL IS A BUTTON, not a cell in a ruled bar.
-          Karan, twice: "can we make like buttons on these so they seem
-          clickable of some sort." They always WERE links — that was the
-          problem. Divided cells with no border, no raised surface and no
-          chevron read as a summary table, so the six things you actually do on
-          a job looked like six facts about it. Now each one has its own edge, a
-          hover that lifts, and an arrow saying it goes somewhere. */}
+      {/* ONE CONTROL PER TOOL. Asked for four times now.
+          "can we make like buttons on these so they seem clickable" · "the word
+          should be a button" · "delivery buttons needs to be better clickable."
+
+          Each round made the thing INSIDE more button-like, and that was the
+          mistake: the tile was a link, and sitting inside it was a pill that
+          looked like the button. Two nested pressable-looking surfaces, one of
+          which was a decorative <span>. So the part that looked most pressable
+          was not the control, the real target was the whole tile, and nothing on
+          screen said so — which is exactly what "doesn't feel clickable" means.
+
+          Now the tile IS the button: one filled surface, one border, the label
+          at full size on it, the arrow on the end. Nothing inside it pretends to
+          be separately pressable. */}
       <div className="flex items-stretch gap-2 p-2.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {tools.map((t, i) => (
           <Link
@@ -104,25 +111,22 @@ export function DeliveryToolsStrip({
             // Hook for the guide's walkthrough — the tile is what a person
             // actually presses to open a delivery tool.
             data-tour={`job:tool:${t.key}`}
-            className="group min-w-[10rem] flex-1 rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 min-h-[44px] shadow-[0_1px_0_0_rgb(0_0_0/0.04)] hover:border-cc-brand-400 hover:bg-cc-brand-50/60 hover:shadow-[0_2px_6px_-1px_rgb(0_0_0/0.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cc-brand-600 active:translate-y-px transition-all"
+            className="group min-w-[10.5rem] flex-1 flex flex-col rounded-lg border-2 border-cc-brand-200 bg-cc-brand-50/70 px-3 py-2.5 min-h-[64px] shadow-[0_1px_2px_0_rgb(0_0_0/0.06)] hover:border-cc-brand-500 hover:bg-cc-brand-100 hover:shadow-[0_3px_8px_-2px_rgb(0_0_0/0.16)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cc-brand-600 active:translate-y-px active:shadow-none transition-all cursor-pointer"
           >
-            <span className="block text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1 whitespace-nowrap">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-cc-brand-700/70 mb-1 whitespace-nowrap">
               {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
             </span>
-            {/* THE WORD IS THE BUTTON.
-                Asked for three times: "the word should be a button." A
-                bordered tile was still a tile — the thing you press has to
-                LOOK pressable, so "Invoices" itself is a filled control with
-                the status dot on it and the arrow on the end, and the state
-                line sits under it as its caption. */}
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-cc-brand-300 bg-cc-brand-50 px-2 py-1 max-w-full group-hover:border-cc-brand-500 group-hover:bg-cc-brand-100 transition-colors">
-              <span aria-hidden className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOT[t.status]}`} />
-              <span className="text-[11.5px] font-bold text-cc-brand-900 whitespace-nowrap">
+            {/* The label sits ON the button now, not inside a second one, and
+                the arrow is pushed to the far edge so the whole width reads as
+                one control rather than a pill with dead space around it. */}
+            <span className="flex items-center gap-1.5 w-full">
+              <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${DOT[t.status]}`} />
+              <span className="text-[13px] font-bold text-cc-brand-900 whitespace-nowrap">
                 {t.label}
               </span>
               <svg
-                width="11"
-                height="11"
+                width="13"
+                height="13"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -130,14 +134,14 @@ export function DeliveryToolsStrip({
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden
-                className="shrink-0 text-cc-brand-500 group-hover:text-cc-brand-700 group-hover:translate-x-0.5 transition-transform"
+                className="ml-auto shrink-0 text-cc-brand-600 group-hover:text-cc-brand-800 group-hover:translate-x-0.5 transition-transform"
               >
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </span>
             <span
               className={`block text-[11px] mt-0.5 whitespace-nowrap ${
-                t.status === "todo" || t.status === "na" ? "text-ppp-charcoal-400 italic" : "text-ppp-charcoal-600"
+                t.status === "todo" || t.status === "na" ? "text-cc-brand-900/45 italic" : "text-cc-brand-900/70"
               }`}
             >
               {t.state}

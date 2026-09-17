@@ -6,6 +6,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import CommercialChrome from "@/components/commercial-chrome";
 import { isCrewOnlyUser, isCrewAllowedPath, CREW_HOME } from "@/lib/commercial/crew-access";
 import { UndoToast } from "@/components/commercial/undo-toast";
+import { ScrollToTopOnNavigate } from "@/components/commercial/scroll-to-top-on-navigate";
 import { CommandPalette } from "@/components/commercial/command-palette";
 import { KeyboardShortcuts } from "@/components/commercial/keyboard-shortcuts";
 import { OnboardingWalkthrough } from "@/components/commercial/onboarding-walkthrough";
@@ -97,10 +98,22 @@ export default async function CommercialDashboardLayout({
   // Phase I — dark mode. Read the persisted theme so the server renders the
   // right one (no flash on navigation). Scoped to this wrapper, so the
   // residential Command Center is never affected.
-  const theme = (await cookies()).get("cc-theme")?.value === "dark" ? "dark" : "light";
+  const jar = await cookies();
+  const theme = jar.get("cc-theme")?.value === "dark" ? "dark" : "light";
+  /**
+   * Karan 2026-09-17: "bigger monitor view next to the light mode dark mode."
+   *
+   * Read here rather than in the client so a wide layout is what the SERVER
+   * renders — the same reason the theme is. Flipping it on the client after
+   * paint would reflow every table on the page on every navigation.
+   *
+   * Default stays "comfortable": the width caps are deliberate on a laptop, and
+   * a 27" monitor is the exception rather than the common case.
+   */
+  const width = jar.get("cc-width")?.value === "wide" ? "wide" : "comfortable";
 
   return (
-    <div className="cc-theme-root" data-cc-root data-theme={theme}>
+    <div className="cc-theme-root" data-cc-root data-theme={theme} data-width={width}>
     <CommercialChrome
       user={{ email, fullName, firstName, initial }}
       accessible={access.accessible}
@@ -108,6 +121,7 @@ export default async function CommercialDashboardLayout({
       canSeeFinance={canSeeFinance}
       crewOnly={crewOnly}
     >
+      <ScrollToTopOnNavigate />
       {children}
       {/* Karan 2026-07-11 (signature-moments batch): global undo-toast.
           Renders when a URL has ?undo_id=<uuid>&undo_kind=deal|note|

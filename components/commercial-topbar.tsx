@@ -3,6 +3,7 @@
 import NotificationBell from "@/components/notification-bell";
 import UserMenu from "@/components/user-menu";
 import { ThemeToggle } from "@/components/commercial/theme-toggle";
+import { WidthToggle } from "@/components/commercial/width-toggle";
 
 /**
  * Minimal topbar for `/commercial/*`.
@@ -68,6 +69,7 @@ export default function CommercialTopbar({
           <span className="hidden sm:inline text-xs font-medium">Search</span>
           <kbd className="hidden sm:inline text-[10px] font-mono text-ppp-charcoal-400 border border-ppp-charcoal-100 rounded px-1">⌘K</kbd>
         </button>
+        <WidthToggle />
         <ThemeToggle />
         <NotificationBell />
         <UserMenu name={user.fullName} email={user.email} initial={user.initial} />

@@ -172,6 +172,29 @@ body {
   color: var(--foreground);
   min-height: 100vh;
 }
+
+/* ── Monitor view (Karan 2026-09-17) ───────────────────────────────────────
+ * "Bigger monitor view next to the light mode dark mode."
+ *
+ * Page width is set per page as a Tailwind cap — `max-w-6xl` on the wide
+ * surfaces, `max-w-4xl` on the narrower ones, ~60 of them. Editing every page
+ * would be 60 chances to miss one and leave a single screen stuck narrow, so
+ * the cap is lifted from one place instead.
+ *
+ * ONLY the page-shell caps (4xl/5xl/6xl) are lifted. Deliberately NOT:
+ *   · max-w-2xl and below — those are PROSE and form fields. A 27" monitor
+ *     turns a lifted 2xl into a 2,000px line of body text, which is harder to
+ *     read, not easier. The ask is more room for tables, not longer sentences.
+ *   · max-w-md / sm / xs — modals, empty states, login. Stretching a dialog to
+ *     the full width of a monitor is not a bigger view, it is a broken one.
+ *
+ * `!important` because Tailwind utilities land in the same layer and would
+ * otherwise win on specificity order alone. */
+[data-cc-root][data-width="wide"] .max-w-4xl,
+[data-cc-root][data-width="wide"] .max-w-5xl,
+[data-cc-root][data-width="wide"] .max-w-6xl {
+  max-width: 1600px !important;
+}
 /* color-scheme tells the browser to render NATIVE controls (inputs, selects,
    checkboxes, date pickers, scrollbars, autofill) dark — without it those stay
    white on a dark page, which is what made the search bars + gaps look white. */

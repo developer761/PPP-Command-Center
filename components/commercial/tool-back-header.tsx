@@ -15,13 +15,37 @@
  */
 import Link from "next/link";
 
+import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
+
+/**
+ * THE KEY IS THE OLD URL. THE PATH IS WHERE IT ACTUALLY GOES.
+ *
+ * Karan 2026-09-17: "sometimes the platform is glitchy and when I click back it
+ * brings me to like an old retiree page."
+ *
+ * This was it, and it was literal. Every one of these six `path` values used to
+ * be the `/commercial/post-job/*` route itself — and all six of those routes
+ * were retired in the 2026-08 restructure and now do nothing but `redirect()`
+ * to a saved view. So the button reading "← Back to AIA Billing" navigated to a
+ * dead page, which bounced you to a filtered list. Two entries in history for a
+ * place you never meant to stop, and pressing Back again put you right back on
+ * the redirect.
+ *
+ * The keys must STAY as the old paths — that is the `?back=` value already
+ * travelling in bookmarks, bell notifications and sent email, and it is what
+ * the whitelist matches on. Only the destination changes, so an old link now
+ * lands in one hop on the page that replaced the index.
+ *
+ * Kept in step with app/commercial/post-job/<tool>/page.tsx, which redirect to
+ * exactly these saved views.
+ */
 export const TOOL_BACK: Record<string, { path: string; label: string }> = {
-  "/commercial/post-job/submittals": { path: "/commercial/post-job/submittals", label: "Submittals" },
-  "/commercial/post-job/change-orders": { path: "/commercial/post-job/change-orders", label: "Change Orders" },
-  "/commercial/post-job/aia": { path: "/commercial/post-job/aia", label: "AIA Billing" },
-  "/commercial/post-job/closeout": { path: "/commercial/post-job/closeout", label: "Closeout & Warranty" },
-  "/commercial/post-job/costs": { path: "/commercial/post-job/costs", label: "Transactions" },
-  "/commercial/post-job/work-orders": { path: "/commercial/post-job/work-orders", label: "Work Orders" },
+  "/commercial/post-job/submittals": { path: savedViewHref("under_contract"), label: "Submittals" },
+  "/commercial/post-job/change-orders": { path: savedViewHref("under_contract"), label: "Change Orders" },
+  "/commercial/post-job/aia": { path: savedViewHref("billing"), label: "AIA Billing" },
+  "/commercial/post-job/closeout": { path: savedViewHref("billing"), label: "Closeout & Warranty" },
+  "/commercial/post-job/costs": { path: savedViewHref("under_contract"), label: "Transactions" },
+  "/commercial/post-job/work-orders": { path: savedViewHref("active_projects"), label: "Work Orders" },
 };
 
 /** The deal-scoped Invoices page (`/commercial/invoices/new?opp=<uuid>`) is a

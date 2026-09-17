@@ -34,6 +34,16 @@ type NavItem = {
    *  not a platform admin; gating Accounting to adminOnly would lock out the
    *  one person who uses it most. */
   financeOnly?: boolean;
+  /**
+   * Prefix that lights this item up, when it differs from `href`.
+   *
+   * Needed the moment an item's href stops being the root of its section.
+   * Field Ops links straight to /overview so the click does not land on a
+   * redirect-only route — but the item still has to stay highlighted while you
+   * are on /calendar, /approvals, /hours and the rest, and `isActive` matches
+   * on `startsWith(href)`.
+   */
+  matchPrefix?: string;
   icon: React.ReactNode;
 };
 
@@ -123,7 +133,11 @@ const navSections: NavSection[] = [
     // Settings (RUX-7): one hub, not six flat rows.
     heading: "Company",
     items: [
-      { label: "Field Ops", href: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
+      // Straight to Overview. `/commercial/field-ops` is a redirect-only route,
+      // so the one nav item pointing at it spent a round trip on a page that
+      // renders nothing and left a dead entry in history for Back to land on.
+      // Every other item here resolves to a real page; this was the exception.
+      { label: "Field Ops", href: "/commercial/field-ops/overview", matchPrefix: "/commercial/field-ops", icon: <IconHardHat />, adminOnly: true },
       { label: "Accounting", href: "/commercial/accounting", icon: <IconLedger />, financeOnly: true },
       // Everything BCC'd to a job or GC archive address, sent and received
       // together. It was only ever readable one record at a time before.
@@ -250,7 +264,7 @@ export default function CommercialSidebar({ accessible, isAdmin = false, canSeeF
   };
 
   const renderLeaf = (item: NavItem) => {
-    const active = isActive(item.href);
+    const active = isActive(item.matchPrefix ?? item.href);
     if (item.disabled) {
       return (
         <li key={item.href}>
