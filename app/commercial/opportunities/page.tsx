@@ -583,12 +583,31 @@ export default async function CommercialOpportunitiesPage({
   // empty string into a uuid column, which errors rather than returning nothing.
   // One-off work orders only. Karan's chosen way to find them (2026-09-17).
   const oneOffFilter = pickFirst(sp.oneoff) === "1";
-  const accountRaw = pickFirst(sp.account)?.trim() || null;
-  // Whitelist-checked like `status` and `sort` are. Without this a hand-typed
-  // `?account=foo` reaches `.eq("account_id", "foo")` and returns a PostgREST
-  // uuid cast error — a 500 where an empty list was meant.
-  const accountFilter =
-    accountRaw && UUID_RE.test(accountRaw) ? accountRaw : null;
+  /**
+   * GC IS MULTI-SELECT, and it has to read BOTH shapes of the param.
+   *
+   * The toolbar is a plain GET form, so the picker and a hidden input both post
+   * `account` — the hidden one carries what is already selected, the picker
+   * adds one more. A GET form sends both, so `sp.account` arrives as an ARRAY
+   * from the form and as a plain string from every link and bookmark.
+   * Flattening both is what lets one control ADD to a set rather than replace
+   * it, without a client component.
+   *
+   * Every value is UUID-checked, like `status` and `sort` are. Without that a
+   * hand-typed `?account=foo` reaches `.eq("account_id", "foo")` and returns a
+   * PostgREST uuid cast error — a 500 where an empty list was meant.
+   */
+  const accountKeys = [
+    ...new Set(
+      (Array.isArray(sp.account) ? sp.account : sp.account ? [sp.account] : [])
+        .flatMap((v) => String(v).split(","))
+        .map((v) => v.trim())
+        .filter((v) => UUID_RE.test(v)),
+    ),
+  ];
+  const accountSet = new Set(accountKeys);
+  /** The single value, for the one place that can only hold one: the DB hint. */
+  const accountFilter = accountKeys.length === 1 ? accountKeys[0] : null;
   // `?status=` now names a KANBAN COLUMN, not a raw status — that's what
   // the snapshot pills show and what the board is organised by, so a pill
   // labelled "Request for Proposal" has to filter to the same set of cards
@@ -780,6 +799,9 @@ export default async function CommercialOpportunitiesPage({
   const [oppsUnfiltered, accounts] = await Promise.all([
     listCommercialOpportunities({
       search,
+      // Only narrowed in the DB when exactly ONE GC is picked — with several,
+      // this would fetch one GC's rows and the in-memory filter below would
+      // then look for the others among rows that were never loaded.
       accountId: accountFilter ?? undefined,
       // Cast is safe: columnDbStatusHint only ever returns a status from
       // COLUMN_TARGET, all of which are real OpportunityStatus members.
@@ -913,6 +935,8 @@ export default async function CommercialOpportunitiesPage({
   // otherwise read as "not a one-off", which is the honest answer anyway — but
   // being explicit keeps it from ever meaning "undefined is false-ish".
   if (oneOffFilter) opps = opps.filter((o) => o.is_one_off === true);
+  if (accountSet.size > 1)
+    opps = opps.filter((o) => accountSet.has(o.account_id));
 
   const stableTie = (a: CommercialOpportunity, b: CommercialOpportunity) =>
     new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
@@ -968,7 +992,7 @@ export default async function CommercialOpportunitiesPage({
     // eighth place this filter can fall out of, and the same audit-D4 class the
     // other seven were fixed for. `activeViewKey` and `filterChips` read it too,
     // so the picker also stopped claiming "All open" while showing 35 of 132.
-    account: accountFilter || undefined,
+    account: accountKeys.length ? accountKeys.join(",") : undefined,
     oneoff: oneOffFilter ? "1" : undefined,
     status: stageKeys.length ? stageKeys.join(",") : undefined,
     lane: laneFilter || undefined,
@@ -1063,7 +1087,7 @@ export default async function CommercialOpportunitiesPage({
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
   if (search) baseParams.set("q", search);
-  if (accountFilter) baseParams.set("account", accountFilter);
+  if (accountKeys.length) baseParams.set("account", accountKeys.join(","));
   if (oneOffFilter) baseParams.set("oneoff", "1");
   if (stageKeys.length) baseParams.set("status", stageKeys.join(","));
   if (sourceSet.size > 0)
@@ -1149,7 +1173,7 @@ export default async function CommercialOpportunitiesPage({
     if (search) p.set("q", search);
     // Fresh params — `account` must be re-added here or changing the sort
     // silently drops the GC filter. Same class as audit D4.
-    if (accountFilter) p.set("account", accountFilter);
+    if (accountKeys.length) p.set("account", accountKeys.join(","));
     if (oneOffFilter) p.set("oneoff", "1");
     if (stageKeys.length) p.set("status", stageKeys.join(","));
     if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
@@ -1179,7 +1203,8 @@ export default async function CommercialOpportunitiesPage({
   ): string => {
     const p = new URLSearchParams();
     if (search && drop !== "q") p.set("q", search);
-    if (accountFilter && drop !== "account") p.set("account", accountFilter);
+    if (accountKeys.length && drop !== "account")
+      p.set("account", accountKeys.join(","));
     if (oneOffFilter && drop !== "oneoff") p.set("oneoff", "1");
     if (stageKeys.length && drop !== "status")
       p.set("status", stageKeys.join(","));
@@ -1306,6 +1331,19 @@ export default async function CommercialOpportunitiesPage({
    * stage silently dropped the first — the behaviour that makes a filter bar
    * feel like it is fighting you.
    */
+  /** Remove ONE GC from the selection, leaving the rest. */
+  const dropAccountHref = (id: string) => {
+    const p = new URLSearchParams(baseParams);
+    const next = accountKeys.filter((k) => k !== id);
+    if (next.length === 0) p.delete("account");
+    else p.set("account", next.join(","));
+    if (staleFilter) p.set("stale", "1");
+    if (hotFilter) p.set("hot", "1");
+    if (includeArchived) p.set("archived", "1");
+    const qs = p.toString();
+    return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
+  };
+
   const statusDrillHref = (s: string) => {
     const p = new URLSearchParams(baseParams);
     const next = new Set(stageSet);
@@ -1550,17 +1588,37 @@ export default async function CommercialOpportunitiesPage({
               Inside the toolbar form, so it submits with the search rather than
               needing an href builder of its own — and SearchableSelect because
               there are 75 accounts, well past the >10-items rule. */}
+          {/* The already-chosen GCs ride along as a hidden value, so picking
+              another ADDS to them. Both inputs are named `account`; the GET
+              form posts both and the parser flattens them. Without this the
+              picker would replace the selection every time, which is the
+              behaviour Karan called out on Stage. */}
+          {accountKeys.length > 0 && (
+            <input type="hidden" name="account" value={accountKeys.join(",")} />
+          )}
           <SearchableSelect
             name="account"
-            defaultValue={accountFilter ?? ""}
+            // Deliberately blank, not the current value: this control's job is
+            // now "add one more", and showing a selection it cannot clear would
+            // be a lie. The chips below are what remove them.
+            defaultValue=""
             options={[
-              { value: "", label: "Every GC" },
-              ...accounts.map((a) => ({
-                value: a.id,
-                label: a.company_name ?? "(unnamed)",
-              })),
+              {
+                value: "",
+                label: accountKeys.length > 0 ? "Add another GC…" : "Every GC",
+              },
+              // Already-selected GCs are dropped from the list — offering one
+              // does nothing, since re-adding it dedupes.
+              ...accounts
+                .filter((a) => !accountSet.has(a.id))
+                .map((a) => ({
+                  value: a.id,
+                  label: a.company_name ?? "(unnamed)",
+                })),
             ]}
-            placeholder="Every GC"
+            placeholder={
+              accountKeys.length > 0 ? "Add another GC…" : "Every GC"
+            }
             ariaLabel="Filter by GC"
             className="min-w-[170px]"
           />
@@ -1910,18 +1968,43 @@ export default async function CommercialOpportunitiesPage({
             <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1">
               Applied:
             </span>
+            {/* Clear everything, next to the chips. One already existed but only
+                in the EMPTY state — so the moment a filter returned results,
+                the only way out was removing chips one at a time. The view and
+                sort are deliberately NOT cleared: they are how you are LOOKING
+                at the list, not what is in it, and resetting them would undo a
+                choice nobody asked to undo. */}
+            {activeFilterCount > 1 && (
+              <Link
+                href={(() => {
+                  const p = new URLSearchParams();
+                  if (sortKey !== DEFAULT_SORT) p.set("sort", sortKey);
+                  if (viewMode === "list") p.set("view", "list");
+                  else if (viewMode === "customer") p.set("view", "customer");
+                  const qs = p.toString();
+                  return qs
+                    ? `/commercial/opportunities?${qs}`
+                    : "/commercial/opportunities";
+                })()}
+                className="inline-flex items-center h-[26px] px-2 rounded-full border border-ppp-charcoal-200 bg-surface text-[11px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal"
+              >
+                Clear all {activeFilterCount}
+              </Link>
+            )}
             {search && (
               <ActiveFilterChip
                 href={clearFilterHref("q")}
                 label={`Search: "${search}"`}
               />
             )}
-            {accountFilter && (
+            {/* One chip per GC, each dropping only itself. */}
+            {accountKeys.map((id) => (
               <ActiveFilterChip
-                href={clearFilterHref("account")}
-                label={`GC: ${accountById.get(accountFilter)?.company_name ?? "Unknown"}`}
+                key={id}
+                href={dropAccountHref(id)}
+                label={`GC: ${accountById.get(id)?.company_name ?? "Unknown"}`}
               />
-            )}
+            ))}
             {oneOffFilter && (
               <ActiveFilterChip
                 href={clearFilterHref("oneoff")}
