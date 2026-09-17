@@ -883,7 +883,10 @@ export function packageForUnit(total: number, unit: PaintUnit): { buckets: numbe
   const t = Math.max(0, Math.floor(total));
   if (unit === "qt") return { buckets: 0, cans: t, unit };
   // A bucket count is already whole pails — `total` is gallons, so divide.
-  if (unit === "bucket") return { buckets: 0, cans: Math.floor(t / GALLONS_PER_BUCKET), unit };
+  // ROUND UP: flooring turned 7 gallons into one 5-gallon pail and silently
+  // dropped two, and only exact multiples of five survived the switch. A pail
+  // too many is a pail on the shelf; a pail too few is a crew stopping.
+  if (unit === "bucket") return { buckets: 0, cans: Math.ceil(t / GALLONS_PER_BUCKET), unit };
   return { buckets: 0, cans: t, unit };
 }
 
@@ -988,6 +991,12 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
     if (e.buckets > 0 || e.cans > 0) {
       if (e.unit === "qt") {
         quarts += e.cans;
+      } else if (e.unit === "bucket") {
+        // A bucket line stores the PAIL COUNT in `cans`. Adding it to the
+        // gallon tally counted 2 pails as 2 gallons, so the screen read
+        // "Total: 2 gal" directly under a row reading "2 buckets (x5 gal)" —
+        // a fifth of the paint, on the control Karan asked for.
+        cans += e.cans * GALLONS_PER_BUCKET;
       } else {
         buckets += e.buckets;
         cans += e.cans;

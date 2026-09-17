@@ -1809,7 +1809,11 @@ function JobDetailImpl({
           ))}
           {/* At-a-glance paint estimate (whole WO, all brands) — job size before
               opening the order. "est." since it's the spec calculator's number. */}
-          {(paintEstimate.buckets > 0 || paintEstimate.cans > 0) && (
+          {/* quarts count. An all-quart job — a bathroom, a door color, a window
+                sash line, and since 2026-09-17 every under-a-gallon line — has
+                buckets and cans both at 0, so this gate hid the estimate for
+                exactly the jobs the formatter below was changed to serve. */}
+            {(paintEstimate.buckets > 0 || paintEstimate.cans > 0 || paintEstimate.quarts > 0) && (
             <div
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ppp-green-50 border border-ppp-green-100 text-[11px] font-medium text-ppp-green-700"
               title="System estimate of total paint for this work order — review in the order modal before sending"

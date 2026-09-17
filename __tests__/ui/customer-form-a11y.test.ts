@@ -85,7 +85,14 @@ describe("customer form accessibility", () => {
     // Announcing alone isn't enough — the block renders below the fold on a
     // phone, so a sighted keyboard user still wouldn't see it.
     expect(attrs).toContain("tabIndex={-1}");
-    expect(attrs).toContain("focus()");
+    // …and something focuses it. It used to be an inline
+    // `ref={(el) => el?.focus()}`, which React re-attaches on EVERY commit —
+    // so the cursor was pulled out of whatever the customer was fixing, on
+    // every keystroke. A ref plus an effect keyed on the error focuses it once.
+    expect(attrs).toMatch(/ref=\{[A-Za-z]+\}/);
+    expect(code).toMatch(/useEffect\(\(\) => \{\s*if \(submitError\) submitErrorRef\.current\?\.focus\(\);/);
+    // The inline form must not come back: it is the bug, not the fix.
+    expect(code).not.toContain("ref={(el) => el?.focus()}");
   });
 
   it("keeps the submit button above the AA contrast bar", () => {

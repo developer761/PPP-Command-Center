@@ -123,7 +123,7 @@ export default function OrderFulfillmentView({
    *  LIVE method, address and date — so switching delivery→pickup after
    *  editing recorded a pickup with no address while the vendor read
    *  "DELIVERY to: 123 Main St". The caveat only mentioned the body. */
-  const [editedUnder, setEditedUnder] = useState<{ method: string; requiredBy: string } | null>(null);
+  const [editedUnder, setEditedUnder] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<
@@ -288,7 +288,37 @@ export default function OrderFulfillmentView({
   const suggestPickup = Boolean(draft && (draft.pickupDefault || isNycDelivery));
 
 
+  /**
+   * Every input the email body is built from, as one string.
+   *
+   * The first version of this guard watched the method and the required-by
+   * date — two of the six. Editing the body and THEN changing the delivery
+   * address, the pickup branch, the fulfilment instructions or the contact
+   * number left the vendor reading the old details while the record stored the
+   * new ones, with nothing said.
+   */
+  const fulfillmentFingerprint = JSON.stringify([
+    fulfillment,
+    requiredByValue,
+    pickupLocation,
+    deliveryAddr,
+    instructions,
+    contactPhone,
+  ]);
+
   const bodyToSend = editedBody ?? draft?.body ?? "";
+
+  // Focus the send error ONCE, when it appears. An inline `ref={(el) =>
+  // el?.focus()}` has a new identity every render, so React re-attaches it on
+  // every commit and re-fires focus: one character into the fulfilment
+  // instructions pulled the cursor back to the banner, and the autosave and
+  // draft effects did it even while nobody typed. The page became un-typeable
+  // at exactly the moment somebody needed to fix the thing that failed.
+  const sendErrorRef = useRef<HTMLDivElement | null>(null);
+  const sendFailed = sendResult?.ok === false;
+  useEffect(() => {
+    if (sendFailed) sendErrorRef.current?.focus();
+  }, [sendFailed]);
 
   const handleCopy = async () => {
     setCopyError(null);
@@ -448,7 +478,7 @@ export default function OrderFulfillmentView({
         <div
           role="alert"
           tabIndex={-1}
-          ref={(el) => el?.focus()}
+          ref={sendErrorRef}
           className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 scroll-mt-4"
         >
           <div className="font-semibold text-ppp-orange-700 text-sm">Couldn&apos;t send.</div>
@@ -679,10 +709,15 @@ export default function OrderFulfillmentView({
         <div className="relative">
           <textarea
             value={editedBody ?? draft?.body ?? ""}
-            onFocus={() => {
-              if (editedBody === null) setEditedUnder({ method: fulfillment, requiredBy: requiredByValue });
+            onChange={(e) => {
+              // Captured on the first CHANGE, not on focus. On focus, clicking
+              // into the body and then pressing Pickup — which correctly
+              // regenerates the body, since nothing was edited yet — armed the
+              // warning against the old method and told the estimator to reset
+              // work that was right.
+              if (editedBody === null) setEditedUnder(fulfillmentFingerprint);
+              setEditedBody(e.target.value);
             }}
-            onChange={(e) => setEditedBody(e.target.value)}
             rows={16}
             className={`w-full px-3 py-2 text-base sm:text-xs font-mono border rounded-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 ${
               loadingDraft && editedBody === null ? "border-ppp-blue-100 opacity-70" : "border-ppp-charcoal-100"
@@ -701,14 +736,12 @@ export default function OrderFulfillmentView({
               ? "Editing manually — fulfilment changes won't update this body."
               : "Edit any line before sending. Fulfilment changes update this automatically."}
           </span>
-          {editedBody !== null && editedUnder &&
-            (editedUnder.method !== fulfillment || editedUnder.requiredBy !== requiredByValue) && (
-              <span role="alert" className="text-ppp-orange-700 font-semibold">
-                {editedUnder.method !== fulfillment
-                  ? `You changed this to ${fulfillment} AFTER editing the email — the text still says ${editedUnder.method}. Reset it, or edit those lines by hand.`
-                  : "You changed the required-by date after editing the email — the text still has the old one."}
-              </span>
-            )}
+          {editedBody !== null && editedUnder && editedUnder !== fulfillmentFingerprint && (
+            <span role="alert" className="text-ppp-orange-700 font-semibold">
+              You changed the fulfilment AFTER editing this email, so the text below is out of date —
+              it still has the old delivery details. Reset it, or edit those lines by hand.
+            </span>
+          )}
           {editedBody !== null && (
             <button
               type="button"
@@ -772,7 +805,13 @@ export default function OrderFulfillmentView({
           ) : (() => {
             const blockedForEmail = !draft?.sentToEmail;
             const blockedForAddress = fulfillment === "delivery" && !!draft?.unresolvedAddress;
-            const disabled = !draft || sending || blockedForEmail || blockedForAddress;
+            // `loadingDraft` too: the body is REBUILDING. Flipping
+            // delivery→pickup and pressing Send inside the debounce plus a
+            // round trip emailed the previous body — "DELIVERY to: 123 Main
+            // St" — while the row recorded the pickup. Both controls are on
+            // screen together, so it is a normal-speed mistake, not a race
+            // somebody has to engineer.
+            const disabled = !draft || sending || loadingDraft || blockedForEmail || blockedForAddress;
             return (
               <button
                 type="button"

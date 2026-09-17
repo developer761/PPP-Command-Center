@@ -486,6 +486,14 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // The ref updates synchronously so a double-click is caught immediately.
   const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /** Focus the error ONCE, when it appears. An inline ref callback has a new
+   *  identity every render, so React re-attaches it on each commit and
+   *  re-fires focus — on a customer-facing form that means the cursor is
+   *  yanked out of whatever they are fixing, on every keystroke. */
+  const submitErrorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (submitError) submitErrorRef.current?.focus();
+  }, [submitError]);
   const [submitted, setSubmitted] = useState(false);
   // ── Local draft: restore on mount ────────────────────────────────────────
   // Runs once, client-side only (localStorage doesn't exist during SSR, and
@@ -1396,7 +1404,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         <div
           role="alert"
           tabIndex={-1}
-          ref={(el) => el?.focus()}
+          ref={submitErrorRef}
           className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-sm text-ppp-orange-700 scroll-mt-4"
         >
           <span className="font-semibold">Something went wrong:</span> {submitError}
