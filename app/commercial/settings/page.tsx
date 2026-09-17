@@ -22,9 +22,23 @@ type Card = {
   blurb: string;
   icon: React.ReactNode;
   adminOnly?: boolean;
+  /** Opens in a new tab — used for the handbook, which is a generated PDF. */
+  external?: boolean;
 };
 
 const CARDS: Card[] = [
+  {
+    // First, because it is what you hand somebody on their first morning.
+    // Generated on open rather than an uploaded file: a printed process doc
+    // starts lying the week a page gets renamed, and nobody notices. This one
+    // is built from the platform's own map every time it is opened.
+    href: "/api/commercial/guide/pdf",
+    label: "The handbook",
+    blurb:
+      "Running Commercial Work — how to do everything, in plain words, with a page each for Mary's daily jobs, the sales flow, delivery, billing and closeout. Print it and keep it by the desk.",
+    icon: <IconBook />,
+    external: true,
+  },
   {
     href: "/commercial/settings/operating-company",
     label: "Operating Company",
@@ -148,10 +162,17 @@ export default async function CommercialSettingsHubPage() {
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Company config + admin tools. Each card opens its own page.</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map((card) => (
-          <Link
+        {cards.map((card) => {
+          // The handbook is a PDF, not a page: a Next <Link> would try to
+          // client-navigate to it. A plain anchor in a new tab keeps Settings
+          // open behind it, which is what you want when you are reading a
+          // handbook about the thing you are looking at.
+          const Wrapper = card.external ? "a" : Link;
+          return (
+          <Wrapper
             key={card.href}
             href={card.href}
+            {...(card.external ? { target: "_blank", rel: "noopener" } : {})}
             className="group flex flex-col gap-3 p-5 rounded-xl bg-surface border border-ppp-charcoal-100 hover:border-cc-brand-300 hover:shadow-sm transition-all"
           >
             <div className="flex items-center gap-3">
@@ -162,13 +183,14 @@ export default async function CommercialSettingsHubPage() {
             </div>
             <p className="text-[13px] text-ppp-charcoal-500 leading-relaxed">{card.blurb}</p>
             <span className="mt-auto text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-1 group-hover:gap-2 transition-all">
-              Open
+              {card.external ? "Open the PDF" : "Open"}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M5 12h14 M13 5l7 7-7 7" />
               </svg>
             </span>
-          </Link>
-        ))}
+          </Wrapper>
+          );
+        })}
       </div>
       <StartTourButton />
     </div>
@@ -180,6 +202,14 @@ function IconStore() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M3 9l1.5-5h15L21 9 M3 9h18 M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0 M5 11.5V21h14v-9.5 M10 21v-5h4v5" />
+    </svg>
+  );
+}
+function IconBook() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   );
 }
