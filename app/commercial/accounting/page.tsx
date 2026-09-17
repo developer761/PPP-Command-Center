@@ -47,6 +47,7 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
+import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
 import { PrintButton } from "@/components/commercial/reports/print-button";
 import { PrintSheetStyles, PrintHeader } from "@/components/commercial/print-sheet";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
@@ -58,6 +59,9 @@ import {
 import TrendChart from "@/components/trend-chart";
 
 export const dynamic = "force-dynamic";
+
+/** FormData gives FormDataEntryValue | null; the helpers want a string. */
+const str = (v: FormDataEntryValue | null): string => (typeof v === "string" ? v : "");
 
 const BASE = "/commercial/accounting";
 
@@ -307,7 +311,9 @@ async function recordPaymentAction(formData: FormData) {
     amount_cents: cents,
     paid_at: pickedDate(formData.get("paid_at")),
     method: String(formData.get("method") ?? "other"),
-    reference: String(formData.get("reference") ?? "") || null,
+    // Same as the purchase form: "Other" on its own says nothing on a
+    // reconciliation, so what they typed rides along in the reference.
+    reference: joinOtherDetail(str(formData.get("method_other")), str(formData.get("reference"))),
     recorded_by_user_id: user.id,
   });
   revalidatePath(BASE);
@@ -339,7 +345,12 @@ async function recordSpendAction(formData: FormData) {
     amount_cents: cents,
     hours: isLabor && hoursRaw ? Number(hoursRaw) : null,
     purchased_at: pickedDate(formData.get("purchased_at")),
-    description: String(formData.get("description") ?? "") || null,
+    // "Other" with nothing else recorded the word "Other" and threw away the
+    // only useful fact. There is no column for it and inventing one means a
+    // migration applied by hand on a live book, so the typed value is folded
+    // into the free-text field the row already has — which is the Reference
+    // column Mary reads in the list, so it is visible rather than buried.
+    description: joinOtherDetail(str(formData.get("category_other")), str(formData.get("description"))),
     reimburse_to: String(formData.get("reimburse_to") ?? "") || null,
     created_by_user_id: user.id,
   });

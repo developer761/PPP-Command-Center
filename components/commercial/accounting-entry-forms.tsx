@@ -1,4 +1,5 @@
 import { SearchableSelect, type SearchableOption } from "@/components/commercial/searchable-select";
+import { SelectWithOther } from "@/components/commercial/select-with-other";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { OFFERED_PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
@@ -98,13 +99,24 @@ export function RecordPaymentForm({
             </label>
             <label data-tour="pay:method" className="block">
               <span className={LABEL_CLS}>Method</span>
-              <select name="method" defaultValue="check" className={SELECT_CLS} style={SELECT_BG_STYLE}>
-                <option value="check">Check</option>
-                <option value="ach">ACH / wire</option>
-                <option value="card">Card</option>
-                <option value="cash">Cash</option>
-                <option value="other">Other</option>
-              </select>
+              {/* Same treatment as Category: "Other" on its own records how the
+                  money arrived as the word "Other", which answers nothing on a
+                  reconciliation. */}
+              <SelectWithOther
+                name="method"
+                defaultValue="check"
+                options={[
+                  { value: "check", label: "Check" },
+                  { value: "ach", label: "ACH / wire" },
+                  { value: "card", label: "Card" },
+                  { value: "cash", label: "Cash" },
+                  { value: "other", label: "Other" },
+                ]}
+                otherName="method_other"
+                otherLabel="How did it arrive?"
+                otherPlaceholder="e.g. money order, direct deposit"
+                ariaLabel="Method"
+              />
             </label>
           </div>
           <label data-tour="pay:reference" className="block">
@@ -214,13 +226,18 @@ export function RecordPurchaseForm({
           {/* Built from the offered list, so this cannot drift from the cost
               tool the way a second hand-written copy would. Labor is excluded
               here on purpose — it has its own form, with a payee and hours. */}
-          <select name="category" defaultValue="materials" className={SELECT_CLS} style={SELECT_BG_STYLE}>
-            {OFFERED_PURCHASE_CATEGORIES.filter((c) => c !== "labor").map((c) => (
-              <option key={c} value={c}>
-                {PURCHASE_CATEGORY_META[c].label}
-              </option>
-            ))}
-          </select>
+          <SelectWithOther
+            name="category"
+            defaultValue="materials"
+            options={OFFERED_PURCHASE_CATEGORIES.filter((c) => c !== "labor").map((c) => ({
+              value: c,
+              label: PURCHASE_CATEGORY_META[c].label,
+            }))}
+            otherName="category_other"
+            otherLabel="What was it?"
+            otherPlaceholder="e.g. dumpster hire, parking permit"
+            ariaLabel="Category"
+          />
         </label>
         <label data-tour="purchase:description" className="block">
           <span className={LABEL_CLS}>Reference</span>
