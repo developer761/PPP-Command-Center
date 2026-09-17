@@ -294,6 +294,9 @@ export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
   columns: [
     { key: "label", label: "Application", text: (r) => r.label, href: (r) => (r.oppId ? `/commercial/opportunities/${r.oppId}?tab=project&sub=aia` : null) },
     { key: "open", label: "Billed / open", kind: "money", amount: (r) => r.openCents },
-    { key: "notes", label: "Notes", text: (r) => r.notes },
+    // A carried-over line has no separate note — `label` and `notes` are the
+    // same string — so the sheet printed every one of those rows twice, side by
+    // side. Blank rather than repeat.
+    { key: "notes", label: "Notes", text: (r) => (r.notes && r.notes !== r.label ? r.notes : null) },
   ],
 };

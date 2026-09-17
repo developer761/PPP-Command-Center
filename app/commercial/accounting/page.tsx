@@ -60,6 +60,26 @@ import TrendChart from "@/components/trend-chart";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The browser prints the page TITLE in its own header, above anything we draw.
+ *
+ * It read "PPP Command Center" on every sheet, so an AR sheet sent to a
+ * bookkeeper arrived headed with the name of the software. Naming the tab after
+ * the report makes that line useful instead — and it is also what the browser
+ * offers as the filename when you Save as PDF, which is why Karan's copy landed
+ * as "PPP Command Center.pdf" rather than anything he could file.
+ */
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const view = pickFirst(sp.view) ?? "overview";
+  const label = VIEWS.find((v) => v.key === view)?.label ?? "Accounting";
+  return { title: `Tomco Painting - ${label}` };
+}
+
 /** FormData gives FormDataEntryValue | null; the helpers want a string. */
 const str = (v: FormDataEntryValue | null): string => (typeof v === "string" ? v : "");
 
@@ -908,7 +928,14 @@ export default async function AccountingPage({
           concentration, an age bucket and a worst case — and the past-due fact
           folded into the first tile's sub-line, where it costs no slot. All four
           come off the rows already loaded; none adds a query. */}
-      <section className="space-y-2">
+      {/* NOT ON THE PRINTED SHEET.
+          Karan 2026-09-17, looking at a printed AR sheet: "we don't need the
+          KPIs at the top." They are whole-book figures — $1,369,044.37
+          outstanding — sitting above a sheet whose own total is $314,048.14.
+          On screen they are the point of the page; on a sheet sent to a
+          bookkeeper they are a second, larger, unrelated number at the top,
+          which is the one thing a financial document must never have. */}
+      <section data-print-hide className="space-y-2">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile
             label="Total outstanding"

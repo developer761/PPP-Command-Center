@@ -53,6 +53,17 @@ export function PrintSheetStyles({ id }: { id: string }) {
           color: inherit !important;
         }
         #${id} select { display: none !important; }
+        /* FLAT, LIKE A SPREADSHEET.
+           Karan 2026-09-17: the printed sheet "should be similar to hers" —
+           Mary's is a plain table. On paper the rounded cards, tinted panels
+           and drop shadows that organise the screen just read as boxes drawn
+           round things, and they eat the margin a bookkeeper writes in.
+           Rules and rows only. */
+        #${id} [class*="rounded"] { border-radius: 0 !important; }
+        #${id} [class*="shadow"] { box-shadow: none !important; }
+        #${id} section, #${id} article { border: none !important; background: transparent !important; }
+        #${id} thead th { border-bottom: 1px solid #111827 !important; }
+        #${id} td, #${id} th { padding-top: 3px !important; padding-bottom: 3px !important; }
       }
       /* The printed header exists only on paper — a second title on screen
          would just repeat the one already there. */
