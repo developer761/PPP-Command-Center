@@ -10,6 +10,7 @@ import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
+  claimedPlainKeys,
   formatOrderQuantity,
   classifySurface,
   formatOrderTotal,
@@ -249,7 +250,14 @@ export default function OrderBuilderView({
         );
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (res.ok && data.ok !== false && data.payload) {
+        // A 500/502/401 resolves normally — it does not throw — so the catch
+        // below never saw the likeliest kind of failure, and the autosave was
+        // armed anyway: 600ms later it PUT the payload this page had just
+        // cleared over that vendor's saved order.
+        if (!res.ok || data.ok === false) {
+          throw new Error(data.message ?? data.error ?? `HTTP ${res.status}`);
+        }
+        if (data.payload) {
           const saved = {
             ...(data.payload as OrderBuildPayload),
             // Keep the work order's paint line as the fallback for a vendor
@@ -439,6 +447,11 @@ export default function OrderBuilderView({
     );
   }, [rawEstimates, sourceLines]);
 
+  // Plain keys a non-bathroom line owns on THIS job — see readForEstimate.
+  // Derived from the same estimates the rows render from, so the UI and the
+  // server (claimedPlainKeys in estimate-gallons) answer identically.
+  const claimedPlain = useMemo(() => claimedPlainKeys(rawEstimates), [rawEstimates]);
+
   /* ── Paint-line options ────────────────────────────────────────────────── */
   const lineMaterialValues = useMemo<ReadonlySet<string>>(() => {
     // Falls back to the LINE vocabulary, not the full allowlist — the allowlist
@@ -467,21 +480,29 @@ export default function OrderBuilderView({
   /**
    * Read a per-color map for this line, tolerating a draft saved BEFORE the
    * bathroom split (2026-09-17), when a bathroom line was keyed like any other.
-   * Without this the estimator's saved quantity — including a deliberate zero,
+   * Without it the estimator's saved quantity — including a deliberate zero,
    * which means "do not buy this" — silently reverted to the estimate.
+   *
+   * The fallback is refused when ANOTHER line on this job owns that plain key.
+   * On a job with the hall and the bathroom in one color — the shape the split
+   * was built for — that key is the hall's own live key, and reading it here
+   * had the bathroom show and order the hall's gallons.
    */
   function readForEstimate<T>(rec: Record<string, T>, e: GallonEstimate): T | undefined {
     const exact = rec[quantityKey(e.colorId, e.finish, e.isBathroom)];
     if (exact !== undefined) return exact;
-    return e.isBathroom ? rec[quantityKey(e.colorId, e.finish)] : undefined;
+    if (!e.isBathroom) return undefined;
+    const plain = quantityKey(e.colorId, e.finish);
+    return claimedPlain.has(plain) ? undefined : rec[plain];
   }
 
   /** Writing the new key retires the old one, so the row stops being read from
-   *  two places and the stale entry cannot outlive the order. */
+   *  two places — unless another line still owns it, in which case deleting it
+   *  would wipe THAT line's saved quantity. */
   function withoutLegacyKey<T>(rec: Record<string, T>, e: GallonEstimate): Record<string, T> {
     if (!e.isBathroom) return rec;
     const legacy = quantityKey(e.colorId, e.finish);
-    if (!(legacy in rec)) return rec;
+    if (!(legacy in rec) || claimedPlain.has(legacy)) return rec;
     const next = { ...rec };
     delete next[legacy];
     return next;

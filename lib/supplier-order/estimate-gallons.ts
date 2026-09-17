@@ -242,6 +242,17 @@ export function isDoorSurface(label: string | null | undefined): boolean {
   return l.includes("door");
 }
 
+/** A window sash, as opposed to the trim around it. Same reasoning as
+ *  isDoorSurface: a color painting only the windows should not be charged for
+ *  the room's baseboard. A label naming BOTH ("Trim & Windows") is trim: the
+ *  baseboard is the larger part and under-ordering it is the worse mistake. */
+export function isWindowSurface(label: string | null | undefined): boolean {
+  const l = (label ?? "").toLowerCase();
+  if (l.includes("casing") || l.includes("jamb") || l.includes("frame") || l.includes("sill")) return false;
+  if (l.includes("trim") || l.includes("door")) return false;
+  return l.includes("window");
+}
+
 /** Katie item 7 — an accent wall anywhere in this color's rooms. */
 export function mentionsAccentWall(text: string | null | undefined): boolean {
   return /accent\s*wall/i.test(text ?? "");
@@ -261,7 +272,7 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   // normal room. Removed before the test so "Pool bath house" cannot match on
   // its first word.
   const cleaned = s.replace(/bath\s*houses?/g, " ");
-  if (/\b(bathrooms?|baths?|powder\s*rooms?|en-?suites?|wc)\b/.test(cleaned)) {
+  if (/\b(bathrooms?|bathrms?|baths?|powder\s*(rooms?|rms?)|en[\s-]?suites?|wc)\b/.test(cleaned)) {
     return "bathroom";
   }
   return null;
@@ -271,6 +282,8 @@ type RoomCoverage = {
   /** Paintable area of the door faces themselves — used when a color paints
    *  the DOORS rather than the room's trim. */
   doorFaces: number;
+  /** The same idea for window sashes. */
+  windowFaces: number;
   ceiling: number; walls: number; trim: number; floor: number;
   // Per-bucket: was this surface's area derived without the data it needed
   // (so the figure is an under-count the worker should verify)?
@@ -295,7 +308,7 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   // directive (2026-06-09): zero estimate + force manual entry instead.
   if (!hasAnyMeasurement(room)) {
     return {
-      ceiling: 0, walls: 0, trim: 0, floor: 0, doorFaces: 0,
+      ceiling: 0, walls: 0, trim: 0, floor: 0, doorFaces: 0, windowFaces: 0,
       ceilingMissing: true, wallsMissing: true, trimMissing: true, floorMissing: true,
       noDataAtAll: true,
     };
@@ -348,18 +361,25 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   // more trim paint than a 1-coat one.
   const trimSqftPerLf = cfg.coverageSqftPerGallon / Math.max(1, cfg.trimLfPerGallon);
   const coatFactor = cfg.defaultCoats > 0 ? coats / cfg.defaultCoats : 1;
+  // The door faces ride on the TRIM line only when the room does not list the
+  // doors as their own surface. When it does, they are priced on that line
+  // (below) and adding them here charged for them twice.
+  const hasOwnDoorSurface = room.surfaces.some((x) => isDoorSurface(x.surfaceLabel));
   const trimSqft = trimLf * trimSqftPerLf * coatFactor
-    + (room.paintDoorFaces ? doors * cfg.doorFaceSqft * coats : 0);
+    + (room.paintDoorFaces && !hasOwnDoorSurface ? doors * cfg.doorFaceSqft * coats : 0);
   // A DOOR is not the room's baseboard. A color painting only the doors used
   // to inherit the whole room's trim area — harmless while trim was priced as
   // a 3-inch strip (it still came to a quart), and not harmless at the
   // linear-foot rate, which turned two doors into a gallon. Katie item 6:
   // "door is a quart."
   const doorFacesSqft = Math.max(1, doors) * cfg.doorFaceSqft * coats;
+  /** Sashes, sized like door faces. `deductWindowSqft` is the opening area the
+   *  wall maths already uses for a window, which is the closest figure we hold. */
+  const windowFacesSqft = Math.max(1, windows) * cfg.deductWindowSqft * coats;
 
   return {
     ceiling: ceilingSqft, walls: wallSqft, trim: trimSqft, floor: floorSqft,
-    doorFaces: doorFacesSqft,
+    doorFaces: doorFacesSqft, windowFaces: windowFacesSqft,
     ceilingMissing: noFloor,
     floorMissing: noFloor,
     // walls fine if measured directly OR derivable from floor; missing only if neither.
@@ -506,7 +526,10 @@ export function estimateOrderGallons(
       if (!s.colorId) continue;
       const b = bucketFor(s, room.roomLabel);
       b.surfaces.add(s.surfaceLabel);
-      if (!isDoorSurface(s.surfaceLabel)) b.doorsOnly = false;
+      // Windows join doors here: both are priced from their own area, so a
+      // window-only line must take the quart path rather than the trim floor
+      // meant for baseboard through a house.
+      if (!isDoorSurface(s.surfaceLabel) && !isWindowSurface(s.surfaceLabel)) b.doorsOnly = false;
       // Accent detection is per ROOM, not per color. An accent wall is its own
       // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
@@ -534,8 +557,19 @@ export function estimateOrderGallons(
         case "trim":
           // "Door", "Doors", "Front door" — the door, not the casing around it.
           // isDoorSurface already excludes casing/jamb/frame, which stay trim.
-          if (isDoorSurface(s.surfaceLabel)) { sqft = cov.doorFaces; missing = false; }
-          else { sqft = cov.trim; missing = cov.trimMissing; }
+          if (isDoorSurface(s.surfaceLabel)) {
+            sqft = cov.doorFaces;
+            // A door count is real data or a default. `false` here claimed
+            // every door line was measured, including rooms with no data at
+            // all, so the "needs measurement" flag never reached a door.
+            missing = cov.noDataAtAll || room.doors <= 0;
+          } else if (isWindowSurface(s.surfaceLabel)) {
+            // Windows got none of the door fix: a window-only color inherited
+            // the whole room's perimeter at the trim rate, which made two
+            // rooms of window sashes a gallon.
+            sqft = cov.windowFaces;
+            missing = cov.noDataAtAll || room.windows <= 0;
+          } else { sqft = cov.trim; missing = cov.trimMissing; }
           break;
         case "floor":   sqft = cov.floor;   missing = cov.floorMissing;   break;
         case "unsized": b.unsized = true;   break; // can't size — flag, no sqft
@@ -609,7 +643,13 @@ export function estimateOrderGallons(
         // bathrooms and nowhere else. The 2026-09-17 split guarantees exactly
         // that shape for every bathroom, so an unconditional 1 qt would have
         // capped a big bathroom ceiling at a quart.
-        if (bucketsCount === 0 && cans === 0) {
+        // Compared in QUARTS. `cans === 0` only escaped above a full gallon,
+        // so every bathroom ceiling between a quarter and a whole gallon — a
+        // 12x15 bath, or three bathrooms' ceilings now merged onto one line —
+        // was still replaced by a single quart.
+        const quarts = Math.floor(rawGallons * cfg.quartsPerGallon);
+        if (quarts <= cfg.bathroomCeilingQuarts) {
+          bucketsCount = 0;
           cans = cfg.bathroomCeilingQuarts;
           unit = "qt";
           defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
@@ -626,7 +666,7 @@ export function estimateOrderGallons(
         // bathhouse sharing the house color is 5 gallons of wall paint, and
         // before the split it was sized that way because the bucket also held
         // ordinary rooms. Replacing the number here would have bought 1.
-        if (bucketsCount === 0 && cans <= cfg.bathroomWallGallons) {
+        if (bucketsCount === 0 && cans < cfg.bathroomWallGallons) {
           cans = cfg.bathroomWallGallons;
           unit = "gal";
           defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
@@ -653,7 +693,13 @@ export function estimateOrderGallons(
         // always gallons." A door is a few square feet; rounding it up to a
         // full gallon is the same waste the whole review was about.
         const quarts = Math.max(1, Math.floor(rawGallons * cfg.quartsPerGallon));
-        if (quarts >= cfg.quartsBecomeGallonAt) {
+        if (rawGallons >= 1) {
+          // Ten rooms of doors is not one gallon. The quart rule is for the
+          // line that is UNDER a gallon; above it, the normal packaging
+          // answers — this branch used to cap every door line at 1 gal.
+          ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
+          unit = "gal";
+        } else if (quarts >= cfg.quartsBecomeGallonAt) {
           bucketsCount = 0; cans = 1; unit = "gal";
         } else {
           bucketsCount = 0; cans = quarts; unit = "qt";
@@ -787,22 +833,46 @@ export function packageForUnit(total: number, unit: PaintUnit): { buckets: numbe
  *  from the modal folding them for the TOTAL but not for the per-line rows,
  *  so a line read "manual entry required" while the total climbed. */
 /**
- * Read a per-color map that may have been written before the bathroom split.
+ * Plain `colorId::finish` keys that a NON-bathroom line on this job owns.
  *
- * Bathroom lines used to be keyed `colorId::finish` like everything else. A
- * draft saved before 2026-09-17 still holds that key, and looking up only the
- * new one silently reverted the estimator's decision — including a typed ZERO,
- * which is "do not buy this", coming back as the estimate and reaching a
- * vendor. Falls back to the old key, so an order half-built across the deploy
- * still carries what was typed.
+ * The bathroom fallback below needs this, and getting it wrong is worse than
+ * having no fallback at all: after the split the plain key is normally the
+ * other line's LIVE key — the split exists because that color is used in both
+ * places — so an unconditional fallback had the bathroom read the hall's
+ * numbers and the hall's product, and a typed zero on the hall marked the
+ * bathroom "not ordering" too.
+ */
+export function claimedPlainKeys(
+  estimates: ReadonlyArray<{ colorId: string; finish: string | null; isBathroom?: boolean }>
+): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const e of estimates) if (!e.isBathroom) out.add(quantityKey(e.colorId, e.finish));
+  return out;
+}
+
+/**
+ * Read a per-color map, tolerating a draft saved BEFORE the bathroom split.
+ *
+ * Bathroom lines used to be keyed `colorId::finish` like everything else, so a
+ * draft saved before 2026-09-17 still holds that key; reading only the new one
+ * reverted what the estimator had typed, including a ZERO, which means "do not
+ * buy this".
+ *
+ * The fallback applies ONLY when no other line on this job owns that plain key.
+ * When one does, the saved value is that line's — reading it here would order
+ * the bathroom's paint twice and print the wrong product on it.
  */
 export function lookupByKey<T>(
   map: ReadonlyMap<string, T>,
-  e: { colorId: string; finish: string | null; isBathroom?: boolean }
+  e: { colorId: string; finish: string | null; isBathroom?: boolean },
+  claimed?: ReadonlySet<string>
 ): T | undefined {
   const exact = map.get(quantityKey(e.colorId, e.finish, e.isBathroom));
   if (exact !== undefined) return exact;
-  return e.isBathroom ? map.get(quantityKey(e.colorId, e.finish)) : undefined;
+  if (!e.isBathroom) return undefined;
+  const plain = quantityKey(e.colorId, e.finish);
+  if (claimed?.has(plain)) return undefined;
+  return map.get(plain);
 }
 
 export function applyQuantityOverrides(
@@ -810,8 +880,9 @@ export function applyQuantityOverrides(
   overrides: ReadonlyMap<string, QuantityOverride> | undefined
 ): GallonEstimate[] {
   if (!overrides || overrides.size === 0) return estimates;
+  const claimed = claimedPlainKeys(estimates);
   return estimates.map((e) => {
-    const o = lookupByKey(overrides, e);
+    const o = lookupByKey(overrides, e, claimed);
     if (!o) return e;
     // Clamp here as well as at the persistence boundary. The draft endpoint
     // validates paint lines but takes quantities as given, so this is the last

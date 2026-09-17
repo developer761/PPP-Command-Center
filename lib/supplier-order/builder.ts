@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, lookupByKey, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, lookupByKey, claimedPlainKeys, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -840,6 +840,8 @@ export function formatOrderSummaryBlock(
   // Resolve the effective material type per color (override → fall through to
   // job-level). Then decide whether ALL colors share one product (single
   // header) or whether the job is mixed (per-line prefix, no header).
+  // Which plain keys belong to a real non-bathroom line here — see lookupByKey.
+  const claimedPlain = claimedPlainKeys(estimates);
   const effective = estimates.map((e) => {
     // Bathroom lines carry their own key (they are bought as a different
     // product — that is the whole reason they are a separate line), so the
@@ -847,7 +849,7 @@ export function formatOrderSummaryBlock(
     // Read with the pre-split fallback: a draft saved before 2026-09-17 holds
     // the plain key for what is now a bathroom line, and losing it would drop
     // the per-color product the split exists to carry.
-    const raw = (materialTypeOverrides ? lookupByKey(materialTypeOverrides, e) : undefined)
+    const raw = (materialTypeOverrides ? lookupByKey(materialTypeOverrides, e, claimedPlain) : undefined)
       ?? materialType ?? null;
     // Katie item 11 — an "Other: Behr Premium Plus" value prints the
     // product alone; the prefix is our bookkeeping. A bare "Other" with
@@ -1199,10 +1201,15 @@ export async function buildSupplierOrderDraft(
   const derivedMaterialTypeOverrides = new Map<string, string>(
     input.materialTypeOverrides ? Object.entries(input.materialTypeOverrides) : []
   );
+  const claimedPlainForDerived = claimedPlainKeys(gallonEstimates);
   if (exteriorLine) {
     for (const e of gallonEstimates) {
       const key = quantityKey(e.colorId, e.finish, e.isBathroom);
-      if (derivedMaterialTypeOverrides.has(key)) continue;
+      // Fallback-aware: on a pre-split draft the estimator's choice for this
+      // bathroom line is stored under the plain key, and writing a DERIVED
+      // line at the new key would then beat it on the exact match. An explicit
+      // override always wins.
+      if (lookupByKey(derivedMaterialTypeOverrides, e, claimedPlainForDerived) !== undefined) continue;
       // scopesByColorKey is built from the WOLI rows, which know nothing about
       // the bathroom split, so it is always read with the plain key.
       const scopes = scopesByColorKey.get(quantityKey(e.colorId, e.finish));
