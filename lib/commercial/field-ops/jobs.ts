@@ -498,15 +498,42 @@ export async function ensureJobForWorkOrder(
 /**
  * Safety net: make sure EVERY sent deal Work Order has a live schedulable twin.
  * Run on the Calendar / Work Orders load so a WO that missed its create at
- * send-time (or was created then deleted) still shows up. Cheap + idempotent.
+ * send-time (or was created then deleted) still shows up.
+ *
+ * ── It was NOT cheap, and it is the "5 seconds to toggle" ──────────────────
+ *
+ * Karan 2026-09-17: "idk why it takes like 5 seconds to toggle."
+ *
+ * The docstring said "cheap + idempotent" and the second half was true. It
+ * called `ensureJobForWorkOrder` for EVERY sent work order, one sequential
+ * round trip each, whether or not anything was missing. Measured on the live
+ * book: 93 sent work orders, 93 of which already had a job, 0 needing anything
+ * — 5,186ms to do nothing. And it runs on every calendar load, so it was paid
+ * again on every month/week toggle, every arrow, and every save that
+ * revalidates the page.
+ *
+ * Now ONE query finds the gap and the loop only walks that. In the normal case
+ * the gap is empty and this costs two reads. The safety net is unchanged — it
+ * still fixes exactly the work orders that are missing a twin, it just stops
+ * re-proving that the other 93 are fine.
  */
 export async function ensureJobsForSentWorkOrders(actorUserId: string): Promise<{ created: number; failed: number }> {
   try {
     const sb = commercialDb();
-    const { data: wos } = await sb.from("commercial_work_orders").select("id").eq("status", "sent");
+    const [{ data: wos }, { data: jobs }] = await Promise.all([
+      sb.from("commercial_work_orders").select("id").eq("status", "sent"),
+      // Soft-deleted jobs count as PRESENT on purpose: `ensureJobForWorkOrder`
+      // is what decides whether a deleted twin should be revived, and
+      // re-creating one here on every page load would undo a deliberate delete
+      // forever. A WO whose only job was deleted is handled when it is next
+      // sent, which is the same path that created it.
+      sb.from("commercial_jobs").select("work_order_id").not("work_order_id", "is", null),
+    ]);
+    const haveJob = new Set(((jobs ?? []) as { work_order_id: string }[]).map((j) => j.work_order_id));
+    const missing = ((wos ?? []) as { id: string }[]).filter((w) => !haveJob.has(w.id));
     let created = 0;
     let failed = 0;
-    for (const w of (wos ?? []) as { id: string }[]) {
+    for (const w of missing) {
       const res = await ensureJobForWorkOrder(w.id, actorUserId);
       if (!res.ok) failed++;
       else if (res.created) created++;
