@@ -125,6 +125,14 @@ export type DigestData = {
   /** Position again — money earned that nobody has billed. */
   readyToBillCents: number;
   overBilledProjects: number;
+  /** The concentration, the rot and the worst case — see buildDigest. */
+  topGcName: string | null;
+  topGcCents: number;
+  topGcPct: number;
+  over90Cents: number;
+  over90Count: number;
+  oldestDays: number;
+  oldestName: string | null;
   /** "Are we making money?" — the whole company, every opportunity. */
   pnl: import("./company-pnl").CompanyPnl;
   /** The AR sheet Mary sends on: certified and waiting, retention on its own line. */
@@ -161,6 +169,20 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
   let purchaseCostCents = 0;
   for (const b of breakdown.values()) purchaseCostCents += b.total;
   const pnl = companyPnl({ projects, purchaseCostCents });
+
+  // FOUR DIFFERENT FACTS, not one fact four times. The band printed
+  // $1,369,044.37 as Outstanding, again as Collectible now (no retention is
+  // held) and again as Past due (every imported invoice carries Salesforce's
+  // "Upon Receipt" terms, so the whole book is late) — the same duplication
+  // the Accounting page had, and the same fix: ask different questions.
+  const gcTotals = new Map<string, number>();
+  for (const r of receivables.rows) gcTotals.set(r.accountName, (gcTotals.get(r.accountName) ?? 0) + r.openCents);
+  const topGcEntry = [...gcTotals.entries()].sort((a, b) => b[1] - a[1])[0];
+  const over90 = receivables.rows.filter((r) => (r.daysOut ?? 0) > 90);
+  const oldestRow = receivables.rows.reduce<(typeof receivables.rows)[number] | null>(
+    (worst, r) => ((r.daysOut ?? 0) > (worst?.daysOut ?? 0) ? r : worst),
+    null
+  );
   const production = summarizeProduction(projects);
   const { brief, stale } = await getCachedBrief(receivables);
 
@@ -169,6 +191,16 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
     windowLabel: win.label,
     fromYmd: win.fromYmd,
     toYmd: win.toYmd,
+    topGcName: topGcEntry?.[0] ?? null,
+    topGcCents: topGcEntry?.[1] ?? 0,
+    topGcPct:
+      topGcEntry && receivables.totalOpenCents > 0
+        ? Math.round((topGcEntry[1] / receivables.totalOpenCents) * 100)
+        : 0,
+    over90Cents: over90.reduce((n, r) => n + r.openCents, 0),
+    over90Count: over90.length,
+    oldestDays: receivables.rows.reduce((n, r) => Math.max(n, r.daysOut ?? 0), 0),
+    oldestName: oldestRow?.accountName ?? null,
     pnl,
     ar: arRows.map((r) => ({ jobName: r.jobName, label: r.label, openCents: r.openCents, isRetention: r.isRetention })),
     arTotalCents: arRows.reduce((n, r) => n + r.openCents, 0),
@@ -261,68 +293,94 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
     `— PPP Commercial Command Center`,
   ].join("\n");
 
-  const tile = (label: string, value: string, sub?: string) => `
-      <td style="padding:10px 12px;background:#172B4D;color:#fff;">
-        <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;">${escape(label)}</div>
-        <div style="font-size:20px;font-weight:800;">${escape(value)}</div>
-        ${sub ? `<div style="font-size:10px;opacity:.6;">${escape(sub)}</div>` : ""}
+  /**
+   * A figure on the page, not a colored block.
+   *
+   * Karan 2026-09-17: "it looks so ugly with the blue and stuff." Four solid
+   * navy panels across, twice, is a lot of paint for eight numbers — and it
+   * makes every figure shout equally, which is the opposite of what a digest
+   * is for. White ground, navy number, a hairline between them, and one accent
+   * rule over the value when it is the bad news.
+   */
+  const tile = (label: string, value: string, sub?: string, tone?: "warn") => `
+      <td style="padding:2px 16px 2px 0;vertical-align:top;width:25%;">
+        <div style="font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:#8A97A8;">${escape(label)}</div>
+        <div style="font-size:19px;font-weight:700;color:${tone === "warn" ? "#C2410C" : "#172B4D"};line-height:1.25;margin-top:2px;">${escape(value)}</div>
+        ${sub ? `<div style="font-size:10.5px;color:#6b7280;margin-top:1px;">${escape(sub)}</div>` : ""}
       </td>`;
 
-  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#222;max-width:680px;">
-  <h2 style="margin:0 0 2px;font-size:18px;color:#172B4D;">${escape(TITLE[d.cadence])} report</h2>
-  <p style="margin:0 0 18px;font-size:12px;color:#6b7280;">${escape(d.fromYmd)}${d.fromYmd === d.toYmd ? "" : ` to ${escape(d.toYmd)}`}</p>
+  /** A section heading — small, spaced, with a rule under it. */
+  const head = (title: string, note?: string) => `
+  <div style="margin:0 0 2px;font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#172B4D;">${escape(title)}</div>
+  ${note ? `<div style="margin:0 0 10px;font-size:11px;color:#8A97A8;">${escape(note)}</div>` : `<div style="height:8px;"></div>`}
+  <div style="height:2px;background:#EE662E;width:34px;margin:0 0 12px;"></div>`;
 
-  <!-- ARE WE MAKING MONEY? First, because it is the question he opens the
-       email to answer. Whole company, every opportunity — the same four
-       figures as the dashboard, from the same calculator. -->
-  <div style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">Are we making money?</div>
-  <div style="margin:0 0 8px;font-size:11.5px;color:#6b7280;">Whole company &middot; every opportunity</div>
-  <table style="border-collapse:collapse;width:100%;margin:0 0 20px;"><tr>
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#3F3E40;max-width:680px;padding:4px 2px;">
+  <div style="height:6px;background:#EE662E;margin:0 0 18px;"></div>
+  <h2 style="margin:0 0 2px;font-size:17px;font-weight:700;color:#172B4D;">${escape(TITLE[d.cadence])} report</h2>
+  <p style="margin:0 0 24px;font-size:11.5px;color:#8A97A8;">${escape(d.fromYmd)}${d.fromYmd === d.toYmd ? "" : ` to ${escape(d.toYmd)}`}</p>
+
+  <!-- The question he opens the email to answer. -->
+  ${head("Are we making money?", "Whole company \u00b7 every opportunity")}
+  <table style="border-collapse:collapse;width:100%;margin:0 0 26px;"><tr>
     ${tile("Net profit", money(d.pnl.netProfitCents), "after job costs")}
     ${tile("Margin", d.pnl.marginPct === null ? "\u2014" : `${d.pnl.marginPct}%`, marginVerdict(d.pnl.marginPct))}
     ${tile("Gross revenue", money(d.pnl.grossRevenueCents), "billed to date")}
     ${tile("Job costs", money(d.pnl.totalCostCents), "materials \u00b7 crew \u00b7 subs")}
   </tr></table>
 
-  <div style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">What we are owed</div>
-  <table style="border-collapse:collapse;width:100%;margin:0 0 6px;"><tr>
-    ${tile("Outstanding", money(d.outstandingCents), `${d.openItemCount} open items`)}
-    ${tile("Collectible now", money(d.collectibleCents), "excludes retention")}
-    ${tile("Past due", money(d.overdueCents), d.overdueCents > 0 ? "chase these" : "nothing late")}
-    ${tile("Retention held", money(d.retainageCents), "at close-out")}
+  <!-- FOUR DIFFERENT FACTS. This band used to print the same figure three
+       times: outstanding, collectible now and past due are one number on a
+       book where no retention is held and every invoice is on Upon Receipt
+       terms. A total, a concentration, an age bucket and a worst case. -->
+  ${head("What we are owed")}
+  <table style="border-collapse:collapse;width:100%;margin:0 0 26px;"><tr>
+    ${tile(
+      "Outstanding",
+      money(d.outstandingCents),
+      d.overdueCents === d.outstandingCents && d.outstandingCents > 0
+        ? `${d.openItemCount} open \u00b7 every one past due`
+        : `${d.openItemCount} open \u00b7 ${money(d.overdueCents)} past due`
+    )}
+    ${tile(
+      "Biggest GC",
+      d.topGcName ? money(d.topGcCents) : "\u2014",
+      d.topGcName ? `${d.topGcName} \u00b7 ${d.topGcPct}% of the book` : "nothing outstanding",
+      d.topGcPct >= 50 ? "warn" : undefined
+    )}
+    ${tile(
+      "Over 90 days",
+      money(d.over90Cents),
+      d.over90Count > 0 ? `${d.over90Count} item${d.over90Count === 1 ? "" : "s"}` : "nothing that old",
+      d.over90Cents > 0 ? "warn" : undefined
+    )}
+    ${tile(
+      "Oldest",
+      d.oldestDays > 0 ? `${d.oldestDays} days` : "\u2014",
+      d.oldestName ?? "nothing outstanding",
+      d.oldestDays >= 180 ? "warn" : undefined
+    )}
   </tr></table>
 
-  <table style="border-collapse:collapse;width:100%;margin:0 0 16px;"><tr>
-    ${tile(`In ${d.windowLabel}`, money(d.inCents), `${d.txnCount} transactions`)}
-    ${tile(`Out ${d.windowLabel}`, money(d.outCents))}
+  ${head(`Money ${d.windowLabel}`)}
+  <table style="border-collapse:collapse;width:100%;margin:0 0 26px;"><tr>
+    ${tile("In", money(d.inCents), `${d.txnCount} transactions`)}
+    ${tile("Out", money(d.outCents))}
     ${tile("Net", money(d.netCents))}
-    ${tile("Not deposited", money(d.undepositedCents), `${d.undepositedCount} payments`)}
+    ${
+      // Only when there is something there. "$0.00 / 0 payments" is a tile
+      // spent saying nothing.
+      d.undepositedCount > 0
+        ? tile("Not deposited", money(d.undepositedCents), `${d.undepositedCount} payments`, "warn")
+        : tile("Still to bill", money(d.readyToBillCents), "earned, not invoiced")
+    }
   </tr></table>
 
-  ${
-    flags.length
-      ? `<div style="margin:0 0 16px;padding:12px 14px;background:#fffbeb;border-left:4px solid #f59e0b;border-radius:6px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b45309;margin-bottom:6px;">Worth a look</div>
-    <ul style="margin:0;padding-left:18px;color:#333;">${flags.map((f) => `<li>${escape(f)}</li>`).join("")}</ul>
-  </div>`
-      : `<p style="margin:0 0 16px;color:#047857;">Nothing needs attention — nothing late, nothing unbilled, nothing sitting undeposited.</p>`
-  }
-
-  ${
-    d.briefText
-      ? `<div style="margin:0 0 16px;padding:12px 14px;background:#fff7ed;border-left:4px solid #EE662E;border-radius:6px;">
-    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#c2410c;margin-bottom:4px;">The brief</div>
-    <div style="color:#333;">${escape(d.briefText)}</div>
-    ${d.briefStale ? `<div style="font-size:10px;color:#9ca3af;margin-top:6px;">Written before the latest changes.</div>` : ""}
-  </div>`
-      : ""
-  }
-
-  <p style="margin:20px 0;"><a href="${link}" style="display:inline-block;padding:11px 20px;background:#EE662E;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the money desk &rarr;</a></p>
-  <p style="font-size:12px;color:#666;margin-top:28px;">— PPP Commercial Command Center</p>
+  <p style="margin:26px 0 0;"><a href="${link}" style="display:inline-block;padding:11px 20px;background:#EE662E;color:#fff;text-decoration:none;border-radius:4px;font-weight:600;font-size:13px;">Open the money desk &rarr;</a></p>
+  <p style="font-size:11px;color:#8A97A8;margin-top:26px;border-top:1px solid #e5e7eb;padding-top:12px;">PPP Commercial Command Center</p>
 </div>`;
 
-// THE AR SHEET, in full. Karan 2026-09-17: "can we send the AR sheet report".
+  // THE AR SHEET, in full. Karan 2026-09-17: "can we send the AR sheet report".
   // It is the sheet Mary sends on, so Alex gets the same rows she does rather
   // than a total he has to ask her to break down. Grouped by job, retention on
   // its own line, exactly as the tab shows it.
@@ -359,8 +417,7 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
 
   const htmlWithAr = html.replace(
     "</div>",
-    `  <div style="margin:18px 0 6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#172B4D;">AR sheet</div>
-  <div style="margin:0 0 8px;font-size:11.5px;color:#6b7280;">Certified and waiting to be paid</div>
+    `  ${head("AR sheet", "Certified and waiting to be paid")}
   ${arHtml}
 </div>`
   );

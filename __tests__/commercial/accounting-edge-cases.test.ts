@@ -52,6 +52,13 @@ const digest = (o: Partial<DigestData> = {}): DigestData => ({
   undepositedCents: 0, undepositedCount: 0, taxCollectedCents: 0, uncertifiedCount: 0,
   reimbursementsOwedCents: 0, reimbursementsOwedCount: 0, readyToBillCents: 0,
   overBilledProjects: 0,
+  topGcName: null,
+  topGcCents: 0,
+  topGcPct: 0,
+  over90Cents: 0,
+  over90Count: 0,
+  oldestDays: 0,
+  oldestName: null,
   pnl: { grossRevenueCents: 0, totalCostCents: 0, crewLaborCents: 0, netProfitCents: 0, marginPct: null, unratedHours: 0 },
   ar: [],
   arTotalCents: 0,
@@ -100,7 +107,11 @@ describe("day one — nothing in the database", () => {
     const { text, html, subject } = renderDigestEmail(digest());
     expect(subject).toContain("$0.00 outstanding");
     expect(subject).not.toContain("late");
-    expect(html).toContain("Nothing needs attention");
+    // The "Worth a look" / "Nothing needs attention" block is gone — it
+    // restated figures already on the page. Calm now means the bands read
+    // zero without a single NaN or "-$0.00".
+    expect(html).toContain("$0.00");
+    expect(html).not.toContain("NaN");
     expect(text).not.toContain("NaN");
   });
 });
@@ -264,8 +275,15 @@ describe("hostile strings", () => {
     expect(csv).toContain(`"line one\nline two"`);
   });
 
-  it("the digest escapes a brief before it reaches an inbox", () => {
-    const { html } = renderDigestEmail(digest({ briefText: '<img src=x onerror="alert(1)">' }));
+  it("the digest escapes what people typed before it reaches an inbox", () => {
+    // The brief was the untrusted text in here and has been removed; the AR
+    // sheet's job and application labels are what people type now.
+    const { html } = renderDigestEmail(
+      digest({
+        ar: [{ jobName: '<img src=x onerror="alert(1)">', label: "ok", openCents: 100, isRetention: false }],
+        arTotalCents: 100,
+      })
+    );
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
   });

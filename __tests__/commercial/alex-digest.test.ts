@@ -41,6 +41,13 @@ function data(over: Partial<DigestData> = {}): DigestData {
     reimbursementsOwedCount: 0,
     readyToBillCents: 0,
     overBilledProjects: 0,
+  topGcName: null,
+    topGcCents: 0,
+    topGcPct: 0,
+    over90Cents: 0,
+    over90Count: 0,
+    oldestDays: 0,
+    oldestName: null,
   pnl: { grossRevenueCents: 0, totalCostCents: 0, crewLaborCents: 0, netProfitCents: 0, marginPct: null, unratedHours: 0 },
     ar: [],
     arTotalCents: 0,
@@ -102,44 +109,85 @@ describe("renderDigestEmail", () => {
   });
 
   // A digest that says the same eight things every morning stops being read.
-  it("raises only what actually needs attention", () => {
-    const quiet = renderDigestEmail(data());
-    expect(quiet.text).not.toContain("WORTH A LOOK");
-    expect(quiet.html).toContain("Nothing needs attention");
-
-    const noisy = renderDigestEmail(
+  it("the owed band says four DIFFERENT things", () => {
+    /**
+     * The bug Karan hit reading a preview: Outstanding, Collectible now and
+     * Past due all printed $1,369,044.37. On this book no retention is held
+     * and every imported invoice carries Salesforce's "Upon Receipt" terms, so
+     * those three are one number — three quarters of the band spent saying it
+     * once. A total, a concentration, an age bucket and a worst case instead.
+     */
+    const { html } = renderDigestEmail(
       data({
-        overdueCents: 1_000_00,
-        undepositedCents: 2_000_00,
-        undepositedCount: 2,
-        readyToBillCents: 30_000_00,
-        uncertifiedCount: 1,
+        outstandingCents: 1_369_044_37,
+        overdueCents: 1_369_044_37,
+        collectibleCents: 1_369_044_37,
+        retainageCents: 0,
+        openItemCount: 35,
+        topGcName: "LMJ Management",
+        topGcCents: 1_134_798_61,
+        topGcPct: 83,
+        over90Cents: 916_847_86,
+        over90Count: 19,
+        oldestDays: 381,
+        oldestName: "5150 Veterans",
       })
     );
-    expect(noisy.text).toContain("WORTH A LOOK");
-    expect(noisy.text).toContain("past due");
-    expect(noisy.text).toContain("not deposited");
-    expect(noisy.text).toContain("earned and not yet billed");
-    expect(noisy.text).toContain("no certificate on file");
+    const band = html.slice(html.indexOf("What we are owed"), html.indexOf("Money "));
+    const figures = [...band.matchAll(/font-size:19px[^>]*>([^<]+)</g)].map((m) => m[1]);
+    expect(figures).toHaveLength(4);
+    expect(new Set(figures).size, `the band repeats a figure: ${figures.join(" / ")}`).toBe(4);
+    expect(band).toContain("LMJ Management");
+    expect(band).toContain("381 days");
+    // The dead tiles are gone: retention at zero no longer buys a quarter.
+    expect(band).not.toContain("Retention held");
+    expect(band).not.toContain("Collectible now");
+  });
+
+  it("does not spend a tile on a zero", () => {
+    const none = renderDigestEmail(data({ undepositedCount: 0, undepositedCents: 0, readyToBillCents: 5_000_00 }));
+    expect(none.html).not.toContain("Not deposited");
+    expect(none.html).toContain("Still to bill");
+
+    const some = renderDigestEmail(data({ undepositedCount: 2, undepositedCents: 2_000_00 }));
+    expect(some.html).toContain("Not deposited");
   });
 
   it("labels the period figures with the window they cover", () => {
     const weekly = renderDigestEmail(data({ cadence: "weekly", windowLabel: "this week", inCents: 40_000_00 }));
     expect(weekly.text).toContain("MONEY THIS WEEK");
-    expect(weekly.html).toContain("In this week");
+    // The window is on the heading now, not repeated on every tile.
+    expect(weekly.html).toContain("Money this week");
   });
 
-  it("carries the brief when one has been written, and says when it's old", () => {
-    const fresh = renderDigestEmail(data({ briefText: "Two GCs hold 80% of it." }));
-    expect(fresh.text).toContain("Two GCs hold 80% of it.");
-    expect(fresh.html).not.toContain("Written before the latest changes");
-
-    const stale = renderDigestEmail(data({ briefText: "Old read.", briefStale: true }));
-    expect(stale.html).toContain("Written before the latest changes");
+  it("carries the AR sheet, grouped by job", () => {
+    const { html, text } = renderDigestEmail(
+      data({
+        ar: [
+          { jobName: "LMJ - Duct Patches", label: "Retention", openCents: 75_00, isRetention: true },
+          { jobName: "LMJ - Duct Patches", label: "AIA#4", openCents: 550_00, isRetention: false },
+          { jobName: "O'Shea Properties", label: "9/3/26 - invoiced", openCents: 2_500_00, isRetention: false },
+        ],
+        arTotalCents: 3_125_00,
+        arRetentionCents: 75_00,
+      })
+    );
+    expect(html).toContain("AR sheet");
+    expect(html).toContain("LMJ - Duct Patches");
+    expect(html).toContain("Subtotal (2)");
+    expect(html).toContain("Total (3)");
+    expect(text).toContain("AR SHEET");
   });
 
-  it("escapes the brief — it is model output landing in an inbox", () => {
-    const { html } = renderDigestEmail(data({ briefText: '<script>alert("x")</script>' }));
+  it("escapes what it prints — the AR sheet carries names people typed", () => {
+    // The brief used to be the untrusted text in here and is gone; the job and
+    // application labels are now the user-supplied strings landing in an inbox.
+    const { html } = renderDigestEmail(
+      data({
+        ar: [{ jobName: '<script>alert("x")</script>', label: "ok", openCents: 100, isRetention: false }],
+        arTotalCents: 100,
+      })
+    );
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
