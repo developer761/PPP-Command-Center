@@ -26,7 +26,7 @@ import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
 import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
-import { getArSheetRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
+import { getArSheetRows, AR_APPLICATIONS_SPEC, AR_PERIODS, arPeriodCutoff } from "@/lib/commercial/reports/tomco/ar-applications";
 import { AR_CARRYOVER, AR_CARRYOVER_AS_OF } from "@/lib/commercial/reports/tomco/ar-carryover";
 import {
   getSpendRows,
@@ -523,6 +523,25 @@ export default async function AccountingPage({
   const sentTo = pickFirst(sp.sent);
   const rawView = pickFirst(sp.view);
   const view: View = (VIEWS.some((v) => v.key === rawView) ? rawView : "overview") as View;
+  // ── AR sheet: group-by + period (Karan 2026-09-17) ─────────────────────
+  const arGroupRaw = Number(pickFirst(sp.argroup) ?? "0");
+  const arGroup =
+    Number.isInteger(arGroupRaw) && arGroupRaw >= 0 && arGroupRaw < AR_APPLICATIONS_SPEC.groupings.length
+      ? arGroupRaw
+      : 0;
+  const arPeriodRaw = pickFirst(sp.arperiod) ?? "all";
+  const arPeriod = AR_PERIODS.some((p) => p.key === arPeriodRaw) ? arPeriodRaw : "all";
+  /** Keep every other param, change one. */
+  const arControlHref = (next: { group?: number; period?: string }) => {
+    const p = new URLSearchParams();
+    p.set("view", "ar");
+    const g = next.group ?? arGroup;
+    const per = next.period ?? arPeriod;
+    if (g !== 0) p.set("argroup", String(g));
+    if (per !== "all") p.set("arperiod", per);
+    return `/commercial/accounting?${p.toString()}`;
+  };
+
   const recipients = receivablesRecipients();
   const q = parseReceivableQuery((k) => sp[k]);
   const activeFilter = describeReceivableQuery(q);
@@ -677,6 +696,20 @@ export default async function AccountingPage({
   // Mary's four, each paid for only on the view that renders it.
   const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
   const arRows = view === "ar" ? await getArSheetRows() : null;
+  /**
+   * The period, applied — with undated lines ALWAYS kept.
+   *
+   * Every carried-over line on Mary's sheet has `issuedYmd = null`; they are her
+   * own rows, typed by hand, with no certificate behind them to carry a date.
+   * A naive `r.issuedYmd >= from` would therefore hide all 23 of them and show
+   * an AR sheet of $0 against a real $314,048.14 — a filter that empties the
+   * book is worse than no filter. So the period narrows the DATED rows and
+   * leaves the undated ones in, and the control says so when it is doing it.
+   */
+  const arCutoff = arPeriodCutoff(arPeriod);
+  const arRowsFiltered =
+    arRows && arCutoff ? arRows.filter((r) => !r.issuedYmd || r.issuedYmd >= arCutoff) : arRows;
+  const arUndatedKept = (arRowsFiltered ?? []).filter((r) => !r.issuedYmd).length;
   // The pickers for Mary's entry forms, built only on the views that show one.
   const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
   const entry = entryOn ? await getAccountingEntryOptions() : null;
@@ -804,7 +837,12 @@ export default async function AccountingPage({
                       : view === "cash"
                         ? "/api/commercial/reports/cash-flow/export"
                         : EXPORTABLE_TABS.has(view)
-                          ? `/api/commercial/accounting/export?view=${view}`
+                          ? // The AR sheet's group-by and period ride along, or
+                            // the CSV silently covers all time while the screen
+                            // shows 30 days.
+                            view === "ar"
+                            ? `/api/commercial/accounting/export?view=ar${arGroup !== 0 ? `&argroup=${arGroup}` : ""}${arPeriod !== "all" ? `&arperiod=${arPeriod}` : ""}`
+                            : `/api/commercial/accounting/export?view=${view}`
                           : "/api/commercial/reports/receivables/export"
             }
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
@@ -2027,9 +2065,68 @@ export default async function AccountingPage({
             title={AR_APPLICATIONS_SPEC.title}
             hint="What is certified and waiting to be paid. Retention on its own line."
           />
+        {/* GROUP BY + PERIOD. Karan 2026-09-17: "AR sheet filters such as 30
+            days, 90 days etc" and "give us like views by account or something."
+
+            Both already existed in the data and neither was reachable: the spec
+            has declared four groupings (Job · Source · GC · Month) since it was
+            written, and the page passed no `groupingIndex` and no `controls`,
+            so it was permanently stuck on the first one.
+
+            ALL TIME IS THE DEFAULT, and that is not a preference. Every one of
+            Mary's 23 carried-over lines has `issuedYmd = null` — she writes the
+            job by hand and they are not linked to a certificate — so a period
+            filter that dropped undated rows would today show an EMPTY AR sheet
+            worth $0 against a real $314,048.14. Undated lines are kept in every
+            period and counted in the total; the period narrows the dated ones. */}
         <GroupedReport
           spec={AR_APPLICATIONS_SPEC}
-          rows={arRows}
+          rows={arRowsFiltered ?? arRows}
+          groupingIndex={arGroup}
+          controls={
+            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Group by</span>
+                {AR_APPLICATIONS_SPEC.groupings.map((g, i) => (
+                  <Link
+                    key={g[0]?.key ?? i}
+                    href={arControlHref({ group: i })}
+                    aria-current={i === arGroup ? "true" : undefined}
+                    className={`inline-flex items-center px-2.5 rounded-lg text-[12px] font-semibold min-h-[36px] border transition-colors ${
+                      i === arGroup
+                        ? "bg-cc-brand-600 text-white border-cc-brand-600"
+                        : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                    }`}
+                  >
+                    {g[0]?.label ?? `View ${i + 1}`}
+                  </Link>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Period</span>
+                {AR_PERIODS.map((p) => (
+                  <Link
+                    key={p.key}
+                    href={arControlHref({ period: p.key })}
+                    aria-current={p.key === arPeriod ? "true" : undefined}
+                    className={`inline-flex items-center px-2.5 rounded-lg text-[12px] font-semibold min-h-[36px] border transition-colors ${
+                      p.key === arPeriod
+                        ? "bg-cc-brand-600 text-white border-cc-brand-600"
+                        : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                    }`}
+                  >
+                    {p.label}
+                  </Link>
+                ))}
+              </div>
+              {arUndatedKept > 0 && arPeriod !== "all" && (
+                <span className="text-[11px] text-ppp-charcoal-500">
+                  Includes {arUndatedKept} undated {arUndatedKept === 1 ? "line" : "lines"} from Mary&rsquo;s sheet — they have no
+                  certificate date to filter on.
+                </span>
+              )}
+            </div>
+          }
           emptyHint="Nothing is certified and waiting. Raise an application on a job, or add a line below."
         />
 

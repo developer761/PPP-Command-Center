@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard";
 import { groupedReportCsv } from "@/lib/commercial/reports/grouped/csv";
-import { getArSheetRows, AR_APPLICATIONS_SPEC } from "@/lib/commercial/reports/tomco/ar-applications";
+import { getArSheetRows, AR_APPLICATIONS_SPEC, AR_PERIODS, arPeriodCutoff } from "@/lib/commercial/reports/tomco/ar-applications";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
 import {
   getSpendRows,
@@ -60,12 +60,37 @@ export async function GET(req: NextRequest) {
   // pairs its own loader with its own spec; the union is correct per key but
   // not expressible across the lookup.
   const rows = (await sheet.load()) as any[];
+
+  /**
+   * THE EXPORT MUST MATCH THE SCREEN.
+   *
+   * The AR sheet gained a period filter and a group-by (Karan 2026-09-17), and
+   * a CSV that quietly ignores them is the worse half of the bug: you filter to
+   * 30 days, press Export, and hand somebody a file covering all time with the
+   * same title. Both controls ride on the URL, so both are read here.
+   *
+   * Undated rows are kept, exactly as the page keeps them — Mary's carried-over
+   * lines have no certificate date, and a period that dropped them would export
+   * an empty sheet.
+   */
+  let exported = rows;
+  let periodLabel = "all time";
+  let groupingIndex = 0;
+  if (view === "ar") {
+    const cutoff = arPeriodCutoff(req.nextUrl.searchParams.get("arperiod") ?? "all");
+    if (cutoff) exported = rows.filter((r) => !r.issuedYmd || r.issuedYmd >= cutoff);
+    periodLabel =
+      AR_PERIODS.find((p) => p.key === (req.nextUrl.searchParams.get("arperiod") ?? "all"))?.label ?? "all time";
+    const g = Number(req.nextUrl.searchParams.get("argroup") ?? "0");
+    if (Number.isInteger(g) && g >= 0 && g < AR_APPLICATIONS_SPEC.groupings.length) groupingIndex = g;
+  }
+
   const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return csvResponse(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    groupedReportCsv(sheet.spec as any, rows),
+    groupedReportCsv(sheet.spec as any, exported, groupingIndex),
     `${sheet.file}_${day}.csv`,
     sheet.title,
-    "all time"
+    periodLabel
   );
 }

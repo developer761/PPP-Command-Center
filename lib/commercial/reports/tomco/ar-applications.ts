@@ -295,6 +295,38 @@ export async function clearedCarryoverRows(): Promise<ArApplicationRow[]> {
   })).filter((r) => done.has(r.id));
 }
 
+/**
+ * The AR sheet's date filters. Karan 2026-09-17: "AR sheet filters such as 30
+ * days, 90 days etc."
+ *
+ * ALL TIME IS FIRST AND IS THE DEFAULT. A receivables sheet is a chase list, and
+ * the oldest line on it is the one that matters most — defaulting to "this
+ * month" would hide exactly the debts somebody opens this page to find. The
+ * same argument is already written into ACTIVITY_PRESETS for the receivables
+ * bar; this keeps the two consistent rather than inventing a third opinion.
+ */
+export const AR_PERIODS = [
+  { key: "all", label: "All time", days: null },
+  { key: "30d", label: "Last 30 days", days: 30 },
+  { key: "90d", label: "Last 90 days", days: 90 },
+  { key: "12m", label: "Last 12 months", days: 365 },
+] as const;
+
+export type ArPeriodKey = (typeof AR_PERIODS)[number]["key"];
+
+/**
+ * The earliest `issuedYmd` a period includes, or null for all time.
+ *
+ * ET, not UTC: the cutoff is a calendar date a person reads off a sheet, and on
+ * a New York evening a UTC date is already tomorrow — which would silently drop
+ * a certificate issued today from "last 30 days".
+ */
+export function arPeriodCutoff(key: string, nowMs = Date.now()): string | null {
+  const p = AR_PERIODS.find((x) => x.key === key);
+  if (!p || p.days === null) return null;
+  return new Date(nowMs - p.days * 86_400_000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
 export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
   title: "Accounts Receivable",
   sourceLabel: "AIA applications",
