@@ -47,6 +47,9 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/reports/receivables-brief";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
+import { PrintButton } from "@/components/commercial/reports/print-button";
+import { PrintSheetStyles, PrintHeader } from "@/components/commercial/print-sheet";
+import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import {
@@ -578,7 +581,11 @@ export default async function AccountingPage({
   const needsCash = view === "overview" || view === "cash";
   const needsCosts = view === "overview" || view === "costs";
   const needsOverviewOnly = view === "overview";
-  const [receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
+  const [company, receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
+    // Named on the printed sheet, so what reaches the bookkeeper says whose
+    // books it is. In the same batch as everything else — it is one small read
+    // and paying a round-trip for it would slow every load.
+    getOperatingCompany(),
     settle("Receivables", getReceivablesReport(), summarizeReceivables([])),
     needsCash ? settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH) : Promise.resolve(EMPTY_CASH),
     needsCosts ? settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS) : Promise.resolve(EMPTY_JOB_COSTS),
@@ -692,8 +699,19 @@ export default async function AccountingPage({
   const restCount = receivables.rows.length - topRows.length;
 
   return (
-    <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-6 space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <div id="accounting-sheet" className="max-w-[1400px] mx-auto px-3 sm:px-6 py-6 space-y-5">
+      {/* Karan 2026-09-16: "could we also have a Print / PDF button so we can
+          send in a clean PDF format." Mary sends these on to the bookkeeper,
+          so what prints is the report — the title, the figures and the table —
+          and not the tab strip, the filter bars or the buttons, each of which
+          is marked `data-print-hide` below. */}
+      <PrintSheetStyles id="accounting-sheet" />
+      <PrintHeader
+        company={company.name}
+        title={VIEWS.find((v) => v.key === view)?.label ?? "Accounting"}
+        subtitle={`Run ${fmtEtDate(receivables.generatedAt) ?? ""}`}
+      />
+      <div data-print-hide className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">
             Accounting
@@ -719,6 +737,10 @@ export default async function AccountingPage({
               three tabs with their own endpoints keep them (they carry filters
               a generic export cannot); the rest go through one route that
               builds the CSV from the same spec the page renders. */}
+          {/* Print sits beside Export because they answer the same question
+              — "get this off the screen and send it" — and Mary's bookkeeper
+              wants the sheet, not a CSV. */}
+          <PrintButton />
           <ExportCsvLink
             href={
               view === "transactions"
@@ -902,7 +924,7 @@ export default async function AccountingPage({
           collapsed until tomorrow." So the six Mary works in every day stay on
           the bar, and the other seven fold behind "More" — nothing is removed,
           and anything she is already looking at stays open. */}
-      <nav className="border-b border-ppp-charcoal-100 -mx-1 px-1">
+      <nav data-print-hide className="border-b border-ppp-charcoal-100 -mx-1 px-1">
         <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {VIEWS.filter((v) => v.primary).map((v) => {
             const active = v.key === view;
@@ -927,7 +949,7 @@ export default async function AccountingPage({
       {/* The seven held back. A real disclosure — `details` so it works with no
           JavaScript — and forced open when you are already on one of them, so
           the bar can never hide where you are. */}
-      <details className="-mt-1" open={VIEWS.some((v) => !v.primary && v.key === view)}>
+      <details data-print-hide className="-mt-1" open={VIEWS.some((v) => !v.primary && v.key === view)}>
         <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-1 py-2 text-[12.5px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[38px]">
           More
           <span className="text-ppp-charcoal-400">({VIEWS.filter((v) => !v.primary).length})</span>
@@ -1197,7 +1219,10 @@ export default async function AccountingPage({
             including work not yet billed to the GC, which is why it is far larger than the chase list. What has been
             certified and is actually being chased is on the <Link href={href("ar")} className="font-semibold text-cc-brand-700 hover:underline">AR sheet</Link> tab.
           </p>
-          <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
+          {/* Entry forms are for the screen. On paper they are empty boxes. */}
+          <div data-print-hide>
+            <RecordPaymentForm action={recordPaymentAction} invoices={entry.openInvoices} />
+          </div>
         </>
       )}
 
@@ -1211,7 +1236,7 @@ export default async function AccountingPage({
               Karan: "the button should be near … maybe next to the biggest
               first button filter". Up in the brief block it was both far from
               the rows it affects and easy to read as a label. */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div data-print-hide className="flex items-center gap-2 flex-wrap">
             <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
             {canDraftNotes && silentRows > 0 && (
               <form action={draftNotesAction}>
@@ -1313,7 +1338,7 @@ export default async function AccountingPage({
           )}
 
           {/* Filters — same one-line shape as the receivables bar. */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div data-print-hide className="flex items-center gap-2 flex-wrap">
             <NavSelect
               label="Period"
               value={txPeriod}
@@ -1741,7 +1766,7 @@ export default async function AccountingPage({
             </p>
           )}
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div data-print-hide className="flex items-center gap-2 flex-wrap">
             <NavSelect
               label="Issued"
               value={txPeriod}
@@ -1884,7 +1909,7 @@ export default async function AccountingPage({
             />
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div data-print-hide className="flex items-center gap-2 flex-wrap">
             <NavSelect
               label="Paid back"
               value={txPeriod}
@@ -2042,7 +2067,9 @@ export default async function AccountingPage({
       )}
 
       {view === "purchases" && entry && (
-        <RecordPurchaseForm action={recordSpendAction} jobs={entry.jobs} vendors={entry.vendors} />
+        <div data-print-hide>
+          <RecordPurchaseForm action={recordSpendAction} jobs={entry.jobs} vendors={entry.vendors} />
+        </div>
       )}
 
       {view === "purchases" && spendRows && (
@@ -2057,7 +2084,9 @@ export default async function AccountingPage({
       )}
 
       {view === "labor-out" && entry && (
-        <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
+        <div data-print-hide>
+          <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
+        </div>
       )}
 
       {view === "labor-out" && spendRows && (

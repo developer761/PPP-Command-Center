@@ -23,6 +23,7 @@ import { SIGNATURE_STATUS_LABEL, SIGNATURE_STATUS_TONE, formatSignedAt } from "@
 import { opportunityAssignmentRoleLabel } from "@/lib/commercial/opportunities/assignments";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { PrintButton } from "@/components/commercial/reports/print-button";
+import { PrintSheetStyles } from "@/components/commercial/print-sheet";
 
 export const dynamic = "force-dynamic";
 
@@ -86,7 +87,7 @@ export default async function JobReportPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-4 pb-8 sm:px-6">
-      <PrintStyles />
+      <PrintSheetStyles id="job-report" />
 
       {/* ── Where you are, and the ways out ── */}
       <div data-print-hide className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
@@ -565,36 +566,6 @@ export default async function JobReportPage({
 }
 
 // ─── Print ──────────────────────────────────────────────────────────────────
-
-/**
- * Print rules, scoped to this page.
- *
- * The visibility trick rather than hiding the app shell by selector: the shell's
- * markup is not this page's to know, and a print stylesheet that silently stops
- * working after somebody renames a wrapper is worse than none. Everything is
- * hidden, then the report subtree is made visible and floated to the top-left.
- */
-function PrintStyles() {
-  return (
-    <style>{`
-      @media print {
-        @page { margin: 14mm 12mm; }
-        body { background: #fff !important; }
-        body * { visibility: hidden !important; }
-        #job-report, #job-report * { visibility: visible !important; }
-        #job-report { position: absolute !important; left: 0; top: 0; width: 100%; }
-        #job-report [data-print-hide] { display: none !important; }
-        #job-report section, #job-report header, #job-report li { break-inside: avoid; page-break-inside: avoid; }
-        #job-report table { break-inside: auto; }
-        #job-report tr { break-inside: avoid; page-break-inside: avoid; }
-        #job-report thead { display: table-header-group; }
-        /* A horizontal scroller has no meaning on paper. */
-        #job-report .overflow-x-auto { overflow: visible !important; }
-        #job-report table[class*="min-w-"] { min-width: 0 !important; }
-      }
-    `}</style>
-  );
-}
 
 // ─── Small pieces ───────────────────────────────────────────────────────────
 
