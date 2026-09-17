@@ -613,13 +613,41 @@ export default async function CommercialOpportunitiesPage({
     laneRaw === "under_contract" || laneRaw === "pre_contract"
       ? laneRaw
       : undefined;
-  const validColumn = statusFilter
-    ? KANBAN_COLUMNS.some((c) => c.key === statusFilter)
-      ? statusFilter
-      : (OPPORTUNITY_STATUSES as readonly string[]).includes(statusFilter)
-        ? columnKeyForOpp(statusFilter, null)
-        : undefined
-    : undefined;
+  /**
+   * STAGE IS MULTI-SELECT. Karan 2026-09-17: "some of these filters kinda suck,
+   * Salesforce has good filters, if we could get rid of these shitty ones and
+   * make better multi-select ones that would be great."
+   *
+   * `?status=` now takes a comma-separated list — `?status=rfp,sent,won` — and
+   * a single value still means exactly what it always did, which matters: that
+   * shape is emitted by six retired routes, every saved view, the dashboard
+   * tiles and anything already bookmarked or emailed.
+   *
+   * Raw statuses keep resolving too (`?status=billing`), because a real status
+   * is either a column key already or maps to one through columnKeyForOpp.
+   */
+  const stageKeys = (statusFilter ?? "")
+    .split(",")
+    .map((raw) => raw.trim())
+    .filter(Boolean)
+    .map((raw) =>
+      KANBAN_COLUMNS.some((c) => c.key === raw)
+        ? raw
+        : (OPPORTUNITY_STATUSES as readonly string[]).includes(raw)
+          ? columnKeyForOpp(raw, null)
+          : undefined,
+    )
+    .filter((k): k is string => !!k);
+  const stageSet = new Set(stageKeys);
+  /**
+   * The single-stage value, for everything that can only express one.
+   *
+   * The DB status hint takes one status, and the chip reads better naming a
+   * stage than listing five. Both are correct to leave as "the first one" —
+   * the hint is only a narrowing optimisation and the real filter runs in
+   * memory below, and the chip switches to a count once there is more than one.
+   */
+  const validColumn = stageKeys.length === 1 ? stageKeys[0] : undefined;
   // Phase G Q3 (2026-07-20): `?archived=1` toggle to include archived
   // opps in the active list/kanban. Default hides them so the pipeline
   // stays focused on live deals. Chip in the toolbar flips the URL.
@@ -755,17 +783,21 @@ export default async function CommercialOpportunitiesPage({
       accountId: accountFilter ?? undefined,
       // Cast is safe: columnDbStatusHint only ever returns a status from
       // COLUMN_TARGET, all of which are real OpportunityStatus members.
+      // Only narrowed when exactly ONE stage is picked. With several, the hint
+      // would ask the database for one status and the in-memory filter below
+      // would then look for rows that were never fetched.
       status: ((validColumn ? columnDbStatusHint(validColumn) : null) ??
         undefined) as OpportunityStatus | undefined,
       includeArchived,
     }),
     listCommercialAccounts(),
   ]);
-  const oppsRaw = validColumn
-    ? oppsUnfiltered.filter(
-        (o) => columnKeyForOpp(o.status, o.sub_status) === validColumn,
-      )
-    : oppsUnfiltered;
+  const oppsRaw =
+    stageSet.size > 0
+      ? oppsUnfiltered.filter((o) =>
+          stageSet.has(columnKeyForOpp(o.status, o.sub_status)),
+        )
+      : oppsUnfiltered;
   const accountById = new Map<string, CommercialAccount>(
     accounts.map((a) => [a.id, a]),
   );
@@ -938,7 +970,7 @@ export default async function CommercialOpportunitiesPage({
     // so the picker also stopped claiming "All open" while showing 35 of 132.
     account: accountFilter || undefined,
     oneoff: oneOffFilter ? "1" : undefined,
-    status: statusFilter || undefined,
+    status: stageKeys.length ? stageKeys.join(",") : undefined,
     lane: laneFilter || undefined,
     mine: mineFilter ? "1" : undefined,
     new: newFilter ? "7d" : undefined,
@@ -1033,7 +1065,7 @@ export default async function CommercialOpportunitiesPage({
   if (search) baseParams.set("q", search);
   if (accountFilter) baseParams.set("account", accountFilter);
   if (oneOffFilter) baseParams.set("oneoff", "1");
-  if (validColumn) baseParams.set("status", validColumn);
+  if (stageKeys.length) baseParams.set("status", stageKeys.join(","));
   if (sourceSet.size > 0)
     baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== DEFAULT_SORT) baseParams.set("sort", sortKey);
@@ -1119,7 +1151,7 @@ export default async function CommercialOpportunitiesPage({
     // silently drops the GC filter. Same class as audit D4.
     if (accountFilter) p.set("account", accountFilter);
     if (oneOffFilter) p.set("oneoff", "1");
-    if (validColumn) p.set("status", validColumn);
+    if (stageKeys.length) p.set("status", stageKeys.join(","));
     if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
@@ -1149,7 +1181,8 @@ export default async function CommercialOpportunitiesPage({
     if (search && drop !== "q") p.set("q", search);
     if (accountFilter && drop !== "account") p.set("account", accountFilter);
     if (oneOffFilter && drop !== "oneoff") p.set("oneoff", "1");
-    if (validColumn && drop !== "status") p.set("status", validColumn);
+    if (stageKeys.length && drop !== "status")
+      p.set("status", stageKeys.join(","));
     if (hotFilter && drop !== "hot") p.set("hot", "1");
     if (staleFilter && drop !== "stale") p.set("stale", "1");
     if (sourceSet.size > 0 && drop !== "sources")
@@ -1267,13 +1300,28 @@ export default async function CommercialOpportunitiesPage({
     };
   }).filter((r) => r.count > 0);
 
+  /**
+   * Clicking a stage pill ADDS it to the selection; clicking it again removes
+   * it. Previously it replaced whatever was selected, so picking a second
+   * stage silently dropped the first — the behaviour that makes a filter bar
+   * feel like it is fighting you.
+   */
   const statusDrillHref = (s: string) => {
     const p = new URLSearchParams(baseParams);
-    if (validColumn === s) {
-      p.delete("status");
-    } else {
-      p.set("status", s);
-    }
+    const next = new Set(stageSet);
+    if (next.has(s)) next.delete(s);
+    else next.add(s);
+    if (next.size === 0) p.delete("status");
+    // Kept in KANBAN_COLUMNS order, not click order, so the same selection
+    // always produces the same URL — otherwise "back" and saved links differ
+    // for two identical filters.
+    else
+      p.set(
+        "status",
+        KANBAN_COLUMNS.filter((c) => next.has(c.key))
+          .map((c) => c.key)
+          .join(","),
+      );
     if (staleFilter) p.set("stale", "1");
     if (hotFilter) p.set("hot", "1");
     if (includeArchived) p.set("archived", "1"); // 2026-07-21 audit #5
@@ -1697,9 +1745,53 @@ export default async function CommercialOpportunitiesPage({
                   />
                 </div>
               </div>
+              {/* STAGE — multi-select, the one people actually reach for.
+                  It was single-select and only reachable by clicking a
+                  snapshot pill, so "show me everything out for bid OR waiting
+                  on approval" could not be expressed at all. */}
               <div className="border-t border-ppp-charcoal-100 pt-3">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500 px-3 mb-1">
-                  By source
+                <div className="flex items-baseline justify-between gap-2 px-3 mb-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+                    Stage
+                  </div>
+                  {stageSet.size > 0 && (
+                    <Link
+                      href={clearFilterHref("status")}
+                      className="text-[10.5px] font-semibold text-cc-brand-700 hover:underline"
+                    >
+                      Clear {stageSet.size}
+                    </Link>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {KANBAN_COLUMNS.map((c) => (
+                    <FilterOption
+                      key={c.key}
+                      href={statusDrillHref(c.key)}
+                      active={stageSet.has(c.key)}
+                      label={c.label}
+                      description={
+                        c.lane === "pre_contract"
+                          ? "Still being sold."
+                          : "Under contract."
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-ppp-charcoal-100 pt-3">
+                <div className="flex items-baseline justify-between gap-2 px-3 mb-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-500">
+                    By source
+                  </div>
+                  {sourceSet.size > 0 && (
+                    <Link
+                      href={clearFilterHref("sources")}
+                      className="text-[10.5px] font-semibold text-cc-brand-700 hover:underline"
+                    >
+                      Clear {sourceSet.size}
+                    </Link>
+                  )}
                 </div>
                 <div className="space-y-1">
                   {OPPORTUNITY_SOURCES.map((s) => (
@@ -1836,12 +1928,17 @@ export default async function CommercialOpportunitiesPage({
                 label="One-off work orders"
               />
             )}
-            {validColumn && (
+            {/* One chip PER stage, each clearing only itself — a single chip
+                reading "Stage: 4" would tell you how many you had picked
+                without telling you which, and clearing it would drop all four
+                when you wanted to drop one. */}
+            {KANBAN_COLUMNS.filter((c) => stageSet.has(c.key)).map((c) => (
               <ActiveFilterChip
-                href={clearFilterHref("status")}
-                label={`Stage: ${kanbanColumnLabel(validColumn)}`}
+                key={c.key}
+                href={statusDrillHref(c.key)}
+                label={`Stage: ${c.label}`}
               />
-            )}
+            ))}
             {hotFilter && (
               <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />
             )}
@@ -1897,7 +1994,7 @@ export default async function CommercialOpportunitiesPage({
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
               {statusSnapshot.map((r) => {
-                const isActive = validColumn === r.status;
+                const isActive = stageSet.has(r.status);
                 return (
                   <Link
                     key={r.status}
