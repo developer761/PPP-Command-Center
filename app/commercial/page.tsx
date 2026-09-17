@@ -49,6 +49,8 @@ import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { listAllWorkOrders } from "@/lib/commercial/work-orders/db";
 import { rankJobsInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 import { JobsInFlight } from "@/components/commercial/jobs-in-flight";
+import { buildWorklist, worklistTotals } from "@/lib/commercial/worklist";
+import { Worklist, WorklistClear } from "@/components/commercial/worklist";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -84,6 +86,10 @@ function relativeLabel(iso: string | null | undefined): string {
 }
 
 export default async function CommercialDashboardPage() {
+  // ONE clock read for the whole render. There were four, and they are all
+  // comparisons against today: four separate reads can straddle midnight
+  // mid-render and put a row in two different aging buckets on one screen.
+  const nowMs = Date.now();
   const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
   // Report folders: the dashboard links into AR aging and Win/Loss. Someone
   // outside those folders gets the number without a link that would bounce
@@ -187,7 +193,7 @@ export default async function CommercialDashboardPage() {
   // this tile, while the AR-aging report one click away showed it red in the
   // 61-90 bucket. Same due-date ladder both sides (issue date + standard terms).
   const overdueAia = projectRows.filter(
-    (r) => (r.aiaDueNowCents ?? 0) > 0 && r.aiaDueAt && daysPastDue(r.aiaDueAt, Date.now()) > 0
+    (r) => (r.aiaDueNowCents ?? 0) > 0 && r.aiaDueAt && daysPastDue(r.aiaDueAt, nowMs) > 0
   );
   const arOverdueCount = overdueInvoices.length + overdueAia.length;
   // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
@@ -218,7 +224,7 @@ export default async function CommercialDashboardPage() {
   const weightedPipeline = openOpps.reduce((acc, o) => acc + oppWeighted(o), 0);
 
   // ─── This month ───
-  const now = new Date();
+  const now = new Date(nowMs);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   // decided_at is a DATE column ("2026-08-01"); compare it to a bare ET
   // month-start DATE — the full-ISO monthStart sorts AFTER "2026-08-01" and
@@ -256,7 +262,7 @@ export default async function CommercialDashboardPage() {
   // morning glance. We deliberately DON'T show a week-over-week pipeline-$
   // delta: that needs a historical state snapshot we don't keep, and a
   // faked one would mislead.
-  const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const weekAgoIso = new Date(nowMs - 7 * 86_400_000).toISOString();
   const newThisWeek = openOpps.filter((o) => (o.created_at ?? "") >= weekAgoIso).length;
   // Wins vs the SAME point last month — compare month-to-date against last
   // month's first (equal) span of elapsed time, not the full prior month.
@@ -264,7 +270,7 @@ export default async function CommercialDashboardPage() {
   // when pace is fine ("Jul 2: 1 vs 12"). Using elapsed-ms avoids day-of-
   // month overflow bugs (Jan 31 → Feb has no 31).
   const monthStartMs = new Date(monthStart).getTime();
-  const elapsedThisMonthMs = Date.now() - monthStartMs;
+  const elapsedThisMonthMs = nowMs - monthStartMs;
   const lastMonthStartMs = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const lastMonthStartIso = new Date(lastMonthStartMs).toISOString();
   const lastMonthCutoffIso = new Date(lastMonthStartMs + elapsedThisMonthMs).toISOString();
@@ -301,8 +307,67 @@ export default async function CommercialDashboardPage() {
     (o) => o.status === "pre_sale_closed" && !o.win_loss_debriefed_at
   );
 
-  // ─── TOP 5 OPEN DEALS by weighted value ───
   const accountNameById = new Map(accounts.map((a) => [a.id, a.company_name]));
+
+  // ─── THE WORKLIST ───
+  // Everything above is a figure. This is the part you can act on, built from
+  // the same reads — no extra queries — and ranked by money at risk.
+  const oppById = new Map(opps.map((o) => [o.id, o]));
+  const nameOf = (o: CommercialOpportunity) => derivedOppName(o, accountNameById.get(o.account_id) ?? "");
+  const worklistItems = buildWorklist({
+    overdueInvoices: overdueInvoices.map((i) => ({
+      id: i.id,
+      number: i.invoice_number,
+      accountId: i.account_id,
+      accountName:
+        accountNameById.get(i.account_id) ??
+        (i.opportunity_id ? nameOf(oppById.get(i.opportunity_id) ?? ({} as CommercialOpportunity)) : "") ??
+        "Unassigned account",
+      balanceCents: Math.max(0, i.balance_cents),
+      daysLate: daysPastDue(i.due_at, nowMs),
+    })),
+    // Work that is finished and still not billed. Scoped to `billing` — a job
+    // mid-production legitimately has money left to bill and putting it here
+    // would fill the list with things nobody can act on today.
+    unbilled: projectRows
+      .filter((r) => r.opp.status === "billing" && r.leftToBillCents > 0)
+      .map((r) => ({ oppId: r.opp.id, name: nameOf(r.opp), cents: r.leftToBillCents })),
+    overdueProposals: overdueProposals.map((o) => ({
+      oppId: o.id,
+      name: nameOf(o),
+      daysLate: o.proposal_due_at ? -daysFromTodayEt(o.proposal_due_at) : 0,
+      cents: oppWeighted(o),
+    })),
+    coldRfps: coldRfps.map((o) => ({
+      oppId: o.id,
+      name: nameOf(o),
+      daysWaiting: o.rfp_received_at ? -daysFromTodayEt(o.rfp_received_at) : 0,
+    })),
+    followUps: followupsDue.map((o) => ({
+      oppId: o.id,
+      name: nameOf(o),
+      daysLate: o.follow_up_at ? -daysFromTodayEt(o.follow_up_at) : 0,
+    })),
+    awaitingDebrief: canOpenWinLoss
+      ? winsAwaitingDebrief.map((o) => ({ oppId: o.id, name: nameOf(o) }))
+      : [],
+    // The one delivery gap that costs money rather than tidiness: a job being
+    // delivered with no contract value on it. Every figure that job touches —
+    // left-to-bill, margin, the production donut — is computed from zero, so it
+    // quietly understates the book until somebody fills it in.
+    jobGaps: projectRows
+      .filter((r) => r.baseContractCents === 0 && (r.opp.status === "in_progress" || r.opp.status === "billing"))
+      .map((r) => ({
+        oppId: r.opp.id,
+        name: nameOf(r.opp),
+        title: "Put the contract value on it",
+        consequence: "being delivered with no contract value — its margin and left-to-bill read zero",
+        href: `/commercial/opportunities/${r.opp.id}?tab=project`,
+      })),
+  });
+  const worklistAtRisk = worklistTotals(worklistItems).atRiskCents;
+
+  // ─── TOP 5 OPEN DEALS by weighted value ───
   const topOpenDeals = openOpps
     .slice()
     .sort((a, b) => oppWeighted(b) - oppWeighted(a))
@@ -536,13 +601,19 @@ export default async function CommercialDashboardPage() {
         )}
       </section>
 
-      {/* ─── At a glance — compact KPI strip (pipeline · wins · GCs · contract · AR) ─── */}
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+      {/* ─── At a glance ───
+          Five, not six. "Under contract" was here AND as the headline of the
+          Under-contract section a screen below, printing the same figure twice
+          on one page — which is what Karan meant by "these KPIs are just the
+          same ones over and over". The section below owns it: it can show
+          contract, billed and left-to-bill together, which a single tile can't.
+          Five tiles also divide cleanly at every breakpoint, where six left an
+          orphan on the three-up. */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
         <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
-        <DashStat label="Under contract" value={production.activeProjects > 0 ? formatCentsCompact(production.contractValueCents) : "—"} sub={production.activeProjects > 0 ? `${production.activeProjects} active` : "no jobs yet"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
         <DashStat
           label="Owed to us"
           value={formatCentsCompact(arOutstandingCents)}
@@ -564,100 +635,26 @@ export default async function CommercialDashboardPage() {
         />
       </section>
 
-      {/* ─── NEEDS ATTENTION strip ─── */}
-      {/* Only surface the categories that ACTUALLY need attention — an
-          "attention" section full of "All clear" boxes is noise and buries the
-          one real item (Karan 2026-07-25). When nothing needs attention the
-          whole section is hidden (the KPI strip below already shows the calm
-          state). */}
-      {(() => {
-        const attentionItems = [
-          overdueProposals.length > 0 && {
-            key: "overdue",
-            count: overdueProposals.length,
-            label: "Overdue proposals",
-            sub: overdueProposals.length === 1 ? "1 bid past its due date" : `${overdueProposals.length} bids past due date`,
-            href: "/commercial/opportunities?overdue=1",
-            tone: "rose" as const,
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6 M12 16.5v.5" />
-              </svg>
-            ),
-          },
-          coldRfps.length > 0 && {
-            key: "cold",
-            count: coldRfps.length,
-            label: "Cold RFPs (>7d)",
-            sub: coldRfps.length === 1 ? "1 sitting on the bid request" : `${coldRfps.length} sitting on the bid request`,
-            href: "/commercial/opportunities?coldrfp=1",
-            tone: "amber" as const,
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M6 2v6a6 6 0 0 0 12 0V2 M6 22v-6a6 6 0 0 1 12 0v6 M4 2h16 M4 22h16" />
-              </svg>
-            ),
-          },
-          followupsDue.length > 0 && {
-            key: "followup",
-            count: followupsDue.length,
-            label: "Follow-ups due",
-            sub: followupsDue.length === 1 ? "1 to check in on today" : `${followupsDue.length} to check in on today`,
-            href: "/commercial/opportunities?followup=1",
-            tone: "navy" as const,
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 8v4l3 3" />
-                <circle cx="12" cy="12" r="10" />
-              </svg>
-            ),
-          },
-          // The debrief list lives on the Win/Loss report — no card without a way in.
-          canOpenWinLoss && winsAwaitingDebrief.length > 0 && {
-            key: "debrief",
-            count: winsAwaitingDebrief.length,
-            label: "Awaiting debrief",
-            sub: winsAwaitingDebrief.length === 1 ? "1 won opportunity needs a debrief" : `${winsAwaitingDebrief.length} won opportunities need a debrief`,
-            href: "/commercial/reports/win-loss",
-            tone: "emerald" as const,
-            icon: (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-              </svg>
-            ),
-          },
-        ].filter(Boolean) as Array<{
-          key: string; count: number; label: string; sub: string; href: string;
-          tone: "rose" | "amber" | "navy" | "emerald"; icon: React.ReactNode;
-        }>;
-        if (attentionItems.length === 0) return null;
-        return (
-          <section>
-            <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
-              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
-              Needs your attention
-              <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-cc-brand-600 text-white text-[10px] font-bold tabular-nums">
-                {attentionItems.length}
-              </span>
-            </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {attentionItems.map((it) => (
-                <AttentionCard
-                  key={it.key}
-                  count={it.count}
-                  label={it.label}
-                  sub={it.sub}
-                  href={it.href}
-                  tone={it.tone}
-                  icon={it.icon}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })()}
+      {/* ─── WHAT NEEDS DOING ───
+          Was four cards reading "3 Overdue proposals", "2 Cold RFPs".
+
+          Karan: the Overview shows figures, not what needs doing, and "these
+          KPIs are just the same ones over and over."
+
+          A count is not a task. It gives you a number and then asks you to go
+          and find out WHICH ones — which is the work — so the strip got read as
+          a status light and nothing moved. It was sales-only too: none of the
+          money Mary chases and none of the delivery work reached the page the
+          owner opens every morning.
+
+          Now: the things themselves, named, ranked by money at risk, each
+          linking to the surface that does it. Built from the reads this page
+          already makes. */}
+      {worklistItems.length > 0 ? (
+        <Worklist items={worklistItems} shown={8} atRiskCents={worklistAtRisk} />
+      ) : (
+        <WorklistClear />
+      )}
 
       {/* ─── UNDER CONTRACT (production) ─── */}
       {/* Only surface once there's at least one job under contract — an all-zero
@@ -812,77 +809,6 @@ function DashStat({
   );
 }
 
-// ─────────────── Attention card ───────────────
-
-function AttentionCard({
-  count,
-  label,
-  sub,
-  href,
-  tone,
-  icon,
-}: {
-  count: number;
-  label: string;
-  sub: string;
-  href: string;
-  tone: "rose" | "amber" | "cc-brand" | "emerald" | "navy";
-  icon: React.ReactNode;
-}) {
-  // Only rendered when count > 0 — the "Needs attention" section filters out
-  // clear categories entirely, so there's no zero/all-clear state here.
-  const ring =
-    tone === "rose"
-      ? "border-rose-200 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/70"
-      : tone === "amber"
-      ? "border-amber-200 bg-amber-50/40 hover:border-amber-400 hover:bg-amber-50/70"
-      : tone === "cc-brand"
-      ? "border-cc-brand-200 bg-cc-brand-50/40 hover:border-cc-brand-400 hover:bg-cc-brand-50/70"
-      : tone === "navy"
-      ? "border-ppp-navy-100 bg-ppp-navy-50/40 hover:border-ppp-navy-300 hover:bg-ppp-navy-50/70"
-      : "border-emerald-200 bg-emerald-50/40 hover:border-emerald-400 hover:bg-emerald-50/70";
-  const numberCls =
-    tone === "rose"
-      ? "text-rose-700"
-      : tone === "amber"
-      ? "text-amber-700"
-      : tone === "cc-brand"
-      ? "text-cc-brand-700"
-      : tone === "navy"
-      ? "text-ppp-navy-700"
-      : "text-emerald-700";
-  const iconCls =
-    tone === "rose"
-      ? "bg-rose-100 text-rose-700"
-      : tone === "amber"
-      ? "bg-amber-100 text-amber-700"
-      : tone === "cc-brand"
-      ? "bg-cc-brand-100 text-cc-brand-700"
-      : tone === "navy"
-      ? "bg-ppp-navy-100 text-ppp-navy-700"
-      : "bg-emerald-100 text-emerald-700";
-  return (
-    <Link
-      href={href}
-      className={`group/att relative block border rounded-xl px-4 py-3 min-h-[92px] transition-all hover:shadow-md touch-manipulation ${ring}`}
-    >
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
-          {label}
-        </span>
-        <span aria-hidden className={`inline-flex items-center justify-center h-7 w-7 rounded-lg ${iconCls}`}>
-          {icon}
-        </span>
-      </div>
-      <div className={`font-condensed text-3xl font-black leading-none tracking-tight tabular-nums ${numberCls}`}>
-        {count}
-      </div>
-      <div className="mt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
-        {sub}
-      </div>
-    </Link>
-  );
-}
 
 // ─────────────── Top 5 open opportunities ───────────────
 
