@@ -884,6 +884,19 @@ export function formatOrderSummaryBlock(
     arr.push(line);
   };
 
+  // A bathroom is its own line (2026-09-17) so it can take a bathroom product.
+  // When the estimator has NOT given it a different one, that line prints the
+  // same color, finish and product as the line for the rest of the house — two
+  // rows a vendor reads as a duplicate, or as one order typed twice. The lines
+  // the vendor sees carry no room (R4.25, deliberately), so the bathroom row
+  // says so about itself, and only where it would otherwise be ambiguous.
+  const printedIdentity = estimates.map((e, i) =>
+    `${effective[i] ?? ""}||${formatColorLabel(e.colorName, e.colorCode)}||${e.finish ?? ""}`
+  );
+  const ambiguous = new Set(
+    printedIdentity.filter((id, i) => printedIdentity.some((other, j) => j !== i && other === id))
+  );
+
   for (let i = 0; i < estimates.length; i++) {
     const e = estimates[i];
     // The worker set this color to zero — PPP is not buying it. It has to
@@ -920,7 +933,8 @@ export function formatOrderSummaryBlock(
     // noise the original rule avoided, and the warning under the list
     // already says the order has no product line at all.
     const productSeg = anyLineSet ? `${mt || NOT_SET} — ` : "";
-    pushGrouped("", `  ${qty} — ${productSeg}${label}${finish}`);
+    const where = e.isBathroom && ambiguous.has(printedIdentity[i]) ? " (bathroom)" : "";
+    pushGrouped("", `  ${qty} — ${productSeg}${label}${finish}${where}`);
   }
   // Kate round-3 #28: worker-typed color lines (stain, plaster, color
   // matches) are real order lines, not a note the vendor has to interpret.
@@ -929,7 +943,9 @@ export function formatOrderSummaryBlock(
   for (const c of customColorItems) {
     const label = c.label.trim();
     if (!label) continue;
-    const qty = Math.max(1, Math.floor(c.qty || 1));
+    // Clamped here too — this is the last point before a number reaches a
+    // vendor's inbox, the same reason applyQuantityOverrides clamps.
+    const qty = Math.max(1, Math.min(99, Math.floor(c.qty || 1)));
     const raw = (c.unit || "gal").trim();
     // A vendor reads "2 x 5 gal", not "2 bucket" (Katie item 8).
     const unit = raw === "bucket" ? `x ${GALLONS_PER_BUCKET} gal` : raw;

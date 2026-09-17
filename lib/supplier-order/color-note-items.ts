@@ -158,9 +158,12 @@ export function nextCustomColorId(items: ReadonlyArray<{ id: string }>, label: s
 }
 
 /** Quantities are whole units a vendor can sell. Round UP: half a gallon of
- *  siding paint is a gallon, and rounding down is the silent under-order. */
+ *  siding paint is a gallon, and rounding down is the silent under-order.
+ *  Capped at 99, the same ceiling the persistence boundary applies — without
+ *  it a typed 999 stayed 999 until the page was reloaded, and the draft in
+ *  between is what the vendor is sent. */
 export function orderableQty(raw: string | number): number {
   const n = typeof raw === "number" ? raw : Number(String(raw).trim());
   if (!Number.isFinite(n) || n <= 0) return 1;
-  return Math.max(1, Math.ceil(n));
+  return Math.max(1, Math.min(99, Math.ceil(n)));
 }

@@ -10,6 +10,7 @@ import { colorNoteLines } from "@/lib/supplier-order/color-note-items";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 import { capabilitiesFor } from "@/lib/auth/roles";
+import { loadSqftOverridesFor } from "@/lib/materials/view-props";
 import type { SourceLine } from "@/components/order-builder-view";
 
 /**
@@ -48,6 +49,13 @@ export async function loadOrderPageData(
 
   const sourceLines: SourceLine[] = [];
 
+  // The measured square footage somebody typed on the work-order page. The
+  // DRAFT already uses it (the gallons and the vendor email are computed from
+  // it), but this panel read Salesforce's own field — so a room that had been
+  // measured showed one number on screen and was ordered against another, and
+  // the room dimensions derived from it were the wrong room.
+  const sqftOverrides = await loadSqftOverridesFor(job.lineItems.map((li) => li.raw.id));
+
   for (const li of job.lineItems) {
     const room = roomLabelFrom(li.raw.areaLabel, li.raw.productName, "Unnamed area");
     const selected = (li.raw.surfaces ?? "")
@@ -64,7 +72,7 @@ export async function loadOrderPageData(
       detail: [li.raw.productFamily, li.raw.numCoats ? `${li.raw.numCoats} coats` : null, li.raw.primer]
         .filter(Boolean)
         .join(" · "),
-      sqft: li.raw.sqFootage,
+      sqft: sqftOverrides[li.raw.id] || li.raw.sqFootage,
       // Katie item 13 — the paintable area, which is what the gallons come
       // from. 0 when the rep never measured it, and then only floor shows.
       wallSqft: li.raw.wallSurfaceArea ?? 0,

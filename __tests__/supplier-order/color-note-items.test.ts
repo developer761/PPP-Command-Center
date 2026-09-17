@@ -173,6 +173,14 @@ describe("quantities are whole units, rounded up", () => {
     expect(orderableQty("-4")).toBe(1);
     expect(orderableQty(3)).toBe(3);
   });
+
+  it("a typo cannot order a hundred gallons", () => {
+    // 99 is the ceiling the persistence boundary already applies; before this
+    // a typed 999 held until the page was reloaded, and the draft built in
+    // between is what gets emailed.
+    expect(orderableQty("999")).toBe(99);
+    expect(orderableQty(1e9)).toBe(99);
+  });
 });
 
 describe("custom item ids stay unique", () => {

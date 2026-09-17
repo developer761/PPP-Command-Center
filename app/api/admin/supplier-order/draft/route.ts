@@ -80,7 +80,11 @@ export async function POST(request: Request) {
     /** Kate round-3 #18: the committed order payload. When present the draft is
      *  rendered FROM it, so the email always matches what the builder screen
      *  showed. */
-    quantityOverrides?: Record<string, { buckets: number; cans: number; unit?: "gal" | "qt" }>;
+    // "bucket" is a 5-gallon pail (Katie item 8) and reaches here from the
+    // order page like any other unit; the type said otherwise while the
+    // runtime carried it through, which is the kind of quiet disagreement that
+    // once had a 1-bucket line emailed as "1 gal".
+    quantityOverrides?: Record<string, { buckets: number; cans: number; unit?: "gal" | "qt" | "bucket" }>;
     customColorItems?: Array<{ id: string; label: string; qty: number; unit: string }>;
     /** Kate round-3 #29: who the supplier should call. */
     contactName?: string;
