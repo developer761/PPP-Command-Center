@@ -149,8 +149,25 @@ export default function PurchaseForm({
     return savedId && vendorKey(vendorText) === vendorKey(initVendor) ? { id: savedId, name: vendorText, kind: vendorKind, status: "active" as const, specialty: null } : null;
   }, [vendors, vendorText, preserve, purchase, initVendor, vendorKind]);
 
+  // KATIE 2026-09-16: "can we have the Vendor list filter based on which
+  // Category is selected — Materials: don't show any labor vendors; labor or
+  // subcontractor: don't show retail vendors."
+  //
+  // So it filters now rather than just ordering. The "Show all" escape stays,
+  // because the reason it only ordered before is still true: a permit bought
+  // through a labor company, or a sub who also sells materials, is a real
+  // purchase, and a vendor you cannot find is a vendor somebody retypes — which
+  // splits it in two and quietly breaks every per-vendor total.
+  const [showAllVendors, setShowAllVendors] = useState(false);
+  const wrongKindCount = useMemo(
+    () => vendors.filter((v) => v.kind !== vendorKind).length,
+    [vendors, vendorKind]
+  );
+
   const vendorOptions = useMemo<SearchableOption[]>(() => {
-    const ordered = orderVendorsForCategory(vendors, category);
+    const ordered = orderVendorsForCategory(vendors, category).filter(
+      (v) => showAllVendors || v.kind === vendorKind
+    );
     const opts: SearchableOption[] = ordered.map((v) => ({
       value: v.name,
       label: v.name,
@@ -168,7 +185,7 @@ export default function PurchaseForm({
       opts.push({ value: name, label: name, hint: "Typed before — not in the vendor list", group: directoryHasVendors ? "Typed before" : undefined });
     }
     return opts;
-  }, [vendors, category, isLabor, recentVendors, recentWorkers, directoryHasVendors]);
+  }, [vendors, category, isLabor, recentVendors, recentWorkers, directoryHasVendors, showAllVendors, vendorKind]);
 
   // Receipt-photo handling. A phone snap is routinely over Vercel's ~4.5 MB
   // multipart cap, which would 413 the whole cost entry (typed amount, vendor,
@@ -290,6 +307,21 @@ export default function PurchaseForm({
               setVendorNew(created);
             }}
           />
+          {/* The escape hatch. Filtering is what Katie asked for and it is the
+              right default — but a vendor tagged the wrong kind must never be
+              unreachable, because the fix somebody reaches for is retyping the
+              name, which splits the vendor and breaks its totals. */}
+          {directoryHasVendors && wrongKindCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllVendors((v) => !v)}
+              className="mt-1 text-[11.5px] font-semibold text-ppp-charcoal-500 hover:text-cc-brand-700 underline underline-offset-2 min-h-[32px]"
+            >
+              {showAllVendors
+                ? `Showing all vendors — show only ${vendorKind === "labor" ? "labor vendors" : "stores"}`
+                : `Show all vendors (${wrongKindCount} ${vendorKind === "labor" ? "retail" : "labor"} hidden)`}
+            </button>
+          )}
           <input type="hidden" name={VENDOR_PICK_FIELDS.id} value={linked && !vendorNew ? linked.id : ""} />
           <input type="hidden" name={VENDOR_PICK_FIELDS.createNew} value={vendorNew && !linked ? "1" : ""} />
           {directoryHasVendors && vendorText.trim() !== "" && (
