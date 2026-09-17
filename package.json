@@ -13,6 +13,7 @@
     "smoke": "node scripts/smoke-pages.mjs",
     "check:enums": "node scripts/check-db-enums.mjs",
     "check:tour-targets": "node scripts/check-tour-targets.mjs",
+    "check:one-off": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-one-off-flow.mjs",
     "check:guide-pages": "node --loader ./scripts/app-module-loader.mjs scripts/check-guide-pagination.mjs",
     "check:receipt": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-receipt-path.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",

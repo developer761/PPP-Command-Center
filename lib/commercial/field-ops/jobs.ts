@@ -148,7 +148,16 @@ export type CreateJobInput = {
   work_order_id?: string | null;
   account_id?: string | null;
   notes?: string | null;
-  actor_user_id: string;
+  /**
+   * Nullable because a script has no signed-in user.
+   *
+   * It was typed `string`, so a caller with no actor reached for `?? ""` and
+   * put an empty string into a uuid column — "invalid input syntax for type
+   * uuid", which is a create that fails at the database rather than at the type
+   * system. `logInsert` has always taken `string | null`, and
+   * `created_by_user_id` is nullable; only this signature disagreed.
+   */
+  actor_user_id: string | null;
 };
 
 /** Auto-generate a reportable work-order code from the name. Used when the
@@ -258,7 +267,7 @@ export async function createJob(
  * (no deal) creates nothing and stays only in Field Ops. Idempotent + never
  * throws; dynamic import avoids a static cycle with work-orders/db.ts.
  */
-export async function ensureWorkOrderForJob(jobId: string, actorUserId: string): Promise<void> {
+export async function ensureWorkOrderForJob(jobId: string, actorUserId: string | null): Promise<void> {
   try {
     const job = await getJob(jobId);
     if (!job) return;

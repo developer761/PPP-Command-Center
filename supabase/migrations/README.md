@@ -44,3 +44,4 @@ If you need to add a new migration:
 3. Add the row to the table above so a new dev can answer "what does this file do?" in 5 seconds.
 4. Make it `IF NOT EXISTS` / `ON CONFLICT`-safe.
 5. Test paste-and-run on a Supabase staging project before paste-and-running on prod.
+| `20260917180000_one_off_work_orders.sql` | `commercial_opportunities.is_one_off` — marks a deal auto-created from a one-off work order, so one-offs can be filtered on the pipeline and badged on the job. The app works without it: the flag write is best-effort and logs, so a one-off still creates its opportunity, job, project and work order, just untagged. |

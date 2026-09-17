@@ -88,7 +88,11 @@ export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
 
 export async function createWorkOrder(input: {
   opportunity_id: string;
-  created_by_user_id: string;
+  /** Nullable, matching the column (migration 106: `created_by_user_id UUID`).
+   *  A script or a background path has no signed-in user, and the alternative
+   *  a caller reaches for is `?? ""`, which is an empty string in a uuid column
+   *  and fails at the database instead of the type system. */
+  created_by_user_id: string | null;
   /** Proposal line items for THIS sheet. Omit/empty = the whole proposal. */
   scope_line_item_ids?: string[];
   area_label?: string | null;
