@@ -8,6 +8,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { isTaxExempt } from "@/lib/commercial/tax/exemption";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
@@ -31,7 +32,9 @@ import { personName } from "@/lib/commercial/person-name";
  *  back to email → "PPP admin"). Every invoicing notification uses this
  *  so the bell body reads "Alex Chen recorded a payment" instead of a
  *  raw UUID. Failure is silent — worst case we send "PPP admin". */
-async function resolveActorName(user_id: string | null | undefined): Promise<string> {
+async function resolveActorName(
+  user_id: string | null | undefined,
+): Promise<string> {
   if (!user_id) return "PPP admin";
   const sb = commercialDb();
   const { data } = await sb
@@ -39,7 +42,10 @@ async function resolveActorName(user_id: string | null | undefined): Promise<str
     .select("sf_user_name, email")
     .eq("user_id", user_id)
     .maybeSingle();
-  const a = data as { sf_user_name?: string | null; email?: string | null } | null;
+  const a = data as {
+    sf_user_name?: string | null;
+    email?: string | null;
+  } | null;
   return personName(a?.sf_user_name, a?.email, "PPP admin");
 }
 
@@ -70,7 +76,8 @@ async function fetchOppTitle(opp_id: string): Promise<string | null> {
       .select("company_name")
       .eq("id", row.account_id)
       .maybeSingle();
-    accountName = (acct as { company_name?: string | null } | null)?.company_name ?? null;
+    accountName =
+      (acct as { company_name?: string | null } | null)?.company_name ?? null;
   }
   return derivedOppName(
     {
@@ -226,7 +233,7 @@ export async function getInvoiceContext(invoice_id: string): Promise<{
 // ────────────── Reads ──────────────
 
 export async function listCommercialInvoices(
-  filters: ListInvoicesFilters = {}
+  filters: ListInvoicesFilters = {},
 ): Promise<CommercialInvoice[]> {
   const sb = commercialDb();
   // Page past the 1000-row cap so a high-volume account/book doesn't silently
@@ -234,9 +241,11 @@ export async function listCommercialInvoices(
   // filtered query each page so .range() applies cleanly.
   const rows = await paginateAll<CommercialInvoice>(() => {
     let q = sb.from("commercial_invoices").select("*").is("deleted_at", null);
-    if (filters.status && filters.status !== "overdue") q = q.eq("status", filters.status);
+    if (filters.status && filters.status !== "overdue")
+      q = q.eq("status", filters.status);
     if (filters.accountId) q = q.eq("account_id", filters.accountId);
-    if (filters.opportunityId) q = q.eq("opportunity_id", filters.opportunityId);
+    if (filters.opportunityId)
+      q = q.eq("opportunity_id", filters.opportunityId);
     if (filters.search) {
       const term = `%${filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
       q = q.ilike("invoice_number", term);
@@ -251,7 +260,9 @@ export async function listCommercialInvoices(
   return rows;
 }
 
-export async function getCommercialInvoice(id: string): Promise<CommercialInvoice | null> {
+export async function getCommercialInvoice(
+  id: string,
+): Promise<CommercialInvoice | null> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_invoices")
@@ -269,7 +280,9 @@ export async function getCommercialInvoice(id: string): Promise<CommercialInvoic
 /** Phase 1A/1B: invoice ids (from the given set) that carry a FLAT change-order
  *  line — so the deal Invoices tab can flag "incl. change order" on invoices
  *  whose CO isn't already visible as a milestone. One query. */
-export async function invoiceIdsWithChangeOrderLine(invoiceIds: string[]): Promise<Set<string>> {
+export async function invoiceIdsWithChangeOrderLine(
+  invoiceIds: string[],
+): Promise<Set<string>> {
   const ids = [...new Set(invoiceIds.filter(Boolean))];
   if (ids.length === 0) return new Set();
   const sb = commercialDb();
@@ -279,7 +292,8 @@ export async function invoiceIdsWithChangeOrderLine(invoiceIds: string[]): Promi
     .in("invoice_id", ids)
     .not("change_order_id", "is", null);
   const out = new Set<string>();
-  for (const r of (data ?? []) as { invoice_id: string }[]) out.add(r.invoice_id);
+  for (const r of (data ?? []) as { invoice_id: string }[])
+    out.add(r.invoice_id);
   return out;
 }
 
@@ -289,7 +303,9 @@ export async function invoiceIdsWithChangeOrderLine(invoiceIds: string[]): Promi
  *  as billed against the proposal (understating what's left). Keyed by
  *  invoice_id; covers both flat CO lines and the paired lines of CO milestones
  *  (both carry change_order_id). One query. */
-export async function changeOrderLineCentsByInvoice(invoiceIds: string[]): Promise<Map<string, number>> {
+export async function changeOrderLineCentsByInvoice(
+  invoiceIds: string[],
+): Promise<Map<string, number>> {
   const ids = [...new Set(invoiceIds.filter(Boolean))];
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
@@ -299,13 +315,21 @@ export async function changeOrderLineCentsByInvoice(invoiceIds: string[]): Promi
     .select("invoice_id, subtotal_cents, change_order_id")
     .in("invoice_id", ids)
     .not("change_order_id", "is", null);
-  for (const r of (data ?? []) as { invoice_id: string; subtotal_cents: number }[]) {
-    out.set(r.invoice_id, (out.get(r.invoice_id) ?? 0) + Number(r.subtotal_cents ?? 0));
+  for (const r of (data ?? []) as {
+    invoice_id: string;
+    subtotal_cents: number;
+  }[]) {
+    out.set(
+      r.invoice_id,
+      (out.get(r.invoice_id) ?? 0) + Number(r.subtotal_cents ?? 0),
+    );
   }
   return out;
 }
 
-export async function listInvoiceLineItems(invoiceId: string): Promise<CommercialInvoiceLineItem[]> {
+export async function listInvoiceLineItems(
+  invoiceId: string,
+): Promise<CommercialInvoiceLineItem[]> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_invoice_line_items")
@@ -313,7 +337,10 @@ export async function listInvoiceLineItems(invoiceId: string): Promise<Commercia
     .eq("invoice_id", invoiceId)
     .order("position", { ascending: true });
   if (error) {
-    console.warn("[commercial/invoices] line items list failed:", error.message);
+    console.warn(
+      "[commercial/invoices] line items list failed:",
+      error.message,
+    );
     return [];
   }
   return (data ?? []) as CommercialInvoiceLineItem[];
@@ -332,7 +359,7 @@ export async function listInvoiceLineItems(invoiceId: string): Promise<Commercia
 export async function sumCommercialPaymentsSince(
   fromIso: string,
   toIso: string,
-  accountId?: string
+  accountId?: string,
 ): Promise<number> {
   const sb = commercialDb();
   // Paginated — a busy month (or a whole-platform, no-accountId call) can exceed
@@ -342,7 +369,9 @@ export async function sumCommercialPaymentsSince(
   const rows = await paginateAll<{ amount_cents: number | null }>(() => {
     let q = sb
       .from("commercial_invoice_payments")
-      .select("amount_cents, commercial_invoices!inner(deleted_at, status, account_id)")
+      .select(
+        "amount_cents, commercial_invoices!inner(deleted_at, status, account_id)",
+      )
       .gte("paid_at", fromIso)
       .lt("paid_at", toIso)
       .is("commercial_invoices.deleted_at", null)
@@ -354,7 +383,9 @@ export async function sumCommercialPaymentsSince(
   return rows.reduce((acc, r) => acc + (r.amount_cents ?? 0), 0);
 }
 
-export async function listInvoicePayments(invoiceId: string): Promise<CommercialInvoicePayment[]> {
+export async function listInvoicePayments(
+  invoiceId: string,
+): Promise<CommercialInvoicePayment[]> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_invoice_payments")
@@ -381,7 +412,10 @@ async function nextInvoiceNumber(): Promise<string> {
   // is acceptable for the fallback path.
   const seq = typeof data === "number" ? data : Number(data);
   if (error || !Number.isFinite(seq)) {
-    console.warn("[commercial/invoices] sequence nextval failed:", error?.message);
+    console.warn(
+      "[commercial/invoices] sequence nextval failed:",
+      error?.message,
+    );
     const suffix = Date.now().toString(36).toUpperCase().slice(-6);
     return `${DEFAULT_INVOICE_PREFIX}-${suffix}`;
   }
@@ -390,8 +424,10 @@ async function nextInvoiceNumber(): Promise<string> {
 }
 
 export async function createCommercialInvoice(
-  input: CreateInvoiceInput
-): Promise<{ ok: true; invoice: CommercialInvoice } | { ok: false; error: string }> {
+  input: CreateInvoiceInput,
+): Promise<
+  { ok: true; invoice: CommercialInvoice } | { ok: false; error: string }
+> {
   const sb = commercialDb();
 
   // Chain-of-trust: verify opportunity + account exist + aren't deleted.
@@ -400,15 +436,18 @@ export async function createCommercialInvoice(
     .select("id, account_id, deleted_at, tax_exempt")
     .eq("id", input.opportunity_id)
     .maybeSingle();
-  if (!opp || opp.deleted_at) return { ok: false, error: "opportunity_not_found" };
-  if (opp.account_id !== input.account_id) return { ok: false, error: "account_mismatch" };
+  if (!opp || opp.deleted_at)
+    return { ok: false, error: "opportunity_not_found" };
+  if (opp.account_id !== input.account_id)
+    return { ok: false, error: "account_mismatch" };
 
   const { data: acct } = await sb
     .from("commercial_accounts")
     .select("id, deleted_at, tax_exempt")
     .eq("id", input.account_id)
     .maybeSingle();
-  if (!acct || acct.deleted_at) return { ok: false, error: "account_not_found" };
+  if (!acct || acct.deleted_at)
+    return { ok: false, error: "account_not_found" };
   // Enforced here rather than trusted to each caller. The deal invoice form
   // forced 0% correctly; the change-order path computed tax from the ZIP alone
   // and auto-created drafts charging an exempt GC sales tax. Any future path
@@ -426,7 +465,7 @@ export async function createCommercialInvoice(
 
   const subtotal_cents = (input.line_items ?? []).reduce(
     (acc, li) => acc + Math.round(li.quantity * li.unit_price_cents),
-    0
+    0,
   );
 
   // Auto-issue (Karan 2026-08): a deal-created invoice counts as INVOICED the
@@ -446,7 +485,12 @@ export async function createCommercialInvoice(
       sent_at: input.issue ? nowIso : null,
       subtotal_cents,
       tax_pct:
-        taxExempt || !(typeof input.tax_pct === "number" && input.tax_pct >= 0 && input.tax_pct <= 100)
+        taxExempt ||
+        !(
+          typeof input.tax_pct === "number" &&
+          input.tax_pct >= 0 &&
+          input.tax_pct <= 100
+        )
           ? 0
           : input.tax_pct,
       paid_cents: 0,
@@ -459,7 +503,11 @@ export async function createCommercialInvoice(
       // No silent auto-due-date (Karan 2026-08): if the user didn't set one, it
       // stays empty ("No due date set") rather than inventing Net-30. A caller
       // that wants a default passes due_at/due_days explicitly.
-      due_at: input.due_at ?? (input.due_days ? new Date(Date.now() + input.due_days * 86_400_000).toISOString() : null),
+      due_at:
+        input.due_at ??
+        (input.due_days
+          ? new Date(Date.now() + input.due_days * 86_400_000).toISOString()
+          : null),
       created_by_user_id: input.created_by_user_id,
     })
     .select("*")
@@ -480,23 +528,42 @@ export async function createCommercialInvoice(
       unit_price_cents: li.unit_price_cents,
       product_id: li.product_id ?? null,
     }));
-    const { error: liErr } = await sb.from("commercial_invoice_line_items").insert(rows);
+    const { error: liErr } = await sb
+      .from("commercial_invoice_line_items")
+      .insert(rows);
     if (liErr) {
-      console.warn("[commercial/invoices] line items insert failed:", liErr.message);
+      console.warn(
+        "[commercial/invoices] line items insert failed:",
+        liErr.message,
+      );
     }
   }
 
-  await logStatusChange(inserted.id, null, input.issue ? "sent" : "draft", input.created_by_user_id, input.issue ? "Issued on create" : "Created");
+  await logStatusChange(
+    inserted.id,
+    null,
+    input.issue ? "sent" : "draft",
+    input.created_by_user_id,
+    input.issue ? "Issued on create" : "Created",
+  );
   // Central audit trail (Karan 2026-07-27 audit): invoice mutations were the
   // only domain with no logInsert/logUpdate/logDelete — the money had no trail.
-  await logInsert("commercial_invoices", inserted.id, inserted, input.created_by_user_id);
+  await logInsert(
+    "commercial_invoices",
+    inserted.id,
+    inserted,
+    input.created_by_user_id,
+  );
 
   // Bell + email fanout — fire-and-forget. Team members on the parent
   // opp see the new invoice in their bell without polling. Skipped when the
   // caller fires its own notify after a downstream claim (Phase G change-order
   // billing) so a voided-loser invoice doesn't notify.
   if (!input.skipCreatedNotification) {
-    void notifyCommercialInvoiceCreated(inserted as CommercialInvoice, input.created_by_user_id);
+    void notifyCommercialInvoiceCreated(
+      inserted as CommercialInvoice,
+      input.created_by_user_id,
+    );
   }
 
   return { ok: true, invoice: inserted as CommercialInvoice };
@@ -511,7 +578,7 @@ export async function createCommercialInvoice(
  */
 export async function notifyCommercialInvoiceCreated(
   invoice: CommercialInvoice,
-  actingUserId: string
+  actingUserId: string,
 ): Promise<void> {
   try {
     const [actorName, oppTitle] = await Promise.all([
@@ -530,7 +597,7 @@ export async function notifyCommercialInvoiceCreated(
   } catch (err) {
     console.warn(
       "[commercial/invoices] invoice_created notify failed:",
-      err instanceof Error ? err.message : String(err)
+      err instanceof Error ? err.message : String(err),
     );
   }
 }
@@ -545,7 +612,9 @@ export async function notifyCommercialInvoiceCreated(
  *  is safe. Void invoices remain immutable. Tax pct still uses this
  *  gate to prevent Sent-invoice tax changes (which would silently
  *  reprice a sent bill). Line items and details use it more loosely. */
-async function verifyEditable(invoice_id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+async function verifyEditable(
+  invoice_id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_invoices")
@@ -555,7 +624,8 @@ async function verifyEditable(invoice_id: string): Promise<{ ok: true } | { ok: 
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "invoice_not_found" };
   if (data.deleted_at) return { ok: false, error: "invoice_deleted" };
-  if (data.status === "void") return { ok: false, error: "void_invoices_are_immutable" };
+  if (data.status === "void")
+    return { ok: false, error: "void_invoices_are_immutable" };
   return { ok: true };
 }
 
@@ -569,7 +639,7 @@ export async function updateInvoiceCoreFields(
     notes?: string | null;
     due_at?: string | null;
   },
-  actorUserId?: string | null
+  actorUserId?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = commercialDb();
   // Karan 2026-07-07: due_at + payment_terms + po_number + customer_message
@@ -592,7 +662,8 @@ export async function updateInvoiceCoreFields(
   }
   const clean: Record<string, unknown> = {};
   if (patch.tax_pct !== undefined) {
-    if (patch.tax_pct < 0 || patch.tax_pct > 100) return { ok: false, error: "tax_pct_out_of_range" };
+    if (patch.tax_pct < 0 || patch.tax_pct > 100)
+      return { ok: false, error: "tax_pct_out_of_range" };
     // Exemption is a property of the CUSTOMER, so it holds on edit as well as
     // on create. Create was guarded and this was not, and the tax field is
     // always present on the form — so typing a rate onto an exempt GC's invoice
@@ -609,7 +680,8 @@ export async function updateInvoiceCoreFields(
       .eq("id", invoice_id)
       .maybeSingle();
     const acctId = (inv as { account_id?: string } | null)?.account_id ?? null;
-    const oppId = (inv as { opportunity_id?: string } | null)?.opportunity_id ?? null;
+    const oppId =
+      (inv as { opportunity_id?: string } | null)?.opportunity_id ?? null;
     let acctExempt: boolean | null = null;
     let oppExempt: boolean | null = null;
     if (acctId) {
@@ -618,7 +690,8 @@ export async function updateInvoiceCoreFields(
         .select("tax_exempt")
         .eq("id", acctId)
         .maybeSingle();
-      acctExempt = (acct as { tax_exempt?: boolean } | null)?.tax_exempt ?? null;
+      acctExempt =
+        (acct as { tax_exempt?: boolean } | null)?.tax_exempt ?? null;
     }
     if (oppId) {
       const { data: o } = await sb
@@ -626,17 +699,25 @@ export async function updateInvoiceCoreFields(
         .select("tax_exempt")
         .eq("id", oppId)
         .maybeSingle();
-      oppExempt = (o as { tax_exempt?: boolean | null } | null)?.tax_exempt ?? null;
+      oppExempt =
+        (o as { tax_exempt?: boolean | null } | null)?.tax_exempt ?? null;
     }
     // Editing an invoice must honour the job's override too, or a rate typed
     // here would quietly reinstate tax the job is exempt from.
-    const exempt = isTaxExempt({ opportunityTaxExempt: oppExempt, accountTaxExempt: acctExempt });
+    const exempt = isTaxExempt({
+      opportunityTaxExempt: oppExempt,
+      accountTaxExempt: acctExempt,
+    });
     clean.tax_pct = exempt ? 0 : patch.tax_pct;
   }
-  if (patch.payment_terms !== undefined) clean.payment_terms = patch.payment_terms.slice(0, 60);
-  if (patch.customer_message !== undefined) clean.customer_message = patch.customer_message?.slice(0, 1000) ?? null;
-  if (patch.po_number !== undefined) clean.po_number = patch.po_number?.slice(0, 80) ?? null;
-  if (patch.notes !== undefined) clean.notes = patch.notes?.slice(0, 2000) ?? null;
+  if (patch.payment_terms !== undefined)
+    clean.payment_terms = patch.payment_terms.slice(0, 60);
+  if (patch.customer_message !== undefined)
+    clean.customer_message = patch.customer_message?.slice(0, 1000) ?? null;
+  if (patch.po_number !== undefined)
+    clean.po_number = patch.po_number?.slice(0, 80) ?? null;
+  if (patch.notes !== undefined)
+    clean.notes = patch.notes?.slice(0, 2000) ?? null;
   if (patch.due_at !== undefined) clean.due_at = patch.due_at;
   clean.updated_at = new Date().toISOString();
   // Snapshot the affected fields before + after for the audit trail.
@@ -646,9 +727,18 @@ export async function updateInvoiceCoreFields(
     .select(beforeCols)
     .eq("id", invoice_id)
     .maybeSingle();
-  const { error } = await sb.from("commercial_invoices").update(clean).eq("id", invoice_id);
+  const { error } = await sb
+    .from("commercial_invoices")
+    .update(clean)
+    .eq("id", invoice_id);
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_invoices", invoice_id, before, clean, actorUserId);
+  await logUpdate(
+    "commercial_invoices",
+    invoice_id,
+    before,
+    clean,
+    actorUserId,
+  );
   // A tax-rate change moves the GENERATED total/balance, so the paid/partial
   // decision has to be re-run — otherwise applying a rate to an already-paid
   // invoice left it reading "Paid" with real money outstanding, invisible to
@@ -676,16 +766,19 @@ export async function addLineItem(
      *  matches: `unit_price >= 0 OR change_order_id IS NOT NULL`). */
     change_order_id?: string | null;
   },
-  actorUserId?: string | null
+  actorUserId?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
   const sb = commercialDb();
-  if (!input.description.trim()) return { ok: false, error: "description_required" };
-  if (input.quantity <= 0) return { ok: false, error: "quantity_must_be_positive" };
+  if (!input.description.trim())
+    return { ok: false, error: "description_required" };
+  if (input.quantity <= 0)
+    return { ok: false, error: "quantity_must_be_positive" };
   // A negative price is only valid for a change-order line (deduct CO); a normal
   // manual line still can't go negative (fat-finger guard, mirrors the DB CHECK).
-  if (input.unit_price_cents < 0 && !input.change_order_id) return { ok: false, error: "unit_price_negative" };
+  if (input.unit_price_cents < 0 && !input.change_order_id)
+    return { ok: false, error: "unit_price_negative" };
   // Get the current max position + 1000 so new rows land at the end.
   const { data: last } = await sb
     .from("commercial_invoice_line_items")
@@ -710,7 +803,13 @@ export async function addLineItem(
     .select("*")
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
-  if (insertedLi) await logInsert("commercial_invoice_line_items", (insertedLi as { id: string }).id, insertedLi, actorUserId);
+  if (insertedLi)
+    await logInsert(
+      "commercial_invoice_line_items",
+      (insertedLi as { id: string }).id,
+      insertedLi,
+      actorUserId,
+    );
   await recomputeSubtotal(invoice_id);
   return { ok: true };
 }
@@ -723,7 +822,7 @@ export async function removeLineItem(
    *  its own paired change-order line — the ONLY sanctioned path past the guard
    *  below. Manual callers never pass it, so a user still can't strand a CO by
    *  deleting its line directly (audit D3/F1). */
-  opts?: { allowChangeOrderLine?: boolean }
+  opts?: { allowChangeOrderLine?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
   const gate = await verifyEditable(invoice_id);
   if (!gate.ok) return gate;
@@ -749,7 +848,10 @@ export async function removeLineItem(
       .select("change_order_id")
       .eq("id", item_id)
       .maybeSingle();
-    if (coLine && (coLine as { change_order_id: string | null }).change_order_id) {
+    if (
+      coLine &&
+      (coLine as { change_order_id: string | null }).change_order_id
+    ) {
       return { ok: false, error: "change_order_line" };
     }
   }
@@ -766,7 +868,13 @@ export async function removeLineItem(
     .eq("id", item_id)
     .eq("invoice_id", invoice_id);
   if (error) return { ok: false, error: error.message };
-  if (beforeLi) await logDelete("commercial_invoice_line_items", item_id, beforeLi, actorUserId);
+  if (beforeLi)
+    await logDelete(
+      "commercial_invoice_line_items",
+      item_id,
+      beforeLi,
+      actorUserId,
+    );
   await recomputeSubtotal(invoice_id);
   return { ok: true };
 }
@@ -792,21 +900,28 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
     .from("commercial_invoice_line_items")
     .select("subtotal_cents")
     .eq("invoice_id", invoice_id);
-  const subtotal = (items ?? []).reduce((acc, r) => acc + (r.subtotal_cents as number ?? 0), 0);
+  const subtotal = (items ?? []).reduce(
+    (acc, r) => acc + ((r.subtotal_cents as number) ?? 0),
+    0,
+  );
   // Defense (audit R2): the invoice's `subtotal_cents >= 0` CHECK will REJECT a
   // negative sum, leaving a stale subtotal + a broken Σ-invariant. A deduct CO
   // is capped upstream (setChangeOrderInvoiced floors the credit at the invoice
   // subtotal) so this must never be negative in practice — surface it loudly if
   // it ever is, rather than corrupting silently.
   if (subtotal < 0) {
-    console.error(`[commercial/invoices] recomputeSubtotal: invoice ${invoice_id} line items summed to ${subtotal} (<0) — a deduct exceeded the invoice; the tick guard should have prevented this.`);
+    console.error(
+      `[commercial/invoices] recomputeSubtotal: invoice ${invoice_id} line items summed to ${subtotal} (<0) — a deduct exceeded the invoice; the tick guard should have prevented this.`,
+    );
   }
   const { error: subErr } = await sb
     .from("commercial_invoices")
     .update({ subtotal_cents: subtotal, updated_at: new Date().toISOString() })
     .eq("id", invoice_id);
   if (subErr) {
-    console.error(`[commercial/invoices] recomputeSubtotal: subtotal write failed for ${invoice_id}: ${subErr.message}`);
+    console.error(
+      `[commercial/invoices] recomputeSubtotal: subtotal write failed for ${invoice_id}: ${subErr.message}`,
+    );
   }
   await reconcileInvoiceStatusToTotal(invoice_id);
 }
@@ -821,7 +936,9 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
  * with a real balance owing — and the dunning cron excludes `paid`, so that
  * balance was never chased. Any writer that changes the total must call this.
  */
-export async function reconcileInvoiceStatusToTotal(invoice_id: string): Promise<void> {
+export async function reconcileInvoiceStatusToTotal(
+  invoice_id: string,
+): Promise<void> {
   const sb = commercialDb();
   // Re-read the row so we see the GENERATED total_cents post-update.
   const { data: after } = await sb
@@ -853,7 +970,10 @@ export async function reconcileInvoiceStatusToTotal(invoice_id: string): Promise
     nextPaidAt = null;
   }
   if (nextStatus) {
-    const patch: Record<string, unknown> = { status: nextStatus, updated_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = {
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    };
     if (nextPaidAt !== undefined) patch.paid_at = nextPaidAt;
     await sb.from("commercial_invoices").update(patch).eq("id", invoice_id);
   }
@@ -873,10 +993,16 @@ export async function reconcileInvoiceStatusToTotal(invoice_id: string): Promise
  */
 export function sumPaymentsBeforeStable(
   rows: Array<{ id: string; amount_cents: number; created_at: string }>,
-  pid: string
+  pid: string,
 ): number {
   const sorted = [...rows].sort((a, b) =>
-    a.created_at === b.created_at ? (a.id < b.id ? -1 : 1) : a.created_at < b.created_at ? -1 : 1
+    a.created_at === b.created_at
+      ? a.id < b.id
+        ? -1
+        : 1
+      : a.created_at < b.created_at
+        ? -1
+        : 1,
   );
   let sum = 0;
   for (const r of sorted) {
@@ -899,10 +1025,18 @@ export async function addPayment(
      *  to this invoice. Caps the payment to that milestone's remaining balance
      *  (as well as the invoice balance). NULL/undefined = invoice-level. */
     milestone_id?: string | null;
-  }
-): Promise<{ ok: boolean; error?: string; applied_cents?: number; requested_cents?: number; capped?: boolean; warning?: string }> {
+  },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  applied_cents?: number;
+  requested_cents?: number;
+  capped?: boolean;
+  warning?: string;
+}> {
   const sb = commercialDb();
-  if (input.amount_cents <= 0) return { ok: false, error: "amount_must_be_positive" };
+  if (input.amount_cents <= 0)
+    return { ok: false, error: "amount_must_be_positive" };
   // Cap at balance so a fat-fingered overpayment doesn't create a negative
   // balance. We return `capped: true` + `applied_cents` so the UI can
   // surface "Payment capped to $X" instead of silently swallowing the diff.
@@ -949,7 +1083,11 @@ export async function addPayment(
       .select("id, invoice_id, amount_cents, deleted_at")
       .eq("id", input.milestone_id)
       .maybeSingle();
-    if (!ms || (ms as { invoice_id: string }).invoice_id !== invoice_id || (ms as { deleted_at: string | null }).deleted_at) {
+    if (
+      !ms ||
+      (ms as { invoice_id: string }).invoice_id !== invoice_id ||
+      (ms as { deleted_at: string | null }).deleted_at
+    ) {
       return { ok: false, error: "milestone_not_found" };
     }
     milestoneAmountCents = (ms as { amount_cents: number }).amount_cents;
@@ -957,7 +1095,10 @@ export async function addPayment(
       .from("commercial_invoice_payments")
       .select("amount_cents")
       .eq("milestone_id", input.milestone_id);
-    const milestonePaid = (prior ?? []).reduce((s, r) => s + ((r.amount_cents as number) ?? 0), 0);
+    const milestonePaid = (prior ?? []).reduce(
+      (s, r) => s + ((r.amount_cents as number) ?? 0),
+      0,
+    );
     milestoneCap = Math.max(0, milestoneAmountCents - milestonePaid);
     milestone_id = input.milestone_id;
   }
@@ -996,7 +1137,12 @@ export async function addPayment(
   if (error) return { ok: false, error: error.message };
   // Audit trail — a recorded payment must leave a record with the amount + actor.
   if (insertedPayment) {
-    await logInsert("commercial_invoice_payments", (insertedPayment as { id: string }).id, insertedPayment, input.recorded_by_user_id);
+    await logInsert(
+      "commercial_invoice_payments",
+      (insertedPayment as { id: string }).id,
+      insertedPayment,
+      input.recorded_by_user_id,
+    );
   }
   let appliedAmount = cappedAmount;
   // The DB trigger `trg_recompute_paid_cents` should auto-update
@@ -1012,7 +1158,9 @@ export async function addPayment(
   // no-op when the current trigger is deployed.
   let { data: after } = await sb
     .from("commercial_invoices")
-    .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
+    .select(
+      "status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id",
+    )
     .eq("id", invoice_id)
     .maybeSingle();
   // Concurrency + over-collection guard (audit re-review 2026-08). After the
@@ -1034,21 +1182,41 @@ export async function addPayment(
       .from("commercial_invoice_payments")
       .select("id, amount_cents, created_at, milestone_id")
       .eq("invoice_id", invoice_id);
-    const rows = (allPays ?? []) as Array<{ id: string; amount_cents: number; created_at: string; milestone_id: string | null }>;
-    const allowedInvoice = Math.max(0, total - sumPaymentsBeforeStable(rows, pid));
+    const rows = (allPays ?? []) as Array<{
+      id: string;
+      amount_cents: number;
+      created_at: string;
+      milestone_id: string | null;
+    }>;
+    const allowedInvoice = Math.max(
+      0,
+      total - sumPaymentsBeforeStable(rows, pid),
+    );
     const allowedMilestone = milestone_id
-      ? Math.max(0, milestoneAmountCents - sumPaymentsBeforeStable(rows.filter((r) => r.milestone_id === milestone_id), pid))
+      ? Math.max(
+          0,
+          milestoneAmountCents -
+            sumPaymentsBeforeStable(
+              rows.filter((r) => r.milestone_id === milestone_id),
+              pid,
+            ),
+        )
       : Infinity;
     appliedAmount = Math.min(cappedAmount, allowedInvoice, allowedMilestone);
     if (appliedAmount < cappedAmount) {
       if (appliedAmount <= 0) {
         await sb.from("commercial_invoice_payments").delete().eq("id", pid);
       } else {
-        await sb.from("commercial_invoice_payments").update({ amount_cents: appliedAmount }).eq("id", pid);
+        await sb
+          .from("commercial_invoice_payments")
+          .update({ amount_cents: appliedAmount })
+          .eq("id", pid);
       }
       const { data: reAfter } = await sb
         .from("commercial_invoices")
-        .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
+        .select(
+          "status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id",
+        )
         .eq("id", invoice_id)
         .maybeSingle();
       after = reAfter;
@@ -1078,10 +1246,10 @@ export async function addPayment(
       currentStatus === "void"
         ? "void"
         : paid > 0 && paid >= total && total > 0
-        ? "paid"
-        : paid > 0
-        ? "partial"
-        : null; // no reconcile needed
+          ? "paid"
+          : paid > 0
+            ? "partial"
+            : null; // no reconcile needed
     if (expectedStatus && currentStatus !== expectedStatus) {
       const patch: Record<string, unknown> = { status: expectedStatus };
       // Stamp paid_at when force-flipping to paid so downstream reads
@@ -1091,14 +1259,22 @@ export async function addPayment(
       // Re-fetch so the notification below sees the corrected state.
       const { data: reFetched } = await sb
         .from("commercial_invoices")
-        .select("status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id")
+        .select(
+          "status, balance_cents, total_cents, paid_cents, invoice_number, opportunity_id",
+        )
         .eq("id", invoice_id)
         .maybeSingle();
       after = reFetched;
     }
   }
   if (after?.status && after.status !== inv.status) {
-    await logStatusChange(invoice_id, inv.status as InvoiceStatus, after.status as InvoiceStatus, input.recorded_by_user_id, "Payment received");
+    await logStatusChange(
+      invoice_id,
+      inv.status as InvoiceStatus,
+      after.status as InvoiceStatus,
+      input.recorded_by_user_id,
+      "Payment received",
+    );
   }
 
   // Bell + email fanout — fire-and-forget. If the payment brought the
@@ -1113,13 +1289,14 @@ export async function addPayment(
       invoice_number: string;
       opportunity_id: string;
     };
-    void (async () => {
+    afterResponse("invoice", async () => {
       try {
         const [actorName, oppTitle] = await Promise.all([
           resolveActorName(input.recorded_by_user_id),
           fetchOppTitle(afterRow.opportunity_id),
         ]);
-        const isPaidInFull = afterRow.status === "paid" || afterRow.balance_cents <= 0;
+        const isPaidInFull =
+          afterRow.status === "paid" || afterRow.balance_cents <= 0;
         if (isPaidInFull) {
           await insertCommercialInvoicePaidNotifications({
             invoiceId: invoice_id,
@@ -1145,10 +1322,10 @@ export async function addPayment(
       } catch (err) {
         console.warn(
           "[commercial/invoices] payment notify failed:",
-          err instanceof Error ? err.message : String(err)
+          err instanceof Error ? err.message : String(err),
         );
       }
-    })();
+    });
   }
 
   return {
@@ -1165,7 +1342,7 @@ export async function addPayment(
 export async function removePayment(
   invoice_id: string,
   payment_id: string,
-  actor_user_id: string
+  actor_user_id: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -1187,19 +1364,34 @@ export async function removePayment(
     .eq("id", payment_id)
     .eq("invoice_id", invoice_id);
   if (error) return { ok: false, error: error.message };
-  if (beforePayment) await logDelete("commercial_invoice_payments", payment_id, beforePayment, actor_user_id);
+  if (beforePayment)
+    await logDelete(
+      "commercial_invoice_payments",
+      payment_id,
+      beforePayment,
+      actor_user_id,
+    );
   // Phase 2 (audit H1): a payment can carry a stored PARTIAL lien waiver — retire
   // it so deleting the payment never strands the doc in the deal Documents tab
   // (same teardown class as the milestone-waiver + CO-line sweeps).
-  const strandedWaiver = (beforePayment as { lien_waiver_document_id?: string | null } | null)?.lien_waiver_document_id;
-  if (strandedWaiver) await softDeleteDocument(strandedWaiver, actor_user_id).catch(() => {});
+  const strandedWaiver = (
+    beforePayment as { lien_waiver_document_id?: string | null } | null
+  )?.lien_waiver_document_id;
+  if (strandedWaiver)
+    await softDeleteDocument(strandedWaiver, actor_user_id).catch(() => {});
   const { data: after } = await sb
     .from("commercial_invoices")
     .select("status")
     .eq("id", invoice_id)
     .maybeSingle();
   if (before?.status && after?.status && before.status !== after.status) {
-    await logStatusChange(invoice_id, before.status as InvoiceStatus, after.status as InvoiceStatus, actor_user_id, "Payment removed");
+    await logStatusChange(
+      invoice_id,
+      before.status as InvoiceStatus,
+      after.status as InvoiceStatus,
+      actor_user_id,
+      "Payment removed",
+    );
   }
   return { ok: true };
 }
@@ -1211,7 +1403,7 @@ export async function logStatusChange(
   from_status: InvoiceStatus | null,
   to_status: InvoiceStatus,
   actor_user_id: string | null,
-  note?: string
+  note?: string,
 ): Promise<void> {
   const sb = commercialDb();
   await sb.from("commercial_invoice_status_log").insert({
@@ -1223,14 +1415,16 @@ export async function logStatusChange(
   });
 }
 
-export async function listInvoiceStatusLog(invoice_id: string): Promise<Array<{
-  id: string;
-  from_status: string | null;
-  to_status: string;
-  actor_user_id: string | null;
-  note: string | null;
-  created_at: string;
-}>> {
+export async function listInvoiceStatusLog(invoice_id: string): Promise<
+  Array<{
+    id: string;
+    from_status: string | null;
+    to_status: string;
+    actor_user_id: string | null;
+    note: string | null;
+    created_at: string;
+  }>
+> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_invoice_status_log")

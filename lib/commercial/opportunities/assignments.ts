@@ -1,5 +1,10 @@
 import "server-only";
-import { ASSIGNMENT_ROLES, assignmentRoleLabel, type AssignmentRole } from "@/lib/commercial/accounts/assignment-roles";
+import {
+  ASSIGNMENT_ROLES,
+  assignmentRoleLabel,
+  type AssignmentRole,
+} from "@/lib/commercial/accounts/assignment-roles";
+import { afterResponse } from "@/lib/notifications/after-response";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
@@ -32,7 +37,9 @@ import { derivedOppName } from "@/lib/commercial/opportunities/db";
 export const OPPORTUNITY_ASSIGNMENT_ROLES = ASSIGNMENT_ROLES;
 export type OpportunityAssignmentRole = AssignmentRole;
 
-export function opportunityAssignmentRoleLabel(role: OpportunityAssignmentRole | string): string {
+export function opportunityAssignmentRoleLabel(
+  role: OpportunityAssignmentRole | string,
+): string {
   return assignmentRoleLabel(role);
 }
 
@@ -53,18 +60,21 @@ export type OpportunityAssignmentPerson = {
  *  listAccountTeam — one card per user with N role pills, not N
  *  separate cards. */
 export async function listOpportunityTeam(
-  opportunity_id: string
+  opportunity_id: string,
 ): Promise<OpportunityAssignmentPerson[]> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_opportunity_assignments")
     .select(
-      "id, role, is_primary, notes, assigned_at, removed_at, user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, sf_user_name)"
+      "id, role, is_primary, notes, assigned_at, removed_at, user_id, user:profiles!commercial_opportunity_assignments_user_id_fkey(user_id, email, sf_user_name)",
     )
     .eq("opportunity_id", opportunity_id)
     .is("removed_at", null);
   if (error) {
-    console.warn("[commercial/opportunities/assignments] list failed:", error.message);
+    console.warn(
+      "[commercial/opportunities/assignments] list failed:",
+      error.message,
+    );
     return [];
   }
   type Row = {
@@ -81,7 +91,7 @@ export async function listOpportunityTeam(
   };
   const byUser = new Map<string, OpportunityAssignmentPerson>();
   for (const raw of (data ?? []) as unknown as Row[]) {
-    const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
+    const u = Array.isArray(raw.user) ? (raw.user[0] ?? null) : raw.user;
     if (!u) continue;
     const existing = byUser.get(u.user_id);
     const row = {
@@ -103,7 +113,9 @@ export async function listOpportunityTeam(
     }
   }
   return Array.from(byUser.values()).sort((a, b) =>
-    (a.user_full_name ?? a.user_email).localeCompare(b.user_full_name ?? b.user_email)
+    (a.user_full_name ?? a.user_email).localeCompare(
+      b.user_full_name ?? b.user_email,
+    ),
   );
 }
 
@@ -117,7 +129,7 @@ export type AddOpportunityAssignmentInput = {
 };
 
 export async function addOpportunityAssignment(
-  input: AddOpportunityAssignmentInput
+  input: AddOpportunityAssignmentInput,
 ): Promise<{ ok: true; assignment_id: string } | { ok: false; error: string }> {
   const sb = commercialDb();
 
@@ -127,13 +139,15 @@ export async function addOpportunityAssignment(
     .select("id, account_id, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
-  if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
+  if (!opp || opp.deleted_at)
+    return { ok: false, error: "Opportunity not found." };
   const { data: acct } = await sb
     .from("commercial_accounts")
     .select("id, deleted_at")
     .eq("id", opp.account_id)
     .maybeSingle();
-  if (!acct || acct.deleted_at) return { ok: false, error: "Account not found." };
+  if (!acct || acct.deleted_at)
+    return { ok: false, error: "Account not found." };
 
   // Guard the assignee: must exist + be active + have Commercial CC access.
   const { data: assignee } = await sb
@@ -146,7 +160,10 @@ export async function addOpportunityAssignment(
     return { ok: false, error: "Can't assign an inactive staff member." };
   }
   if (!assignee.has_new_platform_access) {
-    return { ok: false, error: "Staff member doesn't have Commercial CC access." };
+    return {
+      ok: false,
+      error: "Staff member doesn't have Commercial CC access.",
+    };
   }
 
   // Look for an existing row (active OR previously removed).
@@ -159,7 +176,11 @@ export async function addOpportunityAssignment(
     .maybeSingle();
 
   if (existing) {
-    const e = existing as { id: string; removed_at: string | null; is_primary: boolean };
+    const e = existing as {
+      id: string;
+      removed_at: string | null;
+      is_primary: boolean;
+    };
     if (!e.removed_at) {
       // Active row — usually a no-op error, but allow ONE thing through:
       // promoting a current-secondary to primary. Alex re-submits the
@@ -169,7 +190,7 @@ export async function addOpportunityAssignment(
         const demoteRes = await demoteCurrentPrimary(
           input.opportunity_id,
           input.role,
-          input.assigned_by_user_id ?? null
+          input.assigned_by_user_id ?? null,
         );
         if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
         const { data: promoted, error: promoteErr } = await sb
@@ -188,7 +209,7 @@ export async function addOpportunityAssignment(
           e.id,
           existing,
           promoted,
-          input.assigned_by_user_id
+          input.assigned_by_user_id,
         );
         // Heads-up on promotion — they're now the buck-stops-here person.
         void notifyAssignment(
@@ -198,20 +219,26 @@ export async function addOpportunityAssignment(
           input.role,
           true,
           input.assigned_by_user_id ?? null,
-          "promoted"
+          "promoted",
         ).catch((err) => {
-          console.warn(`[commercial/opportunities/assignments] notify-on-promote failed:`, err);
+          console.warn(
+            `[commercial/opportunities/assignments] notify-on-promote failed:`,
+            err,
+          );
         });
         return { ok: true, assignment_id: e.id };
       }
-      return { ok: false, error: "This person is already on this opp in that role." };
+      return {
+        ok: false,
+        error: "This person is already on this opp in that role.",
+      };
     }
     // Restore path — previously removed. Bring back online.
     if (input.is_primary) {
       const demoteRes = await demoteCurrentPrimary(
         input.opportunity_id,
         input.role,
-        input.assigned_by_user_id ?? null
+        input.assigned_by_user_id ?? null,
       );
       if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
     }
@@ -234,7 +261,7 @@ export async function addOpportunityAssignment(
       e.id,
       existing,
       restored,
-      input.assigned_by_user_id
+      input.assigned_by_user_id,
     );
     void notifyAssignment(
       e.id,
@@ -243,9 +270,12 @@ export async function addOpportunityAssignment(
       input.role,
       input.is_primary ?? false,
       input.assigned_by_user_id ?? null,
-      "restored"
+      "restored",
     ).catch((err) => {
-      console.warn(`[commercial/opportunities/assignments] notify-on-restore failed:`, err);
+      console.warn(
+        `[commercial/opportunities/assignments] notify-on-restore failed:`,
+        err,
+      );
     });
     return { ok: true, assignment_id: e.id };
   }
@@ -254,7 +284,7 @@ export async function addOpportunityAssignment(
     const demoteRes = await demoteCurrentPrimary(
       input.opportunity_id,
       input.role,
-      input.assigned_by_user_id ?? null
+      input.assigned_by_user_id ?? null,
     );
     if (!demoteRes.ok) return { ok: false, error: demoteRes.error };
   }
@@ -273,7 +303,10 @@ export async function addOpportunityAssignment(
     .single();
   if (insertErr) {
     if (insertErr.message.toLowerCase().includes("duplicate")) {
-      return { ok: false, error: "This person is already on this opp in that role." };
+      return {
+        ok: false,
+        error: "This person is already on this opp in that role.",
+      };
     }
     return { ok: false, error: insertErr.message };
   }
@@ -282,7 +315,7 @@ export async function addOpportunityAssignment(
     "commercial_opportunity_assignments",
     row.id,
     inserted,
-    input.assigned_by_user_id
+    input.assigned_by_user_id,
   );
   // Fire-and-forget — never block the assignment write on a Resend hiccup.
   void notifyAssignment(
@@ -292,9 +325,12 @@ export async function addOpportunityAssignment(
     input.role,
     input.is_primary ?? false,
     input.assigned_by_user_id ?? null,
-    "assigned"
+    "assigned",
   ).catch((err) => {
-    console.warn(`[commercial/opportunities/assignments] notify-on-assign failed:`, err);
+    console.warn(
+      `[commercial/opportunities/assignments] notify-on-assign failed:`,
+      err,
+    );
   });
   return { ok: true, assignment_id: row.id };
 }
@@ -312,7 +348,7 @@ async function notifyAssignment(
   role: OpportunityAssignmentRole,
   is_primary: boolean,
   assigned_by_user_id: string | null,
-  action: "assigned" | "promoted" | "restored"
+  action: "assigned" | "promoted" | "restored",
 ): Promise<void> {
   // Skip the email when a user assigns/promotes themself — Alice already
   // knows she's now on the deal because she literally just clicked it.
@@ -323,19 +359,30 @@ async function notifyAssignment(
       .from("commercial_opportunities")
       // Phase B: pull client_name + property_street so derivedOppName can
       // return the CEO's {account} - {client} - {location} format.
-      .select("title, client_name, property_street, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)")
+      .select(
+        "title, client_name, property_street, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)",
+      )
       .eq("id", opportunity_id)
       .maybeSingle(),
-    sb.from("profiles").select("email, sf_user_name").eq("user_id", user_id).maybeSingle(),
+    sb
+      .from("profiles")
+      .select("email, sf_user_name")
+      .eq("user_id", user_id)
+      .maybeSingle(),
     assigned_by_user_id
-      ? sb.from("profiles").select("sf_user_name, email").eq("user_id", assigned_by_user_id).maybeSingle()
+      ? sb
+          .from("profiles")
+          .select("sf_user_name, email")
+          .eq("user_id", assigned_by_user_id)
+          .maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
   type OppRow = {
     title?: string;
     client_name?: string | null;
     property_street?: string | null;
-    account?: { company_name?: string } | Array<{ company_name?: string }> | null;
+    account?:
+      { company_name?: string } | Array<{ company_name?: string }> | null;
   };
   const oppData = oppRes.data as OppRow | null;
   const accountName = Array.isArray(oppData?.account)
@@ -355,11 +402,14 @@ async function notifyAssignment(
     : "an opportunity";
   const assigneeEmail = (userRes.data as { email?: string } | null)?.email;
   if (!assigneeEmail) {
-    console.warn(`[commercial/opportunities/assignments] no email on user ${user_id} — skipping notify`);
+    console.warn(
+      `[commercial/opportunities/assignments] no email on user ${user_id} — skipping notify`,
+    );
     return;
   }
   const assignerName =
-    (byRes.data as { sf_user_name?: string; email?: string } | null)?.sf_user_name ||
+    (byRes.data as { sf_user_name?: string; email?: string } | null)
+      ?.sf_user_name ||
     (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
     "PPP admin";
   const roleLabel = opportunityAssignmentRoleLabel(role);
@@ -419,7 +469,9 @@ async function notifyAssignment(
   // added to a deal. Skip the send; the bell still fires.
   const emailPaused = !!(pref && pref.enabled === false);
   if (emailPaused) {
-    console.info(`[commercial/opportunities/assignments] email paused for ${user_id} — in-app bell only`);
+    console.info(
+      `[commercial/opportunities/assignments] email paused for ${user_id} — in-app bell only`,
+    );
   } else {
     const result = await sendEmail({
       to: assigneeEmail,
@@ -436,27 +488,35 @@ async function notifyAssignment(
       ],
     });
     if (!result.ok) {
-      console.warn(`[commercial/opportunities/assignments] notify send failed:`, result.error);
+      console.warn(
+        `[commercial/opportunities/assignments] notify send failed:`,
+        result.error,
+      );
     }
   }
 
   // In-app bell row — fire-and-forget, ALWAYS (even when email is paused).
   // Survives email outages so the assignee still sees a red dot the next time
   // they open the platform.
-  void insertCommercialTeamAssignedNotification({
-    surface: "opportunity",
-    parentId: opportunity_id,
-    parentName: oppTitle,
-    secondaryName: accountName ?? null,
-    recipientUserId: user_id,
-    roleLabel,
-    isPrimary: is_primary,
-    action,
-    assignerName,
-    actingUserId: assigned_by_user_id,
-  }).catch((err) => {
-    console.warn(`[commercial/opportunities/assignments] bell insert failed:`, err);
-  });
+  afterResponse("opportunity_team_added", () =>
+    insertCommercialTeamAssignedNotification({
+      surface: "opportunity",
+      parentId: opportunity_id,
+      parentName: oppTitle,
+      secondaryName: accountName ?? null,
+      recipientUserId: user_id,
+      roleLabel,
+      isPrimary: is_primary,
+      action,
+      assignerName,
+      actingUserId: assigned_by_user_id,
+    }).catch((err) => {
+      console.warn(
+        `[commercial/opportunities/assignments] bell insert failed:`,
+        err,
+      );
+    }),
+  );
 }
 
 function escape(s: string): string {
@@ -470,7 +530,7 @@ function escape(s: string): string {
 export async function removeOpportunityAssignment(
   opportunity_id: string,
   assignment_id: string,
-  removed_by_user_id?: string | null
+  removed_by_user_id?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -499,7 +559,7 @@ export async function removeOpportunityAssignment(
     assignment_id,
     before,
     after,
-    removed_by_user_id
+    removed_by_user_id,
   );
   return { ok: true };
 }
@@ -519,7 +579,7 @@ export async function removeOpportunityAssignment(
 async function demoteCurrentPrimary(
   opportunity_id: string,
   role: OpportunityAssignmentRole,
-  actingUserId: string | null
+  actingUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -552,7 +612,7 @@ async function demoteCurrentPrimary(
     beforeRow.id,
     before,
     after,
-    actingUserId
+    actingUserId,
   );
   return { ok: true };
 }
@@ -561,28 +621,48 @@ async function demoteCurrentPrimary(
  *  taking the most senior — primary_pm > lead_estimator > sales_rep)
  *  per opportunity, for the list page row badges. */
 export async function listPrimaryLeadByOpp(
-  opportunity_ids: string[]
-): Promise<Map<string, { user_email: string; user_full_name: string | null; role: OpportunityAssignmentRole }>> {
+  opportunity_ids: string[],
+): Promise<
+  Map<
+    string,
+    {
+      user_email: string;
+      user_full_name: string | null;
+      role: OpportunityAssignmentRole;
+    }
+  >
+> {
   if (opportunity_ids.length === 0) return new Map();
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_opportunity_assignments")
     .select(
-      "opportunity_id, role, user:profiles!commercial_opportunity_assignments_user_id_fkey(email, sf_user_name, is_active)"
+      "opportunity_id, role, user:profiles!commercial_opportunity_assignments_user_id_fkey(email, sf_user_name, is_active)",
     )
     .in("opportunity_id", opportunity_ids)
     .eq("is_primary", true)
     .is("removed_at", null);
   if (error) {
-    console.warn("[commercial/opportunities/assignments] listPrimaryLeadByOpp:", error.message);
+    console.warn(
+      "[commercial/opportunities/assignments] listPrimaryLeadByOpp:",
+      error.message,
+    );
     return new Map();
   }
   type Row = {
     opportunity_id: string;
     role: OpportunityAssignmentRole;
     user:
-      | { email: string; sf_user_name: string | null; is_active: boolean | null }
-      | Array<{ email: string; sf_user_name: string | null; is_active: boolean | null }>
+      | {
+          email: string;
+          sf_user_name: string | null;
+          is_active: boolean | null;
+        }
+      | Array<{
+          email: string;
+          sf_user_name: string | null;
+          is_active: boolean | null;
+        }>
       | null;
   };
   // Seniority order — same role per opp shouldn't conflict (only one
@@ -592,19 +672,26 @@ export async function listPrimaryLeadByOpp(
   // standing so this doesn't silently change who shows as ★ on an existing
   // deal. `estimator` inherits `lead_estimator`'s rank — it replaced it.
   const seniority: Record<string, number> = {
-    primary_pm: 0,       // retired
-    lead_estimator: 1,   // retired
+    primary_pm: 0, // retired
+    lead_estimator: 1, // retired
     estimator: 1,
     sales_rep: 2,
     field_rep: 3,
     office_rep: 4,
-    superintendent: 5,   // retired
+    superintendent: 5, // retired
     other: 9,
   };
   const rank = (r: string) => seniority[r] ?? 9;
-  const out = new Map<string, { user_email: string; user_full_name: string | null; role: OpportunityAssignmentRole }>();
+  const out = new Map<
+    string,
+    {
+      user_email: string;
+      user_full_name: string | null;
+      role: OpportunityAssignmentRole;
+    }
+  >();
   for (const raw of (data ?? []) as unknown as Row[]) {
-    const u = Array.isArray(raw.user) ? raw.user[0] ?? null : raw.user;
+    const u = Array.isArray(raw.user) ? (raw.user[0] ?? null) : raw.user;
     if (!u) continue;
     // Deactivated leads should not surface as the ★ on the list-page row
     // — a row that says "Primary: <deactivated person>" reads as a stale

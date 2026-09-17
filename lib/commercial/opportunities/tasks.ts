@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { insertCommercialTaskAssignedNotification } from "@/lib/notifications/commercial-events";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
@@ -32,7 +33,7 @@ export type OpportunityTask = {
 /** All open + completed tasks for one opp, sorted open-first
  *  (by due_at asc, NULLS last), then completed (most recent first). */
 export async function listOpportunityTasks(
-  opportunity_id: string
+  opportunity_id: string,
 ): Promise<OpportunityTask[]> {
   const sb = commercialDb();
   const { data, error } = await sb
@@ -41,7 +42,10 @@ export async function listOpportunityTasks(
     .eq("opportunity_id", opportunity_id)
     .is("deleted_at", null);
   if (error) {
-    console.warn("[commercial/opportunities/tasks] list failed:", error.message);
+    console.warn(
+      "[commercial/opportunities/tasks] list failed:",
+      error.message,
+    );
     return [];
   }
   const rows = (data ?? []) as OpportunityTask[];
@@ -50,7 +54,8 @@ export async function listOpportunityTasks(
     const bOpen = b.completed_at === null;
     if (aOpen !== bOpen) return aOpen ? -1 : 1;
     if (aOpen) {
-      if (a.due_at === b.due_at) return a.created_at.localeCompare(b.created_at);
+      if (a.due_at === b.due_at)
+        return a.created_at.localeCompare(b.created_at);
       if (a.due_at === null) return 1;
       if (b.due_at === null) return -1;
       return a.due_at.localeCompare(b.due_at);
@@ -62,7 +67,7 @@ export async function listOpportunityTasks(
 /** Bulk: open task counts per opp, with overdue/due-soon breakdowns
  *  so the list page can render badges without an N+1 fan-out. */
 export async function listOpenTaskStatsByOpp(
-  opportunity_ids: string[]
+  opportunity_ids: string[],
 ): Promise<Map<string, { open: number; overdue: number; due_soon: number }>> {
   if (opportunity_ids.length === 0) return new Map();
   const sb = commercialDb();
@@ -73,21 +78,36 @@ export async function listOpenTaskStatsByOpp(
     .is("deleted_at", null)
     .is("completed_at", null);
   if (error) {
-    console.warn("[commercial/opportunities/tasks] listOpenTaskStatsByOpp:", error.message);
+    console.warn(
+      "[commercial/opportunities/tasks] listOpenTaskStatsByOpp:",
+      error.message,
+    );
     return new Map();
   }
   // Date-only "today" in America/New_York (Karan 2026-07-27 audit) — using the
   // UTC date flagged a task due TODAY as overdue after ~8pm ET, when UTC has
   // already rolled to tomorrow. All PPP ops live in ET.
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+  }).format(new Date());
   // "Due soon" = within 7 days of today (inclusive of today, exclusive
   // of overdue — overdue takes precedence).
   const soonDate = new Date(`${today}T00:00:00Z`);
   soonDate.setUTCDate(soonDate.getUTCDate() + 7);
   const soonStr = soonDate.toISOString().slice(0, 10);
-  const out = new Map<string, { open: number; overdue: number; due_soon: number }>();
-  for (const row of (data ?? []) as Array<{ opportunity_id: string; due_at: string | null }>) {
-    const cur = out.get(row.opportunity_id) ?? { open: 0, overdue: 0, due_soon: 0 };
+  const out = new Map<
+    string,
+    { open: number; overdue: number; due_soon: number }
+  >();
+  for (const row of (data ?? []) as Array<{
+    opportunity_id: string;
+    due_at: string | null;
+  }>) {
+    const cur = out.get(row.opportunity_id) ?? {
+      open: 0,
+      overdue: 0,
+      due_soon: 0,
+    };
     cur.open += 1;
     if (row.due_at) {
       const d = row.due_at.slice(0, 10);
@@ -109,11 +129,12 @@ export type CreateOpportunityTaskInput = {
 };
 
 export async function createOpportunityTask(
-  input: CreateOpportunityTaskInput
+  input: CreateOpportunityTaskInput,
 ): Promise<{ ok: true; task: OpportunityTask } | { ok: false; error: string }> {
   const title = input.title?.trim() ?? "";
   if (!title) return { ok: false, error: "Title is required." };
-  if (title.length > 200) return { ok: false, error: "Title too long (max 200 chars)." };
+  if (title.length > 200)
+    return { ok: false, error: "Title too long (max 200 chars)." };
 
   const sb = commercialDb();
   const { data: opp } = await sb
@@ -123,14 +144,16 @@ export async function createOpportunityTask(
     .select("id, account_id, title, client_name, property_street, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
-  if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
+  if (!opp || opp.deleted_at)
+    return { ok: false, error: "Opportunity not found." };
   const { data: acct } = await sb
     .from("commercial_accounts")
     // Phase B: pull company_name so derivedOppName can format it.
     .select("id, company_name, deleted_at")
     .eq("id", opp.account_id)
     .maybeSingle();
-  if (!acct || acct.deleted_at) return { ok: false, error: "Account not found." };
+  if (!acct || acct.deleted_at)
+    return { ok: false, error: "Account not found." };
 
   // If an assignee was supplied, verify they're active + have access.
   if (input.assigned_user_id) {
@@ -144,7 +167,10 @@ export async function createOpportunityTask(
       return { ok: false, error: "Can't assign an inactive staff member." };
     }
     if (!assignee.has_new_platform_access) {
-      return { ok: false, error: "Assignee doesn't have Commercial CC access." };
+      return {
+        ok: false,
+        error: "Assignee doesn't have Commercial CC access.",
+      };
     }
   }
 
@@ -163,7 +189,12 @@ export async function createOpportunityTask(
     .single();
   if (error) return { ok: false, error: error.message };
   const task = data as OpportunityTask;
-  await logInsert("commercial_opportunity_tasks", task.id, task, input.created_by_user_id);
+  await logInsert(
+    "commercial_opportunity_tasks",
+    task.id,
+    task,
+    input.created_by_user_id,
+  );
 
   // Heads-up to the assignee — fire-and-forget so a notification
   // hiccup never breaks the task write. Self-skip + inactive skip are
@@ -171,7 +202,7 @@ export async function createOpportunityTask(
   // profiles lookup; if it errors we fall back to "PPP admin" so the
   // email/bell still goes out.
   if (task.assigned_user_id) {
-    void (async () => {
+    afterResponse("task_assigned", async () => {
       try {
         let assignerName = "PPP admin";
         if (input.created_by_user_id) {
@@ -180,7 +211,10 @@ export async function createOpportunityTask(
             .select("sf_user_name, email")
             .eq("user_id", input.created_by_user_id)
             .maybeSingle();
-          const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+          const a = actor as {
+            sf_user_name?: string | null;
+            email?: string | null;
+          } | null;
           assignerName = personName(a?.sf_user_name, a?.email, "PPP admin");
         }
         // Phase B: derived opp name so the bell + email body reads
@@ -204,9 +238,12 @@ export async function createOpportunityTask(
           assignerName,
         });
       } catch (err) {
-        console.warn("[tasks] task_assigned notify failed:", err instanceof Error ? err.message : String(err));
+        console.warn(
+          "[tasks] task_assigned notify failed:",
+          err instanceof Error ? err.message : String(err),
+        );
       }
-    })();
+    });
   }
   return { ok: true, task };
 }
@@ -214,7 +251,7 @@ export async function createOpportunityTask(
 export async function completeOpportunityTask(
   opportunity_id: string,
   task_id: string,
-  completed_by_user_id?: string | null
+  completed_by_user_id?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -239,14 +276,20 @@ export async function completeOpportunityTask(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_opportunity_tasks", task_id, before, after, completed_by_user_id);
+  await logUpdate(
+    "commercial_opportunity_tasks",
+    task_id,
+    before,
+    after,
+    completed_by_user_id,
+  );
   return { ok: true };
 }
 
 export async function uncompleteOpportunityTask(
   opportunity_id: string,
   task_id: string,
-  acting_user_id?: string | null
+  acting_user_id?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -269,14 +312,20 @@ export async function uncompleteOpportunityTask(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_opportunity_tasks", task_id, before, after, acting_user_id);
+  await logUpdate(
+    "commercial_opportunity_tasks",
+    task_id,
+    before,
+    after,
+    acting_user_id,
+  );
   return { ok: true };
 }
 
 export async function deleteOpportunityTask(
   opportunity_id: string,
   task_id: string,
-  deleted_by_user_id?: string | null
+  deleted_by_user_id?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -297,7 +346,12 @@ export async function deleteOpportunityTask(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logDelete("commercial_opportunity_tasks", task_id, before, deleted_by_user_id);
+  await logDelete(
+    "commercial_opportunity_tasks",
+    task_id,
+    before,
+    deleted_by_user_id,
+  );
   void after;
   return { ok: true };
 }

@@ -196,11 +196,26 @@ async function dispatchCommercialNotification(input: {
     const sb = adminClient();
     // Recipient lookup — skip inactive users + grab their email for the
     // outbound notification email.
-    const { data: profile } = await sb
+    const { data: profile, error: profileErr } = await sb
       .from("profiles")
       .select("user_id, email, is_active, has_new_platform_access")
       .eq("user_id", input.recipientUserId)
       .maybeSingle();
+    /**
+     * A FAILED LOOKUP IS NOT A DEACTIVATED USER.
+     *
+     * `error` used to be destructured away, so a timed-out or failed profiles
+     * query produced `profile = null` and fell into the "inactive or access
+     * revoked" branch below — which returns `{ ok: true, written: false }`.
+     * Nothing logged, no row, no retry, and the caller told the notification
+     * had been handled. For the custom-rule cron that is permanent: it keeps
+     * its claim row on `ok: true` and never fires the alert again.
+     *
+     * Reported as a FAILURE so a retry is possible and the loss is visible.
+     */
+    if (profileErr) {
+      return { ok: false, error: `recipient lookup failed: ${profileErr.message}` };
+    }
     const p = profile as {
       user_id?: string;
       email?: string;
@@ -225,8 +240,24 @@ async function dispatchCommercialNotification(input: {
     //
     // Gated at the single dispatch chokepoint so it covers every kind at once
     // rather than each fan-out remembering to check.
-    const { isCrewOnlyUser } = await import("@/lib/commercial/crew-access");
-    if (await isCrewOnlyUser(input.recipientUserId)) {
+    /**
+     * `crewOnlyStatus`, not `isCrewOnlyUser`.
+     *
+     * `isCrewOnlyUser` fails CLOSED by design — it is the only enforcement
+     * point for the crew boundary, and failing open would serve a painter the
+     * whole book of business. But it returns the same `true` for "restricted"
+     * and "the roles table blipped", and using it here meant ONE transient
+     * error made every non-admin recipient look crew-only. Every notification
+     * in that window was dropped and reported as a success.
+     *
+     * Access still fails closed. Delivery fails LOUD.
+     */
+    const { crewOnlyStatus } = await import("@/lib/commercial/crew-access");
+    const crew = await crewOnlyStatus(input.recipientUserId);
+    if (crew === "unknown") {
+      return { ok: false, error: "could not resolve recipient role — not delivered" };
+    }
+    if (crew === "crew") {
       return { ok: true, written: false };
     }
     // Bell row first — even if email fails, the assignee sees the dot.

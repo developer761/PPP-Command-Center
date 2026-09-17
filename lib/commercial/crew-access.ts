@@ -83,6 +83,57 @@ export function isCrewAllowedPath(pathname: string): boolean {
  * treated as crew-only, so the failure mode is a painter briefly seeing their
  * own crew home instead of a wider surface. A support call, not a leak.
  */
+/**
+ * The same question, but able to say "I could not tell".
+ *
+ * `isCrewOnlyUser` deliberately fails CLOSED — see the note above; it is the
+ * only enforcement point for the crew boundary and failing open would serve a
+ * painter the whole book of business. That is right for ACCESS and wrong for
+ * anything else, because "restricted" and "the roles table blipped" come back
+ * as the same `true`.
+ *
+ * The notification dispatcher was reusing it and paying exactly that price: one
+ * transient error made every non-admin recipient look crew-only, so every
+ * notification in that window was discarded — and returned `ok: true`, so the
+ * cron marked its claim row done and never retried. A silent, permanent loss of
+ * an alert nobody knew was sent.
+ *
+ * So callers that are deciding something OTHER than access ask this instead and
+ * handle "unknown" honestly. `isCrewOnlyUser` keeps its signature and its
+ * fail-closed behaviour by folding unknown back to restricted.
+ */
+export async function crewOnlyStatus(userId: string): Promise<"crew" | "not-crew" | "unknown"> {
+  try {
+    const sb = commercialDb();
+    const { data, error } = await sb
+      .from("commercial_user_roles")
+      .select("role")
+      .eq("user_id", userId);
+    if (error) {
+      // An admin is never crew, and that is knowable from a different table —
+      // so this is only "unknown" for everyone else.
+      try {
+        const { getProfileByUserId } = await import("@/lib/auth/profile");
+        if ((await getProfileByUserId(userId))?.is_admin) return "not-crew";
+      } catch {
+        /* fall through */
+      }
+      return "unknown";
+    }
+    const roles = ((data ?? []) as { role: string }[]).map((r) => r.role);
+    if (roles.length === 0) return "not-crew";
+    return roles.includes("crew") && roles.every((r) => r === "crew") ? "crew" : "not-crew";
+  } catch {
+    try {
+      const { getProfileByUserId } = await import("@/lib/auth/profile");
+      if ((await getProfileByUserId(userId))?.is_admin) return "not-crew";
+    } catch {
+      /* fall through */
+    }
+    return "unknown";
+  }
+}
+
 export async function isCrewOnlyUser(userId: string): Promise<boolean> {
   const restrictOnError = async (): Promise<boolean> => {
     // Don't strand an admin behind a transient error on the roles table.

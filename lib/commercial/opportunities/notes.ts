@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import {
   insertCommercialOppNoteAddedNotifications,
@@ -51,7 +52,8 @@ function extractMentionTokens(body: string): string[] {
   const tokens = new Set<string>();
   // Match @email or @uuid. Stop at whitespace, end-of-string, or
   // common sentence punctuation.
-  const re = /@([A-Za-z0-9._%+\-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+  const re =
+    /@([A-Za-z0-9._%+\-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body))) {
     tokens.add(m[1].toLowerCase());
@@ -62,17 +64,32 @@ function extractMentionTokens(body: string): string[] {
 /** Resolve @ tokens (email-or-uuid) to profile.user_id values,
  *  filtering inactive users + users without platform access. */
 async function resolveMentionsToUserIds(
-  tokens: string[]
-): Promise<{ user_ids: string[]; resolved: Array<{ token: string; user_id: string; email: string; full_name: string | null }> }> {
+  tokens: string[],
+): Promise<{
+  user_ids: string[];
+  resolved: Array<{
+    token: string;
+    user_id: string;
+    email: string;
+    full_name: string | null;
+  }>;
+}> {
   if (tokens.length === 0) return { user_ids: [], resolved: [] };
   const sb = commercialDb();
   const emails = tokens.filter((t) => t.includes("@"));
   const uuids = tokens.filter((t) => !t.includes("@"));
-  const out: Array<{ token: string; user_id: string; email: string; full_name: string | null }> = [];
+  const out: Array<{
+    token: string;
+    user_id: string;
+    email: string;
+    full_name: string | null;
+  }> = [];
   if (emails.length > 0) {
     const { data } = await sb
       .from("profiles")
-      .select("user_id, email, sf_user_name, is_active, has_new_platform_access")
+      .select(
+        "user_id, email, sf_user_name, is_active, has_new_platform_access",
+      )
       .in("email", emails);
     for (const r of (data ?? []) as Array<{
       user_id: string;
@@ -83,13 +100,20 @@ async function resolveMentionsToUserIds(
     }>) {
       if (r.is_active === false) continue;
       if (!r.has_new_platform_access) continue;
-      out.push({ token: r.email.toLowerCase(), user_id: r.user_id, email: r.email, full_name: r.sf_user_name });
+      out.push({
+        token: r.email.toLowerCase(),
+        user_id: r.user_id,
+        email: r.email,
+        full_name: r.sf_user_name,
+      });
     }
   }
   if (uuids.length > 0) {
     const { data } = await sb
       .from("profiles")
-      .select("user_id, email, sf_user_name, is_active, has_new_platform_access")
+      .select(
+        "user_id, email, sf_user_name, is_active, has_new_platform_access",
+      )
       .in("user_id", uuids);
     for (const r of (data ?? []) as Array<{
       user_id: string;
@@ -100,10 +124,15 @@ async function resolveMentionsToUserIds(
     }>) {
       if (r.is_active === false) continue;
       if (!r.has_new_platform_access) continue;
-      out.push({ token: r.user_id, user_id: r.user_id, email: r.email, full_name: r.sf_user_name });
+      out.push({
+        token: r.user_id,
+        user_id: r.user_id,
+        email: r.email,
+        full_name: r.sf_user_name,
+      });
     }
   }
-  const dedup = new Map<string, typeof out[number]>();
+  const dedup = new Map<string, (typeof out)[number]>();
   for (const r of out) dedup.set(r.user_id, r);
   const merged = Array.from(dedup.values());
   return { user_ids: merged.map((r) => r.user_id), resolved: merged };
@@ -119,19 +148,22 @@ export { extractMentionTokens, resolveMentionsToUserIds };
  *  at the top of the list. Pinned notes are also visually badged in
  *  the UI. */
 export async function listOpportunityNotes(
-  opportunity_id: string
+  opportunity_id: string,
 ): Promise<OpportunityNoteWithAuthor[]> {
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_opportunity_notes")
     .select(
-      "*, author:profiles!commercial_opportunity_notes_author_user_id_fkey(email, sf_user_name)"
+      "*, author:profiles!commercial_opportunity_notes_author_user_id_fkey(email, sf_user_name)",
     )
     .eq("opportunity_id", opportunity_id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) {
-    console.warn("[commercial/opportunities/notes] list failed:", error.message);
+    console.warn(
+      "[commercial/opportunities/notes] list failed:",
+      error.message,
+    );
     return [];
   }
   type Row = OpportunityNote & {
@@ -149,13 +181,15 @@ export async function listOpportunityNotes(
     updated_at: r.updated_at,
     deleted_at: r.deleted_at,
     pinned_at: r.pinned_at ?? null,
-    mentioned_user_ids: Array.isArray(r.mentioned_user_ids) ? r.mentioned_user_ids : [],
+    mentioned_user_ids: Array.isArray(r.mentioned_user_ids)
+      ? r.mentioned_user_ids
+      : [],
     author_email: (() => {
-      const a = Array.isArray(r.author) ? r.author[0] ?? null : r.author;
+      const a = Array.isArray(r.author) ? (r.author[0] ?? null) : r.author;
       return a?.email ?? null;
     })(),
     author_full_name: (() => {
-      const a = Array.isArray(r.author) ? r.author[0] ?? null : r.author;
+      const a = Array.isArray(r.author) ? (r.author[0] ?? null) : r.author;
       return a?.sf_user_name ?? null;
     })(),
   }));
@@ -178,20 +212,23 @@ export async function listOpportunityNotes(
 /** Bulk: last-note-at per opp for the list-row "Last note 3d ago"
  *  badge. Returns only opps that have at least one note. */
 export async function listLastNoteByOpp(
-  opportunity_ids: string[]
+  opportunity_ids: string[],
 ): Promise<Map<string, { created_at: string; author_label: string | null }>> {
   if (opportunity_ids.length === 0) return new Map();
   const sb = commercialDb();
   const { data, error } = await sb
     .from("commercial_opportunity_notes")
     .select(
-      "opportunity_id, created_at, author:profiles!commercial_opportunity_notes_author_user_id_fkey(email, sf_user_name)"
+      "opportunity_id, created_at, author:profiles!commercial_opportunity_notes_author_user_id_fkey(email, sf_user_name)",
     )
     .in("opportunity_id", opportunity_ids)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
   if (error) {
-    console.warn("[commercial/opportunities/notes] listLastNoteByOpp:", error.message);
+    console.warn(
+      "[commercial/opportunities/notes] listLastNoteByOpp:",
+      error.message,
+    );
     return new Map();
   }
   type Row = {
@@ -202,10 +239,13 @@ export async function listLastNoteByOpp(
       | Array<{ email: string; sf_user_name: string | null }>
       | null;
   };
-  const out = new Map<string, { created_at: string; author_label: string | null }>();
+  const out = new Map<
+    string,
+    { created_at: string; author_label: string | null }
+  >();
   for (const raw of (data ?? []) as unknown as Row[]) {
     if (out.has(raw.opportunity_id)) continue; // only the most recent
-    const a = Array.isArray(raw.author) ? raw.author[0] ?? null : raw.author;
+    const a = Array.isArray(raw.author) ? (raw.author[0] ?? null) : raw.author;
     out.set(raw.opportunity_id, {
       created_at: raw.created_at,
       author_label: a ? personName(a.sf_user_name, a.email, "") || null : null,
@@ -221,7 +261,7 @@ export type AddOpportunityNoteInput = {
 };
 
 export async function addOpportunityNote(
-  input: AddOpportunityNoteInput
+  input: AddOpportunityNoteInput,
 ): Promise<{ ok: true; note: OpportunityNote } | { ok: false; error: string }> {
   const body = input.body?.trim() ?? "";
   if (!body) return { ok: false, error: "Note body can't be empty." };
@@ -238,14 +278,16 @@ export async function addOpportunityNote(
     .select("id, account_id, title, client_name, property_street, deleted_at")
     .eq("id", input.opportunity_id)
     .maybeSingle();
-  if (!opp || opp.deleted_at) return { ok: false, error: "Opportunity not found." };
+  if (!opp || opp.deleted_at)
+    return { ok: false, error: "Opportunity not found." };
   const { data: acct } = await sb
     .from("commercial_accounts")
     // Phase B: pull company_name for derivedOppName.
     .select("id, company_name, deleted_at")
     .eq("id", opp.account_id)
     .maybeSingle();
-  if (!acct || acct.deleted_at) return { ok: false, error: "Account not found." };
+  if (!acct || acct.deleted_at)
+    return { ok: false, error: "Account not found." };
 
   // Parse @mentions from the body + resolve to active user_ids
   // server-side. Doing it before the insert means the stored
@@ -271,7 +313,12 @@ export async function addOpportunityNote(
     .single();
   if (error) return { ok: false, error: error.message };
   const note = data as OpportunityNote;
-  await logInsert("commercial_opportunity_notes", note.id, note, input.author_user_id);
+  await logInsert(
+    "commercial_opportunity_notes",
+    note.id,
+    note,
+    input.author_user_id,
+  );
 
   // Fire-and-forget notification fanout. TWO branches:
   //   1. Per-user "you were mentioned" notification → personal copy,
@@ -280,7 +327,7 @@ export async function addOpportunityNote(
   //      member on the opp EXCEPT (a) the author + (b) any user who
   //      already got the @mention version above. Stops the same person
   //      from getting two emails for one note.
-  void (async () => {
+  afterResponse("note_added", async () => {
     try {
       let actorName = "PPP admin";
       if (input.author_user_id) {
@@ -289,10 +336,14 @@ export async function addOpportunityNote(
           .select("sf_user_name, email")
           .eq("user_id", input.author_user_id)
           .maybeSingle();
-        const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+        const a = actor as {
+          sf_user_name?: string | null;
+          email?: string | null;
+        } | null;
         actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
       }
-      const preview = body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
+      const preview =
+        body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
 
       // Phase B: derived opp name for both bells so users see the CEO's
       // standardized {account} - {client} - {location} format instead
@@ -333,10 +384,10 @@ export async function addOpportunityNote(
     } catch (err) {
       console.warn(
         "[notes] note_added notify failed:",
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     }
-  })();
+  });
   return { ok: true, note };
 }
 
@@ -353,7 +404,7 @@ export async function addOpportunityNote(
 export async function togglePinOpportunityNote(
   opportunity_id: string,
   note_id: string,
-  acting_user_id?: string | null
+  acting_user_id?: string | null,
 ): Promise<{ ok: true; pinned: boolean } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -373,7 +424,13 @@ export async function togglePinOpportunityNote(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_opportunity_notes", note_id, before, after, acting_user_id);
+  await logUpdate(
+    "commercial_opportunity_notes",
+    note_id,
+    before,
+    after,
+    acting_user_id,
+  );
   return { ok: true, pinned: !wasPinned };
 }
 
@@ -381,7 +438,7 @@ export async function editOpportunityNote(
   opportunity_id: string,
   note_id: string,
   body: string,
-  acting_user_id?: string | null
+  acting_user_id?: string | null,
 ): Promise<{ ok: true; note: OpportunityNote } | { ok: false; error: string }> {
   const trimmed = body?.trim() ?? "";
   if (!trimmed) return { ok: false, error: "Note body can't be empty." };
@@ -413,8 +470,12 @@ export async function editOpportunityNote(
   // and left mentioned_user_ids stale. Resolve server-side (client can't forge).
   const tokens = extractMentionTokens(trimmed);
   const { user_ids: newMentionedIds } =
-    tokens.length > 0 ? await resolveMentionsToUserIds(tokens) : { user_ids: [] as string[] };
-  const priorMentioned = Array.isArray((before as { mentioned_user_ids?: string[] }).mentioned_user_ids)
+    tokens.length > 0
+      ? await resolveMentionsToUserIds(tokens)
+      : { user_ids: [] as string[] };
+  const priorMentioned = Array.isArray(
+    (before as { mentioned_user_ids?: string[] }).mentioned_user_ids,
+  )
     ? (before as { mentioned_user_ids: string[] }).mentioned_user_ids
     : [];
   const priorSet = new Set(priorMentioned);
@@ -427,12 +488,18 @@ export async function editOpportunityNote(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_opportunity_notes", note_id, before, after, acting_user_id);
+  await logUpdate(
+    "commercial_opportunity_notes",
+    note_id,
+    before,
+    after,
+    acting_user_id,
+  );
 
   // Notify only the NEWLY-mentioned users (fire-and-forget) — people already
   // mentioned in the original note aren't re-notified on every edit.
   if (freshlyMentioned.length > 0) {
-    void (async () => {
+    afterResponse("note_mention", async () => {
       try {
         const { data: opp } = await sb
           .from("commercial_opportunities")
@@ -452,13 +519,23 @@ export async function editOpportunityNote(
             .select("sf_user_name, email")
             .eq("user_id", acting_user_id)
             .maybeSingle();
-          const a = actor as { sf_user_name?: string | null; email?: string | null } | null;
+          const a = actor as {
+            sf_user_name?: string | null;
+            email?: string | null;
+          } | null;
           actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
         }
-        const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240).trimEnd()}…` : trimmed;
+        const preview =
+          trimmed.length > 240
+            ? `${trimmed.slice(0, 240).trimEnd()}…`
+            : trimmed;
         const displayName = derivedOppName(
-          opp as { title: string; client_name: string | null; property_street: string | null },
-          (acct as { company_name?: string } | null)?.company_name ?? null
+          opp as {
+            title: string;
+            client_name: string | null;
+            property_street: string | null;
+          },
+          (acct as { company_name?: string } | null)?.company_name ?? null,
         );
         await insertCommercialNoteMentionNotifications({
           opportunityId: opportunity_id,
@@ -470,9 +547,12 @@ export async function editOpportunityNote(
           mentionedUserIds: freshlyMentioned,
         });
       } catch (err) {
-        console.warn("[notes] edit re-mention notify failed:", err instanceof Error ? err.message : String(err));
+        console.warn(
+          "[notes] edit re-mention notify failed:",
+          err instanceof Error ? err.message : String(err),
+        );
       }
-    })();
+    });
   }
   return { ok: true, note: after as OpportunityNote };
 }
@@ -480,7 +560,7 @@ export async function editOpportunityNote(
 export async function deleteOpportunityNote(
   opportunity_id: string,
   note_id: string,
-  acting_user_id?: string | null
+  acting_user_id?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -508,7 +588,12 @@ export async function deleteOpportunityNote(
     .select("*")
     .single();
   if (error) return { ok: false, error: error.message };
-  await logDelete("commercial_opportunity_notes", note_id, before, acting_user_id);
+  await logDelete(
+    "commercial_opportunity_notes",
+    note_id,
+    before,
+    acting_user_id,
+  );
   void after;
   return { ok: true };
 }

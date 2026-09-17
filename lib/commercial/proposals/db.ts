@@ -13,6 +13,7 @@
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { proposalRecordId } from "@/lib/commercial/record-ids";
@@ -121,12 +122,20 @@ export type CommercialProposal = {
 /** Lift the embedded opportunity's project_number onto the proposal row. */
 function flattenProjectNumber(row: unknown): CommercialProposal {
   const r = row as CommercialProposal & {
-    opportunity?: { project_number?: string | null } | Array<{ project_number?: string | null }> | null;
+    opportunity?:
+      | { project_number?: string | null }
+      | Array<{ project_number?: string | null }>
+      | null;
   };
-  const embed = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity ?? null;
+  const embed = Array.isArray(r.opportunity)
+    ? (r.opportunity[0] ?? null)
+    : (r.opportunity ?? null);
   const { opportunity: _drop, ...rest } = r;
   void _drop;
-  return { ...(rest as CommercialProposal), project_number: embed?.project_number ?? null };
+  return {
+    ...(rest as CommercialProposal),
+    project_number: embed?.project_number ?? null,
+  };
 }
 
 /**
@@ -148,7 +157,9 @@ export function proposalDisplayId(p: {
 }): string {
   const shared = proposalRecordId(p.project_number, p.revision_number);
   if (shared) return shared;
-  return p.proposal_seq == null ? "" : `PROP-${String(p.proposal_seq).padStart(4, "0")}`;
+  return p.proposal_seq == null
+    ? ""
+    : `PROP-${String(p.proposal_seq).padStart(4, "0")}`;
 }
 
 export type CommercialProposalLineItem = {
@@ -298,7 +309,6 @@ export async function findReusableDraftProposal(input: {
   return items.length === 0 ? candidate : null;
 }
 
-
 /**
  * A new proposal means somebody is pricing this job, so the deal belongs at
  * Estimating.
@@ -317,11 +327,13 @@ export async function findReusableDraftProposal(input: {
  *
  * Best-effort: creating a proposal must never fail because the stage move did.
  */
-async function advanceDealToEstimating(oppId: string, actorId: string | null): Promise<void> {
+async function advanceDealToEstimating(
+  oppId: string,
+  actorId: string | null,
+): Promise<void> {
   try {
-    const { autoAdvanceOpportunity } = await import(
-      "@/lib/commercial/opportunities/auto-advance"
-    );
+    const { autoAdvanceOpportunity } =
+      await import("@/lib/commercial/opportunities/auto-advance");
     await autoAdvanceOpportunity({
       oppId,
       target: "estimating",
@@ -336,10 +348,9 @@ async function advanceDealToEstimating(oppId: string, actorId: string | null): P
 }
 
 export async function createProposal(
-  input: CreateProposalInput
+  input: CreateProposalInput,
 ): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const sb = commercialDb();
   // F.1 post-audit fix: previously did SELECT max + INSERT which raced
@@ -361,7 +372,7 @@ export async function createProposal(
       p_pdf_show_line_prices: input.pdf_show_line_prices ?? false,
       p_estimator_snapshot_json: input.estimator_snapshot_json ?? {},
       p_created_by_user_id: input.created_by_user_id ?? null,
-    }
+    },
   );
   if (!rpcErr && rpcResult) {
     const newId = rpcResult as string;
@@ -383,7 +394,7 @@ export async function createProposal(
       "commercial_proposals",
       proposal.id,
       proposal,
-      input.created_by_user_id ?? null
+      input.created_by_user_id ?? null,
     );
     if (input.parent_proposal_id) {
       await updateProposalStatus({
@@ -407,7 +418,10 @@ export async function createProposal(
       // normal, and the deal is still at Proposal. Re-pricing a deal is a
       // person dragging it back, which the engine leaves alone.
     }
-    await advanceDealToEstimating(input.opportunity_id, input.created_by_user_id ?? null);
+    await advanceDealToEstimating(
+      input.opportunity_id,
+      input.created_by_user_id ?? null,
+    );
     return { ok: true, proposal };
   }
 
@@ -419,8 +433,9 @@ export async function createProposal(
     .is("deleted_at", null)
     .order("revision_number", { ascending: false })
     .limit(1);
-  const nextRev = ((existing?.[0] as { revision_number?: number } | undefined)
-    ?.revision_number ?? 0) + 1;
+  const nextRev =
+    ((existing?.[0] as { revision_number?: number } | undefined)
+      ?.revision_number ?? 0) + 1;
   const { data, error } = await sb
     .from("commercial_proposals")
     .insert({
@@ -458,7 +473,7 @@ export async function createProposal(
     "commercial_proposals",
     proposal.id,
     proposal,
-    input.created_by_user_id ?? null
+    input.created_by_user_id ?? null,
   );
   if (input.parent_proposal_id) {
     await updateProposalStatus({
@@ -467,7 +482,10 @@ export async function createProposal(
       acting_user_id: input.created_by_user_id ?? null,
     });
   }
-  await advanceDealToEstimating(input.opportunity_id, input.created_by_user_id ?? null);
+  await advanceDealToEstimating(
+    input.opportunity_id,
+    input.created_by_user_id ?? null,
+  );
   return { ok: true, proposal };
 }
 
@@ -490,10 +508,9 @@ export type UpdateProposalInput = {
 };
 
 export async function updateProposal(
-  input: UpdateProposalInput
+  input: UpdateProposalInput,
 ): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const patch: Record<string, unknown> = {
     updated_by_user_id: input.updated_by_user_id ?? null,
@@ -504,8 +521,10 @@ export async function updateProposal(
   if (input.alternate_notes !== undefined)
     patch.alternate_notes = input.alternate_notes;
   if (input.bid_notes !== undefined) patch.bid_notes = input.bid_notes;
-  if (input.exclusion_ids !== undefined) patch.exclusion_ids = input.exclusion_ids;
-  if (input.custom_exclusions !== undefined) patch.custom_exclusions = input.custom_exclusions;
+  if (input.exclusion_ids !== undefined)
+    patch.exclusion_ids = input.exclusion_ids;
+  if (input.custom_exclusions !== undefined)
+    patch.custom_exclusions = input.custom_exclusions;
   if (input.pdf_show_line_prices !== undefined)
     patch.pdf_show_line_prices = input.pdf_show_line_prices;
   if (input.pdf_compact !== undefined) patch.pdf_compact = input.pdf_compact;
@@ -516,7 +535,8 @@ export async function updateProposal(
     }
     patch.final_price_override_cents = v == null ? null : Math.round(v);
   }
-  if (input.bid_set_date !== undefined) patch.bid_set_date = input.bid_set_date || null;
+  if (input.bid_set_date !== undefined)
+    patch.bid_set_date = input.bid_set_date || null;
   if (input.estimator_snapshot_json !== undefined)
     patch.estimator_snapshot_json = input.estimator_snapshot_json;
 
@@ -554,14 +574,15 @@ export async function updateProposal(
   if (input.final_price_override_cents !== undefined) {
     await recomputeProposalTotal(proposal.id, input.updated_by_user_id ?? null);
     const ov = input.final_price_override_cents;
-    proposal.total_cents = ov != null ? Math.round(ov) : await proposalLineItemSumCents(proposal.id);
+    proposal.total_cents =
+      ov != null ? Math.round(ov) : await proposalLineItemSumCents(proposal.id);
   }
   await logUpdate(
     "commercial_proposals",
     proposal.id,
     before,
     proposal,
-    input.updated_by_user_id ?? null
+    input.updated_by_user_id ?? null,
   );
   return { ok: true, proposal };
 }
@@ -596,7 +617,7 @@ export async function updateProposal(
  */
 function dealAlreadyConsistentWithProposal(
   deal: { status: string; sub_status: string | null },
-  target: { status: string; sub: string }
+  target: { status: string; sub: string },
 ): boolean {
   if (deal.status === target.status && deal.sub_status === target.sub) {
     return true;
@@ -633,8 +654,7 @@ export async function updateProposalStatus(input: {
    *  so proposal moves always align the opp automatically. */
   _skipOppCascade?: boolean;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -661,7 +681,8 @@ export async function updateProposalStatus(input: {
   ) {
     return {
       ok: false,
-      error: "A won or lost proposal can't be replaced by a revision — reopen it to Sent first.",
+      error:
+        "A won or lost proposal can't be replaced by a revision — reopen it to Sent first.",
     };
   }
   const patch: Record<string, unknown> = {
@@ -691,7 +712,7 @@ export async function updateProposalStatus(input: {
     proposal.id,
     before,
     proposal,
-    input.acting_user_id
+    input.acting_user_id,
   );
 
   // Karan 2026-07-15: cascade proposal state → parent deal column so
@@ -720,7 +741,11 @@ export async function updateProposalStatus(input: {
         .eq("id", beforeRow.opportunity_id)
         .is("deleted_at", null)
         .maybeSingle();
-      const opp = oppRow as { id: string; status: string; sub_status: string | null } | null;
+      const opp = oppRow as {
+        id: string;
+        status: string;
+        sub_status: string | null;
+      } | null;
       const postSaleStatuses = new Set([
         "pre_construction",
         "in_progress",
@@ -742,110 +767,110 @@ export async function updateProposalStatus(input: {
         if (input.to_status === "draft" && opp.status === "qualifying") {
           // Valid deal state for a draft proposal; no cascade needed.
         } else {
-        let dealStatus: string | null = null;
-        let dealSub: string | null = null;
-        switch (input.to_status) {
-          case "draft":
-            dealStatus = "estimating";
-            dealSub = "estimating";
-            break;
-          case "pending_approval":
-            dealStatus = "estimating";
-            dealSub = "proposal_pending_approval";
-            break;
-          case "approved":
-            // R1d: internal approval — the customer hasn't seen anything yet,
-            // so keep the deal in Estimating (proposal awaiting the send). Same
-            // tuple as pending_approval; the deal only advances on Send.
-            dealStatus = "estimating";
-            dealSub = "proposal_pending_approval";
-            break;
-          case "sent":
-            dealStatus = "proposal";
-            dealSub = "sent";
-            break;
-          case "won":
-            dealStatus = "pre_sale_closed";
-            dealSub = "won";
-            break;
-          case "lost":
-            dealStatus = "pre_sale_closed";
-            dealSub = "lost";
-            break;
-          // expired / superseded fall through — no cascade.
-        }
-        // Only fire if the deal isn't already in a consistent state —
-        // which includes RFP-with-a-draft and Follow-Up-with-a-sent, not
-        // just an exact tuple match.
-        if (
-          dealStatus &&
-          !dealAlreadyConsistentWithProposal(
-            { status: opp.status, sub_status: opp.sub_status },
-            { status: dealStatus, sub: dealSub ?? "" }
-          )
-        ) {
-          const autoKey = targetForProposalStatus(input.to_status);
-          if (autoKey) {
-            // Forward-only, through the shared engine. This cascade used to
-            // move the deal in whichever direction the proposal implied, so
-            // dragging a sent proposal back to Draft dragged the deal back to
-            // Estimating with it. A person walking a proposal backwards is
-            // usually correcting the PROPOSAL, not declaring the deal
-            // regressed; if they mean the deal too, they move the deal.
-            const { autoAdvanceOpportunity } = await import(
-              "@/lib/commercial/opportunities/auto-advance"
-            );
-            const res = await autoAdvanceOpportunity({
-              oppId: beforeRow.opportunity_id,
-              target: autoKey,
-              // The proposal changed in this request, so it is by definition
-              // the most current signal — no earlier human move outranks it.
-              artifactAt: new Date().toISOString(),
-              source: "auto_advance",
-              reason: `Proposal marked ${input.to_status.replace(/_/g, " ")}`,
-              actingUserId: input.acting_user_id,
-            });
-            if (!res.moved && res.reason === "error") {
-              console.warn(
-                `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${res.detail}`
-              );
-            }
-          } else {
-            // `lost` has no automatic target on purpose — closing a deal as
-            // lost requires a loss_reason, and the engine must never invent
-            // one. A person marking the proposal lost is the decision, so this
-            // stays a direct, user-attributed write.
-            const { changeOpportunityStatus } = await import(
-              "@/lib/commercial/opportunities/status"
-            );
-            const flip = await changeOpportunityStatus({
-              opp_id: beforeRow.opportunity_id,
-              // Cast — the switch above only sets dealStatus to values
-              // that are valid OpportunityStatus enum members.
-              to_status: dealStatus as Parameters<typeof changeOpportunityStatus>[0]["to_status"],
-              to_sub_status: dealSub,
-              acting_user_id: input.acting_user_id,
-              _skipDagCheck: true,
-              // Karan 2026-07-15 (round 6): don't let the deal update
-              // fan back out to sibling proposals — this cascade was
-              // triggered by a proposal move, so promoting/demoting
-              // siblings would make "one card moved" look like "all
-              // cards moved together" on the proposal kanban.
-              _skipProposalCascade: true,
-            });
-            if (!flip.ok) {
-              console.warn(
-                `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${flip.error}`
-              );
+          let dealStatus: string | null = null;
+          let dealSub: string | null = null;
+          switch (input.to_status) {
+            case "draft":
+              dealStatus = "estimating";
+              dealSub = "estimating";
+              break;
+            case "pending_approval":
+              dealStatus = "estimating";
+              dealSub = "proposal_pending_approval";
+              break;
+            case "approved":
+              // R1d: internal approval — the customer hasn't seen anything yet,
+              // so keep the deal in Estimating (proposal awaiting the send). Same
+              // tuple as pending_approval; the deal only advances on Send.
+              dealStatus = "estimating";
+              dealSub = "proposal_pending_approval";
+              break;
+            case "sent":
+              dealStatus = "proposal";
+              dealSub = "sent";
+              break;
+            case "won":
+              dealStatus = "pre_sale_closed";
+              dealSub = "won";
+              break;
+            case "lost":
+              dealStatus = "pre_sale_closed";
+              dealSub = "lost";
+              break;
+            // expired / superseded fall through — no cascade.
+          }
+          // Only fire if the deal isn't already in a consistent state —
+          // which includes RFP-with-a-draft and Follow-Up-with-a-sent, not
+          // just an exact tuple match.
+          if (
+            dealStatus &&
+            !dealAlreadyConsistentWithProposal(
+              { status: opp.status, sub_status: opp.sub_status },
+              { status: dealStatus, sub: dealSub ?? "" },
+            )
+          ) {
+            const autoKey = targetForProposalStatus(input.to_status);
+            if (autoKey) {
+              // Forward-only, through the shared engine. This cascade used to
+              // move the deal in whichever direction the proposal implied, so
+              // dragging a sent proposal back to Draft dragged the deal back to
+              // Estimating with it. A person walking a proposal backwards is
+              // usually correcting the PROPOSAL, not declaring the deal
+              // regressed; if they mean the deal too, they move the deal.
+              const { autoAdvanceOpportunity } =
+                await import("@/lib/commercial/opportunities/auto-advance");
+              const res = await autoAdvanceOpportunity({
+                oppId: beforeRow.opportunity_id,
+                target: autoKey,
+                // The proposal changed in this request, so it is by definition
+                // the most current signal — no earlier human move outranks it.
+                artifactAt: new Date().toISOString(),
+                source: "auto_advance",
+                reason: `Proposal marked ${input.to_status.replace(/_/g, " ")}`,
+                actingUserId: input.acting_user_id,
+              });
+              if (!res.moved && res.reason === "error") {
+                console.warn(
+                  `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${res.detail}`,
+                );
+              }
+            } else {
+              // `lost` has no automatic target on purpose — closing a deal as
+              // lost requires a loss_reason, and the engine must never invent
+              // one. A person marking the proposal lost is the decision, so this
+              // stays a direct, user-attributed write.
+              const { changeOpportunityStatus } =
+                await import("@/lib/commercial/opportunities/status");
+              const flip = await changeOpportunityStatus({
+                opp_id: beforeRow.opportunity_id,
+                // Cast — the switch above only sets dealStatus to values
+                // that are valid OpportunityStatus enum members.
+                to_status: dealStatus as Parameters<
+                  typeof changeOpportunityStatus
+                >[0]["to_status"],
+                to_sub_status: dealSub,
+                acting_user_id: input.acting_user_id,
+                _skipDagCheck: true,
+                // Karan 2026-07-15 (round 6): don't let the deal update
+                // fan back out to sibling proposals — this cascade was
+                // triggered by a proposal move, so promoting/demoting
+                // siblings would make "one card moved" look like "all
+                // cards moved together" on the proposal kanban.
+                _skipProposalCascade: true,
+              });
+              if (!flip.ok) {
+                console.warn(
+                  `[updateProposalStatus] deal cascade failed for ${beforeRow.opportunity_id}: ${flip.error}`,
+                );
+              }
             }
           }
-        }
         } // end of else (draft-at-qualifying skip)
       }
     } catch (err) {
       console.warn(
         "[updateProposalStatus] deal cascade threw:",
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error ? err.message : String(err),
       );
     }
   }
@@ -855,7 +880,7 @@ export async function updateProposalStatus(input: {
 
 export async function softDeleteProposal(
   id: string,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -921,13 +946,21 @@ export async function markProposalOutcome(input: {
     .is("deleted_at", null)
     .maybeSingle();
   if (!proposalRow) return { ok: false, error: "Proposal not found." };
-  const proposalBefore = proposalRow as { id: string; opportunity_id: string; status: string };
+  const proposalBefore = proposalRow as {
+    id: string;
+    opportunity_id: string;
+    status: string;
+  };
   // 2026-07-28 re-audit: a SUPERSEDED revision (replaced by a newer one) must
   // not be markable Won/Lost — the kanban still renders superseded cards as
   // draggable, so dragging the stale R1 to Won would mark the replaced revision
   // and cascade the deal off a dead record. Everything else stays free-drag.
   if (proposalBefore.status === "superseded") {
-    return { ok: false, error: "This revision was replaced by a newer one — mark the latest revision instead." };
+    return {
+      ok: false,
+      error:
+        "This revision was replaced by a newer one — mark the latest revision instead.",
+    };
   }
   // Karan 2026-07-15 (round 5): dropped the "only Sent can be Won/Lost"
   // guard. The proposals kanban is fully free-drag now — a user might
@@ -951,7 +984,8 @@ export async function markProposalOutcome(input: {
     .select("account_id")
     .eq("id", proposalBefore.opportunity_id)
     .maybeSingle();
-  const accountId = (oppRow as { account_id: string } | null)?.account_id ?? null;
+  const accountId =
+    (oppRow as { account_id: string } | null)?.account_id ?? null;
   // Flip parent deal — best-effort, and NOT unconditionally.
   //
   // Karan 2026-08: "I tried putting the proposal into win. The logic is a bit
@@ -996,9 +1030,8 @@ export async function markProposalOutcome(input: {
       // LOST, marking a proposal won made the engine correctly decline (a lost
       // deal is terminal) and then this writer flipped lost → won behind it.
       // Resurrecting a dead deal is a decision a person should make.
-      const { autoAdvanceOpportunity } = await import(
-        "@/lib/commercial/opportunities/auto-advance"
-      );
+      const { autoAdvanceOpportunity } =
+        await import("@/lib/commercial/opportunities/auto-advance");
       const res = await autoAdvanceOpportunity({
         oppId: proposalBefore.opportunity_id,
         target: "won",
@@ -1015,7 +1048,7 @@ export async function markProposalOutcome(input: {
         dealLeftInDelivery = dealStatus;
         if (res.reason === "error") {
           console.warn(
-            `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${res.detail}`
+            `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${res.detail}`,
           );
         }
       }
@@ -1030,9 +1063,8 @@ export async function markProposalOutcome(input: {
       // no lost target — closing as lost requires a loss_reason — but it is
       // marked as automatic now so the timeline and the notification suppression
       // treat it like every other cascade.
-      const { changeOpportunityStatus } = await import(
-        "@/lib/commercial/opportunities/status"
-      );
+      const { changeOpportunityStatus } =
+        await import("@/lib/commercial/opportunities/status");
       const flip = await changeOpportunityStatus({
         opp_id: proposalBefore.opportunity_id,
         to_status: "pre_sale_closed",
@@ -1043,7 +1075,7 @@ export async function markProposalOutcome(input: {
       });
       if (!flip.ok) {
         console.warn(
-          `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+          `[markProposalOutcome] opp flip failed for ${proposalBefore.opportunity_id}: ${flip.error}`,
         );
       }
     }
@@ -1059,12 +1091,14 @@ export async function markProposalOutcome(input: {
   // reaching both hooks is harmless.
   if (input.outcome === "won") {
     try {
-      const { snapshotAcceptedContract } = await import(
-        "@/lib/commercial/projects/accepted-contract"
-      );
+      const { snapshotAcceptedContract } =
+        await import("@/lib/commercial/projects/accepted-contract");
       await snapshotAcceptedContract(proposalBefore.opportunity_id);
     } catch (err) {
-      console.warn(`[markProposalOutcome] accepted-contract snapshot threw:`, err);
+      console.warn(
+        `[markProposalOutcome] accepted-contract snapshot threw:`,
+        err,
+      );
     }
   }
 
@@ -1157,9 +1191,8 @@ export async function reopenProposal(input: {
   // otherwise we'd erase real forward progress (e.g. pre_construction).
   if (oppData && oppData.status === "pre_sale_closed") {
     try {
-      const { changeOpportunityStatus } = await import(
-        "@/lib/commercial/opportunities/status"
-      );
+      const { changeOpportunityStatus } =
+        await import("@/lib/commercial/opportunities/status");
       const flip = await changeOpportunityStatus({
         opp_id: proposalBefore.opportunity_id,
         to_status: "proposal",
@@ -1171,7 +1204,7 @@ export async function reopenProposal(input: {
         dealReopened = true;
       } else {
         console.warn(
-          `[reopenProposal] deal reopen failed for ${proposalBefore.opportunity_id}: ${flip.error}`
+          `[reopenProposal] deal reopen failed for ${proposalBefore.opportunity_id}: ${flip.error}`,
         );
       }
     } catch (err) {
@@ -1217,18 +1250,20 @@ export async function isProposalApprover(userId: string): Promise<boolean> {
     .select("email, is_active, has_new_platform_access")
     .eq("user_id", userId)
     .maybeSingle();
-  const p = prof as
-    | { email?: string | null; is_active?: boolean | null; has_new_platform_access?: boolean | null }
-    | null;
+  const p = prof as {
+    email?: string | null;
+    is_active?: boolean | null;
+    has_new_platform_access?: boolean | null;
+  } | null;
   if (!p) return false;
-  if (p.is_active === false || p.has_new_platform_access === false) return false;
+  if (p.is_active === false || p.has_new_platform_access === false)
+    return false;
   const email = p.email ?? null;
   if (!email) return false;
 
   const { normalizeEmail } = await import("@/lib/auth/admin");
-  const { getOperatingCompany } = await import(
-    "@/lib/commercial/operating-company/db"
-  );
+  const { getOperatingCompany } =
+    await import("@/lib/commercial/operating-company/db");
   const oc = await getOperatingCompany();
   const norm = normalizeEmail(email);
   if (oc.approver_emails.some((e) => normalizeEmail(e) === norm)) return true;
@@ -1249,7 +1284,10 @@ export async function isProposalApprover(userId: string): Promise<boolean> {
     .select("is_admin")
     .eq("user_id", userId)
     .maybeSingle();
-  return (adminRow as { is_admin?: boolean } | null)?.is_admin === true || isAdminEmail(email);
+  return (
+    (adminRow as { is_admin?: boolean } | null)?.is_admin === true ||
+    isAdminEmail(email)
+  );
 }
 
 /** Resolve the set of user IDs allowed to approve proposals — the fanout target
@@ -1258,12 +1296,13 @@ export async function isProposalApprover(userId: string): Promise<boolean> {
  *  that still have Commercial access. Independent of admin status. */
 export async function listProposalApproverUserIds(): Promise<string[]> {
   const sb = commercialDb();
-  const { getOperatingCompany } = await import(
-    "@/lib/commercial/operating-company/db"
-  );
+  const { getOperatingCompany } =
+    await import("@/lib/commercial/operating-company/db");
   const oc = await getOperatingCompany();
   const { normalizeEmail } = await import("@/lib/auth/admin");
-  const approverEmails = new Set(oc.approver_emails.map((e) => normalizeEmail(e)));
+  const approverEmails = new Set(
+    oc.approver_emails.map((e) => normalizeEmail(e)),
+  );
 
   const { data: profs } = await sb
     .from("profiles")
@@ -1297,12 +1336,13 @@ export async function listProposalApproverUserIds(): Promise<string[]> {
  *  has-access filter as the approver list. Independent of approver/admin. */
 export async function listProposalReceiverUserIds(): Promise<string[]> {
   const sb = commercialDb();
-  const { getOperatingCompany } = await import(
-    "@/lib/commercial/operating-company/db"
-  );
+  const { getOperatingCompany } =
+    await import("@/lib/commercial/operating-company/db");
   const oc = await getOperatingCompany();
   const { normalizeEmail } = await import("@/lib/auth/admin");
-  const receiverEmails = new Set((oc.receiver_emails ?? []).map((e) => normalizeEmail(e)));
+  const receiverEmails = new Set(
+    (oc.receiver_emails ?? []).map((e) => normalizeEmail(e)),
+  );
   if (receiverEmails.size === 0) return [];
 
   const { data: profs } = await sb
@@ -1329,7 +1369,12 @@ export async function listProposalReceiverUserIds(): Promise<string[]> {
  *  Best-effort — a failure never blocks the decision. */
 async function notifyProposalReceivers(input: {
   decision: "approved" | "changes_requested";
-  proposal: { id: string; revision_number: number; opportunity_id: string; header_json: { gc_company?: string | null } };
+  proposal: {
+    id: string;
+    revision_number: number;
+    opportunity_id: string;
+    header_json: { gc_company?: string | null };
+  };
   actorUserId: string;
   requesterUserId: string | null;
   actorName: string;
@@ -1338,24 +1383,29 @@ async function notifyProposalReceivers(input: {
   try {
     const receiverIds = await listProposalReceiverUserIds();
     if (receiverIds.length === 0) return;
-    const already = new Set([input.actorUserId, input.requesterUserId].filter(Boolean) as string[]);
-    const { insertCommercialProposalApprovalDecidedNotification } = await import(
-      "@/lib/notifications/commercial-events"
+    const already = new Set(
+      [input.actorUserId, input.requesterUserId].filter(Boolean) as string[],
     );
+    const { insertCommercialProposalApprovalDecidedNotification } =
+      await import("@/lib/notifications/commercial-events");
     for (const uid of receiverIds) {
       if (already.has(uid)) continue;
-      void insertCommercialProposalApprovalDecidedNotification({
-        decision: input.decision,
-        proposalId: input.proposal.id,
-        revisionNumber: input.proposal.revision_number,
-        opportunityId: input.proposal.opportunity_id,
-        gcCompany: input.proposal.header_json.gc_company?.trim() ?? null,
-        recipientUserId: uid,
-        actingUserId: input.actorUserId,
-        actorName: input.actorName,
-        note: input.note,
-        forReceiver: true,
-      }).catch((err) => console.warn("[notifyProposalReceivers] one recipient failed:", err));
+      afterResponse("proposal", () =>
+        insertCommercialProposalApprovalDecidedNotification({
+          decision: input.decision,
+          proposalId: input.proposal.id,
+          revisionNumber: input.proposal.revision_number,
+          opportunityId: input.proposal.opportunity_id,
+          gcCompany: input.proposal.header_json.gc_company?.trim() ?? null,
+          recipientUserId: uid,
+          actingUserId: input.actorUserId,
+          actorName: input.actorName,
+          note: input.note,
+          forReceiver: true,
+        }).catch((err) =>
+          console.warn("[notifyProposalReceivers] one recipient failed:", err),
+        ),
+      );
     }
   } catch (err) {
     console.warn("[notifyProposalReceivers] failed:", err);
@@ -1371,7 +1421,10 @@ async function resolveActorName(userId: string): Promise<string> {
     .select("sf_user_name, email")
     .eq("user_id", userId)
     .maybeSingle();
-  const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
+  const p = prof as {
+    sf_user_name?: string | null;
+    email?: string | null;
+  } | null;
   return personName(p?.sf_user_name, p?.email, "A teammate");
 }
 
@@ -1381,7 +1434,7 @@ async function resolveActorName(userId: string): Promise<string> {
  *  stamp the metadata doesn't roll back the status flip, but is logged. */
 async function patchApprovalFields(
   proposalId: string,
-  fields: Record<string, unknown>
+  fields: Record<string, unknown>,
 ): Promise<void> {
   const sb = commercialDb();
   const { error } = await sb
@@ -1390,7 +1443,7 @@ async function patchApprovalFields(
     .eq("id", proposalId);
   if (error) {
     console.warn(
-      `[proposals] approval-field patch failed for ${proposalId}: ${error.message}`
+      `[proposals] approval-field patch failed for ${proposalId}: ${error.message}`,
     );
   }
 }
@@ -1404,8 +1457,7 @@ export async function requestProposalApproval(input: {
   actor_user_id: string;
   actor_name?: string;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const proposal = await getProposal(input.proposal_id);
   if (!proposal) return { ok: false, error: "Proposal not found." };
@@ -1417,7 +1469,10 @@ export async function requestProposalApproval(input: {
   }
   const lineItems = await listLineItemsForProposal(input.proposal_id);
   if (lineItems.filter((i) => !i.is_alternate).length === 0) {
-    return { ok: false, error: "Add at least one inclusion before requesting approval." };
+    return {
+      ok: false,
+      error: "Add at least one inclusion before requesting approval.",
+    };
   }
 
   const flip = await updateProposalStatus({
@@ -1438,20 +1493,26 @@ export async function requestProposalApproval(input: {
 
   // Notify approvers (fire-and-forget; a bell hiccup never blocks the flip).
   try {
-    const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+    const actorName =
+      input.actor_name ?? (await resolveActorName(input.actor_user_id));
     const { insertCommercialProposalApprovalRequestedNotifications } =
       await import("@/lib/notifications/commercial-events");
-    void insertCommercialProposalApprovalRequestedNotifications({
-      proposalId: proposal.id,
-      revisionNumber: proposal.revision_number,
-      totalCents: flip.proposal.total_cents,
-      opportunityId: proposal.opportunity_id,
-      gcCompany: proposal.header_json.gc_company?.trim() ?? null,
-      actingUserId: input.actor_user_id,
-      actorName,
-    }).catch((err) => {
-      console.warn("[requestProposalApproval] approver fanout failed (async):", err);
-    });
+    afterResponse("proposal", () =>
+      insertCommercialProposalApprovalRequestedNotifications({
+        proposalId: proposal.id,
+        revisionNumber: proposal.revision_number,
+        totalCents: flip.proposal.total_cents,
+        opportunityId: proposal.opportunity_id,
+        gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+        actingUserId: input.actor_user_id,
+        actorName,
+      }).catch((err) => {
+        console.warn(
+          "[requestProposalApproval] approver fanout failed (async):",
+          err,
+        );
+      }),
+    );
   } catch (err) {
     console.warn("[requestProposalApproval] approver fanout failed:", err);
   }
@@ -1467,13 +1528,13 @@ export async function approveProposal(input: {
   actor_user_id: string;
   actor_name?: string;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   if (!(await isProposalApprover(input.actor_user_id))) {
     return {
       ok: false,
-      error: "Only a designated approver can approve a proposal. Ask an admin to flag you as an approver in Settings → Access.",
+      error:
+        "Only a designated approver can approve a proposal. Ask an admin to flag you as an approver in Settings → Access.",
     };
   }
   const proposal = await getProposal(input.proposal_id);
@@ -1506,12 +1567,11 @@ export async function approveProposal(input: {
   // the proposal is no longer waiting on any of them, and a queue that keeps
   // showing finished work stops being a queue. Best-effort: tidying a bell must
   // never fail a decision that already landed.
-  void (async () => {
-    const { clearApprovalRequestNotifications } = await import(
-      "@/lib/notifications/commercial-events"
-    );
+  afterResponse("proposal_bell_cleanup", async () => {
+    const { clearApprovalRequestNotifications } =
+      await import("@/lib/notifications/commercial-events");
     await clearApprovalRequestNotifications(input.proposal_id);
-  })();
+  });
 
   // Notify the requester (if any, and not the approver themselves).
   if (
@@ -1519,22 +1579,32 @@ export async function approveProposal(input: {
     proposal.approval_requested_by_user_id !== input.actor_user_id
   ) {
     try {
-      const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      const actorName =
+        input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      // Hoisted: the `if` above narrows this to non-null, but it is a property
+      // on a mutable object, so the narrowing does not survive into the closure
+      // `afterResponse` takes. A local const carries it.
+      const requesterId = proposal.approval_requested_by_user_id;
       const { insertCommercialProposalApprovalDecidedNotification } =
         await import("@/lib/notifications/commercial-events");
-      void insertCommercialProposalApprovalDecidedNotification({
-        decision: "approved",
-        proposalId: proposal.id,
-        revisionNumber: proposal.revision_number,
-        opportunityId: proposal.opportunity_id,
-        gcCompany: proposal.header_json.gc_company?.trim() ?? null,
-        recipientUserId: proposal.approval_requested_by_user_id,
-        actingUserId: input.actor_user_id,
-        actorName,
-        note: null,
-      }).catch((err) => {
-        console.warn("[approveProposal] requester notify failed (async):", err);
-      });
+      afterResponse("proposal", () =>
+        insertCommercialProposalApprovalDecidedNotification({
+          decision: "approved",
+          proposalId: proposal.id,
+          revisionNumber: proposal.revision_number,
+          opportunityId: proposal.opportunity_id,
+          gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+          recipientUserId: requesterId,
+          actingUserId: input.actor_user_id,
+          actorName,
+          note: null,
+        }).catch((err) => {
+          console.warn(
+            "[approveProposal] requester notify failed (async):",
+            err,
+          );
+        }),
+      );
     } catch (err) {
       console.warn("[approveProposal] requester notify failed:", err);
     }
@@ -1546,7 +1616,8 @@ export async function approveProposal(input: {
     proposal,
     actorUserId: input.actor_user_id,
     requesterUserId: proposal.approval_requested_by_user_id,
-    actorName: input.actor_name ?? (await resolveActorName(input.actor_user_id)),
+    actorName:
+      input.actor_name ?? (await resolveActorName(input.actor_user_id)),
     note: null,
   });
 
@@ -1562,8 +1633,7 @@ export async function requestProposalChanges(input: {
   note: string;
   actor_name?: string;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   if (!(await isProposalApprover(input.actor_user_id))) {
     return {
@@ -1572,12 +1642,19 @@ export async function requestProposalChanges(input: {
     };
   }
   const note = (input.note ?? "").trim();
-  if (!note) return { ok: false, error: "Add a note so the estimator knows what to change." };
+  if (!note)
+    return {
+      ok: false,
+      error: "Add a note so the estimator knows what to change.",
+    };
   const cappedNote = note.length > 2000 ? note.slice(0, 2000) : note;
 
   const proposal = await getProposal(input.proposal_id);
   if (!proposal) return { ok: false, error: "Proposal not found." };
-  if (proposal.status !== "pending_approval" && proposal.status !== "approved") {
+  if (
+    proposal.status !== "pending_approval" &&
+    proposal.status !== "approved"
+  ) {
     return {
       ok: false,
       error: `Only a proposal awaiting approval (or already approved) can be sent back (this one is ${proposalReadableStatus(proposal.status)}).`,
@@ -1605,34 +1682,43 @@ export async function requestProposalChanges(input: {
   // the proposal is no longer waiting on any of them, and a queue that keeps
   // showing finished work stops being a queue. Best-effort: tidying a bell must
   // never fail a decision that already landed.
-  void (async () => {
-    const { clearApprovalRequestNotifications } = await import(
-      "@/lib/notifications/commercial-events"
-    );
+  afterResponse("proposal_bell_cleanup", async () => {
+    const { clearApprovalRequestNotifications } =
+      await import("@/lib/notifications/commercial-events");
     await clearApprovalRequestNotifications(input.proposal_id);
-  })();
+  });
 
   if (
     proposal.approval_requested_by_user_id &&
     proposal.approval_requested_by_user_id !== input.actor_user_id
   ) {
     try {
-      const actorName = input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      const actorName =
+        input.actor_name ?? (await resolveActorName(input.actor_user_id));
+      // Hoisted: the `if` above narrows this to non-null, but it is a property
+      // on a mutable object, so the narrowing does not survive into the closure
+      // `afterResponse` takes. A local const carries it.
+      const requesterId = proposal.approval_requested_by_user_id;
       const { insertCommercialProposalApprovalDecidedNotification } =
         await import("@/lib/notifications/commercial-events");
-      void insertCommercialProposalApprovalDecidedNotification({
-        decision: "changes_requested",
-        proposalId: proposal.id,
-        revisionNumber: proposal.revision_number,
-        opportunityId: proposal.opportunity_id,
-        gcCompany: proposal.header_json.gc_company?.trim() ?? null,
-        recipientUserId: proposal.approval_requested_by_user_id,
-        actingUserId: input.actor_user_id,
-        actorName,
-        note: cappedNote,
-      }).catch((err) => {
-        console.warn("[requestProposalChanges] requester notify failed (async):", err);
-      });
+      afterResponse("proposal", () =>
+        insertCommercialProposalApprovalDecidedNotification({
+          decision: "changes_requested",
+          proposalId: proposal.id,
+          revisionNumber: proposal.revision_number,
+          opportunityId: proposal.opportunity_id,
+          gcCompany: proposal.header_json.gc_company?.trim() ?? null,
+          recipientUserId: requesterId,
+          actingUserId: input.actor_user_id,
+          actorName,
+          note: cappedNote,
+        }).catch((err) => {
+          console.warn(
+            "[requestProposalChanges] requester notify failed (async):",
+            err,
+          );
+        }),
+      );
     } catch (err) {
       console.warn("[requestProposalChanges] requester notify failed:", err);
     }
@@ -1644,7 +1730,8 @@ export async function requestProposalChanges(input: {
     proposal,
     actorUserId: input.actor_user_id,
     requesterUserId: proposal.approval_requested_by_user_id,
-    actorName: input.actor_name ?? (await resolveActorName(input.actor_user_id)),
+    actorName:
+      input.actor_name ?? (await resolveActorName(input.actor_user_id)),
     note: cappedNote,
   });
 
@@ -1659,8 +1746,7 @@ export async function unlockApprovedProposal(input: {
   proposal_id: string;
   actor_user_id: string;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const proposal = await getProposal(input.proposal_id);
   if (!proposal) return { ok: false, error: "Proposal not found." };
@@ -1699,8 +1785,7 @@ export async function withdrawApprovalRequest(input: {
   proposal_id: string;
   actor_user_id: string;
 }): Promise<
-  | { ok: true; proposal: CommercialProposal }
-  | { ok: false; error: string }
+  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
 > {
   const proposal = await getProposal(input.proposal_id);
   if (!proposal) return { ok: false, error: "Proposal not found." };
@@ -1751,18 +1836,23 @@ function proposalReadableStatus(s: string): string {
  *  historical, bump a new revision instead)." */
 export async function bulkDeleteProposalDraftsForAccount(
   accountId: string,
-  actorUserId: string | null
-): Promise<{
-  ok: true;
-  deletedCount: number;
-  skippedNonDraftCount: number;
-} | { ok: false; error: string }> {
+  actorUserId: string | null,
+): Promise<
+  | {
+      ok: true;
+      deletedCount: number;
+      skippedNonDraftCount: number;
+    }
+  | { ok: false; error: string }
+> {
   const sb = commercialDb();
   // Pull every non-deleted proposal for this account (via inner join on
   // opportunity → account_id) so we can log + count non-drafts.
   const { data, error } = await sb
     .from("commercial_proposals")
-    .select("id, status, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(account_id, deleted_at)")
+    .select(
+      "id, status, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(account_id, deleted_at)",
+    )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
     .is("opportunity.deleted_at", null);
@@ -1773,7 +1863,7 @@ export async function bulkDeleteProposalDraftsForAccount(
     opportunity: { account_id: string; deleted_at: string | null } | null;
   };
   const rows = ((data as unknown as Row[]) ?? []).filter(
-    (r) => r.opportunity && !r.opportunity.deleted_at
+    (r) => r.opportunity && !r.opportunity.deleted_at,
   );
   const draftIds = rows.filter((r) => r.status === "draft").map((r) => r.id);
   const skipped = rows.length - draftIds.length;
@@ -1790,23 +1880,34 @@ export async function bulkDeleteProposalDraftsForAccount(
   // Best-effort audit log per row (don't fail the whole op if one fails).
   await Promise.all(
     draftIds.map((id) =>
-      logDelete("commercial_proposals", id, { id, bulk: true }, actorUserId).catch(
-        (e) => console.warn(`[bulkDelete] audit log failed for ${id}:`, e)
-      )
-    )
+      logDelete(
+        "commercial_proposals",
+        id,
+        { id, bulk: true },
+        actorUserId,
+      ).catch((e) =>
+        console.warn(`[bulkDelete] audit log failed for ${id}:`, e),
+      ),
+    ),
   );
-  return { ok: true, deletedCount: draftIds.length, skippedNonDraftCount: skipped };
+  return {
+    ok: true,
+    deletedCount: draftIds.length,
+    skippedNonDraftCount: skipped,
+  };
 }
 
 // ────────────── reads ──────────────
 
 export async function getProposal(
-  id: string
+  id: string,
 ): Promise<CommercialProposal | null> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)")
+    .select(
+      "*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)",
+    )
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1814,12 +1915,14 @@ export async function getProposal(
 }
 
 export async function listProposalsForOpp(
-  opportunityId: string
+  opportunityId: string,
 ): Promise<CommercialProposal[]> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_proposals")
-    .select("*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)")
+    .select(
+      "*, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey(project_number)",
+    )
     .eq("opportunity_id", opportunityId)
     .is("deleted_at", null)
     .order("revision_number", { ascending: false });
@@ -1846,12 +1949,20 @@ export async function listProposalsForOpp(
  * simply absent from the map, and callers treat that as "no fallback".
  */
 export async function listCurrentProposalByOpp(
-  opportunityIds: string[]
-): Promise<Map<string, { id: string; status: ProposalStatus; revision: number; totalCents: number }>> {
+  opportunityIds: string[],
+): Promise<
+  Map<
+    string,
+    { id: string; status: ProposalStatus; revision: number; totalCents: number }
+  >
+> {
   // `id` is here so a list row's next-step button can open the PROPOSAL rather
   // than the deal's Proposals tab — Karan's ask was "mark it as approved and
   // then it brings you to the proposal", and a tab is not the proposal.
-  const out = new Map<string, { id: string; status: ProposalStatus; revision: number; totalCents: number }>();
+  const out = new Map<
+    string,
+    { id: string; status: ProposalStatus; revision: number; totalCents: number }
+  >();
   const ids = Array.from(new Set(opportunityIds.filter(Boolean)));
   if (ids.length === 0) return out;
   const sb = commercialDb();
@@ -1870,7 +1981,7 @@ export async function listCurrentProposalByOpp(
       .not("status", "in", "(superseded,expired)")
       // Stable tiebreak so pagination can't interleave rows unpredictably.
       .order("opportunity_id", { ascending: true })
-      .order("revision_number", { ascending: false })
+      .order("revision_number", { ascending: false }),
   );
   for (const r of rows) {
     // Rows arrive newest-revision-first per deal, so the first one wins.
@@ -1888,7 +1999,7 @@ export async function listCurrentProposalByOpp(
 
 /** Just the totals, for callers that don't care about the proposal's state. */
 export async function listCurrentProposalTotalByOpp(
-  opportunityIds: string[]
+  opportunityIds: string[],
 ): Promise<Map<string, number>> {
   const byOpp = await listCurrentProposalByOpp(opportunityIds);
   return new Map(Array.from(byOpp, ([id, p]) => [id, p.totalCents]));
@@ -1902,8 +2013,11 @@ export async function listCurrentProposalTotalByOpp(
  * null when the deal has no accepted proposal (form falls back to free text).
  */
 export async function getAcceptedProposalForOpp(
-  opportunityId: string
-): Promise<{ proposal: CommercialProposal; inclusions: CommercialProposalLineItem[] } | null> {
+  opportunityId: string,
+): Promise<{
+  proposal: CommercialProposal;
+  inclusions: CommercialProposalLineItem[];
+} | null> {
   const sb = commercialDb();
   const { data: idRow } = await sb
     .from("commercial_proposals")
@@ -1957,11 +2071,13 @@ export type CreateLineItemInput = {
  *  retry once without it. Remove both once 071 is live everywhere. */
 function withProductName<T extends object>(
   payload: T,
-  name: string | null | undefined
+  name: string | null | undefined,
 ): T & { product_name: string | null } {
   return { ...payload, product_name: name?.trim() || null };
 }
-function isMissingProductNameColumn(err: { code?: string; message?: string } | null): boolean {
+function isMissingProductNameColumn(
+  err: { code?: string; message?: string } | null,
+): boolean {
   if (!err) return false;
   // PGRST204 = column not in PostgREST schema cache; 42703 = undefined_column.
   if (err.code === "PGRST204" || err.code === "42703") return true;
@@ -1978,7 +2094,7 @@ function isMissingProductNameColumn(err: { code?: string; message?: string } | n
  * on this now.
  */
 async function assertProposalDraft(
-  proposalId: string
+  proposalId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data } = await sb
@@ -1987,7 +2103,8 @@ async function assertProposalDraft(
     .eq("id", proposalId)
     .maybeSingle();
   const row = data as { status?: string; deleted_at?: string | null } | null;
-  if (!row || row.deleted_at) return { ok: false, error: "Proposal not found." };
+  if (!row || row.deleted_at)
+    return { ok: false, error: "Proposal not found." };
   if (row.status !== "draft") {
     return {
       ok: false,
@@ -1999,10 +2116,9 @@ async function assertProposalDraft(
 
 export async function createLineItem(
   input: CreateLineItemInput,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<
-  | { ok: true; item: CommercialProposalLineItem }
-  | { ok: false; error: string }
+  { ok: true; item: CommercialProposalLineItem } | { ok: false; error: string }
 > {
   const draftGate = await assertProposalDraft(input.proposal_id);
   if (!draftGate.ok) return draftGate;
@@ -2024,7 +2140,10 @@ export async function createLineItem(
   // inclusions, still allowed on alternates (a $0 alternate is a
   // legitimate "no-cost add-on if you sign" pattern).
   if (input.quantity === 0 && !(input.is_alternate ?? false)) {
-    return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+    return {
+      ok: false,
+      error: "Quantity must be greater than 0 for inclusions.",
+    };
   }
   if (input.unit_price_cents < 0)
     return { ok: false, error: "Unit price must be zero or greater." };
@@ -2039,36 +2158,45 @@ export async function createLineItem(
       .eq("is_alternate", input.is_alternate ?? false)
       .order("position", { ascending: false })
       .limit(1);
-    position = ((last?.[0] as { position?: number } | undefined)?.position ?? -1) + 1;
+    position =
+      ((last?.[0] as { position?: number } | undefined)?.position ?? -1) + 1;
   }
   // F.6: normalize phase text — trim, strip newlines + zero-width
   // chars (paste-in poison), empty → NULL, cap at 60 chars so a
   // runaway paste can't blow the PDF header layout.
   const phaseNormalized = (() => {
     let raw = input.phase?.trim() ?? "";
-    raw = raw.replace(/[​-‍﻿]/g, "").replace(/[\r\n]+/g, " ").trim();
+    raw = raw
+      .replace(/[​-‍﻿]/g, "")
+      .replace(/[\r\n]+/g, " ")
+      .trim();
     if (!raw) return null;
     return raw.length > 60 ? raw.slice(0, 60) : raw;
-  })();
+  });
   let { data, error } = await sb
     .from("commercial_proposal_line_items")
-    .insert(withProductName({
-      proposal_id: input.proposal_id,
-      product_id: input.product_id ?? null,
-      description: input.description.trim(),
-      quantity: input.quantity,
-      unit: input.unit,
-      unit_price_cents: input.unit_price_cents,
-      is_alternate: input.is_alternate ?? false,
-      position,
-      phase: phaseNormalized,
-      // Migration 063: labor flag. Cannot coexist with is_alternate.
-      is_labor: input.is_labor ?? false,
-      // R1a (migration 100): default true. On an un-migrated DB the generic
-      // missing-column retry below drops it (defaults to true server-side).
-      show_price: input.show_price ?? false,
-      line_total_override_cents: input.line_total_override_cents ?? null,
-    }, input.product_name))
+    .insert(
+      withProductName(
+        {
+          proposal_id: input.proposal_id,
+          product_id: input.product_id ?? null,
+          description: input.description.trim(),
+          quantity: input.quantity,
+          unit: input.unit,
+          unit_price_cents: input.unit_price_cents,
+          is_alternate: input.is_alternate ?? false,
+          position,
+          phase: phaseNormalized,
+          // Migration 063: labor flag. Cannot coexist with is_alternate.
+          is_labor: input.is_labor ?? false,
+          // R1a (migration 100): default true. On an un-migrated DB the generic
+          // missing-column retry below drops it (defaults to true server-side).
+          show_price: input.show_price ?? false,
+          line_total_override_cents: input.line_total_override_cents ?? null,
+        },
+        input.product_name,
+      ),
+    )
     .select("*")
     .single();
   // Migration 071 deploy-safety: if product_name isn't in the schema yet
@@ -2096,12 +2224,7 @@ export async function createLineItem(
   }
   if (error) return { ok: false, error: error.message };
   const item = data as CommercialProposalLineItem;
-  await logInsert(
-    "commercial_proposal_line_items",
-    item.id,
-    item,
-    actorUserId
-  );
+  await logInsert("commercial_proposal_line_items", item.id, item, actorUserId);
   await recomputeProposalTotal(input.proposal_id, actorUserId);
   return { ok: true, item };
 }
@@ -2134,10 +2257,9 @@ export type UpdateLineItemInput = {
 
 export async function updateLineItem(
   input: UpdateLineItemInput,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<
-  | { ok: true; item: CommercialProposalLineItem }
-  | { ok: false; error: string }
+  { ok: true; item: CommercialProposalLineItem } | { ok: false; error: string }
 > {
   const patch: Record<string, unknown> = {};
   if (input.product_id !== undefined) {
@@ -2151,7 +2273,11 @@ export async function updateLineItem(
     // product_name (Product + Description are distinct now). Only reject a
     // fully-blank row (no product being set + no existing product_name).
     const trimmed = input.description.trim();
-    if (!trimmed && input.product_name !== undefined && !input.product_name?.trim()) {
+    if (
+      !trimmed &&
+      input.product_name !== undefined &&
+      !input.product_name?.trim()
+    ) {
       return { ok: false, error: "Pick a product or type a description." };
     }
     patch.description = trimmed;
@@ -2165,7 +2291,10 @@ export async function updateLineItem(
     const willBeAlternate = input.is_alternate ?? undefined;
     if (input.quantity === 0) {
       if (willBeAlternate === false) {
-        return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+        return {
+          ok: false,
+          error: "Quantity must be greater than 0 for inclusions.",
+        };
       }
       if (willBeAlternate === undefined) {
         // Fetch existing to know the row's current is_alternate.
@@ -2175,7 +2304,10 @@ export async function updateLineItem(
           .eq("id", input.id)
           .maybeSingle();
         if (existing && !(existing as { is_alternate: boolean }).is_alternate) {
-          return { ok: false, error: "Quantity must be greater than 0 for inclusions." };
+          return {
+            ok: false,
+            error: "Quantity must be greater than 0 for inclusions.",
+          };
         }
       }
     }
@@ -2189,7 +2321,8 @@ export async function updateLineItem(
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.show_price !== undefined) patch.show_price = input.show_price;
-  if (input.line_total_override_cents !== undefined) patch.line_total_override_cents = input.line_total_override_cents;
+  if (input.line_total_override_cents !== undefined)
+    patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;
   if (input.phase !== undefined) {
     // F.6 audit fix: strip newlines + zero-width chars so a paste-in
@@ -2207,7 +2340,9 @@ export async function updateLineItem(
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
   // Only editable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft((before as CommercialProposalLineItem).proposal_id);
+  const draftGate = await assertProposalDraft(
+    (before as CommercialProposalLineItem).proposal_id,
+  );
   if (!draftGate.ok) return draftGate;
   let { data: after, error } = await sb
     .from("commercial_proposal_line_items")
@@ -2235,7 +2370,7 @@ export async function updateLineItem(
     item.id,
     before,
     item,
-    actorUserId
+    actorUserId,
   );
   await recomputeProposalTotal(item.proposal_id, actorUserId);
   return { ok: true, item };
@@ -2260,14 +2395,20 @@ export async function updateLineItem(
 /** Has Postgres rejected this because migration 174 hasn't run yet? Migrations
  *  are applied by hand after a deploy, so for a window the code knows about a
  *  column the database does not. */
-function isMissingApprovedAt(err: { code?: string; message?: string } | null): boolean {
-  return !!err && err.code === "42703" && /customer_approved_at/i.test(err.message ?? "");
+function isMissingApprovedAt(
+  err: { code?: string; message?: string } | null,
+): boolean {
+  return (
+    !!err &&
+    err.code === "42703" &&
+    /customer_approved_at/i.test(err.message ?? "")
+  );
 }
 
 export async function setLineCustomerApproved(
   lineItemId: string,
   approved: boolean | null,
-  actingUserId: string | null
+  actingUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -2275,7 +2416,8 @@ export async function setLineCustomerApproved(
     .select("*")
     .eq("id", lineItemId)
     .maybeSingle();
-  if (!before) return { ok: false, error: "That line is no longer on this proposal." };
+  if (!before)
+    return { ok: false, error: "That line is no longer on this proposal." };
   // Stamp WHEN, not just whether. On an ALTERNATE the timestamp decides whether
   // the money belongs in the original contract sum (accepted at or before the
   // win) or is a genuine change order (accepted after) — see migration 174.
@@ -2303,13 +2445,19 @@ export async function setLineCustomerApproved(
       .single());
   }
   if (error) return { ok: false, error: error.message };
-  await logUpdate("commercial_proposal_line_items", lineItemId, before, after, actingUserId);
+  await logUpdate(
+    "commercial_proposal_line_items",
+    lineItemId,
+    before,
+    after,
+    actingUserId,
+  );
   return { ok: true };
 }
 
 export async function deleteLineItem(
   id: string,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data: before } = await sb
@@ -2319,28 +2467,25 @@ export async function deleteLineItem(
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
   // Only deletable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft((before as CommercialProposalLineItem).proposal_id);
+  const draftGate = await assertProposalDraft(
+    (before as CommercialProposalLineItem).proposal_id,
+  );
   if (!draftGate.ok) return draftGate;
   const { error } = await sb
     .from("commercial_proposal_line_items")
     .delete()
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
-  await logDelete(
-    "commercial_proposal_line_items",
-    id,
-    before,
-    actorUserId
-  );
+  await logDelete("commercial_proposal_line_items", id, before, actorUserId);
   await recomputeProposalTotal(
     (before as CommercialProposalLineItem).proposal_id,
-    actorUserId
+    actorUserId,
   );
   return { ok: true };
 }
 
 export async function listLineItemsForProposal(
-  proposalId: string
+  proposalId: string,
 ): Promise<CommercialProposalLineItem[]> {
   const sb = commercialDb();
   // F.1 post-audit fix: soft-delete on the parent proposal shouldn't
@@ -2367,7 +2512,7 @@ export async function listLineItemsForProposal(
  *  edits ("save this row"). Returns null if the row is missing OR
  *  its parent proposal is soft-deleted. */
 export async function getLineItem(
-  id: string
+  id: string,
 ): Promise<CommercialProposalLineItem | null> {
   const sb = commercialDb();
   const { data } = await sb
@@ -2390,11 +2535,15 @@ export async function getLineItem(
 /** The raw line-item sum (non-alternate rows, qty × unit_price). This is the
  *  number BEFORE any final-price override — used for the internal "override vs
  *  line items" delta. Hidden-price rows (show_price=false) still count. */
-export async function proposalLineItemSumCents(proposalId: string): Promise<number> {
+export async function proposalLineItemSumCents(
+  proposalId: string,
+): Promise<number> {
   const sb = commercialDb();
   const { data: items } = await sb
     .from("commercial_proposal_line_items")
-    .select("quantity, unit_price_cents, is_alternate, customer_approved, customer_approved_at")
+    .select(
+      "quantity, unit_price_cents, is_alternate, customer_approved, customer_approved_at",
+    )
     .eq("proposal_id", proposalId);
   const rows =
     (items as Array<{
@@ -2426,7 +2575,9 @@ export async function proposalLineItemSumCents(proposalId: string): Promise<numb
     const value = Math.round(Number(r.quantity) * Number(r.unit_price_cents));
     if (!r.is_alternate) return acc + value;
     if (r.customer_approved !== true) return acc; // declined, or never answered
-    return acceptedBeforeWin(r.customer_approved_at, wonAtMs) ? acc + value : acc;
+    return acceptedBeforeWin(r.customer_approved_at, wonAtMs)
+      ? acc + value
+      : acc;
   }, 0);
 }
 
@@ -2463,7 +2614,7 @@ async function dealWonAtMs(proposalId: string): Promise<number | null> {
  */
 export function acceptedBeforeWin(
   approvedAt: string | null | undefined,
-  wonAtMs: number | null
+  wonAtMs: number | null,
 ): boolean {
   if (wonAtMs === null) return true;
   if (!approvedAt) return true;
@@ -2483,7 +2634,7 @@ export function acceptedBeforeWin(
  *  after any line-item mutation AND after the override is set/cleared. */
 export async function recomputeProposalTotal(
   proposalId: string,
-  actorUserId: string | null
+  actorUserId: string | null,
 ): Promise<void> {
   const sb = commercialDb();
   const [rawSum, { data: prop }] = await Promise.all([
@@ -2494,7 +2645,9 @@ export async function recomputeProposalTotal(
       .eq("id", proposalId)
       .maybeSingle(),
   ]);
-  const override = (prop as { final_price_override_cents: number | null } | null)?.final_price_override_cents ?? null;
+  const override =
+    (prop as { final_price_override_cents: number | null } | null)
+      ?.final_price_override_cents ?? null;
   const total = override != null ? Number(override) : rawSum;
   await sb
     .from("commercial_proposals")
@@ -2509,7 +2662,11 @@ export async function recomputeProposalTotal(
 
 /** Result envelope for sendProposal. */
 export type SendProposalResult =
-  | { ok: true; proposal: CommercialProposal; snapshot_document_id: string | null }
+  | {
+      ok: true;
+      proposal: CommercialProposal;
+      snapshot_document_id: string | null;
+    }
   | { ok: false; error: string };
 
 /** Send a proposal — the one-click "PDF this and mark it out the door"
@@ -2550,7 +2707,10 @@ export async function sendProposal(input: {
       .select("sf_user_name, email")
       .eq("user_id", input.actor_user_id)
       .maybeSingle();
-    const p = prof as { sf_user_name?: string | null; email?: string | null } | null;
+    const p = prof as {
+      sf_user_name?: string | null;
+      email?: string | null;
+    } | null;
     actorName = personName(p?.sf_user_name, p?.email, "PPP admin");
   }
 
@@ -2568,8 +2728,8 @@ export async function sendProposal(input: {
         proposal.status === "pending_approval"
           ? "This proposal is awaiting approval. An approver must approve it before it can be sent."
           : proposal.status === "draft"
-          ? "Send for approval first — a proposal must be approved before it goes out."
-          : "Only an approved proposal can be sent.",
+            ? "Send for approval first — a proposal must be approved before it goes out."
+            : "Only an approved proposal can be sent.",
     };
   }
   const lineItems = await listLineItemsForProposal(input.proposal_id);
@@ -2614,8 +2774,12 @@ export async function sendProposal(input: {
   // filing, so the archived snapshot can't differ from what the customer saw.
   const { resolveProposalExclusions } = await import("./exclusion-texts");
   const resolvedExclusions = await resolveProposalExclusions(proposal);
-  const exclusionTexts = resolvedExclusions.filter((e) => e.kind === "exclusion").map((e) => e.text);
-  const qualificationTexts = resolvedExclusions.filter((e) => e.kind === "qualification").map((e) => e.text);
+  const exclusionTexts = resolvedExclusions
+    .filter((e) => e.kind === "exclusion")
+    .map((e) => e.text);
+  const qualificationTexts = resolvedExclusions
+    .filter((e) => e.kind === "qualification")
+    .map((e) => e.text);
 
   const { renderProposalPdf } = await import("./pdf");
   const { renderFitToOnePage } = await import("./fit-one-page");
@@ -2648,35 +2812,45 @@ export async function sendProposal(input: {
       // The letterhead footer reads these. Without it the proposal keeps the
       // old hard-coded contact details while every other document updates.
       company: await (async () => {
-        const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
+        const { getOperatingCompany } =
+          await import("@/lib/commercial/operating-company/db");
         return getOperatingCompany();
       })(),
     };
     const fit = await renderFitToOnePage((pageHeightScale) =>
-      renderProposalPdf({ ...fitArgs, pageHeightScale })
+      renderProposalPdf({ ...fitArgs, pageHeightScale }),
     );
     pdfBuffer = fit.bytes;
     if (!fit.fitted) {
       // Past the legibility floor — it goes out at its natural length rather
       // than at a size nobody can read, and the pages carry numbers.
       console.warn(
-        `[sendProposal] proposal ${proposal.id} is too long to fit one readable page`
+        `[sendProposal] proposal ${proposal.id} is too long to fit one readable page`,
       );
     }
   } catch (err) {
     console.error("[sendProposal] pdf render failed:", err);
-    return { ok: false, error: "PDF render failed. Try Preview PDF first to see the error." };
+    return {
+      ok: false,
+      error: "PDF render failed. Try Preview PDF first to see the error.",
+    };
   }
 
   const { uploadDocument } = await import("@/lib/commercial/documents/db");
-  const gc = (proposal.header_json.gc_company ?? "Proposal").replace(/[^A-Za-z0-9._-]+/g, "_");
-  const project = (proposal.header_json.project_name ?? "").replace(/[^A-Za-z0-9._-]+/g, "_");
+  const gc = (proposal.header_json.gc_company ?? "Proposal").replace(
+    /[^A-Za-z0-9._-]+/g,
+    "_",
+  );
+  const project = (proposal.header_json.project_name ?? "").replace(
+    /[^A-Za-z0-9._-]+/g,
+    "_",
+  );
   // No `R1` on the original. Brendan 2026-09-03 photographed exactly this
   // filename: "Same here the attachment is R1." The header had been fixed; the
   // filename still read the raw revision_number, one too high.
-  const filename = [gc, project, proposalRevisionLabel(proposal)]
-    .filter(Boolean)
-    .join("_") + ".pdf";
+  const filename =
+    [gc, project, proposalRevisionLabel(proposal)].filter(Boolean).join("_") +
+    ".pdf";
 
   const uploaded = await uploadDocument({
     parent_type: "opportunity",
@@ -2736,9 +2910,13 @@ export async function sendProposal(input: {
     // Send won the race. The PDF we uploaded above is orphaned; log for
     // admin cleanup.
     console.warn(
-      `[sendProposal] concurrent send won the race for ${input.proposal_id}; orphaned snapshot doc ${snapshotDocId}`
+      `[sendProposal] concurrent send won the race for ${input.proposal_id}; orphaned snapshot doc ${snapshotDocId}`,
     );
-    return { ok: false, error: "This proposal was just sent from another tab. Reload to see the latest state." };
+    return {
+      ok: false,
+      error:
+        "This proposal was just sent from another tab. Reload to see the latest state.",
+    };
   }
   const sentProposal = after as CommercialProposal;
   await logUpdate(
@@ -2746,7 +2924,7 @@ export async function sendProposal(input: {
     sentProposal.id,
     before,
     sentProposal,
-    input.actor_user_id
+    input.actor_user_id,
   );
 
   // ── 3. Flip opp status → (proposal, sent) if not past that lane ─
@@ -2763,9 +2941,8 @@ export async function sendProposal(input: {
   // now the engine's forward-only rule, which also covers what the list missed
   // — a deal already at Proposal · Follow-Up is ahead of Sent within the same
   // stage, and the list had no way to say so.
-  const { autoAdvanceOpportunity } = await import(
-    "@/lib/commercial/opportunities/auto-advance"
-  );
+  const { autoAdvanceOpportunity } =
+    await import("@/lib/commercial/opportunities/auto-advance");
   const sendRes = await autoAdvanceOpportunity({
     oppId: opp.id,
     target: "proposal",
@@ -2776,7 +2953,7 @@ export async function sendProposal(input: {
   });
   if (!sendRes.moved && sendRes.reason === "error") {
     console.warn(
-      `[sendProposal] opp status flip failed for opp ${opp.id}: ${sendRes.detail}`
+      `[sendProposal] opp status flip failed for opp ${opp.id}: ${sendRes.detail}`,
     );
   }
 
@@ -2809,9 +2986,8 @@ export async function sendProposal(input: {
   // hiccup should never block Send.
   if (proposal.exclusion_ids.length > 0) {
     try {
-      const { bumpExclusionUseCount } = await import(
-        "@/lib/commercial/exclusions/db"
-      );
+      const { bumpExclusionUseCount } =
+        await import("@/lib/commercial/exclusions/db");
       void bumpExclusionUseCount(proposal.exclusion_ids).catch((err) => {
         console.warn("[sendProposal] use_count bump failed (async):", err);
       });
@@ -2822,31 +2998,36 @@ export async function sendProposal(input: {
 
   // ── 6. Bell + email fanout to opp team ──────────────────────────
   try {
-    const { insertCommercialProposalSentNotifications } = await import(
-      "@/lib/notifications/commercial-events"
-    );
+    const { insertCommercialProposalSentNotifications } =
+      await import("@/lib/notifications/commercial-events");
     // Post-round-2 audit: chain .catch() on the void promise so an
     // unhandled rejection inside the fanout doesn't crash the Node
     // process (fire-and-forget still, just observable).
-    void insertCommercialProposalSentNotifications({
-      proposalId: sentProposal.id,
-      revisionNumber: sentProposal.revision_number,
-      totalCents: sentProposal.total_cents,
-      opportunityId: opp.id,
-      accountId: opp.account_id,
-      dealId: opp.id,
-      oppTitle: opp.title,
-      gcCompany: gcLabel ?? null,
-      actingUserId: input.actor_user_id,
-      actorName,
-    }).catch((err) => {
-      console.warn("[sendProposal] bell fanout failed (async):", err);
-    });
+    afterResponse("proposal", () =>
+      insertCommercialProposalSentNotifications({
+        proposalId: sentProposal.id,
+        revisionNumber: sentProposal.revision_number,
+        totalCents: sentProposal.total_cents,
+        opportunityId: opp.id,
+        accountId: opp.account_id,
+        dealId: opp.id,
+        oppTitle: opp.title,
+        gcCompany: gcLabel ?? null,
+        actingUserId: input.actor_user_id,
+        actorName,
+      }).catch((err) => {
+        console.warn("[sendProposal] bell fanout failed (async):", err);
+      }),
+    );
   } catch (err) {
     console.warn("[sendProposal] bell fanout failed:", err);
   }
 
-  return { ok: true, proposal: sentProposal, snapshot_document_id: snapshotDocId };
+  return {
+    ok: true,
+    proposal: sentProposal,
+    snapshot_document_id: snapshotDocId,
+  };
 }
 
 /** Karan 2026-07-15: self-heal any proposal↔deal state drift.
@@ -2921,21 +3102,32 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   // symptom: "I moved one card and a different card moved."
   const { data: propRows } = await sb
     .from("commercial_proposals")
-    .select("id, status, opportunity_id, revision_number, updated_at, sent_at, approved_at, created_at")
+    .select(
+      "id, status, opportunity_id, revision_number, updated_at, sent_at, approved_at, created_at",
+    )
     .is("deleted_at", null)
-    .in("status", ["draft", "pending_approval", "approved", "sent", "won", "lost"])
+    .in("status", [
+      "draft",
+      "pending_approval",
+      "approved",
+      "sent",
+      "won",
+      "lost",
+    ])
     .order("revision_number", { ascending: false });
   const proposals =
-    (propRows as {
-      id: string;
-      status: string;
-      opportunity_id: string;
-      revision_number: number;
-      updated_at: string;
-      sent_at: string | null;
-      approved_at: string | null;
-      created_at: string;
-    }[] | null) ?? [];
+    (propRows as
+      | {
+          id: string;
+          status: string;
+          opportunity_id: string;
+          revision_number: number;
+          updated_at: string;
+          sent_at: string | null;
+          approved_at: string | null;
+          created_at: string;
+        }[]
+      | null) ?? [];
   if (proposals.length === 0) return { checked: 0, fixed: 0 };
 
   // Group proposals by deal, pick the CURRENT (highest revision_number)
@@ -2948,7 +3140,10 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   const currentByDeal = new Map<string, { status: string; stageAt: string }>();
   for (const p of proposals) {
     if (!currentByDeal.has(p.opportunity_id)) {
-      currentByDeal.set(p.opportunity_id, { status: p.status, stageAt: proposalStageAt(p) });
+      currentByDeal.set(p.opportunity_id, {
+        status: p.status,
+        stageAt: proposalStageAt(p),
+      });
     }
   }
   const bestByDeal = currentByDeal;
@@ -2958,7 +3153,10 @@ export async function reconcileDealStatesFromProposals(): Promise<{
   // newest-only read says Estimating, and only forward-only stops that from
   // walking a won deal backwards. Reading them all means a deal that has fallen
   // BEHIND its own won proposal actually catches up.
-  const foldedByDeal = new Map<string, { key: AutoAdvanceTargetKey; stageAt: string }>();
+  const foldedByDeal = new Map<
+    string,
+    { key: AutoAdvanceTargetKey; stageAt: string }
+  >();
   {
     const byDeal = new Map<string, typeof proposals>();
     for (const p of proposals) {
@@ -2967,11 +3165,18 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       else byDeal.set(p.opportunity_id, [p]);
     }
     for (const [oppId, list] of byDeal) {
-      const key = foldAutoAdvanceTargets(list.map((p) => targetForProposalStatus(p.status)));
+      const key = foldAutoAdvanceTargets(
+        list.map((p) => targetForProposalStatus(p.status)),
+      );
       if (!key) continue;
       // Date it from the proposal that actually justifies the move.
-      const source = list.find((p) => targetForProposalStatus(p.status) === key);
-      foldedByDeal.set(oppId, { key, stageAt: proposalStageAt(source ?? list[0]) });
+      const source = list.find(
+        (p) => targetForProposalStatus(p.status) === key,
+      );
+      foldedByDeal.set(oppId, {
+        key,
+        stageAt: proposalStageAt(source ?? list[0]),
+      });
     }
   }
 
@@ -2984,11 +3189,13 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     .in("id", dealIds)
     .is("deleted_at", null);
   const deals =
-    (dealRows as {
-      id: string;
-      status: string;
-      sub_status: string | null;
-    }[] | null) ?? [];
+    (dealRows as
+      | {
+          id: string;
+          status: string;
+          sub_status: string | null;
+        }[]
+      | null) ?? [];
 
   const postSaleStatuses = new Set([
     "pre_construction",
@@ -2997,7 +3204,9 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     "post_sale_closed",
   ]);
 
-  const derive = (propStatus: string): { status: string; sub: string } | null => {
+  const derive = (
+    propStatus: string,
+  ): { status: string; sub: string } | null => {
     switch (propStatus) {
       // Karan 2026-07-16: distinct draft vs pending_approval mapping
       // (was: both → proposal_pending_approval, which forced deals to
@@ -3061,17 +3270,21 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     // signal the fold was added to act on.
     const foldedForDeal = foldedByDeal.get(deal.id);
     const foldAgreesWithNewest =
-      !foldedForDeal || foldedForDeal.key === targetForProposalStatus(bestProp.status);
+      !foldedForDeal ||
+      foldedForDeal.key === targetForProposalStatus(bestProp.status);
     if (
       foldAgreesWithNewest &&
       dealAlreadyConsistentWithProposal(
         { status: deal.status, sub_status: deal.sub_status },
-        target
+        target,
       )
     ) {
       continue;
     }
-    if (deal.status === "pre_sale_closed" && target.status === "pre_sale_closed") {
+    if (
+      deal.status === "pre_sale_closed" &&
+      target.status === "pre_sale_closed"
+    ) {
       continue; // don't cross-flip won ↔ lost via auto-reconcile
     }
     // Karan 2026-07-16 (audit fix): if deal is already Won/Lost, do NOT
@@ -3080,7 +3293,10 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     // would erase real intent. If the proposal state disagrees, the
     // user needs to reopen manually (drag Won proposal back to Sent
     // via kanban, which fires reopenProposal end-to-end).
-    if (deal.status === "pre_sale_closed" && target.status !== "pre_sale_closed") {
+    if (
+      deal.status === "pre_sale_closed" &&
+      target.status !== "pre_sale_closed"
+    ) {
       continue;
     }
     // FORWARD-ONLY, as of the auto-advance engine. This pass used to move a
@@ -3089,9 +3305,8 @@ export async function reconcileDealStatesFromProposals(): Promise<{
     // render of the pipeline or proposals page — by whoever happened to load
     // it — and each swing emailed the whole team. Healing DOWN is now a human
     // decision; the engine only ever moves a deal that is genuinely behind.
-    const { autoAdvanceOpportunity } = await import(
-      "@/lib/commercial/opportunities/auto-advance"
-    );
+    const { autoAdvanceOpportunity } =
+      await import("@/lib/commercial/opportunities/auto-advance");
     // (targetForProposalStatus comes from the module import at the top — the
     // local re-import here shadowed it and put the guard above in its TDZ.)
     const folded = foldedForDeal;
@@ -3107,7 +3322,7 @@ export async function reconcileDealStatesFromProposals(): Promise<{
       fixed += 1;
     } else if (res.reason === "error") {
       console.warn(
-        `[reconcileDealStatesFromProposals] deal ${deal.id} flip failed: ${res.detail}`
+        `[reconcileDealStatesFromProposals] deal ${deal.id} flip failed: ${res.detail}`,
       );
     }
   }
