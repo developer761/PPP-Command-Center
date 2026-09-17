@@ -254,7 +254,14 @@ export async function POST(request: Request) {
       // a freshly-computed PO and insert once more. Only (b) reaches the 409.
       const isPoCollision = /po_number/i.test(ins.error.message ?? "");
       if (ins.error.code === "23505" && isPoCollision) {
-        const freshPo = await nextPoNumber(body.workOrderId!, body.workOrderNumber ?? "");
+        // `?? ""` yields a BLANK po_number when the work-order number is
+        // missing — the builder's own fallback is the record's last six
+        // characters, and the retry has to match it or the recovery stores an
+        // order nobody can quote.
+        const freshPo = await nextPoNumber(
+          body.workOrderId!,
+          body.workOrderNumber || body.workOrderId!.slice(-6)
+        );
         console.warn(
           `[supplier-order/send] PO ${body.poNumber} was taken; retrying as ${freshPo}`
         );

@@ -177,6 +177,7 @@ export default function OrderBuilderView({
   /** Which vendor we have already fetched a first draft for — see the effect. */
   const firstDraftDone = useRef<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [extrasError, setExtrasError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<ExtraCatalogItem[]>([]);
   const [extrasSearch, setExtrasSearch] = useState("");
   const [advancing, setAdvancing] = useState(false);
@@ -229,6 +230,18 @@ export default function OrderBuilderView({
     [workOrderId]
   );
 
+  /** The payload as it arrived. Merely OPENING the builder used to write the
+   *  row 600ms later — and `loadLatestBuildForWorkOrder` resumes by
+   *  `updated_at`, so on a two-vendor job opening vendor A pinned A as "latest"
+   *  and vendor B's half-built order became unreachable by resume. */
+  const pristinePayloadJson = useRef<string | null>(null);
+  const payloadJson = JSON.stringify(payload);
+  useEffect(() => {
+    if (pristinePayloadJson.current === null && loadedFor) {
+      pristinePayloadJson.current = payloadJson;
+    }
+  }, [loadedFor, payloadJson]);
+
   // Debounced autosave. Skipped until a supplier is chosen (the row is keyed by
   // work order + supplier).
   useEffect(() => {
@@ -237,6 +250,8 @@ export default function OrderBuilderView({
     if (loadedFor !== supplier.accountId) return;
     const accountId = supplier.accountId;
     const snapshot = payload;
+    // Nothing has been changed yet — do not touch the row (see above).
+    if (pristinePayloadJson.current !== null && pristinePayloadJson.current === payloadJson) return;
     const t = setTimeout(() => {
       const seq = ++saveSeq.current;
       void save(accountId, snapshot, false).then((r) => {
@@ -249,7 +264,7 @@ export default function OrderBuilderView({
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [payload, supplier, save, loadedFor]);
+  }, [payload, payloadJson, supplier, save, loadedFor]);
 
   /* ── Load the saved order for THIS vendor ───────────────────────────────
    * Without this, switching vendors carried the previous vendor's payload:
@@ -344,7 +359,16 @@ export default function OrderBuilderView({
           `/api/admin/supplier-order/extras?supplierAccountId=${encodeURIComponent(supplier.accountId)}`
         );
         const data = await res.json();
-        if (!cancelled && Array.isArray(data?.extras)) setCatalog(data.extras);
+        if (cancelled) return;
+        // The route answers 500 with `{ok:false, extras: []}`, and checking
+        // only "is it an array" turned that into an empty catalogue: the panel
+        // read "No matches." and a worker would conclude PPP stocks nothing.
+        if (!res.ok || data?.ok === false) {
+          setExtrasError(data?.message ?? data?.error ?? `HTTP ${res.status}`);
+          return;
+        }
+        setExtrasError(null);
+        if (Array.isArray(data?.extras)) setCatalog(data.extras);
       } catch (err) {
         console.warn("[order-builder] extras fetch failed:", err);
       }
@@ -1422,7 +1446,15 @@ export default function OrderBuilderView({
                 </div>
               ))}
               {filteredCatalog.length === 0 && (
-                <div className="col-span-full text-xs text-ppp-charcoal-500 italic py-3 text-center">No matches.</div>
+                <div className="col-span-full text-xs italic py-3 text-center">
+                  {extrasError ? (
+                    <span className="text-ppp-orange-700 not-italic">
+                      Couldn&apos;t load the sundries list ({extrasError}). Refresh — this is not an empty catalog.
+                    </span>
+                  ) : (
+                    <span className="text-ppp-charcoal-500">No matches.</span>
+                  )}
+                </div>
               )}
             </div>
 

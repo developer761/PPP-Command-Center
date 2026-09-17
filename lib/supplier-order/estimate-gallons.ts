@@ -288,7 +288,7 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   // normal room. Removed before the test so "Pool bath house" cannot match on
   // its first word.
   const cleaned = s.replace(/bath\s*houses?/g, " ");
-  if (/\b(bathrooms?|bathrms?|baths?|powder\s*(rooms?|rms?)|en[\s-]?suites?|wc)\b/.test(cleaned)) {
+  if (/\b(bathrooms?|bathrms?|baths?|powder\s*(rooms?|rms?)|en[\s-]?suites?|w\/?c)\b/.test(cleaned)) {
     // …but only when the bathroom IS the area. PPP types COMBINED areas —
     // "Master Bedroom & En suite", "Hall + Bath", "Bedroom w/ ensuite" — and
     // since the split this decides what is BOUGHT: the whole area would be
