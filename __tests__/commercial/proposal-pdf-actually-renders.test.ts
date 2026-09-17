@@ -329,7 +329,14 @@ describe("the plan report fits on one page", () => {
     expect(r.fitted).toBe(true);
     expect(r.scale, "should have climbed past the old 1.7 ceiling").toBeGreaterThan(1.7);
     expect(await pdfPageCount(r.bytes)).toBe(1);
-  });
+    // 20s, not the 5s default. This one renders a 40-line proposal over and
+    // over while the fit ladder climbs, and it lands at ~5s on an idle machine
+    // — so it passed alone and failed inside the full suite, where everything
+    // is competing for the same cores. A red CI blocks the deploy, which makes
+    // a test sitting on its own timeout a release problem rather than a
+    // nuisance. The budget is generous on purpose: it is guarding the page
+    // count, not the clock.
+  }, 20_000);
 
   it("the CUSTOMER copy is one page too", async () => {
     // I originally exempted the customer copy, reasoning that a letterhead a GC
