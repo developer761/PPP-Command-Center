@@ -66,6 +66,12 @@ export const BRENDAN: RoleGuide = {
           path: "Opportunities",
           purpose:
             "Every job and bid in one list, with saved views for the way you want to read it — proposals out, active jobs, billing. This is where a new job starts and where you come back to find one.",
+          steps: [
+            "Click Opportunities in the left menu.",
+            "Click New opportunity.",
+            "Pick the GC, name the job, put in the address.",
+            "Click Save. The job now has its own page.",
+          ],
           watchOut:
             "There is no bid low/high on the job form any more. A job's price lives on its proposal, which is the third tab along.",
         },
@@ -75,6 +81,12 @@ export const BRENDAN: RoleGuide = {
           path: "Opportunities › any job",
           purpose:
             "Everything about one job, across its tabs. Project and Analytics only appear once the job is won or in delivery, and Debrief appears once it has been decided — so a job still out for bid shows fewer tabs than one on site.",
+          steps: [
+            "Click Opportunities in the left menu.",
+            "Click the job you want.",
+            "The tabs across the top are everything about it.",
+            "Project and Analytics only appear once the job is won.",
+          ],
           strip: { boxes: JOB_TABS, at: 0 },
           controls: [
             { label: "Overview", tourTarget: "job:tab:overview", does: "The summary, with Info and Team underneath it." },
@@ -94,11 +106,13 @@ export const BRENDAN: RoleGuide = {
             "Where the job is priced and the proposal is built. A proposal cannot go straight from draft to the GC — it is approved internally first, on purpose.",
           strip: { boxes: JOB_TABS, at: 2 },
           steps: [
-            "Press New proposal in the Proposals card and build it — scope, exclusions, tax.",
-            "Press Send for approval. It goes to an approver, not the GC.",
-            "The approver presses Approve, or Request changes and sends it back.",
-            "Once approved, press Send proposal, then Send to GC in the window that opens.",
-            "When the GC answers, press Mark won or Mark lost.",
+            "Open the job and click the Proposals tab.",
+            "Click New proposal.",
+            "Build it — scope lines, exclusions, tax. It saves as you go.",
+            "Click Send for approval. This goes to an approver, NOT the GC.",
+            "The approver clicks Approve.",
+            "Now click Send proposal, then Send to GC in the window that opens.",
+            "When the GC answers, click Mark won or Mark lost.",
           ],
           controls: [
             { label: "New proposal", does: "Starts one. Revisions come later and are numbered R2, R3 and so on." },
@@ -123,6 +137,13 @@ export const BRENDAN: RoleGuide = {
           tourTarget: "job:tab:standing",
           purpose:
             "Moving a job along. Most moves happen by themselves as you do the work, so this card is for what the platform cannot see — a verbal yes, or a no-bid.",
+          steps: [
+            "Open the job and click the Where it stands tab.",
+            "Find the Change status card.",
+            "Click Move this deal to and pick the new stage.",
+            "Click Save.",
+            "On a win or a loss, fill in the debrief or click Debrief later.",
+          ],
           strip: { boxes: JOB_TABS, at: 1 },
           controls: [
             { label: "Move this deal to", kind: "field", does: "The stage to move to. Only sensible next stages are offered." },
@@ -150,6 +171,15 @@ export const BRENDAN: RoleGuide = {
           tourTarget: "job:tool-open:work-order",
           purpose:
             "The sheet the crew works from. Its scope is seeded from the accepted proposal and the finish schedule, so you are editing rather than typing it out.",
+          steps: [
+            "Open the job and click the Project tab.",
+            "Click the Work Order tile.",
+            "Click + Create work order. The scope fills in from the proposal.",
+            "Fill in Assigned crew / foreman and the dates.",
+            "Tick the scope lines for this sheet.",
+            "Click Preview PDF to check it.",
+            "Click Send to Field Ops. Now the crew can see it.",
+          ],
           strip: { boxes: PROJECT_TILES, at: 1 },
           controls: [
             { label: "+ Create work order", does: "Makes the first sheet for this job." },
@@ -168,12 +198,23 @@ export const BRENDAN: RoleGuide = {
           path: "Field Ops › Calendar",
           purpose:
             "Who is on which job, by week. Put a crew on a day here and they get their schedule by email — in Spanish where that is their language.",
+          steps: [
+            "Click Field Ops in the left menu, then Calendar.",
+            "Find the week and the job.",
+            "Add the crew to the day.",
+            "They get their schedule by email, in Spanish where that is their language.",
+          ],
         },
         {
           name: "Approvals",
           href: "/commercial/field-ops/approvals",
           path: "Field Ops › Approvals",
           purpose: "Hours the foremen submitted, waiting on you — approve them, or question one and send it back.",
+          steps: [
+            "Click Field Ops in the left menu, then Approvals.",
+            "Read the hours a foreman submitted.",
+            "Approve them, or question one to send it back.",
+          ],
           watchOut:
             "Hours are a record of who was on site. They are not what the crew is paid: that is a labor payment Mary records on the Accounting page. The two are kept apart so a job is never charged twice.",
         },
@@ -182,6 +223,11 @@ export const BRENDAN: RoleGuide = {
           href: "/commercial/field-ops/employees",
           path: "Field Ops › Crew",
           purpose: "Adding a crew member, setting a cost rate, and giving somebody a clock-in PIN.",
+          steps: [
+            "Click Field Ops in the left menu, then Crew.",
+            "Add a crew member, or open one to change them.",
+            "Set their cost rate and give them a clock-in PIN.",
+          ],
         },
       ],
     },
@@ -195,12 +241,21 @@ export const BRENDAN: RoleGuide = {
           href: "/commercial/reports/pipeline",
           path: "Reports › Pipeline",
           purpose: "Every open bid, what it is quoted at, and who to ring about it.",
+          steps: [
+            "Click Reports in the left menu.",
+            "Open Pipeline.",
+            "Use Group by to read it the way you want.",
+          ],
         },
         {
           name: "Scheduling",
           href: "/commercial/reports/scheduling",
           path: "Reports › Scheduling",
           purpose: "Jobs in coordination, on site or on hold, and what each still owes.",
+          steps: [
+            "Click Reports in the left menu.",
+            "Open Scheduling.",
+          ],
         },
         {
           name: "Win / Loss",
@@ -208,6 +263,12 @@ export const BRENDAN: RoleGuide = {
           path: "Reports › Win / Loss",
           purpose:
             "Every deal decided in a period — what it was worth, who we were up against, and why the ones we lost went the other way. Group it by outcome, by GC, or by why we lost.",
+          steps: [
+            "Click Reports in the left menu.",
+            "Open Win / Loss.",
+            "Pick the period at the top.",
+            "Use Group by for Outcome, GC, or Why we lost.",
+          ],
           watchOut: "It is only as good as the debriefs. A win with no reason recorded still counts, but it tells nobody anything.",
         },
         {
@@ -215,6 +276,10 @@ export const BRENDAN: RoleGuide = {
           href: "/commercial/reports/attendance",
           path: "Reports › Attendance",
           purpose: "Who was on site, on which job, for how long. Hours, not cost.",
+          steps: [
+            "Click Reports in the left menu.",
+            "Open Attendance.",
+          ],
         },
       ],
     },
@@ -243,11 +308,14 @@ export const STEPHANIE: RoleGuide = {
             "The product data the GC needs before work starts, put together as a package with a Letter of Transmittal. Packages are numbered SUB-001, SUB-002 and so on.",
           strip: { boxes: PROJECT_TILES, at: 0 },
           steps: [
-            "Press + New submittal. It creates a draft and takes you straight into it.",
-            "Add the items and attach the files.",
-            "Press Download PDF and send the Letter of Transmittal to the GC yourself.",
-            "Press Mark as sent to GC to record that it has gone.",
-            "When they answer, press Mark received by GC, then record their answer.",
+            "Open the job and click the Project tab.",
+            "Click the Submittals tile.",
+            "Click + New submittal. It opens the new one for you.",
+            "Click Add item for each product, and attach the files.",
+            "Click Download PDF and email it to the GC yourself.",
+            "Come back and click Mark as sent to GC.",
+            "When they reply, click Mark received by GC.",
+            "Then click the answer they gave — Approved as Submitted, Approved as Noted, Revise & Resubmit or Rejected.",
           ],
           controls: [
             { label: "+ New submittal", does: "Creates a draft Letter of Transmittal and opens it." },
@@ -273,10 +341,14 @@ export const STEPHANIE: RoleGuide = {
             "Extra work, priced and put in writing. Raised, sent to the GC for their answer, then recorded — and only then does it count toward the contract.",
           strip: { boxes: PROJECT_TILES, at: 2 },
           steps: [
-            "Open Add a change order, fill in the title, direction and amount, and press Add change order.",
-            "Open Send for approval, check the message, and press Send to GC.",
-            "When they answer, press Approve or Decline.",
-            "Once approved, press Add to invoice to bill it.",
+            "Open the job and click the Project tab.",
+            "Click the Change Orders tile.",
+            "Click Add a change order.",
+            "Fill in the title, pick Add or Deduct, and type the amount.",
+            "Click Add change order.",
+            "Click Send for approval, check the message, then click Send to GC.",
+            "When the GC answers, click Approve or Decline.",
+            "Once approved, click Add to invoice to bill it.",
           ],
           controls: [
             { label: "Add a change order", does: "Opens the form. Inside it, Add change order saves." },
@@ -300,10 +372,14 @@ export const STEPHANIE: RoleGuide = {
             "The G702/G703 payment applications. Each one carries the percentages forward from the last, so you are only entering what changed this month.",
           strip: { boxes: PROJECT_TILES, at: 4 },
           steps: [
-            "Open New application, set Period to and the retainage percentage, and press Create application.",
-            "Fill in this month's figures on the continuation lines.",
-            "Under Mark as, press Submitted once it has gone to the GC.",
-            "At the end of the job, press Bill the retainage to raise the final application.",
+            "Open the job and click the Project tab.",
+            "Click the AIA Billing tile.",
+            "Click New application.",
+            "Set Period to and the Retainage (%).",
+            "Click Create application.",
+            "Fill in this month's figures. Last month's carry forward.",
+            "Click Export to Excel and send it to the GC.",
+            "Under Mark as, click Submitted.",
           ],
           controls: [
             { label: "New application", does: "Opens the form for the next one." },
@@ -324,6 +400,16 @@ export const STEPHANIE: RoleGuide = {
           tourTarget: "job:tool-open:closeout",
           purpose:
             "The pack the GC needs at the end, as a checklist that tells you what is still missing — and the warranty letter, which runs twelve months from substantial completion.",
+          steps: [
+            "Open the job and click the Project tab.",
+            "Click the Closeout & Warranty tile.",
+            "Click + New close-out package.",
+            "Work down the checklist — it shows what is still missing.",
+            "Fill in the cover: who it goes to, the subject, substantial completion.",
+            "Click Transmittal PDF and send the pack.",
+            "Click Mark sent.",
+            "Click Issue warranty letter. Twelve months starts from substantial completion.",
+          ],
           strip: { boxes: PROJECT_TILES, at: 6 },
           controls: [
             { label: "+ New close-out package", does: "Creates one, seeded with the standard checklist and the one-year warranty." },
@@ -344,6 +430,14 @@ export const STEPHANIE: RoleGuide = {
           tourTarget: "job:tool-open:transactions",
           purpose:
             "Everything spent on the job and what it has made — the tool is headed “Transactions & Job P&L” once you open it. Entries are numbered TRANS-0001 and up.",
+          steps: [
+            "Open the job and click the Project tab.",
+            "Click the Costs tile.",
+            "Click Log a transaction.",
+            "Fill in the category, vendor, amount and date.",
+            "Attach the receipt photo if you have one.",
+            "Click Add transaction.",
+          ],
           strip: { boxes: PROJECT_TILES, at: 3 },
           controls: [
             { label: "Log a transaction", does: "Opens the form. Inside it, Add transaction saves." },
@@ -367,6 +461,10 @@ export const STEPHANIE: RoleGuide = {
           tourTarget: "job:tab:docs",
           purpose:
             "Everything filed against the job, in three places: Plans & Specs, Colors & Finishes, and Files.",
+          steps: [
+            "Open the job and click the Documents tab.",
+            "Pick Plans & Specs, Colors & Finishes, or Files.",
+          ],
           strip: { boxes: JOB_TABS, at: 3 },
         },
         {
@@ -376,6 +474,10 @@ export const STEPHANIE: RoleGuide = {
           tourTarget: "job:tab:activity",
           purpose:
             "The history of the job — Notes, Tasks, Timeline, and the Email Archive of everything sent and received about it.",
+          steps: [
+            "Open the job and click the Activity tab.",
+            "Pick Notes, Tasks, Timeline, or Email Archive.",
+          ],
           strip: { boxes: JOB_TABS, at: 4 },
         },
         {
@@ -384,6 +486,11 @@ export const STEPHANIE: RoleGuide = {
           path: "Email",
           purpose:
             "Everything sent to and received from a GC, across every job, in one place. The fastest way to check whether somebody actually replied.",
+          steps: [
+            "Click Email in the left menu.",
+            "Find the GC or the job.",
+            "Read everything sent and received, in order.",
+          ],
         },
       ],
     },

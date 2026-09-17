@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
 
 const LS_KEY = "cc_onboarding_seen_v1";
@@ -106,6 +106,23 @@ function findVisibleTarget(sel: string): HTMLElement | null {
   return null;
 }
 
+/**
+ * Is the browser already where this step wants to be?
+ *
+ * True when the path matches and every param the step asks for is present with
+ * the same value. Extra params already on the URL are ignored — they are
+ * somebody's filter, not a reason to navigate away and lose it.
+ */
+export function onRoute(route: string, pathname: string, params: URLSearchParams): boolean {
+  const [routePath, routeQuery = ""] = route.split("?");
+  if (routePath !== pathname) return false;
+  const want = new URLSearchParams(routeQuery);
+  for (const [k, v] of want) {
+    if (params.get(k) !== v) return false;
+  }
+  return true;
+}
+
 export function OnboardingWalkthrough({
   firstName,
   autoStart = false,
@@ -115,6 +132,7 @@ export function OnboardingWalkthrough({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [active, setActive] = useState(false);
   const [i, setI] = useState(0);
   /**
@@ -206,9 +224,27 @@ export function OnboardingWalkthrough({
     } catch {
       /* ignore */
     }
-    if (step.route && pathname !== step.route) {
+    /**
+     * NAVIGATE ON THE WHOLE URL, NOT JUST THE PATH.
+     *
+     * Karan 2026-09-17, mid-walkthrough: "when it brings me to each page like
+     * this it should physically bring me to that page."
+     *
+     * It wasn't. Every accounting step routes to the same PATH with a different
+     * query — `/commercial/accounting?view=receivables` — and `usePathname()`
+     * returns the path alone. So the comparison was "/commercial/accounting"
+     * against "/commercial/accounting?view=receivables": never equal, so it
+     * pushed; and the pathname never changed, so this effect never re-ran to go
+     * looking for the target. The result was a card reading "Date received"
+     * while the screen sat on whatever tab you happened to be on, with nothing
+     * spotlighted. Thirteen of Mary's steps behaved that way.
+     *
+     * Compared by params rather than by string so that an extra param already
+     * on the URL, or a different order, does not send it round again.
+     */
+    if (step.route && !onRoute(step.route, pathname, searchParams)) {
       router.push(step.route);
-      // Wait for the pathname change to re-trigger this effect before measuring.
+      // The effect re-runs when the path OR the query settles.
       return;
     }
     if (!step.target) {
@@ -222,7 +258,10 @@ export function OnboardingWalkthrough({
       const el = findVisibleTarget(step.target!);
       if (el) {
         targetElRef.current = el;
-        el.scrollIntoView({ block: "nearest" });
+        // "center", not "nearest": the point is to SHOW somebody the field.
+        // "nearest" leaves an element that is technically on screen exactly
+        // where it was, often behind the tour card.
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
         setRect(el.getBoundingClientRect());
         return;
       }
@@ -236,7 +275,7 @@ export function OnboardingWalkthrough({
     };
     poll();
     return () => cancelAnimationFrame(raf);
-  }, [i, active, pathname, router, steps]);
+  }, [i, active, pathname, searchParams, router, steps]);
 
   // Keep the spotlight glued to its element on scroll/resize.
   useEffect(() => {

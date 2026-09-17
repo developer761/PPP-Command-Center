@@ -89,6 +89,11 @@ const OVERVIEW: RoleGuide = {
           path: "Dashboard",
           purpose:
             "Where everyone starts. The top of the page is what needs doing today — late invoices, work finished and not billed, bids past their date — each one a link straight to where you do it. The figures sit underneath.",
+          steps: [
+            "This is the page you land on.",
+            "Read What needs doing at the top — it is ordered by money at risk.",
+            "Click any row to go straight to where that job gets done.",
+          ],
           controls: [
             { label: "What needs doing", does: "The work list. Rows are ranked by how much money is at risk, biggest first." },
             { label: "Ask", does: "Bottom right of every page. Type a question in your own words and it tells you where to go." },
@@ -100,6 +105,11 @@ const OVERVIEW: RoleGuide = {
           path: "Opportunities",
           purpose:
             "Every job and bid there has ever been. Open one and everything about it is on its tabs — the price, the money, the paperwork, the crew, the history.",
+          steps: [
+            "Click Opportunities in the left menu.",
+            "Type in the search box to find a job by name, GC or address.",
+            "Click a job to open everything about it.",
+          ],
         },
         {
           name: "Accounting",
@@ -107,12 +117,20 @@ const OVERVIEW: RoleGuide = {
           path: "Accounting",
           purpose:
             "All the money, on one page behind tabs: what is owed, what came in, what went out, and the sheets that get sent to the bookkeeper. This is Mary's desk.",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Six tabs sit on the bar. Click More for the other seven.",
+          ],
         },
         {
           name: "Field Ops",
           href: "/commercial/field-ops/calendar",
           path: "Field Ops",
           purpose: "Who is on which job this week, the hours they logged, and the work orders behind it.",
+          steps: [
+            "Click Field Ops in the left menu.",
+            "Pick Calendar, Work Orders, Hours, Approvals or Crew.",
+          ],
         },
         {
           name: "Reports",
@@ -120,6 +138,11 @@ const OVERVIEW: RoleGuide = {
           path: "Reports",
           purpose:
             "Every report, in folders — the same ones Tomco ran in Salesforce, rebuilt record for record. Each one opens with its rows and puts the charts underneath.",
+          steps: [
+            "Click Reports in the left menu.",
+            "Open a folder, then the report you want.",
+            "Every report has an Export button.",
+          ],
         },
         {
           name: "Settings",
@@ -127,6 +150,10 @@ const OVERVIEW: RoleGuide = {
           path: "Settings",
           purpose:
             "The company's details on documents, the vendor list, who can log in and what they can see, and which reports each person can open.",
+          steps: [
+            "Click Settings in the left menu.",
+            "Pick the card for what you want to change.",
+          ],
         },
       ],
     },
@@ -154,16 +181,8 @@ const MARY: RoleGuide = {
             "Every job with money still out, and the form for recording a payment when it comes in. Each row carries a note so anyone can see what has been chased and when.",
           strip: { boxes: ACCOUNTING_BAR, at: 1 },
           steps: [
-            "In the left-hand menu, click Accounting.",
-            "Click the Receivables tab, second along the top bar.",
-            "The form Record a payment is at the top of the page.",
-            "Click the Invoice box and start typing the GC or the job name, then pick the invoice from the list.",
-            "Type the Amount — just the number, no dollar sign.",
-            "Set Date received. It already says today, so only change it if the payment came in earlier.",
-            "Choose the Method — Check, ACH / wire, Card, Cash or Other.",
-            "Put the check or wire number in Reference.",
-            "Click Record payment. A green line appears at the top to confirm.",
-            "Later, when it clears the bank: click More, then Transactions, find the row and click Mark.",
+            "Click Settings in the left menu.",
+            "Pick the card for what you want to change.",
           ],
           controls: [
             { label: "Invoice", tourTarget: "pay:invoice_id", kind: "field", required: true, does: "Search by job name or invoice number. This is what the payment lands against." },
@@ -192,16 +211,16 @@ const MARY: RoleGuide = {
             "Record what was bought against a job, and see everything bought grouped by vendor, by job or by month.",
           strip: { boxes: ACCOUNTING_BAR, at: 3 },
           steps: [
-            "In the left-hand menu, click Accounting.",
-            "Click the Purchases tab on the top bar.",
-            "The form Record a purchase is at the top of the page.",
-            "Click the Job box and start typing the job name, then pick it from the list.",
-            "Click the Vendor box and pick the supplier. If they are not on the list, just type the name in.",
-            "Type the Amount, and set the Date it was bought.",
-            "Choose the Category — Materials, Equipment, Permit or Other.",
-            "Put the receipt or invoice number in Reference.",
-            "TO ADD THE RECEIPT ITSELF: click the Receipt box at the bottom of the form and choose the file. On a phone this opens the camera, so you can photograph the docket there and then.",
-            "Click Record purchase. It appears in the list below straight away, with a tick in the Receipt column.",
+            "Click Accounting in the left menu.",
+            "Click the Purchases tab.",
+            "The form Record a purchase is at the top.",
+            "Click Job. Type the job name, then pick it from the list.",
+            "Click Vendor. Pick the supplier, or type a new name.",
+            "Type the Amount, and check the Date.",
+            "Pick the Category.",
+            "Type the receipt number in Reference.",
+            "Click Receipt and choose the photo. On a phone this opens the camera.",
+            "Click Record purchase.",
           ],
           controls: [
             { label: "Job", tourTarget: "purchase:opportunity_id", kind: "field", required: true, does: "Search jobs. What the purchase is booked against." },
@@ -226,12 +245,12 @@ const MARY: RoleGuide = {
           purpose: "Record what was paid out to a crew or labor company, and see what each has been paid.",
           strip: { boxes: ACCOUNTING_BAR, at: 4 },
           steps: [
-            "In the left-hand menu, click Accounting.",
-            "Click the Labor payments tab on the top bar.",
-            "The form Record a labor payment is at the top of the page.",
-            "Click the Job box and pick the job the crew worked on.",
-            "Click Paid to and pick the crew or labor company — the company, not the individual painter.",
-            "Type the Amount and set Date paid.",
+            "Click Accounting in the left menu.",
+            "Click the Labor payments tab.",
+            "The form Record a labor payment is at the top.",
+            "Click Job and pick the job.",
+            "Click Paid to and pick the crew company.",
+            "Type the Amount, and check Date paid.",
             "Click Record payment out.",
           ],
           controls: [
@@ -253,6 +272,12 @@ const MARY: RoleGuide = {
           tourTarget: "accounting:deposits",
           purpose:
             "Money in, grouped by the day it landed — the view you read with the bank statement next to you. Job names link to where that payment was recorded.",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click the Deposits tab.",
+            "Read down the list against your bank statement.",
+            "To tick one off: click More, then Transactions, find the row, click Mark.",
+          ],
           strip: { boxes: ACCOUNTING_BAR, at: 5 },
           watchOut:
             "This tab shows the deposits; it does not tick them off. The Mark button is on the Transactions tab, behind More.",
@@ -271,6 +296,14 @@ const MARY: RoleGuide = {
           tourTarget: "accounting:ar",
           purpose:
             "The sheet you send on, headed \u201cAccounts Receivable\u201d. It builds itself from the AIA applications that have been raised — you do not type it up. Retention sits on its own line, and every line groups under its job with a subtotal.",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click the AR sheet tab.",
+            "Read the lines — they build themselves from the AIA applications.",
+            "To change one: click Edit the sheet, change it, click Save.",
+            "To add one: click Edit the sheet, fill in Job and Billed / open, click Add line.",
+            "Click Export for the file to send Alex.",
+          ],
           strip: { boxes: ACCOUNTING_BAR, at: 2 },
           controls: [
             { label: "Edit the sheet", does: "Opens the editor underneath the table. Everything below is inside it." },
@@ -290,10 +323,10 @@ const MARY: RoleGuide = {
           purpose:
             "A clean sheet for the bookkeeper. What prints is the report and its figures — the tab strip, the filter bars and the entry forms are all left off, and the page is headed with the company name, the tab and the date it was run.",
           steps: [
-            "Open the tab you want to send — Receivables, AR sheet, whichever it is.",
-            "Click Print / PDF at the top right of the page.",
-            "Your browser's print box opens. Change the Destination to Save as PDF.",
-            "Click Save, and choose where to put the file.",
+            "Open the tab you want to send.",
+            "Click Print / PDF at the top right.",
+            "In the print box, set Destination to Save as PDF.",
+            "Click Save.",
           ],
         },
       ],
@@ -307,6 +340,11 @@ const MARY: RoleGuide = {
           name: "AR aging",
           href: "/commercial/accounting?view=aging",
           path: "Accounting › More › AR aging",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then AR aging.",
+            "Read across: each GC's money by how late it is.",
+          ],
           tourTarget: "accounting:aging",
           purpose: "What is owed by how late it is — 30, 60, 90 days and beyond, per GC. The answer to “how bad is it”.",
         },
@@ -314,6 +352,11 @@ const MARY: RoleGuide = {
           name: "Cash flow",
           href: "/commercial/accounting?view=cash",
           path: "Accounting › More › Cash flow",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Cash flow.",
+            "Read the chart for money in by month, and the table for who pays slowest.",
+          ],
           tourTarget: "accounting:cash",
           purpose: "Collected against billed by month, and how long each GC actually takes to pay.",
         },
@@ -321,6 +364,11 @@ const MARY: RoleGuide = {
           name: "Job costs",
           href: "/commercial/accounting?view=costs",
           path: "Accounting › More › Job costs",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Job costs.",
+            "Click any job name to open its costs and add more.",
+          ],
           tourTarget: "accounting:costs",
           purpose: "What each job has cost and what is left on it. Clicking a job opens its costs tool.",
         },
@@ -328,6 +376,12 @@ const MARY: RoleGuide = {
           name: "Sales tax",
           href: "/commercial/accounting?view=tax",
           path: "Accounting › More › Sales tax",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Sales tax.",
+            "Set Issued to the period you are filing.",
+            "Click Export for filing.",
+          ],
           tourTarget: "accounting:tax",
           purpose: "Tax collected by rate, ready to file — and the invoices that carried no tax and have no exemption on file.",
           controls: [
@@ -340,6 +394,12 @@ const MARY: RoleGuide = {
           name: "Transactions",
           href: "/commercial/accounting?view=transactions",
           path: "Accounting › More › Transactions",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Transactions.",
+            "Find the payment in its month.",
+            "Click Mark when it has cleared the bank.",
+          ],
           tourTarget: "accounting:transactions",
           purpose:
             "The full ledger: everything in and out, newest month first, with a subtotal per month. This is also where you tick payments off against the bank.",
@@ -354,6 +414,11 @@ const MARY: RoleGuide = {
           name: "Balance owed",
           href: "/commercial/accounting?view=owed",
           path: "Accounting › More › Balance owed",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Balance owed.",
+            "Click a job name to open its invoices.",
+          ],
           tourTarget: "accounting:owed",
           purpose:
             "Jobs that are finished or on hold with money still out — Tomco's own Balance Owed report, the same records to the cent.",
@@ -362,6 +427,12 @@ const MARY: RoleGuide = {
           name: "Reimbursements",
           href: "/commercial/accounting?view=reimbursements",
           path: "Accounting › More › Reimbursements",
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click More, then Reimbursements.",
+            "Find the person under Still owed.",
+            "Click Mark paid once you have paid them back.",
+          ],
           tourTarget: "accounting:reimbursements",
           purpose: "Who is owed money back out of pocket. A purchase reaches this tab when somebody filled in Reimburse to.",
           controls: [

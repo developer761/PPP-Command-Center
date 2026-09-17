@@ -118,6 +118,37 @@ describe("the walkthrough is worth reading", () => {
     }
   });
 
+  it("every surface is step by step", () => {
+    /**
+     * Karan 2026-09-17: "make it simpler and literally step by step for all of
+     * them." Nineteen surfaces had no steps at all — they said what the page
+     * was for and left you to work out the clicks. A scripted bulk edit claimed
+     * to have written them and silently skipped those nineteen, which is why
+     * this counts rather than trusts.
+     */
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          expect(su.steps?.length ?? 0, `${su.name} has no steps`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("a step is one instruction, not a paragraph", () => {
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          for (const st of su.steps ?? []) {
+            // Simple means short. A step that runs past this is two steps.
+            expect(st.length, `${su.name}: "${st.slice(0, 40)}…" is too long for one step`).toBeLessThan(150);
+            expect(st.trim().endsWith("."), `${su.name}: "${st}" should end in a full stop`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
   it("every surface says where it is and what it is for", () => {
     for (const r of ROLES) {
       for (const c of r.chapters) {

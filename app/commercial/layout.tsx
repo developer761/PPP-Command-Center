@@ -136,10 +136,12 @@ export default async function CommercialDashboardLayout({
           way; this one was left ungated, so a newly provisioned painter's
           first sight of the platform was an admin tour dimming the screen and
           pointing at pages they cannot open. */}
-      <OnboardingWalkthrough
-        firstName={firstName}
-        autoStart={!crewOnly && profile?.commercial_onboarding_seen_at == null}
-      />
+      <Suspense fallback={null}>
+        <OnboardingWalkthrough
+          firstName={firstName}
+          autoStart={!crewOnly && profile?.commercial_onboarding_seen_at == null}
+        />
+      </Suspense>
       {/* Ask — on every commercial page, because the question people have is
           almost always about the page they are already on. Not for crew-only
           logins: it can read the company's money, and they cannot. */}
