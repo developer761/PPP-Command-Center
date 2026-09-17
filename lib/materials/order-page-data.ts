@@ -69,6 +69,7 @@ export async function loadOrderPageData(
       // from. 0 when the rep never measured it, and then only floor shows.
       wallSqft: li.raw.wallSurfaceArea ?? 0,
       perimeterLf: li.raw.perimeter ?? 0,
+      heightFt: li.raw.heightFt ?? 0,
       // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
       // the job covers rather than just how many lines it has.
       notes: li.raw.description ?? null,

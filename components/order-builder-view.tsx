@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
 import { customItemLabel, inBuyList, isOnOrder, nextCustomColorId, orderableQty } from "@/lib/supplier-order/color-note-items";
+import { formatRoomDimensions } from "@/lib/supplier-order/room-dimensions";
 import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
@@ -60,6 +61,10 @@ export type SourceLine = {
    *  wall area matters for walls and floor area for a ceiling. 0 when the
    *  rep never captured it, and the estimator then derives 4x root(floor). */
   perimeterLf: number;
+  /** Room height, feet — 0 when Salesforce never captured it. Shown only when
+   *  real: the gallon maths defaults a missing height to 8, and printing that
+   *  as a measurement claims knowledge we do not have. */
+  heightFt?: number;
   /** SF `Description` — the rep's scope notes on the quote line. PPP's field
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
@@ -623,12 +628,23 @@ export default function OrderBuilderView({
                     {l.surfaces.length > 0 && (
                       <div className="text-[11px] text-ppp-blue-700 mt-0.5">{l.surfaces.join(" · ")}</div>
                     )}
+                    {/* Jason + Alex 2026-09-17: "Put the room dimensions
+                        instead of the calculation surface area coverage (that
+                        can be on the backend for us)." Salesforce holds floor
+                        area and perimeter, so for a rectangular room the
+                        dimensions are exact arithmetic — and where they are
+                        not derivable the areas stay, rather than a guess. */}
                     <div className="text-ppp-charcoal-500 mt-0.5">
-                      {l.detail}
-                      {l.sqft > 0 ? `${l.detail ? " · " : ""}${l.sqft.toLocaleString()} sq ft floor` : ""}
-                      {l.wallSqft > 0
-                        ? `${l.detail || l.sqft > 0 ? " · " : ""}${l.wallSqft.toLocaleString()} sq ft wall`
-                        : ""}
+                      {(() => {
+                        const dims = formatRoomDimensions(l.sqft, l.perimeterLf, l.heightFt);
+                        const bits = [l.detail];
+                        if (dims) bits.push(dims);
+                        else {
+                          if (l.sqft > 0) bits.push(`${l.sqft.toLocaleString()} sq ft floor`);
+                          if (l.wallSqft > 0) bits.push(`${l.wallSqft.toLocaleString()} sq ft wall`);
+                        }
+                        return bits.filter(Boolean).join(" · ");
+                      })()}
                     </div>
                     {/* Kate 2026-09-04 — the rooms the rep actually listed. */}
                     <LineItemNotes notes={l.notes} label="Scope" />
@@ -846,10 +862,18 @@ export default function OrderBuilderView({
                             if (!src) return null;
                             const kind = classifySurface(surface);
                             let measure = "";
+                            // Jason + Alex 2026-09-17: the room's dimensions
+                            // rather than the coverage area we computed from
+                            // them. Falls back to the area when the room is not
+                            // a rectangle, which is the only case where length
+                            // and width cannot be recovered.
+                            const dims = formatRoomDimensions(src.sqft, src.perimeterLf, src.heightFt);
                             if (kind === "ceiling" || kind === "floor") {
-                              if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft`;
+                              if (dims) measure = dims;
+                              else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft`;
                             } else if (kind === "walls") {
-                              if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
+                              if (dims) measure = dims;
+                              else if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft floor`;
                             } else if (kind === "trim") {
                               // A DOOR is not the room's perimeter. classifySurface
