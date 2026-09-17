@@ -147,8 +147,10 @@ export function buildWorklist(input: WorklistInput): WorkItem[] {
     items.push({
       key: `bill:${u.oppId}`,
       subject: u.name,
-      action: "Bill the work that is done",
-      why: "finished and not invoiced — nothing can be collected until it is",
+      // One phrase platform-wide: "won, not invoiced". Karan 2026-09-17,
+      // after seeing three names for it: "keep the verbiage the same."
+      action: "Raise the invoice",
+      why: "won, not invoiced — nothing can be collected until it is",
       href: oppHref(u.oppId, "invoices"),
       group: "money",
       tone: "amber",

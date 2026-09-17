@@ -260,7 +260,7 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
   if (d.overdueCents > 0) flags.push(`${money(d.overdueCents)} is past due.`);
   if (d.undepositedCount > 0)
     flags.push(`${money(d.undepositedCents)} received but not deposited (${d.undepositedCount}).`);
-  if (d.readyToBillCents > 0) flags.push(`${money(d.readyToBillCents)} is earned and not yet billed.`);
+  if (d.readyToBillCents > 0) flags.push(`${money(d.readyToBillCents)} is won and not invoiced.`);
   if (d.reimbursementsOwedCount > 0)
     flags.push(`${money(d.reimbursementsOwedCents)} owed back to people (${d.reimbursementsOwedCount}).`);
   if (d.uncertifiedCount > 0)
@@ -407,7 +407,7 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
       // spent saying nothing.
       d.undepositedCount > 0
         ? tile("Not deposited", money(d.undepositedCents), `${d.undepositedCount} payments`, "warn")
-        : tile("Still to bill", money(d.readyToBillCents), "earned, not invoiced")
+        : tile("Won, not invoiced", money(d.readyToBillCents), "no invoice raised yet")
     }
   </tr></table>
 

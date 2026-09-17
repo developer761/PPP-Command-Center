@@ -147,7 +147,8 @@ describe("renderDigestEmail", () => {
   it("does not spend a tile on a zero", () => {
     const none = renderDigestEmail(data({ undepositedCount: 0, undepositedCents: 0, readyToBillCents: 5_000_00 }));
     expect(none.html).not.toContain("Not deposited");
-    expect(none.html).toContain("Still to bill");
+    // One phrase platform-wide, so the email and the screen name it the same.
+    expect(none.html).toContain("Won, not invoiced");
 
     const some = renderDigestEmail(data({ undepositedCount: 2, undepositedCents: 2_000_00 }));
     expect(some.html).toContain("Not deposited");

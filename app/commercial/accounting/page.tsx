@@ -46,6 +46,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import { PrintButton } from "@/components/commercial/reports/print-button";
 import { PrintSheetStyles, PrintHeader } from "@/components/commercial/print-sheet";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
@@ -476,7 +478,15 @@ const VIEWS = [
   // separate pages under Reports, which meant her work was in two places.
   // Mary's own AR sheet, generated from the AIA certificates she raises.
   { key: "ar", label: "AR sheet" , primary: true },
-  { key: "owed", label: "Balance owed" , primary: false },
+  // Katie: "Balance Owed Report — only the projects which are completed but
+  // there is still a balance due from the customer." It is one of the reports
+  // she and Alex actually run, so it sits on the bar beside the AR sheet
+  // rather than behind More.
+  { key: "owed", label: "Balance owed" , primary: true },
+  // Won work with no invoice raised against it. Reached from the line on the
+  // Overview, which used to send you to the dashboard and leave you to find
+  // the jobs yourself.
+  { key: "unbilled", label: "Won, not invoiced" , primary: false },
   { key: "purchases", label: "Purchases" , primary: true },
   { key: "labor-out", label: "Labor payments" , primary: true },
   { key: "deposits", label: "Deposits" , primary: true },
@@ -588,6 +598,10 @@ export default async function AccountingPage({
   const needsCash = view === "overview" || view === "cash";
   const needsCosts = view === "overview" || view === "costs";
   const needsOverviewOnly = view === "overview";
+  // The Won-not-invoiced tab reads the same project rows the Overview line is
+  // computed from. Without this the tab rendered an empty table under a
+  // heading that promised 19 jobs.
+  const needsProjects = needsOverviewOnly || view === "unbilled";
   const [company, receivables, cash, jobCosts, coVendor, projects] = await Promise.all([
     // Named on the printed sheet, so what reaches the bookkeeper says whose
     // books it is. In the same batch as everything else — it is one small read
@@ -597,7 +611,7 @@ export default async function AccountingPage({
     needsCash ? settle("Cash flow", getCashFlowReport(cashRange), EMPTY_CASH) : Promise.resolve(EMPTY_CASH),
     needsCosts ? settle("Job costs", getJobCostsReport(), EMPTY_JOB_COSTS) : Promise.resolve(EMPTY_JOB_COSTS),
     needsOverviewOnly ? settle("Change orders", getChangeOrderVendorReport(coRange), EMPTY_CO) : Promise.resolve(EMPTY_CO),
-    needsOverviewOnly ? settle("Projects", listProjects(), []) : Promise.resolve([]),
+    needsProjects ? settle("Projects", listProjects(), []) : Promise.resolve([]),
   ]);
 
   // What the band shows when the obvious figures collapse into each other —
@@ -1022,15 +1036,15 @@ export default async function AccountingPage({
           pre-construction, in progress or billing. */}
       {wonNotBilledCents > 0 && (
         <Link
-          href="/commercial"
+          href={href("unbilled")}
           className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-300 bg-cc-brand-50 px-4 py-3 hover:border-cc-brand-600 transition-colors"
         >
           <span className="min-w-0">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-cc-brand-700">
-              Won, not billed yet
+              Won, not invoiced
             </span>
             <span className="block text-[11.5px] text-cc-brand-800 mt-0.5">
-              Signed work with no invoice raised against it — the fastest cash there is.
+              Won work with no invoice raised against it — the fastest cash there is.
             </span>
           </span>
           <span className="shrink-0 text-right">
@@ -2130,6 +2144,74 @@ export default async function AccountingPage({
           rows={laborPaymentRows(spendRows)}
           emptyHint="No crew payments recorded."
         />
+        </section>
+      )}
+
+      {/* WON, NOT INVOICED — the jobs behind the line on the Overview.
+          Karan 2026-09-17: "when I click the 19 it brings me to the dashboard
+          — can we have all those jobs go in there." A figure you cannot open
+          is a figure you cannot act on. */}
+      {view === "unbilled" && (
+        <section className="space-y-3">
+          <SectionHead
+            title="Won, not invoiced"
+            hint="Won work with no invoice raised against it. Open a job to raise one — it is the fastest cash there is."
+          />
+          {wonNotBilled.length === 0 ? (
+            <div className="text-center py-14 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
+              <p className="text-sm font-semibold text-ppp-charcoal">Everything won has been invoiced</p>
+              <p className="text-[12px] text-ppp-charcoal-500 mt-1">Nothing is sitting unbilled.</p>
+            </div>
+          ) : (
+            <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] border-collapse">
+                  <thead>
+                    <tr className="bg-ppp-charcoal-50 border-b border-ppp-charcoal-100">
+                      <th scope="col" className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Job</th>
+                      <th scope="col" className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500 hidden sm:table-cell">GC</th>
+                      <th scope="col" className="px-3 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Stage</th>
+                      <th scope="col" className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Contract</th>
+                      <th scope="col" className="px-3 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Not invoiced</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...wonNotBilled]
+                      .sort((a, b) => b.draftedCents - a.draftedCents)
+                      .map((p) => (
+                        <tr key={p.opp.id} className="border-t border-ppp-charcoal-50 hover:bg-ppp-charcoal-50/40">
+                          <td className="px-3 py-2 text-[12.5px]">
+                            <Link
+                              href={`/commercial/opportunities/${p.opp.id}?tab=project&sub=invoices`}
+                              className="font-semibold text-cc-brand-700 hover:underline"
+                            >
+                              {derivedOppName({ ...p.opp, title: p.opp.title ?? "" }, p.accountName)}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2 text-[12.5px] text-ppp-charcoal-600 hidden sm:table-cell">{p.accountName}</td>
+                          <td className="px-3 py-2 text-[12.5px] text-ppp-charcoal-600">
+                            {oppStatusDisplayLabel(p.opp.status, p.opp.sub_status)}
+                          </td>
+                          <td className="px-3 py-2 text-[12.5px] text-right tabular-nums">{formatCentsFull(p.contractToDateCents)}</td>
+                          <td className="px-3 py-2 text-[12.5px] text-right tabular-nums font-bold text-ppp-charcoal">
+                            {formatCentsFull(p.draftedCents)}
+                          </td>
+                        </tr>
+                      ))}
+                    <tr className="bg-ppp-charcoal-100/80 border-t-2 border-ppp-charcoal-300">
+                      <td className="px-3 py-2 text-[12px] font-black text-ppp-charcoal">Total ({wonNotBilledJobs})</td>
+                      <td className="hidden sm:table-cell" />
+                      <td />
+                      <td />
+                      <td className="px-3 py-2 text-[12.5px] text-right tabular-nums font-black text-ppp-charcoal">
+                        {formatCentsFull(wonNotBilledCents)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       )}
 

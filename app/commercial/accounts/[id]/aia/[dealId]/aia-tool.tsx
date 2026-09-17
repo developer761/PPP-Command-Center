@@ -712,7 +712,7 @@ async function AiaApplicationList({
                 ? "none held"
                 : releaseApp
                   ? `billed on Application No. ${releaseApp.application_number}`
-                  : "earned, not yet billed"
+                  : "won, not invoiced"
             }
           />
         </div>
