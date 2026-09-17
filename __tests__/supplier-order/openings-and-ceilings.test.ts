@@ -131,7 +131,7 @@ describe("doors and windows are priced as themselves", () => {
 
   it("real trim in those same two rooms is still a gallon", () => {
     const out = estimateOrderGallons([room("Bedroom", 10, 12), room("Study", 10, 12)]);
-    expect(out[0].unit ?? "gal").toBe("gal");
+    expect(formatOrderQuantity(out[0])).toMatch(/ gal$/);
   });
 
   it("door faces are not paid for twice when the room lists Doors separately", () => {
@@ -149,6 +149,32 @@ describe("doors and windows are priced as themselves", () => {
     // The doors are counted once: the combined line is the trim WITHOUT its
     // door-face add-on, plus the doors.
     expect(withOwnDoorLine).toBeLessThan(trimOnly + 4 * 20 * 1.5);
+  });
+
+  it("a door line in a MEASURED room with no door count still needs one", () => {
+    // The previous version of this used an unmeasured room, where
+    // `needsMeasurement` is unconditionally true — so reverting the door fix
+    // left all 522 tests green. This room has a floor, a perimeter and a
+    // height; only the door COUNT is missing.
+    const [e] = estimateOrderGallons([
+      room("Bedroom", 12, 15, { doors: 0, surfaces: [surf("Door", "door-black")] }),
+    ]);
+    expect(e.manualOnly ?? false).toBe(false);
+    expect(e.needsMeasurement).toBe(true);
+  });
+
+  it("a window line in a measured room with no window count says so too", () => {
+    const [e] = estimateOrderGallons([
+      room("Bedroom", 12, 15, { windows: 0, surfaces: [surf("Window", "sash-white")] }),
+    ]);
+    expect(e.needsMeasurement).toBe(true);
+  });
+
+  it("…and does NOT when the count is real", () => {
+    const [e] = estimateOrderGallons([
+      room("Bedroom", 12, 15, { doors: 3, surfaces: [surf("Door", "door-black")] }),
+    ]);
+    expect(e.needsMeasurement).toBe(false);
   });
 
   it("a door line in a room with no measurements says it needs one", () => {

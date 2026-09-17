@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   estimateOrderGallons,
+  formatOrderQuantity,
   quantityKey,
   applyQuantityOverrides,
   type RoomTakeoff,
@@ -60,8 +61,7 @@ describe("a bathroom is ordered apart from the same color elsewhere", () => {
     // bathroom rule never fired and the bath was sized on combined area.
     const [bath] = estimateOrderGallons([room("Bathroom", 5, 8)]);
     expect(bath.defaultedNote ?? "").toMatch(/bathroom/i);
-    expect(bath.cans).toBe(1);
-    expect(bath.unit ?? "gal").toBe("gal");
+    expect(formatOrderQuantity(bath)).toBe("1 gal");
   });
 
   it("two bathrooms in one color stay together", () => {

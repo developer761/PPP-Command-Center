@@ -58,7 +58,7 @@ describe("trim in more than one room", () => {
     // this is the floor Jason described doing the work rather than the rate.
     const [e] = estimateOrderGallons([room("Hall", 8, 10), room("Closet room", 7, 9)]);
     expect(e.cans).toBe(1);
-    expect(e.unit ?? "gal").toBe("gal");
+    expect(formatOrderQuantity(e)).toMatch(/ gal$/);
     expect(e.defaultedNote ?? "").toMatch(/2 rooms/);
   });
 
@@ -66,6 +66,16 @@ describe("trim in more than one room", () => {
     const rooms = ["A", "B", "C", "D", "E"].map((n) => room(n, 12, 14));
     const [e] = estimateOrderGallons(rooms);
     expect(e.gallons).toBeGreaterThan(1);
+  });
+
+  it("the RATE itself decides a one-room line", () => {
+    // Halving trimLfPerGallon used to fail exactly one assertion: the two
+    // headline tests are answered by the 2-room FLOOR before the rate is
+    // reached, so the number that decides every other trim line was almost
+    // uncovered. 15x20 → perimeter 70 x 1.25 = 87.5 lf ÷ 140 = 0.625 gal,
+    // x 1.1 buffer = 0.69 → 2 quarts.
+    const [e] = estimateOrderGallons([room("Living Room", 15, 20)]);
+    expect(formatOrderQuantity(e)).toBe("2 qt");
   });
 
   it("ONE room's trim is still priced in quarts", () => {

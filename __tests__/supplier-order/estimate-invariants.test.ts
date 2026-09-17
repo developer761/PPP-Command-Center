@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  COVERAGE_CONFIG,
   estimateOrderGallons,
   summarizeOrder,
   formatOrderQuantity,
@@ -86,10 +87,17 @@ const gallonsOf = (e: GallonEstimate) =>
 
 describe("whatever the rules do, these must hold", () => {
   it("1000 random jobs produce only finite, sane, orderable numbers", () => {
+    // Every assertion below lives inside `for (const e of out)`. If the
+    // estimator returned nothing at all — for every seed — this test would
+    // pass completely, having checked nothing. 9 of these seeds legitimately
+    // produce zero lines, so that is not hypothetical. Count what was actually
+    // examined and assert on the count.
+    let linesChecked = 0;
     for (let seed = 1; seed <= 1000; seed++) {
       const rand = rng(seed);
       const job = randomJob(rand);
       const out = estimateOrderGallons(job);
+      linesChecked += out.length;
       for (const e of out) {
         const where = `seed ${seed}, color ${e.colorId}`;
         expect(Number.isFinite(e.buckets), where).toBe(true);
@@ -99,8 +107,10 @@ describe("whatever the rules do, these must hold", () => {
         expect(e.cans, where).toBeGreaterThanOrEqual(0);
         expect(Number.isInteger(e.buckets), where).toBe(true);
         expect(Number.isInteger(e.cans), where).toBe(true);
-        // A single color line on a house should never be a pallet of paint.
-        expect(gallonsOf(e), where).toBeLessThanOrEqual(99 * GALLONS_PER_BUCKET);
+        // A single color line can never exceed the estimator's own rail. The
+        // bound used to be 495 gal against a reachable maximum of 99, so it
+        // would have passed a five-fold error.
+        expect(gallonsOf(e), where).toBeLessThanOrEqual(COVERAGE_CONFIG.maxGallonsPerLine);
         // Whatever it prints, it prints something a person can read — a
         // number, or one of the deliberate words ("TBD", "needs review").
         // Never a NaN, an undefined or an empty cell.
@@ -112,6 +122,8 @@ describe("whatever the rules do, these must hold", () => {
       const keys = out.map((e) => quantityKey(e.colorId, e.finish, e.isBathroom));
       expect(new Set(keys).size, `seed ${seed}`).toBe(keys.length);
     }
+    // The proof this measured something. ~3 lines a job across 1000 jobs.
+    expect(linesChecked).toBeGreaterThan(1000);
   });
 
   it("a bigger room never orders less paint", () => {

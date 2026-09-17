@@ -60,7 +60,7 @@ describe("what PPP actually orders", () => {
     const e = byColor([room(8, 10, 8)]);
     expect(e.wall.cans).toBe(1);
     // Absent unit means gallons — the estimator's existing convention.
-    expect(e.wall.unit ?? "gal").toBe("gal");
+    expect(formatOrderQuantity(e.wall)).toMatch(/ gal$/);
     // Katie 2026-09-08: under a gallon is priced in QUARTS rather than dropped.
     // It used to order nothing and read "from stock".
     expect(e.ceil.unit).toBe("qt");
@@ -106,6 +106,18 @@ describe("the two constants that decide the order", () => {
     expect(COVERAGE_CONFIG.defaultCoats).toBe(1.5);
   });
 
+  it("…and the AREA it produces, so the constant is pinned by arithmetic", () => {
+    // Reverting 1.5 → 1.75 used to fail exactly ONE assertion: the literal
+    // above. Every behavioural fixture survived a 17% change in what PPP buys
+    // per line, because each one lands in the middle of a rounding band.
+    //
+    // 15x20x8: perimeter 70 x 8 = 560 gross, minus one door (20) and one
+    // window (15) = 525, x 1.5 coats = 787.5, reported rounded → 788.
+    const walls = byColor([room(15, 20, 8)]).wall;
+    expect(walls.totalSqft).toBe(788);
+    // Moves on the coat factor, the perimeter derivation AND the deductions.
+  });
+
   it("an explicit coat count from Salesforce still wins", () => {
     // 1.5 is what we assume when SF is silent. A measured 3 is data.
     const a = byColor([room(15, 20, 8)]).wall.totalSqft;
@@ -144,8 +156,7 @@ describe("a line under a gallon is priced in quarts, not dropped", () => {
     // quarts, so the test failed on a fixture rather than on the rule.
     // Labelled Hallway on purpose, so the bathroom rule does not answer first.
     const e = byColor([room(6, 8, 8, { roomLabel: "Hallway" })]);
-    expect(e.wall.unit ?? "gal").toBe("gal");
-    expect(e.wall.cans).toBe(1);
+    expect(formatOrderQuantity(e.wall)).toBe("1 gal");
   });
 
   it("two quarts stays quarts", () => {

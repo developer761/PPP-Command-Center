@@ -50,7 +50,10 @@ describe("the bathroom default is a floor, not a cap", () => {
     const [e] = estimateOrderGallons([
       room("Bathroom", 20, 30, { surfaces: [surf("ceiling", "Ceiling", "white")] }),
     ]);
-    expect(e.unit ?? "gal").toBe("gal");
+    // Not `e.unit ?? "gal"`: that reads "never sized" as "sized in gallons",
+    // which is exactly how the ceiling hole stayed green while the vendor was
+    // emailed TBD.
+    expect(formatOrderQuantity(e)).toMatch(/ gal$/);
   });
 
   it("a small bathroom ceiling is still a quart", () => {
@@ -121,7 +124,7 @@ describe("a door is still a quart", () => {
     const out = estimateOrderGallons(
       ["A", "B", "C", "D"].map((n) => room(n, 10, 12, { surfaces: [surf("trim", "Trim", "trim-white")] }))
     );
-    expect(out[0].unit ?? "gal").toBe("gal");
+    expect(formatOrderQuantity(out[0])).toMatch(/ gal$/);
   });
 });
 
