@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local recovery artifacts written by the Salesforce migration scripts.
+# They hold real rows from the live book (amounts, vendors, invoice numbers) and
+# exist so a soft-delete or a status migration can be undone on THIS machine —
+# they are a safety net for an operation already applied, not source. Committing
+# them would put customer financial data in the repo for no one's benefit.
+#   scripts/fix-uninvoiced-migration.mjs  → .uninvoiced-backup.json
+#   scripts/import-tomco.mjs --action-deletions → .sf-deletions-backup.json
+scripts/.uninvoiced-backup.json
+scripts/.sf-deletions-backup.json
