@@ -49,7 +49,7 @@ import { joinOtherDetail } from "@/lib/commercial/forms/other-detail";
 import { PrintButton } from "@/components/commercial/reports/print-button";
 import { PrintSheetStyles, PrintHeader } from "@/components/commercial/print-sheet";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
-import { DepositToggle } from "@/components/commercial/deposit-toggle";
+import { DepositCheckbox } from "@/components/commercial/deposit-checkbox";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import {
@@ -2099,14 +2099,10 @@ export default async function AccountingPage({
           // the Mark button used to live only on Transactions, behind "More".
           rowAction={{
             header: "Cleared",
-            render: (r) => (
-              <DepositToggle
-                paymentId={r.id}
-                deposited={!!r.depositedYmd}
-                action={depositAction}
-                queryString="?view=deposits"
-              />
-            ),
+            // A checkbox, not a form. It ticks instantly and confirms in the
+            // background — a server action here would revalidate the whole page
+            // on every one of thirty ticks.
+            render: (r) => <DepositCheckbox paymentId={r.id} initial={!!r.depositedYmd} />,
           }}
         />
         </section>
