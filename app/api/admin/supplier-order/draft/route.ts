@@ -228,6 +228,17 @@ export async function POST(request: Request) {
 
   // Paint color lookup
   const paintColorsById = new Map(snapshot.paintColors.map((c) => [c.id, c]));
+  // Manufacturer NAMES, for the order screen. A manually picked store carries
+  // every color on the job whatever the brand — deliberately, because PPP buys
+  // BM and SW from the same counter — but on a job that genuinely spans two
+  // brands the estimator has to see which colors are which, or both vendors
+  // get the whole list and the job's paint is bought twice.
+  const manufacturerNames: Record<string, string> = {};
+  for (const c of snapshot.paintColors) {
+    if (!c.manufacturerId || manufacturerNames[c.manufacturerId]) continue;
+    const acct = snapshot.accounts.find((a) => a.id === c.manufacturerId);
+    if (acct?.name) manufacturerNames[c.manufacturerId] = acct.name;
+  }
 
   // Pull the customer's most-recent SUBMITTED form payload from Supabase. The
   // builder uses this for both color picks AND any customer-corrected delivery
@@ -276,6 +287,7 @@ export async function POST(request: Request) {
     requiredByDate: body.requiredByDate,
     includeAllColors: body.manualSupplier ?? false,
     sqftOverrides,
+    manufacturerNames,
     manualDeliveryAddress: body.manualDeliveryAddress,
     materialType: body.materialType, // Kate #16: estimator's main paint line
     colorNotes: body.colorNotes, // Kate #25: editable Color Notes

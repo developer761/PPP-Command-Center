@@ -109,6 +109,8 @@ type Draft = {
    *  colors. The order buys the customer's; Rooms & Colors shows Salesforce's.
    *  Optional: an older cached draft response won't carry them. */
   colorConflicts?: Array<{ roomLabel: string; surface: string; orderingName: string; salesforceName: string }>;
+  /** Order-line key → paint manufacturer name. */
+  colorBrands?: Record<string, string>;
   noColorsPicked: boolean;
 };
 
@@ -454,6 +456,21 @@ export default function OrderBuilderView({
         a.colorName.localeCompare(b.colorName)
     );
   }, [rawEstimates, sourceLines]);
+
+  /**
+   * More than one paint brand on this job.
+   *
+   * A hand-picked store order includes EVERY color whatever the brand, which
+   * is right — PPP buys Benjamin Moore and Sherwin-Williams from the same
+   * counter. But on a job that really does span two brands, ordering from two
+   * vendors gives each of them the whole list, and the job's paint is bought
+   * twice unless the estimator zeroes the other brand's lines by hand. They
+   * can only do that if they can see which is which.
+   */
+  const brandsOnJob = useMemo(() => {
+    const names = new Set(Object.values(currentDraft?.colorBrands ?? {}));
+    return names.size > 1 ? names : new Set<string>();
+  }, [currentDraft]);
 
   // Plain keys a non-bathroom line owns on THIS job — see readForEstimate.
   // Derived from the same estimates the rows render from, so the UI and the
@@ -868,6 +885,16 @@ export default function OrderBuilderView({
                 defensible and PPP has never been asked which they want, so the
                 order says what it is buying and what the other screen shows,
                 and leaves the choice to a person. */}
+            {/* Two brands on one job. Whoever is being ordered from is getting
+                all of it; the other vendor's order will carry the same lines
+                again unless they are zeroed here. */}
+            {brandsOnJob.size > 1 && (
+              <div className="px-4 py-2.5 text-[11px] text-ppp-charcoal-600 bg-[var(--color-surface-muted)] border-b border-ppp-charcoal-100">
+                This job uses <strong>{[...brandsOnJob].join(" and ")}</strong>. This order carries every
+                color on the work order, whichever brand — set the ones this vendor is not supplying
+                to 0 so they are not bought twice.
+              </div>
+            )}
             {(currentDraft?.colorConflicts?.length ?? 0) > 0 && (
               <div role="alert" className="px-4 py-3 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
                 <strong className="font-semibold">Salesforce and the customer&apos;s form disagree about a color.</strong>
@@ -932,6 +959,11 @@ export default function OrderBuilderView({
                           <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
                           {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
                           {e.finish && <span className="text-ppp-charcoal-500"> · {e.finish}</span>}
+                          {brandsOnJob.size > 0 && currentDraft?.colorBrands?.[key] && (
+                            <span className="ml-1.5 align-middle inline-flex items-center px-1.5 py-0.5 rounded bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-[10px] font-medium text-ppp-charcoal-600">
+                              {currentDraft.colorBrands[key]}
+                            </span>
+                          )}
                         </div>
                         {/* Kate round-3 #25: room(s) AND surface, so a color used
                             in two rooms can't collapse into one nameless line. */}

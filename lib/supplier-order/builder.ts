@@ -151,6 +151,8 @@ export type BuildSupplierOrderInput = {
    *  dropped on the way to the order, because only view-props read the table.
    *  The WO page and the email disagreed about the same room. */
   sqftOverrides?: Record<string, number>;
+  /** Paint manufacturer Account id → name, for the order screen's brand hint. */
+  manufacturerNames?: Record<string, string>;
   /** Kate round-3 #18/#22/#23/#26: the worker's COMMITTED per-line quantities,
    *  keyed by `${colorId}::${finish ?? ""}`. The email is rendered FROM these —
    *  previously the modal typed a quantity, then rewrote the rendered body with
@@ -245,6 +247,8 @@ export type SupplierOrderDraft = {
    *  to be silently dropped from the order, leaving suppliers guessing. */
   skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
   colorConflicts: ColorConflict[];
+  /** Order-line key → paint manufacturer name, for the brand hint. */
+  colorBrands: Record<string, string>;
   /** Kate round-2 #25: default Color Notes text (customer notes + opted-out
    *  surfaces) the modal pre-fills its editable Color Notes field with. */
   colorNotesDefault: string;
@@ -1466,6 +1470,20 @@ export async function buildSupplierOrderDraft(
     body: sections.join("\n"),
     lineItems,
     gallonEstimates,
+    // Brand per color line, for the order screen. A manually picked store
+    // carries every color on the job whatever the brand — deliberate, PPP buys
+    // BM and SW from one counter — so on a job that really does span two
+    // brands the estimator has to be able to SEE which is which, or each
+    // vendor's order carries the other's paint too and the job is bought twice.
+    colorBrands: Object.fromEntries(
+      gallonEstimates
+        .map((e) => {
+          const mfr = input.paintColorsById.get(e.colorId)?.manufacturerId ?? "";
+          const name = mfr ? input.manufacturerNames?.[mfr] : undefined;
+          return name ? ([quantityKey(e.colorId, e.finish, e.isBathroom), name] as const) : null;
+        })
+        .filter((x): x is readonly [string, string] => x !== null)
+    ),
     skippedSurfaces,
     colorConflicts,
     // Kate #25: default Color Notes text (customer notes + opted-out surfaces) —
