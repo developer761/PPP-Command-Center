@@ -249,6 +249,19 @@ async function put(entity, sfId, table, row, report) {
   report.total += 1;
   if (!checkColumns(table, row, report)) return null;
   if (!COMMIT) {
+    // REHEARSE THE GUARD TOO.
+    //
+    // The dry run used to skip straight past it, so the one check standing
+    // between Salesforce and somebody's hand-edits was the only part of the
+    // import a rehearsal could not show you. That is backwards: it is the part
+    // you most want to see before writing. `editedHere` only reads, so there is
+    // no reason a dry run cannot ask it.
+    if (existing && !SF_WINS && (await editedHere(table, existing, `${entity}:${sfId}`))) {
+      report.kept = (report.kept ?? 0) + 1;
+      report.conflicts = report.conflicts ?? [];
+      if (report.conflicts.length < 40) report.conflicts.push(`${table} ${existing} (Salesforce ${sfId})`);
+      return existing;
+    }
     if (report.sample.length < 3) report.sample.push(row);
     report.would += 1;
     // Remember the pretend id IN MEMORY (never in the database), so the later
@@ -329,7 +342,7 @@ function newReport(stage) {
 function printReport(r) {
   const head = COMMIT
     ? `${r.stage}: ${r.inserted} inserted, ${r.updated} updated${r.kept ? `, ${r.kept} kept (yours)` : ""}`
-    : `${r.stage}: would write ${r.would} row(s)`;
+    : `${r.stage}: would write ${r.would} row(s)${r.kept ? `, would keep ${r.kept} (yours)` : ""}`;
   console.log(`\n${head}`);
   for (const n of r.notes ?? []) console.log(`   ${n}`);
   if (r.kept) {
@@ -761,10 +774,12 @@ async function stageInvoices() {
 
 async function stagePayments() {
   const r = newReport("payments");
+  const touchedInvoices = new Set();
   for (const t of SF.txInScope) {
     if ((t.RecordType?.DeveloperName ?? "") !== "Payment_In") continue;
     const invoiceId = mapped("invoice", t.WorkOrder__c);
     if (!invoiceId) { r.skipped.push(`payment ${t.Name}: no invoice for its work order`); continue; }
+    touchedInvoices.add(invoiceId);
     await put("payment", t.Id, "commercial_invoice_payments", {
       invoice_id: invoiceId,
       amount_cents: cents(t.Amount__c),
@@ -779,7 +794,7 @@ async function stagePayments() {
   // `commercial_invoices.updated_at`. Left alone, the next run would read every
   // one of those invoices as edited-by-a-person and refuse Salesforce's updates
   // — the guard protecting the rows from the importer itself.
-  const restamped = await restampEntity("invoice");
+  const restamped = await restampEntity("invoice", touchedInvoices);
   if (restamped) r.notes.push(`re-stamped ${restamped} invoice(s) the payment trigger touched`);
   return r;
 }
@@ -1190,7 +1205,9 @@ async function stageFiles() {
   // person and refuses Salesforce's changes to them. Exactly what the payments
   // stage does to invoices. Re-stamp what this stage's own writes touched.
   if (linked) {
-    const restamped = await restampEntity("purchase");
+    // `seenPurchase` is exactly the set this loop wrote to — which is what the
+    // comment above always claimed and what the call never actually did.
+    const restamped = await restampEntity("purchase", seenPurchase);
     if (restamped) r.notes.push(`re-stamped ${restamped} purchase(s) the receipt links touched`);
   }
   return r;
@@ -1569,9 +1586,24 @@ const ENTITY_TABLE = {
  * re-baseline after every run would also swallow a genuine edit made while the
  * run was in flight.
  */
-async function restampEntity(entity) {
+async function restampEntity(entity, onlyRowIds) {
   const table = ENTITY_TABLE[entity];
   if (!COMMIT || !table || !COLUMNS.get(table)?.has("updated_at")) return 0;
+  // ONLY the rows this run's own writes touched.
+  //
+  // This used to restamp EVERY imported row of the entity, and that quietly
+  // disarmed the one guard protecting Mary's work. Re-stamping means "we wrote
+  // this, so its new updated_at is ours, not a person's" — true for an invoice
+  // whose recompute trigger just fired because we inserted a payment against
+  // it, and false for every other invoice in the book.
+  //
+  // What it cost: the uninvoiced migration (2026-09-17) set 19 invoices back to
+  // draft and cleared the due date on 16 more, which is what made our
+  // $1,369,044.37 match Salesforce. A blanket restamp told the importer those
+  // 35 edits were its own, so the next `--stage=invoices --commit` would have
+  // overwritten all of them with Salesforce's version and put the invoice
+  // fiction straight back — silently, reported as a clean sync.
+  if (onlyRowIds && onlyRowIds.size === 0) return 0;
   const stamps = new Map();
   let from = 0;
   for (;;) {
@@ -1584,6 +1616,7 @@ async function restampEntity(entity) {
   const rows = [];
   for (const [key, rowId] of MAP) {
     if (!key.startsWith(`${entity}:`)) continue;
+    if (onlyRowIds && !onlyRowIds.has(rowId)) continue;
     const stamp = stamps.get(rowId);
     if (!stamp) continue;
     rows.push({ sf_id: key.slice(entity.length + 1), entity, row_id: rowId, updated_at: stamp });
