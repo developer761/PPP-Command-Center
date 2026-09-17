@@ -264,10 +264,20 @@ export default function OrderBuilderView({
           // with no trace at all.
           setPayload((cur) => mergeBuildPayloads(saved, cur));
         }
-      } catch (err) {
-        console.warn("[order-builder] couldn't load this vendor's saved order:", err);
-      } finally {
         if (!cancelled) setLoadedFor(supplier.accountId);
+      } catch (err) {
+        // Do NOT arm the autosave on a failed load. Picking a vendor clears the
+        // payload, so arming it here meant a blip on this one fetch let the
+        // 600ms autosave PUT an EMPTY payload over that vendor's saved order —
+        // quantities, extras and custom lines gone, with only a console
+        // warning. Leaving `loadedFor` unset keeps the autosave shut until a
+        // load succeeds, and the retry is a page refresh.
+        console.warn("[order-builder] couldn't load this vendor's saved order:", err);
+        if (!cancelled) {
+          setSaveError(
+            "Couldn't load this vendor's saved order, so nothing is being saved yet. Refresh the page before building it."
+          );
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -454,34 +464,63 @@ export default function OrderBuilderView({
       ],
     }));
 
+  /**
+   * Read a per-color map for this line, tolerating a draft saved BEFORE the
+   * bathroom split (2026-09-17), when a bathroom line was keyed like any other.
+   * Without this the estimator's saved quantity — including a deliberate zero,
+   * which means "do not buy this" — silently reverted to the estimate.
+   */
+  function readForEstimate<T>(rec: Record<string, T>, e: GallonEstimate): T | undefined {
+    const exact = rec[quantityKey(e.colorId, e.finish, e.isBathroom)];
+    if (exact !== undefined) return exact;
+    return e.isBathroom ? rec[quantityKey(e.colorId, e.finish)] : undefined;
+  }
+
+  /** Writing the new key retires the old one, so the row stops being read from
+   *  two places and the stale entry cannot outlive the order. */
+  function withoutLegacyKey<T>(rec: Record<string, T>, e: GallonEstimate): Record<string, T> {
+    if (!e.isBathroom) return rec;
+    const legacy = quantityKey(e.colorId, e.finish);
+    if (!(legacy in rec)) return rec;
+    const next = { ...rec };
+    delete next[legacy];
+    return next;
+  }
+
   const adjustQuantity = (e: GallonEstimate, delta: number) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
-      const existing = cur.quantities[key];
+      const existing = readForEstimate(cur.quantities, e);
       const unit: PaintUnit = existing?.unit ?? e.unit ?? "gal";
       const currentTotal = existing
         ? overrideTotal(existing)
         : (e.manualOnly ? 0 : overrideTotal({ buckets: e.buckets, cans: e.cans, unit }));
       const next = Math.max(0, Math.min(99, currentTotal + delta));
-      return { ...cur, quantities: { ...cur.quantities, [key]: packageForUnit(next, unit) } };
+      return {
+        ...cur,
+        quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: packageForUnit(next, unit) },
+      };
     });
   };
 
   const setUnit = (e: GallonEstimate, unit: PaintUnit) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
-      const existing = cur.quantities[key];
+      const existing = readForEstimate(cur.quantities, e);
       const total = existing
         ? overrideTotal(existing)
         : (e.manualOnly ? 0 : overrideTotal({ buckets: e.buckets, cans: e.cans, unit: e.unit ?? "gal" }));
-      return { ...cur, quantities: { ...cur.quantities, [key]: packageForUnit(total, unit) } };
+      return {
+        ...cur,
+        quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: packageForUnit(total, unit) },
+      };
     });
   };
 
   const resetQuantity = (e: GallonEstimate) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
-      const next = { ...cur.quantities };
+      const next = { ...withoutLegacyKey(cur.quantities, e) };
       delete next[key];
       return { ...cur, quantities: next };
     });
@@ -490,7 +529,7 @@ export default function OrderBuilderView({
   const setLineFor = (e: GallonEstimate, value: string) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     setPayload((cur) => {
-      const next = { ...cur.materialTypeOverrides };
+      const next = { ...withoutLegacyKey(cur.materialTypeOverrides, e) };
       if (!value) delete next[key];
       else next[key] = value;
       return { ...cur, materialTypeOverrides: next };
@@ -778,7 +817,7 @@ export default function OrderBuilderView({
             <ul className="divide-y divide-ppp-charcoal-100">
               {estimates.map((e) => {
                 const key = quantityKey(e.colorId, e.finish, e.isBathroom);
-                const override = payload.quantities[key];
+                const override = readForEstimate(payload.quantities, e);
                 const unit: PaintUnit = override?.unit ?? e.unit ?? "gal";
                 // Read the worker's OWN number when they have set one, rather
                 // than waiting for the server to echo it back. Karan
@@ -981,7 +1020,7 @@ export default function OrderBuilderView({
                         <div className="max-w-[190px]">
                           <MaterialTypePicker
                             id={`mt-${key}`}
-                            value={payload.materialTypeOverrides[key] ?? ""}
+                            value={readForEstimate(payload.materialTypeOverrides, e) ?? ""}
                             onChange={(v) => setLineFor(e, v)}
                             // R5.3: when the builder has already decided a line
                             // for this color — the exterior answer on a mixed

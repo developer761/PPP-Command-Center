@@ -530,7 +530,18 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   const [sfWriteFailed, setSfWriteFailed] = useState(false);
   // Extra note shown on the thank-you screen — e.g. when a re-edit lands after
   // the materials order already went out.
-  const [postSubmitNote, setPostSubmitNote] = useState<string | null>(null);
+  // Every warning the thank-you screen has to carry, not just the last one.
+  // Three branches set these — order already placed, preview submit, and a
+  // finish still outstanding — and a single slot meant the newest silently
+  // replaced the others. A preview submit with one blank finish told the
+  // tester "Your colors are saved" and dropped "nothing was saved".
+  const [postSubmitNotes, setPostSubmitNotes] = useState<string[]>([]);
+  const addPostSubmitNote = (note: string) => setPostSubmitNotes((cur) => [...cur, note]);
+  // The order having already gone out changes the copy BELOW, and it used to
+  // be inferred from "is there a note?". Any note now trips that — including
+  // an outstanding finish — so a normal re-editing customer was told to phone
+  // in. It is its own answer, from the server.
+  const [orderAlreadyPlaced, setOrderAlreadyPlaced] = useState(false);
   // Transient confirmation for "apply color to all areas".
   const [applyToast, setApplyToast] = useState<string | null>(null);
   useEffect(() => {
@@ -631,7 +642,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         {!isInternal && (
           <p className="mt-3 text-sm sm:text-base text-ppp-charcoal-500 max-w-md mx-auto whitespace-pre-line">
             {isEditing
-              ? (postSubmitNote
+              ? (orderAlreadyPlaced
                   // Order already went out — don't tell them they can freely adjust
                   // again; the orange note below explains they must contact us.
                   ? "We've saved your updated color selections."
@@ -639,11 +650,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               : copy.thankyouBody}
           </p>
         )}
-        {postSubmitNote && (
-          <p className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">
-            {postSubmitNote}
+        {postSubmitNotes.map((note) => (
+          <p key={note} className="mt-4 text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2 max-w-md mx-auto">
+            {note}
           </p>
-        )}
+        ))}
         {sfWriteFailed && isStaffEntry && (
           <div role="alert" className="mt-4 text-left text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 max-w-md mx-auto">
             <strong className="block">Saved here, but Salesforce rejected it.</strong>
@@ -837,7 +848,8 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         throw new Error(d.message || d.error || `Submit failed (${res.status})`);
       }
       if ((data as { orderAlreadyPlaced?: boolean }).orderAlreadyPlaced) {
-        setPostSubmitNote(
+        setOrderAlreadyPlaced(true);
+        addPostSubmitNote(
           "Heads up — your materials order was already placed, so please contact our team to make sure this change makes it onto the order."
         );
       }
@@ -854,7 +866,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       // the form already warned, but the thank-you state would otherwise
       // look identical to a real customer submission.
       if ((data as { preview?: boolean }).preview) {
-        setPostSubmitNote(
+        addPostSubmitNote(
           "Preview submit — nothing was saved to Salesforce or marked as the real customer's submission. Close the tab when you're done testing."
         );
       }
@@ -868,7 +880,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         .map((d) => `${d.surface} (you chose "${d.finish}")`);
       const outstanding = [...missingFinish, ...dropped];
       if (outstanding.length > 0) {
-        setPostSubmitNote(
+        addPostSubmitNote(
           `Your colors are saved. We still need a finish for ${outstanding.join("; ")} — someone from PPP will confirm it with you, or you can reopen this link and choose one.`
         );
       }

@@ -253,13 +253,24 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   // "Kitchenette" counts; "Butler's pantry" deliberately does not — it is
   // shelving, not a cabinet wall, and PPP paints it like a normal room.
   if (s.includes("kitchen")) return "kitchen";
-  if (s.includes("bath") || s.includes("powder room") || s.includes("ensuite") || s.includes("en-suite")) {
+  // Word boundaries, not substrings. This used to decide only a note; since
+  // the bathroom split (2026-09-17) it decides what is BOUGHT, and
+  // "Pool bathhouse", "Bath House" and "Sunbathing deck" are not bathrooms.
+  // "Bathroom" still matches, via its own alternative.
+  // A bath HOUSE is a building, not a bathroom, and it is painted like a
+  // normal room. Removed before the test so "Pool bath house" cannot match on
+  // its first word.
+  const cleaned = s.replace(/bath\s*houses?/g, " ");
+  if (/\b(bathrooms?|baths?|powder\s*rooms?|en-?suites?|wc)\b/.test(cleaned)) {
     return "bathroom";
   }
   return null;
 }
 
 type RoomCoverage = {
+  /** Paintable area of the door faces themselves — used when a color paints
+   *  the DOORS rather than the room's trim. */
+  doorFaces: number;
   ceiling: number; walls: number; trim: number; floor: number;
   // Per-bucket: was this surface's area derived without the data it needed
   // (so the figure is an under-count the worker should verify)?
@@ -284,7 +295,7 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   // directive (2026-06-09): zero estimate + force manual entry instead.
   if (!hasAnyMeasurement(room)) {
     return {
-      ceiling: 0, walls: 0, trim: 0, floor: 0,
+      ceiling: 0, walls: 0, trim: 0, floor: 0, doorFaces: 0,
       ceilingMissing: true, wallsMissing: true, trimMissing: true, floorMissing: true,
       noDataAtAll: true,
     };
@@ -339,9 +350,16 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   const coatFactor = cfg.defaultCoats > 0 ? coats / cfg.defaultCoats : 1;
   const trimSqft = trimLf * trimSqftPerLf * coatFactor
     + (room.paintDoorFaces ? doors * cfg.doorFaceSqft * coats : 0);
+  // A DOOR is not the room's baseboard. A color painting only the doors used
+  // to inherit the whole room's trim area — harmless while trim was priced as
+  // a 3-inch strip (it still came to a quart), and not harmless at the
+  // linear-foot rate, which turned two doors into a gallon. Katie item 6:
+  // "door is a quart."
+  const doorFacesSqft = Math.max(1, doors) * cfg.doorFaceSqft * coats;
 
   return {
     ceiling: ceilingSqft, walls: wallSqft, trim: trimSqft, floor: floorSqft,
+    doorFaces: doorFacesSqft,
     ceilingMissing: noFloor,
     floorMissing: noFloor,
     // walls fine if measured directly OR derivable from floor; missing only if neither.
@@ -448,7 +466,13 @@ export function estimateOrderGallons(
    * `colorId::finish` key that saved drafts and quantity overrides use.
    */
   const bucketFor = (s: RoomSurface, roomLabel: string): Bucket => {
-    const isBathroom = classifyRoomType(roomLabel) === "bathroom";
+    // Walls and ceilings only. The bathroom products exist for those surfaces
+    // (Aura Bath & Spa is Matte, Regal Select Kitchen & Bath is Pearl), and
+    // splitting TRIM would both invent a line no bathroom product can carry and
+    // defeat Jason's "trim through multiple rooms is a gallon" — a bedroom and
+    // a bathroom sharing one trim color would become two quarts.
+    const isBathroom =
+      classifyRoomType(roomLabel) === "bathroom" && (s.kind === "walls" || s.kind === "ceiling");
     const key = quantityKey(s.colorId, s.finish, isBathroom);
     let b = buckets.get(key);
     if (!b) {
@@ -507,7 +531,12 @@ export function estimateOrderGallons(
       switch (s.kind) {
         case "ceiling": sqft = cov.ceiling; missing = cov.ceilingMissing; break;
         case "walls":   sqft = cov.walls;   missing = cov.wallsMissing;   break;
-        case "trim":    sqft = cov.trim;    missing = cov.trimMissing;    break;
+        case "trim":
+          // "Door", "Doors", "Front door" — the door, not the casing around it.
+          // isDoorSurface already excludes casing/jamb/frame, which stay trim.
+          if (isDoorSurface(s.surfaceLabel)) { sqft = cov.doorFaces; missing = false; }
+          else { sqft = cov.trim; missing = cov.trimMissing; }
+          break;
         case "floor":   sqft = cov.floor;   missing = cov.floorMissing;   break;
         case "unsized": b.unsized = true;   break; // can't size — flag, no sqft
       }
@@ -536,6 +565,13 @@ export function estimateOrderGallons(
     // The area we REPORT has to be the area we priced, or the sq ft on screen
     // contradicts the gallons beside it — and Katie asked for that figure to be
     // shown precisely so a worker can check one against the other.
+    //
+    // ⚠️ For TRIM this is no longer an area a person can check: since
+    // 2026-09-17 trim is priced from linear feet at a usage rate and converted
+    // into this currency, so a 15x20 room reports ~234 "sq ft" of trim against
+    // perhaps 26 sq ft of real painted moulding. Nothing renders it today
+    // (checked across the residential UI and the vendor email). Any surface
+    // that starts to must special-case trim, or show linear feet instead.
     let reportedSqft = b.totalSqft;
     let bucketsCount = 0;
     let cans = 0;
@@ -568,9 +604,16 @@ export function estimateOrderGallons(
         defaultedNote = `Kitchen — defaulted to ${cfg.kitchenDefaultGallons} gal because cabinets cover most of the wall. Please review.`;
       } else if (onlyType === "bathroom" && ceilingOnly) {
         bucketsCount = 0;
-        cans = cfg.bathroomCeilingQuarts;
-        unit = "qt";
-        defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
+        // A FLOOR, not a cap. This branch used to replace the computed size
+        // outright, which was harmless while it only fired on a color used in
+        // bathrooms and nowhere else. The 2026-09-17 split guarantees exactly
+        // that shape for every bathroom, so an unconditional 1 qt would have
+        // capped a big bathroom ceiling at a quart.
+        if (bucketsCount === 0 && cans === 0) {
+          cans = cfg.bathroomCeilingQuarts;
+          unit = "qt";
+          defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
+        }
       } else if (onlyType === "bathroom" && wallsOnly) {
         // WALLS only. Katie named walls and ceilings; a catch-all here also
         // swept up bathroom TRIM and ordered a gallon of it, which is absurd
@@ -578,12 +621,22 @@ export function estimateOrderGallons(
         //
         // Why a gallon and not the three quarts the maths gives: four quarts IS
         // a gallon, so at three the tin is cheaper and the crew gets more paint.
-        bucketsCount = 0;
-        cans = cfg.bathroomWallGallons;
-        unit = "gal";
-        defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+        //
+        // A FLOOR, not a cap — see the ceiling branch above. A 20x30 pool
+        // bathhouse sharing the house color is 5 gallons of wall paint, and
+        // before the split it was sized that way because the bucket also held
+        // ordinary rooms. Replacing the number here would have bought 1.
+        if (bucketsCount === 0 && cans <= cfg.bathroomWallGallons) {
+          cans = cfg.bathroomWallGallons;
+          unit = "gal";
+          defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+        }
       } else if (
         b.kinds.size === 1 && b.kinds.has("trim") &&
+        // Katie item 6 still owns doors: a color painting only the doors is
+        // not "the trim through multiple rooms", and the floor below would
+        // turn four doors into a gallon.
+        !b.doorsOnly &&
         b.contributingRoomCount >= cfg.trimMultiRoomMinRooms &&
         bucketsCount === 0 && cans < 1
       ) {
@@ -733,13 +786,32 @@ export function packageForUnit(total: number, unit: PaintUnit): { buckets: numbe
  *  This is the single place that folds overrides in. Kate round-3 #26 came
  *  from the modal folding them for the TOTAL but not for the per-line rows,
  *  so a line read "manual entry required" while the total climbed. */
+/**
+ * Read a per-color map that may have been written before the bathroom split.
+ *
+ * Bathroom lines used to be keyed `colorId::finish` like everything else. A
+ * draft saved before 2026-09-17 still holds that key, and looking up only the
+ * new one silently reverted the estimator's decision — including a typed ZERO,
+ * which is "do not buy this", coming back as the estimate and reaching a
+ * vendor. Falls back to the old key, so an order half-built across the deploy
+ * still carries what was typed.
+ */
+export function lookupByKey<T>(
+  map: ReadonlyMap<string, T>,
+  e: { colorId: string; finish: string | null; isBathroom?: boolean }
+): T | undefined {
+  const exact = map.get(quantityKey(e.colorId, e.finish, e.isBathroom));
+  if (exact !== undefined) return exact;
+  return e.isBathroom ? map.get(quantityKey(e.colorId, e.finish)) : undefined;
+}
+
 export function applyQuantityOverrides(
   estimates: GallonEstimate[],
   overrides: ReadonlyMap<string, QuantityOverride> | undefined
 ): GallonEstimate[] {
   if (!overrides || overrides.size === 0) return estimates;
   return estimates.map((e) => {
-    const o = overrides.get(quantityKey(e.colorId, e.finish, e.isBathroom));
+    const o = lookupByKey(overrides, e);
     if (!o) return e;
     // Clamp here as well as at the persistence boundary. The draft endpoint
     // validates paint lines but takes quantities as given, so this is the last

@@ -16,6 +16,9 @@ export const STRICT_POSITIVE_KEYS = new Set<string>([
   "defaultCoats",
   // 0 would divide by zero in the trim rate.
   "trimLfPerGallon",
+  // 0 would make "a trim color in 2+ rooms is at least a gallon" fire for a
+  // SINGLE room, which is the answer Karan's trade figures say is wrong.
+  "trimMultiRoomMinRooms",
 ]);
 
 /** Upper-bound sanity caps. Stops a typo (1000 buffer → 11× order, 999 coats,

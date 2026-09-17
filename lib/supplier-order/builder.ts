@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
-import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
+import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, lookupByKey, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -844,8 +844,11 @@ export function formatOrderSummaryBlock(
     // Bathroom lines carry their own key (they are bought as a different
     // product — that is the whole reason they are a separate line), so the
     // product override has to be looked up the same way the UI wrote it.
-    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
-    const raw = materialTypeOverrides?.get(key) ?? materialType ?? null;
+    // Read with the pre-split fallback: a draft saved before 2026-09-17 holds
+    // the plain key for what is now a bathroom line, and losing it would drop
+    // the per-color product the split exists to carry.
+    const raw = (materialTypeOverrides ? lookupByKey(materialTypeOverrides, e) : undefined)
+      ?? materialType ?? null;
     // Katie item 11 — an "Other: Behr Premium Plus" value prints the
     // product alone; the prefix is our bookkeeping. A bare "Other" with
     // nothing typed resolves to null, so the line groups under [NOT SET]

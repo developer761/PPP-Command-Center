@@ -121,8 +121,12 @@ export function normalizeBuildPayload(raw: unknown): OrderBuildPayload {
  * So the load MERGES rather than replaces: the saved payload is the base, and
  * anything the estimator has already touched wins over it. Per key for the two
  * maps, so a quantity typed for one color cannot wipe a saved quantity for
- * another; whole-list for extras and custom items, because merging those by id
- * would resurrect a row the estimator had just removed.
+ * another — and per ID for the lists, so adding one extra in the race window
+ * does not drop every extra the order already had.
+ *
+ * Union is safe precisely BECAUSE this runs only on load: a row the estimator
+ * removes later is removed from a list that already holds the saved items, and
+ * no merge happens after that.
  */
 export function mergeBuildPayloads(
   saved: OrderBuildPayload,
@@ -132,8 +136,18 @@ export function mergeBuildPayloads(
     mainMaterialType: edited.mainMaterialType || saved.mainMaterialType,
     materialTypeOverrides: { ...saved.materialTypeOverrides, ...edited.materialTypeOverrides },
     quantities: { ...saved.quantities, ...edited.quantities },
-    extras: edited.extras.length > 0 ? edited.extras : saved.extras,
-    customColorItems: edited.customColorItems.length > 0 ? edited.customColorItems : saved.customColorItems,
+    extras: unionById(saved.extras, edited.extras, (x) => x.extraId),
+    customColorItems: unionById(saved.customColorItems, edited.customColorItems, (x) => x.id),
     colorNotes: edited.colorNotes !== null ? edited.colorNotes : saved.colorNotes,
   };
+}
+
+/** Saved rows first, then anything typed in the race window; an id present in
+ *  both keeps the typed version, which is the more recent decision. */
+function unionById<T>(saved: T[], edited: T[], idOf: (x: T) => string): T[] {
+  if (edited.length === 0) return saved;
+  const byId = new Map<string, T>();
+  for (const x of saved) byId.set(idOf(x), x);
+  for (const x of edited) byId.set(idOf(x), x);
+  return [...byId.values()];
 }

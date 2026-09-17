@@ -57,12 +57,28 @@ describe("a quantity typed while the saved order was still loading", () => {
     expect(mergeBuildPayloads(saved, emptyBuildPayload())).toEqual(saved);
   });
 
-  it("does not resurrect an extra the estimator had just removed", () => {
-    // Merging extras by id would bring it back: the estimator's list is the
-    // answer, not a patch on top of the saved one.
+  it("keeps the saved extras AND the one added in the race window", () => {
+    // Replacing the whole list looked right — "the estimator's list is the
+    // answer" — but in the race window the estimator has never SEEN the saved
+    // list, so adding one roll of tape dropped everything the order already
+    // had. Union is safe here because this merge only ever runs on load: an
+    // extra removed later is removed from a list that already holds both.
     const saved = payload({ extras: [{ extraId: "x1", name: "Tape", unit: "roll", qty: 2 }] });
     const typed = payload({ extras: [{ extraId: "x2", name: "Caulk", unit: "tube", qty: 1 }] });
-    expect(mergeBuildPayloads(saved, typed).extras).toEqual(typed.extras);
+    const merged = mergeBuildPayloads(saved, typed).extras;
+    expect(merged.map((e) => e.extraId).sort()).toEqual(["x1", "x2"]);
+  });
+
+  it("the typed version of the SAME extra wins", () => {
+    const saved = payload({ extras: [{ extraId: "x1", name: "Tape", unit: "roll", qty: 2 }] });
+    const typed = payload({ extras: [{ extraId: "x1", name: "Tape", unit: "roll", qty: 9 }] });
+    expect(mergeBuildPayloads(saved, typed).extras).toEqual([{ extraId: "x1", name: "Tape", unit: "roll", qty: 9 }]);
+  });
+
+  it("custom color items merge the same way", () => {
+    const saved = payload({ customColorItems: [{ id: "cc-0", label: "Deck stain", qty: 1, unit: "gal" }] });
+    const typed = payload({ customColorItems: [{ id: "cc-1", label: "Shutters", qty: 2, unit: "qt" }] });
+    expect(mergeBuildPayloads(saved, typed).customColorItems.map((c) => c.id).sort()).toEqual(["cc-0", "cc-1"]);
   });
 
   it("an emptied Color Notes box stays empty", () => {
