@@ -218,6 +218,17 @@ export type CustomerSubmittedPayload = {
   } | null;
 };
 
+/** Salesforce and the customer's submission name different colors for one
+ *  surface. Reported rather than resolved — see resolveLineItems. */
+export type ColorConflict = {
+  roomLabel: string;
+  surface: string;
+  /** What this order is actually buying. */
+  orderingName: string;
+  /** What Salesforce (and so Rooms & Colors) shows. */
+  salesforceName: string;
+};
+
 export type SupplierOrderDraft = {
   poNumber: string;
   subject: string;
@@ -233,6 +244,7 @@ export type SupplierOrderDraft = {
    *  ceiling" vs "customer forgot to pick a ceiling color" — these used
    *  to be silently dropped from the order, leaving suppliers guessing. */
   skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
+  colorConflicts: ColorConflict[];
   /** Kate round-2 #25: default Color Notes text (customer notes + opted-out
    *  surfaces) the modal pre-fills its editable Color Notes field with. */
   colorNotesDefault: string;
@@ -461,6 +473,7 @@ function resolveLineItems(
   lineItems: SupplierOrderLineItem[];
   rooms: RoomTakeoff[];
   skippedSurfaces: Array<{ roomLabel: string; surface: string }>;
+  colorConflicts: ColorConflict[];
   /** `${colorId}::${finish}` → the scope(s) that color is painted on. */
   scopesByColorKey: Map<string, Set<"interior" | "exterior">>;
 } {
@@ -470,6 +483,9 @@ function resolveLineItems(
   // so the rollup counts only colors actually being ordered here.
   const rooms: RoomTakeoff[] = [];
   const skipped: Array<{ roomLabel: string; surface: string }> = [];
+  /** Surfaces where Salesforce and the customer's submission name DIFFERENT
+   *  colors — see the note at the assignment below. */
+  const colorConflicts: ColorConflict[] = [];
   // R4.3 — which scope(s) each color is used on, so an exterior color can
   // default to the EXTERIOR paint line. Kate tied this to the round-2 ask that
   // the line default to the AM's Internal Entry pick: with two picks, sending
@@ -585,6 +601,31 @@ function resolveLineItems(
         continue;
       }
       const colorId = customerPick?.colorId ?? slot.existingColorId;
+      // TWO SURFACES, TWO RULES. Rooms & Colors on the work-order page lets
+      // SALESFORCE win for a standard surface, deliberately, so that a rep
+      // correcting a color in Salesforce after the customer submitted is not
+      // masked. The order and the vendor email take the customer's payload
+      // first — so the screen can show Chantilly Lace while the vendor is sent
+      // Simply White, and nothing says so.
+      //
+      // Which should win is a real question (a failed writeback leaves
+      // Salesforce stale, so payload-first is the safer default), and it is
+      // PPP's to answer, not a silent one to make here. The conflict is
+      // reported instead: the order page names both values and asks.
+      if (
+        customerPick?.colorId &&
+        slot.existingColorId &&
+        customerPick.colorId !== slot.existingColorId
+      ) {
+        colorConflicts.push({
+          roomLabel,
+          surface: slot.surfaceLabel,
+          orderingName:
+            input.paintColorsById.get(customerPick.colorId)?.name ?? customerPick.colorId,
+          salesforceName:
+            input.paintColorsById.get(slot.existingColorId)?.name ?? slot.existingColorId,
+        });
+      }
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
       if (!color) continue;
@@ -708,7 +749,7 @@ function resolveLineItems(
     }
   }
 
-  return { lineItems: out, rooms, skippedSurfaces: skipped, scopesByColorKey };
+  return { lineItems: out, rooms, skippedSurfaces: skipped, scopesByColorKey, colorConflicts };
 }
 
 /** Resolve the delivery address with the fallback chain:
@@ -1146,7 +1187,7 @@ export async function buildSupplierOrderDraft(
   // paint colors entirely — none of the WO's PaintColors match the synthetic
   // manufacturer id so resolveLineItems returns empty, which is the right
   // shape (extras-only order).
-  const { lineItems, rooms, skippedSurfaces, scopesByColorKey } = resolveLineItems(input);
+  const { lineItems, rooms, skippedSurfaces, scopesByColorKey, colorConflicts } = resolveLineItems(input);
   // Tunable coverage config (Settings → Coverage); falls back to code defaults.
   const rawEstimates = estimateOrderGallons(rooms, await loadCoverageConfig());
   // Kate round-3 #22/#23/#26: fold the worker's COMMITTED quantities in here,
@@ -1441,6 +1482,7 @@ export async function buildSupplierOrderDraft(
     lineItems,
     gallonEstimates,
     skippedSurfaces,
+    colorConflicts,
     // Kate #25: default Color Notes text (customer notes + opted-out surfaces) —
     // the modal pre-fills its editable Color Notes field with this.
     colorNotesDefault,

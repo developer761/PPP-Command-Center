@@ -105,6 +105,10 @@ type Draft = {
   resolvedMaterialType?: string | null;
   resolvedMaterialTypeOverrides?: Record<string, string>;
   exteriorMaterialType?: string | null;
+  /** Surfaces where Salesforce and the customer's submission name different
+   *  colors. The order buys the customer's; Rooms & Colors shows Salesforce's.
+   *  Optional: an older cached draft response won't carry them. */
+  colorConflicts?: Array<{ roomLabel: string; surface: string; orderingName: string; salesforceName: string }>;
   noColorsPicked: boolean;
 };
 
@@ -858,6 +862,28 @@ export default function OrderBuilderView({
                 Couldn&apos;t build the order: {draftError}
               </div>
             )}
+            {/* The two surfaces disagree about a color. Rooms & Colors lets
+                Salesforce win (deliberately — so a rep's correction is not
+                masked); the order buys what the customer submitted. Both are
+                defensible and PPP has never been asked which they want, so the
+                order says what it is buying and what the other screen shows,
+                and leaves the choice to a person. */}
+            {(currentDraft?.colorConflicts?.length ?? 0) > 0 && (
+              <div role="alert" className="px-4 py-3 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
+                <strong className="font-semibold">Salesforce and the customer&apos;s form disagree about a color.</strong>
+                <ul className="mt-1 space-y-0.5">
+                  {currentDraft!.colorConflicts!.slice(0, 6).map((c, i) => (
+                    <li key={`${c.roomLabel}-${c.surface}-${i}`}>
+                      {c.roomLabel} · {c.surface}: ordering <strong>{c.orderingName}</strong>, Salesforce says {c.salesforceName}
+                    </li>
+                  ))}
+                </ul>
+                <span className="block mt-1">
+                  This order buys the customer&apos;s pick. If a rep corrected it in Salesforce, fix it there
+                  and reload, or add the right color as a custom item.
+                </span>
+              </div>
+            )}
             {currentDraft && estimates.length === 0 && (
               <div className="px-4 py-5 text-xs text-ppp-charcoal-500">
                 No colors on this work order yet. You can still order extras and custom color items below.
@@ -961,8 +987,15 @@ export default function OrderBuilderView({
                               if (dims) measure = dims;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft`;
                             } else if (kind === "walls") {
-                              if (dims) measure = dims;
-                              else if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
+                              // A MEASURED wall area is what the gallons used —
+                              // the estimator prefers Wall_Surface_Area__c over
+                              // the room's shape and ignores the perimeter
+                              // entirely. Showing dimensions there would put a
+                              // number beside the quantity that did not produce
+                              // it. Dimensions only when the walls really were
+                              // derived from the room.
+                              if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
+                              else if (dims) measure = dims;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft floor`;
                             } else if (kind === "trim") {
                               // A DOOR is not the room's perimeter. classifySurface
