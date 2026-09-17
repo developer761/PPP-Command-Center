@@ -107,7 +107,24 @@ export function buildGroups<R>(
       if (bucket) bucket.push(r);
       else buckets.set(label, [r]);
     }
-    return [...buckets.entries()].map(([label, groupRows]) => ({
+    const entries = [...buckets.entries()];
+    // `sortBy` was declared on ReportGrouping and read by nothing: a spec could
+    // set it and the groups still came out in whatever order the rows happened
+    // to arrive in. Win/Loss is the first to need it — Won, Lost, No bid is an
+    // order the alphabet will not give you and the data cannot be trusted to,
+    // since it depends on which deal was decided most recently.
+    //
+    // Applied ONLY when a grouping asks for it, so every existing report keeps
+    // the first-seen order it ships with today.
+    const key = g.sortBy;
+    if (key) {
+      entries.sort(([a], [b]) => {
+        const ka = key(a);
+        const kb = key(b);
+        return typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb));
+      });
+    }
+    return entries.map(([label, groupRows]) => ({
       label,
       count: groupRows.length,
       rows: groupRows,

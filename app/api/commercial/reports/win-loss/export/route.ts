@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { csvEscape as csv } from "@/lib/commercial/csv";
 import {
-  getWinLossSummary, getCompetitorBreakdown, getDecidingFactorBreakdown, getLessonsLearnedFeed,
+  getWinLossRecords, summarizeWinLoss, getCompetitorBreakdown, getDecidingFactorBreakdown, getLessonsLearnedFeed,
 } from "@/lib/commercial/win-loss/reports";
 import { parseRange } from "@/lib/commercial/win-loss/range";
 import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard";
@@ -24,13 +24,14 @@ export async function GET(req: NextRequest) {
     to: q.get("to") ?? undefined,
     preset: q.get("preset") ?? undefined,
   });
-  const [summary, competitors, factors, lessons] = await Promise.all([
-    getWinLossSummary(range),
+  const [records, competitors, factors, lessons] = await Promise.all([
+    getWinLossRecords(range),
     getCompetitorBreakdown(range, 100),
     getDecidingFactorBreakdown(range),
     // The review sheet wants the whole feed, not the page's top-20 preview.
     getLessonsLearnedFeed(range, 500),
   ]);
+  const summary = summarizeWinLoss(records);
 
   const L: string[] = [];
   const row = (...cells: (string | number)[]) => L.push(cells.map(csv).join(","));
@@ -44,6 +45,27 @@ export async function GET(req: NextRequest) {
   // losing, and folding them in would understate the win rate.
   row("No bid", summary.noBidCount);
   row("Win rate %", summary.winRatePct, "won / (won + lost), excludes no-bid");
+  row("");
+
+  // THE DEALS THEMSELVES, first.
+  //
+  // The sheet opened with four totals and went straight to competitor counts:
+  // a reviewer could see 38% and never find out which deals made it up. These
+  // are the same rows the page now shows, from the same read, so the file and
+  // the screen cannot disagree.
+  row("DECIDED DEALS");
+  row("Opportunity", "GC", "Outcome", "Value", "Decided", "Reason", "Lost to");
+  for (const r of records) {
+    row(
+      r.name,
+      r.accountName,
+      r.outcome === "won" ? "Won" : r.outcome === "lost" ? "Lost" : "No bid",
+      money(r.valueCents),
+      r.decidedYmd ?? "",
+      r.lossReason ?? "",
+      r.competitor ?? ""
+    );
+  }
   row("");
 
   row("COMPETITORS");

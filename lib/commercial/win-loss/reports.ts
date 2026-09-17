@@ -139,30 +139,40 @@ export function previousYearRange(): DateRange & { label: string } {
 }
 
 /** Get summary KPIs for a date range. */
-export async function getWinLossSummary(range: DateRange): Promise<WinLossSummary> {
+/**
+ * Every decided deal in the window, one row each.
+ *
+ * Karan 2026-09-16: Win/Loss was the last report with no records on it. The
+ * gauge said 38% and the donut split the dollars, and nothing on the page said
+ * WHICH deals — so it could be read but never worked, and with no table there
+ * was no Export either.
+ *
+ * The summary below is folded FROM these rows rather than counted separately.
+ * That is the whole point of the refactor: two queries classifying "won" the
+ * same way is a promise, and this file already carries three comments about
+ * surfaces that drifted apart on exactly that question. Now a table row and a
+ * tick on the gauge are the same object, and they cannot disagree.
+ */
+export type WinLossRecord = {
+  oppId: string;
+  name: string;
+  accountName: string;
+  outcome: "won" | "lost" | "no_bid";
+  /** Signed contract where there is one, else the bid midpoint, else proposal. */
+  valueCents: number;
+  decidedYmd: string | null;
+  /** Why it was lost, in Tomco's words. Null on a win. */
+  lossReason: string | null;
+  /** From the debrief, when one has been filed. */
+  competitor: string | null;
+  decidingFactor: string | null;
+};
+
+export async function getWinLossRecords(range: DateRange): Promise<WinLossRecord[]> {
   const sb = commercialDb();
-  // D1: ONE win rate — won / (won + lost) over DECIDED DEALS by `decided_at`,
-  // not debrief-gated.
-  //
-  // This read debrief ROWS by `debriefed_at`. Three things differed from the
-  // dashboard tile that links here: the source (a debrief row, not the deal),
-  // the date field, and the period. The worst was the gating — a win with no
-  // debrief filed yet is IN the dashboard tile and was OUT of this report, so
-  // the deals the dashboard flags as "awaiting debrief" were exactly the ones
-  // missing from the report it sends you to. Filing paperwork changed the win
-  // rate.
-  //
-  // Deals are the source of truth for what was won and lost. Debriefs stay the
-  // source for WHY — the competitor and deciding-factor breakdowns below still
-  // read them, which is what they are actually for.
-  // A WIN stays won as it moves into delivery — pre-construction, in progress,
-  // billing, closed out. Scoping this to `pre_sale_closed` counted only wins
-  // that had not been started yet, while the dashboard tile counts them at any
-  // stage, so tapping "5 wins · 62%" landed on a report showing 1. Losses only
-  // ever sit in pre_sale_closed, so they need no equivalent.
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("id, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, closed_out_at, accepted_contract_cents")
+    .select("id, account_id, title, client_name, title_override, title_override_mode, property_street, property_city, status, sub_status, loss_reason, bid_value_low_cents, bid_value_high_cents, decided_at, closed_out_at, accepted_contract_cents")
     .in("status", [
       "pre_sale_closed",
       "pre_construction",
@@ -178,62 +188,124 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
 
   type Row = {
     id: string;
+    account_id: string;
+    title: string | null;
+    client_name: string | null;
+    title_override: string | null;
+    title_override_mode: string | null;
+    property_street: string | null;
+    property_city: string | null;
     status: string;
     sub_status: string | null;
     loss_reason: string | null;
     bid_value_low_cents: number | null;
     bid_value_high_cents: number | null;
+    decided_at: string | null;
     closed_out_at: string | null;
     accepted_contract_cents: number | null;
   };
-  const rows = ((data as Row[] | null) ?? []);
-
-  let wonCount = 0;
-  let lostCount = 0;
-  let noBidCount = 0;
-  let wonValueCents = 0;
-  let lostValueCents = 0;
+  const rows = ((data as Row[] | null) ?? []).filter(
+    // Match wasWonInPeriod (the dashboard "wins" tile that links here): a
+    // post_sale_closed row with a null closed_out_at is a legacy close-out whose
+    // decided_at records the CLOSE-OUT, not the win, so the tile excludes it.
+    // The report must exclude it too, or tapping "5 wins · 62%" lands on a list
+    // that counts a different set (audit D9).
+    (r) => !(r.status === "post_sale_closed" && !r.closed_out_at)
+  );
+  if (rows.length === 0) return [];
 
   // The 2026-08 meeting removed Bid low/high from every opportunity form —
   // pricing lives on the proposal now — so a deal created since then has NO bid
   // range and midpointCents returns 0. Without the proposal fallback, "Won $"
   // reads zero for exactly the deals the team is creating today.
   const { listCurrentProposalTotalByOpp } = await import("@/lib/commercial/proposals/db");
+  const { derivedOppName, opportunityLossReasonLabel } = await import("@/lib/commercial/opportunities/db");
   const proposalTotalByOpp = await listCurrentProposalTotalByOpp(rows.map((r) => r.id));
 
-  for (const r of rows) {
-    // Match wasWonInPeriod (the dashboard "wins" tile that links here): a
-    // post_sale_closed row with a null closed_out_at is a legacy close-out whose
-    // decided_at records the CLOSE-OUT, not the win, so the tile excludes it.
-    // The report must exclude it too, or tapping "5 wins · 62%" lands on a list
-    // that counts a different set (audit D9).
-    if (r.status === "post_sale_closed" && !r.closed_out_at) continue;
-    // Value a WON deal at the signed contract when there is one. The bid
-    // midpoint is an estimate made before the job was priced — and since bid
-    // low/high were pulled from the opportunity forms, most deals have none at
-    // all, so "Won $" fell back to a proposal total and never reflected what
-    // Tomco actually agreed to. A signed number beats a guess.
-    const mid =
-      (Number(r.accepted_contract_cents) || 0) ||
-      midpointCents(r.bid_value_low_cents, r.bid_value_high_cents) ||
-      (proposalTotalByOpp.get(r.id) ?? 0);
-    // Won = decided won at any stage. `isPostSaleProject` in SQL terms: a
-    // delivery status, or pre_sale_closed with sub_status won.
-    if (r.status !== "pre_sale_closed" || r.sub_status === "won") {
+  const { data: accounts } = await sb
+    .from("commercial_accounts")
+    .select("id, company_name")
+    .in("id", [...new Set(rows.map((r) => r.account_id))]);
+  const acct = new Map(((accounts ?? []) as { id: string; company_name: string | null }[]).map((a) => [a.id, a.company_name]));
+
+  // The debrief carries WHY. It is optional — a deal decided last week may have
+  // none — so this is a left join in spirit: a missing debrief leaves the two
+  // columns blank rather than dropping the deal off the report.
+  const { data: debriefs } = await sb
+    .from("commercial_win_loss_debrief")
+    .select("opportunity_id, deciding_factor, competitor:commercial_competitors!commercial_win_loss_debrief_competitor_id_fkey(name)")
+    .in("opportunity_id", rows.map((r) => r.id));
+  type DebriefRow = {
+    opportunity_id: string;
+    deciding_factor: string | null;
+    competitor: { name: string | null } | Array<{ name: string | null }> | null;
+  };
+  const debriefByOpp = new Map<string, { competitor: string | null; decidingFactor: string | null }>();
+  for (const d of ((debriefs as unknown as DebriefRow[] | null) ?? [])) {
+    const c = Array.isArray(d.competitor) ? d.competitor[0] ?? null : d.competitor;
+    debriefByOpp.set(d.opportunity_id, {
+      competitor: c?.name ?? null,
+      decidingFactor: d.deciding_factor ?? null,
+    });
+  }
+
+  return rows
+    .map((r) => {
+      // Value a WON deal at the signed contract when there is one. The bid
+      // midpoint is an estimate made before the job was priced — and since bid
+      // low/high were pulled from the opportunity forms, most deals have none at
+      // all, so "Won $" fell back to a proposal total and never reflected what
+      // Tomco actually agreed to. A signed number beats a guess.
+      const valueCents =
+        (Number(r.accepted_contract_cents) || 0) ||
+        midpointCents(r.bid_value_low_cents, r.bid_value_high_cents) ||
+        (proposalTotalByOpp.get(r.id) ?? 0);
+      // Won = decided won at any stage. `isPostSaleProject` in SQL terms: a
+      // delivery status, or pre_sale_closed with sub_status won.
+      const outcome: WinLossRecord["outcome"] =
+        r.status !== "pre_sale_closed" || r.sub_status === "won"
+          ? "won"
+          : r.loss_reason === "no_bid"
+            ? "no_bid"
+            : "lost";
+      const d = debriefByOpp.get(r.id);
+      return {
+        oppId: r.id,
+        name: derivedOppName({ ...r, title: r.title ?? "" }, acct.get(r.account_id) ?? null),
+        accountName: (acct.get(r.account_id) ?? "").trim() || "Unassigned account",
+        outcome,
+        // A no-bid was never quoted, so it carries no value on this report —
+        // showing the estimate would put money against a job nobody priced.
+        valueCents: outcome === "no_bid" ? 0 : valueCents,
+        decidedYmd: r.decided_at ? String(r.decided_at).slice(0, 10) : null,
+        lossReason:
+          outcome === "won" || !r.loss_reason
+            ? null
+            : opportunityLossReasonLabel(r.loss_reason as Parameters<typeof opportunityLossReasonLabel>[0]),
+        competitor: d?.competitor ?? null,
+        decidingFactor: d?.decidingFactor ?? null,
+      };
+    })
+    .sort((a, b) => (b.decidedYmd ?? "").localeCompare(a.decidedYmd ?? "") || b.valueCents - a.valueCents);
+}
+
+/** The headline figures, folded from the records so the two cannot disagree. */
+export function summarizeWinLoss(records: WinLossRecord[]): WinLossSummary {
+  let wonCount = 0, lostCount = 0, noBidCount = 0, wonValueCents = 0, lostValueCents = 0;
+  for (const r of records) {
+    if (r.outcome === "won") {
       wonCount++;
-      wonValueCents += mid;
-    } else if (r.loss_reason === "no_bid") {
+      wonValueCents += r.valueCents;
+    } else if (r.outcome === "no_bid") {
       // A no-bid is not a loss — we never quoted it, so it is excluded from the
       // rate rather than counted against it.
       noBidCount++;
     } else {
       lostCount++;
-      lostValueCents += mid;
+      lostValueCents += r.valueCents;
     }
   }
-
   const decided = wonCount + lostCount;
-  const winRatePct = decided > 0 ? Math.round((wonCount / decided) * 100) : 0;
   return {
     totalClosed: wonCount + lostCount + noBidCount,
     wonCount,
@@ -241,8 +313,12 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
     noBidCount,
     wonValueCents,
     lostValueCents,
-    winRatePct,
+    winRatePct: decided > 0 ? Math.round((wonCount / decided) * 100) : 0,
   };
+}
+
+export async function getWinLossSummary(range: DateRange): Promise<WinLossSummary> {
+  return summarizeWinLoss(await getWinLossRecords(range));
 }
 
 function midpointCents(low: number | null, high: number | null): number {

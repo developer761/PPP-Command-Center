@@ -9,6 +9,8 @@ import {
   currentYearRange,
   previousYearRange,
   getWinLossSummary,
+  getWinLossRecords,
+  summarizeWinLoss,
   getCompetitorBreakdown,
   getDecidingFactorBreakdown,
   getLessonsLearnedFeed,
@@ -23,6 +25,9 @@ import { KpiTile } from "@/components/commercial/kpi-tile";
 import { GaugeRing, DonutChart } from "@/components/commercial/charts";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
+import { GroupedReport } from "@/components/commercial/grouped-report";
+import { viewIndex } from "@/components/commercial/tomco-report-page";
+import { WIN_LOSS_SPEC } from "@/lib/commercial/reports/tomco/win-loss-spec";
 
 
 /**
@@ -42,7 +47,25 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 
 export const dynamic = "force-dynamic";
 
-type SP = Promise<{ from?: string; to?: string; preset?: string }>;
+type SP = Promise<{ from?: string; to?: string; preset?: string; view?: string }>;
+
+/** The three ways Alex reads this at a quarterly review. */
+const WIN_LOSS_VIEWS: { key: string; label: string }[] = [
+  { key: "outcome", label: "Outcome" },
+  { key: "gc", label: "GC" },
+  { key: "reason", label: "Why we lost" },
+];
+
+/** Keep the chosen period when switching the grouping, and vice versa. */
+function rangeQuery(sp: { from?: string; to?: string; preset?: string }, view?: string): string {
+  const q = new URLSearchParams();
+  if (sp.preset) q.set("preset", sp.preset);
+  if (sp.from) q.set("from", sp.from);
+  if (sp.to) q.set("to", sp.to);
+  if (view && view !== WIN_LOSS_VIEWS[0].key) q.set("view", view);
+  const out = q.toString();
+  return out ? `?${out}` : "";
+}
 
 // Use the shared compact formatter so money reads identically across every
 // surface ($10,400 → "$10.4k", not a local "$10k"). Karan 2026-07-24.
@@ -81,8 +104,12 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   const durationMs = Math.max(0, toMs - fromMs);
   const prevRange = { fromIso: new Date(fromMs - durationMs).toISOString(), toIso: range.fromIso };
 
-  const [summary, prevSummary, competitors, factors, lessons, awaitingDebrief] = await Promise.all([
-    getWinLossSummary(range),
+  const [records, prevSummary, competitors, factors, lessons, awaitingDebrief] = await Promise.all([
+    // The RECORDS are the source now; the tiles, the gauge and the donut are
+    // folded from them, so a row in the table and a tick on the gauge cannot
+    // disagree — which is the failure this file already carries three comments
+    // about, each from a surface that counted "won" its own way.
+    getWinLossRecords(range),
     getWinLossSummary(prevRange),
     getCompetitorBreakdown(range, 10),
     getDecidingFactorBreakdown(range),
@@ -92,6 +119,7 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
     // needs filing regardless of which period is on screen.
     getWinsAwaitingDebrief(50),
   ]);
+  const summary = summarizeWinLoss(records);
 
   // Win-rate delta vs prior period (only meaningful when both periods had
   // head-to-heads). Points, not %-of-%, so "45% → 52%" reads as "+7".
@@ -313,6 +341,46 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
         </section>
       ) : (
         <>
+          {/* ─── THE RECORDS ───
+              This report had none. A gauge reading 38%, a donut splitting the
+              dollars and two bar lists saying we lose to Acme on price — all
+              true, none of it workable, because nothing on the page named a
+              deal. It was also the only report with no table, and therefore the
+              only one with no Export.
+
+              Rows first, charts under them: the same order as Balance Owed,
+              Pipeline, Scheduling and the rest, because that is the order
+              Tomco read them in Salesforce. */}
+          <section className="mb-6">
+            <GroupedReport
+              spec={WIN_LOSS_SPEC}
+              rows={records}
+              groupingIndex={viewIndex(WIN_LOSS_VIEWS, sp.view)}
+              emptyHint="No deals were decided in this period."
+              controls={
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mr-1">Group by</span>
+                  {WIN_LOSS_VIEWS.map((v, i) => (
+                    <Link
+                      key={v.key}
+                      // Carries the period with it — switching the grouping must
+                      // never quietly reset the window you picked for a review.
+                      href={`/commercial/reports/win-loss${rangeQuery(sp, v.key)}`}
+                      aria-current={i === viewIndex(WIN_LOSS_VIEWS, sp.view) ? "true" : undefined}
+                      className={`px-2.5 rounded-lg border text-[12px] font-semibold min-h-[36px] inline-flex items-center ${
+                        i === viewIndex(WIN_LOSS_VIEWS, sp.view)
+                          ? "border-cc-brand-300 bg-cc-brand-50 text-cc-brand-800"
+                          : "border-ppp-charcoal-200 bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                      }`}
+                    >
+                      {v.label}
+                    </Link>
+                  ))}
+                </div>
+              }
+            />
+          </section>
+
           {/* Win-rate gauge + won-vs-lost $ donut */}
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
             <article className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5 flex items-center gap-5">
