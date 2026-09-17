@@ -61,9 +61,9 @@ export default async function LaborReportPage({
         <div>
           <h2 className="text-lg font-bold text-ppp-charcoal">Labor &amp; payroll</h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-0.5 max-w-xl">
-            Approved crew hours and what they cost, across every job. In-house (W-2) time only —
-            subs are logged as Subcontract labor on a job&rsquo;s costs, so counting them here would
-            double them. Rates are effective-dated, so a raise doesn&rsquo;t restate an older job.
+            Approved crew hours, and what was paid out for them, across every job. Hours and money are
+            two separate counts of the same work and are never added together &mdash; the hours come from
+            Attendance, the money from what was actually paid to each crew.
           </p>
         </div>
       </div>
@@ -100,19 +100,18 @@ export default async function LaborReportPage({
         </span>
       </div>
 
-      {report.totalHours === 0 ? (
-        // THIS REPORT IS W-2 ONLY, and every one of Tomco's crew is a
-        // subcontractor — so "no approved hours" was true of this report and
-        // false of the platform, which holds 14,992 of them. Sending somebody
-        // to Approvals to look for hours that are already approved, on a page
-        // sitting next to a card reading 14,992h, is the worst version of an
-        // empty state. Say where the hours are.
+      {report.totalHours === 0 && report.payoutCents === 0 ? (
+        // The empty state used to say "No W-2 payroll hours in this period",
+        // and it said it EVERY time, because every one of Tomco's 23 crew is a
+        // subcontractor and the report was W-2-only. It explained the trap
+        // instead of being fixed — a page sitting next to 14,992 approved
+        // hours and $555,789.53 of payouts, telling you there was nothing here.
+        // Now it only appears when the period is genuinely quiet.
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center">
-          <p className="text-[13px] font-semibold text-ppp-charcoal">No W-2 payroll hours in this period.</p>
+          <p className="text-[13px] font-semibold text-ppp-charcoal">No crew hours or payouts in this period.</p>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-lg mx-auto">
-            This report covers crew on Tomco&rsquo;s own payroll. Subcontract crews &mdash; which is everyone at the
-            moment &mdash; are paid through their labor company, so their cost is on each job as a Subcontract line and
-            their hours are recorded separately.
+            Nothing was worked or paid out between those dates. Try a wider range, or check the approvals queue if
+            hours have been logged but not yet approved.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap mt-3">
             <Link href="/commercial/reports/attendance" className="inline-flex items-center text-[12px] font-semibold text-cc-brand-700 hover:underline min-h-[44px]">
@@ -125,19 +124,76 @@ export default async function LaborReportPage({
         </div>
       ) : (
         <>
+          {/* "Labor cost" used to be the rate-priced W-2 figure, which for
+              Tomco is $0 of a $555,789.53 reality. Paid out to crews is the
+              money that actually left, so it leads; the payroll card appears
+              only if there is payroll. The two are never added. */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Kpi label="Crew hours" value={hrs(report.totalHours)} />
-            <Kpi label="Labor cost" value={formatCentsFull(report.totalCostCents)} tone="brand" />
-            <Kpi label="Jobs worked" value={String(report.jobs.length)} />
+            <Kpi label="Paid out to crews" value={formatCentsFull(report.payoutCents)} tone="brand" />
+            {report.totalCostCents > 0 ? (
+              <Kpi label="Payroll cost (W-2)" value={formatCentsFull(report.totalCostCents)} />
+            ) : (
+              <Kpi label="Jobs worked" value={String(report.jobs.length)} />
+            )}
             <Kpi
-              label="Avg $/hour"
+              label="Avg $/hour paid"
               value={
-                report.totalHours > 0
-                  ? formatCentsFull(Math.round(report.totalCostCents / report.totalHours))
+                report.totalHours > 0 && report.payoutCents > 0
+                  ? formatCentsFull(Math.round(report.payoutCents / report.totalHours))
                   : "—"
               }
             />
           </div>
+
+          {/* WHO WAS PAID. The thing Katie came here for and could not find:
+              "the Labor payouts from Salesforce aren't showing up in Command
+              Center." They were in the book the whole time; no report read
+              them. */}
+          {report.payouts.length > 0 && (
+            <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-ppp-charcoal-100">
+                <h3 className="text-[13px] font-bold text-ppp-charcoal">Paid out to crews</h3>
+                <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
+                  What each crew or labor company was paid in this period. This is the labor money that left the
+                  business &mdash; the hours above are a separate count of the same work.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wide text-ppp-charcoal-400 border-b border-ppp-charcoal-100">
+                      <th className="px-4 py-2 font-semibold">Crew</th>
+                      <th className="px-4 py-2 font-semibold text-right">Paid</th>
+                      <th className="px-4 py-2 font-semibold text-right">Payments</th>
+                      <th className="px-4 py-2 font-semibold text-right">Jobs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.payouts.map((p) => (
+                      <tr key={p.vendor} className="border-b border-ppp-charcoal-50 last:border-0">
+                        <td className="px-4 py-2.5 font-semibold text-ppp-charcoal">{p.vendor}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-ppp-charcoal">
+                          {formatCentsFull(p.amountCents)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-ppp-charcoal-500">{p.count}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-ppp-charcoal-500">{p.jobCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-ppp-charcoal-200">
+                      <td className="px-4 py-2.5 font-bold text-ppp-charcoal">Total</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-bold text-ppp-charcoal">
+                        {formatCentsFull(report.payoutCents)}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </section>
+          )}
 
           {/* The honesty line. An unpriced hour makes the cost column an
               UNDERSTATEMENT, and a payroll figure that is quietly low is one
@@ -169,7 +225,11 @@ export default async function LaborReportPage({
                     <div
                       className="w-full rounded-t bg-cc-brand-500/80 min-h-[2px]"
                       style={{ height: `${Math.round((w.hours / peakWeekHours) * 88)}px` }}
-                      title={`Week of ${w.weekStart} · ${hrs(w.hours)} · ${formatCentsCompact(w.costCents)}`}
+                      title={
+                        w.costCents > 0
+                          ? `Week of ${w.weekStart} · ${hrs(w.hours)} · ${formatCentsCompact(w.costCents)}`
+                          : `Week of ${w.weekStart} · ${hrs(w.hours)}`
+                      }
                     />
                     <span className="text-[9px] text-ppp-charcoal-400 tabular-nums whitespace-nowrap">
                       {w.weekStart.slice(5)}
@@ -183,26 +243,37 @@ export default async function LaborReportPage({
           {canSeePeople && (
             <Table
               title="By person"
-              hint="Costliest first. Hours, what they cost, and how many jobs they touched."
-              head={["Person", "Jobs", "Hours", "Cost"]}
-              rows={report.people.map((p) => [
-                p.name + (p.unratedHours > 0 ? ` · ${hrs(p.unratedHours)} unpriced` : ""),
-                String(p.jobCount),
-                hrs(p.hours),
-                formatCentsFull(p.costCents),
-              ])}
+              hint={
+                report.totalCostCents > 0
+                  ? "Costliest first. Hours, what they cost, and how many jobs they touched."
+                  : "Most hours first. Everyone here is paid through a labor company, so their money is in Paid out to crews above, not against their name."
+              }
+              // A "Cost" column reading $0.00 against all 22 crew is worse than
+              // no column — it looks like data that failed to load. Payroll cost
+              // is shown only where there IS payroll.
+              head={report.totalCostCents > 0 ? ["Person", "Jobs", "Hours", "Payroll cost"] : ["Person", "Jobs", "Hours"]}
+              rows={report.people.map((p) =>
+                report.totalCostCents > 0
+                  ? [
+                      p.name + (p.unratedHours > 0 ? ` · ${hrs(p.unratedHours)} unpriced` : ""),
+                      String(p.jobCount),
+                      hrs(p.hours),
+                      p.isSub ? "via crew payout" : formatCentsFull(p.costCents),
+                    ]
+                  : [p.name, String(p.jobCount), hrs(p.hours)]
+              )}
             />
           )}
 
           <Table
             title="By job"
-            hint="Where the hours went. Click through to the deal for the rest of its costs."
-            head={["Job", "Crew", "Hours", "Cost"]}
+            hint="Where the hours went and what was paid against each job. Click through to the deal for the rest of its costs."
+            head={["Job", "Crew", "Hours", "Paid out"]}
             rows={report.jobs.map((j) => [
               j.jobName + (j.unratedHours > 0 ? ` · ${hrs(j.unratedHours)} unpriced` : ""),
               String(j.crewCount),
               hrs(j.hours),
-              formatCentsFull(j.costCents),
+              formatCentsFull(j.payoutCents),
             ])}
             hrefs={report.jobs.map((j) => (j.opportunityId ? `/commercial/opportunities/${j.opportunityId}?tab=costs` : null))}
           />
