@@ -1483,11 +1483,33 @@ async function reconcile() {
   // dual-run this is the line to watch.
   {
     const liveTx = new Set(SF.tx.map((t) => t.Id));
-    const orphans = [];
-    for (const [key] of MAP) {
+    const candidates = [];
+    for (const [key, rowId] of MAP) {
       const [entity, sfId] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
       if (entity !== "purchase" && entity !== "payment") continue;
-      if (!liveTx.has(sfId)) orphans.push({ entity, sfId });
+      if (!liveTx.has(sfId)) candidates.push({ entity, sfId, rowId });
+    }
+    // A row Karan has already removed here is DEALT WITH, not outstanding.
+    //
+    // Without this the list never shrinks: you action a deletion, the row is
+    // gone from every report, and the next night's reconcile reports it again
+    // in the same words. A warning that reappears after you have done the thing
+    // it asked for is one people stop reading — and this is the line that has
+    // to stay readable through the dual-run, because a REAL deletion arriving
+    // in a list of stale ones is the failure that costs money.
+    const purchaseIds = candidates.filter((c) => c.entity === "purchase").map((c) => c.rowId);
+    const settled = new Set();
+    if (purchaseIds.length) {
+      const { data } = await sb
+        .from("commercial_project_purchases")
+        .select("id")
+        .in("id", purchaseIds)
+        .not("deleted_at", "is", null);
+      for (const r of data ?? []) settled.add(r.id);
+    }
+    const orphans = candidates.filter((c) => !settled.has(c.rowId));
+    if (settled.size) {
+      console.log(`\n  (${settled.size} Salesforce deletion(s) already actioned here — not listed again)`);
     }
     if (orphans.length) {
       console.log(`\n  ⚠️  ${orphans.length} imported row(s) no longer exist in Salesforce — deleted there, still here:`);
