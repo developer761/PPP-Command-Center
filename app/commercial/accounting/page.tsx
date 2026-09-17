@@ -656,6 +656,11 @@ export default async function AccountingPage({
   const spendRows = view === "purchases" || view === "labor-out" ? await getSpendRows() : null;
   const depositRows = view === "deposits" ? await getMoneyInRows() : null;
   const production = summarizeProduction(projects);
+  // Work that is won and carries a DRAFT invoice — raised but never sent. A
+  // project row exists only once a job is won, so no pre-sale bid can land here.
+  const wonNotBilled = projects.filter((p) => p.draftedCents > 0);
+  const wonNotBilledCents = wonNotBilled.reduce((n, p) => n + p.draftedCents, 0);
+  const wonNotBilledJobs = wonNotBilled.length;
   // The brief block and the digest switches both left this page (2026-09-17):
   // the brief restated the tiles, and the schedule is a setting, not a figure.
   // Neither is read here any more, so neither is loaded — one fewer model call
@@ -1004,6 +1009,39 @@ export default async function AccountingPage({
             See just them
           </Link>
         </p>
+      )}
+
+      {/* WON, NOT BILLED YET — one line, one fact.
+          The three-tile "Earned, not yet billed" block was removed this
+          morning for printing the same figure twice and a zero. What it stood
+          on turned out to matter: the migration had marked this work as
+          invoiced and overdue when Tomco had never billed it, and once that
+          was corrected half a million pounds of real, billable work had
+          nowhere on Mary's page to appear. So the fact comes back; the block
+          does not. Every job counted here is won — checked, all 19 sit in
+          pre-construction, in progress or billing. */}
+      {wonNotBilledCents > 0 && (
+        <Link
+          href="/commercial"
+          className="flex items-center justify-between gap-3 rounded-xl border border-cc-brand-300 bg-cc-brand-50 px-4 py-3 hover:border-cc-brand-600 transition-colors"
+        >
+          <span className="min-w-0">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-cc-brand-700">
+              Won, not billed yet
+            </span>
+            <span className="block text-[11.5px] text-cc-brand-800 mt-0.5">
+              Signed work with no invoice raised against it — the fastest cash there is.
+            </span>
+          </span>
+          <span className="shrink-0 text-right">
+            <span className="block text-[19px] font-black text-cc-brand-900 tabular-nums leading-none">
+              {formatCentsFull(wonNotBilledCents)}
+            </span>
+            <span className="block text-[11px] text-cc-brand-800 mt-1">
+              {wonNotBilledJobs} job{wonNotBilledJobs === 1 ? "" : "s"} &rarr;
+            </span>
+          </span>
+        </Link>
       )}
 
       {/* ── 3 · What came in ──────────────────────────────────────────── */}
