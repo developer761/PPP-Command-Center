@@ -616,20 +616,6 @@ function resolveLineItems(
       // Salesforce stale, so payload-first is the safer default), and it is
       // PPP's to answer, not a silent one to make here. The conflict is
       // reported instead: the order page names both values and asks.
-      if (
-        customerPick?.colorId &&
-        slot.existingColorId &&
-        customerPick.colorId !== slot.existingColorId
-      ) {
-        colorConflicts.push({
-          roomLabel,
-          surface: slot.surfaceLabel,
-          orderingName:
-            input.paintColorsById.get(customerPick.colorId)?.name ?? customerPick.colorId,
-          salesforceName:
-            input.paintColorsById.get(slot.existingColorId)?.name ?? slot.existingColorId,
-        });
-      }
       if (!colorId) continue;
       const color = input.paintColorsById.get(colorId);
       if (!color) continue;
@@ -646,6 +632,28 @@ function resolveLineItems(
           continue;
         }
         if (color.manufacturerId !== input.supplierAccountId) continue;
+      }
+
+      // Reported only for a color THIS order carries — pushing it before the
+      // supplier filter above warned an auto-detected Benjamin Moore group
+      // about a Sherwin-Williams color that is not on the order.
+      if (
+        customerPick?.colorId &&
+        slot.existingColorId &&
+        customerPick.colorId !== slot.existingColorId
+      ) {
+        const nameFor = (id: string) => {
+          const found = input.paintColorsById.get(id)?.name?.trim();
+          // Never print a raw Salesforce id at somebody: it looks like a
+          // corrupted record and tells them nothing.
+          return found || "a color we can't look up";
+        };
+        colorConflicts.push({
+          roomLabel,
+          surface: slot.surfaceLabel,
+          orderingName: nameFor(customerPick.colorId),
+          salesforceName: nameFor(slot.existingColorId),
+        });
       }
 
       out.push({

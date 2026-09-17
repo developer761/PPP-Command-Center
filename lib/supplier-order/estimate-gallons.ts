@@ -653,6 +653,9 @@ export function estimateOrderGallons(
     let cans = 0;
     let unit: PaintUnit | undefined;
     let defaultedNote: string | null = null;
+    /** Set when the measurements themselves are implausible. Held apart from
+     *  `defaultedNote` because every branch below reassigns that one. */
+    let cappedNote: string | null = null;
     if (sizable) {
       const onlyType = b.roomTypes.size === 1 ? [...b.roomTypes][0] : null;
       const shared = b.roomTypes.size > 1;
@@ -678,11 +681,16 @@ export function estimateOrderGallons(
       // residential color never approaches this; anything that does is data,
       // not a job, and it is flagged rather than quietly bought.
       const rawGallons = Math.min(computedGallons, cfg.maxGallonsPerLine);
-      if (computedGallons > cfg.maxGallonsPerLine) {
-        defaultedNote =
-          `Capped at ${cfg.maxGallonsPerLine} gal — the measurements on this color add up to ` +
-          `${Math.round(computedGallons).toLocaleString()} gal, which is almost certainly a typo in Salesforce. Please check.`;
-      }
+      // Held apart from `defaultedNote`, and applied LAST. Written into it
+      // here, the kitchen and room-type branches below reassign the note
+      // unconditionally — so a kitchen with a garbage square footage shipped
+      // 99 gallons under a reassuring "counted at half for the cabinets".
+      // A capped line is the one note that must survive.
+      cappedNote =
+        computedGallons > cfg.maxGallonsPerLine
+          ? `Capped at ${cfg.maxGallonsPerLine} gal — the measurements on this color add up to ` +
+            `${Math.round(computedGallons).toLocaleString()} gal, which is almost certainly a typo in Salesforce. Please check.`
+          : null;
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
       if (shared && b.kitchenSharedSqft > 0) {
         defaultedNote = "Kitchen shares this color — its wall area counted at half for the cabinets. Please review.";
@@ -706,10 +714,14 @@ export function estimateOrderGallons(
         // is measured. Every path out of here now sets a quantity.
         const quarts = Math.floor(rawGallons * cfg.quartsPerGallon);
         bucketsCount = 0;
-        if (quarts <= cfg.bathroomCeilingQuarts) {
-          cans = cfg.bathroomCeilingQuarts;
+        const ceilFloor = cfg.bathroomCeilingQuarts * Math.max(1, b.contributingRoomCount);
+        if (quarts <= ceilFloor) {
+          cans = ceilFloor;
           unit = "qt";
-          defaultedNote = `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
+          defaultedNote =
+            b.contributingRoomCount > 1
+              ? `${b.contributingRoomCount} bathroom ceilings — defaulted to ${ceilFloor} qt (${cfg.bathroomCeilingQuarts} each). Please review.`
+              : `Bathroom ceiling — defaulted to ${cfg.bathroomCeilingQuarts} qt. Please review.`;
         } else if (cans === 0) {
           // Under a gallon but above the floor: price it honestly, with the
           // same three-quarts-is-a-gallon rule every other line gets.
@@ -728,10 +740,17 @@ export function estimateOrderGallons(
         // bathhouse sharing the house color is 5 gallons of wall paint, and
         // before the split it was sized that way because the bucket also held
         // ordinary rooms. Replacing the number here would have bought 1.
-        if (bucketsCount === 0 && cans < cfg.bathroomWallGallons) {
-          cans = cfg.bathroomWallGallons;
+        // Per BATHROOM, not per line. Katie's rule is a gallon for a
+        // bathroom; three bathrooms sharing one color came to a single line
+        // and got 2 gal between them — the crew goes back for the third.
+        const bathFloor = cfg.bathroomWallGallons * Math.max(1, b.contributingRoomCount);
+        if (bucketsCount === 0 && cans < bathFloor) {
+          cans = bathFloor;
           unit = "gal";
-          defaultedNote = `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
+          defaultedNote =
+            b.contributingRoomCount > 1
+              ? `${b.contributingRoomCount} bathrooms — defaulted to ${bathFloor} gal (${cfg.bathroomWallGallons} each). Please review.`
+              : `Bathroom — defaulted to ${cfg.bathroomWallGallons} gal. Please review.`;
         }
       } else if (
         b.kinds.size === 1 && b.kinds.has("trim") &&
@@ -801,7 +820,9 @@ export function estimateOrderGallons(
       sizedToZero: sizable && bucketsCount === 0 && cans === 0,
       accentWallReview: b.accentWall,
       unit,
-      defaultedNote,
+      // The cap wins: it says a number is wrong, and every other note here
+      // only explains a number that is right.
+      defaultedNote: cappedNote ?? defaultedNote,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,
       // Mixed sized + unsized (e.g. same color on walls AND cabinets in a
       // room): the gallons cover only the sized surfaces, so the figure is an

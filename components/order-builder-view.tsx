@@ -24,7 +24,7 @@ import {
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
 import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES } from "@/lib/customer-form/material-types";
-import { emptyBuildPayload, mergeBuildPayloads, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { emptyBuildPayload, mergeBuildPayloads, pruneToLiveKeys, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
 /**
@@ -471,6 +471,22 @@ export default function OrderBuilderView({
     const names = new Set(Object.values(currentDraft?.colorBrands ?? {}));
     return names.size > 1 ? names : new Set<string>();
   }, [currentDraft]);
+
+  /**
+   * Retire keys no line claims any more, once we have seen this vendor's real
+   * line-up. Without it the pre-split fallback stops being a migration and
+   * becomes a trap: the hall's color changes, its saved 4 gal is orphaned but
+   * never removed, nothing claims the plain key — and the BATHROOM starts
+   * reading it, quantity and product both.
+   */
+  useEffect(() => {
+    if (rawEstimates.length === 0) return;
+    const live = rawEstimates.map((e) => ({
+      key: quantityKey(e.colorId, e.finish, e.isBathroom),
+      legacyKey: e.isBathroom ? quantityKey(e.colorId, e.finish) : null,
+    }));
+    setPayload((cur) => pruneToLiveKeys(cur, live));
+  }, [rawEstimates]);
 
   // Plain keys a non-bathroom line owns on THIS job — see readForEstimate.
   // Derived from the same estimates the rows render from, so the UI and the

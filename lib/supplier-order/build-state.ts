@@ -151,3 +151,43 @@ function unionById<T>(saved: T[], edited: T[], idOf: (x: T) => string): T[] {
   for (const x of edited) byId.set(idOf(x), x);
   return [...byId.values()];
 }
+
+/**
+ * Retire per-color keys that no line on this order claims any more.
+ *
+ * The pre-split fallback lets a bathroom line read the plain `colorId::finish`
+ * key when nothing else owns it. That is right for a draft saved before
+ * 2026-09-17 — and wrong forever after, because nothing pruned the payload: if
+ * the hall's color later changed, its saved 4 gal stayed in the row, stopped
+ * being claimed, and the BATHROOM inherited it. Quantity and product, silently,
+ * with the screen and the email agreeing on the wrong number.
+ *
+ * Runs when a draft arrives, against the keys that draft actually produced, so
+ * a key is only dropped once we have seen the real line-up for this vendor.
+ * Bathroom lines are migrated rather than dropped: their pre-split key still
+ * carries what somebody typed.
+ */
+export function pruneToLiveKeys(
+  payload: OrderBuildPayload,
+  liveKeys: ReadonlyArray<{ key: string; legacyKey: string | null }>
+): OrderBuildPayload {
+  if (liveKeys.length === 0) return payload;
+  const migrate = <T,>(rec: Record<string, T>): Record<string, T> => {
+    const out: Record<string, T> = {};
+    for (const { key, legacyKey } of liveKeys) {
+      const v = rec[key] ?? (legacyKey ? rec[legacyKey] : undefined);
+      if (v !== undefined) out[key] = v;
+    }
+    return out;
+  };
+  const quantities = migrate(payload.quantities);
+  const materialTypeOverrides = migrate(payload.materialTypeOverrides);
+  // Nothing changed → return the SAME object, so this can run in an effect
+  // without re-triggering every dependent of `payload`.
+  const same =
+    Object.keys(quantities).length === Object.keys(payload.quantities).length &&
+    Object.keys(materialTypeOverrides).length === Object.keys(payload.materialTypeOverrides).length &&
+    Object.entries(quantities).every(([k, v]) => payload.quantities[k] === v) &&
+    Object.entries(materialTypeOverrides).every(([k, v]) => payload.materialTypeOverrides[k] === v);
+  return same ? payload : { ...payload, quantities, materialTypeOverrides };
+}

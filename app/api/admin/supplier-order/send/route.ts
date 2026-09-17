@@ -420,11 +420,18 @@ export async function POST(request: Request) {
   // customer who re-picked colors after the order went out was told nothing,
   // and neither was PPP. Best-effort: the email has already gone, and failing
   // the request now would tell the sender it did not.
+  // …but only when this order actually carried PAINT. The stamp is read to
+  // tell a customer their color change came too late, and a General Supplies
+  // order — rollers, tape, drop cloths — or an extras-only order would have
+  // said that about a job whose paint nobody has bought yet.
+  const orderedPaint = (body.lineItems ?? []).length > 0;
   try {
-    const { error: stampErr } = await sbAdmin
-      .from("customer_form_tokens")
-      .update({ vendor_email_sent_at: new Date().toISOString() })
-      .eq("work_order_id", body.workOrderId!);
+    const { error: stampErr } = orderedPaint
+      ? await sbAdmin
+          .from("customer_form_tokens")
+          .update({ vendor_email_sent_at: new Date().toISOString() })
+          .eq("work_order_id", body.workOrderId!)
+      : { error: null };
     if (stampErr) {
       console.warn(
         `[supplier-order/send] couldn't stamp vendor_email_sent_at for WO ${body.workOrderId}: ${stampErr.message}. A customer editing colors after this order will not be warned.`
