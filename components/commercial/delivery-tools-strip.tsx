@@ -113,7 +113,7 @@ export function DeliveryToolsStrip({
             data-tour={`job:tool:${t.key}`}
             className="group min-w-[10.5rem] flex-1 flex flex-col rounded-lg border-2 border-cc-brand-200 bg-cc-brand-50/70 px-3 py-2.5 min-h-[64px] shadow-[0_1px_2px_0_rgb(0_0_0/0.06)] hover:border-cc-brand-500 hover:bg-cc-brand-100 hover:shadow-[0_3px_8px_-2px_rgb(0_0_0/0.16)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cc-brand-600 active:translate-y-px active:shadow-none transition-all cursor-pointer"
           >
-            <span className="block text-[9px] font-bold uppercase tracking-wider text-cc-brand-700/70 mb-1 whitespace-nowrap">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-cc-brand-800 mb-1 whitespace-nowrap">
               {i === 0 || tools[i - 1].phase !== t.phase ? t.phase : "\u00A0"}
             </span>
             {/* The label sits ON the button now, not inside a second one, and
@@ -139,9 +139,14 @@ export function DeliveryToolsStrip({
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </span>
+            {/* Contrast, measured, not eyeballed: the first version of this tile
+                used 900/45 for the not-started state and 700/70 for the phase
+                label, which come out at 2.46:1 and 2.87:1 on this tint — both
+                well under AA, at 11px and 9px. Italic carries the "nothing here
+                yet" distinction instead of a lighter color. */}
             <span
-              className={`block text-[11px] mt-0.5 whitespace-nowrap ${
-                t.status === "todo" || t.status === "na" ? "text-cc-brand-900/45 italic" : "text-cc-brand-900/70"
+              className={`block text-[11px] mt-0.5 whitespace-nowrap text-cc-brand-900/80 ${
+                t.status === "todo" || t.status === "na" ? "italic" : ""
               }`}
             >
               {t.state}
