@@ -2,7 +2,7 @@ import { isCompanyEmail } from "@/lib/auth/company-domain";
 import Link from "next/link";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import OrderFulfillmentView from "@/components/order-fulfillment-view";
-import { loadOrderPageData, loadBuildPayload } from "@/lib/materials/order-page-data";
+import { loadOrderPageData, loadBuildPayload, loadSentOrdersForWorkOrder } from "@/lib/materials/order-page-data";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 
@@ -121,10 +121,13 @@ export default async function OrderFulfillmentPage({
     );
   }
 
-  const [build, supplierName, contact] = await Promise.all([
+  const [build, supplierName, contact, priorOrders] = await Promise.all([
     loadBuildPayload(data.workOrderId, supplierAccountId),
     loadSupplierName(supplierAccountId),
     loadViewerContact(),
+    // This is the screen with the Send button on it, so it is the last place
+    // to say that the vendor already has an order for this job.
+    loadSentOrdersForWorkOrder(data.workOrderId),
   ]);
 
   return (
@@ -141,6 +144,7 @@ export default async function OrderFulfillmentPage({
       viewerName={contact.name}
       viewerPhone={contact.phone}
       viewerEmail={contact.email}
+      priorOrders={priorOrders}
     />
   );
 }

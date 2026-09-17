@@ -66,8 +66,19 @@ export function isCancelledOrder(r: Pick<OrderStageRow, "status" | "cancelled_at
   return r.status === "cancelled" || !!r.cancelled_at;
 }
 
+/**
+ * A send that failed is not a live order. It has no `delivered_at` and never
+ * will, and `allDelivered` requires EVERY live row to carry one — so one
+ * failed attempt pinned the work order at "🚛 Ordered" forever, even after the
+ * paint arrived from the order that did go out. The only escape was cancelling
+ * the failed row, which nobody would think to do.
+ */
+export function isFailedOrder(r: Pick<OrderStageRow, "status">): boolean {
+  return r.status === "failed";
+}
+
 export function deriveOrderStages(rows: OrderStageRow[]): OrderStages {
-  const live = rows.filter((r) => !isCancelledOrder(r));
+  const live = rows.filter((r) => !isCancelledOrder(r) && !isFailedOrder(r));
   const cancelled = rows.filter((r) => isCancelledOrder(r));
 
   // ack/delivered require EVERY live order to carry the stamp — one supplier

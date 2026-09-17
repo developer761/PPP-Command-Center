@@ -153,6 +153,26 @@ describe("whatever the rules do, these must hold", () => {
     }
   });
 
+  it("garbage measurements are capped and flagged, not bought", () => {
+    // A rep's stray keystroke in Sq_Footage__c used to compute 445 gal and go
+    // straight to the vendor: typed quantities are clamped at three
+    // boundaries, the estimate at none.
+    const [e] = estimateOrderGallons([
+      {
+        woliId: "w", roomLabel: "Living Room",
+        floorAreaSqft: 9_999_999, wallSurfaceAreaSqft: 0, perimeterLf: 60, heightFt: 8,
+        doors: 0, windows: 0, closets: 0, coats: 0, paintDoorFaces: false,
+        // A CEILING: its area is the floor area, so the garbage number reaches
+        // the gallons directly. (Walls are derived from perimeter x height, so
+        // a huge floor area alone does not move them — which is why the first
+        // version of this test passed without the cap doing anything.)
+        surfaces: [{ kind: "ceiling", surfaceLabel: "Ceiling", colorId: "c", colorName: "W", colorCode: null, finish: null }],
+      },
+    ]);
+    expect(e.buckets * GALLONS_PER_BUCKET + e.cans).toBeLessThanOrEqual(99);
+    expect(e.defaultedNote ?? "").toMatch(/typo|check/i);
+  });
+
   it("the job total is the sum of the lines it shows", () => {
     for (let seed = 1; seed <= 200; seed++) {
       const out = estimateOrderGallons(randomJob(rng(seed)));

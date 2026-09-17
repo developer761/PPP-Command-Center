@@ -67,6 +67,7 @@ export default function OrderFulfillmentView({
   viewerName,
   viewerPhone,
   viewerEmail,
+  priorOrders = [],
   savedFulfillment,
 }: {
   workOrderId: string;
@@ -89,6 +90,8 @@ export default function OrderFulfillmentView({
    *  personal mailbox — see loadViewerContact. Goes in the email's questions
    *  block, and the send route CCs the same address. */
   viewerEmail: string | null;
+  /** Orders already sent to a vendor for this work order — see the banner. */
+  priorOrders?: Array<{ poNumber: string | null; supplierAccountId: string; supplierName: string | null; sentAt: string | null }>;
   /** R4.33: what was typed here last time, restored on the round trip back
    *  from the order builder. Its own slice — never part of the order payload. */
   savedFulfillment: FulfillmentState;
@@ -381,6 +384,36 @@ export default function OrderFulfillmentView({
           {" "}· Step 2 of 2
         </p>
       </div>
+
+      {/* The Send button is on THIS screen, so this is the last chance to say
+          that a vendor already has an order for this job. Re-entering the
+          builder resumes a finished order in full, and nothing else here looks
+          any different from a first send. */}
+      {priorOrders.length > 0 && (
+        <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">
+          <strong className="block">
+            {priorOrders.length === 1
+              ? "An order has already been sent for this work order."
+              : `${priorOrders.length} orders have already been sent for this work order.`}
+          </strong>
+          <span className="block mt-0.5">
+            {priorOrders.slice(0, 3).map((o, i) => (
+              <span key={`${o.poNumber ?? o.supplierAccountId}-${i}`}>
+                {i > 0 ? " · " : ""}
+                {o.supplierName ?? "a vendor"}
+                {o.poNumber ? ` (PO ${o.poNumber})` : ""}
+                {o.sentAt
+                  ? ` on ${new Date(o.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}`
+                  : ""}
+              </span>
+            ))}
+            {priorOrders.length > 3 ? ` · and ${priorOrders.length - 3} more` : ""}
+          </span>
+          <span className="block mt-1">
+            Sending this is an ADDITIONAL order. The vendor keeps the one they already have.
+          </span>
+        </div>
+      )}
 
       {!persistenceAvailable && (
         <div role="alert" className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-xs text-ppp-orange-700">

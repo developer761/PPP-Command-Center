@@ -4,6 +4,7 @@ import { paintLineFromValue } from "@/lib/customer-form/material-types";
 import {
   loadOrderPageData,
   loadLatestBuildForWorkOrder,
+  loadSentOrdersForWorkOrder,
 } from "@/lib/materials/order-page-data";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +62,13 @@ export default async function OrderBuilderPage({
 
   // Resume the last supplier this WO was being built for, so re-entering the
   // builder doesn't throw away a half-finished order.
-  const latest = await loadLatestBuildForWorkOrder(data.workOrderId);
+  const [latest, priorOrders] = await Promise.all([
+    loadLatestBuildForWorkOrder(data.workOrderId),
+    // What has ALREADY gone to a vendor for this work order. Neither order
+    // screen looked, so re-entering the builder to add one forgotten gallon
+    // resumed the finished order and sent the whole thing again.
+    loadSentOrdersForWorkOrder(data.workOrderId),
+  ]);
 
   return (
     <OrderBuilderView
@@ -82,6 +89,7 @@ export default async function OrderBuilderPage({
       }}
       initialSupplierId={latest.supplierAccountId}
       persistenceAvailable={latest.available}
+      priorOrders={priorOrders}
     />
   );
 }

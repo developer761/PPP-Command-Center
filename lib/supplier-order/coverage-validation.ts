@@ -16,6 +16,8 @@ export const STRICT_POSITIVE_KEYS = new Set<string>([
   "defaultCoats",
   // 0 would divide by zero in the trim rate.
   "trimLfPerGallon",
+  // 0 would cap every line at nothing.
+  "maxGallonsPerLine",
   // 0 would make "a trim color in 2+ rooms is at least a gallon" fire for a
   // SINGLE room, which is the answer Karan's trade figures say is wrong.
   "trimMultiRoomMinRooms",
@@ -44,6 +46,7 @@ export const MAX_COVERAGE_VALUES: Record<string, number> = {
   trimMultiRoomMinRooms: 20,
   doorFaceSqft: 200,
   windowSashSqft: 200,
+  maxGallonsPerLine: 500,
   bucketSizeGallons: 100,
   bucketThresholdGallons: 100,
 };

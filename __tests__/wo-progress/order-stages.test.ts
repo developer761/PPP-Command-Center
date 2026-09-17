@@ -31,6 +31,28 @@ describe("deriveOrderStages", () => {
     expect(s.supplierCancelledAt).toBe("2026-08-21T09:00:00Z");
   });
 
+  it("a FAILED send does not pin the work order at 'ordered' forever", () => {
+    // A failed row is live and has no delivered_at, and `allDelivered`
+    // requires every live row to carry one — so one failed attempt kept the
+    // work order at "🚛 Ordered" after the real order had arrived, and the
+    // only escape was cancelling a row nobody would think to cancel.
+    const s = deriveOrderStages([
+      row({ status: "failed", sent_at: null, delivered_at: null }),
+      row({
+        supplier_account_id: "002", status: "sent",
+        sent_at: "2026-09-16T10:00:00Z", delivered_at: "2026-09-17T10:00:00Z",
+      }),
+    ]);
+    expect(s.materialsDeliveredAt).toBe("2026-09-17T10:00:00Z");
+  });
+
+  it("a work order whose ONLY send failed is not ordered", () => {
+    // Nothing reached the vendor, so nothing is on order.
+    const s = deriveOrderStages([row({ status: "failed", sent_at: null })]);
+    expect(s.supplierSentAt).toBeNull();
+    expect(s.materialsDeliveredAt).toBeNull();
+  });
+
   it("keeps the cancelled order visible in the timeline", () => {
     // The vendor was emailed a real order. Erasing it would be worse than the
     // bug — the record has to show what happened.

@@ -76,6 +76,10 @@ export const COVERAGE_CONFIG = {
   // double-hung. Deliberately NOT deductWindowSqft (the rough opening, glass
   // included): borrowing that ordered ~3x the paint a window needs.
   windowSashSqft: 5,
+  /** Most paint one estimated color line can ask for. A sanity rail against
+   *  garbage Salesforce measurements, not a business limit — the estimator can
+   *  still type any quantity up to 99 containers. */
+  maxGallonsPerLine: 99,
   // ROOM-TYPE DEFAULTS (Karan 2026-09-08). Two rooms where the geometry lies:
   //
   //   Kitchen  — cabinets, appliances and backsplash cover most of the wall the
@@ -666,7 +670,19 @@ export function estimateOrderGallons(
       // A shared kitchen contributes half its wall area (Katie 2026-09-08),
       // rather than the all-or-nothing cap that applied before.
       reportedSqft = shared ? b.totalSqft - b.kitchenSharedSqft : b.totalSqft;
-      const rawGallons = (reportedSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
+      const computedGallons = (reportedSqft / cfg.coverageSqftPerGallon) * (1 + cfg.bufferPct);
+      // A TYPED quantity is clamped to 99 at three separate boundaries; the
+      // ESTIMATE was clamped nowhere, so one garbage Sq_Footage__c (a rep's
+      // stray keystroke — 9,999,999) computed 445 gal and there was nothing
+      // between Salesforce and the vendor's inbox to stop it. A real
+      // residential color never approaches this; anything that does is data,
+      // not a job, and it is flagged rather than quietly bought.
+      const rawGallons = Math.min(computedGallons, cfg.maxGallonsPerLine);
+      if (computedGallons > cfg.maxGallonsPerLine) {
+        defaultedNote =
+          `Capped at ${cfg.maxGallonsPerLine} gal — the measurements on this color add up to ` +
+          `${Math.round(computedGallons).toLocaleString()} gal, which is almost certainly a typo in Salesforce. Please check.`;
+      }
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
       if (shared && b.kitchenSharedSqft > 0) {
         defaultedNote = "Kitchen shares this color — its wall area counted at half for the cabinets. Please review.";

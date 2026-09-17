@@ -139,6 +139,7 @@ export default function OrderBuilderView({
   initialPayload,
   initialSupplierId,
   persistenceAvailable,
+  priorOrders = [],
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
@@ -150,6 +151,8 @@ export default function OrderBuilderView({
   /** False while migration 144 is pending — the builder still works, it just
    *  can't survive a reload. Said out loud rather than failing quietly. */
   persistenceAvailable: boolean;
+  /** Orders already sent to a vendor for this work order. */
+  priorOrders?: Array<{ poNumber: string | null; supplierAccountId: string; supplierName: string | null; sentAt: string | null }>;
 }) {
   const router = useRouter();
   const woLabel = workOrderNumber ?? workOrderId.slice(-6);
@@ -651,6 +654,31 @@ export default function OrderBuilderView({
         <p className="text-xs text-ppp-charcoal-500 mt-1">
           {customerName ?? "(unknown customer)"} · WO {woLabel} · Step 1 of 2 — decide what to buy, then continue to fulfilment.
         </p>
+        {/* An order for this work order has ALREADY gone to a vendor. Said
+            plainly, because everything else on this page looks like a fresh
+            order: the vendor is pre-selected and every quantity, extra and
+            custom line is still filled in, so "Continue → Send" emails the
+            whole thing a second time and the vendor ships the job twice.
+            A warning, not a block — a second order is a real thing PPP does
+            (a missed color, a change order), and it is their call. */}
+        {priorOrders.length > 0 && (
+          <div className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
+            <strong className="font-semibold">
+              {priorOrders.length === 1 ? "An order has already been sent for this work order." : `${priorOrders.length} orders have already been sent for this work order.`}
+            </strong>{" "}
+            {priorOrders.slice(0, 3).map((o, i) => (
+              <span key={`${o.poNumber ?? o.supplierAccountId}-${i}`}>
+                {i > 0 ? " · " : ""}
+                {o.supplierName ?? "a vendor"}
+                {o.poNumber ? ` (PO ${o.poNumber})` : ""}
+                {o.sentAt ? ` on ${new Date(o.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}` : ""}
+              </span>
+            ))}
+            {priorOrders.length > 3 ? ` · and ${priorOrders.length - 3} more` : ""}
+            . Anything you send from here is an ADDITIONAL order — it does not
+            replace what the vendor already has.
+          </div>
+        )}
         {!persistenceAvailable && (
           <p className="mt-2 text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
             Saved order state isn&apos;t switched on yet, so this order won&apos;t survive a page reload.

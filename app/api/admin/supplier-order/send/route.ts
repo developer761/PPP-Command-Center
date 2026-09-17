@@ -413,6 +413,27 @@ export async function POST(request: Request) {
     );
   }
 
+  // Step 4: record on the work order's color-form tokens that the paint has
+  // been ordered. `vendor_email_sent_at` has been declared since migration 003
+  // and read in exactly one place — the submit route, to tell a customer that
+  // their change came too late — and NOTHING has ever written it. So a
+  // customer who re-picked colors after the order went out was told nothing,
+  // and neither was PPP. Best-effort: the email has already gone, and failing
+  // the request now would tell the sender it did not.
+  try {
+    const { error: stampErr } = await sbAdmin
+      .from("customer_form_tokens")
+      .update({ vendor_email_sent_at: new Date().toISOString() })
+      .eq("work_order_id", body.workOrderId!);
+    if (stampErr) {
+      console.warn(
+        `[supplier-order/send] couldn't stamp vendor_email_sent_at for WO ${body.workOrderId}: ${stampErr.message}. A customer editing colors after this order will not be warned.`
+      );
+    }
+  } catch (err) {
+    console.warn("[supplier-order/send] vendor_email_sent_at stamp skipped:", err);
+  }
+
   return NextResponse.json({
     ok: true,
     supplierOrderId,

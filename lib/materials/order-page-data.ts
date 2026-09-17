@@ -213,3 +213,59 @@ export async function loadLatestBuildForWorkOrder(
     return { supplierAccountId: null, payload: emptyBuildPayload(), available: false };
   }
 }
+
+/** An order that already went to a vendor for this work order. */
+export type PriorOrder = {
+  poNumber: string | null;
+  supplierAccountId: string;
+  supplierName: string | null;
+  sentAt: string | null;
+};
+
+/**
+ * Orders already SENT for this work order.
+ *
+ * Nothing on either order screen looked at `supplier_orders`, so coming back
+ * to add one forgotten gallon resumed the whole finished order — vendor
+ * pre-selected, every quantity and extra still there — and "Continue to
+ * fulfilment" → Send emailed the lot again as a second PO. The vendor ships
+ * the job twice. The only place the order's own state was visible is the
+ * work-order page the estimator just left.
+ *
+ * Cancelled and failed rows are excluded: neither is an order anybody is
+ * holding. Best-effort — a work order that cannot load this still builds.
+ */
+export async function loadSentOrdersForWorkOrder(workOrderId: string): Promise<PriorOrder[]> {
+  try {
+    const sb = createSupabaseAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+    const { data, error } = await sb
+      .from("supplier_orders")
+      .select("po_number, supplier_account_id, supplier_name, sent_at, status, cancelled_at")
+      .eq("work_order_id", workOrderId)
+      .order("sent_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? [])
+      .filter((r) => {
+        const row = r as { status?: string | null; cancelled_at?: string | null; sent_at?: string | null };
+        if (row.status === "cancelled" || row.cancelled_at) return false;
+        if (row.status === "failed") return false;
+        return !!row.sent_at;
+      })
+      .map((r) => {
+        const row = r as { po_number?: string | null; supplier_account_id: string; supplier_name?: string | null; sent_at?: string | null };
+        return {
+          poNumber: row.po_number ?? null,
+          supplierAccountId: row.supplier_account_id,
+          supplierName: row.supplier_name ?? null,
+          sentAt: row.sent_at ?? null,
+        };
+      });
+  } catch (err) {
+    console.warn("[order-page-data] sent orders unavailable:", err);
+    return [];
+  }
+}
