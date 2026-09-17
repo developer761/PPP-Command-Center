@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { SECTIONS, AREAS, LOOKUP, JOURNEY, guideRoutes } from "@/lib/commercial/guide/content";
+import { ROLES, LOOKUP, JOURNEY } from "@/lib/commercial/guide/roles";
+import { walkthroughRoutes } from "@/lib/commercial/guide/walkthrough";
 
 /**
  * The handbook cannot be allowed to go stale.
@@ -10,7 +11,7 @@ import { SECTIONS, AREAS, LOOKUP, JOURNEY, guideRoutes } from "@/lib/commercial/
  * A printed process document fails the same way every time: a page gets
  * renamed, the document keeps naming the old one, and nobody notices for
  * months because nothing checks. The whole reason this one is generated from
- * `content.ts` is so that something CAN check — which is only true if these
+ * `roles.ts` is so that something CAN check — which is only true if these
  * tests actually run against the app's routes rather than against the
  * handbook's own copy of them.
  *
@@ -24,7 +25,7 @@ function pageFileFor(route: string): string {
 }
 
 describe("every page the handbook sends you to exists", () => {
-  for (const route of guideRoutes()) {
+  for (const route of walkthroughRoutes(ROLES)) {
     it(`${route} is a real page`, () => {
       expect(existsSync(pageFileFor(route)), `the handbook points at ${route}, which has no page.tsx`).toBe(true);
     });
@@ -50,21 +51,24 @@ describe("the handbook only uses characters the PDF font can print", () => {
   ];
 
   const allText = [
-    ...SECTIONS.flatMap((s) => [
-      s.title,
-      s.who,
-      s.intro,
-      s.footnote ?? "",
-      ...(s.table ? [...s.table.head, ...s.table.rows.flat()] : []),
-      ...s.tasks.flatMap((t) => [
-        t.title,
-        t.path,
-        t.watchOut ?? "",
-        ...t.steps.map((st) => st.text),
-        ...(t.sketch ? [t.sketch.arrowLabel, ...t.sketch.boxes] : []),
+    ...ROLES.flatMap((r) => [
+      r.label,
+      r.tagline,
+      r.intro,
+      ...r.chapters.flatMap((c) => [
+        c.title,
+        c.blurb,
+        ...c.surfaces.flatMap((su) => [
+          su.name,
+          su.path,
+          su.purpose,
+          su.watchOut ?? "",
+          ...(su.steps ?? []),
+          ...(su.controls ?? []).flatMap((ct) => [ct.label, ct.does]),
+          ...(su.strip?.boxes ?? []),
+        ]),
       ]),
     ]),
-    ...AREAS.flatMap((a) => [a.name, a.holds, a.who]),
     ...JOURNEY.flatMap((j) => [j.label, j.sub]),
     ...LOOKUP.flatMap((l) => [l.question, l.answer]),
   ].join("\n");
@@ -84,34 +88,67 @@ describe("the handbook only uses characters the PDF font can print", () => {
   });
 });
 
-describe("the handbook is worth printing", () => {
-  it("covers Mary in her own right", () => {
-    const marys = SECTIONS.filter((s) => s.who.toLowerCase().includes("mary"));
-    // Karan asked for "a specific page or two for Mary and her accounting page".
-    expect(marys.length).toBeGreaterThanOrEqual(2);
-    expect(marys.some((s) => s.table), "one of Mary's pages should tour the tabs").toBe(true);
+describe("the walkthrough is worth reading", () => {
+  const named = ROLES.filter((r) => r.key !== "overview");
+
+  it("gives each person their own walkthrough", () => {
+    // Karan asked to be able to "go as Brendan / Stephanie / Mary", plus an
+    // overview that covers everything at less depth.
+    expect(ROLES.map((r) => r.key)).toEqual(["overview", "mary", "brendan", "stephanie"]);
+    for (const r of named) {
+      expect(r.chapters.length, `${r.label} has no chapters`).toBeGreaterThan(0);
+    }
   });
 
-  it("every task says where it happens and what to do", () => {
-    for (const s of SECTIONS) {
-      for (const t of s.tasks) {
-        expect(t.steps.length, `${t.title} has no steps`).toBeGreaterThan(0);
-        expect(t.path.length, `${t.title} does not say where it is`).toBeGreaterThan(0);
-        // Numbered 1..n with no gaps — the PDF prints these in circles.
-        expect(t.steps.map((st) => st.n)).toEqual(t.steps.map((_, i) => i + 1));
+  it("tells each person what the buttons do, not just where to go", () => {
+    // The whole point over a list of links: a named role must explain controls
+    // somewhere, or it is a tour rather than a walkthrough.
+    for (const r of named) {
+      const withControls = r.chapters.flatMap((c) => c.surfaces).filter((su) => (su.controls?.length ?? 0) > 0);
+      expect(withControls.length, `${r.label} never says what a single control does`).toBeGreaterThan(0);
+    }
+  });
+
+  it("every surface says where it is and what it is for", () => {
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          expect(su.path.length, `${su.name} does not say where it is`).toBeGreaterThan(0);
+          expect(su.purpose.length, `${su.name} does not say what it is for`).toBeGreaterThan(20);
+          expect(su.href.startsWith("/commercial"), `${su.name} links outside the platform`).toBe(true);
+        }
       }
     }
   });
 
-  it("an arrow points at a box that exists", () => {
-    for (const s of SECTIONS) {
-      for (const t of s.tasks) {
-        if (!t.sketch) continue;
-        expect(t.sketch.arrowAt, `${t.title}: arrow points off the end of the row`).toBeLessThan(
-          t.sketch.boxes.length
-        );
-        expect(t.sketch.arrowAt).toBeGreaterThanOrEqual(0);
-        expect(t.sketch.arrowLabel.length, `${t.title}: arrow has no label`).toBeGreaterThan(0);
+  it("a chapter id is unique, so the contents links land where they say", () => {
+    for (const r of ROLES) {
+      const ids = r.chapters.map((c) => c.id);
+      expect(new Set(ids).size, `${r.label} has two chapters with the same id`).toBe(ids.length);
+    }
+  });
+
+  it("a tab strip highlights a tab that exists on it", () => {
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          if (!su.strip) continue;
+          expect(su.strip.at, `${su.name}: the highlight is off the end of the row`).toBeLessThan(
+            su.strip.boxes.length
+          );
+          expect(su.strip.at).toBeGreaterThanOrEqual(0);
+        }
+      }
+    }
+  });
+
+  it("no control is listed twice on one surface", () => {
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          const labels = (su.controls ?? []).map((ct) => ct.label);
+          expect(new Set(labels).size, `${su.name} lists a control twice`).toBe(labels.length);
+        }
       }
     }
   });

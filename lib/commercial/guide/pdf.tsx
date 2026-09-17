@@ -3,7 +3,8 @@ import "server-only";
 import { Document, Page, View, Text, Image, StyleSheet, Font, Svg, Polygon, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
 
-import { SECTIONS, AREAS, JOURNEY, LOOKUP, type Section, type Task, type Sketch } from "./content";
+import { ROLES, JOURNEY, LOOKUP } from "./roles";
+import type { Chapter, Surface, Strip } from "./walkthrough";
 
 /**
  * "Running Commercial Work" — the handbook, printed.
@@ -113,6 +114,10 @@ const s = StyleSheet.create({
   // circle and the first render came out as plain navy dots.
   stepNum: { width: 16, height: 16, borderRadius: 8, backgroundColor: NAVY, color: "#ffffff", fontSize: 8.5, fontFamily: "Helvetica-Bold", textAlign: "center", lineHeight: 1, paddingTop: 4, marginRight: 8 },
   stepText: { flex: 1, fontSize: 10, lineHeight: 1.45, paddingTop: 1 },
+  purpose: { fontSize: 9.5, color: "#374151", lineHeight: 1.45, marginBottom: 6 },
+  ctrlRow: { flexDirection: "row", paddingVertical: 2.6, borderBottomWidth: 0.5, borderBottomColor: RULE },
+  ctrlLabel: { width: "34%", paddingRight: 8, fontSize: 9, fontFamily: "Helvetica-Bold", color: NAVY, lineHeight: 1.35 },
+  ctrlDoes: { flex: 1, fontSize: 9, color: "#374151", lineHeight: 1.35 },
 
   watchBox: { flexDirection: "row", borderLeftWidth: 3, borderLeftColor: ORANGE, backgroundColor: "#fdf4ef", paddingVertical: 7, paddingHorizontal: 9, marginTop: 9, borderRadius: 2 },
   watchLabel: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: ORANGE, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
@@ -190,12 +195,12 @@ function Footer({ company }: { company: string }) {
  * as the boxes it sits under — react-pdf has no absolute positioning worth
  * trusting across page breaks, and this survives a re-flow.
  */
-function SketchView({ sketch }: { sketch: Sketch }) {
+function SketchView({ sketch }: { sketch: Strip }) {
   return (
     <View style={s.sketchWrap} wrap={false}>
       <View style={s.sketchRow}>
         {sketch.boxes.map((b, i) => (
-          <Text key={i} style={[s.sketchBox, { flex: 1 }, i === sketch.arrowAt ? s.sketchBoxOn : {}]}>
+          <Text key={i} style={[s.sketchBox, { flex: 1 }, i === sketch.at ? s.sketchBoxOn : {}]}>
             {b}
           </Text>
         ))}
@@ -206,35 +211,48 @@ function SketchView({ sketch }: { sketch: Sketch }) {
             the row rather than the target box's share — pinned to the box it
             ran off the right-hand edge, which is how the first draft printed
             "…paying a crew or labor comp". */}
-        {sketch.arrowAt > 0 && <View style={{ flex: sketch.arrowAt }} />}
-        <View style={{ flex: sketch.boxes.length - sketch.arrowAt, flexDirection: "row", alignItems: "flex-start" }}>
+        {sketch.at > 0 && <View style={{ flex: sketch.at }} />}
+        <View style={{ flex: sketch.boxes.length - sketch.at, flexDirection: "row", alignItems: "flex-start" }}>
           <View style={{ paddingTop: 1 }}>
             <Triangle dir="up" />
           </View>
-          <Text style={[s.arrowLabel, { flex: 1 }]}>{pdfSafe(sketch.arrowLabel)}</Text>
+          {/* No label: the tab above is already picked out in bold with an
+              orange rule under it, so printing its name again beside the arrow
+              said the same thing three times. */}
         </View>
       </View>
     </View>
   );
 }
 
-function TaskView({ task }: { task: Task }) {
+function SurfaceView({ surface }: { surface: Surface }) {
   return (
     <View style={s.task} wrap={false}>
-      <Text style={s.taskTitle}>{pdfSafe(task.title)}</Text>
-      <Text style={s.taskPath}>{pdfSafe(task.path)}</Text>
-      {task.sketch && <SketchView sketch={task.sketch} />}
-      {task.steps.map((st) => (
-        <View key={st.n} style={s.step}>
-          <Text style={s.stepNum}>{st.n}</Text>
-          <Text style={s.stepText}>{pdfSafe(st.text)}</Text>
+      <Text style={s.taskTitle}>{pdfSafe(surface.name)}</Text>
+      <Text style={s.taskPath}>{pdfSafe(surface.path)}</Text>
+      {surface.strip && <SketchView sketch={surface.strip} />}
+      <Text style={s.purpose}>{pdfSafe(surface.purpose)}</Text>
+      {surface.steps?.map((st, i) => (
+        <View key={i} style={s.step}>
+          <Text style={s.stepNum}>{i + 1}</Text>
+          <Text style={s.stepText}>{pdfSafe(st)}</Text>
         </View>
       ))}
-      {task.watchOut && (
+      {surface.controls && surface.controls.length > 0 && (
+        <View style={{ marginTop: 6 }}>
+          {surface.controls.map((c) => (
+            <View key={c.label} style={s.ctrlRow}>
+              <Text style={s.ctrlLabel}>{pdfSafe(c.label)}</Text>
+              <Text style={s.ctrlDoes}>{pdfSafe(c.does)}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      {surface.watchOut && (
         <View style={s.watchBox}>
           <View style={{ flex: 1 }}>
             <Text style={s.watchLabel}>Watch out</Text>
-            <Text style={s.watchText}>{pdfSafe(task.watchOut)}</Text>
+            <Text style={s.watchText}>{pdfSafe(surface.watchOut)}</Text>
           </View>
         </View>
       )}
@@ -242,41 +260,18 @@ function TaskView({ task }: { task: Task }) {
   );
 }
 
-function SectionPage({ section, company }: { section: Section; company: string }) {
+function ChapterPage({ chapter, who, company }: { chapter: Chapter; who: string; company: string }) {
   return (
     <Page size="LETTER" style={s.page}>
-      <RunningHeader company={company} title={section.title} />
+      <RunningHeader company={company} title={chapter.title} />
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text style={s.h1}>{section.title}</Text>
-        <Text style={s.whoChip}>{section.who}</Text>
+        <Text style={s.h1}>{pdfSafe(chapter.title)}</Text>
+        <Text style={s.whoChip}>{pdfSafe(who)}</Text>
       </View>
-      <Text style={s.intro}>{pdfSafe(section.intro)}</Text>
-
-      {section.table && (
-        <View>
-          <View style={s.tHead}>
-            <Text style={[s.th, { width: "30%" }]}>{section.table.head[0]}</Text>
-            <Text style={[s.th, { width: "70%" }]}>{section.table.head[1]}</Text>
-          </View>
-          {section.table.rows.map(([k, v], i) => {
-            // The "— More —" row is a divider, not a tab. Shaded so the reader
-            // sees where the visible bar stops and the folded ones begin.
-            const divider = k.startsWith("—");
-            return (
-              <View key={i} style={divider ? s.trDivider : s.tr}>
-                <Text style={[s.cKey, divider ? { color: GREY } : {}]}>{pdfSafe(k)}</Text>
-                <Text style={[s.cVal, divider ? { fontStyle: "italic", color: GREY } : {}]}>{pdfSafe(v)}</Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {section.tasks.map((t, i) => (
-        <TaskView key={i} task={t} />
+      <Text style={s.intro}>{pdfSafe(chapter.blurb)}</Text>
+      {chapter.surfaces.map((su, i) => (
+        <SurfaceView key={i} surface={su} />
       ))}
-
-      {section.footnote && <Text style={s.footnote}>{pdfSafe(section.footnote)}</Text>}
       <Footer company={company} />
     </Page>
   );
@@ -323,13 +318,10 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
         <Text style={[s.intro, { marginBottom: 12 }]}>
           Left-hand menu. If you are not sure where something is, it is in one of these.
         </Text>
-        {AREAS.map((a) => (
+        {ROLES[0].chapters[0].surfaces.map((a) => (
           <View key={a.name} style={s.areaCard} wrap={false}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <Text style={s.areaName}>{a.name}</Text>
-              <Text style={s.areaWho}>{a.who}</Text>
-            </View>
-            <Text style={s.areaHolds}>{pdfSafe(a.holds)}</Text>
+            <Text style={s.areaName}>{pdfSafe(a.name)}</Text>
+            <Text style={s.areaHolds}>{pdfSafe(a.purpose)}</Text>
           </View>
         ))}
         <Text style={s.footnote}>
@@ -340,9 +332,13 @@ function GuideDoc({ company, logo }: { company: string; logo: Buffer | null }) {
       </Page>
 
       {/* ── One page per section ── */}
-      {SECTIONS.map((section, i) => (
-        <SectionPage key={i} section={section} company={company} />
-      ))}
+      {/* One page per chapter, per person. The overview role is the map page
+          above, so it is not repeated here. */}
+      {ROLES.filter((r) => r.key !== "overview").flatMap((r) =>
+        r.chapters.map((c) => (
+          <ChapterPage key={`${r.key}:${c.id}`} chapter={c} who={r.label} company={company} />
+        ))
+      )}
 
       {/* ── The index ── */}
       <Page size="LETTER" style={s.page}>
