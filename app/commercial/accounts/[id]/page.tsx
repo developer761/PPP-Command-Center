@@ -27,7 +27,7 @@ import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { StatusSubStatusPicker } from "@/components/commercial/status-sub-status-picker";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { CopyToClipboardButton } from "@/components/commercial/copy-to-clipboard-button";
-import { getAccountOverview, relativeActivity, winRate, daysSinceIso, type AccountOverview } from "@/lib/commercial/accounts/overview";
+import { getAccountOverview, relativeActivity, winRate, daysSinceIso, formatBidCents, type AccountOverview } from "@/lib/commercial/accounts/overview";
 import { getInvoiceRollupForAccount, splitOpenBalance, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { monthlyBilledSeries as monthlyBilledSeriesShared } from "@/lib/commercial/invoices/monthly";
@@ -5469,9 +5469,13 @@ async function AccountKpisTab({
     (sum, o) => sum + dealValueCents(o, openProposalTotals.get(o.id) ?? null),
     0
   );
+  // One number when low and high agree — which is every deal in the book, since
+  // nobody at Tomco enters a spread. This hand-rolled the dash and so printed
+  // "$142,000.00 – $142,000.00"; formatBidCents has always collapsed that case,
+  // and still shows a real range on the day somebody enters one.
   const bidRangeLabel =
     bidLow > 0 || bidHigh > 0
-      ? `${formatCentsFull(bidLow)} – ${formatCentsFull(bidHigh)}`
+      ? formatBidCents(bidLow, bidHigh)
       : fallbackTotal > 0
         ? formatCentsFull(fallbackTotal)
         : "—";

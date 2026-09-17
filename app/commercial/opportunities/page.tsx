@@ -24,6 +24,7 @@
  * visual layout + component composition changed.
  */
 import { dealValueCents } from "@/lib/commercial/opportunities/db";
+import { formatBidCents } from "@/lib/commercial/accounts/overview";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { redirect } from "next/navigation";
@@ -797,6 +798,12 @@ export default async function CommercialOpportunitiesPage({
   const totalPipelineCents = presaleOpenOpps.reduce((acc, o) => acc + oppValue(o), 0);
   const totalBidLowCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_low_cents ?? 0), 0);
   const totalBidHighCents = presaleOpenOpps.reduce((acc, o) => acc + (o.bid_value_high_cents ?? 0), 0);
+  // "—" when nothing is priced, a single figure when low and high agree (which
+  // is every deal in the book today), a real range only when they differ.
+  const bidHeadline =
+    totalBidLowCents === 0 && totalBidHighCents === 0
+      ? "—"
+      : formatBidCents(totalBidLowCents, totalBidHighCents);
   // L1: the bid columns are no longer collected on create — pricing lives on
   // the proposal — so this summed to zero and read "—" beside a Weighted tile
   // showing live money from the proposal fallback, on the same screen.
@@ -1145,15 +1152,33 @@ export default async function CommercialOpportunitiesPage({
           />
           <KpiCard
             tone="neutral"
-            label={totalBidLowCents === 0 && totalBidHighCents === 0 ? "Open value" : "Bid range (open)"}
+            /**
+             * "Out for bid" — one number, because there is only ever one.
+             *
+             * Karan 2026-09-17: "BID RANGE (OPEN) $2.1M–$2.1M … that Bid range
+             * is confusing for everyone, we need to fix that."
+             *
+             * He is right, and it is not a rounding artefact: of the 38 open
+             * pre-sale opportunities, 34 have a value and every one of them has
+             * `bid_value_low_cents === bid_value_high_cents`. Nobody at Tomco
+             * enters a range — they enter the number they bid. So this card
+             * printed the same figure twice with a dash between it and called
+             * it a range, on every deal, forever.
+             *
+             * `formatBidCents` has collapsed low===high to a single number
+             * since it was written. This card hand-rolled the string instead
+             * and bypassed it. Using the helper means the day somebody DOES
+             * enter a real spread, it reads as a range again by itself.
+             */
+            label={bidHeadline === "—" ? "Open value" : "Out for bid"}
             value={
-              totalBidLowCents === 0 && totalBidHighCents === 0
+              bidHeadline === "—"
                 ? totalOpenValueCents > 0
                   ? formatCentsCompact(totalOpenValueCents)
                   : "—"
-                : `${formatCentsCompact(totalBidLowCents)}–${formatCentsCompact(totalBidHighCents)}`
+                : bidHeadline
             }
-            sub="low + high across open opportunities"
+            sub={`across ${presaleOpenOpps.length} open ${presaleOpenOpps.length === 1 ? "opportunity" : "opportunities"}`}
           />
           <KpiCard
             tone="emerald"

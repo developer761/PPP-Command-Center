@@ -569,3 +569,25 @@ export const STAGE_MEANING: Record<string, string> = {
   post_sale_closed:
     "Closed out: punchlist signed off, warranty issued, final payment and retainage received. Nothing outstanding.",
 };
+
+/**
+ * The meaning of the stage a deal is ACTUALLY at.
+ *
+ * Use this rather than indexing STAGE_MEANING directly. Its keys are STAGE
+ * keys, and both call sites were passing a raw `status`, which is a different
+ * ladder — so:
+ *
+ *   · `proposal` and `pre_sale_closed` are not keys at all, and the legend
+ *     silently rendered NOTHING for every deal at Sent, Won or Lost;
+ *   · `qualifying` IS a key, so an RFP showed the retired "Qualifying" wording
+ *     instead of the RFP line;
+ *   · `estimating` matched too, so a deal at Pending Approval was told it was
+ *     still being priced.
+ *
+ * Nothing about that is visible at the call site — a `Record<string, string>`
+ * accepts any string and returns undefined, and the `?? null` swallowed it.
+ * Taking the tuple and doing the mapping here makes the wrong call impossible.
+ */
+export function stageMeaningFor(status: string, subStatus: string | null | undefined): string | null {
+  return STAGE_MEANING[columnKeyForOpp(status, subStatus ?? null)] ?? null;
+}

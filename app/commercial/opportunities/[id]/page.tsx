@@ -168,7 +168,7 @@ import { ProjectHome } from "@/components/commercial/project-home";
 import { ProjectTeamCard } from "@/components/commercial/project-team-card";
 import { deriveProjectAttention, type ProjectMoney, type ProjectSchedule } from "@/lib/commercial/projects/project-attention";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
-import { STAGE_MEANING } from "@/lib/commercial/opportunities/kanban-columns";
+import { stageMeaningFor } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
@@ -2810,7 +2810,7 @@ export default async function OpportunityDetailPage({
           to avoid listing the same seven tools twice. Both step aside once a
           tool is open. */}
       {!isDeletedDeal && !toolView && primary !== "project" && (
-        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={STAGE_MEANING[opp.status] ?? null} fromTab={primary} />
+        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={stageMeaningFor(opp.status, opp.sub_status)} fromTab={primary} />
       )}
       {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
           below the tab bar, not here above it — see further down. */}
@@ -2959,7 +2959,7 @@ export default async function OpportunityDetailPage({
           attention={projectAttention}
           money={projectMoney}
           schedule={projectSchedule}
-          stageMeaning={STAGE_MEANING[opp.status] ?? null}
+          stageMeaning={stageMeaningFor(opp.status, opp.sub_status)}
         />
       )}
       {/* Project command center blocks D + E — who's on it & who to call, and a
@@ -4111,7 +4111,6 @@ async function InfoTab({
   // not on Info. Info stays focused on deal facts: bid, dates, address,
   // account. The amber banner above the page header still nudges the
   // user to the Debrief tab until win_loss_debriefed_at is set.
-  const isTerminal = isTerminalOpportunityStatus(opp.status);
   // Filter the DAG-allowed next statuses by what we actually want to
   // expose in this surface. Detail page allows ALL valid transitions,
   // including terminal ones (won/lost/no_bid) because we have room for
@@ -4176,7 +4175,7 @@ async function InfoTab({
           reliably scroll after a soft navigation — so the click looked like it
           did nothing, twice, which is exactly what Karan reported. Rendering it
           FIRST removes the dependence on scrolling entirely. */}
-      {focusStatus && (!isTerminal || preselectTo) && (
+      {focusStatus && (
         <div className="lg:col-span-2 rounded-xl ring-2 ring-cc-brand-400 ring-offset-2 ring-offset-surface-sunken">
           <ChangeStatusCard
             opp={opp}
@@ -4209,16 +4208,30 @@ async function InfoTab({
       )}
       {/* Invoice-created toast moved to the Invoices tab so it shows
           right above the new panel. See OpportunityInvoicesPanel. */}
-      {/* ChangeStatusCard is for moving a deal forward — irrelevant on
-          terminal opps (the only allowed next is reopened, which lives
-          as its own dedicated button in the page header). The Debrief
-          tab carries everything terminal-specific. */}
-      {/* …unless the user was explicitly sent here to change it. The quick-
-          flips redirect terminal targets to `?to=…#change-status` for the
-          loss-reason capture; suppressing the card on an ALREADY-terminal deal
-          meant "→ Closed Lost" on a Closed Won card landed on Overview with no
-          form, no error and no explanation, and the deal stayed Won. */}
-      {!focusStatus && (!isTerminal || preselectTo) && (
+      {/* ALWAYS RENDERED, including on a won or completed job.
+          Karan 2026-09-17: "If a job is won still let me go back and edit the
+          other things."
+
+          It used to be hidden on any terminal deal — `!isTerminal ||
+          preselectTo` — on the reasoning that the card is for moving a deal
+          FORWARD and a terminal deal has nowhere to go. That reasoning was
+          wrong in two ways, and together they made a won job a dead end:
+
+           · A won deal is `pre_sale_closed + won`, which is terminal, so this
+             hid the card on every job Tomco actually delivers. And a won deal
+             DOES have a forward move — attention.ts computes
+             `["pre_construction"]` for it, the whole point of winning.
+           · This card holds the ONLY stage picker on the job page, so hiding it
+             took status, sub-status, follow-up date and follow-up notes with
+             it. The Reopen button does not cover that: it exists only for
+             `pre_sale_closed`, and it is a demotion, not an edit — it rewrites
+             the deal to `qualifying + rfp`.
+
+          A COMPLETED job was worse still: no Reopen button at all, and the
+          reopen action refuses it with "use Change status" — the card this
+          guard was hiding. The instruction pointed at something that was not
+          on the page. */}
+      {!focusStatus && (
         <ChangeStatusCard
           opp={opp}
           nextStatuses={nextStatuses}
