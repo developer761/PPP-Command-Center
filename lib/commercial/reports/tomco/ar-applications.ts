@@ -33,6 +33,18 @@ export type ArApplicationRow = {
   carriedOver?: boolean;
   id: string;
   oppId: string;
+  /**
+   * The certificate this line IS, so clicking it opens that one.
+   *
+   * Kept separate from `id` rather than parsed out of it. `id` carries a
+   * `:retention` suffix on the retention half of a certificate and a
+   * `carryover:`/`added:` prefix on Mary's hand-written lines, so anything that
+   * derives a UUID from it has to know all three shapes — and the day a fourth
+   * shape arrives it silently produces a link to a job page with no application
+   * selected, which is exactly the bug this field exists to fix. Empty string
+   * for a line that is not a certificate.
+   */
+  appId: string;
   jobName: string;
   accountName: string;
   /** "AIA#4 · 21 May 26" — how she labels the line. */
@@ -110,6 +122,7 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
       if (g702.currentPaymentDueCents > 0) {
         rows.push({
           id: app.id,
+          appId: app.id,
           oppId,
           jobName: job.name,
           accountName: job.account,
@@ -126,6 +139,9 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
       if (g702.retainageCents > 0 && !app.is_retainage_release) {
         rows.push({
           id: `${app.id}:retention`,
+          // The retention half belongs to the same certificate, so it opens
+          // the same one.
+          appId: app.id,
           oppId,
           jobName: job.name,
           accountName: job.account,
@@ -231,6 +247,7 @@ export async function getArSheetRows(): Promise<ArApplicationRow[]> {
     const note = e.note ?? r.note;
     return {
       id,
+      appId: "",
       oppId: "",
       jobName: job,
       accountName: job,
@@ -245,6 +262,7 @@ export async function getArSheetRows(): Promise<ArApplicationRow[]> {
 
   const extra: ArApplicationRow[] = added.map((r) => ({
     id: r.id,
+    appId: "",
     oppId: "",
     jobName: r.job,
     accountName: r.job,
@@ -264,6 +282,7 @@ export async function clearedCarryoverRows(): Promise<ArApplicationRow[]> {
   const done = new Set(await clearedCarryoverIds());
   return AR_CARRYOVER.map((r, i) => ({
     id: `carryover:${i}`,
+    appId: "",
     oppId: "",
     jobName: r.job,
     accountName: r.job,
@@ -292,7 +311,18 @@ export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
     [{ key: "month", label: "Month", of: (r) => (r.issuedYmd ? r.issuedYmd.slice(0, 7) : "—") }],
   ],
   columns: [
-    { key: "label", label: "Application", text: (r) => r.label, href: (r) => (r.oppId ? `/commercial/opportunities/${r.oppId}?tab=project&sub=aia` : null) },
+    {
+      key: "label",
+      label: "Application",
+      text: (r) => r.label,
+      // Katie 2026-09-17: "if we click on an invoice, it should open that
+      // specific invoice." It used to open the job's AIA tab with nothing
+      // selected, so on a job with six certificates you landed on the list and
+      // had to find the one you had just clicked. `app=` selects it — the same
+      // deep link the Receivables tab and the job's own "Billed through AIA"
+      // list already use.
+      href: (r) => (r.oppId && r.appId ? `/commercial/opportunities/${r.oppId}?tab=aia&app=${r.appId}` : null),
+    },
     { key: "open", label: "Billed / open", kind: "money", amount: (r) => r.openCents },
     // A carried-over line has no separate note — `label` and `notes` are the
     // same string — so the sheet printed every one of those rows twice, side by
