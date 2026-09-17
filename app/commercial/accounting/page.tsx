@@ -343,9 +343,45 @@ async function recordSpendAction(formData: FormData) {
     reimburse_to: String(formData.get("reimburse_to") ?? "") || null,
     created_by_user_id: user.id,
   });
+  if (!res.ok) {
+    revalidatePath(BASE);
+    redirect(`${BASE}?view=${view}&error=${encodeURIComponent(res.error)}`);
+  }
+
+  /**
+   * The receipt, attached here rather than on a second trip.
+   *
+   * Karan 2026-09-17: "where does she actually log a receipt currently? A bit
+   * confusing to input a receipt." He was right, and it was not a wording
+   * problem — this form had no receipt field at all. The only upload was on the
+   * job's Costs tool, so recording a purchase where Mary actually works meant
+   * saving it here, then finding the job, then opening Costs, then Edit, then
+   * attaching. Five steps to file a receipt, and nothing on this page said so.
+   *
+   * Best-effort, exactly as the Costs tool does it: a failed upload never loses
+   * the purchase, it says so and tells her where to add it.
+   */
+  let receiptFailed = false;
+  const file = formData.get("receipt");
+  if (!isLabor && file instanceof File && file.size > 0) {
+    const { attachPurchaseReceipt } = await import("@/lib/commercial/purchases/db");
+    const r = await attachPurchaseReceipt({
+      purchaseId: res.value.id,
+      file_name: file.name || "receipt.pdf",
+      mime_type: file.type || "application/octet-stream",
+      data: new Uint8Array(await file.arrayBuffer()),
+      actorUserId: user.id,
+    }).catch(() => ({ ok: false as const }));
+    receiptFailed = !r.ok;
+  }
+
   revalidatePath(BASE);
-  if (!res.ok) redirect(`${BASE}?view=${view}&error=${encodeURIComponent(res.error)}`);
-  redirect(`${BASE}?view=${view}&ok=${encodeURIComponent(isLabor ? "Labor payment recorded." : "Purchase recorded.")}`);
+  const done = isLabor
+    ? "Labor payment recorded."
+    : receiptFailed
+      ? "Purchase recorded, but the receipt didn't upload — add it from the job's Costs tool."
+      : "Purchase recorded.";
+  redirect(`${BASE}?view=${view}&ok=${encodeURIComponent(done)}`);
 }
 
 /**
@@ -606,6 +642,16 @@ export default async function AccountingPage({
       }
     : null;
   const oldestDays = receivables.rows.reduce((n, r) => Math.max(n, r.daysOut ?? 0), 0);
+  // The single oldest line, so the Oldest tile can name who it is with.
+  const oldestRow = receivables.rows.reduce<(typeof receivables.rows)[number] | null>(
+    (worst, r) => ((r.daysOut ?? 0) > (worst?.daysOut ?? 0) ? r : worst),
+    null
+  );
+  // Past 90 days: the money that is genuinely rotting, as opposed to "past due",
+  // which on this book is everything and therefore tells you nothing.
+  const over90 = receivables.rows.filter((r) => (r.daysOut ?? 0) > 90);
+  const over90Cents = over90.reduce((n, r) => n + r.openCents, 0);
+  const over90Count = over90.length;
   const unnotedCount = receivables.rows.filter((r) => !r.note?.trim()).length;
 
   // Only fetched for the view that renders it — the money band above doesn't
@@ -828,91 +874,70 @@ export default async function AccountingPage({
         </div>
       )}
 
-      {/* ── 1 · The brief ─────────────────────────────────────────────────
-          Same cached brief the receivables report shows — one shared read, so
-          the two pages can never tell Alex different stories. */}
-      {canBrief && (
-        <section className="bg-surface border border-ppp-charcoal-100 border-l-4 border-l-cc-brand-500 rounded-xl p-4">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1.5">
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-cc-brand-700">The brief</h2>
-            <form action={refreshBriefAction}>
-              <input type="hidden" name="back" value={href(view)} />
-              <PendingSubmitButton
-                pendingLabel="Writing…"
-                className="inline-flex items-center min-h-[32px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-[11.5px] font-semibold text-ppp-charcoal-600 hover:border-cc-brand-300 hover:text-cc-brand-700 transition-colors"
-              >
-                {brief ? "Rewrite" : "Write the brief"}
-              </PendingSubmitButton>
-            </form>
-          </div>
-          {brief ? (
-            <>
-              <p className="text-[13.5px] text-ppp-charcoal leading-relaxed">{brief.text}</p>
-              <p className="text-[10.5px] text-ppp-charcoal-400 mt-2">
-                {stale
-                  ? "Written before the latest changes — rewrite for a current read."
-                  : `Written ${fmtEtDate(brief.generatedAt)}`}
-              </p>
-            </>
-          ) : (
-            <p className="text-[12.5px] text-ppp-charcoal-500">
-              A short read on where the money is and what to chase first.
-            </p>
-          )}
-        </section>
-      )}
+      {/* The brief used to sit here — a model-written paragraph summarising the
+          book. Karan 2026-09-17: "we dont need this here either." It restated
+          what the tiles and the list below already show, and it went stale the
+          moment anything moved, so it carried a "written before the latest
+          changes" apology more often than a current read. It still lives on the
+          receivables report for anyone who wants it. */}
 
       {/* ── The money band — ALWAYS on screen, above the switcher. Changing view
              must never cost you the four numbers the page is opened for. ── */}
+      {/* FOUR TILES, FOUR DIFFERENT FACTS — third attempt, and the first that
+          actually holds on Tomco's data.
+
+          Karan, twice: "these KPIs still suck and are like the same." He was
+          right both times. The band printed $1,369,044.37 as Total outstanding
+          and then printed the identical figure again as "Past due · all of it",
+          because every imported invoice carries Salesforce's "Upon Receipt"
+          terms so the whole book is late. A fourth tile read "No note yet: 0".
+          Two of four slots were saying nothing.
+
+          The fix is not better labels, it is different QUESTIONS. A total, a
+          concentration, an age bucket and a worst case — and the past-due fact
+          folded into the first tile's sub-line, where it costs no slot. All four
+          come off the rows already loaded; none adds a query. */}
       <section className="space-y-2">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile
             label="Total outstanding"
             value={formatCentsFull(receivables.totalOpenCents)}
             tone="brand"
-            sub={`${receivables.rows.length} open item${receivables.rows.length === 1 ? "" : "s"}`}
-          />
-          {/* FOUR TILES, FOUR FACTS.
-              Three of these printed the SAME number — $1,369,044.37 as Total
-              outstanding, again as Collectible now (because no retention is
-              held), and again as Past due (because every invoice carries
-              Salesforce's "Upon Receipt" terms, so the whole book is late).
-              A tile that restates the tile beside it is worse than no tile: it
-              costs a quarter of the band and teaches people to stop reading it.
-              Each one now only appears when it says something the first does
-              not, and the slot is given to the thing actually worth knowing. */}
-          {receivables.dueNowCents !== receivables.totalOpenCents ? (
-            <Tile label="Collectible now" value={formatCentsFull(receivables.dueNowCents)} tone="navy" sub="excludes retention" />
-          ) : (
-            <Tile
-              label="Biggest GC"
-              value={topGc ? formatCentsFull(topGc.cents) : "—"}
-              tone="navy"
-              sub={topGc ? `${topGc.name} · ${topGc.pct}% of the book` : "nothing outstanding"}
-            />
-          )}
-          <Tile
-            label={receivables.overdueCents === receivables.totalOpenCents ? "Past due · all of it" : "Past due"}
-            value={formatCentsFull(receivables.overdueCents)}
-            tone={receivables.overdueCents > 0 ? "rose" : "neutral"}
             sub={
-              receivables.overdueCents === 0
-                ? "nothing late"
-                : oldestDays > 0
-                  ? `oldest ${oldestDays} days`
-                  : "chase these first"
+              receivables.overdueCents === receivables.totalOpenCents && receivables.totalOpenCents > 0
+                ? `${receivables.rows.length} open · every one past due`
+                : receivables.overdueCents > 0
+                  ? `${receivables.rows.length} open · ${formatCentsCompact(receivables.overdueCents)} past due`
+                  : `${receivables.rows.length} open item${receivables.rows.length === 1 ? "" : "s"} · none late`
             }
           />
-          {receivables.retainageCents > 0 ? (
-            <Tile label="Retention held" value={formatCentsFull(receivables.retainageCents)} tone="neutral" sub="released at close-out" />
-          ) : (
-            <Tile
-              label="No note yet"
-              value={String(unnotedCount)}
-              tone={unnotedCount > 0 ? "amber" : "neutral"}
-              sub={unnotedCount > 0 ? "nobody has recorded a chase" : "every open item has a note"}
-            />
-          )}
+          <Tile
+            label="Biggest GC"
+            value={topGc ? formatCentsFull(topGc.cents) : "—"}
+            // Concentration is the fact that actually changes what you do: at
+            // 83% of the book, one GC going quiet IS the problem.
+            tone={topGc && topGc.pct >= 50 ? "amber" : "navy"}
+            sub={topGc ? `${topGc.name} · ${topGc.pct}% of the book` : "nothing outstanding"}
+          />
+          <Tile
+            label="Over 90 days"
+            value={formatCentsFull(over90Cents)}
+            tone={over90Cents > 0 ? "rose" : "emerald"}
+            sub={
+              over90Cents > 0
+                ? `${over90Count} item${over90Count === 1 ? "" : "s"} · ${Math.round((over90Cents / Math.max(1, receivables.totalOpenCents)) * 100)}% of the book`
+                : "nothing has aged that far"
+            }
+          />
+          {/* Days, not dollars. A fourth money tile beside three others is the
+              thing people's eyes slide off; the oldest line is the one that
+              gets a call made. */}
+          <Tile
+            label="Oldest"
+            value={oldestDays > 0 ? `${oldestDays.toLocaleString()} days` : "—"}
+            tone={oldestDays >= 180 ? "rose" : oldestDays > 0 ? "amber" : "neutral"}
+            sub={oldestRow ? `${oldestRow.accountName} · ${formatCentsCompact(oldestRow.openCents)}` : "nothing outstanding"}
+          />
         </div>
       </section>
 

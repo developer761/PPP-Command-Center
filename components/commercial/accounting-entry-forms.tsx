@@ -39,7 +39,15 @@ function FormCard({
   pendingLabel: string;
 }) {
   return (
-    <form action={action} className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
+    <form
+      action={action}
+      // The purchase form carries a receipt file. Without this the file is
+      // dropped on the way to the action and the purchase saves silently
+      // without it — the worst shape of failure, because it looks like it
+      // worked. Harmless on the two forms that have no file input.
+      encType="multipart/form-data"
+      className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3"
+    >
       <div>
         <h3 className="text-sm font-bold text-ppp-charcoal">{title}</h3>
         <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{hint}</p>
@@ -222,6 +230,25 @@ export function RecordPurchaseForm({
       <label data-tour="purchase:reimburse_to" className="block">
         <span className={LABEL_CLS}>Reimburse to</span>
         <input name="reimburse_to" placeholder="Leave blank unless somebody paid out of pocket" className={INPUT_CLS} />
+      </label>
+      {/* THE RECEIPT, HERE.
+          Karan 2026-09-17: "where does she actually log a receipt currently? A
+          bit confusing to input a receipt." There was no receipt field on this
+          form at all — the only upload lived on the job's Costs tool, so filing
+          one from the page Mary actually works on meant saving the purchase,
+          finding the job, opening Costs, pressing Edit and attaching it there.
+          `capture` so a phone opens the camera straight on the docket. */}
+      <label data-tour="purchase:receipt" className="block">
+        <span className={LABEL_CLS}>
+          Receipt <span className="font-normal text-ppp-charcoal-400">(optional)</span>
+        </span>
+        <input
+          name="receipt"
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif"
+          capture="environment"
+          className="block w-full text-base sm:text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]"
+        />
       </label>
     </FormCard>
   );
