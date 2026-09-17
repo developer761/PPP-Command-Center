@@ -181,8 +181,15 @@ const MARY: RoleGuide = {
             "Every job with money still out, and the form for recording a payment when it comes in. Each row carries a note so anyone can see what has been chased and when.",
           strip: { boxes: ACCOUNTING_BAR, at: 1 },
           steps: [
-            "Click Settings in the left menu.",
-            "Pick the card for what you want to change.",
+            "Click Accounting in the left menu.",
+            "Click the Receivables tab.",
+            "The form Record a payment is at the top.",
+            "Click Invoice. Type the GC or job name, then pick it.",
+            "Type the Amount.",
+            "Check Date received — it says today already.",
+            "Pick the Method.",
+            "Type the check or wire number in Reference.",
+            "Click Record payment.",
           ],
           controls: [
             { label: "Invoice", tourTarget: "pay:invoice_id", kind: "field", required: true, does: "Search by job name or invoice number. This is what the payment lands against." },

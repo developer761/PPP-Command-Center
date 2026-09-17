@@ -1,4 +1,4 @@
-import { surfaceSteps, type Surface, type Strip, type Control } from "@/lib/commercial/guide/walkthrough";
+import { surfaceSteps, extraControls, type Surface, type Strip, type Control } from "@/lib/commercial/guide/walkthrough";
 import { TourButton } from "@/components/commercial/guide-tour-button";
 
 /**
@@ -48,11 +48,14 @@ export function TabStrip({ strip }: { strip: Strip }) {
 }
 
 export function SurfaceCard({ surface }: { surface: Surface }) {
+  // The steps already name every field they walk you through; repeating them
+  // in the table below doubles the card for no new information.
+  const extras = extraControls(surface);
   return (
-    <article className="rounded-xl border border-ppp-charcoal-100 bg-surface p-4 sm:p-5">
+    <article className="rounded-xl border border-ppp-charcoal-100 bg-surface p-4 sm:p-5 space-y-0.5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <h3 className="text-[16px] font-bold text-ppp-charcoal leading-tight">{surface.name}</h3>
+          <h3 className="text-[17px] font-bold text-ppp-charcoal leading-tight tracking-tight">{surface.name}</h3>
           <p className="text-[11.5px] font-semibold text-cc-brand-700 mt-0.5">{surface.path}</p>
         </div>
         {/* "Try it out", not "Open it": dropping somebody on the real page with
@@ -75,27 +78,27 @@ export function SurfaceCard({ surface }: { surface: Surface }) {
       )}
 
       {surface.steps && surface.steps.length > 0 && (
-        <ol className="mt-3 space-y-2">
+        <ol className="mt-4 space-y-2.5">
           {surface.steps.map((st, i) => (
             <li key={i} className="flex items-start gap-2.5">
-              <span className="mt-[1px] shrink-0 inline-flex items-center justify-center h-[18px] w-[18px] rounded-full bg-ppp-charcoal text-white text-[10px] font-bold tabular-nums">
+              <span className="mt-[2px] shrink-0 inline-flex items-center justify-center h-[20px] w-[20px] rounded-full bg-ppp-charcoal text-white text-[10.5px] font-bold tabular-nums">
                 {i + 1}
               </span>
-              <span className="text-[13px] text-ppp-charcoal leading-relaxed">{st}</span>
+              <span className="text-[13.5px] text-ppp-charcoal leading-relaxed">{st}</span>
             </li>
           ))}
         </ol>
       )}
 
-      {surface.controls && surface.controls.length > 0 && (
+      {extras.length > 0 && (
         <div className="mt-4">
           <h4 className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-2">
-            What each thing does
+            Also on this page
           </h4>
-          <ul className="rounded-lg border border-ppp-charcoal-100 divide-y divide-ppp-charcoal-100 overflow-hidden">
-            {surface.controls.map((c) => (
-              <li key={c.label} className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3 px-3 py-2">
-                <span className="sm:w-[36%] shrink-0 text-[12.5px] font-bold text-ppp-charcoal">
+          <ul className="border-l border-ppp-charcoal-100 pl-3 space-y-1.5">
+            {extras.map((c) => (
+              <li key={c.label} className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3">
+                <span className="sm:w-[32%] shrink-0 text-[12.5px] font-bold text-ppp-charcoal">
                   {c.label}
                   {c.kind && c.kind !== "button" && (
                     <span className="ml-1.5 text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
@@ -108,7 +111,7 @@ export function SurfaceCard({ surface }: { surface: Surface }) {
                     </span>
                   )}
                 </span>
-                <span className="flex-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed">{c.does}</span>
+                <span className="flex-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">{c.does}</span>
               </li>
             ))}
           </ul>

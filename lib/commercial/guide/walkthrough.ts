@@ -102,6 +102,24 @@ export type RoleGuide = {
   chapters: Chapter[];
 };
 
+/**
+ * The controls worth listing UNDER the steps.
+ *
+ * A form surface names every field in its steps, in order — "Click Invoice",
+ * "Type the Amount", "Pick the Method" — and then the table underneath said all
+ * of it again. Twice the words, twice the height, and the reader has to notice
+ * they are the same list before they can skip it.
+ *
+ * So a control the steps already walk you through is dropped, and the table
+ * keeps only what the steps do not cover: the buttons around the edge (Export,
+ * Print / PDF, Send) and the things you only reach later. On Receivables that
+ * is eleven rows down to six.
+ */
+export function extraControls(su: Surface): Control[] {
+  const walked = (su.steps ?? []).join(" ").toLowerCase();
+  return (su.controls ?? []).filter((c) => !walked.includes(c.label.toLowerCase()));
+}
+
 /** One step of a guided tour. */
 export type Step = { route: string; target?: string; title: string; body: string };
 

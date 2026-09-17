@@ -4,6 +4,7 @@ import { Document, Page, View, Text, Image, StyleSheet, Font, Svg, Polygon, rend
 import * as React from "react";
 
 import { ROLES, JOURNEY, LOOKUP } from "./roles";
+import { extraControls } from "./walkthrough";
 import type { RoleGuide, Surface, Strip } from "./walkthrough";
 
 /**
@@ -105,22 +106,23 @@ const s = StyleSheet.create({
   whoChip: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: "#ffffff", backgroundColor: NAVY, paddingVertical: 2.5, paddingHorizontal: 6, borderRadius: 2, textTransform: "uppercase", letterSpacing: 0.6 },
   intro: { fontSize: 10.5, color: GREY, marginTop: 6, marginBottom: 16, lineHeight: 1.5 },
 
-  task: { marginBottom: 20 },
-  taskTitle: { fontSize: 12.5, fontFamily: "Helvetica-Bold", color: INK },
+  task: { marginBottom: 26 },
+  taskTitle: { fontSize: 13.5, fontFamily: "Helvetica-Bold", color: NAVY },
   taskPath: { fontSize: 8.5, color: ORANGE, fontFamily: "Helvetica-Bold", marginTop: 2, marginBottom: 8, letterSpacing: 0.2 },
 
-  step: { flexDirection: "row", marginBottom: 5, alignItems: "flex-start" },
+  step: { flexDirection: "row", marginBottom: 6, alignItems: "flex-start" },
   // lineHeight 1 is load-bearing: the page's 1.45 pushed the digit out of the
   // circle and the first render came out as plain navy dots.
   stepNum: { width: 16, height: 16, borderRadius: 8, backgroundColor: NAVY, color: "#ffffff", fontSize: 8.5, fontFamily: "Helvetica-Bold", textAlign: "center", lineHeight: 1, paddingTop: 4, marginRight: 8 },
-  stepText: { flex: 1, fontSize: 10, lineHeight: 1.45, paddingTop: 1 },
+  stepText: { flex: 1, fontSize: 10.5, lineHeight: 1.45, paddingTop: 0.5 },
   purpose: { fontSize: 9.5, color: "#374151", lineHeight: 1.45, marginBottom: 6 },
   roleHead: { marginBottom: 14 },
   roleIntro: { fontSize: 10, color: GREY, lineHeight: 1.5, marginTop: 5 },
   h2: { fontSize: 13.5, fontFamily: "Helvetica-Bold", color: NAVY },
   chapterHead: { marginTop: 8, marginBottom: 10, borderTopWidth: 2, borderTopColor: ORANGE, paddingTop: 7 },
   chapterBlurb: { fontSize: 9.5, color: GREY, lineHeight: 1.45, marginTop: 2 },
-  ctrlHead: { fontSize: 7.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.6, color: "#9ca3af", marginBottom: 3 },
+  ctrlHead: { fontSize: 7.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 0.6, color: "#9ca3af", marginBottom: 4 },
+  extrasBox: { marginTop: 9, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: RULE },
   refRow: { flexDirection: "row", paddingVertical: 5, borderBottomWidth: 0.5, borderBottomColor: RULE },
   refName: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK },
   refPath: { fontSize: 7.5, color: ORANGE, fontFamily: "Helvetica-Bold", marginTop: 1 },
@@ -128,9 +130,9 @@ const s = StyleSheet.create({
   tocRow: { flexDirection: "row", paddingVertical: 3.4, borderBottomWidth: 0.5, borderBottomColor: RULE },
   tocWho: { width: "26%", fontSize: 10, fontFamily: "Helvetica-Bold", color: NAVY },
   tocWhat: { flex: 1, fontSize: 9.5, color: "#374151" },
-  ctrlRow: { flexDirection: "row", paddingVertical: 2.6, borderBottomWidth: 0.5, borderBottomColor: RULE },
-  ctrlLabel: { width: "34%", paddingRight: 8, fontSize: 9, fontFamily: "Helvetica-Bold", color: NAVY, lineHeight: 1.35 },
-  ctrlDoes: { flex: 1, fontSize: 9, color: "#374151", lineHeight: 1.35 },
+  ctrlRow: { flexDirection: "row", paddingVertical: 3.2 },
+  ctrlLabel: { width: "30%", paddingRight: 10, fontSize: 9, fontFamily: "Helvetica-Bold", color: INK, lineHeight: 1.35 },
+  ctrlDoes: { flex: 1, fontSize: 9, color: GREY, lineHeight: 1.4 },
 
   watchBox: { flexDirection: "row", borderLeftWidth: 3, borderLeftColor: ORANGE, backgroundColor: "#fdf4ef", paddingVertical: 7, paddingHorizontal: 9, marginTop: 9, borderRadius: 2 },
   watchLabel: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: ORANGE, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 2 },
@@ -239,7 +241,9 @@ function SketchView({ sketch }: { sketch: Strip }) {
 }
 
 function SurfaceView({ surface }: { surface: Surface }) {
-  const hasDetail = (surface.steps?.length ?? 0) > 0 || (surface.controls?.length ?? 0) > 0;
+  // Only the controls the steps do not already walk through.
+  const extras = extraControls(surface);
+  const hasDetail = (surface.steps?.length ?? 0) > 0 || extras.length > 0;
   // A surface with nothing but a purpose is a REFERENCE line, not a procedure.
   // Given the full block treatment it ate a third of a page to say one sentence.
   if (!hasDetail && !surface.watchOut) {
@@ -269,10 +273,10 @@ function SurfaceView({ surface }: { surface: Surface }) {
           <Text style={s.stepText}>{pdfSafe(st)}</Text>
         </View>
       ))}
-      {surface.controls && surface.controls.length > 0 && (
-        <View style={{ marginTop: 7 }}>
-          <Text style={s.ctrlHead} wrap={false}>What each thing does</Text>
-          {surface.controls.map((c) => (
+      {extras.length > 0 && (
+        <View style={s.extrasBox}>
+          <Text style={s.ctrlHead} wrap={false}>Also on this page</Text>
+          {extras.map((c) => (
             <View key={c.label} style={s.ctrlRow} wrap={false}>
               <Text style={s.ctrlLabel}>
                 {pdfSafe(c.label)}

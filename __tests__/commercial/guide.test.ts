@@ -135,6 +135,53 @@ describe("the walkthrough is worth reading", () => {
     }
   });
 
+  it("a surface's steps belong to that surface", () => {
+    /**
+     * A bulk edit put the Settings steps — "Click Settings in the left menu" —
+     * on the Receivables card, under the Receivables heading, with the
+     * Receivables tab strip above them. Everything compiled, every page
+     * rendered, every route resolved, and the only way it surfaced was reading
+     * the printed page. This is the cheap version of reading it.
+     *
+     * The rule: a surface reached through a top-level area has to mention that
+     * area, or say "Open the job"/"Open the tab" — anything else means the
+     * steps came from somewhere else.
+     */
+    const AREAS = ["Accounting", "Opportunities", "Field Ops", "Reports", "Settings", "Email", "Dashboard"];
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          const area = AREAS.find((a) => su.path.startsWith(a));
+          if (!area) continue;
+          const all = (su.steps ?? []).join(" ");
+          const startsInsideAJob = /^(Open|This is|Read)/.test(su.steps?.[0] ?? "");
+          expect(
+            all.includes(area) || startsInsideAJob,
+            `${su.name} (${su.path}) has steps that never mention ${area}: "${su.steps?.[0]}"`
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("no two surfaces share the same steps", () => {
+    // Identical steps on two cards is the symptom of a misplaced copy, which
+    // is exactly how the Receivables card ended up telling people to open
+    // Settings.
+    const seen = new Map<string, string>();
+    for (const r of ROLES) {
+      for (const c of r.chapters) {
+        for (const su of c.surfaces) {
+          const key = (su.steps ?? []).join("|");
+          if (!key) continue;
+          const already = seen.get(key);
+          expect(already, `${su.name} has the same steps as ${already}`).toBeUndefined();
+          seen.set(key, `${r.label}/${su.name}`);
+        }
+      }
+    }
+  });
+
   it("a step is one instruction, not a paragraph", () => {
     for (const r of ROLES) {
       for (const c of r.chapters) {
