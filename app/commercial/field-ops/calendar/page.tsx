@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { getMonthOverview, todayEtIso } from "@/lib/commercial/field-ops/schedule";
+import { getMonthOverview, getWeekOverview, todayEtIso } from "@/lib/commercial/field-ops/schedule";
 import { listEmployees } from "@/lib/commercial/field-ops/employees";
 import { listJobs, ensureJobsForSentWorkOrders, cleanOrphanedJobs } from "@/lib/commercial/field-ops/jobs";
 import { FieldOpsCalendar } from "@/components/commercial/field-ops-calendar";
@@ -15,7 +15,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export default async function FieldOpsCalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; week?: string; view?: string }>;
 }) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
@@ -26,15 +26,31 @@ export default async function FieldOpsCalendarPage({
   if (!(profile?.is_admin ?? isAdminEmail(user.email))) redirect("/commercial");
 
   const sp = await searchParams;
-  const anchor = DATE_RE.test(sp.month ?? "") ? sp.month! : todayEtIso();
+  /**
+   * Month or week. Karan 2026-09-17: "calendar week view."
+   *
+   * `?week=` is accepted as an anchor as well as `?view=week`, because
+   * /commercial/field-ops/schedule has redirected its old `?week=` links into
+   * this page since the Week Grid was retired — and those links landed on a
+   * month with the week silently ignored. Now they land on the week they name.
+   */
+  const anchor =
+    (DATE_RE.test(sp.week ?? "") ? sp.week : null) ??
+    (DATE_RE.test(sp.month ?? "") ? sp.month! : todayEtIso());
+  const mode: "month" | "week" = sp.view === "week" || DATE_RE.test(sp.week ?? "") ? "week" : "month";
   // Safety net: any deal WO marked "sent" but missing its schedulable twin (e.g.
   // a send-time create that failed) gets one now, so it always shows in the picker.
   await Promise.all([ensureJobsForSentWorkOrders(user.id), cleanOrphanedJobs(user.id)]);
-  const [{ monthStart, grid }, employees, jobs] = await Promise.all([
-    getMonthOverview(anchor),
+  const [overview, employees, jobs] = await Promise.all([
+    mode === "week" ? getWeekOverview(anchor) : getMonthOverview(anchor),
     listEmployees(),
     listJobs(),
   ]);
+  const grid = overview.grid;
+  // The anchor the calendar pages from: the 1st in month mode, the Sunday in
+  // week mode. Same prop either way, so the component has one concept of
+  // "where am I" rather than two.
+  const periodStart = "monthStart" in overview ? overview.monthStart : overview.weekStart;
 
   return (
     <div className="pb-8">
@@ -43,7 +59,8 @@ export default async function FieldOpsCalendarPage({
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Click any day to put crew on a work order — set their hours and a note, and they&rsquo;re emailed automatically. Click a name to see their shift and clock-in status.</p>
       </div>
       <FieldOpsCalendar
-        monthStart={monthStart}
+        monthStart={periodStart}
+        mode={mode}
         grid={grid}
         todayIso={todayEtIso()}
         employees={employees.map((e) => ({ id: e.id, display_name: e.display_name, email: e.email }))}

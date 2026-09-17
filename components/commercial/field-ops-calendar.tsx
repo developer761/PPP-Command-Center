@@ -122,18 +122,35 @@ function fmtElapsed(sinceIso: string, nowMs: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+/** "13 - 19 Sep 2026", or spanning a month boundary, "27 Sep - 3 Oct 2026". */
+function weekLabel(startIso: string): string {
+  const end = addDays(startIso, 6);
+  const f = (iso: string, withMonth: boolean) =>
+    new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      day: "numeric",
+      ...(withMonth ? { month: "short" } : {}),
+    });
+  const sameMonth = startIso.slice(0, 7) === end.slice(0, 7);
+  const year = end.slice(0, 4);
+  return `${f(startIso, !sameMonth)} \u2013 ${f(end, true)} ${year}`;
+}
+
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CHIP_CAP = 3;
 
 /* ── main ─────────────────────────────────────────────────────────────────── */
 export function FieldOpsCalendar({
   monthStart,
+  mode = "month",
   grid,
   todayIso,
   employees,
   jobs,
 }: {
   monthStart: string;
+  /** Month grid (6 weeks) or a single week. Same cell shape either way. */
+  mode?: "month" | "week";
   grid: MonthDay[];
   todayIso: string;
   employees: EmployeeOpt[];
@@ -177,14 +194,33 @@ export function FieldOpsCalendar({
     };
   }, [addDay]);
 
-  const prevMonth = addDays(monthStart, -1).slice(0, 7) + "-01";
+  const isWeek = mode === "week";
+  // Step by the period you are LOOKING at — a week view whose arrows jumped a
+  // month would be a week view in name only.
+  const prevStart = isWeek ? addDays(monthStart, -7) : addDays(monthStart, -1).slice(0, 7) + "-01";
   const [my, mm] = monthStart.split("-").map(Number);
-  const nextMonth = `${new Date(Date.UTC(my, mm, 1)).toISOString().slice(0, 7)}-01`;
-  function goMonth(month: string) {
+  const nextStart = isWeek ? addDays(monthStart, 7) : `${new Date(Date.UTC(my, mm, 1)).toISOString().slice(0, 7)}-01`;
+  function goPeriod(start: string) {
     setAddDay(null);
     setPerson(null);
     setMsg(null);
-    router.push(`/commercial/field-ops/calendar?month=${month}`, { scroll: false });
+    const qs = isWeek ? `view=week&week=${start}` : `month=${start}`;
+    router.push(`/commercial/field-ops/calendar?${qs}`, { scroll: false });
+  }
+  /** Switch month ↔ week, staying on the period you can currently see. */
+  function goMode(next: "month" | "week") {
+    setAddDay(null);
+    setPerson(null);
+    setMsg(null);
+    // Anchor on a day that is genuinely inside the current view, so switching
+    // from a month to a week lands in that month rather than on today.
+    const anchor = grid.find((d) => d.date === todayIso)?.date ?? grid.find((d) => d.inMonth)?.date ?? monthStart;
+    router.push(
+      next === "week"
+        ? `/commercial/field-ops/calendar?view=week&week=${anchor}`
+        : `/commercial/field-ops/calendar?month=${anchor.slice(0, 7)}-01`,
+      { scroll: false }
+    );
   }
   const dayCrew = (date: string): DayCrew[] => grid.find((d) => d.date === date)?.crew ?? [];
   const dayOff = (date: string): DayOff[] => grid.find((d) => d.date === date)?.off ?? [];
@@ -462,11 +498,30 @@ export function FieldOpsCalendar({
     <div>
       <div className="flex items-center gap-2 mb-3">
         <div className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 overflow-hidden">
-          <button onClick={() => goMonth(prevMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label="Previous month">&larr;</button>
-          <button onClick={() => { closeAll(); router.push("/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[44px] sm:min-h-[40px]">Today</button>
-          <button onClick={() => goMonth(nextMonth)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label="Next month">&rarr;</button>
+          <button onClick={() => goPeriod(prevStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label={isWeek ? "Previous week" : "Previous month"}>&larr;</button>
+          <button onClick={() => { closeAll(); router.push(isWeek ? "/commercial/field-ops/calendar?view=week" : "/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[44px] sm:min-h-[40px]">Today</button>
+          <button onClick={() => goPeriod(nextStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label={isWeek ? "Next week" : "Next month"}>&rarr;</button>
         </div>
-        <h2 className="text-[15px] font-bold text-ppp-charcoal">{monthLabel(monthStart)}</h2>
+        <h2 className="text-[15px] font-bold text-ppp-charcoal">
+          {isWeek ? weekLabel(monthStart) : monthLabel(monthStart)}
+        </h2>
+        {/* Month / week switcher. Karan 2026-09-17: "calendar week view." */}
+        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden">
+          <button
+            onClick={() => goMode("month")}
+            aria-current={!isWeek ? "true" : undefined}
+            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[40px] ${!isWeek ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+          >
+            Month
+          </button>
+          <button
+            onClick={() => goMode("week")}
+            aria-current={isWeek ? "true" : undefined}
+            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[40px] border-l border-ppp-charcoal-200 ${isWeek ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+          >
+            Week
+          </button>
+        </div>
         {pending && <span className="text-[11px] text-ppp-charcoal-400">updating…</span>}
         <button
           onClick={() => { setCopyMsg(null); setCopyOpen(true); }}
@@ -707,12 +762,24 @@ function DayPanel({
           </div>
         )}
 
-        {/* Schedule / Mark-off toggle */}
+        {/* WHAT THE TWO MODES ARE, IN THE WORDS PEOPLE USE.
+            Karan 2026-09-17: "field ops mark off what is that button and make
+            it simpler?!" — asking what his own button does is the answer.
+            "Mark off" is jargon, and the SAME action is offered elsewhere on
+            this page as "Time off (sick, PTO…)", so the platform had two names
+            for one thing and the clearer one was not on the button. Now both
+            say Time off, and the mode says what it records instead of leaving
+            you to press it and find out. */}
         <div className="border-t border-ppp-charcoal-50 pt-4">
-          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-3">
-            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Schedule</button>
-            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Mark off</button>
+          <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-2">
+            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Put someone on</button>
+            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Time off</button>
           </div>
+          <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 leading-snug">
+            {mode === "schedule"
+              ? "Put a crew member on this day. They get an email with the job, the times and your note."
+              : "Record someone as not working this day — sick, PTO, holiday, no work. They stay on the calendar with the reason showing, and if they were already scheduled they are emailed."}
+          </p>
 
           {mode === "schedule" ? (
             crewOptions.length === 0 ? (
@@ -761,7 +828,7 @@ function DayPanel({
                   {existingShift
                     ? "Already on this day — these are their current times. Change them to move the shift."
                     : "Hours come from start & end. Clear both for a full 8h day."}
-                  {off.length > 0 && <span className="text-amber-700"> Someone marked off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}
+                  {off.length > 0 && <span className="text-amber-700"> Someone on time off can still be scheduled — check &ldquo;Off today&rdquo; above.</span>}
                 </p>
                 <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
                   <textarea name="note" rows={2} placeholder="Gate code 1234, park in rear lot…" className={INPUT_CLS} /></label>
@@ -774,7 +841,7 @@ function DayPanel({
             ) : (
               <form key={`off-${formKey}`} onSubmit={onAddAbsence} className="space-y-3">
                 <label className="block"><span className={LABEL_CLS}>Crew member</span>
-                  <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member to mark off" />
+                  <SearchableSelect name="employee_id" options={crewOptions} placeholder="Search crew…" ariaLabel="Crew member taking time off" />
                 </label>
                 <label className="block"><span className={LABEL_CLS}>Reason</span>
                   <select name="type" className={SELECT_CLS} style={SELECT_BG_STYLE} defaultValue="">
@@ -786,7 +853,7 @@ function DayPanel({
                   <input name="hours" inputMode="decimal" placeholder="e.g. 4 for a half day" className={INPUT_CLS} /></label>
                 <label className="block"><span className={LABEL_CLS}>Note <span className="font-normal text-ppp-charcoal-400">(ops only — not shown to crew)</span></span>
                   <textarea name="note" rows={2} placeholder="Optional" className={INPUT_CLS} /></label>
-                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 text-white text-[13px] font-semibold hover:bg-amber-600 disabled:opacity-60 min-h-[44px]">{saving ? "Saving…" : "Mark off"}</button>
+                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 text-white text-[13px] font-semibold hover:bg-amber-600 disabled:opacity-60 min-h-[44px]">{saving ? "Saving…" : "Save time off"}</button>
               </form>
             )
           )}

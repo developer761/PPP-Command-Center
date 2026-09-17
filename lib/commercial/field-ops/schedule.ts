@@ -127,10 +127,48 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
   const firstDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); // 0=Sun
   const gridStart = addDaysIso(monthStart, -firstDow);
   const dates = Array.from({ length: 42 }, (_, i) => addDaysIso(gridStart, i));
+  const grid = await buildOverview(dates, monthStart.slice(0, 7));
+  return { monthStart, grid };
+}
+
+/**
+ * ONE WEEK, same shape. Karan 2026-09-17: "calendar week view."
+ *
+ * Returns the identical `MonthDay[]` the month grid returns, so the calendar
+ * renders it with the same cell component and nothing downstream has to learn a
+ * second shape. Sunday-start, matching the month grid's columns — the week view
+ * has to line up under the same Sun…Sat header, and `copyWeekForward` uses a
+ * Monday-start week for a different purpose (a payroll week), which is why this
+ * does not reuse `mondayOf`.
+ *
+ * `inMonth` is TRUE for all seven. In a month grid it means "not a greyed-out
+ * neighbouring month"; in a week every day is a day of this week, and the
+ * mobile agenda filters on it — leave it false for a week that straddles a
+ * month boundary and half the days vanish from the phone view.
+ */
+export async function getWeekOverview(anyDateIso: string): Promise<{ weekStart: string; grid: MonthDay[] }> {
+  const [y2, m2, d2] = anyDateIso.split("-").map(Number);
+  const dow = new Date(Date.UTC(y2, m2 - 1, d2)).getUTCDay(); // 0 = Sun
+  const weekStart = addDaysIso(anyDateIso, -dow);
+  const dates = Array.from({ length: 7 }, (_, i) => addDaysIso(weekStart, i));
+  const grid = await buildOverview(dates, null);
+  return { weekStart, grid };
+}
+
+/**
+ * The shared body. `monthPrefix` null means "every day belongs" — see the note
+ * on `inMonth` above.
+ *
+ * Extracted rather than copied: the month version carries four corrections that
+ * a second copy would not have (pagination past the 1000-row cap, dropping
+ * shifts whose work order was deleted, labelling inactive crew, and sorting by
+ * start time), and the two would drift the first time one of them was touched.
+ */
+async function buildOverview(dates: string[], monthPrefix: string | null): Promise<MonthDay[]> {
 
   const sb = commercialDb();
   const { getAbsencesForRange, absenceShort } = await import("./absences");
-  const absencesByDate = await getAbsencesForRange(dates[0], dates[41]);
+  const absencesByDate = await getAbsencesForRange(dates[0], dates[dates.length - 1]);
   // Paginated — the 42-day grid × full crew is the WIDEST assignment query in the
   // module and can exceed Supabase's silent 1000-row cap, which would silently
   // drop shifts (crew vanish from day cells, headcount understated) (audit round 6).
@@ -142,7 +180,7 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
       .from("commercial_assignments")
       .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time")
       .gte("work_date", dates[0])
-      .lte("work_date", dates[41])
+      .lte("work_date", dates[dates.length - 1])
       .neq("status", "cancelled")
       .order("work_date")
       .order("id")
@@ -171,7 +209,6 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
       : Promise.resolve(),
   ]);
 
-  const monthPrefix = monthStart.slice(0, 7);
   const grid: MonthDay[] = dates.map((date) => {
     const crew: DayCrew[] = [];
     const emps = new Set<string>();
@@ -203,7 +240,7 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
     }));
     return {
       date,
-      inMonth: date.slice(0, 7) === monthPrefix,
+      inMonth: monthPrefix === null || date.slice(0, 7) === monthPrefix,
       crew,
       headcount: emps.size,
       hours,
@@ -211,7 +248,7 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
     };
   });
 
-  return { monthStart, grid };
+  return grid;
 }
 
 /* ── R10.7 Interactive Calendar — a day's assignments + rich upsert ────────── */
