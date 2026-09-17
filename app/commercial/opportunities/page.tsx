@@ -95,6 +95,7 @@ import { isUnderContract } from "@/lib/commercial/opportunities/attention";
 import { SavedViewPicker } from "@/components/commercial/saved-view-picker";
 import { OpportunitySheet, type OppSheetRow } from "@/components/commercial/opportunity-sheet";
 import { InstantSearch } from "@/components/commercial/instant-search";
+import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { listCurrentProposalByOpp } from "@/lib/commercial/proposals/db";
 import { proposalStatusLabel } from "@/lib/commercial/proposals/constants";
 import { nextStep } from "@/lib/commercial/opportunities/attention";
@@ -462,6 +463,20 @@ export default async function CommercialOpportunitiesPage({
     }
   })();
   const search = pickFirst(sp.q);
+  /**
+   * Filter to one GC. Karan 2026-09-17: "add filter for opportunities by
+   * account."
+   *
+   * Named `account`, NOT `customer` — `?customer=` already means "open the
+   * account peek drawer" on this page, and reusing it would make every filter
+   * click also slide a panel out.
+   *
+   * `listCommercialOpportunities` has accepted an `accountId` filter since it
+   * was written; nothing on this page ever passed one. So this is a param and a
+   * pass-through, and the filtering happens in the DB rather than after the
+   * fetch.
+   */
+  const accountFilter = pickFirst(sp.account) ?? null;
   // `?status=` now names a KANBAN COLUMN, not a raw status — that's what
   // the snapshot pills show and what the board is organised by, so a pill
   // labelled "Request for Proposal" has to filter to the same set of cards
@@ -624,6 +639,7 @@ export default async function CommercialOpportunitiesPage({
   const [oppsUnfiltered, accounts] = await Promise.all([
     listCommercialOpportunities({
       search,
+      accountId: accountFilter ?? undefined,
       // Cast is safe: columnDbStatusHint only ever returns a status from
       // COLUMN_TARGET, all of which are real OpportunityStatus members.
       status: ((validColumn ? columnDbStatusHint(validColumn) : null) ??
@@ -845,6 +861,7 @@ export default async function CommercialOpportunitiesPage({
   // URL builders — behavior unchanged from prior file.
   const baseParams = new URLSearchParams();
   if (search) baseParams.set("q", search);
+  if (accountFilter) baseParams.set("account", accountFilter);
   if (validColumn) baseParams.set("status", validColumn);
   if (sourceSet.size > 0) baseParams.set("sources", Array.from(sourceSet).join(","));
   if (sortKey !== DEFAULT_SORT) baseParams.set("sort", sortKey);
@@ -926,6 +943,9 @@ export default async function CommercialOpportunitiesPage({
   const setSortHref = (newSort: string): string => {
     const p = new URLSearchParams();
     if (search) p.set("q", search);
+    // Fresh params — `account` must be re-added here or changing the sort
+    // silently drops the GC filter. Same class as audit D4.
+    if (accountFilter) p.set("account", accountFilter);
     if (validColumn) p.set("status", validColumn);
     if (sourceSet.size > 0) p.set("sources", Array.from(sourceSet).join(","));
     if (staleFilter) p.set("stale", "1");
@@ -949,9 +969,10 @@ export default async function CommercialOpportunitiesPage({
     const qs = p.toString();
     return qs ? `/commercial/opportunities?${qs}` : "/commercial/opportunities";
   };
-  const clearFilterHref = (drop: "q" | "status" | "hot" | "stale" | "sources"): string => {
+  const clearFilterHref = (drop: "q" | "status" | "hot" | "stale" | "sources" | "account"): string => {
     const p = new URLSearchParams();
     if (search && drop !== "q") p.set("q", search);
+    if (accountFilter && drop !== "account") p.set("account", accountFilter);
     if (validColumn && drop !== "status") p.set("status", validColumn);
     if (hotFilter && drop !== "hot") p.set("hot", "1");
     if (staleFilter && drop !== "stale") p.set("stale", "1");
@@ -984,12 +1005,12 @@ export default async function CommercialOpportunitiesPage({
   const exportHref = `/api/commercial/opportunities/export${exportParams.toString() ? `?${exportParams.toString()}` : ""}`;
 
   const anyFilterActive =
-    !!search || !!validColumn || staleFilter || hotFilter || sourceSet.size > 0 ||
+    !!search || !!accountFilter || !!validColumn || staleFilter || hotFilter || sourceSet.size > 0 ||
     overdueFilter || coldRfpFilter || followupFilter ||
     mineFilter || !!estimatorFilter || !!newFilter || !!laneFilter;
   const sortChanged = sortKey !== DEFAULT_SORT;
   const activeFilterCount =
-    (search ? 1 : 0) + (validColumn ? 1 : 0) +
+    (search ? 1 : 0) + (accountFilter ? 1 : 0) + (validColumn ? 1 : 0) +
     (hotFilter ? 1 : 0) + (staleFilter ? 1 : 0) + sourceSet.size +
     (overdueFilter ? 1 : 0) + (coldRfpFilter ? 1 : 0) + (followupFilter ? 1 : 0) +
     // mine/estimator/new/lane count toward "Filters (N)" too — they were applied
@@ -1257,6 +1278,20 @@ export default async function CommercialOpportunitiesPage({
             placeholder="Search opportunities, GCs, addresses…"
             kinds={["opportunity", "account"]}
           />
+          {/* Filter to one GC. Karan 2026-09-17: "add filter for opportunities
+              by account."
+
+              Inside the toolbar form, so it submits with the search rather than
+              needing an href builder of its own — and SearchableSelect because
+              there are 75 accounts, well past the >10-items rule. */}
+          <SearchableSelect
+            name="account"
+            defaultValue={accountFilter ?? ""}
+            options={[{ value: "", label: "Every GC" }, ...accounts.map((a) => ({ value: a.id, label: a.company_name ?? "(unnamed)" }))]}
+            placeholder="Every GC"
+            ariaLabel="Filter by GC"
+            className="min-w-[170px]"
+          />
           {/* EVERY active filter has to ride the search submit, or pressing
               Enter silently returns you to the unfiltered default view. The
               link builders were fixed for this (audit D4); this form was
@@ -1465,6 +1500,12 @@ export default async function CommercialOpportunitiesPage({
               Applied:
             </span>
             {search && <ActiveFilterChip href={clearFilterHref("q")} label={`Search: "${search}"`} />}
+            {accountFilter && (
+              <ActiveFilterChip
+                href={clearFilterHref("account")}
+                label={`GC: ${accountById.get(accountFilter)?.company_name ?? "Unknown"}`}
+              />
+            )}
             {validColumn && <ActiveFilterChip href={clearFilterHref("status")} label={`Stage: ${kanbanColumnLabel(validColumn)}`} />}
             {hotFilter && <ActiveFilterChip href={clearFilterHref("hot")} label="Hot" />}
             {staleFilter && <ActiveFilterChip href={clearFilterHref("stale")} label={`Stale > ${STALE_OPP_DAYS}d`} />}
