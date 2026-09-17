@@ -339,7 +339,29 @@ export const AR_APPLICATIONS_SPEC: ReportSpec<ArApplicationRow> = {
   groupings: [
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
     [{ key: "source", label: "Source", of: (r) => (r.carriedOver ? "From Mary's sheet" : "Raised in the platform") }],
-    [{ key: "gc", label: "GC", of: (r) => r.accountName }],
+    [
+      {
+        key: "gc",
+        label: "GC",
+        /**
+         * A carried-over line has NO GC. Its `accountName` is the job string
+         * Mary types — "LMJ - Duct Patches", "CBD - Panera Bread" — because
+         * those rows are not linked to an account at all.
+         *
+         * This grouping was declared but unreachable until the view switcher
+         * shipped (2026-09-17), and the moment it became reachable it would
+         * have listed job names under a heading saying GC, producing buckets
+         * IDENTICAL to the Job view — verified: 8 and 8, the same eight strings.
+         * A view that silently duplicates another one while claiming to be a
+         * different cut is worse than not offering it.
+         *
+         * So they collect in one honest bucket. It also puts a number on the
+         * open question — these lines need a real account chosen by somebody
+         * who knows, and four of Mary's names match more than one job here.
+         */
+        of: (r) => (r.carriedOver ? "Not linked to a GC yet" : r.accountName),
+      },
+    ],
     [{ key: "month", label: "Month", of: (r) => (r.issuedYmd ? r.issuedYmd.slice(0, 7) : "—") }],
   ],
   columns: [

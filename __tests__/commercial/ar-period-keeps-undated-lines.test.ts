@@ -69,6 +69,26 @@ describe("the AR sheet's period filter", () => {
     expect(applyPeriod([{ issuedYmd: today }], "30d")).toHaveLength(1);
   });
 
+  it("does not pass a job name off as a GC", () => {
+    // Exposing the view switcher made the GC grouping REACHABLE for the first
+    // time, and a carried-over line has no account — its `accountName` is the
+    // job string Mary types. Left alone, "GC" would have listed "LMJ - Duct
+    // Patches" as a GC and produced buckets identical to the Job view: a second
+    // view claiming to be a different cut of the same data.
+    const gc = AR_APPLICATIONS_SPEC.groupings.find((g) => g[0]?.key === "gc")![0];
+    const job = AR_APPLICATIONS_SPEC.groupings.find((g) => g[0]?.key === "job")![0];
+    const carried = {
+      carriedOver: true,
+      accountName: "LMJ - Duct Patches",
+      jobName: "LMJ - Duct Patches",
+    } as never;
+    expect(gc.of(carried)).not.toBe("LMJ - Duct Patches");
+    expect(gc.of(carried)).not.toBe(job.of(carried));
+    // A real certificate still groups by its real account.
+    const real = { carriedOver: false, accountName: "LMJ Management", jobName: "Site A" } as never;
+    expect(gc.of(real)).toBe("LMJ Management");
+  });
+
   it("still offers a by-GC view, which is what 'views by account' needs", () => {
     const keys = AR_APPLICATIONS_SPEC.groupings.map((g) => g[0]?.key);
     expect(keys).toContain("gc");
