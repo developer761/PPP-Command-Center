@@ -1,6 +1,7 @@
 import { SearchableSelect, type SearchableOption } from "@/components/commercial/searchable-select";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { OFFERED_PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 
 /**
  * The three things Mary does every day, on the page she already has open.
@@ -202,12 +203,15 @@ export function RecordPurchaseForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className={LABEL_CLS}>Category</span>
+          {/* Built from the offered list, so this cannot drift from the cost
+              tool the way a second hand-written copy would. Labor is excluded
+              here on purpose — it has its own form, with a payee and hours. */}
           <select name="category" defaultValue="materials" className={SELECT_CLS} style={SELECT_BG_STYLE}>
-            <option value="materials">Materials</option>
-            <option value="subcontractor">Subcontractor</option>
-            <option value="equipment">Equipment</option>
-            <option value="permit">Permit</option>
-            <option value="other">Other</option>
+            {OFFERED_PURCHASE_CATEGORIES.filter((c) => c !== "labor").map((c) => (
+              <option key={c} value={c}>
+                {PURCHASE_CATEGORY_META[c].label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="block">

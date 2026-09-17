@@ -17,6 +17,25 @@ export const PURCHASE_CATEGORIES = [
 
 export type PurchaseCategory = (typeof PURCHASE_CATEGORIES)[number];
 
+/**
+ * The categories anyone can actually CHOOSE.
+ *
+ * Katie, 2026-09-16, having had to ask what the difference was: "just have
+ * subcontract labor because that's what we use." She was right to ask — Tomco
+ * pay labor companies for people's time, which is `labor`; `subcontractor` is
+ * for a trade company quoting a scope, and they have never booked one. Zero
+ * rows, and a category whose only effect is to make somebody ask what it means
+ * is costing more than it earns.
+ *
+ * It stays VALID in PURCHASE_CATEGORIES — the DB CHECK allows it, and a row
+ * that ever carried it must keep rendering its label rather than failing
+ * validation. It is simply no longer offered. Same treatment `estimating` and
+ * `solicitation` got on the opportunity sub-statuses.
+ */
+export const OFFERED_PURCHASE_CATEGORIES = PURCHASE_CATEGORIES.filter(
+  (c) => c !== "subcontractor"
+) as readonly PurchaseCategory[];
+
 export function isPurchaseCategory(v: string): v is PurchaseCategory {
   return (PURCHASE_CATEGORIES as readonly string[]).includes(v);
 }

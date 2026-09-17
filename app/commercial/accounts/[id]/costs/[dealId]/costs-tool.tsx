@@ -27,7 +27,7 @@ import {
   recentWorkersForAccount,
   laborByWorkerForProject,
 } from "@/lib/commercial/purchases/db";
-import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META, purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
+import { PURCHASE_CATEGORIES, OFFERED_PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META, purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { getDocumentsByIds } from "@/lib/commercial/documents/db";
 import { listVendorOptions, resolvePurchaseVendor } from "@/lib/commercial/vendors/db";
 import { readVendorPick } from "@/lib/commercial/vendors/purchase-pick";
@@ -121,7 +121,7 @@ async function assertDealOwned(opp_id: string, account_id: string) {
   if (!opp || opp.account_id !== account_id) redirect("/commercial/accounts");
 }
 
-const CATEGORY_OPTIONS: [string, string][] = PURCHASE_CATEGORIES.map((c) => [c, PURCHASE_CATEGORY_META[c].label]);
+const CATEGORY_OPTIONS: [string, string][] = OFFERED_PURCHASE_CATEGORIES.map((c) => [c, PURCHASE_CATEGORY_META[c].label]);
 
 const COST_OK_MESSAGES: Record<string, string> = {
   added: "Purchase logged.",
