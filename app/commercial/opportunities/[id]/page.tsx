@@ -1,7 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 import { jobDisplayName } from "@/lib/commercial/opportunities/job-name";
+import { crewScheduleForOpp } from "@/lib/commercial/field-ops/schedule";
+import { fieldOpsCrewDetailForOpp } from "@/lib/commercial/field-ops/labor-cost";
+import { costBreakdownForProject } from "@/lib/commercial/purchases/db";
 import { listAccountContacts } from "@/lib/commercial/accounts/contacts";
-import { CONTACT_ROLES, roleLabel as contactRoleLabel } from "@/lib/commercial/contacts/roles";
+import {
+  CONTACT_ROLES,
+  roleLabel as contactRoleLabel,
+} from "@/lib/commercial/contacts/roles";
 import { anchorDateOnlyIso } from "@/lib/commercial/dates";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import Link from "next/link";
@@ -26,7 +32,10 @@ import {
   type OpportunityStatus,
   type OpportunityLossReason,
 } from "@/lib/commercial/opportunities/db";
-import { getCommercialAccount, type CommercialAccount } from "@/lib/commercial/accounts/db";
+import {
+  getCommercialAccount,
+  type CommercialAccount,
+} from "@/lib/commercial/accounts/db";
 import {
   softDeleteCommercialOpportunity,
   createCommercialOpportunity,
@@ -37,7 +46,10 @@ import {
   unarchiveOpportunity,
 } from "@/lib/commercial/opportunities/db";
 import { commercialDb } from "@/lib/commercial/db";
-import { listCurrentProposalTotalByOpp, listProposalsForOpp } from "@/lib/commercial/proposals/db";
+import {
+  listCurrentProposalTotalByOpp,
+  listProposalsForOpp,
+} from "@/lib/commercial/proposals/db";
 // Restructure step 3: the deal's proposals + the six delivery tools render on
 // this page now. Every tool body was already factored out with a
 // `variant: "route" | "inline"` prop and shared between its standalone account
@@ -50,9 +62,22 @@ import { ProjectCostsTool } from "@/app/commercial/accounts/[id]/costs/[dealId]/
 import { CloseoutTool } from "@/app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool";
 import { SubmittalsTool } from "@/app/commercial/accounts/[id]/submittals/[dealId]/submittals-tool";
 import { WorkOrderTool } from "@/app/commercial/accounts/[id]/work-order/[dealId]/work-order-tool";
-import { fetchOpportunityLifecycle, formatDurationDays } from "@/lib/commercial/opportunities/lifecycle";
-import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
-import { listTeams, setOwnerTeam, getEffectiveOwnerTeam } from "@/lib/commercial/teams/db";
+import {
+  fetchOpportunityLifecycle,
+  formatDurationDays,
+} from "@/lib/commercial/opportunities/lifecycle";
+import {
+  SELECT_CLS,
+  SELECT_BG_STYLE,
+  INPUT_CLS,
+  TEXTAREA_CLS,
+  LABEL_CLS,
+} from "@/lib/commercial/form-classnames";
+import {
+  listTeams,
+  setOwnerTeam,
+  getEffectiveOwnerTeam,
+} from "@/lib/commercial/teams/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
@@ -70,10 +95,18 @@ import {
   dealPhase,
 } from "@/lib/commercial/opportunities/constants";
 import { daysFromTodayEt } from "@/lib/date-et";
-import { listCommercialInvoices, addPayment, getInvoiceContext, updateInvoiceCoreFields } from "@/lib/commercial/invoices/db";
+import {
+  listCommercialInvoices,
+  addPayment,
+  getInvoiceContext,
+  updateInvoiceCoreFields,
+} from "@/lib/commercial/invoices/db";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
-import { taxChoiceToColumns, columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
+import {
+  taxChoiceToColumns,
+  columnsToTaxChoice,
+} from "@/lib/commercial/tax/exemption";
 import {
   getEffectiveContractBaseCents,
   retainageHeldForOpportunity,
@@ -81,9 +114,21 @@ import {
   aiaBillingRollupBulk,
 } from "@/lib/commercial/aia/db";
 import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
-import { BILLABLE_INVOICE_STATUSES, deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import {
+  BILLABLE_INVOICE_STATUSES,
+  deriveInvoiceStatus,
+  invoiceStatusLabel,
+  PAYMENT_METHODS,
+  type InvoiceStatus,
+} from "@/lib/commercial/invoices/constants";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
-import { formatCentsCompact, formatCentsFull, fmtEtDate, daysBetween, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import {
+  formatCentsCompact,
+  formatCentsFull,
+  fmtEtDate,
+  daysBetween,
+  parseDollarsToCents,
+} from "@/lib/commercial/invoices/format";
 import {
   allowedNextStatuses,
   changeOpportunityStatus,
@@ -152,8 +197,14 @@ import { listAssignableStaff } from "@/lib/commercial/accounts/assignments";
 import CommercialOpportunityUploadForm from "@/components/commercial-opportunity-upload-form";
 import { CommercialFilesUploadForm } from "@/components/commercial-files-upload-form";
 import { CommercialFileRowActions } from "@/components/commercial-file-row-actions";
-import { listDocumentsForParent, type CommercialDocument } from "@/lib/commercial/documents/db";
-import { documentCategoryLabel, DOCUMENT_CATEGORIES } from "@/lib/commercial/documents/categories";
+import {
+  listDocumentsForParent,
+  type CommercialDocument,
+} from "@/lib/commercial/documents/db";
+import {
+  documentCategoryLabel,
+  DOCUMENT_CATEGORIES,
+} from "@/lib/commercial/documents/categories";
 import {
   documentStatusLabel,
   allowedNextDocumentStatuses,
@@ -163,21 +214,42 @@ import {
 // `title` attribute for hover tooltips instead of the visible `?` badge.
 import MentionTextarea from "@/components/commercial/mention-textarea";
 import { StatusPathBar } from "@/components/commercial/status-path-bar";
-import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";import { DeliveryToolsStrip, type DeliveryTool } from "@/components/commercial/delivery-tools-strip";
+import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
+import {
+  DeliveryToolsStrip,
+  type DeliveryTool,
+} from "@/components/commercial/delivery-tools-strip";
 import { ProjectHome } from "@/components/commercial/project-home";
 import { ProjectTeamCard } from "@/components/commercial/project-team-card";
-import { deriveProjectAttention, type ProjectMoney, type ProjectSchedule } from "@/lib/commercial/projects/project-attention";
+import {
+  deriveProjectAttention,
+  type ProjectMoney,
+  type ProjectSchedule,
+} from "@/lib/commercial/projects/project-attention";
 import { DealAnalytics } from "@/components/commercial/deal-analytics";
 import { stageMeaningFor } from "@/lib/commercial/opportunities/kanban-columns";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { StageKpiStrip } from "@/components/commercial/stage-kpi-strip";
 import { InlineFieldRow } from "@/components/commercial/inline-field";
-import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/opportunities/inline-fields";
+import {
+  INLINE_FIELDS,
+  inlineField,
+  parseInlineValue,
+} from "@/lib/commercial/opportunities/inline-fields";
 import { ActivityRail } from "@/components/commercial/activity-rail";
 import { DealStandingPanel } from "@/components/commercial/deal-standing-panel";
-import { buildActivityFeed, loadActivityEntries } from "@/lib/commercial/opportunities/activity";
-import { stageKpis, isDeliveryPhase } from "@/lib/commercial/opportunities/stage-kpis";
-import { getProjectFinancials, dealMargin } from "@/lib/commercial/projects/financials";
+import {
+  buildActivityFeed,
+  loadActivityEntries,
+} from "@/lib/commercial/opportunities/activity";
+import {
+  stageKpis,
+  isDeliveryPhase,
+} from "@/lib/commercial/opportunities/stage-kpis";
+import {
+  getProjectFinancials,
+  dealMargin,
+} from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
 import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
@@ -185,7 +257,11 @@ import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
 import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
-import { attentionFor, nextStep, sensibleNextStatuses } from "@/lib/commercial/opportunities/attention";
+import {
+  attentionFor,
+  nextStep,
+  sensibleNextStatuses,
+} from "@/lib/commercial/opportunities/attention";
 import { getProjectForOpportunity } from "@/lib/commercial/projects/ensure";
 import { getWorkOrderForOpp } from "@/lib/commercial/work-orders/db";
 import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
@@ -253,7 +329,9 @@ type SP = Promise<{
 async function submitDebriefOnlyAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -269,16 +347,27 @@ async function submitDebriefOnlyAction(formData: FormData) {
   // v2 (2026-07-13): derive the legacy outcome value from the (status,
   // sub_status) tuple. writeDebrief expects "won"/"lost"/"no_bid".
   let outcome: "won" | "lost" | "no_bid";
-  if (opp.status === "pre_sale_closed" && opp.sub_status === "won") outcome = "won";
-  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost" && opp.loss_reason === "no_bid") outcome = "no_bid";
-  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost") outcome = "lost";
+  if (opp.status === "pre_sale_closed" && opp.sub_status === "won")
+    outcome = "won";
+  else if (
+    opp.status === "pre_sale_closed" &&
+    opp.sub_status === "lost" &&
+    opp.loss_reason === "no_bid"
+  )
+    outcome = "no_bid";
+  else if (opp.status === "pre_sale_closed" && opp.sub_status === "lost")
+    outcome = "lost";
   else if (opp.status === "won") outcome = "won";
   else if (opp.status === "lost") outcome = "lost";
   else redirect(`/commercial/opportunities/${opp_id}?tab=info`);
   const competitor = String(formData.get("debrief_competitor") ?? "").trim();
-  const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
+  const decidingFactor = String(
+    formData.get("debrief_deciding_factor") ?? "",
+  ).trim();
   const lessons = String(formData.get("debrief_lessons") ?? "").trim();
-  const internalNotes = String(formData.get("debrief_internal_notes") ?? "").trim();
+  const internalNotes = String(
+    formData.get("debrief_internal_notes") ?? "",
+  ).trim();
   // Resolve the most recent terminal status_log row as the FK target so
   // we link the debrief to the actual close event (not a prior reopen).
   const sb = commercialDb();
@@ -295,14 +384,21 @@ async function submitDebriefOnlyAction(formData: FormData) {
     opportunityId: opp_id,
     outcome,
     competitorName: competitor || null,
-    decidingFactor: (decidingFactor && (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)) ? decidingFactor : null,
+    decidingFactor:
+      decidingFactor &&
+      (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)
+        ? decidingFactor
+        : null,
     lessonsLearned: lessons || null,
     internalNotes: internalNotes || null,
     statusLogId,
     actorUserId: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=debrief&error=` + encodeURIComponent(result.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=debrief&error=` +
+        encodeURIComponent(result.error),
+    );
   }
   redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
 }
@@ -310,14 +406,19 @@ async function submitDebriefOnlyAction(formData: FormData) {
 async function changeStatusAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const to_status = String(formData.get("to_status") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(to_status)) {
-    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent("Invalid status."));
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent("Invalid status."),
+    );
   }
   // Legacy loss_reason + note form fields were removed 2026-06-24
   // (Karan: "why are these here if its not in lost section LOSS REASON
@@ -325,24 +426,31 @@ async function changeStatusAction(formData: FormData) {
   // its debrief_deciding_factor maps 1:1 to OPPORTUNITY_LOSS_REASONS,
   // and lessons/internal_notes cover the freeform note slot. Non-
   // terminal transitions just don't need either field.
-  const decidingFactorRaw = String(formData.get("debrief_deciding_factor") ?? "").trim();
+  const decidingFactorRaw = String(
+    formData.get("debrief_deciding_factor") ?? "",
+  ).trim();
   const lessonsRaw = String(formData.get("debrief_lessons") ?? "").trim();
-  const internalNotesRaw = String(formData.get("debrief_internal_notes") ?? "").trim();
+  const internalNotesRaw = String(
+    formData.get("debrief_internal_notes") ?? "",
+  ).trim();
   // v2: also read the target sub_status (server actions send it in a
   // hidden input; legacy paths may not, in which case the shim in
   // status.ts falls back to DEFAULT_SUB_STATUS_BY_STATUS).
-  const to_sub_status = String(formData.get("to_sub_status") ?? "").trim() || undefined;
+  const to_sub_status =
+    String(formData.get("to_sub_status") ?? "").trim() || undefined;
   // Phase E-4: read optional follow-up scheduling. Only pass through
   // if the picker fired the fields — otherwise `undefined` leaves the
   // existing value alone in `changeOpportunityStatus`.
   const toFollowUpAtRaw = String(formData.get("to_follow_up_at") ?? "").trim();
-  const toFollowUpNotesRaw = String(formData.get("to_follow_up_notes") ?? "").trim();
+  const toFollowUpNotesRaw = String(
+    formData.get("to_follow_up_notes") ?? "",
+  ).trim();
   const to_follow_up_at =
     toFollowUpAtRaw && /^\d{4}-\d{2}-\d{2}$/.test(toFollowUpAtRaw)
       ? toFollowUpAtRaw
       : toFollowUpAtRaw === "" && formData.has("to_follow_up_at")
-      ? null
-      : undefined;
+        ? null
+        : undefined;
   const to_follow_up_notes = formData.has("to_follow_up_notes")
     ? toFollowUpNotesRaw || null
     : undefined;
@@ -372,7 +480,10 @@ async function changeStatusAction(formData: FormData) {
     follow_up_notes: to_follow_up_notes,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent(result.error),
+    );
   }
 
   // Win/Loss Debrief enrichment — fires when status flipped INTO a terminal
@@ -401,10 +512,15 @@ async function changeStatusAction(formData: FormData) {
   if (isTerminal) {
     const skip = String(formData.get("debrief_skip") ?? "") === "1";
     const competitor = String(formData.get("debrief_competitor") ?? "").trim();
-    const decidingFactor = String(formData.get("debrief_deciding_factor") ?? "").trim();
+    const decidingFactor = String(
+      formData.get("debrief_deciding_factor") ?? "",
+    ).trim();
     const lessons = String(formData.get("debrief_lessons") ?? "").trim();
-    const internalNotes = String(formData.get("debrief_internal_notes") ?? "").trim();
-    const hasAnyDebriefField = !skip && (competitor || decidingFactor || lessons || internalNotes);
+    const internalNotes = String(
+      formData.get("debrief_internal_notes") ?? "",
+    ).trim();
+    const hasAnyDebriefField =
+      !skip && (competitor || decidingFactor || lessons || internalNotes);
 
     if (hasAnyDebriefField) {
       // Resolve the most recent status_log row for this transition (FK target).
@@ -435,11 +551,16 @@ async function changeStatusAction(formData: FormData) {
         // here would create a duplicate "[AUTO] Debrief pending" on the
         // account timeline. Just warn the user; banner will catch the
         // missing debrief on next visit.
-        redirect(`/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1&debrief_warn=` + encodeURIComponent(debriefResult.error));
+        redirect(
+          `/commercial/opportunities/${opp_id}?tab=debrief&status_ok=1&debrief_warn=` +
+            encodeURIComponent(debriefResult.error),
+        );
       }
       // Debrief saved INLINE with the status flip — land them on the
       // Debrief tab with the read-only view + success banner.
-      redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
+      redirect(
+        `/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`,
+      );
     } else {
       // User skipped or didn't fill — drop the minimal placeholder so the
       // account timeline reflects the closure immediately. Amber banner
@@ -492,7 +613,9 @@ async function changeStatusAction(formData: FormData) {
 async function setDealTeamAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -501,7 +624,10 @@ async function setDealTeamAction(formData: FormData) {
   const team_id = raw && UUID_RE.test(raw) ? raw : null;
   const result = await setOwnerTeam("opportunity", opp_id, team_id, user.id);
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent(result.error),
+    );
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   // SAY what it did. Picking a team now adds its people to the deal with their
@@ -515,29 +641,42 @@ async function setDealTeamAction(formData: FormData) {
   let note = "";
   if (ap) {
     const bits: string[] = [];
-    if (ap.added > 0) bits.push(`Added ${ap.added} team member${ap.added === 1 ? "" : "s"} to this job`);
+    if (ap.added > 0)
+      bits.push(
+        `Added ${ap.added} team member${ap.added === 1 ? "" : "s"} to this job`,
+      );
     if (ap.alreadyThere > 0) bits.push(`${ap.alreadyThere} already on it`);
-    if (ap.skipped.length > 0) bits.push(`couldn't add ${ap.skipped.join(", ")}`);
-    if (bits.length > 0) note = `&team_applied=${encodeURIComponent(bits.join(" · "))}`;
+    if (ap.skipped.length > 0)
+      bits.push(`couldn't add ${ap.skipped.join(", ")}`);
+    if (bits.length > 0)
+      note = `&team_applied=${encodeURIComponent(bits.join(" · "))}`;
   }
   // Land on Team, not Info — the roster that just changed is the thing to look at.
-  redirect(`/commercial/opportunities/${opp_id}?tab=overview&sub=team&status_ok=1${note}`);
+  redirect(
+    `/commercial/opportunities/${opp_id}?tab=overview&sub=team&status_ok=1${note}`,
+  );
 }
 
 /** Add someone to this job's contact list. */
 async function addOppContactAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   const contact_id = String(formData.get("contact_id") ?? "");
   if (!UUID_RE.test(contact_id)) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent("Pick a person."));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent("Pick a person."),
+    );
   }
-  const { addOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  const { addOpportunityContact } =
+    await import("@/lib/commercial/opportunities/contacts");
   const res = await addOpportunityContact({
     opportunityId: opp_id,
     contactId: contact_id,
@@ -546,7 +685,10 @@ async function addOppContactAction(formData: FormData) {
     actorUserId: user.id,
   });
   if (!res.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent(res.error),
+    );
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -557,16 +699,23 @@ async function addOppContactAction(formData: FormData) {
 async function removeOppContactAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const link_id = String(formData.get("link_id") ?? "");
-  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id)) redirect("/commercial/opportunities");
-  const { removeOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id))
+    redirect("/commercial/opportunities");
+  const { removeOpportunityContact } =
+    await import("@/lib/commercial/opportunities/contacts");
   const res = await removeOpportunityContact(link_id, user.id);
   if (!res.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent(res.error),
+    );
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -577,16 +726,23 @@ async function removeOppContactAction(formData: FormData) {
 async function setOppPrimaryContactAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   const link_id = String(formData.get("link_id") ?? "");
-  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id)) redirect("/commercial/opportunities");
-  const { setPrimaryOpportunityContact } = await import("@/lib/commercial/opportunities/contacts");
+  if (!UUID_RE.test(opp_id) || !UUID_RE.test(link_id))
+    redirect("/commercial/opportunities");
+  const { setPrimaryOpportunityContact } =
+    await import("@/lib/commercial/opportunities/contacts");
   const res = await setPrimaryOpportunityContact(opp_id, link_id, user.id);
   if (!res.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(res.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent(res.error),
+    );
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -612,7 +768,9 @@ async function setOppPrimaryContactAction(formData: FormData) {
 async function setOppTaxExemptAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -621,7 +779,7 @@ async function setOppTaxExemptAction(formData: FormData) {
   // One mapping, shared with the proposal editor — see taxChoiceToColumns.
   const taxCols = taxChoiceToColumns(
     String(formData.get("tax_exempt") ?? "inherit"),
-    String(formData.get("tax_exempt_cert_number") ?? "")
+    String(formData.get("tax_exempt_cert_number") ?? ""),
   );
   const result = await updateCommercialOpportunity({
     id: opp_id,
@@ -629,7 +787,10 @@ async function setOppTaxExemptAction(formData: FormData) {
     updated_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=info&error=` + encodeURIComponent(result.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=info&error=` +
+        encodeURIComponent(result.error),
+    );
   }
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -646,30 +807,47 @@ async function setOppTaxExemptAction(formData: FormData) {
 async function saveInlineFieldAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
-  const back = (q: string) => `/commercial/opportunities/${opp_id}?tab=info&${q}`;
+  const back = (q: string) =>
+    `/commercial/opportunities/${opp_id}?tab=info&${q}`;
 
   const field = inlineField(String(formData.get("field") ?? ""));
   // Not on the list = not writable by this path, and we say so rather than
   // silently no-op, because a save that reports success and changes nothing is
   // the worst of the three outcomes.
-  if (!field) redirect(back("error=" + encodeURIComponent("That field can't be edited here.")));
+  if (!field)
+    redirect(
+      back("error=" + encodeURIComponent("That field can't be edited here.")),
+    );
 
   // An explicit Clear wins over whatever is sitting in the input.
   const wantsClear = String(formData.get("clear") ?? "") === "1";
-  const parsed = parseInlineValue(field, wantsClear ? "" : String(formData.get("value") ?? ""));
+  const parsed = parseInlineValue(
+    field,
+    wantsClear ? "" : String(formData.get("value") ?? ""),
+  );
   if ("error" in parsed) {
     // Reopen the SAME field so the message lands next to the input that caused
     // it, rather than as a banner above a closed row.
-    redirect(back(`ef=${field.name}&ef_error=` + encodeURIComponent(parsed.error)));
+    redirect(
+      back(`ef=${field.name}&ef_error=` + encodeURIComponent(parsed.error)),
+    );
   }
 
-  const { updateOpportunityField } = await import("@/lib/commercial/opportunities/mutations");
-  const res = await updateOpportunityField(opp_id, field.name, parsed.value, user.id);
+  const { updateOpportunityField } =
+    await import("@/lib/commercial/opportunities/mutations");
+  const res = await updateOpportunityField(
+    opp_id,
+    field.name,
+    parsed.value,
+    user.id,
+  );
   if (!res.ok) redirect(back("error=" + encodeURIComponent(res.error)));
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   redirect(back("saved_field=" + encodeURIComponent(field.label)));
@@ -678,7 +856,9 @@ async function saveInlineFieldAction(formData: FormData) {
 async function reopenOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -694,7 +874,9 @@ async function reopenOpportunityAction(formData: FormData) {
   if (current && current.status !== "pre_sale_closed") {
     redirect(
       `/commercial/opportunities/${opp_id}?error=` +
-        encodeURIComponent("Only a closed bid can be reopened. To restart a delivered job, move it back through Change status.")
+        encodeURIComponent(
+          "Only a closed bid can be reopened. To restart a delivered job, move it back through Change status.",
+        ),
     );
   }
   const result = await changeOpportunityStatus({
@@ -704,7 +886,10 @@ async function reopenOpportunityAction(formData: FormData) {
     acting_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?error=` + encodeURIComponent(result.error));
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent(result.error),
+    );
   }
   await clearDebriefFlagOnReopen(opp_id, user.id);
   redirect(`/commercial/opportunities/${opp_id}?tab=info&status_ok=1`);
@@ -713,7 +898,9 @@ async function reopenOpportunityAction(formData: FormData) {
 async function softDeleteOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -725,8 +912,9 @@ async function softDeleteOpportunityAction(formData: FormData) {
     .select("title, account_id")
     .eq("id", opp_id)
     .maybeSingle();
-  const title = ((pre as { title?: string } | null)?.title || "Opportunity");
-  const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
+  const title = (pre as { title?: string } | null)?.title || "Opportunity";
+  const account_id =
+    (pre as { account_id?: string } | null)?.account_id ?? null;
   const result = await softDeleteCommercialOpportunity(opp_id, user.id);
   if (!result.ok) {
     // Route error back to the account page. ?tab=opportunities, NOT ?tab=deals:
@@ -734,7 +922,9 @@ async function softDeleteOpportunityAction(formData: FormData) {
     // banner, so a failed delete landed the user on Home with no message at all
     // (round-3 handoff #7 class). The opportunities list shows the error.
     if (account_id) {
-      redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
+      redirect(
+        `/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`,
+      );
     }
     redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
   }
@@ -753,11 +943,11 @@ async function softDeleteOpportunityAction(formData: FormData) {
     // A soft delete you cannot reverse from the screen that performed it is
     // the shape people lose work to.
     redirect(
-      `/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`
+      `/commercial/accounts/${account_id}?tab=deals&deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`,
     );
   }
   redirect(
-    `/commercial/accounts?deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`
+    `/commercial/accounts?deleted=${encodeURIComponent(title)}&undo_id=${opp_id}&undo_kind=deal&undo_label=${encodeURIComponent(title)}`,
   );
 }
 
@@ -765,7 +955,9 @@ async function softDeleteOpportunityAction(formData: FormData) {
 async function archiveOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -776,13 +968,16 @@ async function archiveOpportunityAction(formData: FormData) {
     .select("account_id")
     .eq("id", opp_id)
     .maybeSingle();
-  const account_id = (pre as { account_id?: string } | null)?.account_id ?? null;
+  const account_id =
+    (pre as { account_id?: string } | null)?.account_id ?? null;
   const result = await archiveOpportunity(opp_id, user.id);
   if (!result.ok) {
     // ?tab=opportunities so the error banner actually renders — ?tab=deals is
     // the Home tab and shows no sp.error (round-3 handoff #7 class).
     if (account_id) {
-      redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
+      redirect(
+        `/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`,
+      );
     }
     redirect(`/commercial/accounts?error=${encodeURIComponent(result.error)}`);
   }
@@ -805,14 +1000,18 @@ async function archiveOpportunityAction(formData: FormData) {
 async function unarchiveOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
   if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
   const result = await unarchiveOpportunity(opp_id, user.id);
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`,
+    );
   }
   revalidatePath("/commercial/opportunities");
   revalidatePath(`/commercial/opportunities/${opp_id}`);
@@ -839,7 +1038,9 @@ async function unarchiveOpportunityAction(formData: FormData) {
 async function cloneOpportunityAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -853,7 +1054,9 @@ async function cloneOpportunityAction(formData: FormData) {
     .is("deleted_at", null)
     .maybeSingle();
   if (!source) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source opportunity not found.")}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=${encodeURIComponent("Source opportunity not found.")}`,
+    );
   }
   const src = source as CommercialOpportunity;
 
@@ -874,7 +1077,9 @@ async function cloneOpportunityAction(formData: FormData) {
     created_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=${encodeURIComponent(result.error)}`,
+    );
   }
   revalidatePath("/commercial/opportunities");
   revalidatePath(`/commercial/accounts/${src.account_id}`);
@@ -886,7 +1091,9 @@ async function cloneOpportunityAction(formData: FormData) {
 async function addTeamAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -896,10 +1103,14 @@ async function addTeamAction(formData: FormData) {
   const notes = (formData.get("notes") as string)?.trim() || null;
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
   if (!UUID_RE.test(user_id)) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a staff member.")}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a staff member.")}`,
+    );
   }
   if (!(OPPORTUNITY_ASSIGNMENT_ROLES as readonly string[]).includes(role)) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role.")}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role.")}`,
+    );
   }
   const result = await addOpportunityAssignment({
     opportunity_id,
@@ -910,7 +1121,9 @@ async function addTeamAction(formData: FormData) {
     assigned_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
 }
@@ -931,21 +1144,27 @@ async function addTeamAction(formData: FormData) {
 async function quickAssignMeAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const role = String(formData.get("role") ?? "") as OpportunityAssignmentRole;
   if (!UUID_RE.test(opportunity_id)) redirect("/commercial/opportunities");
   if (!(OPPORTUNITY_ASSIGNMENT_ROLES as readonly string[]).includes(role)) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role first.")}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("Pick a role first.")}`,
+    );
   }
   // Defense-in-depth — confirm the viewer is actually staff before we even
   // reach the lib. Cheaper failure mode + clearer error than the downstream
   // has_new_platform_access check at lib/commercial/opportunities/assignments.ts.
   const staff = await listAssignableStaff();
   if (!staff.some((s) => s.user_id === user.id)) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("You don't have Commercial CC access.")}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent("You don't have Commercial CC access.")}`,
+    );
   }
   const result = await addOpportunityAssignment({
     opportunity_id,
@@ -966,9 +1185,13 @@ async function quickAssignMeAction(formData: FormData) {
     // self-assign path — the user is on the team in that role either way,
     // and a rose error toast on a successful action is confusing.
     if (/already on this opp/i.test(result.error)) {
-      redirect(`/commercial/opportunities/${opportunity_id}?tab=team&assigned=1`);
+      redirect(
+        `/commercial/opportunities/${opportunity_id}?tab=team&assigned=1`,
+      );
     }
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team&assigned=1`);
 }
@@ -976,7 +1199,9 @@ async function quickAssignMeAction(formData: FormData) {
 async function removeTeamAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -984,9 +1209,16 @@ async function removeTeamAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(assignment_id)) {
     redirect("/commercial/opportunities");
   }
-  const removed = await removeOpportunityAssignment(opportunity_id, assignment_id, user.id);
+  const removed = await removeOpportunityAssignment(
+    opportunity_id,
+    assignment_id,
+    user.id,
+  );
   if (!removed.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=team&error=` + encodeURIComponent(removed.error));
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=team&error=` +
+        encodeURIComponent(removed.error),
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=team`);
 }
@@ -996,7 +1228,9 @@ async function removeTeamAction(formData: FormData) {
 async function addTaskAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1005,7 +1239,9 @@ async function addTaskAction(formData: FormData) {
   const due_at = (formData.get("due_at") as string) || null;
   const assigned_user_id_raw = String(formData.get("assigned_user_id") ?? "");
   const assigned_user_id =
-    assigned_user_id_raw && UUID_RE.test(assigned_user_id_raw) ? assigned_user_id_raw : null;
+    assigned_user_id_raw && UUID_RE.test(assigned_user_id_raw)
+      ? assigned_user_id_raw
+      : null;
   const result = await createOpportunityTask({
     opportunity_id,
     title,
@@ -1014,7 +1250,9 @@ async function addTaskAction(formData: FormData) {
     created_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=tasks&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
 }
@@ -1022,12 +1260,15 @@ async function addTaskAction(formData: FormData) {
 async function toggleTaskAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
   const task_id = String(formData.get("task_id") ?? "");
-  const make_complete = String(formData.get("make_complete") ?? "true") === "true";
+  const make_complete =
+    String(formData.get("make_complete") ?? "true") === "true";
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
     redirect("/commercial/opportunities");
   }
@@ -1042,7 +1283,9 @@ async function toggleTaskAction(formData: FormData) {
 async function deleteTaskAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1052,7 +1295,10 @@ async function deleteTaskAction(formData: FormData) {
   }
   const deleted = await deleteOpportunityTask(opportunity_id, task_id, user.id);
   if (!deleted.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks&error=` + encodeURIComponent(deleted.error));
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=tasks&error=` +
+        encodeURIComponent(deleted.error),
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
 }
@@ -1062,7 +1308,9 @@ async function deleteTaskAction(formData: FormData) {
 async function addNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1074,7 +1322,9 @@ async function addNoteAction(formData: FormData) {
     author_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
@@ -1082,7 +1332,9 @@ async function addNoteAction(formData: FormData) {
 async function togglePinNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1090,9 +1342,15 @@ async function togglePinNoteAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(note_id)) {
     redirect("/commercial/opportunities");
   }
-  const result = await togglePinOpportunityNote(opportunity_id, note_id, user.id);
+  const result = await togglePinOpportunityNote(
+    opportunity_id,
+    note_id,
+    user.id,
+  );
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
@@ -1100,7 +1358,9 @@ async function togglePinNoteAction(formData: FormData) {
 async function editNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1109,9 +1369,16 @@ async function editNoteAction(formData: FormData) {
     redirect("/commercial/opportunities");
   }
   const body = String(formData.get("body") ?? "");
-  const result = await editOpportunityNote(opportunity_id, note_id, body, user.id);
+  const result = await editOpportunityNote(
+    opportunity_id,
+    note_id,
+    body,
+    user.id,
+  );
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=notes&error=${encodeURIComponent(result.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
@@ -1121,7 +1388,9 @@ async function editNoteAction(formData: FormData) {
 async function archiveAttachmentAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1129,9 +1398,15 @@ async function archiveAttachmentAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(attachment_id)) {
     redirect("/commercial/opportunities");
   }
-  const result = await archiveOpportunityAttachment(opportunity_id, attachment_id, user.id);
+  const result = await archiveOpportunityAttachment(
+    opportunity_id,
+    attachment_id,
+    user.id,
+  );
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=plans&error=${encodeURIComponent(result.error)}`);
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=plans&error=${encodeURIComponent(result.error)}`,
+    );
   }
   // Keep the list-page 📎 N files badge in sync — the detail page is
   // force-dynamic, but the list page can be cached for navigation.
@@ -1176,7 +1451,7 @@ async function requireCommercialUser(): Promise<string> {
 function buildFilesTabRedirect(
   oppId: string,
   formData: FormData,
-  errorMsg?: string | null
+  errorMsg?: string | null,
 ): string {
   const cat = String(formData.get("current_category") ?? "").trim();
   const catQs = cat ? `&category=${encodeURIComponent(cat)}` : "";
@@ -1191,7 +1466,9 @@ function buildFilesTabRedirect(
 // 2026-08-14). Falls back to the list only if the form somehow carried no opp.
 function safeFilesTab(formData: FormData, errorMsg?: string | null): string {
   const oppId = String(formData.get("opp_id") ?? "");
-  return UUID_RE.test(oppId) ? buildFilesTabRedirect(oppId, formData, errorMsg) : "/commercial/opportunities";
+  return UUID_RE.test(oppId)
+    ? buildFilesTabRedirect(oppId, formData, errorMsg)
+    : "/commercial/opportunities";
 }
 
 async function toggleDocumentFavoriteAction(formData: FormData) {
@@ -1202,9 +1479,11 @@ async function toggleDocumentFavoriteAction(formData: FormData) {
   if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
   let errorMsg: string | null = null;
   try {
-    const { favoriteDocument, unfavoriteDocument, getDocument: getDoc } = await import(
-      "@/lib/commercial/documents/db"
-    );
+    const {
+      favoriteDocument,
+      unfavoriteDocument,
+      getDocument: getDoc,
+    } = await import("@/lib/commercial/documents/db");
     const doc = await getDoc(document_id);
     if (!doc) errorMsg = "That file was already removed.";
     else {
@@ -1214,7 +1493,8 @@ async function toggleDocumentFavoriteAction(formData: FormData) {
       if (!result.ok) errorMsg = result.error;
     }
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : "Couldn't update that file.";
+    errorMsg =
+      err instanceof Error ? err.message : "Couldn't update that file.";
   }
   redirect(safeFilesTab(formData, errorMsg));
 }
@@ -1227,21 +1507,21 @@ async function transitionDocumentStatusAction(formData: FormData) {
   if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
   let errorMsg: string | null = null;
   try {
-    const { transitionDocumentStatus, getDocument: getDoc } = await import(
-      "@/lib/commercial/documents/db"
-    );
+    const { transitionDocumentStatus, getDocument: getDoc } =
+      await import("@/lib/commercial/documents/db");
     const doc = await getDoc(document_id);
     if (!doc) errorMsg = "That file was already removed.";
     else {
       const result = await transitionDocumentStatus(
         document_id,
         to_status as import("@/lib/commercial/documents/status").DocumentStatus,
-        userId
+        userId,
       );
       if (!result.ok) errorMsg = result.error;
     }
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : "Couldn't update that file.";
+    errorMsg =
+      err instanceof Error ? err.message : "Couldn't update that file.";
   }
   redirect(safeFilesTab(formData, errorMsg));
 }
@@ -1253,7 +1533,8 @@ async function softDeleteDocumentAction(formData: FormData) {
   if (!UUID_RE.test(document_id)) redirect(safeFilesTab(formData));
   let errorMsg: string | null = null;
   try {
-    const { softDeleteDocument, getDocument: getDoc } = await import("@/lib/commercial/documents/db");
+    const { softDeleteDocument, getDocument: getDoc } =
+      await import("@/lib/commercial/documents/db");
     const doc = await getDoc(document_id);
     if (!doc) errorMsg = "That file was already removed.";
     else {
@@ -1263,7 +1544,8 @@ async function softDeleteDocumentAction(formData: FormData) {
   } catch (err) {
     // Never let a delete failure bubble to the error boundary and blank the
     // whole shell — surface it as a message on the Files tab instead.
-    errorMsg = err instanceof Error ? err.message : "Couldn't delete that file.";
+    errorMsg =
+      err instanceof Error ? err.message : "Couldn't delete that file.";
   }
   redirect(safeFilesTab(formData, errorMsg));
 }
@@ -1284,7 +1566,9 @@ async function softDeleteDocumentAction(formData: FormData) {
 async function recordInvoicePaymentInlineAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -1295,9 +1579,13 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   // Milestone invoices are normally paid per-milestone, but we never reject a
   // stale invoice-level post (Karan rule) — addPayment records it invoice-level
   // and returns a warning we surface as a small heads-up.
-  const amount_cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const amount_cents = parseDollarsToCents(
+    String(formData.get("amount") ?? ""),
+  );
   if (amount_cents === null || amount_cents <= 0) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent("Enter a positive dollar amount (e.g., 250.00).")}`,
+    );
   }
   // Karan 2026-07-07 TZ bug fix: `<input type="date">` returns a bare
   // YYYY-MM-DD string. `new Date("2026-07-07").toISOString()` interprets
@@ -1308,7 +1596,9 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
   // and stays on the intended calendar day when displayed in ET). Same
   // approach used for due_at on the invoice detail page.
   const paid_at_raw = String(formData.get("paid_at") ?? "").trim();
-  const paid_at = paid_at_raw ? (anchorDateOnlyIso(paid_at_raw) ?? new Date().toISOString()) : undefined;
+  const paid_at = paid_at_raw
+    ? (anchorDateOnlyIso(paid_at_raw) ?? new Date().toISOString())
+    : undefined;
   const method = String(formData.get("method") ?? "").trim() || null;
   const reference = String(formData.get("reference") ?? "").trim() || null;
 
@@ -1320,7 +1610,9 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
     recorded_by_user_id: user.id,
   });
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent(result.error ?? "Payment failed.")}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=invoices&error=${encodeURIComponent(result.error ?? "Payment failed.")}`,
+    );
   }
   // Revalidate everything this payment touches — the opp panel, the
   // invoice detail, the account 360 tiles, the list KPIs, and the
@@ -1343,7 +1635,9 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
     flash.set("paid_capped", "1");
   }
   if (result.warning) flash.set("paid_heads_up", result.warning);
-  redirect(`/commercial/opportunities/${opp_id}?${flash.toString()}#inv-${invoice_id}`);
+  redirect(
+    `/commercial/opportunities/${opp_id}?${flash.toString()}#inv-${invoice_id}`,
+  );
 }
 
 /**
@@ -1357,7 +1651,9 @@ async function recordInvoicePaymentInlineAction(formData: FormData) {
 async function saveInvoiceDetailsFromOppAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opp_id = String(formData.get("opp_id") ?? "");
@@ -1384,29 +1680,39 @@ async function saveInvoiceDetailsFromOppAction(formData: FormData) {
   const tax_pct_raw = String(formData.get("tax_pct") ?? "").trim();
   const tax_pct = tax_pct_raw === "" ? 0 : parseFloat(tax_pct_raw);
   const patch: Parameters<typeof updateInvoiceCoreFields>[1] = {
-    payment_terms: String(formData.get("payment_terms") ?? "").trim() || undefined,
-    customer_message: (String(formData.get("customer_message") ?? "").trim() || null) as string | null,
-    po_number: (String(formData.get("po_number") ?? "").trim() || null) as string | null,
-    notes: (String(formData.get("notes") ?? "").trim() || null) as string | null,
+    payment_terms:
+      String(formData.get("payment_terms") ?? "").trim() || undefined,
+    customer_message: (String(formData.get("customer_message") ?? "").trim() ||
+      null) as string | null,
+    po_number: (String(formData.get("po_number") ?? "").trim() || null) as
+      string | null,
+    notes: (String(formData.get("notes") ?? "").trim() || null) as
+      string | null,
   };
   if (due_at !== undefined) patch.due_at = due_at;
   if (Number.isFinite(tax_pct)) patch.tax_pct = tax_pct;
   const result = await updateInvoiceCoreFields(invoice_id, patch);
   if (!result.ok) {
-    redirect(`/commercial/opportunities/${opp_id}?tab=invoices&edit_invoice=${invoice_id}&error=${encodeURIComponent(result.error ?? "Save failed.")}#inv-${invoice_id}`);
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=invoices&edit_invoice=${invoice_id}&error=${encodeURIComponent(result.error ?? "Save failed.")}#inv-${invoice_id}`,
+    );
   }
   const ctx = await getInvoiceContext(invoice_id);
   revalidatePath(`/commercial/opportunities/${opp_id}`);
   revalidatePath(`/commercial/invoices/${invoice_id}`);
   revalidatePath("/commercial/invoices");
   if (ctx.account_id) revalidatePath(`/commercial/accounts/${ctx.account_id}`);
-  redirect(`/commercial/opportunities/${opp_id}?tab=invoices&details_saved=${invoice_id}#inv-${invoice_id}`);
+  redirect(
+    `/commercial/opportunities/${opp_id}?tab=invoices&details_saved=${invoice_id}#inv-${invoice_id}`,
+  );
 }
 
 async function deleteNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
   const opportunity_id = String(formData.get("opportunity_id") ?? "");
@@ -1416,7 +1722,10 @@ async function deleteNoteAction(formData: FormData) {
   }
   const deleted = await deleteOpportunityNote(opportunity_id, note_id, user.id);
   if (!deleted.ok) {
-    redirect(`/commercial/opportunities/${opportunity_id}?tab=notes&error=` + encodeURIComponent(deleted.error));
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=notes&error=` +
+        encodeURIComponent(deleted.error),
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=notes`);
 }
@@ -1432,7 +1741,9 @@ async function deleteNoteAction(formData: FormData) {
 async function addFinishAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
 
@@ -1443,14 +1754,15 @@ async function addFinishAction(formData: FormData) {
   if (!code) {
     redirect(
       `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
-        encodeURIComponent("Finish code is required (e.g. WD-1).")
+        encodeURIComponent("Finish code is required (e.g. WD-1)."),
     );
   }
 
   const result = await addOpportunityFinish({
     opportunity_id,
     code,
-    location_description: (formData.get("location_description") as string)?.trim() || null,
+    location_description:
+      (formData.get("location_description") as string)?.trim() || null,
     product_name: (formData.get("product_name") as string)?.trim() || null,
     manufacturer: (formData.get("manufacturer") as string)?.trim() || null,
     color: (formData.get("color") as string)?.trim() || null,
@@ -1462,7 +1774,7 @@ async function addFinishAction(formData: FormData) {
   if (!result.ok) {
     redirect(
       `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
-        encodeURIComponent(result.error)
+        encodeURIComponent(result.error),
     );
   }
   // Keep the list-page badge fresh on add (badge count derived from this table).
@@ -1473,7 +1785,9 @@ async function addFinishAction(formData: FormData) {
 async function editFinishAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
 
@@ -1487,7 +1801,7 @@ async function editFinishAction(formData: FormData) {
   if (!code) {
     redirect(
       `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
-        encodeURIComponent("Finish code cannot be blank.")
+        encodeURIComponent("Finish code cannot be blank."),
     );
   }
 
@@ -1495,7 +1809,8 @@ async function editFinishAction(formData: FormData) {
     opportunity_id,
     finish_id,
     code,
-    location_description: (formData.get("location_description") as string)?.trim() || null,
+    location_description:
+      (formData.get("location_description") as string)?.trim() || null,
     product_name: (formData.get("product_name") as string)?.trim() || null,
     manufacturer: (formData.get("manufacturer") as string)?.trim() || null,
     color: (formData.get("color") as string)?.trim() || null,
@@ -1507,7 +1822,7 @@ async function editFinishAction(formData: FormData) {
   if (!result.ok) {
     redirect(
       `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
-        encodeURIComponent(result.error)
+        encodeURIComponent(result.error),
     );
   }
   // Edits don't change row count — skip the revalidate to keep CDN cache warm.
@@ -1517,7 +1832,9 @@ async function editFinishAction(formData: FormData) {
 async function deleteFinishAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
 
@@ -1526,17 +1843,20 @@ async function deleteFinishAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(finish_id)) {
     redirect("/commercial/opportunities");
   }
-  const result = await deleteOpportunityFinish(opportunity_id, finish_id, user.id);
+  const result = await deleteOpportunityFinish(
+    opportunity_id,
+    finish_id,
+    user.id,
+  );
   if (!result.ok) {
     redirect(
       `/commercial/opportunities/${opportunity_id}?tab=finishes&error=` +
-        encodeURIComponent(result.error)
+        encodeURIComponent(result.error),
     );
   }
   revalidatePath("/commercial/opportunities");
   redirect(`/commercial/opportunities/${opportunity_id}?tab=finishes`);
 }
-
 
 // Tab structure redesigned 2026-07-05 (Karan: "too cluttered, needs
 // better organization"). Consolidated from 10 flat tabs to 3 primary
@@ -1620,25 +1940,29 @@ const PRIMARY_TABS_BASE: { key: PrimaryTab; label: string }[] = [
   { key: "activity", label: "Activity" },
 ];
 /** Primaries that carry sub-tabs. `proposals`, `invoices` and `debrief` are leaves. */
-type GroupTab = Exclude<PrimaryTab, "debrief" | "invoices" | "proposals" | "analytics" | "standing">;
-const SUB_TABS_BY_PRIMARY: Record<GroupTab, { key: SubTab; label: string }[]> = {
-  overview: [
-    { key: "info", label: "Info" },
-    { key: "team", label: "Team" },
-  ],
-  docs: [
-    { key: "plans", label: "Plans & Specs" },
-    { key: "finishes", label: "Colors & Finishes" },
-    { key: "files", label: "Files" },
-  ],
-  activity: [
-    { key: "notes", label: "Notes" },
-    { key: "tasks", label: "Tasks" },
-    { key: "timeline", label: "Timeline" },
-    { key: "emails", label: "Email Archive" },
-  ],
-  project: PROJECT_SUB_TABS,
-};
+type GroupTab = Exclude<
+  PrimaryTab,
+  "debrief" | "invoices" | "proposals" | "analytics" | "standing"
+>;
+const SUB_TABS_BY_PRIMARY: Record<GroupTab, { key: SubTab; label: string }[]> =
+  {
+    overview: [
+      { key: "info", label: "Info" },
+      { key: "team", label: "Team" },
+    ],
+    docs: [
+      { key: "plans", label: "Plans & Specs" },
+      { key: "finishes", label: "Colors & Finishes" },
+      { key: "files", label: "Files" },
+    ],
+    activity: [
+      { key: "notes", label: "Notes" },
+      { key: "tasks", label: "Tasks" },
+      { key: "timeline", label: "Timeline" },
+      { key: "emails", label: "Email Archive" },
+    ],
+    project: PROJECT_SUB_TABS,
+  };
 const DEFAULT_SUB_BY_PRIMARY: Record<GroupTab, SubTab> = {
   overview: "info",
   docs: "plans",
@@ -1652,7 +1976,10 @@ const DEFAULT_SUB_BY_PRIMARY: Record<GroupTab, SubTab> = {
  * redirects, and notification-bell links all still use those. Map them
  * back to their new (primary, sub) shape so incoming URLs don't 404.
  */
-function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: SubTab | null } {
+function resolveTabParam(raw: string | undefined): {
+  primary: PrimaryTab;
+  sub: SubTab | null;
+} {
   if (!raw) return { primary: "overview", sub: null };
   // Direct primary hits.
   if (
@@ -1672,19 +1999,30 @@ function resolveTabParam(raw: string | undefined): { primary: PrimaryTab; sub: S
     return { primary: raw as PrimaryTab, sub: null };
   }
   // Legacy flat sub-tab keys → route to the primary + explicit sub.
-  if (raw === "info" || raw === "team") return { primary: "overview", sub: raw as SubTab };
-  if (raw === "plans" || raw === "finishes" || raw === "files") return { primary: "docs", sub: raw as SubTab };
-  if (raw === "notes" || raw === "tasks" || raw === "timeline" || raw === "emails") return { primary: "activity", sub: raw as SubTab };
+  if (raw === "info" || raw === "team")
+    return { primary: "overview", sub: raw as SubTab };
+  if (raw === "plans" || raw === "finishes" || raw === "files")
+    return { primary: "docs", sub: raw as SubTab };
+  if (
+    raw === "notes" ||
+    raw === "tasks" ||
+    raw === "timeline" ||
+    raw === "emails"
+  )
+    return { primary: "activity", sub: raw as SubTab };
   // Delivery tools as flat keys. These are what the redirected account routes
   // emit, and what a year of bookmarks and bell notifications already carry —
   // `?tab=submittals` and `?tab=changeorders` both used to bounce to the
   // account page, so they must land on the right tool now rather than Overview.
-  if (raw === "work-order" || raw === "workorder") return { primary: "project", sub: "work-order" };
+  if (raw === "work-order" || raw === "workorder")
+    return { primary: "project", sub: "work-order" };
   if (raw === "submittals") return { primary: "project", sub: "submittals" };
-  if (raw === "change-orders" || raw === "changeorders") return { primary: "project", sub: "change-orders" };
+  if (raw === "change-orders" || raw === "changeorders")
+    return { primary: "project", sub: "change-orders" };
   if (raw === "aia") return { primary: "project", sub: "aia" };
   // `costs` is the old route name; `transactions` is what Katie calls it.
-  if (raw === "transactions" || raw === "costs") return { primary: "project", sub: "transactions" };
+  if (raw === "transactions" || raw === "costs")
+    return { primary: "project", sub: "transactions" };
   if (raw === "closeout") return { primary: "project", sub: "closeout" };
   if (raw === "analytics") return { primary: "analytics", sub: null };
   // Was a primary tab until 2026-08-13. Old links, bells and bookmarks carry it.
@@ -1735,12 +2073,13 @@ export default async function OpportunityDetailPage({
    * It is memoised per request, so it is one call however many times it is
    * asked.
    */
-  const [account, pageViewerRes, proposalTotals, dealProposals] = await Promise.all([
-    getCommercialAccount(opp.account_id),
-    createClient().then((c) => c.auth.getUser()),
-    listCurrentProposalTotalByOpp([opp.id]),
-    listProposalsForOpp(opp.id),
-  ]);
+  const [account, pageViewerRes, proposalTotals, dealProposals] =
+    await Promise.all([
+      getCommercialAccount(opp.account_id),
+      createClient().then((c) => c.auth.getUser()),
+      listCurrentProposalTotalByOpp([opp.id]),
+      listProposalsForOpp(opp.id),
+    ]);
   // The Jobs report's per-job page is this deal, read-only, on one printable
   // sheet — the thing people ask for when they want to send "everything about
   // this job" somewhere. Offered only when the viewer can actually open it:
@@ -1748,7 +2087,9 @@ export default async function OpportunityDetailPage({
   // "you don't have access" page is worse than no button. Memoised per request.
   const pageViewer = pageViewerRes.data.user;
   const canSeeJobReport = pageViewer
-    ? await canViewReport(pageViewer.id, pageViewer.email, "jobs").catch(() => false)
+    ? await canViewReport(pageViewer.id, pageViewer.email, "jobs").catch(
+        () => false,
+      )
     : false;
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
@@ -1757,14 +2098,15 @@ export default async function OpportunityDetailPage({
 
   // ── Status path, attention and stage KPIs (steps 4–5) ────────────────────
   // Reads first, so everything below is derived from ONE set of numbers.
-  const [pathProject, pathWorkOrder, pathInvoices, pathStatusLog] = await Promise.all([
-    getProjectForOpportunity(opp.id),
-    getWorkOrderForOpp(opp.id).catch(() => null),
-    listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
-    // Feeds the progress bar's "skipped" marks. Unconditional: the SALES path
-    // renders for every deal, bids included, not just won ones.
-    listOpportunityStatusLog(opp.id).catch(() => []),
-  ]);
+  const [pathProject, pathWorkOrder, pathInvoices, pathStatusLog] =
+    await Promise.all([
+      getProjectForOpportunity(opp.id),
+      getWorkOrderForOpp(opp.id).catch(() => null),
+      listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
+      // Feeds the progress bar's "skipped" marks. Unconditional: the SALES path
+      // renders for every deal, bids included, not just won ones.
+      listOpportunityStatusLog(opp.id).catch(() => []),
+    ]);
 
   // A deal keeps its project when un-won IF the project holds anything (the
   // un-win archive guard in ensure.ts). So a deal dragged back to a pre-sale
@@ -1786,12 +2128,22 @@ export default async function OpportunityDetailPage({
   // they are only fetched then — two round-trips a bid would never use.
   const pathOnSite = opp.status === "in_progress";
   const pathIsClosedOut = opp.status === "post_sale_closed";
-  const [pathFin, pathChangeOrders, pathSubmittals, pathLabor, pathCloseouts, pathRetainageCents, pathAiaRoll] = pathIsWon
+  const [
+    pathFin,
+    pathChangeOrders,
+    pathSubmittals,
+    pathLabor,
+    pathCloseouts,
+    pathRetainageCents,
+    pathAiaRoll,
+  ] = pathIsWon
     ? await Promise.all([
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
         listOpportunitySubmittals(opp.id).catch(() => []),
-        pathOnSite ? laborByWorkerForProject(opp.id).catch(() => []) : Promise.resolve([]),
+        pathOnSite
+          ? laborByWorkerForProject(opp.id).catch(() => [])
+          : Promise.resolve([]),
         // Loaded for any won deal now, not just a closed-out one: the delivery
         // strip reports closeout's state at every stage, and a strip that says
         // "Not started" because it never looked is worse than no strip.
@@ -1806,7 +2158,9 @@ export default async function OpportunityDetailPage({
         // delivery strip's AIA tile used to be fed the COMBINED billing figure,
         // so it announced "Fully billed" on jobs with no AIA applications
         // whatsoever. A tile has to read its own ledger.
-        aiaBillingRollupBulk([opp.id]).then((m) => m.get(opp.id) ?? null).catch(() => null),
+        aiaBillingRollupBulk([opp.id])
+          .then((m) => m.get(opp.id) ?? null)
+          .catch(() => null),
       ])
     : [null, [], [], [], [], 0, null];
 
@@ -1814,14 +2168,21 @@ export default async function OpportunityDetailPage({
   // package (a re-issue after a punch item); the LATEST completion date is the
   // one still in force. Voided packages are not in force at all.
   const pathWarrantyThrough = (() => {
-    const live = pathCloseouts.filter((c) => !c.voided_at && c.substantial_completion_date);
+    const live = pathCloseouts.filter(
+      (c) => !c.voided_at && c.substantial_completion_date,
+    );
     if (live.length === 0) return null;
     const latest = live
       .slice()
       .sort((a, b) =>
-        String(b.substantial_completion_date).localeCompare(String(a.substantial_completion_date))
+        String(b.substantial_completion_date).localeCompare(
+          String(a.substantial_completion_date),
+        ),
       )[0];
-    return computeWarrantyEndDate(latest.substantial_completion_date, latest.warranty_years);
+    return computeWarrantyEndDate(
+      latest.substantial_completion_date,
+      latest.warranty_years,
+    );
   })();
   // The latest proposal the CUSTOMER IS HOLDING — not the latest created. A
   // drafted revision must not reset "sent 9 days ago" on the one they have.
@@ -1853,9 +2214,10 @@ export default async function OpportunityDetailPage({
     followUpAt: opp.follow_up_at,
     proposalCount: dealProposals.length,
     sentProposalCount: dealProposals.filter((p) =>
-      ["sent", "won", "lost"].includes(p.status)
+      ["sent", "won", "lost"].includes(p.status),
     ).length,
-    approvedNotSentCount: dealProposals.filter((p) => p.status === "approved").length,
+    approvedNotSentCount: dealProposals.filter((p) => p.status === "approved")
+      .length,
     hasWorkOrder: !!pathWorkOrder,
     // Both loaded for any won deal, so these are real answers rather than
     // "didn't look" — the mistake this strip has already made three times.
@@ -1865,8 +2227,10 @@ export default async function OpportunityDetailPage({
     // Retainage counts. A job with a zero balance and 5% still held is not
     // clear — that money is exactly why close-out gets chased.
     moneyClear: pathIsWon
-      ? pathInvoices.reduce((n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0), 0) === 0 &&
-        pathRetainageCents === 0
+      ? pathInvoices.reduce(
+          (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
+          0,
+        ) === 0 && pathRetainageCents === 0
       : undefined,
     hasBilling: pathInvoices.length > 0,
     // Grace periods: a work order does not exist five minutes after a GC says
@@ -1880,21 +2244,26 @@ export default async function OpportunityDetailPage({
     proposedStartAt: opp.proposed_start_at?.slice(0, 10) ?? null,
   };
   const attentionItems = attentionFor(attentionInput);
+
   // The latest revision, so "Mark it approved" can open THAT proposal rather
   // than the list — Karan: "it brings you to the proposal for mark as approved".
   const latestProposal = [...dealProposals].sort(
-    (a, b) => b.revision_number - a.revision_number
+    (a, b) => b.revision_number - a.revision_number,
   )[0];
   // A VOIDED submittal is cancelled, not completed. Counting it as one meant a
   // deal whose only submittal was voided read "1 closed" — and, worse, never
   // got the "Send the submittals" step, because `submittalCount` was non-zero.
   // Live submittals only, everywhere.
   const liveSubmittals = pathSubmittals.filter((sm) => sm.status !== "voided");
-  const openSubmittals = liveSubmittals.filter((sm) => !isTerminalSubmittalStatus(sm.status)).length;
+  const openSubmittals = liveSubmittals.filter(
+    (sm) => !isTerminalSubmittalStatus(sm.status),
+  ).length;
 
   const manualNext = nextStep({
     ...attentionInput,
-    proposal: latestProposal ? { id: latestProposal.id, status: latestProposal.status } : null,
+    proposal: latestProposal
+      ? { id: latestProposal.id, status: latestProposal.status }
+      : null,
     accountId: opp.account_id,
     // Submittals come BEFORE the crew mobilises (Karan 2026-08-13), so the
     // pre-construction step needs to know whether any exist. Only loaded once
@@ -1908,9 +2277,14 @@ export default async function OpportunityDetailPage({
   // Karan 2026-08-13: "we're in delivery now and there's no work order or
   // closeout and warranty or anything like that here." They were one click
   // down inside the Project tab, which on that screen is the same as absent.
-  const tabHref = (sub: string) => `/commercial/opportunities/${opp.id}?tab=project&sub=${sub}`;
-  const approvedCoCount = pathChangeOrders.filter((c) => c.status === "approved").length;
-  const pendingCoCount = pathChangeOrders.filter((c) => c.status === "pending").length;
+  const tabHref = (sub: string) =>
+    `/commercial/opportunities/${opp.id}?tab=project&sub=${sub}`;
+  const approvedCoCount = pathChangeOrders.filter(
+    (c) => c.status === "approved",
+  ).length;
+  const pendingCoCount = pathChangeOrders.filter(
+    (c) => c.status === "pending",
+  ).length;
   const liveCloseout = pathCloseouts.filter((c) => !c.voided_at);
   const billedSoFar = pathFin?.billedPreTaxCents ?? 0;
   // Per-invoice clamp so one overpayment can't mask another invoice's debt —
@@ -1919,7 +2293,10 @@ export default async function OpportunityDetailPage({
   // going out steadily, or in one lump at the end? Keyed on the month each
   // invoice was ISSUED, with what has been paid against it, oldest first.
   const pathBillingByMonth = (() => {
-    const m = new Map<string, { invoicedCents: number; collectedCents: number }>();
+    const m = new Map<
+      string,
+      { invoicedCents: number; collectedCents: number }
+    >();
     for (const inv of pathInvoices) {
       const ymd = etDateOf(inv.issued_at);
       if (!ymd) continue; // a draft that never went out is not billing yet
@@ -1935,7 +2312,8 @@ export default async function OpportunityDetailPage({
       const totC = Number(inv.total_cents) || 0;
       const paidC = Number(inv.paid_cents) || 0;
       cur.invoicedCents += subC;
-      cur.collectedCents += totC > 0 ? Math.round(paidC * (subC / totC)) : paidC;
+      cur.collectedCents +=
+        totC > 0 ? Math.round(paidC * (subC / totC)) : paidC;
       m.set(key, cur);
     }
     return [...m.entries()]
@@ -1980,19 +2358,19 @@ export default async function OpportunityDetailPage({
   //    $6.5k included AIA and the three numbers therefore didn't subtract.
   // Each tile now reads only its own ledger.
   const invoiceOnlyIssued = pathInvoices.filter(
-    (inv) => inv.status !== "draft" && inv.status !== "void"
+    (inv) => inv.status !== "draft" && inv.status !== "void",
   );
   const invoiceOnlyBilledCents = invoiceOnlyIssued.reduce(
     (n, inv) => n + (Number(inv.total_cents) || 0),
-    0
+    0,
   );
   const invoiceOnlyPaidCents = invoiceOnlyIssued.reduce(
     (n, inv) => n + (Number(inv.paid_cents) || 0),
-    0
+    0,
   );
   const invoiceOnlyOpenCents = invoiceOnlyIssued.reduce(
     (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
-    0
+    0,
   );
   // "Still out" = billed-and-unpaid, the SAME rule as the dashboard AR tile and
   // the account rollup: BILLABLE (sent/viewed/partial/overdue) with a positive
@@ -2016,9 +2394,11 @@ export default async function OpportunityDetailPage({
       BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(inv))
         ? n + Math.max(0, Number(inv.balance_cents) || 0)
         : n,
-    0
+    0,
   );
-  const openInvoiceCents = pathFin ? pathFin.openBalanceCents : openInvoiceFromInvoicesCents;
+  const openInvoiceCents = pathFin
+    ? pathFin.openBalanceCents
+    : openInvoiceFromInvoicesCents;
   const costsSoFar = pathFin?.totalCostCents ?? 0;
   const deliveryTools: DeliveryTool[] = pathIsWon
     ? [
@@ -2031,9 +2411,14 @@ export default async function OpportunityDetailPage({
             liveSubmittals.length === 0
               ? "Not sent"
               : openSubmittals > 0
-              ? `${openSubmittals} awaiting the GC`
-              : `${liveSubmittals.length} closed`,
-          status: liveSubmittals.length === 0 ? "todo" : openSubmittals > 0 ? "active" : "done",
+                ? `${openSubmittals} awaiting the GC`
+                : `${liveSubmittals.length} closed`,
+          status:
+            liveSubmittals.length === 0
+              ? "todo"
+              : openSubmittals > 0
+                ? "active"
+                : "done",
         },
         {
           key: "work-order",
@@ -2050,33 +2435,36 @@ export default async function OpportunityDetailPage({
           href: tabHref("change-orders"),
           state:
             pathChangeOrders.length === 0
-              // "None" reads as a status and stops the reader. This tile is
-              // where Stephanie asked "how do I generate a change order within
-              // a project?" — so say what to do, not what isn't there.
-              ? "Add one"
+              ? // "None" reads as a status and stops the reader. This tile is
+                // where Stephanie asked "how do I generate a change order within
+                // a project?" — so say what to do, not what isn't there.
+                "Add one"
               : pendingCoCount > 0
-              ? `${pendingCoCount} awaiting a decision`
-              : approvedCoCount > 0
-              ? `${approvedCoCount} approved`
-              // Every one declined. "0 approved" beside a green dot read as
-              // "change orders are done" on a job where the GC said no to all
-              // of them, which is the opposite of what happened.
-              : `${pathChangeOrders.length} declined`,
+                ? `${pendingCoCount} awaiting a decision`
+                : approvedCoCount > 0
+                  ? `${approvedCoCount} approved`
+                  : // Every one declined. "0 approved" beside a green dot read as
+                    // "change orders are done" on a job where the GC said no to all
+                    // of them, which is the opposite of what happened.
+                    `${pathChangeOrders.length} declined`,
           status:
             pathChangeOrders.length === 0
               ? "todo"
               : pendingCoCount > 0
-              ? "active"
-              : approvedCoCount > 0
-              ? "done"
-              : "todo",
+                ? "active"
+                : approvedCoCount > 0
+                  ? "done"
+                  : "todo",
         },
         {
           key: "transactions",
           phase: "In Progress",
           label: "Costs",
           href: tabHref("transactions"),
-          state: costsSoFar > 0 ? `${formatCentsCompact(costsSoFar)} logged` : "None logged",
+          state:
+            costsSoFar > 0
+              ? `${formatCentsCompact(costsSoFar)} logged`
+              : "None logged",
           status: costsSoFar > 0 ? "active" : "todo",
         },
         {
@@ -2097,21 +2485,21 @@ export default async function OpportunityDetailPage({
           state: !pathAiaRoll?.hasAia
             ? "Not used on this job"
             : contractToDate > 0 && pathAiaRoll.billedCents >= contractToDate
-            ? pathAiaRoll.dueNowCents > 0
-              ? `Fully billed · ${formatCentsCompact(pathAiaRoll.dueNowCents)} owed`
-              : pathAiaRoll.retainageHeldCents > 0
-              ? `Fully billed · ${formatCentsCompact(pathAiaRoll.retainageHeldCents)} retainage`
-              : "Fully billed & paid"
-            : `${formatCentsCompact(pathAiaRoll.billedCents)} certified${contractToDate > 0 ? ` of ${formatCentsCompact(contractToDate)}` : ""}`,
+              ? pathAiaRoll.dueNowCents > 0
+                ? `Fully billed · ${formatCentsCompact(pathAiaRoll.dueNowCents)} owed`
+                : pathAiaRoll.retainageHeldCents > 0
+                  ? `Fully billed · ${formatCentsCompact(pathAiaRoll.retainageHeldCents)} retainage`
+                  : "Fully billed & paid"
+              : `${formatCentsCompact(pathAiaRoll.billedCents)} certified${contractToDate > 0 ? ` of ${formatCentsCompact(contractToDate)}` : ""}`,
           // Not "todo": a job that bills by invoice will never raise an
           // application, so counting it as unstarted work nags forever.
           status: !pathAiaRoll?.hasAia
             ? "na"
             : contractToDate > 0 &&
-              pathAiaRoll.billedCents >= contractToDate &&
-              pathAiaRoll.dueNowCents <= 0
-            ? "done"
-            : "active",
+                pathAiaRoll.billedCents >= contractToDate &&
+                pathAiaRoll.dueNowCents <= 0
+              ? "done"
+              : "active",
         },
         {
           // Karan 2026-08-13: "where is the invoicing and stuff." A delivery
@@ -2147,24 +2535,25 @@ export default async function OpportunityDetailPage({
           state:
             pathInvoices.length === 0
               ? pathAiaRoll?.hasAia
-                // Not a gap — this job bills by application, and saying "None
-                // raised" here is what made Stephanie raise a duplicate.
-                ? "Billed through AIA"
+                ? // Not a gap — this job bills by application, and saying "None
+                  // raised" here is what made Stephanie raise a duplicate.
+                  "Billed through AIA"
                 : "None raised"
               : invoiceOnlyOpenCents > 0
-              ? `${formatCentsCompact(invoiceOnlyPaidCents)} of ${formatCentsCompact(invoiceOnlyBilledCents)} · ${formatCentsCompact(invoiceOnlyOpenCents)} out`
-              : contractToDate > 0 && billedSoFar < contractToDate
-              ? `${formatCentsCompact(invoiceOnlyPaidCents)} paid · ${formatCentsCompact(contractToDate - billedSoFar)} to bill`
-              : `${formatCentsCompact(invoiceOnlyPaidCents)} paid in full`,
+                ? `${formatCentsCompact(invoiceOnlyPaidCents)} of ${formatCentsCompact(invoiceOnlyBilledCents)} · ${formatCentsCompact(invoiceOnlyOpenCents)} out`
+                : contractToDate > 0 && billedSoFar < contractToDate
+                  ? `${formatCentsCompact(invoiceOnlyPaidCents)} paid · ${formatCentsCompact(contractToDate - billedSoFar)} to bill`
+                  : `${formatCentsCompact(invoiceOnlyPaidCents)} paid in full`,
           status:
             pathInvoices.length === 0
               ? pathAiaRoll?.hasAia
-                // Billing IS happening, just on the other ledger.
-                ? "na"
+                ? // Billing IS happening, just on the other ledger.
+                  "na"
                 : "todo"
-              : invoiceOnlyOpenCents > 0 || (contractToDate > 0 && billedSoFar < contractToDate)
-              ? "active"
-              : "done",
+              : invoiceOnlyOpenCents > 0 ||
+                  (contractToDate > 0 && billedSoFar < contractToDate)
+                ? "active"
+                : "done",
         },
         {
           key: "closeout",
@@ -2175,14 +2564,14 @@ export default async function OpportunityDetailPage({
             liveCloseout.length === 0
               ? "Not started"
               : liveCloseout.some((c) => c.status === "complete")
-              ? "Complete"
-              : "In progress",
+                ? "Complete"
+                : "In progress",
           status:
             liveCloseout.length === 0
               ? "todo"
               : liveCloseout.some((c) => c.status === "complete")
-              ? "done"
-              : "active",
+                ? "done"
+                : "active",
         },
       ]
     : [];
@@ -2227,9 +2616,11 @@ export default async function OpportunityDetailPage({
       .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
     // Live rows only — a voided submittal is cancelled, not outstanding.
     openSubmittals,
-    pendingChangeOrders: pathChangeOrders.filter((c) => c.status === "pending").length,
+    pendingChangeOrders: pathChangeOrders.filter((c) => c.status === "pending")
+      .length,
     // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
-    crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
+    crewHours:
+      Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
     retainageHeldCents: pathRetainageCents,
     warrantyThroughAt: pathWarrantyThrough,
@@ -2239,7 +2630,8 @@ export default async function OpportunityDetailPage({
   // The Project tab is a command center, not a launcher: what NEEDS attention,
   // the money (a mini P&L), the schedule. All assembled from reads already done
   // above so there is no extra round-trip.
-  const toolHref = (key: string) => deliveryTools.find((t) => t.key === key)?.href ?? "#";
+  const toolHref = (key: string) =>
+    deliveryTools.find((t) => t.key === key)?.href ?? "#";
   const projectMoney: ProjectMoney = {
     hasContract: pathFin?.hasContract ?? false,
     contractCents: pathFin?.contractCents ?? 0,
@@ -2278,11 +2670,17 @@ export default async function OpportunityDetailPage({
   // The single most-overdue issued invoice with a balance still on it.
   const overdueInvoiceForAttention =
     pathInvoices
-      .filter((inv) => deriveInvoiceStatus(inv) === "overdue" && (Number(inv.balance_cents) || 0) > 0)
+      .filter(
+        (inv) =>
+          deriveInvoiceStatus(inv) === "overdue" &&
+          (Number(inv.balance_cents) || 0) > 0,
+      )
       .map((inv) => ({
         number: inv.invoice_number ?? "—",
         balanceCents: Number(inv.balance_cents) || 0,
-        daysLate: etDateOf(inv.due_at) ? -daysFromTodayEt(etDateOf(inv.due_at)!) : 0,
+        daysLate: etDateOf(inv.due_at)
+          ? -daysFromTodayEt(etDateOf(inv.due_at)!)
+          : 0,
       }))
       .sort((a, b) => b.daysLate - a.daysLate)[0] ?? null;
   const projectAttention = pathIsWon
@@ -2314,7 +2712,7 @@ export default async function OpportunityDetailPage({
             schedule: toolHref("work-order"),
           },
         },
-        formatCentsCompact
+        formatCentsCompact,
       )
     : [];
   // The identity line: what am I looking at, and whose is it. A won job leads
@@ -2324,9 +2722,15 @@ export default async function OpportunityDetailPage({
   // twice, which is the duplication Karan flagged on the tools. The project
   // NUMBER stays: it appears nowhere else, and it is the number printed on the
   // paperwork in the field.
-  const stageIdentity = pathIsWon && (pathProject?.project_number ?? opp.project_number)
-    ? [{ label: "Project", value: (pathProject?.project_number ?? opp.project_number)! }]
-    : [];
+  const stageIdentity =
+    pathIsWon && (pathProject?.project_number ?? opp.project_number)
+      ? [
+          {
+            label: "Project",
+            value: (pathProject?.project_number ?? opp.project_number)!,
+          },
+        ]
+      : [];
 
   // ── The bounce to the account page is GONE (Karan 2026-08-12, step 3) ────
   //
@@ -2392,13 +2796,20 @@ export default async function OpportunityDetailPage({
         // The delivery half. Appears at the win — the same moment the job gets
         // its `commercial_projects` row. Before that there is no work to show,
         // and a bid has no submittals, change orders or closeout.
-        ...(isOppWon ? [{ key: "project" as PrimaryTab, label: "Project" }] : []),
+        ...(isOppWon
+          ? [{ key: "project" as PrimaryTab, label: "Project" }]
+          : []),
         // Karan 2026-08-13: "it seems like there's no analytics page." It was a
         // Project sub-tab — two clicks from the KPIs it explains. Promoted.
-        ...(isOppWon ? [{ key: "analytics" as PrimaryTab, label: "Analytics" }] : []),
-        ...(isOppTerminal ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }] : []),
+        ...(isOppWon
+          ? [{ key: "analytics" as PrimaryTab, label: "Analytics" }]
+          : []),
+        ...(isOppTerminal
+          ? [{ key: "debrief" as PrimaryTab, label: "Debrief" }]
+          : []),
       ];
-  const { primary: resolvedPrimary, sub: resolvedSub } = resolveTabParam(rawTab);
+  const { primary: resolvedPrimary, sub: resolvedSub } =
+    resolveTabParam(rawTab);
   // Only allow debrief primary on terminal opps.
   // For deleted deals, allow the invoices tab regardless of Won state.
   // `project` follows the same rule as Invoices: a deal that isn't won has no
@@ -2408,20 +2819,22 @@ export default async function OpportunityDetailPage({
     resolvedPrimary === "debrief" && !isOppTerminal
       ? "overview"
       : resolvedPrimary === "invoices" && !isOppWon && !isDeletedDeal
-      ? "overview"
-      : resolvedPrimary === "analytics" && !isOppWon
-      ? "overview"
-      : resolvedPrimary === "project" && !isOppWon
-      ? "overview"
-      // A soft-deleted deal renders exactly two tabs, Overview and Invoices,
-      // so that a last payment can be recorded or a straggler invoice voided.
-      // `?tab=invoices` resolves to primary=project, and bouncing ALL project
-      // traffic to Overview therefore made the one tab the deleted-deal view
-      // exists for unreachable. Invoices is allowed through; every other
-      // delivery tool still is not.
-      : resolvedPrimary === "project" && isDeletedDeal && resolvedSub !== "invoices"
-      ? "overview"
-      : resolvedPrimary;
+        ? "overview"
+        : resolvedPrimary === "analytics" && !isOppWon
+          ? "overview"
+          : resolvedPrimary === "project" && !isOppWon
+            ? "overview"
+            : // A soft-deleted deal renders exactly two tabs, Overview and Invoices,
+              // so that a last payment can be recorded or a straggler invoice voided.
+              // `?tab=invoices` resolves to primary=project, and bouncing ALL project
+              // traffic to Overview therefore made the one tab the deleted-deal view
+              // exists for unreachable. Invoices is allowed through; every other
+              // delivery tool still is not.
+              resolvedPrimary === "project" &&
+                isDeletedDeal &&
+                resolvedSub !== "invoices"
+              ? "overview"
+              : resolvedPrimary;
   const rawSub = pickFirst(sp.sub) as SubTab | undefined;
   // debrief, invoices and proposals are leaves (no sub-tabs). Only
   // overview / docs / activity / project carry them.
@@ -2429,11 +2842,12 @@ export default async function OpportunityDetailPage({
     p === "overview" || p === "docs" || p === "activity" || p === "project";
   const sub: SubTab | null = !isGroup(primary)
     ? null
-    : (rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub))
-    ? rawSub
-    : resolvedSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
-    ? resolvedSub
-    : DEFAULT_SUB_BY_PRIMARY[primary];
+    : rawSub && SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === rawSub)
+      ? rawSub
+      : resolvedSub &&
+          SUB_TABS_BY_PRIMARY[primary].some((s) => s.key === resolvedSub)
+        ? resolvedSub
+        : DEFAULT_SUB_BY_PRIMARY[primary];
   // Where a tool's back arrow returns. The delivery strip on
   // overview/docs/activity stamps `?from=<tab>` on every tool link, so leaving
   // the tool lands back on the surface you opened it from rather than always
@@ -2445,18 +2859,19 @@ export default async function OpportunityDetailPage({
   // `?tab=team&error=...` etc. The `tab` variable below stays a flat
   // SubTab | "debrief" so all the existing tab === "team" checks below
   // continue to work — we just derive it from the resolved primary+sub.
-  const tab: SubTab | "debrief" | "invoices" | "proposals" | "analytics" | "standing" =
+  const tab:
+    SubTab | "debrief" | "invoices" | "proposals" | "analytics" | "standing" =
     primary === "debrief"
       ? "debrief"
       : primary === "analytics"
-      ? "analytics"
-      : primary === "invoices"
-      ? "invoices"
-      : primary === "proposals"
-      ? "proposals"
-      : primary === "standing"
-      ? "standing"
-      : sub!;
+        ? "analytics"
+        : primary === "invoices"
+          ? "invoices"
+          : primary === "proposals"
+            ? "proposals"
+            : primary === "standing"
+              ? "standing"
+              : sub!;
 
   // A delivery tool is open — the page becomes that tool, with a back arrow.
   // `work-order` is the DEFAULT sub for `project`, so arriving at `?tab=project`
@@ -2474,22 +2889,64 @@ export default async function OpportunityDetailPage({
   const activityFeed = buildActivityFeed(
     tab === "info" && !isDeletedDeal ? await loadActivityEntries(opp.id) : [],
     etTodayIso(),
-    { at: opp.follow_up_at, notes: opp.follow_up_notes }
+    { at: opp.follow_up_at, notes: opp.follow_up_notes },
   );
+
+  /**
+   * Crew on this job — booked, worked, paid.
+   *
+   * Karan 2026-09-17: "we should have like Labor, and we can see if anyone's
+   * scheduled, when they're scheduled for, total labor costs."
+   *
+   * All three already existed and none of them reached the deal: scheduling
+   * lives in Field Ops keyed on `commercial_jobs.id`, hours on approved time
+   * entries, and money on labor purchases — and a deal knew its jobs but never
+   * asked them anything. A job with a crew booked for Tuesday said "Nothing has
+   * happened on this job yet".
+   *
+   * All three in ONE Promise.all, and only for the tab that renders them — this
+   * page is already the slowest in the platform and three more sequential round
+   * trips on every load is exactly how it got that way.
+   */
+  const [oppCrewSchedule, oppCrewDetail, oppLaborCosts] =
+    tab === "info"
+      ? await Promise.all([
+          crewScheduleForOpp(opp.id, etTodayIso()),
+          fieldOpsCrewDetailForOpp(opp.id),
+          costBreakdownForProject(opp.id),
+        ])
+      : [null, null, null];
+  const laborPanel = oppCrewSchedule
+    ? {
+        upcomingDays: oppCrewSchedule.upcomingDays,
+        upcomingPeople: oppCrewSchedule.upcomingPeople,
+        next: oppCrewSchedule.next,
+        hours: oppCrewDetail?.totalHours ?? 0,
+        // What was PAID OUT to crews. Never the rate-priced figure and never a
+        // sum of the two — hours and money are two counts of the same work.
+        paidCents: oppLaborCosts?.labor ?? 0,
+      }
+    : undefined;
 
   // Project-home extras — Team & contacts + a project-scoped Activity rail.
   // Loaded ONLY when the Project tab is showing its home, so no other tab pays.
-  const showProjectHome = primary === "project" && !toolView && pathIsWon && !isDeletedDeal;
-  const projectTeam = showProjectHome ? await listOpportunityTeam(opp.id).catch(() => []) : [];
-  const projectContacts = showProjectHome && account ? await listAccountContacts(account.id).catch(() => []) : [];
+  const showProjectHome =
+    primary === "project" && !toolView && pathIsWon && !isDeletedDeal;
+  const projectTeam = showProjectHome
+    ? await listOpportunityTeam(opp.id).catch(() => [])
+    : [];
+  const projectContacts =
+    showProjectHome && account
+      ? await listAccountContacts(account.id).catch(() => [])
+      : [];
   const projectActivityFeed = buildActivityFeed(
     showProjectHome ? await loadActivityEntries(opp.id).catch(() => []) : [],
     etTodayIso(),
-    { at: opp.follow_up_at, notes: opp.follow_up_notes }
+    { at: opp.follow_up_at, notes: opp.follow_up_notes },
   );
   const projectGcContact =
-    projectContacts.find((c) => c.contact.id === opp.primary_contact_id)?.contact ??
-    null;
+    projectContacts.find((c) => c.contact.id === opp.primary_contact_id)
+      ?.contact ?? null;
 
   const editedOk = pickFirst(sp.edited) === "1";
   const clonedOk = pickFirst(sp.cloned) === "1";
@@ -2498,16 +2955,33 @@ export default async function OpportunityDetailPage({
     <div className="space-y-5">
       {isDeletedDeal && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2.5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-amber-700 mt-0.5 flex-shrink-0">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className="text-amber-700 mt-0.5 flex-shrink-0"
+          >
             <path d="M12 9v4M12 17h.01" />
             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
           </svg>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-bold text-amber-900">
-              This opportunity was deleted{opp.deleted_at ? ` on ${fmtEtDate(opp.deleted_at) ?? "an earlier date"}` : ""}
+              This opportunity was deleted
+              {opp.deleted_at
+                ? ` on ${fmtEtDate(opp.deleted_at) ?? "an earlier date"}`
+                : ""}
             </div>
             <div className="text-[12px] text-amber-800 mt-0.5 leading-snug">
-              You&apos;re seeing this drill-in so you can manage the invoices that remain on file. Record payments, void, or delete individual invoices below. The rest of the opportunity&apos;s editing surfaces are locked.
+              You&apos;re seeing this drill-in so you can manage the invoices
+              that remain on file. Record payments, void, or delete individual
+              invoices below. The rest of the opportunity&apos;s editing
+              surfaces are locked.
             </div>
           </div>
         </div>
@@ -2531,15 +3005,16 @@ export default async function OpportunityDetailPage({
           role="status"
           className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800"
         >
-          <span aria-hidden>✓</span> <strong>{pickFirst(sp.saved_field)}</strong> saved.
+          <span aria-hidden>✓</span>{" "}
+          <strong>{pickFirst(sp.saved_field)}</strong> saved.
         </SelfClearingFlash>
       )}
       {clonedOk && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
           <span>
-            Cloned from another opportunity. Edit the title + bid range now, then
-            update the rest as the bid progresses.
+            Cloned from another opportunity. Edit the title + bid range now,
+            then update the rest as the bid progresses.
           </span>
         </div>
       )}
@@ -2567,25 +3042,50 @@ export default async function OpportunityDetailPage({
             href={cameFrom.path}
             className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] -ml-1 px-1"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M19 12H5 M12 19l-7-7 7-7" />
             </svg>
             Back to {cameFrom.label}
           </Link>
         )}
-        <nav aria-label="Breadcrumb" className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1">
+        <nav
+          aria-label="Breadcrumb"
+          className="text-[12.5px] font-medium text-ppp-charcoal-500 flex items-center gap-1 flex-wrap min-h-[32px] -ml-1 px-1"
+        >
           <Link
             href="/commercial/opportunities"
             className="inline-flex items-center gap-1 text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px] px-1 touch-manipulation"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z" />
             </svg>
             Pipeline
           </Link>
           {account && (
             <>
-              <span aria-hidden className="text-ppp-charcoal-300">/</span>
+              <span aria-hidden className="text-ppp-charcoal-300">
+                /
+              </span>
               <Link
                 // L8: the account's own landing, matching the invoice-detail
                 // breadcrumb. The two disagreed — one dropped you on the
@@ -2600,7 +3100,9 @@ export default async function OpportunityDetailPage({
               </Link>
             </>
           )}
-          <span aria-hidden className="text-ppp-charcoal-300">/</span>
+          <span aria-hidden className="text-ppp-charcoal-300">
+            /
+          </span>
           <span
             className="inline-flex items-center min-h-[32px] px-1 text-ppp-charcoal-700 truncate max-w-[300px]"
             title={jobDisplayName(opp, account?.company_name ?? null)}
@@ -2684,7 +3186,9 @@ export default async function OpportunityDetailPage({
                 // and the bar sat on "Pending Approval" forever after Brendan
                 // signed off. Nothing failed: a defaulted prop nobody passes is
                 // invisible to the compiler and to every test.
-                proposalApproved={dealProposals.some((p) => p.status === "approved")}
+                proposalApproved={dealProposals.some(
+                  (p) => p.status === "approved",
+                )}
                 // Billing started (invoice or AIA) → the Billing delivery stage
                 // shows amber even if the deal is still officially earlier, so the
                 // top bar agrees with the Project spine (Karan 2026-08-15).
@@ -2699,7 +3203,17 @@ export default async function OpportunityDetailPage({
                 title="Everything about this job on one page — money, costs, labor, change orders, paperwork. Printable."
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
                   <path d="M9 3h6a1 1 0 0 1 1 1v2H8V4a1 1 0 0 1 1-1z" />
                   <path d="M8 6H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2" />
                   <path d="M9 12h6 M9 16h4" />
@@ -2711,7 +3225,17 @@ export default async function OpportunityDetailPage({
               href={`/commercial/opportunities/${opp.id}/edit`}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M12 20h9 M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
               </svg>
               Edit
@@ -2722,7 +3246,17 @@ export default async function OpportunityDetailPage({
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal text-[12px] font-semibold hover:bg-ppp-charcoal-50 hover:border-ppp-charcoal-300 min-h-[44px] touch-manipulation"
                 title="Re-bidding the same site? Clone the opp so you don't retype the scope + bid range."
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
                   <rect x="9" y="9" width="13" height="13" rx="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
@@ -2739,7 +3273,17 @@ export default async function OpportunityDetailPage({
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
                 title={`Open ${account.company_name}'s invoicing surface with a fresh draft ready for this opportunity.`}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
                   <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </svg>
                 Bill this opportunity
@@ -2763,7 +3307,17 @@ export default async function OpportunityDetailPage({
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-cc-brand-200 bg-surface text-cc-brand-700 text-[12px] font-semibold hover:bg-cc-brand-50 hover:border-cc-brand-300 min-h-[44px] touch-manipulation"
                   title="GC back in play? Reopen puts this opportunity back into the active pipeline."
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
                     <path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.8 2.8L3 8" />
                     <path d="M3 3v5h5" />
                   </svg>
@@ -2792,7 +3346,11 @@ export default async function OpportunityDetailPage({
           A bid never shows retainage; a finished job never shows a proposal
           due date. */}
       {!isDeletedDeal && (
-        <StageKpiStrip basePath={`/commercial/opportunities/${opp.id}`} kpis={stageKpiList} identity={stageIdentity} />
+        <StageKpiStrip
+          basePath={`/commercial/opportunities/${opp.id}`}
+          kpis={stageKpiList}
+          identity={stageIdentity}
+        />
       )}
 
       {/* AUDIT 2026-08-13: three redirects landed here carrying params the page
@@ -2802,18 +3360,29 @@ export default async function OpportunityDetailPage({
           simply gone. Page-level rather than inside a tab, because these
           arrive on whichever tab the action chose. */}
       {pickFirst(sp.debrief_warn) && (
-        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-          <strong className="font-semibold">The status moved, but the debrief didn&rsquo;t save.</strong>{" "}
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900"
+        >
+          <strong className="font-semibold">
+            The status moved, but the debrief didn&rsquo;t save.
+          </strong>{" "}
           {pickFirst(sp.debrief_warn)}
         </div>
       )}
       {pickFirst(sp.deal_created) === "1" && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800"
+        >
           Opportunity created. Everything for this job lives here.
         </div>
       )}
       {pickFirst(sp.unarchived) === "1" && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800"
+        >
           Restored from the archive.
         </div>
       )}
@@ -2836,7 +3405,11 @@ export default async function OpportunityDetailPage({
           to avoid listing the same seven tools twice. Both step aside once a
           tool is open. */}
       {!isDeletedDeal && !toolView && primary !== "project" && (
-        <DeliveryToolsStrip tools={deliveryTools} stageMeaning={stageMeaningFor(opp.status, opp.sub_status)} fromTab={primary} />
+        <DeliveryToolsStrip
+          tools={deliveryTools}
+          stageMeaning={stageMeaningFor(opp.status, opp.sub_status)}
+          fromTab={primary}
+        />
       )}
       {/* The Project HOME (delivery tool cards) renders in the Project tab BODY
           below the tab bar, not here above it — see further down. */}
@@ -2866,20 +3439,42 @@ export default async function OpportunityDetailPage({
               pointing where she came from; stacking a second one above it is
               the chrome this view exists to remove. */}
           <Link
-            href={cameFrom ? cameFrom.path : `/commercial/opportunities/${opp.id}?tab=${backTab}`}
-            aria-label={cameFrom ? `Back to ${cameFrom.label}` : backTab === "project" ? "Back to the project tools" : "Back"}
+            href={
+              cameFrom
+                ? cameFrom.path
+                : `/commercial/opportunities/${opp.id}?tab=${backTab}`
+            }
+            aria-label={
+              cameFrom
+                ? `Back to ${cameFrom.label}`
+                : backTab === "project"
+                  ? "Back to the project tools"
+                  : "Back"
+            }
             className={`inline-flex items-center justify-center h-11 -ml-2 rounded-lg shrink-0 ${
               cameFrom
                 ? "gap-1.5 px-2.5 text-[12.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 hover:bg-cc-brand-50"
                 : "w-11 text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50"
             }`}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
             {/* Named, not just an arrow: the person who got here from Accounting
                 needs to see it says Purchases before she trusts it. */}
-            {cameFrom ? <span className="whitespace-nowrap">{cameFrom.label}</span> : null}
+            {cameFrom ? (
+              <span className="whitespace-nowrap">{cameFrom.label}</span>
+            ) : null}
           </Link>
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-ppp-charcoal leading-tight truncate">
@@ -2897,81 +3492,85 @@ export default async function OpportunityDetailPage({
           </div>
         </div>
       ) : (
-      <>
-      {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
+        <>
+          {/* Primary tab bar — 3 groups + conditional Debrief. Cleaner than
           the previous 9-tab row; each group has its own sub-nav below
           for the underlying surfaces so nothing's lost — just quieter.
           Karan 2026-07-05: "too cluttered, 100 percent needed." */}
-      <nav className="relative border-b border-ppp-charcoal-100">
-        <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {visibleTabs.map((t) => {
-            const active = t.key === primary;
-            const needsAttention = t.key === "debrief" && !opp.win_loss_debriefed_at;
-            return (
-              <li key={t.key}>
-                <Link
-                  href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
-                  aria-current={active ? "page" : undefined}
-                  // Stable hook for the walkthrough on /commercial/guide, keyed
-                  // on the tab rather than its label.
-                  data-tour={`job:tab:${t.key}`}
-                  className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
-                    active
-                      ? "border-cc-brand-600 text-ppp-charcoal"
-                      : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
-                  }`}
-                >
-                  {t.label}
-                  {needsAttention && (
-                    // Karan 2026-07-07: bumped from w-1.5 dot to a small
-                    // amber ring badge so it's visible without a banner
-                    // shouting at the user. The tab label + dot combo
-                    // now carries all the "debrief pending" signal.
-                    <span
-                      className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-100"
-                      aria-label="Debrief pending"
-                      title="This opportunity closed without a debrief — click to add one."
-                    />
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden" aria-hidden />
-      </nav>
+          <nav className="relative border-b border-ppp-charcoal-100">
+            <ul className="flex gap-1 sm:gap-2 -mb-px overflow-x-auto scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {visibleTabs.map((t) => {
+                const active = t.key === primary;
+                const needsAttention =
+                  t.key === "debrief" && !opp.win_loss_debriefed_at;
+                return (
+                  <li key={t.key}>
+                    <Link
+                      href={`/commercial/opportunities/${opp.id}?tab=${t.key}`}
+                      aria-current={active ? "page" : undefined}
+                      // Stable hook for the walkthrough on /commercial/guide, keyed
+                      // on the tab rather than its label.
+                      data-tour={`job:tab:${t.key}`}
+                      className={`inline-flex items-center gap-1.5 px-4 sm:px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors touch-manipulation whitespace-nowrap min-h-[44px] ${
+                        active
+                          ? "border-cc-brand-600 text-ppp-charcoal"
+                          : "border-transparent text-ppp-charcoal-500 hover:text-ppp-charcoal hover:border-ppp-charcoal-100"
+                      }`}
+                    >
+                      {t.label}
+                      {needsAttention && (
+                        // Karan 2026-07-07: bumped from w-1.5 dot to a small
+                        // amber ring badge so it's visible without a banner
+                        // shouting at the user. The tab label + dot combo
+                        // now carries all the "debrief pending" signal.
+                        <span
+                          className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-amber-500 ring-2 ring-amber-100"
+                          aria-label="Debrief pending"
+                          title="This opportunity closed without a debrief — click to add one."
+                        />
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <div
+              className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-surface to-transparent sm:hidden"
+              aria-hidden
+            />
+          </nav>
 
-      {/* Sub-tab pill row — only renders when the primary has sub-tabs
+          {/* Sub-tab pill row — only renders when the primary has sub-tabs
           (Overview/Documents/Activity/Project). Debrief, Invoices and
           Proposals are leaves with no sub-nav. Pills are red-tinted when
           active so the two-level hierarchy is visually obvious. */}
-      {/* Sub-tab pills for Overview/Documents/Activity. NOT on `project`: the
+          {/* Sub-tab pills for Overview/Documents/Activity. NOT on `project`: the
           delivery TOOL STRIP (page-level, above the tabs, on every non-project
           tab) is how you open a delivery tool, and the Project tab itself is the
           command center (spine + needs-attention + money + schedule). Karan
           2026-08-15: "I don't want [the pills] there." */}
-      {isGroup(primary) && primary !== "project" && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {SUB_TABS_BY_PRIMARY[primary].map((s) => {
-            const active = s.key === sub;
-            return (
-              <Link
-                key={s.key}
-                href={`/commercial/opportunities/${opp.id}?tab=${primary}&sub=${s.key}`}
-                aria-current={active ? "page" : undefined}
-                className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[44px] ${
-                  active
-                    ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
-                    : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
-                }`}
-              >
-                {s.label}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-      </>
+          {isGroup(primary) && primary !== "project" && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {SUB_TABS_BY_PRIMARY[primary].map((s) => {
+                const active = s.key === sub;
+                return (
+                  <Link
+                    key={s.key}
+                    href={`/commercial/opportunities/${opp.id}?tab=${primary}&sub=${s.key}`}
+                    aria-current={active ? "page" : undefined}
+                    className={`inline-flex items-center px-3 py-1.5 rounded-full text-[13px] font-semibold transition-colors touch-manipulation min-h-[44px] ${
+                      active
+                        ? "bg-cc-brand-50 text-cc-brand-700 border border-cc-brand-200"
+                        : "bg-ppp-charcoal-50 text-ppp-charcoal-600 border border-transparent hover:bg-ppp-charcoal-100"
+                    }`}
+                  >
+                    {s.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* Project HOME — rendered as the tab BODY (below the tab bar), so
@@ -2996,7 +3595,8 @@ export default async function OpportunityDetailPage({
             members={projectTeam.map((p) => ({
               name: p.user_full_name ?? p.user_email,
               roleLabel: opportunityAssignmentRoleLabel(
-                (p.assignments.find((x) => x.is_primary) ?? p.assignments[0])?.role ?? "sales_rep"
+                (p.assignments.find((x) => x.is_primary) ?? p.assignments[0])
+                  ?.role ?? "sales_rep",
               ),
             }))}
             estimatorName={opp.estimator_name ?? null}
@@ -3011,7 +3611,12 @@ export default async function OpportunityDetailPage({
                 : null
             }
           />
-          <ActivityRail feed={projectActivityFeed} todayIso={etTodayIso()} oppId={opp.id} standing={dealStanding} />
+          <ActivityRail
+            feed={projectActivityFeed}
+            todayIso={etTodayIso()}
+            oppId={opp.id}
+            standing={dealStanding}
+          />
         </div>
       )}
 
@@ -3023,27 +3628,37 @@ export default async function OpportunityDetailPage({
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem] gap-4 items-start">
           <div className="min-w-0">
             <InfoTab
-          opp={opp}
-          account={account}
-          errorMessage={pickFirst(sp.error)}
-          statusOk={pickFirst(sp.status_ok) === "1"}
-          teamApplied={pickFirst(sp.team_applied)}
-          preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
-          preselectSub={pickFirst(sp.to_sub)}
-          focusStatus={pickFirst(sp.focus) === "status"}
-          confirmDelete={pickFirst(sp.confirm_delete) === "1"}
-          invoicesCreated={
-            pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
-          }
-          invoiceErrors={
-            pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
-          }
+              opp={opp}
+              account={account}
+              errorMessage={pickFirst(sp.error)}
+              statusOk={pickFirst(sp.status_ok) === "1"}
+              teamApplied={pickFirst(sp.team_applied)}
+              preselectTo={pickFirst(sp.to) as OpportunityStatus | undefined}
+              preselectSub={pickFirst(sp.to_sub)}
+              focusStatus={pickFirst(sp.focus) === "status"}
+              confirmDelete={pickFirst(sp.confirm_delete) === "1"}
+              invoicesCreated={
+                pickFirst(sp.invoices_created)
+                  ? Number(pickFirst(sp.invoices_created))
+                  : 0
+              }
+              invoiceErrors={
+                pickFirst(sp.invoice_errors)
+                  ? Number(pickFirst(sp.invoice_errors))
+                  : 0
+              }
               editField={pickFirst(sp.ef) ?? null}
               editError={pickFirst(sp.ef_error) ?? null}
             />
           </div>
           {!isDeletedDeal && (
-            <ActivityRail feed={activityFeed} todayIso={etTodayIso()} oppId={opp.id} standing={dealStanding} />
+            <ActivityRail
+              feed={activityFeed}
+              todayIso={etTodayIso()}
+              oppId={opp.id}
+              standing={dealStanding}
+              labor={laborPanel}
+            />
           )}
         </div>
       )}
@@ -3096,14 +3711,20 @@ export default async function OpportunityDetailPage({
           propertyZip={opp.property_zip}
           bidMidpointCents={
             opp.bid_value_low_cents != null && opp.bid_value_high_cents != null
-              ? Math.round((opp.bid_value_low_cents + opp.bid_value_high_cents) / 2)
+              ? Math.round(
+                  (opp.bid_value_low_cents + opp.bid_value_high_cents) / 2,
+                )
               : null
           }
           invoicesCreated={
-            pickFirst(sp.invoices_created) ? Number(pickFirst(sp.invoices_created)) : 0
+            pickFirst(sp.invoices_created)
+              ? Number(pickFirst(sp.invoices_created))
+              : 0
           }
           invoiceErrors={
-            pickFirst(sp.invoice_errors) ? Number(pickFirst(sp.invoice_errors)) : 0
+            pickFirst(sp.invoice_errors)
+              ? Number(pickFirst(sp.invoice_errors))
+              : 0
           }
           paidOk={pickFirst(sp.paid_ok) === "1"}
           paidInvoiceId={pickFirst(sp.paid_invoice) ?? null}
@@ -3115,11 +3736,23 @@ export default async function OpportunityDetailPage({
           detailsSavedInvoiceId={pickFirst(sp.details_saved) ?? null}
         />
       )}
-      {tab === "team" && <TeamTab oppId={opp.id} errorMessage={pickFirst(sp.error)} assignedOk={pickFirst(sp.assigned) === "1"} />}
-      {tab === "tasks" && <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
-      {tab === "notes" && <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "team" && (
+        <TeamTab
+          oppId={opp.id}
+          errorMessage={pickFirst(sp.error)}
+          assignedOk={pickFirst(sp.assigned) === "1"}
+        />
+      )}
+      {tab === "tasks" && (
+        <TasksTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
+      )}
+      {tab === "notes" && (
+        <NotesTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
+      )}
       {tab === "emails" && <EmailArchiveTab kind="opp" sourceId={opp.id} />}
-      {tab === "plans" && <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />}
+      {tab === "plans" && (
+        <PlansTab oppId={opp.id} errorMessage={pickFirst(sp.error)} />
+      )}
       {tab === "finishes" && (
         <FinishesTab
           oppId={opp.id}
@@ -3177,22 +3810,52 @@ export default async function OpportunityDetailPage({
       {isOppWon && !isDeletedDeal && toolView && (
         <>
           {tab === "work-order" && (
-            <WorkOrderTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <WorkOrderTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
           {tab === "submittals" && (
-            <SubmittalsTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <SubmittalsTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
           {tab === "change-orders" && (
-            <ChangeOrdersTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <ChangeOrdersTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
           {tab === "aia" && (
-            <AiaTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <AiaTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
           {tab === "transactions" && (
-            <ProjectCostsTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <ProjectCostsTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
           {tab === "closeout" && (
-            <CloseoutTool id={opp.account_id} dealId={opp.id} sp={sp} variant="inline" />
+            <CloseoutTool
+              id={opp.account_id}
+              dealId={opp.id}
+              sp={sp}
+              variant="inline"
+            />
           )}
         </>
       )}
@@ -3239,7 +3902,14 @@ async function OpportunityInvoicesPanel({
   editInvoiceId?: string | null;
   detailsSavedInvoiceId?: string | null;
 }) {
-  const [invoices, taxJurisdictions, contractBaseCents, netCoCents, aiaApps, aiaRoll] = await Promise.all([
+  const [
+    invoices,
+    taxJurisdictions,
+    contractBaseCents,
+    netCoCents,
+    aiaApps,
+    aiaRoll,
+  ] = await Promise.all([
     listCommercialInvoices({ opportunityId: oppId }),
     listTaxJurisdictions({ activeOnly: true }),
     // 2026-07-29 re-audit fix: "% of contract" must use the SAME contract-to-
@@ -3257,7 +3927,9 @@ async function OpportunityInvoicesPanel({
     // already billed six figures. That prompt is what made her raise a second,
     // duplicate invoice.
     listAiaApplications(oppId).catch(() => []),
-    aiaBillingRollupBulk([oppId]).then((m) => m.get(oppId) ?? null).catch(() => null),
+    aiaBillingRollupBulk([oppId])
+      .then((m) => m.get(oppId) ?? null)
+      .catch(() => null),
   ]);
   const contractToDateCents = contractBaseCents + netCoCents;
   // Issued applications only — a draft application is not a bill, exactly as a
@@ -3271,7 +3943,11 @@ async function OpportunityInvoicesPanel({
   // draft invoices whose tax is still blank (never auto-overrides a set rate).
   const taxHit = resolveTaxForZip(propertyZip, taxJurisdictions);
   const taxSuggestion = taxHit
-    ? { pct: thouToPct(taxHit.rateThou), name: taxHit.jurisdiction.name, verified: taxHit.jurisdiction.verified }
+    ? {
+        pct: thouToPct(taxHit.rateThou),
+        name: taxHit.jurisdiction.name,
+        verified: taxHit.jurisdiction.verified,
+      }
     : null;
   // Roll-ups (Karan 2026-07-07 bug fix): earlier version excluded drafts
   // from the totals, so a $9K sent + $1.2K draft + $200 draft opp showed
@@ -3291,14 +3967,21 @@ async function OpportunityInvoicesPanel({
   // Pre-tax billed for CONTRACT math (% of contract). Contract figures carry no
   // tax, so comparing the tax-inclusive invoiced total against them overstates
   // "% of contract billed" on any taxed invoice. AR figures below stay with-tax.
-  const issuedSubtotalCents = issued.reduce((acc, i) => acc + i.subtotal_cents, 0);
+  const issuedSubtotalCents = issued.reduce(
+    (acc, i) => acc + i.subtotal_cents,
+    0,
+  );
   const totalPaidCents = issued.reduce((acc, i) => acc + i.paid_cents, 0);
   // Per-invoice clamped, issued-only — one "Outstanding" definition everywhere
   // (a credit on one invoice can't net away another's balance). credit shown apart.
-  const { openBalance: totalBalanceCents, credit: totalCreditCents } = splitOpenBalance(issued.map((i) => i.balance_cents));
+  const { openBalance: totalBalanceCents, credit: totalCreditCents } =
+    splitOpenBalance(issued.map((i) => i.balance_cents));
   const draftInvoices = invoices.filter((i) => i.status === "draft");
   const draftCount = draftInvoices.length;
-  const draftTotalCents = draftInvoices.reduce((acc, i) => acc + i.total_cents, 0);
+  const draftTotalCents = draftInvoices.reduce(
+    (acc, i) => acc + i.total_cents,
+    0,
+  );
   const anyOverdue = invoices.some((i) => deriveInvoiceStatus(i) === "overdue");
   // Master progress bar tone follows the same rule the individual rows do:
   // fully paid → emerald, some paid → blue, any overdue → rose, otherwise
@@ -3312,17 +3995,18 @@ async function OpportunityInvoicesPanel({
     totalInvoicedCents === 0
       ? "bg-ppp-charcoal-200"
       : totalPaidCents >= totalInvoicedCents
-      ? "bg-emerald-500"
-      : anyOverdue
-      ? "bg-rose-500"
-      : totalPaidCents > 0
-      ? "bg-ppp-blue-500"
-      : "bg-ppp-charcoal-300";
+        ? "bg-emerald-500"
+        : anyOverdue
+          ? "bg-rose-500"
+          : totalPaidCents > 0
+            ? "bg-ppp-blue-500"
+            : "bg-ppp-charcoal-300";
   // % of contract billed — how much of the CONTRACT TO DATE (original/SOV +
   // approved change orders, via the shared ladder) have we actually invoiced?
   // Above 100% = billed beyond the contract. Falls back to the bid midpoint
   // only when there's no contract figure yet. Null when neither exists.
-  const contractDenomCents = contractToDateCents > 0 ? contractToDateCents : bidMidpointCents ?? 0;
+  const contractDenomCents =
+    contractToDateCents > 0 ? contractToDateCents : (bidMidpointCents ?? 0);
   const pctBilled =
     contractDenomCents > 0
       ? Math.round((issuedSubtotalCents / contractDenomCents) * 100)
@@ -3330,15 +4014,22 @@ async function OpportunityInvoicesPanel({
   return (
     <div className="space-y-3">
       {invoicesCreated && invoicesCreated > 0 ? (
-        <div className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
-          invoiceErrors && invoiceErrors > 0
-            ? "bg-amber-50 border border-amber-200 text-amber-900"
-            : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700"
-        }`}>
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+            invoiceErrors && invoiceErrors > 0
+              ? "bg-amber-50 border border-amber-200 text-amber-900"
+              : "bg-cc-brand-50 border border-cc-brand-200 text-cc-brand-700"
+          }`}
+        >
           <span>
-            <strong>{invoicesCreated}</strong> invoice{invoicesCreated === 1 ? "" : "s"} created.
+            <strong>{invoicesCreated}</strong> invoice
+            {invoicesCreated === 1 ? "" : "s"} created.
             {invoiceErrors && invoiceErrors > 0 && (
-              <> {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due to input errors.</>
+              <>
+                {" "}
+                {invoiceErrors} row{invoiceErrors === 1 ? "" : "s"} skipped due
+                to input errors.
+              </>
             )}
           </span>
           <Link
@@ -3360,7 +4051,11 @@ async function OpportunityInvoicesPanel({
           <span>
             Payment recorded.
             {paidCapped && (
-              <> Amount was capped to the remaining balance — invoice is fully paid.</>
+              <>
+                {" "}
+                Amount was capped to the remaining balance — invoice is fully
+                paid.
+              </>
             )}
             {paidHeadsUp && <> {paidHeadsUp}</>}
           </span>
@@ -3383,317 +4078,598 @@ async function OpportunityInvoicesPanel({
           </Link>
         </div>
       ) : null}
-    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}>
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
-          </span>
-          <div>
-            <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">Invoices</h2>
-            <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
-              Progress billing — bill this opportunity in as many installments as you need.
-            </p>
+      <section
+        className={`bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 ${className ?? ""}`}
+      >
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-cc-brand-100 text-cc-brand-700"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-ppp-charcoal leading-tight">
+                Invoices
+              </h2>
+              <p className="text-[11px] text-ppp-charcoal-500 leading-snug">
+                Progress billing — bill this opportunity in as many installments
+                as you need.
+              </p>
+            </div>
           </div>
+          {!isDealDeleted && (
+            <Link
+              href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M12 5v14 M5 12h14" />
+              </svg>
+              New invoice
+            </Link>
+          )}
         </div>
-        {!isDealDeleted && (
-          <Link
-            href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 5v14 M5 12h14" />
-            </svg>
-            New invoice
-          </Link>
-        )}
-      </div>
 
-      {/* ── AIA billing, shown right here ────────────────────────────────
+        {/* ── AIA billing, shown right here ────────────────────────────────
           An AIA job bills through payment applications, not invoices. They
           live on their own ledger, so this tab used to look empty on a job
           that had already billed six figures — and told her to raise an
           invoice, which is how a duplicate gets created. Read-only rows: the
           application IS the bill, and it's edited on the AIA tool. ── */}
-      {hasAiaBilling && (
-        <div className="mb-4">
-          <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
-            <h3 className="text-[12px] font-bold text-ppp-charcoal">Billed through AIA</h3>
-            <Link
-              href={`/commercial/opportunities/${oppId}?tab=aia`}
-              className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[32px] inline-flex items-center"
-            >
-              Open AIA billing →
-            </Link>
-          </div>
-          <p className="text-[11.5px] text-ppp-charcoal-500 mb-2 leading-snug">
-            This job bills by payment application. You don&rsquo;t need to raise an
-            invoice on top &mdash; these <em>are</em> the bills.
-          </p>
-          <ul className="space-y-1.5">
-            {issuedAiaApps.map((a) => (
-              <li key={a.id}>
-                <Link
-                  href={`/commercial/opportunities/${oppId}?tab=aia&app=${a.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
-                >
-                  <span className="min-w-0">
-                    <span className="text-[13px] font-semibold text-ppp-charcoal">
-                      Application No. {a.application_number}
+        {hasAiaBilling && (
+          <div className="mb-4">
+            <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2">
+              <h3 className="text-[12px] font-bold text-ppp-charcoal">
+                Billed through AIA
+              </h3>
+              <Link
+                href={`/commercial/opportunities/${oppId}?tab=aia`}
+                className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[32px] inline-flex items-center"
+              >
+                Open AIA billing →
+              </Link>
+            </div>
+            <p className="text-[11.5px] text-ppp-charcoal-500 mb-2 leading-snug">
+              This job bills by payment application. You don&rsquo;t need to
+              raise an invoice on top &mdash; these <em>are</em> the bills.
+            </p>
+            <ul className="space-y-1.5">
+              {issuedAiaApps.map((a) => (
+                <li key={a.id}>
+                  <Link
+                    href={`/commercial/opportunities/${oppId}?tab=aia&app=${a.id}`}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-ppp-charcoal-100 px-3.5 py-2.5 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 transition-colors min-h-[44px]"
+                  >
+                    <span className="min-w-0">
+                      <span className="text-[13px] font-semibold text-ppp-charcoal">
+                        Application No. {a.application_number}
+                      </span>
+                      <span className="block text-[11px] text-ppp-charcoal-500">
+                        {a.period_to
+                          ? `Period to ${fmtEtDate(a.period_to)}`
+                          : "No period set"}
+                      </span>
                     </span>
-                    <span className="block text-[11px] text-ppp-charcoal-500">
-                      {a.period_to ? `Period to ${fmtEtDate(a.period_to)}` : "No period set"}
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${
+                        a.status === "paid"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
+                      }`}
+                    >
+                      {a.status === "paid" ? "Paid" : "Submitted"}
                     </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {aiaRoll && (
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[11.5px]">
+                <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                  <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                    Billed
+                  </span>
+                  <span className="tabular-nums font-semibold text-ppp-charcoal">
+                    {formatCentsCompact(aiaRoll.billedCents)}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                  <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                    Owed now
                   </span>
                   <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold shrink-0 ${
-                      a.status === "paid"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-ppp-blue-50 text-ppp-blue-700 border-ppp-blue-200"
-                    }`}
+                    className={`tabular-nums font-semibold ${aiaRoll.dueNowCents > 0 ? "text-rose-700" : "text-ppp-charcoal"}`}
                   >
-                    {a.status === "paid" ? "Paid" : "Submitted"}
+                    {formatCentsCompact(aiaRoll.dueNowCents)}
                   </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          {aiaRoll && (
-            <div className="mt-2 grid grid-cols-3 gap-2 text-[11.5px]">
-              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
-                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Billed</span>
-                <span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsCompact(aiaRoll.billedCents)}</span>
+                </div>
+                <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
+                  <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
+                    Retainage
+                  </span>
+                  <span className="tabular-nums font-semibold text-ppp-charcoal">
+                    {formatCentsCompact(aiaRoll.retainageHeldCents)}
+                  </span>
+                </div>
               </div>
-              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
-                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Owed now</span>
-                <span className={`tabular-nums font-semibold ${aiaRoll.dueNowCents > 0 ? "text-rose-700" : "text-ppp-charcoal"}`}>{formatCentsCompact(aiaRoll.dueNowCents)}</span>
-              </div>
-              <div className="rounded-lg bg-ppp-charcoal-50 px-2.5 py-1.5">
-                <span className="block text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500">Retainage</span>
-                <span className="tabular-nums font-semibold text-ppp-charcoal">{formatCentsCompact(aiaRoll.retainageHeldCents)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {invoices.length === 0 ? (
-        <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
-          <div className="text-[13px] font-semibold text-ppp-charcoal">
-            {hasAiaBilling ? "No separate invoices" : "No invoices yet"}
+            )}
           </div>
-          <p className="mt-1 text-[12px] text-ppp-charcoal-500">
-            {isDealDeleted
-              ? "This deleted opportunity has no invoices on file. Nothing to manage here."
-              : hasAiaBilling
-              ? "This job bills through AIA above, so it doesn't need one. Only raise an invoice here for something outside the AIA schedule."
-              : "Bill this job in as many installments as you need — each invoice shows the whole contract position, so the GC always sees where things stand."}
-          </p>
-          {/* THE DECISION MOMENT. A freshly-won job shows an empty Invoices tab
+        )}
+
+        {invoices.length === 0 ? (
+          <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
+            <div className="text-[13px] font-semibold text-ppp-charcoal">
+              {hasAiaBilling ? "No separate invoices" : "No invoices yet"}
+            </div>
+            <p className="mt-1 text-[12px] text-ppp-charcoal-500">
+              {isDealDeleted
+                ? "This deleted opportunity has no invoices on file. Nothing to manage here."
+                : hasAiaBilling
+                  ? "This job bills through AIA above, so it doesn't need one. Only raise an invoice here for something outside the AIA schedule."
+                  : "Bill this job in as many installments as you need — each invoice shows the whole contract position, so the GC always sees where things stand."}
+            </p>
+            {/* THE DECISION MOMENT. A freshly-won job shows an empty Invoices tab
               AND an empty AIA tab, and neither used to mention the other. So
               you picked one blind — which is how Stephanie ended up entering an
               invoice on top of a completed AIA. Say the choice out loud, once,
               at the only point where it matters. */}
-          {!isDealDeleted && !hasAiaBilling && (
-            <p className="mt-2.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
-              Does this GC require <strong className="text-ppp-charcoal-700">AIA G702/G703</strong>{" "}
-              payment applications instead? Bill it on the{" "}
-              <Link href={`/commercial/opportunities/${oppId}?tab=aia`} className="text-cc-brand-700 font-semibold hover:underline">
-                AIA Billing
-              </Link>{" "}
-              tab and skip invoices entirely — a job uses one or the other, never both.
-            </p>
-          )}
-          {!isDealDeleted && (
-            <Link
-              href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
-              className="inline-flex items-center justify-center gap-1.5 mt-3 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-            >
-              Create the first invoice
-            </Link>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* Roll-up strip — 3 tiles by default, 4 when the opp has a
-              bid range (so % billed vs contract shows). Alex-love feature
-              per audit: at-a-glance "am I under/over billed for this opportunity?" */}
-          <div className={`grid ${pctBilled !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 mb-3`}>
-            <MiniStat label="Invoiced" value={formatCentsCompact(totalInvoicedCents)} tone="neutral" />
-            <MiniStat label="Paid" value={formatCentsCompact(totalPaidCents)} tone="emerald" />
-            <MiniStat
-              label={totalCreditCents > 0 && totalBalanceCents === 0 ? "Credit" : "Balance"}
-              value={formatCentsCompact(totalBalanceCents > 0 ? totalBalanceCents : totalCreditCents)}
-              sub={totalBalanceCents > 0 && totalCreditCents > 0 ? `+${formatCentsCompact(totalCreditCents)} credit` : undefined}
-              tone={totalCreditCents > 0 && totalBalanceCents === 0 ? "emerald" : totalBalanceCents > 0 ? "blue" : "neutral"}
-            />
-            {pctBilled !== null && (
-              <MiniStat
-                label="% of contract"
-                value={`${pctBilled}%`}
-                tone={pctBilled > 100 ? "amber" : "blue"}
-              />
+            {!isDealDeleted && !hasAiaBilling && (
+              <p className="mt-2.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                Does this GC require{" "}
+                <strong className="text-ppp-charcoal-700">AIA G702/G703</strong>{" "}
+                payment applications instead? Bill it on the{" "}
+                <Link
+                  href={`/commercial/opportunities/${oppId}?tab=aia`}
+                  className="text-cc-brand-700 font-semibold hover:underline"
+                >
+                  AIA Billing
+                </Link>{" "}
+                tab and skip invoices entirely — a job uses one or the other,
+                never both.
+              </p>
+            )}
+            {!isDealDeleted && (
+              <Link
+                href={`/commercial/invoices/new?opp=${oppId}&from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
+                className="inline-flex items-center justify-center gap-1.5 mt-3 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+              >
+                Create the first invoice
+              </Link>
             )}
           </div>
+        ) : (
+          <>
+            {/* Roll-up strip — 3 tiles by default, 4 when the opp has a
+              bid range (so % billed vs contract shows). Alex-love feature
+              per audit: at-a-glance "am I under/over billed for this opportunity?" */}
+            <div
+              className={`grid ${pctBilled !== null ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2 mb-3`}
+            >
+              <MiniStat
+                label="Invoiced"
+                value={formatCentsCompact(totalInvoicedCents)}
+                tone="neutral"
+              />
+              <MiniStat
+                label="Paid"
+                value={formatCentsCompact(totalPaidCents)}
+                tone="emerald"
+              />
+              <MiniStat
+                label={
+                  totalCreditCents > 0 && totalBalanceCents === 0
+                    ? "Credit"
+                    : "Balance"
+                }
+                value={formatCentsCompact(
+                  totalBalanceCents > 0 ? totalBalanceCents : totalCreditCents,
+                )}
+                sub={
+                  totalBalanceCents > 0 && totalCreditCents > 0
+                    ? `+${formatCentsCompact(totalCreditCents)} credit`
+                    : undefined
+                }
+                tone={
+                  totalCreditCents > 0 && totalBalanceCents === 0
+                    ? "emerald"
+                    : totalBalanceCents > 0
+                      ? "blue"
+                      : "neutral"
+                }
+              />
+              {pctBilled !== null && (
+                <MiniStat
+                  label="% of contract"
+                  value={`${pctBilled}%`}
+                  tone={pctBilled > 100 ? "amber" : "blue"}
+                />
+              )}
+            </div>
 
-          {/* Master progress bar — Karan 2026-07-07: "there should be a
+            {/* Master progress bar — Karan 2026-07-07: "there should be a
               master progress bar with all the invoices combined." Fills
               from 0 → 100% of paid_cents / invoiced_cents across the
               whole deal. Tone escalates emerald (paid) > rose (overdue) >
               blue (partial) > neutral (unpaid). Sits between the mini-
               stat strip and the per-invoice list so the whole deal reads
               top-down: totals → progress → per-invoice detail. */}
-          {totalInvoicedCents > 0 && (
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
-                <div className="text-[12px] font-semibold text-ppp-charcoal-700">
-                  Opportunity progress
+            {totalInvoicedCents > 0 && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                  <div className="text-[12px] font-semibold text-ppp-charcoal-700">
+                    Opportunity progress
+                  </div>
+                  <div className="text-[11px] text-ppp-charcoal-600 tabular-nums">
+                    <strong className="text-ppp-charcoal">
+                      {formatCentsFull(totalPaidCents)}
+                    </strong>
+                    <span className="text-ppp-charcoal-500">
+                      {" "}
+                      of {formatCentsFull(totalInvoicedCents)} paid
+                    </span>
+                    <span className="text-ppp-charcoal-400">
+                      {" "}
+                      · {masterPct}%
+                    </span>
+                  </div>
                 </div>
-                <div className="text-[11px] text-ppp-charcoal-600 tabular-nums">
-                  <strong className="text-ppp-charcoal">{formatCentsFull(totalPaidCents)}</strong>
-                  <span className="text-ppp-charcoal-500"> of {formatCentsFull(totalInvoicedCents)} paid</span>
-                  <span className="text-ppp-charcoal-400"> · {masterPct}%</span>
+                <div className="h-2.5 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${masterBarTone}`}
+                    style={{ width: `${masterPct}%` }}
+                  />
                 </div>
-              </div>
-              <div className="h-2.5 bg-ppp-charcoal-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${masterBarTone}`}
-                  style={{ width: `${masterPct}%` }}
-                />
-              </div>
-              {draftCount > 0 && (
-                <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 flex items-center gap-1.5">
-                  <span
-                    aria-hidden
-                    className="inline-flex items-center justify-center h-4 w-4 rounded bg-ppp-charcoal-100 text-ppp-charcoal-500"
-                  >
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M12 8v4M12 16h.01" />
-                      <circle cx="12" cy="12" r="10" />
-                    </svg>
-                  </span>
-                  Includes {draftCount} draft{draftCount === 1 ? "" : "s"} ({formatCentsFull(draftTotalCents)}) not yet sent to the customer.
-                </div>
-              )}
-            </div>
-          )}
-          <ul className="space-y-1.5">
-            {invoices.map((inv) => {
-              const displayStatus = deriveInvoiceStatus(inv);
-              const progressPct =
-                inv.total_cents > 0
-                  ? Math.min(100, Math.round((inv.paid_cents / inv.total_cents) * 100))
-                  : 0;
-              const daysUntilDue = daysBetween(new Date().toISOString(), inv.due_at);
-              const isOverdue = displayStatus === "overdue";
-              const barTone =
-                inv.status === "void"
-                  ? "bg-ppp-charcoal-300"
-                  : inv.paid_cents >= inv.total_cents && inv.total_cents > 0
-                  ? "bg-emerald-500"
-                  : inv.paid_cents > 0
-                  ? "bg-cc-brand-500"
-                  : isOverdue
-                  ? "bg-rose-500"
-                  : "bg-ppp-charcoal-300";
-              const isVoid = inv.status === "void";
-              const isPaidInFull = inv.paid_cents >= inv.total_cents && inv.total_cents > 0;
-              const canRecordPayment = !isVoid && !isPaidInFull;
-              // Default the paid_at input to today's ET date so most bank/CC
-              // deposits (same-day) don't require the user to touch a picker.
-              const todayEtIso = new Date()
-                .toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-              const isFlashRow = paidInvoiceId === inv.id;
-              return (
-                <li
-                  key={inv.id}
-                  id={`inv-${inv.id}`}
-                  className={`scroll-mt-4 rounded-lg border transition-all ${
-                    isFlashRow
-                      ? "border-cc-brand-300 bg-cc-brand-50/60 ring-1 ring-cc-brand-200"
-                      : "border-ppp-charcoal-100 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:shadow-sm"
-                  }`}
-                >
-                  <Link
-                    href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
-                    aria-label={`Open invoice ${inv.invoice_number}${inv.due_at ? `, due ${fmtEtDate(inv.due_at)}` : ""}`}
-                    className="group/inv block px-3 py-2.5 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded-lg"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-cc-brand-800 group-hover/inv:underline underline-offset-2 transition-colors">
-                            {inv.invoice_number}
-                          </span>
-                          <InvoicePill status={displayStatus} />
-                          {inv.due_at && (
-                            <span
-                              className={`inline-flex items-center gap-1 text-[11px] font-semibold group-hover/inv:underline underline-offset-2 ${
-                                isOverdue
-                                  ? "text-rose-700"
-                                  : daysUntilDue !== null && daysUntilDue <= 7
-                                  ? "text-amber-700"
-                                  : "text-cc-brand-700"
-                              }`}
-                            >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                <rect x="3" y="4" width="18" height="18" rx="2" />
-                                <path d="M16 2v4 M8 2v4 M3 10h18" />
-                              </svg>
-                              Due {fmtEtDate(inv.due_at)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
-                          <strong className="text-ppp-charcoal">{formatCentsFull(inv.total_cents)}</strong>
-                          {inv.balance_cents > 0 && inv.status !== "void" && (
-                            <>
-                              {" · "}
-                              <span className="text-cc-brand-700 font-medium">
-                                {formatCentsFull(inv.balance_cents)} outstanding
-                              </span>
-                            </>
-                          )}
-                          {inv.paid_at && isPaidInFull && (
-                            <>
-                              {" · "}
-                              <span className="text-emerald-700 font-medium">
-                                Paid {fmtEtDate(inv.paid_at)}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        {inv.total_cents > 0 && inv.status !== "void" && (
-                          <div className="mt-1.5 flex items-center gap-2">
-                            <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${barTone}`}
-                                style={{ width: `${progressPct}%` }}
-                              />
-                            </div>
-                            <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
-                              {progressPct}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-300 group-hover/inv:text-cc-brand-600 shrink-0 mt-1 transition-colors" aria-hidden>
-                        <path d="M9 18l6-6-6-6" />
+                {draftCount > 0 && (
+                  <div className="mt-1.5 text-[11px] text-ppp-charcoal-500 flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className="inline-flex items-center justify-center h-4 w-4 rounded bg-ppp-charcoal-100 text-ppp-charcoal-500"
+                    >
+                      <svg
+                        width="9"
+                        height="9"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M12 8v4M12 16h.01" />
+                        <circle cx="12" cy="12" r="10" />
                       </svg>
-                    </div>
-                  </Link>
-                  {canRecordPayment && (
-                    <details className="group/pay border-t border-ppp-charcoal-100">
-                      <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 rounded-b-lg min-h-[44px] sm:min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
-                        <span className="inline-flex items-center gap-1.5">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M12 5v14 M5 12h14" />
+                    </span>
+                    Includes {draftCount} draft{draftCount === 1 ? "" : "s"} (
+                    {formatCentsFull(draftTotalCents)}) not yet sent to the
+                    customer.
+                  </div>
+                )}
+              </div>
+            )}
+            <ul className="space-y-1.5">
+              {invoices.map((inv) => {
+                const displayStatus = deriveInvoiceStatus(inv);
+                const progressPct =
+                  inv.total_cents > 0
+                    ? Math.min(
+                        100,
+                        Math.round((inv.paid_cents / inv.total_cents) * 100),
+                      )
+                    : 0;
+                const daysUntilDue = daysBetween(
+                  new Date().toISOString(),
+                  inv.due_at,
+                );
+                const isOverdue = displayStatus === "overdue";
+                const barTone =
+                  inv.status === "void"
+                    ? "bg-ppp-charcoal-300"
+                    : inv.paid_cents >= inv.total_cents && inv.total_cents > 0
+                      ? "bg-emerald-500"
+                      : inv.paid_cents > 0
+                        ? "bg-cc-brand-500"
+                        : isOverdue
+                          ? "bg-rose-500"
+                          : "bg-ppp-charcoal-300";
+                const isVoid = inv.status === "void";
+                const isPaidInFull =
+                  inv.paid_cents >= inv.total_cents && inv.total_cents > 0;
+                const canRecordPayment = !isVoid && !isPaidInFull;
+                // Default the paid_at input to today's ET date so most bank/CC
+                // deposits (same-day) don't require the user to touch a picker.
+                const todayEtIso = new Date().toLocaleDateString("en-CA", {
+                  timeZone: "America/New_York",
+                });
+                const isFlashRow = paidInvoiceId === inv.id;
+                return (
+                  <li
+                    key={inv.id}
+                    id={`inv-${inv.id}`}
+                    className={`scroll-mt-4 rounded-lg border transition-all ${
+                      isFlashRow
+                        ? "border-cc-brand-300 bg-cc-brand-50/60 ring-1 ring-cc-brand-200"
+                        : "border-ppp-charcoal-100 hover:border-cc-brand-300 hover:bg-cc-brand-50/40 hover:shadow-sm"
+                    }`}
+                  >
+                    <Link
+                      href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
+                      aria-label={`Open invoice ${inv.invoice_number}${inv.due_at ? `, due ${fmtEtDate(inv.due_at)}` : ""}`}
+                      className="group/inv block px-3 py-2.5 touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40 rounded-lg"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-[12.5px] text-ppp-charcoal group-hover/inv:text-cc-brand-800 group-hover/inv:underline underline-offset-2 transition-colors">
+                              {inv.invoice_number}
+                            </span>
+                            <InvoicePill status={displayStatus} />
+                            {inv.due_at && (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-semibold group-hover/inv:underline underline-offset-2 ${
+                                  isOverdue
+                                    ? "text-rose-700"
+                                    : daysUntilDue !== null && daysUntilDue <= 7
+                                      ? "text-amber-700"
+                                      : "text-cc-brand-700"
+                                }`}
+                              >
+                                <svg
+                                  width="11"
+                                  height="11"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden
+                                >
+                                  <rect
+                                    x="3"
+                                    y="4"
+                                    width="18"
+                                    height="18"
+                                    rx="2"
+                                  />
+                                  <path d="M16 2v4 M8 2v4 M3 10h18" />
+                                </svg>
+                                Due {fmtEtDate(inv.due_at)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+                            <strong className="text-ppp-charcoal">
+                              {formatCentsFull(inv.total_cents)}
+                            </strong>
+                            {inv.balance_cents > 0 && inv.status !== "void" && (
+                              <>
+                                {" · "}
+                                <span className="text-cc-brand-700 font-medium">
+                                  {formatCentsFull(inv.balance_cents)}{" "}
+                                  outstanding
+                                </span>
+                              </>
+                            )}
+                            {inv.paid_at && isPaidInFull && (
+                              <>
+                                {" · "}
+                                <span className="text-emerald-700 font-medium">
+                                  Paid {fmtEtDate(inv.paid_at)}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {inv.total_cents > 0 && inv.status !== "void" && (
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <div className="h-1.5 flex-1 bg-ppp-charcoal-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${barTone}`}
+                                  style={{ width: `${progressPct}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-semibold text-ppp-charcoal-500 tabular-nums shrink-0 w-9 text-right">
+                                {progressPct}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-ppp-charcoal-300 group-hover/inv:text-cc-brand-600 shrink-0 mt-1 transition-colors"
+                          aria-hidden
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </div>
+                    </Link>
+                    {canRecordPayment && (
+                      <details className="group/pay border-t border-ppp-charcoal-100">
+                        <summary className="list-none cursor-pointer flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50/60 rounded-b-lg min-h-[44px] sm:min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                          <span className="inline-flex items-center gap-1.5">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden
+                            >
+                              <path d="M12 5v14 M5 12h14" />
+                            </svg>
+                            Record payment
+                            <span className="text-[11px] font-normal text-ppp-charcoal-500">
+                              · {formatCentsFull(inv.balance_cents)} outstanding
+                            </span>
+                          </span>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-ppp-charcoal-400 transition-transform group-open/pay:rotate-180"
+                            aria-hidden
+                          >
+                            <path d="M6 9l6 6 6-6" />
                           </svg>
-                          Record payment
-                          <span className="text-[11px] font-normal text-ppp-charcoal-500">
-                            · {formatCentsFull(inv.balance_cents)} outstanding
+                        </summary>
+                        <form
+                          action={recordInvoicePaymentInlineAction}
+                          className="px-3 pb-3 pt-1 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+                        >
+                          <input type="hidden" name="opp_id" value={oppId} />
+                          <input
+                            type="hidden"
+                            name="invoice_id"
+                            value={inv.id}
+                          />
+                          {/* Karan 2026-07-07: labels softened from ALL-CAPS
+                            uppercase tracking to sentence-case (matches
+                            the Details form). Inputs use text-base on
+                            mobile / text-[13px] on sm+ so iOS Safari
+                            doesn't auto-zoom on focus (< 16px triggers
+                            the zoom; sentence-cased labels don't). */}
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Amount
+                            </span>
+                            <MoneyInput
+                              name="amount"
+                              required
+                              defaultValue={(inv.balance_cents / 100).toFixed(
+                                2,
+                              )}
+                              placeholder="0.00"
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Paid on
+                            </span>
+                            <DateField
+                              ariaLabel="Payment date"
+                              name="paid_at"
+                              defaultValue={todayEtIso}
+                              placeholder="Pick a date"
+                              className="mt-0.5"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Method
+                            </span>
+                            <select
+                              name="method"
+                              defaultValue=""
+                              className={SELECT_CLS}
+                              style={SELECT_BG_STYLE}
+                            >
+                              <option value="">— select —</option>
+                              {PAYMENT_METHODS.map((m) => (
+                                <option key={m.key} value={m.key}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="flex items-end">
+                            <SubmitButton className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40">
+                              Record
+                            </SubmitButton>
+                          </div>
+                          <label className="block sm:col-span-4">
+                            <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
+                              Reference{" "}
+                              <span className="font-normal text-ppp-charcoal-400">
+                                (check #, txn ID — optional)
+                              </span>
+                            </span>
+                            <input
+                              type="text"
+                              name="reference"
+                              maxLength={128}
+                              className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                            />
+                          </label>
+                          <p className="sm:col-span-4 text-[11px] text-ppp-charcoal-500">
+                            Need to edit line items, change status, or delete
+                            this invoice?{" "}
+                            <Link
+                              href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
+                              className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                            >
+                              Open the full invoice
+                            </Link>
+                            .
+                          </p>
+                        </form>
+                      </details>
+                    )}
+                    {/* Quick edit — slides out from the right with the
+                      most-touched fields (due date, PO#, payment terms,
+                      customer message, notes, tax %). Everything deeper
+                      lives on the full invoice page. */}
+                    {!isVoid && (
+                      <Link
+                        href={`?tab=invoices&edit_invoice=${inv.id}#inv-${inv.id}`}
+                        className="border-t border-ppp-charcoal-100 flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-b-lg min-h-[44px] sm:min-h-[36px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+                          </svg>
+                          Edit details
+                          <span className="text-[10px] font-normal text-ppp-charcoal-400">
+                            · due date, PO#, notes
                           </span>
                         </span>
                         <svg
@@ -3705,336 +4681,290 @@ async function OpportunityInvoicesPanel({
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          className="text-ppp-charcoal-400 transition-transform group-open/pay:rotate-180"
+                          className="text-ppp-charcoal-400"
                           aria-hidden
                         >
-                          <path d="M6 9l6 6 6-6" />
+                          <path d="M9 18l6-6-6-6" />
                         </svg>
-                      </summary>
-                      <form
-                        action={recordInvoicePaymentInlineAction}
-                        className="px-3 pb-3 pt-1 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
-                      >
-                        <input type="hidden" name="opp_id" value={oppId} />
-                        <input type="hidden" name="invoice_id" value={inv.id} />
-                        {/* Karan 2026-07-07: labels softened from ALL-CAPS
-                            uppercase tracking to sentence-case (matches
-                            the Details form). Inputs use text-base on
-                            mobile / text-[13px] on sm+ so iOS Safari
-                            doesn't auto-zoom on focus (< 16px triggers
-                            the zoom; sentence-cased labels don't). */}
-                        <label className="block">
-                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                            Amount
-                          </span>
-                          <MoneyInput
-                            name="amount"
-                            required
-                            defaultValue={(inv.balance_cents / 100).toFixed(2)}
-                            placeholder="0.00"
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                            Paid on
-                          </span>
-                          <DateField ariaLabel="Payment date" name="paid_at" defaultValue={todayEtIso} placeholder="Pick a date" className="mt-0.5" />
-                        </label>
-                        <label className="block">
-                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                            Method
-                          </span>
-                          <select
-                            name="method"
-                            defaultValue=""
-                            className={SELECT_CLS}
-                            style={SELECT_BG_STYLE}
-                          >
-                            <option value="">— select —</option>
-                            {PAYMENT_METHODS.map((m) => (
-                              <option key={m.key} value={m.key}>
-                                {m.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <div className="flex items-end">
-                          <SubmitButton
-                            className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[40px] touch-manipulation shadow-sm shadow-cc-brand-600/30 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
-                          >
-                            Record
-                          </SubmitButton>
-                        </div>
-                        <label className="block sm:col-span-4">
-                          <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-0.5">
-                            Reference <span className="font-normal text-ppp-charcoal-400">(check #, txn ID — optional)</span>
-                          </span>
-                          <input
-                            type="text"
-                            name="reference"
-                            maxLength={128}
-                            className="w-full px-2 py-1.5 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[40px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                          />
-                        </label>
-                        <p className="sm:col-span-4 text-[11px] text-ppp-charcoal-500">
-                          Need to edit line items, change status, or delete this invoice?{" "}
-                          <Link
-                            href={`/commercial/invoices/${inv.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
-                            className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
-                          >
-                            Open the full invoice
-                          </Link>
-                          .
-                        </p>
-                      </form>
-                    </details>
-                  )}
-                  {/* Quick edit — slides out from the right with the
-                      most-touched fields (due date, PO#, payment terms,
-                      customer message, notes, tax %). Everything deeper
-                      lives on the full invoice page. */}
-                  {!isVoid && (
-                    <Link
-                      href={`?tab=invoices&edit_invoice=${inv.id}#inv-${inv.id}`}
-                      className="border-t border-ppp-charcoal-100 flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 rounded-b-lg min-h-[44px] sm:min-h-[36px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                        </svg>
-                        Edit details
-                        <span className="text-[10px] font-normal text-ppp-charcoal-400">
-                          · due date, PO#, notes
-                        </span>
-                      </span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-ppp-charcoal-400" aria-hidden>
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-    </section>
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
       {/* GHL-style right-side quick-edit slide-out. Uses the same
           URL-driven pattern as the account page's Deal edit sheet:
           ?edit_invoice=<id> opens; clicking backdrop or close links
           back to ?tab=invoices (URL param cleared). Server action
           redirects here with details_saved=<id> on save. */}
-      {editInvoiceId && (() => {
-        const editing = invoices.find((i) => i.id === editInvoiceId);
-        if (!editing) return null;
-        // Karan 2026-07-08: void invoices are immutable per the lib gate
-        // (updateInvoiceCoreFields refuses status='void'). Silently close
-        // the sheet if the URL param points at a voided invoice — no row
-        // trigger renders for void anyway; this catches URL hacks.
-        if (editing.status === "void") return null;
-        const dueDefault = editing.due_at
-          ? new Date(editing.due_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" })
-          : "";
-        const backHref = `?tab=invoices#inv-${editing.id}`;
-        return (
-          <div className="fixed inset-0 z-50 flex justify-end">
-            <Link
-              href={backHref}
-              aria-label="Close edit panel"
-              className="absolute inset-0 bg-ppp-navy-900/40 backdrop-blur-[1px]"
-            />
-            <FocusTrapAside
-              closeHref={backHref}
-              ariaLabelledBy="invoice-edit-sheet-title"
-              className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col">
-              <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
-                    Edit invoice
-                  </div>
-                  <h2 id="invoice-edit-sheet-title" className="mt-0.5 text-lg font-bold text-ppp-charcoal tracking-tight font-mono">
-                    {editing.invoice_number}
-                  </h2>
-                  <div className="mt-1 flex items-center gap-2">
-                    <InvoicePill status={deriveInvoiceStatus(editing)} />
-                    <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
-                      {formatCentsFull(editing.total_cents)}
-                    </span>
-                  </div>
-                </div>
-                <Link
-                  href={backHref}
-                  aria-label="Close"
-                  className="p-2 -mr-2 rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M6 6l12 12 M18 6l-12 12" />
-                  </svg>
-                </Link>
-              </header>
-              {detailsSavedInvoiceId === editing.id && (
-                <div className="mx-5 mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-800">
-                  Details saved.
-                </div>
-              )}
-              {errorMessage && (
-                <div className="mx-5 mt-3 rounded-md bg-rose-50 border border-rose-200 px-3 py-2 text-[12px] font-semibold text-rose-800">
-                  {errorMessage}
-                </div>
-              )}
-              <form
-                id="invoice-edit-sheet-form"
-                action={saveInvoiceDetailsFromOppAction}
-                className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
+      {editInvoiceId &&
+        (() => {
+          const editing = invoices.find((i) => i.id === editInvoiceId);
+          if (!editing) return null;
+          // Karan 2026-07-08: void invoices are immutable per the lib gate
+          // (updateInvoiceCoreFields refuses status='void'). Silently close
+          // the sheet if the URL param points at a voided invoice — no row
+          // trigger renders for void anyway; this catches URL hacks.
+          if (editing.status === "void") return null;
+          const dueDefault = editing.due_at
+            ? new Date(editing.due_at).toLocaleDateString("en-CA", {
+                timeZone: "America/New_York",
+              })
+            : "";
+          const backHref = `?tab=invoices#inv-${editing.id}`;
+          return (
+            <div className="fixed inset-0 z-50 flex justify-end">
+              <Link
+                href={backHref}
+                aria-label="Close edit panel"
+                className="absolute inset-0 bg-ppp-navy-900/40 backdrop-blur-[1px]"
+              />
+              <FocusTrapAside
+                closeHref={backHref}
+                ariaLabelledBy="invoice-edit-sheet-title"
+                className="relative z-10 w-full max-w-[92vw] sm:max-w-md h-full bg-surface shadow-2xl border-l border-ppp-charcoal-100 flex flex-col"
               >
-                <input type="hidden" name="opp_id" value={oppId} />
-                <input type="hidden" name="invoice_id" value={editing.id} />
-
-                {/* Schedule */}
-                <section className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
-                      Schedule
+                <header className="px-5 pt-5 pb-3 border-b border-ppp-charcoal-100 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-500">
+                      Edit invoice
                     </div>
-                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
-                  </div>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Due date</span>
-                    <DateField ariaLabel="Due date" name="due_at" defaultValue={dueDefault} placeholder="Pick a date" className="mt-1" />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Payment terms</span>
-                    <input
-                      type="text"
-                      name="payment_terms"
-                      maxLength={64}
-                      defaultValue={editing.payment_terms ?? ""}
-                      placeholder="Net 30"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
-                  </label>
-                </section>
-
-                {/* Reference */}
-                <section className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
-                      Reference
-                    </div>
-                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
-                  </div>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">PO #</span>
-                    <input
-                      type="text"
-                      name="po_number"
-                      maxLength={64}
-                      defaultValue={editing.po_number ?? ""}
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Tax %</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      pattern="[0-9.]*"
-                      name="tax_pct"
-                      defaultValue={editing.tax_pct ?? ""}
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
-                    />
-                    {taxSuggestion && !editing.tax_pct && (
-                      <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
-                        This ZIP maps to <strong className="text-ppp-charcoal-700">{taxSuggestion.pct}%</strong> ({taxSuggestion.name}).
-                        {!taxSuggestion.verified && <span className="text-amber-700"> Rate unverified.</span>}{" "}
-                        Leave blank if tax-exempt.
+                    <h2
+                      id="invoice-edit-sheet-title"
+                      className="mt-0.5 text-lg font-bold text-ppp-charcoal tracking-tight font-mono"
+                    >
+                      {editing.invoice_number}
+                    </h2>
+                    <div className="mt-1 flex items-center gap-2">
+                      <InvoicePill status={deriveInvoiceStatus(editing)} />
+                      <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+                        {formatCentsFull(editing.total_cents)}
                       </span>
-                    )}
-                  </label>
-                </section>
-
-                {/* Copy */}
-                <section className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
-                      Copy
                     </div>
-                    <div className="flex-1 h-px bg-ppp-charcoal-100" />
                   </div>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Message to the GC</span>
-                    <textarea
-                      name="customer_message"
-                      rows={3}
-                      maxLength={2000}
-                      defaultValue={editing.customer_message ?? ""}
-                      placeholder="Shown on the invoice PDF"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Internal notes</span>
-                    <textarea
-                      name="notes"
-                      rows={3}
-                      maxLength={2000}
-                      defaultValue={editing.notes ?? ""}
-                      placeholder="Only visible to your team"
-                      className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
-                    />
-                  </label>
-                </section>
-
-                <div className="text-[11px] text-ppp-charcoal-500 leading-relaxed">
-                  Need to edit line items, change status, void, or delete?{" "}
                   <Link
-                    href={`/commercial/invoices/${editing.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
-                    className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                    href={backHref}
+                    aria-label="Close"
+                    className="p-2 -mr-2 rounded-md text-ppp-charcoal-400 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 focus:outline-none focus:ring-2 focus:ring-cc-brand-600/40"
                   >
-                    Open the full invoice
-                  </Link>.
-                </div>
-              </form>
-              <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-surface">
-                <Link
-                  href={backHref}
-                  className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M6 6l12 12 M18 6l-12 12" />
+                    </svg>
+                  </Link>
+                </header>
+                {detailsSavedInvoiceId === editing.id && (
+                  <div className="mx-5 mt-3 rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-800">
+                    Details saved.
+                  </div>
+                )}
+                {errorMessage && (
+                  <div className="mx-5 mt-3 rounded-md bg-rose-50 border border-rose-200 px-3 py-2 text-[12px] font-semibold text-rose-800">
+                    {errorMessage}
+                  </div>
+                )}
+                <form
+                  id="invoice-edit-sheet-form"
+                  action={saveInvoiceDetailsFromOppAction}
+                  className="flex-1 overflow-y-auto px-5 py-4 space-y-5"
                 >
-                  Cancel
-                </Link>
-                {/* Lives OUTSIDE its form and reaches it by id, so
+                  <input type="hidden" name="opp_id" value={oppId} />
+                  <input type="hidden" name="invoice_id" value={editing.id} />
+
+                  {/* Schedule */}
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                        Schedule
+                      </div>
+                      <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                    </div>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        Due date
+                      </span>
+                      <DateField
+                        ariaLabel="Due date"
+                        name="due_at"
+                        defaultValue={dueDefault}
+                        placeholder="Pick a date"
+                        className="mt-1"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        Payment terms
+                      </span>
+                      <input
+                        type="text"
+                        name="payment_terms"
+                        maxLength={64}
+                        defaultValue={editing.payment_terms ?? ""}
+                        placeholder="Net 30"
+                        className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                  </section>
+
+                  {/* Reference */}
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                        Reference
+                      </div>
+                      <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                    </div>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        PO #
+                      </span>
+                      <input
+                        type="text"
+                        name="po_number"
+                        maxLength={64}
+                        defaultValue={editing.po_number ?? ""}
+                        className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] font-mono focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        Tax %
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9.]*"
+                        name="tax_pct"
+                        defaultValue={editing.tax_pct ?? ""}
+                        className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 max-w-[140px]"
+                      />
+                      {taxSuggestion && !editing.tax_pct && (
+                        <span className="mt-1 block text-[10.5px] leading-snug text-ppp-charcoal-500">
+                          This ZIP maps to{" "}
+                          <strong className="text-ppp-charcoal-700">
+                            {taxSuggestion.pct}%
+                          </strong>{" "}
+                          ({taxSuggestion.name}).
+                          {!taxSuggestion.verified && (
+                            <span className="text-amber-700">
+                              {" "}
+                              Rate unverified.
+                            </span>
+                          )}{" "}
+                          Leave blank if tax-exempt.
+                        </span>
+                      )}
+                    </label>
+                  </section>
+
+                  {/* Copy */}
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-ppp-charcoal-600">
+                        Copy
+                      </div>
+                      <div className="flex-1 h-px bg-ppp-charcoal-100" />
+                    </div>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        Message to the GC
+                      </span>
+                      <textarea
+                        name="customer_message"
+                        rows={3}
+                        maxLength={2000}
+                        defaultValue={editing.customer_message ?? ""}
+                        placeholder="Shown on the invoice PDF"
+                        className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                        Internal notes
+                      </span>
+                      <textarea
+                        name="notes"
+                        rows={3}
+                        maxLength={2000}
+                        defaultValue={editing.notes ?? ""}
+                        placeholder="Only visible to your team"
+                        className="w-full px-2.5 py-2 border border-ppp-charcoal-200 rounded-md text-base sm:text-[13px] min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30"
+                      />
+                    </label>
+                  </section>
+
+                  <div className="text-[11px] text-ppp-charcoal-500 leading-relaxed">
+                    Need to edit line items, change status, void, or delete?{" "}
+                    <Link
+                      href={`/commercial/invoices/${editing.id}?from=${encodeURIComponent(`/commercial/opportunities/${oppId}?tab=invoices`)}`}
+                      className="text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2"
+                    >
+                      Open the full invoice
+                    </Link>
+                    .
+                  </div>
+                </form>
+                <footer className="border-t border-ppp-charcoal-100 px-5 py-3 flex items-center justify-between gap-2 bg-surface">
+                  <Link
+                    href={backHref}
+                    className="inline-flex items-center justify-center px-3.5 py-2 rounded-md text-[12px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-100 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+                  >
+                    Cancel
+                  </Link>
+                  {/* Lives OUTSIDE its form and reaches it by id, so
                     `useFormStatus` cannot see it — SubmitButton's `form` prop
                     is the case built for exactly this and tracks the click
                     locally instead. Without it, "Save details" showed nothing
                     at all for the whole round trip. */}
-                <SubmitButton
-                  form="invoice-edit-sheet-form"
-                  pendingLabel="Saving…"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
-                >
-                  Save details
-                </SubmitButton>
-              </footer>
-            </FocusTrapAside>
-          </div>
-        );
-      })()}
+                  <SubmitButton
+                    form="invoice-edit-sheet-form"
+                    pendingLabel="Saving…"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation shadow-sm shadow-cc-brand-600/30"
+                  >
+                    Save details
+                  </SubmitButton>
+                </footer>
+              </FocusTrapAside>
+            </div>
+          );
+        })()}
     </div>
   );
 }
 
-function MiniStat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: "cc-brand" | "emerald" | "blue" | "amber" | "neutral" }) {
+function MiniStat({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone: "cc-brand" | "emerald" | "blue" | "amber" | "neutral";
+}) {
   const cls =
     tone === "cc-brand"
       ? "border-cc-brand-200 bg-cc-brand-50/50"
       : tone === "emerald"
-      ? "border-emerald-200 bg-emerald-50/50"
-      : tone === "blue"
-      ? "border-ppp-blue-200 bg-ppp-blue-50/50"
-      : tone === "amber"
-      ? "border-amber-200 bg-amber-50/50"
-      : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
+        ? "border-emerald-200 bg-emerald-50/50"
+        : tone === "blue"
+          ? "border-ppp-blue-200 bg-ppp-blue-50/50"
+          : tone === "amber"
+            ? "border-amber-200 bg-amber-50/50"
+            : "border-ppp-charcoal-200 bg-ppp-charcoal-50/50";
   return (
     <div className={`border rounded-lg px-3 py-2 ${cls}`}>
       <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">
@@ -4043,7 +4973,11 @@ function MiniStat({ label, value, sub, tone }: { label: string; value: string; s
       <div className="text-sm sm:text-base font-bold text-ppp-charcoal mt-0.5 tabular-nums">
         {value}
       </div>
-      {sub ? <div className="text-[9px] font-semibold text-emerald-700 tabular-nums mt-0.5">{sub}</div> : null}
+      {sub ? (
+        <div className="text-[9px] font-semibold text-emerald-700 tabular-nums mt-0.5">
+          {sub}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4053,16 +4987,18 @@ function InvoicePill({ status }: { status: InvoiceStatus }) {
     status === "paid"
       ? "bg-emerald-100 text-emerald-800 border-emerald-300"
       : status === "overdue"
-      ? "bg-rose-100 text-rose-800 border-rose-300"
-      : status === "void"
-      ? "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
-      : status === "sent" || status === "viewed"
-      ? "bg-ppp-blue-100 text-ppp-blue-800 border-ppp-blue-200"
-      : status === "partial"
-      ? "bg-amber-100 text-amber-900 border-amber-300"
-      : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
+        ? "bg-rose-100 text-rose-800 border-rose-300"
+        : status === "void"
+          ? "bg-ppp-charcoal-100 text-ppp-charcoal-600 border-ppp-charcoal-200"
+          : status === "sent" || status === "viewed"
+            ? "bg-ppp-blue-100 text-ppp-blue-800 border-ppp-blue-200"
+            : status === "partial"
+              ? "bg-amber-100 text-amber-900 border-amber-300"
+              : "bg-ppp-charcoal-100 text-ppp-charcoal-700 border-ppp-charcoal-200";
   return (
-    <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}>
+    <span
+      className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${cls}`}
+    >
       {invoiceStatusLabel(status)}
     </span>
   );
@@ -4119,7 +5055,8 @@ async function InfoTab({
   // Per-job contacts, plus the account's people offered as the source to pick
   // from — a job contact is a REUSE of an existing person, not a new record,
   // so one superintendent across three jobs keeps one phone number.
-  const { listOpportunityContacts } = await import("@/lib/commercial/opportunities/contacts");
+  const { listOpportunityContacts } =
+    await import("@/lib/commercial/opportunities/contacts");
   const [oppContacts, accountContactRows] = await Promise.all([
     listOpportunityContacts(opp.id),
     account ? listAccountContacts(account.id) : Promise.resolve([]),
@@ -4133,10 +5070,11 @@ async function InfoTab({
     .filter((r) => !alreadyOnJob.has(r.contact.id))
     .map((r) => ({
       value: r.contact.id,
-      label: r.contact.full_name + (r.contact.title ? ` — ${r.contact.title}` : ""),
+      label:
+        r.contact.full_name + (r.contact.title ? ` — ${r.contact.title}` : ""),
     }));
   const accountTeamName = account?.team_id
-    ? allTeams.find((t) => t.id === account.team_id)?.name ?? null
+    ? (allTeams.find((t) => t.id === account.team_id)?.name ?? null)
     : null;
   // Terminal opps now show debrief content in a dedicated Debrief tab,
   // not on Info. Info stays focused on deal facts: bid, dates, address,
@@ -4166,7 +5104,7 @@ async function InfoTab({
     ...sensible,
   ] as ReadonlyArray<OpportunityStatus>;
   const allOtherStatuses = allowedNextStatuses(opp.status).filter(
-    (st) => !sensible.includes(st) && st !== opp.status
+    (st) => !sensible.includes(st) && st !== opp.status,
   ) as ReadonlyArray<OpportunityStatus>;
   // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
   // durations. fetch happens here (server component, one extra query)
@@ -4228,7 +5166,11 @@ async function InfoTab({
       )}
       {statusOk && (
         <div className="lg:col-span-2 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800 flex items-start justify-between gap-3">
-          <span>Status updated to <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.</span>
+          <span>
+            Status updated to{" "}
+            <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>
+            .
+          </span>
           <Link
             href={`/commercial/opportunities/${opp.id}`}
             className="text-[12px] text-emerald-700 hover:text-emerald-900 underline shrink-0 min-h-[24px] inline-flex items-center"
@@ -4287,7 +5229,17 @@ async function InfoTab({
         title="Opportunity"
         tone="cc-brand"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <circle cx="12" cy="12" r="10" />
             <circle cx="12" cy="12" r="6" />
             <circle cx="12" cy="12" r="2" />
@@ -4303,7 +5255,10 @@ async function InfoTab({
             since it was written and never given a control — it fed
             `derivedOppName` and appeared nowhere you could change it. */}
         {inlineRow("client_name", opp.client_name ?? "")}
-        <Field label="Status" value={oppStatusDisplayLabel(opp.status, opp.sub_status)} />
+        <Field
+          label="Status"
+          value={oppStatusDisplayLabel(opp.status, opp.sub_status)}
+        />
         <Field
           label="Source"
           value={opp.source ? opportunitySourceLabel(opp.source) : "—"}
@@ -4318,7 +5273,10 @@ async function InfoTab({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 pt-2">
             Team
           </span>
-          <form action={setDealTeamAction} className="flex items-center gap-2 min-w-0">
+          <form
+            action={setDealTeamAction}
+            className="flex items-center gap-2 min-w-0"
+          >
             <input type="hidden" name="opp_id" value={opp.id} />
             <select
               name="team_id"
@@ -4362,7 +5320,10 @@ async function InfoTab({
             {effectiveTeam.team.members.length === 1 ? "" : "s"}
             {effectiveTeam.inherited ? " · inherited from the customer" : ""}
             {" · "}
-            <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+            <Link
+              href="/commercial/settings/teams"
+              className="text-cc-brand-700 hover:underline"
+            >
               Edit teams
             </Link>
           </p>
@@ -4371,15 +5332,22 @@ async function InfoTab({
             {allTeams.length === 0 ? (
               <>
                 No teams yet — build one in{" "}
-                <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">
+                <Link
+                  href="/commercial/settings/teams"
+                  className="font-semibold text-cc-brand-700 hover:underline"
+                >
                   Settings → Teams
                 </Link>{" "}
-                (e.g. “Tomco Suffolk”: sales rep, estimator, office contact), then pick it here and everyone lands on the job with their role.
+                (e.g. “Tomco Suffolk”: sales rep, estimator, office contact),
+                then pick it here and everyone lands on the job with their role.
               </>
             ) : (
               <>
                 Picking a team adds its people to this job with their roles.{" "}
-                <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                <Link
+                  href="/commercial/settings/teams"
+                  className="text-cc-brand-700 hover:underline"
+                >
                   Manage teams
                 </Link>
               </>
@@ -4397,7 +5365,17 @@ async function InfoTab({
         title="Bid lifecycle"
         tone="blue"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <circle cx="12" cy="12" r="10" />
             <path d="M12 6v6l4 2" />
           </svg>
@@ -4438,7 +5416,17 @@ async function InfoTab({
         title="Bid + project timing"
         tone="blue"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
           </svg>
         }
@@ -4450,12 +5438,17 @@ async function InfoTab({
           <>
             <Field
               label="Bid range"
-              value={formatBidRange(opp.bid_value_low_cents, opp.bid_value_high_cents)}
+              value={formatBidRange(
+                opp.bid_value_low_cents,
+                opp.bid_value_high_cents,
+              )}
               tooltip="Low–high estimate for the project's contract value. If you've quoted a firm number, set low=high."
             />
             <Field
               label="Weighted"
-              value={formatCentsCompact(weightedPipelineCents(opp, oppProposalTotal))}
+              value={formatCentsCompact(
+                weightedPipelineCents(opp, oppProposalTotal),
+              )}
               tooltip="Probability × midpoint bid. Use this for forecast roll-ups — it's the dollar value adjusted for the chance of closing."
             />
           </>
@@ -4469,14 +5462,27 @@ async function InfoTab({
             its own: every row here is called explicitly, so the allowlist would
             have granted the capability and the page would still have rendered
             plain text. */}
-        {inlineRow("proposed_start_at", opp.proposed_start_at?.slice(0, 10) ?? "")}
+        {inlineRow(
+          "proposed_start_at",
+          opp.proposed_start_at?.slice(0, 10) ?? "",
+        )}
         {inlineRow("proposed_end_at", opp.proposed_end_at?.slice(0, 10) ?? "")}
       </Card>
       <Card
         title="Property / project address"
         tone="amber"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
@@ -4489,7 +5495,10 @@ async function InfoTab({
             question. Stephanie 2026-08-13 — a NY certificate is issued per
             PROJECT, so the same GC is exempt on a municipal job and taxable on
             the private one next door. */}
-        <form action={setOppTaxExemptAction} className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2">
+        <form
+          action={setOppTaxExemptAction}
+          className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2"
+        >
           <input type="hidden" name="opp_id" value={opp.id} />
           <label className="block">
             <span className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
@@ -4501,10 +5510,13 @@ async function InfoTab({
               className="mt-1 w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2 text-base sm:text-[13px] min-h-[44px]"
             >
               <option value="inherit">
-                Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}
+                Follow the customer
+                {account?.tax_exempt ? " (exempt)" : " (taxable)"}
               </option>
               <option value="exempt">Exempt — certificate on file</option>
-              <option value="capital_improvement">Capital improvement — no tax (ST-124)</option>
+              <option value="capital_improvement">
+                Capital improvement — no tax (ST-124)
+              </option>
               <option value="taxable">Taxable — this job only</option>
             </select>
           </label>
@@ -4529,7 +5541,8 @@ async function InfoTab({
           </SubmitButton>
           <p className="text-[11px] text-ppp-charcoal-500">
             Applies to invoices and change orders for this job. Leave on
-            &ldquo;follow the customer&rdquo; unless this job has its own certificate.
+            &ldquo;follow the customer&rdquo; unless this job has its own
+            certificate.
           </p>
         </form>
       </Card>
@@ -4546,7 +5559,17 @@ async function InfoTab({
         title="Contacts on this job"
         tone="neutral"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75" />
@@ -4555,7 +5578,8 @@ async function InfoTab({
       >
         {oppContacts.length === 0 ? (
           <p className="text-[12.5px] text-ppp-charcoal-500 italic">
-            Nobody added yet. The proposal falls back to the account&rsquo;s primary contact.
+            Nobody added yet. The proposal falls back to the account&rsquo;s
+            primary contact.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -4633,7 +5657,10 @@ async function InfoTab({
         )}
 
         {accountContactOptions.length > 0 ? (
-          <form action={addOppContactAction} className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2">
+          <form
+            action={addOppContactAction}
+            className="mt-3 pt-3 border-t border-ppp-charcoal-100 space-y-2"
+          >
             <input type="hidden" name="opp_id" value={opp.id} />
             <SearchableSelect
               name="contact_id"
@@ -4666,14 +5693,18 @@ async function InfoTab({
               </SubmitButton>
             </div>
             <label className="flex items-center gap-2 text-[12px] text-ppp-charcoal-600 min-h-[44px]">
-              <input type="checkbox" name="is_primary" className="h-4 w-4 rounded border-ppp-charcoal-300" />
+              <input
+                type="checkbox"
+                name="is_primary"
+                className="h-4 w-4 rounded border-ppp-charcoal-300"
+              />
               Make this the Attention contact on the proposal
             </label>
           </form>
         ) : (
           <p className="mt-3 pt-3 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-500">
-            This customer has no contacts on file yet. Add them on the account first, then they can
-            be put on a job.
+            This customer has no contacts on file yet. Add them on the account
+            first, then they can be put on a job.
           </p>
         )}
       </Card>
@@ -4682,7 +5713,17 @@ async function InfoTab({
         title="Account"
         tone="neutral"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <rect x="4" y="2" width="16" height="20" rx="1" />
             <path d="M9 22v-4h6v4 M8 6h2 M14 6h2 M8 10h2 M14 10h2 M8 14h2 M14 14h2" />
           </svg>
@@ -4703,7 +5744,8 @@ async function InfoTab({
           </>
         ) : (
           <p className="text-sm text-ppp-charcoal-500 italic">
-            Account isn&apos;t available — it may have been deleted or you may not have access.
+            Account isn&apos;t available — it may have been deleted or you may
+            not have access.
           </p>
         )}
       </Card>
@@ -4720,7 +5762,17 @@ async function InfoTab({
         tone="neutral"
         className="lg:col-span-2"
         icon={
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M4 6h16 M4 12h16 M4 18h10" />
           </svg>
         }
@@ -4736,13 +5788,12 @@ async function InfoTab({
         {opp.archived_at ? (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
-              This deal is archived — hidden from the active pipeline. Unarchive to bring it back.
+              This deal is archived — hidden from the active pipeline. Unarchive
+              to bring it back.
             </div>
             <form action={unarchiveOpportunityAction}>
               <input type="hidden" name="opp_id" value={opp.id} />
-              <SubmitButton
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cc-brand-200 text-cc-brand-800 text-[12px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation"
-              >
+              <SubmitButton className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cc-brand-200 text-cc-brand-800 text-[12px] font-semibold hover:bg-cc-brand-50 min-h-[44px] touch-manipulation">
                 ↺ Unarchive opportunity
               </SubmitButton>
             </form>
@@ -4750,14 +5801,23 @@ async function InfoTab({
         ) : (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
-              Done with this opportunity but want to keep the record? Archive it — hides from pipeline, dependents stay.
+              Done with this opportunity but want to keep the record? Archive it
+              — hides from pipeline, dependents stay.
             </div>
             <form action={archiveOpportunityAction}>
               <input type="hidden" name="opp_id" value={opp.id} />
-              <SubmitButton
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <SubmitButton className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
                   <rect x="2" y="4" width="20" height="4" rx="1" />
                   <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
                   <line x1="10" y1="13" x2="14" y2="13" />
@@ -4774,7 +5834,10 @@ async function InfoTab({
           to this section instead of bouncing the user to the top of
           the page on URL change. Record stays in the DB via deleted_at
           so admins can restore. */}
-      <div id="danger-zone" className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100 scroll-mt-24">
+      <div
+        id="danger-zone"
+        className="lg:col-span-2 mt-4 pt-4 border-t border-ppp-charcoal-100 scroll-mt-24"
+      >
         {!confirmDelete ? (
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="text-[12px] text-ppp-charcoal-500">
@@ -4798,17 +5861,16 @@ async function InfoTab({
               Delete {opp.title || "this opportunity"}?
             </div>
             <div className="text-[12px] text-rose-800 leading-relaxed mb-2">
-              This also removes its unpaid invoices, every cost recorded against it, and
-              its work order — and takes the crew off any shifts already scheduled for it.
-              A deal with a PAID invoice can&rsquo;t be deleted at all.
+              This also removes its unpaid invoices, every cost recorded against
+              it, and its work order — and takes the crew off any shifts already
+              scheduled for it. A deal with a PAID invoice can&rsquo;t be
+              deleted at all.
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <form action={softDeleteOpportunityAction}>
                 <input type="hidden" name="opp_id" value={opp.id} />
                 <input type="hidden" name="account_id" value={opp.account_id} />
-                <SubmitButton
-                  className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation"
-                >
+                <SubmitButton className="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 min-h-[44px] touch-manipulation">
                   Delete
                 </SubmitButton>
               </form>
@@ -4880,7 +5942,9 @@ function ChangeStatusCard({
       className={`scroll-mt-24 bg-surface border border-ppp-charcoal-200 rounded-xl p-3.5 ${className ?? ""}`}
     >
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-2.5">
-        <h2 className="text-[13px] font-bold text-ppp-charcoal">Change status</h2>
+        <h2 className="text-[13px] font-bold text-ppp-charcoal">
+          Change status
+        </h2>
         <p className="text-[11.5px] text-ppp-charcoal-500">
           {sensible.length > 0
             ? "For what we can\u2019t see \u2014 a verbal yes, or a no-bid."
@@ -4889,7 +5953,8 @@ function ChangeStatusCard({
       </div>
       {nextStatuses.length === 0 ? (
         <p className="text-[12px] text-ppp-charcoal-500 italic">
-          This status has no outbound transitions. Use <em>Reopen</em> above to re-engage — it starts a fresh Solicitation.
+          This status has no outbound transitions. Use <em>Reopen</em> above to
+          re-engage — it starts a fresh Solicitation.
         </p>
       ) : (
         <form action={changeStatusAction} className="space-y-2.5">
@@ -4926,7 +5991,10 @@ function ChangeStatusCard({
               Hooks the sibling <select name="to_status"> on the client side
               and fades in. Hides the loss_reason + note siblings above (the
               structured debrief replaces them). */}
-          <DebriefFields initialStatus={defaultTo ?? undefined} initialSubStatus={opp.sub_status ?? undefined} />
+          <DebriefFields
+            initialStatus={defaultTo ?? undefined}
+            initialSubStatus={opp.sub_status ?? undefined}
+          />
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
             {/* Secondary action — submits status flip without filling
                 out debrief. Sets a hidden field so changeStatusAction
@@ -4972,11 +6040,13 @@ async function DebriefTab({
   // Pull existing debriefs so we can render the read-only completed
   // view if win_loss_debriefed_at is set. listDebriefsForOpp returns
   // newest-first; we surface the most recent.
-  const debriefs = await (await import("@/lib/commercial/win-loss/debrief")).listDebriefsForOpp(opp.id);
+  const debriefs = await (
+    await import("@/lib/commercial/win-loss/debrief")
+  ).listDebriefsForOpp(opp.id);
   const latestDebrief = debriefs[0] ?? null;
-  const isDebriefed = Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
-  const outcomeLabel =
-    debriefOutcomeLabel(opp);
+  const isDebriefed =
+    Boolean(opp.win_loss_debriefed_at) && latestDebrief !== null;
+  const outcomeLabel = debriefOutcomeLabel(opp);
 
   return (
     <div className="space-y-4">
@@ -4990,13 +6060,18 @@ async function DebriefTab({
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
       {(statusOk || justClosed) && !isDebriefed && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800">
-          Opportunity saved as <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>. Capture the {outcomeLabel.toLowerCase()} debrief below to feed the quarterly Win/Loss report — or skip and come back later.
+          Opportunity saved as{" "}
+          <strong>{oppStatusDisplayLabel(opp.status, opp.sub_status)}</strong>.
+          Capture the {outcomeLabel.toLowerCase()} debrief below to feed the
+          quarterly Win/Loss report — or skip and come back later.
         </div>
       )}
       {debriefSaved && (
@@ -5006,7 +6081,11 @@ async function DebriefTab({
       )}
 
       {isDebriefed && latestDebrief ? (
-        <DebriefReadOnlyView opp={opp} debrief={latestDebrief} debriefCount={debriefs.length} />
+        <DebriefReadOnlyView
+          opp={opp}
+          debrief={latestDebrief}
+          debriefCount={debriefs.length}
+        />
       ) : (
         <DebriefFormCard opp={opp} />
       )}
@@ -5032,30 +6111,49 @@ async function DebriefTab({
 }
 
 function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
-  const outcomeLabel =
-    debriefOutcomeLabel(opp);
+  const outcomeLabel = debriefOutcomeLabel(opp);
   const subhead = isWon(opp)
     ? "Two quick fields — who you beat and what tipped it your way. Feeds the quarterly Win/Loss report."
     : isLost(opp)
-    ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
-    : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
+      ? "Two quick fields — who won and why. Feeds the quarterly Win/Loss report."
+      : "Two quick fields — who took it and why you passed. Feeds the quarterly Win/Loss report.";
   // Karan 2026-07-07 UI overhaul: replaced the amber border-2 shouty
   // card with a calm white card using the platform-standard 3px red
   // left-accent stripe. Sentence-case header, softer subhead, softer
   // sub-labels inside the form (see DebriefFields).
   return (
     <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
-      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600 rounded-l-xl" />
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 w-[3px] bg-cc-brand-600 rounded-l-xl"
+      />
       <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center" aria-hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cc-brand-700">
+        <div
+          className="shrink-0 w-9 h-9 rounded-lg bg-cc-brand-50 border border-cc-brand-100 flex items-center justify-center"
+          aria-hidden
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-cc-brand-700"
+          >
             <path d="M9 11l3 3L22 4" />
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{outcomeLabel} debrief</h2>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 leading-relaxed">{subhead}</p>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">
+            {outcomeLabel} debrief
+          </h2>
+          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 leading-relaxed">
+            {subhead}
+          </p>
         </div>
       </div>
       <form action={submitDebriefOnlyAction} className="space-y-3">
@@ -5063,14 +6161,15 @@ function DebriefFormCard({ opp }: { opp: CommercialOpportunity }) {
         {/* DebriefFields normally watches a sibling <select name="to_status">.
             Here the status is already terminal — passing initialStatus
             renders the form fully open without a sibling select. */}
-        <DebriefFields initialStatus={opp.status} initialSubStatus={opp.sub_status ?? undefined} />
+        <DebriefFields
+          initialStatus={opp.status}
+          initialSubStatus={opp.sub_status ?? undefined}
+        />
         <div className="flex justify-end pt-3 border-t border-ppp-charcoal-100 mt-4">
           {/* Karan 2026-07-07: "Skip for now" removed — the user is
               already on the Debrief tab intentionally + can just click
               any other tab to skip. A dedicated Skip button was noise. */}
-          <SubmitButton
-            className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
-          >
+          <SubmitButton className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation">
             Save debrief
           </SubmitButton>
         </div>
@@ -5085,23 +6184,52 @@ function DebriefReadOnlyView({
   debriefCount,
 }: {
   opp: CommercialOpportunity;
-  debrief: { competitor_name: string | null; deciding_factor: string | null; lessons_learned: string | null; internal_notes: string | null; debriefed_at: string };
+  debrief: {
+    competitor_name: string | null;
+    deciding_factor: string | null;
+    lessons_learned: string | null;
+    internal_notes: string | null;
+    debriefed_at: string;
+  };
   debriefCount: number;
 }) {
   return (
     <section className="relative bg-surface border border-ppp-charcoal-100 rounded-xl p-5 shadow-sm">
-      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500"
+      />
       <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center" aria-hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-700">
+        <div
+          className="shrink-0 w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center"
+          aria-hidden
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-emerald-700"
+          >
             <path d="M20 6L9 17l-5-5" />
           </svg>
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">{debriefOutcomeLabel(opp)} debrief on file</h2>
+          <h2 className="text-base font-bold text-ppp-charcoal leading-tight">
+            {debriefOutcomeLabel(opp)} debrief on file
+          </h2>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1">
-            Recorded {new Date(debrief.debriefed_at).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "America/New_York" })}
-            {debriefCount > 1 && ` · ${debriefCount} debriefs on file (this is the most recent)`}
+            Recorded{" "}
+            {new Date(debrief.debriefed_at).toLocaleDateString("en-US", {
+              dateStyle: "medium",
+              timeZone: "America/New_York",
+            })}
+            {debriefCount > 1 &&
+              ` · ${debriefCount} debriefs on file (this is the most recent)`}
           </p>
         </div>
       </div>
@@ -5112,9 +6240,13 @@ function DebriefReadOnlyView({
         />
         <Field
           label={isWon(opp) ? "What sealed it" : "Deciding factor"}
-          value={debrief.deciding_factor
-            ? opportunityLossReasonLabel(debrief.deciding_factor as OpportunityLossReason)
-            : "—"}
+          value={
+            debrief.deciding_factor
+              ? opportunityLossReasonLabel(
+                  debrief.deciding_factor as OpportunityLossReason,
+                )
+              : "—"
+          }
         />
       </div>
       {debrief.lessons_learned && (
@@ -5143,9 +6275,19 @@ function DebriefReadOnlyView({
 
 // ─────────────── Team tab ───────────────
 
-async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; errorMessage?: string; assignedOk?: boolean }) {
+async function TeamTab({
+  oppId,
+  errorMessage,
+  assignedOk,
+}: {
+  oppId: string;
+  errorMessage?: string;
+  assignedOk?: boolean;
+}) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const [team, staff] = await Promise.all([
     listOpportunityTeam(oppId),
     listAssignableStaff(),
@@ -5160,7 +6302,9 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
       if (a.is_primary) rolesWithPrimary.add(a.role);
     }
   }
-  const missingPrimaryRoles = Array.from(rolesPresent).filter((r) => !rolesWithPrimary.has(r));
+  const missingPrimaryRoles = Array.from(rolesPresent).filter(
+    (r) => !rolesWithPrimary.has(r),
+  );
   // Is the current viewer already on this team? If yes, hide the quick
   // self-assign chip — they're covered. If no AND staff list includes
   // them (i.e. they have Commercial CC access), show the chip.
@@ -5179,25 +6323,34 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
       {assignedOk && (
         <div className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-lg px-4 py-3 text-sm text-ppp-blue-800 flex items-start gap-2">
           <span aria-hidden>✓</span>
-          <span>You&apos;re on this opp. Open tasks + status changes will surface in your bell + email.</span>
+          <span>
+            You&apos;re on this opp. Open tasks + status changes will surface in
+            your bell + email.
+          </span>
         </div>
       )}
       {missingPrimaryRoles.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
           <strong>Heads up</strong> — no primary set for:{" "}
-          {missingPrimaryRoles.map((r) => opportunityAssignmentRoleLabel(r)).join(", ")}.
+          {missingPrimaryRoles
+            .map((r) => opportunityAssignmentRoleLabel(r))
+            .join(", ")}
+          .
         </div>
       )}
       {staff.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          No PPP staff have Commercial CC access yet. Grant access on the admin Users page first.
+          No PPP staff have Commercial CC access yet. Grant access on the admin
+          Users page first.
         </div>
       )}
 
@@ -5206,10 +6359,16 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
           submit) down to 2 (role, submit). */}
       {showSelfAssign && (
         <section className="bg-ppp-blue-50 border border-ppp-blue-200 rounded-xl p-4">
-          <form action={quickAssignMeAction} className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <form
+            action={quickAssignMeAction}
+            className="flex flex-col sm:flex-row sm:items-end gap-3"
+          >
             <input type="hidden" name="opportunity_id" value={oppId} />
             <div className="flex-1 min-w-0">
-              <label htmlFor="self_assign_role" className="block text-[12px] font-semibold text-ppp-blue-900 mb-1">
+              <label
+                htmlFor="self_assign_role"
+                className="block text-[12px] font-semibold text-ppp-blue-900 mb-1"
+              >
                 Quick assign — add yourself to this opp
               </label>
               <select
@@ -5228,9 +6387,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                 ))}
               </select>
             </div>
-            <SubmitButton
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-800 active:bg-ppp-blue-900 min-h-[44px] touch-manipulation">
               Assign me
             </SubmitButton>
           </form>
@@ -5240,7 +6397,9 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
       {/* Add assignment form */}
       {staff.length > 0 && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-5">
-          <h2 className="text-sm font-bold text-ppp-charcoal mb-3">Add to team</h2>
+          <h2 className="text-sm font-bold text-ppp-charcoal mb-3">
+            Add to team
+          </h2>
           <form action={addTeamAction} className="space-y-3">
             <input type="hidden" name="opportunity_id" value={oppId} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5282,8 +6441,16 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <input id="team_primary" name="is_primary" type="checkbox" className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40" />
-              <label htmlFor="team_primary" className="text-[12px] text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0">
+              <input
+                id="team_primary"
+                name="is_primary"
+                type="checkbox"
+                className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40"
+              />
+              <label
+                htmlFor="team_primary"
+                className="text-[12px] text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0"
+              >
                 Mark as primary in this role
               </label>
             </div>
@@ -5300,9 +6467,7 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
               />
             </div>
             <div className="flex justify-end">
-              <SubmitButton
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-              >
+              <SubmitButton className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
                 Add to team
               </SubmitButton>
             </div>
@@ -5313,7 +6478,8 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
       {/* Current team */}
       {team.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
-          No team assigned yet. Add the sales rep, estimator, PM, and anyone else from PPP working this opportunity.
+          No team assigned yet. Add the sales rep, estimator, PM, and anyone
+          else from PPP working this opportunity.
         </div>
       ) : (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -5329,7 +6495,10 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                   {person.user_full_name ?? person.user_email}
                 </div>
                 {person.user_full_name && (
-                  <a href={`mailto:${person.user_email}`} className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline">
+                  <a
+                    href={`mailto:${person.user_email}`}
+                    className="text-[12px] text-cc-brand-700 hover:text-cc-brand-800 underline"
+                  >
                     {person.user_email}
                   </a>
                 )}
@@ -5344,16 +6513,46 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
                       }`}
                       title={a.notes ?? undefined}
                     >
-                      {a.is_primary && <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>}
+                      {a.is_primary && (
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          aria-hidden
+                          className="inline-block -mt-0.5"
+                        >
+                          <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+                        </svg>
+                      )}
                       {opportunityAssignmentRoleLabel(a.role)}
                       <form action={removeTeamAction} className="inline">
-                        <input type="hidden" name="opportunity_id" value={oppId} />
-                        <input type="hidden" name="assignment_id" value={a.id} />
+                        <input
+                          type="hidden"
+                          name="opportunity_id"
+                          value={oppId}
+                        />
+                        <input
+                          type="hidden"
+                          name="assignment_id"
+                          value={a.id}
+                        />
                         <SubmitButton
                           aria-label={`Remove ${opportunityAssignmentRoleLabel(a.role)} role`}
                           className={`-mr-1 ml-0.5 px-2 py-1 min-h-[44px] min-w-[32px] inline-flex items-center justify-center touch-manipulation ${a.is_primary ? "text-white/80 hover:text-white" : "text-cc-brand-700/80 hover:text-cc-brand-800"}`}
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18"/></svg>
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            aria-hidden
+                          >
+                            <path d="M6 6l12 12M18 6L6 18" />
+                          </svg>
                         </SubmitButton>
                       </form>
                     </span>
@@ -5370,7 +6569,13 @@ async function TeamTab({ oppId, errorMessage, assignedOk }: { oppId: string; err
 
 // ─────────────── Tasks tab ───────────────
 
-async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+async function TasksTab({
+  oppId,
+  errorMessage,
+}: {
+  oppId: string;
+  errorMessage?: string;
+}) {
   const [tasks, staff] = await Promise.all([
     listOpportunityTasks(oppId),
     listAssignableStaff(),
@@ -5379,7 +6584,9 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   const closed = tasks.filter((t) => !!t.completed_at);
   const staffById = new Map(staff.map((s) => [s.user_id, s]));
   // ET calendar date so overdue coloring flips at ET midnight, not UTC.
-  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
   return (
     <div className="space-y-5">
       {errorMessage && (
@@ -5392,7 +6599,9 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
@@ -5420,7 +6629,12 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
               <label htmlFor="task_due" className={LABEL_CLS}>
                 Due date
               </label>
-              <DateField ariaLabel="Due date" name="due_at" placeholder="Pick a date" className="mt-1" />
+              <DateField
+                ariaLabel="Due date"
+                name="due_at"
+                placeholder="Pick a date"
+                className="mt-1"
+              />
             </div>
             <div>
               <label htmlFor="task_assignee" className={LABEL_CLS}>
@@ -5439,9 +6653,7 @@ async function TasksTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             </div>
           </div>
           <div className="flex justify-end">
-            <SubmitButton
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
               Add task
             </SubmitButton>
           </div>
@@ -5483,33 +6695,51 @@ function TaskList({
   label: string;
   tasks: OpportunityTask[];
   oppId: string;
-  staffById: Map<string, { user_id: string; email: string; full_name: string | null }>;
+  staffById: Map<
+    string,
+    { user_id: string; email: string; full_name: string | null }
+  >;
   today: string;
   emptyCopy: string;
   dim?: boolean;
 }) {
   return (
-    <div className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden ${dim ? "opacity-80" : ""}`}>
+    <div
+      className={`bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden ${dim ? "opacity-80" : ""}`}
+    >
       <div className="px-4 py-3 border-b border-ppp-charcoal-100">
         <h2 className="text-sm font-semibold text-ppp-charcoal">{label}</h2>
       </div>
       {tasks.length === 0 ? (
-        <div className="p-6 text-center text-sm text-ppp-charcoal-500">{emptyCopy}</div>
+        <div className="p-6 text-center text-sm text-ppp-charcoal-500">
+          {emptyCopy}
+        </div>
       ) : (
         <ul className="divide-y divide-ppp-charcoal-100">
           {tasks.map((t) => {
-            const assignee = t.assigned_user_id ? staffById.get(t.assigned_user_id) : null;
+            const assignee = t.assigned_user_id
+              ? staffById.get(t.assigned_user_id)
+              : null;
             const overdue =
               !t.completed_at && t.due_at && t.due_at.slice(0, 10) < today;
-            const dueChip = !t.completed_at && t.due_at ? dueLabel(t.due_at) : null;
+            const dueChip =
+              !t.completed_at && t.due_at ? dueLabel(t.due_at) : null;
             return (
               <li key={t.id} className="px-4 py-3 flex items-start gap-3">
                 <form action={toggleTaskAction} className="pt-1">
                   <input type="hidden" name="opportunity_id" value={oppId} />
                   <input type="hidden" name="task_id" value={t.id} />
-                  <input type="hidden" name="make_complete" value={t.completed_at ? "false" : "true"} />
+                  <input
+                    type="hidden"
+                    name="make_complete"
+                    value={t.completed_at ? "false" : "true"}
+                  />
                   <SubmitButton
-                    aria-label={t.completed_at ? `Reopen ${t.title}` : `Complete ${t.title}`}
+                    aria-label={
+                      t.completed_at
+                        ? `Reopen ${t.title}`
+                        : `Complete ${t.title}`
+                    }
                     className={`rounded border-2 inline-flex items-center justify-center touch-manipulation min-h-[44px] min-w-[44px] sm:min-h-[36px] sm:min-w-[36px] text-base ${
                       t.completed_at
                         ? "bg-cc-brand-600 border-cc-brand-600 text-white"
@@ -5520,18 +6750,30 @@ function TaskList({
                   </SubmitButton>
                 </form>
                 <div className="flex-1 min-w-0">
-                  <div className={`text-sm ${t.completed_at ? "line-through text-ppp-charcoal-500" : "text-ppp-charcoal"}`}>
+                  <div
+                    className={`text-sm ${t.completed_at ? "line-through text-ppp-charcoal-500" : "text-ppp-charcoal"}`}
+                  >
                     {t.title}
                   </div>
                   <div className="text-[11px] text-ppp-charcoal-500 mt-0.5 flex items-center gap-2 flex-wrap">
                     {dueChip && (
-                      <span className={overdue ? "text-rose-700 font-semibold" : t.due_at && t.due_at.slice(0, 10) <= addDaysISO(today, 7) ? "text-amber-700" : "text-ppp-charcoal-500"}>
+                      <span
+                        className={
+                          overdue
+                            ? "text-rose-700 font-semibold"
+                            : t.due_at &&
+                                t.due_at.slice(0, 10) <= addDaysISO(today, 7)
+                              ? "text-amber-700"
+                              : "text-ppp-charcoal-500"
+                        }
+                      >
                         {dueChip}
                       </span>
                     )}
                     {assignee && (
                       <span>
-                        Assigned: <strong>{assignee.full_name ?? assignee.email}</strong>
+                        Assigned:{" "}
+                        <strong>{assignee.full_name ?? assignee.email}</strong>
                       </span>
                     )}
                   </div>
@@ -5573,7 +6815,13 @@ function addDaysISO(base: string, days: number): string {
 
 // ─────────────── Notes tab ───────────────
 
-async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+async function NotesTab({
+  oppId,
+  errorMessage,
+}: {
+  oppId: string;
+  errorMessage?: string;
+}) {
   // Stage 3: parallel-fetch notes + mentionable team members so the
   // @ autocomplete has live candidates without an extra round-trip.
   // Candidate set is everyone with platform access — broader than just
@@ -5601,7 +6849,9 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
@@ -5621,9 +6871,7 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
             helperText="Tip: type @ to tag a teammate — they'll get a personal notification."
           />
           <div className="flex justify-end">
-            <SubmitButton
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
               Add note
             </SubmitButton>
           </div>
@@ -5645,7 +6893,13 @@ async function NotesTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
   );
 }
 
-function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: string }) {
+function NoteCard({
+  note,
+  oppId,
+}: {
+  note: OpportunityNoteWithAuthor;
+  oppId: string;
+}) {
   const author = note.author_full_name ?? note.author_email ?? "Unknown";
   const edited = note.updated_at && note.updated_at !== note.created_at;
   const isPinned = note.pinned_at !== null;
@@ -5664,13 +6918,21 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-200 text-amber-900 border border-amber-300"
               title="Pinned to top of the notes list"
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden
+              >
                 <path d="M16 4l-4 4-4-4-2 2 4 4-6 6v2h2l6-6 4 4 2-2-4-4 4-4z" />
               </svg>
               Pinned
             </span>
           )}
-          <span className="text-sm font-semibold text-ppp-charcoal">{author}</span>
+          <span className="text-sm font-semibold text-ppp-charcoal">
+            {author}
+          </span>
         </div>
         <span className="text-[11px] text-ppp-charcoal-500">
           {new Date(note.created_at).toLocaleString("en-US", {
@@ -5687,7 +6949,9 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
       </div>
       <details className="group">
         <summary className="list-none cursor-pointer">
-          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">{note.body}</p>
+          <p className="text-sm text-ppp-charcoal-700 whitespace-pre-wrap leading-relaxed">
+            {note.body}
+          </p>
           <span className="text-[11px] text-cc-brand-700 underline mt-2 inline-flex items-center gap-1 min-h-[44px] touch-manipulation">
             Edit / Delete
           </span>
@@ -5705,9 +6969,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
               className={TEXTAREA_CLS + " min-h-[88px]"}
             />
             <div className="flex justify-end gap-2">
-              <SubmitButton
-                className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-surface text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
-              >
+              <SubmitButton className="inline-flex items-center px-3 py-1.5 rounded-lg bg-ppp-charcoal text-surface text-[12px] font-semibold hover:bg-ppp-charcoal-700 min-h-[44px] sm:min-h-[36px] touch-manipulation">
                 Save edit
               </SubmitButton>
             </div>
@@ -5723,7 +6985,13 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
                     : "text-amber-700 hover:text-amber-900"
                 }`}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden
+                >
                   <path d="M16 4l-4 4-4-4-2 2 4 4-6 6v2h2l6-6 4 4 2-2-4-4 4-4z" />
                 </svg>
                 {isPinned ? "Unpin" : "Pin to top"}
@@ -5732,9 +7000,7 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
             <form action={deleteNoteAction}>
               <input type="hidden" name="opportunity_id" value={oppId} />
               <input type="hidden" name="note_id" value={note.id} />
-              <SubmitButton
-                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
-              >
+              <SubmitButton className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1">
                 Delete note
               </SubmitButton>
             </form>
@@ -5747,7 +7013,13 @@ function NoteCard({ note, oppId }: { note: OpportunityNoteWithAuthor; oppId: str
 
 // ─────────────── Plans & Specs tab ───────────────
 
-async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?: string }) {
+async function PlansTab({
+  oppId,
+  errorMessage,
+}: {
+  oppId: string;
+  errorMessage?: string;
+}) {
   const { active, history } = await listOpportunityAttachments(oppId);
   return (
     <div className="space-y-5">
@@ -5761,7 +7033,9 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
@@ -5781,7 +7055,8 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         </div>
         {active.length === 0 ? (
           <div className="p-8 text-center text-sm text-ppp-charcoal-500">
-            No files yet. Upload the RFP, plan set, spec book, and any proposal versions here.
+            No files yet. Upload the RFP, plan set, spec book, and any proposal
+            versions here.
           </div>
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">
@@ -5796,11 +7071,18 @@ async function PlansTab({ oppId, errorMessage }: { oppId: string; errorMessage?:
         <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
             <span>History · {history.length}</span>
-            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
+            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">
+              ▾
+            </span>
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
             {history.map((a) => (
-              <AttachmentRow key={a.id} attachment={a} oppId={oppId} active={false} />
+              <AttachmentRow
+                key={a.id}
+                attachment={a}
+                oppId={oppId}
+                active={false}
+              />
             ))}
           </ul>
         </details>
@@ -5818,12 +7100,15 @@ function AttachmentRow({
   oppId: string;
   active: boolean;
 }) {
-  const uploaded = new Date(attachment.uploaded_at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "America/New_York",
-  });
+  const uploaded = new Date(attachment.uploaded_at).toLocaleDateString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "America/New_York",
+    },
+  );
   const category = categorizeFilename(attachment.file_name);
   return (
     <li className="px-4 py-3 flex items-start justify-between gap-4">
@@ -5922,7 +7207,9 @@ async function FinishesTab({
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
@@ -5948,7 +7235,8 @@ async function FinishesTab({
               className={INPUT_CLS}
             />
             <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-              Case-insensitive — &ldquo;WD-1&rdquo; and &ldquo;wd-1&rdquo; are treated as duplicates.
+              Case-insensitive — &ldquo;WD-1&rdquo; and &ldquo;wd-1&rdquo; are
+              treated as duplicates.
             </p>
           </div>
 
@@ -6064,9 +7352,7 @@ async function FinishesTab({
           </div>
 
           <div className="flex justify-end">
-            <SubmitButton
-              className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors shadow-sm shadow-cc-brand-600/30 min-h-[44px] touch-manipulation">
               Add finish
             </SubmitButton>
           </div>
@@ -6078,15 +7364,25 @@ async function FinishesTab({
       {finishes.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           <p>
-            No finishes captured yet. Add the WD-1, P-1, etc. codes from the architect spec book —
-            they flow into your submittals later.
+            No finishes captured yet. Add the WD-1, P-1, etc. codes from the
+            architect spec book — they flow into your submittals later.
           </p>
           <p className="mt-3 text-[12px]">
             <Link
               href={`/commercial/opportunities/${oppId}?tab=plans`}
               className="inline-flex items-center gap-1 text-ppp-blue-700 hover:text-ppp-blue-900 underline underline-offset-2"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
               </svg>
               Check Plans &amp; Specs
@@ -6143,17 +7439,15 @@ function FinishRow({
     return (
       <li className="px-4 py-4 bg-rose-50">
         <div className="text-sm text-rose-900 mb-3">
-          <strong>Delete finish &ldquo;{finish.code}&rdquo;?</strong>{" "}
-          This is permanent. Submittal items referencing this code as text
-          will remain but won&apos;t resolve to a product.
+          <strong>Delete finish &ldquo;{finish.code}&rdquo;?</strong> This is
+          permanent. Submittal items referencing this code as text will remain
+          but won&apos;t resolve to a product.
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <form action={deleteFinishAction} className="inline">
             <input type="hidden" name="opportunity_id" value={oppId} />
             <input type="hidden" name="finish_id" value={finish.id} />
-            <SubmitButton
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-800 active:bg-rose-900 min-h-[44px] touch-manipulation">
               Yes, delete
             </SubmitButton>
           </form>
@@ -6186,19 +7480,31 @@ function FinishRow({
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap text-sm">
               <span className="font-medium text-ppp-charcoal break-words">
-                {finish.product_name || <span className="text-ppp-charcoal-400 italic">No product set</span>}
+                {finish.product_name || (
+                  <span className="text-ppp-charcoal-400 italic">
+                    No product set
+                  </span>
+                )}
               </span>
               {finish.color && (
-                <span className="text-ppp-charcoal-700 break-words">· {finish.color}</span>
+                <span className="text-ppp-charcoal-700 break-words">
+                  · {finish.color}
+                </span>
               )}
               {finish.sheen && (
-                <span className="text-ppp-charcoal-500 text-[12px]">· {finish.sheen}</span>
+                <span className="text-ppp-charcoal-500 text-[12px]">
+                  · {finish.sheen}
+                </span>
               )}
             </div>
             <div className="text-[12px] text-ppp-charcoal-500 mt-0.5 break-words">
               {finish.manufacturer && <span>{finish.manufacturer}</span>}
-              {finish.manufacturer && finish.location_description && <span> · </span>}
-              {finish.location_description && <span>{finish.location_description}</span>}
+              {finish.manufacturer && finish.location_description && (
+                <span> · </span>
+              )}
+              {finish.location_description && (
+                <span>{finish.location_description}</span>
+              )}
               {finish.finish_type && (
                 <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-ppp-charcoal-50 text-ppp-charcoal-600 text-[10px] uppercase tracking-wider">
                   {finishTypeLabel(finish.finish_type)}
@@ -6326,9 +7632,7 @@ function FinishRow({
             >
               Delete
             </Link>
-            <SubmitButton
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation"
-            >
+            <SubmitButton className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ppp-charcoal text-surface text-sm font-semibold hover:bg-ppp-charcoal-700 active:bg-ppp-charcoal-800 min-h-[44px] touch-manipulation">
               Save changes
             </SubmitButton>
           </div>
@@ -6404,7 +7708,9 @@ async function FilesTab({
           aria-live="polite"
           className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2"
         >
-          <span aria-hidden className="mt-0.5">⚠</span>
+          <span aria-hidden className="mt-0.5">
+            ⚠
+          </span>
           <span>{errorMessage}</span>
         </div>
       )}
@@ -6415,7 +7721,11 @@ async function FilesTab({
           as links so back/forward preserves filter state + copy-link works. */}
       {allDocs.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <FilterChip href={baseHref} label={`All · ${allDocs.length}`} active={!categoryFilter} />
+          <FilterChip
+            href={baseHref}
+            label={`All · ${allDocs.length}`}
+            active={!categoryFilter}
+          />
           {DOCUMENT_CATEGORIES.map((c) => {
             const n = counts.get(c) ?? 0;
             if (n === 0) return null;
@@ -6434,7 +7744,18 @@ async function FilesTab({
       {favorites.length > 0 && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex items-center gap-2">
-            <span className="text-amber-500 inline-flex"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="inline-block -mt-0.5"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg></span>
+            <span className="text-amber-500 inline-flex">
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden
+                className="inline-block -mt-0.5"
+              >
+                <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+              </svg>
+            </span>
             <h2 className="text-sm font-semibold text-ppp-charcoal">
               Favorites · {favorites.length}
             </h2>
@@ -6450,7 +7771,8 @@ async function FilesTab({
       <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
         <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
           <h2 className="text-sm font-semibold text-ppp-charcoal">
-            {favorites.length > 0 ? "All files" : "Files"} · {others.length + favorites.length}
+            {favorites.length > 0 ? "All files" : "Files"} ·{" "}
+            {others.length + favorites.length}
           </h2>
         </div>
         {others.length + favorites.length === 0 ? (
@@ -6476,11 +7798,18 @@ async function FilesTab({
         <details className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden group">
           <summary className="px-4 py-3 cursor-pointer text-[12px] font-semibold uppercase tracking-wide text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 list-none flex items-center justify-between min-h-[44px] touch-manipulation">
             <span>Superseded · {superseded.length}</span>
-            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">▾</span>
+            <span className="text-ppp-charcoal-300 group-open:rotate-180 transition-transform">
+              ▾
+            </span>
           </summary>
           <ul className="divide-y divide-ppp-charcoal-100 border-t border-ppp-charcoal-100">
             {superseded.map((d) => (
-              <FileRow key={d.id} doc={d} muted currentCategory={categoryFilter} />
+              <FileRow
+                key={d.id}
+                doc={d}
+                muted
+                currentCategory={categoryFilter}
+              />
             ))}
           </ul>
         </details>
@@ -6542,7 +7871,7 @@ function FileRow({
   const rawAllowed = allowedNextDocumentStatuses(doc.status);
   const allowedNext = rawAllowed.filter(
     (s): s is "draft" | "pending_review" | "approved" | "rejected" =>
-      s !== "superseded"
+      s !== "superseded",
   );
   return (
     <li className={`px-4 py-3 ${muted ? "opacity-60" : ""}`}>
@@ -6630,7 +7959,9 @@ async function TimelineTab({ oppId }: { oppId: string }) {
           No status changes yet
         </div>
         <p className="text-sm text-ppp-charcoal-500">
-          As this deal moves through the pipeline, every status change shows up here with the date, the person who changed it, and any note they added.
+          As this deal moves through the pipeline, every status change shows up
+          here with the date, the person who changed it, and any note they
+          added.
         </p>
       </div>
     );
@@ -6641,7 +7972,9 @@ async function TimelineTab({ oppId }: { oppId: string }) {
         <h2 className="text-sm font-semibold text-ppp-charcoal">
           Status history · {log.length}
         </h2>
-        <span className="text-[11px] text-ppp-charcoal-500">Most recent first</span>
+        <span className="text-[11px] text-ppp-charcoal-500">
+          Most recent first
+        </span>
       </div>
       <ol className="divide-y divide-ppp-charcoal-100">
         {log.map((entry) => {
@@ -6650,19 +7983,20 @@ async function TimelineTab({ oppId }: { oppId: string }) {
           // v2 (2026-07-13): log stores top-level status only. A
           // pre_sale_closed row is Won unless it has a loss_reason (Won can
           // never carry loss_reason; changeOpportunityStatus clears it).
-          const isWin = entry.to_status === "pre_sale_closed" && !entry.loss_reason;
+          const isWin =
+            entry.to_status === "pre_sale_closed" && !entry.loss_reason;
           const isLossRow =
             entry.to_status === "pre_sale_closed" && !!entry.loss_reason;
           const cls = isWin
             ? "border-l-emerald-500"
             : isTerminal
-            ? "border-l-rose-400"
-            : "border-l-ppp-charcoal-200";
+              ? "border-l-rose-400"
+              : "border-l-ppp-charcoal-200";
           const toLabel = isWin
             ? "Won"
             : isLossRow
-            ? "Lost"
-            : opportunityStatusLabel(entry.to_status);
+              ? "Lost"
+              : opportunityStatusLabel(entry.to_status);
           return (
             <li key={entry.id} className={`px-4 py-3 border-l-4 ${cls}`}>
               <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1">
@@ -6670,7 +8004,12 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                   {entry.from_status ? (
                     <>
                       {opportunityStatusLabel(entry.from_status)}
-                      <span aria-hidden className="text-ppp-charcoal-400 mx-1.5">→</span>
+                      <span
+                        aria-hidden
+                        className="text-ppp-charcoal-400 mx-1.5"
+                      >
+                        →
+                      </span>
                       {toLabel}
                     </>
                   ) : (
@@ -6685,9 +8024,18 @@ async function TimelineTab({ oppId }: { oppId: string }) {
                       server-side on Vercel (UTC), so leaving timeZone out
                       shows UTC timestamps to NYC users. PPP is in NYC, all
                       end-users are NYC. */}
-                  {when.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
+                  {when.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "America/New_York",
+                  })}
                   {" · "}
-                  {when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
+                  {when.toLocaleTimeString("en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZone: "America/New_York",
+                  })}
                   {" ET"}
                 </span>
               </div>
@@ -6735,33 +8083,43 @@ function Card({
     tone === "cc-brand"
       ? "bg-cc-brand-50 text-cc-brand-700"
       : tone === "blue"
-      ? "bg-cc-brand-50 text-cc-brand-700"
-      : tone === "amber"
-      ? "bg-amber-50 text-amber-700"
-      : "bg-ppp-charcoal-50 text-ppp-charcoal-600";
+        ? "bg-cc-brand-50 text-cc-brand-700"
+        : tone === "amber"
+          ? "bg-amber-50 text-amber-700"
+          : "bg-ppp-charcoal-50 text-ppp-charcoal-600";
   const accentCls =
     tone === "cc-brand"
       ? "bg-cc-brand-500"
       : tone === "blue"
-      ? "bg-cc-brand-500"
-      : tone === "amber"
-      ? "bg-amber-500"
-      : "bg-ppp-charcoal-200";
+        ? "bg-cc-brand-500"
+        : tone === "amber"
+          ? "bg-amber-500"
+          : "bg-ppp-charcoal-200";
   return (
     // No `overflow-hidden`: this Card now holds a searchable contact picker,
     // and a clipping card cuts its dropdown off at the border — the same fault
     // Stephanie hit on the exclusion picker. The header rounds its own corners
     // instead. Caught by scripts/audit-clipped-popovers.cjs on this very card.
-    <section className={`bg-surface border border-ppp-charcoal-100 rounded-xl shadow-sm ${className ?? ""}`}>
+    <section
+      className={`bg-surface border border-ppp-charcoal-100 rounded-xl shadow-sm ${className ?? ""}`}
+    >
       <header className="px-5 pt-4 pb-3 flex items-center gap-3 border-b border-ppp-charcoal-50 rounded-t-xl">
         {icon && (
-          <span aria-hidden className={`inline-flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${iconCls}`}>
+          <span
+            aria-hidden
+            className={`inline-flex items-center justify-center h-8 w-8 rounded-lg shrink-0 ${iconCls}`}
+          >
             {icon}
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-bold text-ppp-charcoal tracking-tight">{title}</h2>
-          <span aria-hidden className={`block h-[2px] w-8 rounded-full mt-1 ${accentCls}`} />
+          <h2 className="text-sm font-bold text-ppp-charcoal tracking-tight">
+            {title}
+          </h2>
+          <span
+            aria-hidden
+            className={`block h-[2px] w-8 rounded-full mt-1 ${accentCls}`}
+          />
         </div>
       </header>
       <div className="px-5 py-4 space-y-2.5">{children}</div>
@@ -6793,7 +8151,9 @@ function OppPropertyAddress({
     Boolean(opp.property_zip);
 
   if (hasOpp) {
-    const line2 = [opp.property_city, opp.property_state].filter(Boolean).join(", ");
+    const line2 = [opp.property_city, opp.property_state]
+      .filter(Boolean)
+      .join(", ");
     const line2Full = [line2, opp.property_zip].filter(Boolean).join(" ");
     return (
       <>
@@ -6802,8 +8162,8 @@ function OppPropertyAddress({
         {inlineRow("property_state", opp.property_state ?? "")}
         {inlineRow("property_zip", opp.property_zip ?? "")}
         <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-          Per-opp address — overrides the account&apos;s site address for this bid.
-          Reads {line2Full || "—"}.
+          Per-opp address — overrides the account&apos;s site address for this
+          bid. Reads {line2Full || "—"}.
         </p>
       </>
     );
@@ -6843,9 +8203,11 @@ function OppPropertyAddress({
       {inlineRow("property_state", opp.property_state ?? "")}
       {inlineRow("property_zip", opp.property_zip ?? "")}
       <p className="text-[11px] text-ppp-charcoal-500 mt-1">
-        Blank rows inherit the account&apos;s {account?.site_street ? "site" : "billing"} address —
-        currently {acctStreet ?? "—"}{fallbackLine2Full ? `, ${fallbackLine2Full}` : ""}. Fill any in
-        to override it for this bid.
+        Blank rows inherit the account&apos;s{" "}
+        {account?.site_street ? "site" : "billing"} address — currently{" "}
+        {acctStreet ?? "—"}
+        {fallbackLine2Full ? `, ${fallbackLine2Full}` : ""}. Fill any in to
+        override it for this bid.
       </p>
     </>
   );
@@ -6864,7 +8226,8 @@ function Field({
   // "—" so users see the field IS blank without wondering if data is
   // missing. Present values are bold-charcoal so they visually dominate
   // the muted label. Karan 2026-07-06: "so much room for improvement."
-  const hasValue = value !== undefined && value !== null && value !== "" && value !== "—";
+  const hasValue =
+    value !== undefined && value !== null && value !== "" && value !== "—";
   // Karan 2026-07-08 Batch 2b: dropped the visible <InfoDot /> "?" pip
   // in favor of a native browser tooltip on the label. The `?` on every
   // field read as noise; the info is still accessible via hover on
@@ -6908,7 +8271,10 @@ function KpiTile({
       className="relative border border-ppp-blue-100/70 rounded-lg px-3 pt-3.5 pb-3 bg-gradient-to-br from-surface to-ppp-blue-50/50 min-h-[64px] flex flex-col justify-center shadow-sm overflow-hidden"
       title={tooltip}
     >
-      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-ppp-blue-500 to-ppp-blue-400" aria-hidden />
+      <span
+        className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-ppp-blue-500 to-ppp-blue-400"
+        aria-hidden
+      />
       <div className="text-[9.5px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
         {label}
       </div>
@@ -6919,8 +8285,13 @@ function KpiTile({
   );
 }
 
-
-function StatusPill({ status, subStatus }: { status: OpportunityStatus | string; subStatus?: string | null }) {
+function StatusPill({
+  status,
+  subStatus,
+}: {
+  status: OpportunityStatus | string;
+  subStatus?: string | null;
+}) {
   // Was a dead v1 map keyed on retired statuses — its intersection with the
   // live enum was `estimating` alone, so seven of eight statuses fell through
   // to grey. Worse, the label came from the single-arg helper, which maps BOTH
@@ -6929,9 +8300,10 @@ function StatusPill({ status, subStatus }: { status: OpportunityStatus | string;
   // "Closed Won". Now the one shared tone + the sub-status-aware label.
   const { cls } = statusPillTone(status, subStatus);
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}
+    >
       {oppStatusDisplayLabel(status, subStatus ?? null)}
     </span>
   );
 }
-

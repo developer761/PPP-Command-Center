@@ -373,7 +373,7 @@ async function deleteSubmittalAction(formData: FormData) {
   // index if they drilled in from there), else the deal's Project sub-tab.
   revalidatePath(`/commercial/accounts/${account_id}`);
   revalidatePath("/commercial/post-job/submittals");
-  redirect(back ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`);
+  redirect(back ?? `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -819,7 +819,7 @@ export async function SubmittalDetailView({
   const drillInSubmittals = `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`;
   const submittalsListHref = inline
     ? drillInSubmittals
-    : (backTo ?? `/commercial/accounts/${account_id}/submittals/${opportunity_id}?v=1`);
+    : (backTo ?? `/commercial/opportunities/${opportunity_id}?tab=project&sub=submittals`);
 
   // Finish-code suggestions for the items editor (autocomplete-friendly).
   // Attachments — linked + unlinked, fetched in parallel for the

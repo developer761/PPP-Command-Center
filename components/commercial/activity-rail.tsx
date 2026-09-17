@@ -34,6 +34,27 @@ const KIND_STYLE: Record<ActivityKind, { dot: string; label: string }> = {
   proposal: { dot: "bg-emerald-500", label: "Proposal" },
 };
 
+/** "Tue 23 Sep" — the shift is read at a glance, so no year and no weekday
+ *  spelled out. UTC-noon so a date-only string never slips a day. */
+function shortDay(ymd: string): string {
+  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+/** "7:00a" from a Postgres time. Compact because it sits in a narrow rail. */
+function hhmm(t: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t);
+  if (!m) return "";
+  let h = Number(m[1]);
+  const ap = h >= 12 ? "p" : "a";
+  h = h % 12 || 12;
+  return m[2] === "00" ? `${h}${ap}` : `${h}:${m[2]}${ap}`;
+}
+
 function Row({ e }: { e: ActivityEntry }) {
   const s = KIND_STYLE[e.kind];
   return (
@@ -43,7 +64,9 @@ function Row({ e }: { e: ActivityEntry }) {
         className={`absolute left-0 top-[13px] h-1.5 w-1.5 rounded-full ${s.dot} ${e.done ? "opacity-40" : ""}`}
       />
       <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[12px] font-semibold leading-snug ${e.done ? "text-ppp-charcoal-400 line-through" : "text-ppp-charcoal"}`}>
+        <span
+          className={`text-[12px] font-semibold leading-snug ${e.done ? "text-ppp-charcoal-400 line-through" : "text-ppp-charcoal"}`}
+        >
           {e.title}
         </span>
         <span className="text-[10px] text-ppp-charcoal-400 tabular-nums shrink-0">
@@ -51,7 +74,9 @@ function Row({ e }: { e: ActivityEntry }) {
         </span>
       </div>
       {e.detail && (
-        <p className="text-[11px] text-ppp-charcoal-500 leading-snug mt-0.5 line-clamp-2">{e.detail}</p>
+        <p className="text-[11px] text-ppp-charcoal-500 leading-snug mt-0.5 line-clamp-2">
+          {e.detail}
+        </p>
       )}
     </li>
   );
@@ -62,6 +87,7 @@ export function ActivityRail({
   todayIso,
   oppId,
   standing,
+  labor,
 }: {
   feed: ActivityFeed;
   todayIso: string;
@@ -69,6 +95,30 @@ export function ActivityRail({
   /** Brendan 2026-08-26 — the present state of the job, above its history.
    *  Omitted on surfaces that don't load the money. */
   standing?: DealStandingInput;
+  /**
+   * Crew on this job — booked, worked, and paid.
+   *
+   * Karan 2026-09-17: "we should have like Labor, and we can see if anyone's
+   * scheduled, when they're scheduled for, total labor costs." The platform
+   * held all three and the deal page showed none of them, so a job with a crew
+   * booked for Tuesday read "Nothing has happened on this job yet".
+   *
+   * Optional: omitted on surfaces that do not load Field Ops.
+   */
+  labor?: {
+    upcomingDays: number;
+    upcomingPeople: number;
+    next: {
+      date: string;
+      name: string;
+      start: string | null;
+      end: string | null;
+    }[];
+    /** Approved hours worked to date, all crew. */
+    hours: number;
+    /** What has been paid out to crews against this job. */
+    paidCents: number;
+  };
 }) {
   const standingLines = standing ? dealStandingLines(standing) : [];
   const pct = standing ? billedPct(standing) : null;
@@ -105,13 +155,18 @@ export function ActivityRail({
           )}
         </div>
         {feed.upcoming.length === 0 ? (
-          <p className="text-[11.5px] text-ppp-charcoal-400">Nothing scheduled.</p>
+          <p className="text-[11.5px] text-ppp-charcoal-400">
+            Nothing scheduled.
+          </p>
         ) : (
           <ul className="space-y-1.5">
             {feed.upcoming.slice(0, 5).map((e) => {
               const d = dueLabel(String(e.dueAt), todayIso);
               return (
-                <li key={e.id} className="flex items-baseline justify-between gap-2">
+                <li
+                  key={e.id}
+                  className="flex items-baseline justify-between gap-2"
+                >
                   <span className="text-[12px] font-semibold text-ppp-charcoal leading-snug min-w-0 truncate">
                     {e.title}
                   </span>
@@ -134,6 +189,80 @@ export function ActivityRail({
         )}
       </div>
 
+      {/* ── Labor. Booked, worked, paid — in that order, because the first is
+             the only one that is about the future. ── */}
+      {labor &&
+        (labor.upcomingDays > 0 || labor.hours > 0 || labor.paidCents > 0) && (
+          <div className="px-3.5 py-2.5 border-b border-ppp-charcoal-100">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-ppp-charcoal-500">
+                Labor
+              </h3>
+              <Link
+                href="/commercial/field-ops/calendar"
+                className="text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
+              >
+                Calendar
+              </Link>
+            </div>
+
+            {labor.upcomingDays > 0 ? (
+              <>
+                <p className="text-[11.5px] text-ppp-charcoal-600 mb-1">
+                  <span className="font-bold text-ppp-charcoal">
+                    {labor.upcomingPeople}{" "}
+                    {labor.upcomingPeople === 1 ? "person" : "people"}
+                  </span>{" "}
+                  booked across{" "}
+                  <span className="font-bold text-ppp-charcoal">
+                    {labor.upcomingDays}{" "}
+                    {labor.upcomingDays === 1 ? "day" : "days"}
+                  </span>
+                  .
+                </p>
+                <ul className="space-y-1">
+                  {labor.next.map((n, i) => (
+                    <li
+                      key={`${n.date}-${n.name}-${i}`}
+                      className="flex items-baseline justify-between gap-2"
+                    >
+                      <span className="text-[12px] text-ppp-charcoal leading-snug min-w-0 truncate">
+                        {n.name}
+                      </span>
+                      <span className="text-[10.5px] text-ppp-charcoal-500 shrink-0 tabular-nums">
+                        {shortDay(n.date)}
+                        {n.start
+                          ? ` · ${hhmm(n.start)}${n.end ? `–${hhmm(n.end)}` : ""}`
+                          : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="text-[11.5px] text-ppp-charcoal-400">
+                Nobody scheduled.
+              </p>
+            )}
+
+            {(labor.hours > 0 || labor.paidCents > 0) && (
+              <div className="flex items-baseline justify-between gap-2 mt-2 pt-2 border-t border-ppp-charcoal-50">
+                <span className="text-[11px] text-ppp-charcoal-500">
+                  {labor.hours > 0
+                    ? `${labor.hours.toLocaleString("en-US", { maximumFractionDigits: 1 })} hrs worked`
+                    : "No hours logged yet"}
+                </span>
+                <span className="text-[12px] font-bold tabular-nums text-ppp-charcoal">
+                  {money(labor.paidCents)} paid
+                </span>
+              </div>
+            )}
+            {/* Hours and money are two counts of the SAME work and are never
+              added — the same rule the Labor report and the job's Costs tab
+              state. Shown side by side, never summed. */}
+          </div>
+        )}
+
       {/* ── Where it stands. ──
           Brendan 2026-08-26: "under 'this month' it should say things specific
           to the deal — billed 5k out of 25k, the work order hasn't been sent."
@@ -150,10 +279,17 @@ export function ActivityRail({
           {pct !== null && (
             <div className="mb-2">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[12px] font-semibold text-ppp-charcoal">Billed</span>
+                <span className="text-[12px] font-semibold text-ppp-charcoal">
+                  Billed
+                </span>
                 <span className="text-[11.5px] tabular-nums">
-                  <span className="font-bold text-ppp-charcoal">{money(standing.billedCents)}</span>
-                  <span className="text-ppp-charcoal-400"> of {money(standing.contractCents)}</span>
+                  <span className="font-bold text-ppp-charcoal">
+                    {money(standing.billedCents)}
+                  </span>
+                  <span className="text-ppp-charcoal-400">
+                    {" "}
+                    of {money(standing.contractCents)}
+                  </span>
                 </span>
               </div>
               <div className="mt-1 flex items-center gap-2">
@@ -173,8 +309,13 @@ export function ActivityRail({
           {standingLines.length > 0 && (
             <ul className="space-y-1">
               {standingLines.map((l) => (
-                <li key={l.label} className="flex items-baseline justify-between gap-2">
-                  <span className="text-[11.5px] text-ppp-charcoal-500">{l.label}</span>
+                <li
+                  key={l.label}
+                  className="flex items-baseline justify-between gap-2"
+                >
+                  <span className="text-[11.5px] text-ppp-charcoal-500">
+                    {l.label}
+                  </span>
                   <span
                     className={`text-[11.5px] font-semibold tabular-nums shrink-0 ${
                       l.tone === "warn" ? "text-amber-700" : "text-ppp-charcoal"
@@ -215,10 +356,22 @@ export function ActivityRail({
               ) : (
                 <details className="group">
                   <summary className="list-none px-3.5 py-1.5 cursor-pointer text-[11.5px] text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] sm:min-h-[36px] flex items-center gap-1">
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="group-open:rotate-90 transition-transform">
+                    <svg
+                      width="11"
+                      height="11"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                      className="group-open:rotate-90 transition-transform"
+                    >
                       <path d="m9 18 6-6-6-6" />
                     </svg>
-                    {m.entries.length} {m.entries.length === 1 ? "entry" : "entries"}
+                    {m.entries.length}{" "}
+                    {m.entries.length === 1 ? "entry" : "entries"}
                   </summary>
                   <ul className="px-3.5 pb-1.5">
                     {m.entries.map((e) => (

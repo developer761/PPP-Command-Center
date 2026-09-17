@@ -2966,7 +2966,7 @@ function OpportunityRow({
           )}
           {submittalStats && submittalStats.total > 0 && (
             <Link
-              href={`/commercial/accounts/${opportunity.account_id}/submittals/${opportunity.id}`}
+              href={`/commercial/opportunities/${opportunity.id}?tab=project&sub=submittals`}
               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] border transition-colors min-h-[44px] sm:min-h-[28px] touch-manipulation ${
                 submittalStats.awaiting_response > 0
                   ? "text-ppp-blue-700 bg-ppp-blue-50 border-ppp-blue-100 hover:bg-ppp-blue-100"
@@ -3608,7 +3608,7 @@ function CustomerQuickSheet({
                           carry change orders — link straight to the tab. */}
                       {isPostSaleProject(d) && (
                         <Link
-                          href={`/commercial/accounts/${account.id}/change-orders/${d.id}`}
+                          href={`/commercial/opportunities/${d.id}?tab=project&sub=change-orders`}
                           className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] sm:min-h-[32px]"
                         >
                           Change orders
@@ -3674,7 +3674,7 @@ function CustomerQuickSheet({
                       <span className="truncate flex-1">{derivedOppName(d, account.company_name)}</span>
                       {isPostSaleProject(d) && (
                         <Link
-                          href={`/commercial/accounts/${account.id}/change-orders/${d.id}`}
+                          href={`/commercial/opportunities/${d.id}?tab=project&sub=change-orders`}
                           className="shrink-0 text-[10.5px] font-semibold text-cc-brand-700 hover:text-cc-brand-800"
                           title="Change orders"
                         >

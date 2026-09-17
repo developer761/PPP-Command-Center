@@ -119,7 +119,7 @@ export default async function DealInvoicesPage({ searchParams }: { searchParams:
           value={fin.totalCostCents === 0 ? "—" : `${invMargin.cents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(invMargin.cents))}`}
           sub={invMargin.pct == null || fin.totalCostCents === 0 ? undefined : `${invMargin.pct}%`}
           tone={fin.totalCostCents === 0 ? "neutral" : invMargin.pct != null && invMargin.pct < 0 ? "rose" : "emerald"}
-          href={`/commercial/accounts/${opp!.account_id}/costs/${opp!.id}?back=${encodeURIComponent(returnTo)}`}
+          href={`/commercial/opportunities/${opp!.id}?tab=project&sub=transactions&back=${encodeURIComponent(returnTo)}`}
         />
       </div>
 

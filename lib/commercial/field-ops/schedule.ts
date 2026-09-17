@@ -28,14 +28,18 @@ export function mondayOf(iso: string): string {
 
 /** Today in America/New_York as YYYY-MM-DD. */
 export function todayEtIso(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
 }
 
 /** Milliseconds to add to a UTC instant to reach America/New_York wall time
  *  (negative — e.g. -4h in EDT, -5h in EST). DST-correct at the given instant. */
 function etOffsetMs(at: Date): number {
   const utc = new Date(at.toLocaleString("en-US", { timeZone: "UTC" }));
-  const et = new Date(at.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const et = new Date(
+    at.toLocaleString("en-US", { timeZone: "America/New_York" }),
+  );
   return et.getTime() - utc.getTime();
 }
 
@@ -44,7 +48,10 @@ function etOffsetMs(at: Date): number {
  * `dateIso` = YYYY-MM-DD, `timeStr` = "HH:MM" or "HH:MM:SS". DST-correct.
  * Used to schedule the "10 min before shift" clock-in email at the right moment.
  */
-export function etWallTimeToUtcIso(dateIso: string, timeStr: string): string | null {
+export function etWallTimeToUtcIso(
+  dateIso: string,
+  timeStr: string,
+): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
   const m = /^(\d{1,2}):(\d{2})/.exec(timeStr ?? "");
   if (!m) return null;
@@ -74,7 +81,10 @@ export function fmtTime12(t: string | null | undefined): string | null {
  *  which measures elapsed span and already supports cross-midnight punches.
  *  Without this a night shift returned null and couldn't be scheduled at all
  *  (audit FO5). Equal times are still rejected (a 0-hour / ambiguous-24h shift). */
-export function hoursBetween(start: string | null | undefined, end: string | null | undefined): number | null {
+export function hoursBetween(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): number | null {
   const ms = /^(\d{1,2}):(\d{2})/.exec(start ?? "");
   const me = /^(\d{1,2}):(\d{2})/.exec(end ?? "");
   if (!ms || !me) return null;
@@ -103,7 +113,13 @@ export type DayCrew = {
   prevailing_wage: boolean;
 };
 
-export type DayOff = { id: string; employee_id: string; name: string; type: string; short: string };
+export type DayOff = {
+  id: string;
+  employee_id: string;
+  name: string;
+  type: string;
+  short: string;
+};
 
 export type MonthDay = {
   date: string;
@@ -120,7 +136,9 @@ export type MonthDay = {
  * times + work order) so the cells show PEOPLE, not just jobs. Shifts whose work
  * order was soft-deleted are dropped. `inMonth` flags adjacent-month days.
  */
-export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart: string; grid: MonthDay[] }> {
+export async function getMonthOverview(
+  anyDateIso: string,
+): Promise<{ monthStart: string; grid: MonthDay[] }> {
   const monthStart = monthStartOf(anyDateIso);
   const [y, m] = monthStart.split("-").map(Number);
   // Grid starts on the Sunday on/before the 1st, runs 42 days (6 weeks).
@@ -146,7 +164,9 @@ export async function getMonthOverview(anyDateIso: string): Promise<{ monthStart
  * mobile agenda filters on it — leave it false for a week that straddles a
  * month boundary and half the days vanish from the phone view.
  */
-export async function getWeekOverview(anyDateIso: string): Promise<{ weekStart: string; grid: MonthDay[] }> {
+export async function getWeekOverview(
+  anyDateIso: string,
+): Promise<{ weekStart: string; grid: MonthDay[] }> {
   const [y2, m2, d2] = anyDateIso.split("-").map(Number);
   const dow = new Date(Date.UTC(y2, m2 - 1, d2)).getUTCDay(); // 0 = Sun
   const weekStart = addDaysIso(anyDateIso, -dow);
@@ -164,48 +184,86 @@ export async function getWeekOverview(anyDateIso: string): Promise<{ weekStart: 
  * shifts whose work order was deleted, labelling inactive crew, and sorting by
  * start time), and the two would drift the first time one of them was touched.
  */
-async function buildOverview(dates: string[], monthPrefix: string | null): Promise<MonthDay[]> {
-
+async function buildOverview(
+  dates: string[],
+  monthPrefix: string | null,
+): Promise<MonthDay[]> {
   const sb = commercialDb();
   const { getAbsencesForRange, absenceShort } = await import("./absences");
-  const absencesByDate = await getAbsencesForRange(dates[0], dates[dates.length - 1]);
+  const absencesByDate = await getAbsencesForRange(
+    dates[0],
+    dates[dates.length - 1],
+  );
   // Paginated — the 42-day grid × full crew is the WIDEST assignment query in the
   // module and can exceed Supabase's silent 1000-row cap, which would silently
   // drop shifts (crew vanish from day cells, headcount understated) (audit round 6).
   const assignments = await paginateAll<{
-    job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
-    scheduled_start_time: string | null; scheduled_end_time: string | null;
+    job_id: string;
+    employee_id: string;
+    work_date: string;
+    scheduled_hours: number;
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
   }>(() =>
     sb
       .from("commercial_assignments")
-      .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time")
+      .select(
+        "job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time",
+      )
       .gte("work_date", dates[0])
       .lte("work_date", dates[dates.length - 1])
       .neq("status", "cancelled")
       .order("work_date")
-      .order("id")
+      .order("id"),
   );
 
   const jobIds = [...new Set(assignments.map((a) => a.job_id))];
   const empIds = [...new Set(assignments.map((a) => a.employee_id))];
-  const jobsById = new Map<string, { id: string; name: string; status: JobStatus; prevailing_wage: boolean }>();
+  const jobsById = new Map<
+    string,
+    { id: string; name: string; status: JobStatus; prevailing_wage: boolean }
+  >();
   const empName = new Map<string, string>();
   await Promise.all([
     jobIds.length > 0
-      ? sb.from("commercial_jobs").select("id, name, status, prevailing_wage").in("id", jobIds).is("deleted_at", null).then(({ data }) => {
-          for (const j of (data ?? []) as { id: string; name: string; status: JobStatus; prevailing_wage: boolean }[]) jobsById.set(j.id, j);
-        })
+      ? sb
+          .from("commercial_jobs")
+          .select("id, name, status, prevailing_wage")
+          .in("id", jobIds)
+          .is("deleted_at", null)
+          .then(({ data }) => {
+            for (const j of (data ?? []) as {
+              id: string;
+              name: string;
+              status: JobStatus;
+              prevailing_wage: boolean;
+            }[])
+              jobsById.set(j.id, j);
+          })
       : Promise.resolve(),
     empIds.length > 0
-      // `active` is read so a person who has left is LABELLED rather than
-      // silently present. Deactivation cancels future shifts, but assignments
-      // written before that shipped are still on the calendar — and a manager
-      // reading a name with no marker will dispatch them.
-      ? sb.from("commercial_employees").select("id, display_name, active").in("id", empIds).then(({ data }) => {
-          for (const e of (data ?? []) as { id: string; display_name: string; active: boolean }[]) {
-            empName.set(e.id, e.active === false ? `${e.display_name} (inactive)` : e.display_name);
-          }
-        })
+      ? // `active` is read so a person who has left is LABELLED rather than
+        // silently present. Deactivation cancels future shifts, but assignments
+        // written before that shipped are still on the calendar — and a manager
+        // reading a name with no marker will dispatch them.
+        sb
+          .from("commercial_employees")
+          .select("id, display_name, active")
+          .in("id", empIds)
+          .then(({ data }) => {
+            for (const e of (data ?? []) as {
+              id: string;
+              display_name: string;
+              active: boolean;
+            }[]) {
+              empName.set(
+                e.id,
+                e.active === false
+                  ? `${e.display_name} (inactive)`
+                  : e.display_name,
+              );
+            }
+          })
       : Promise.resolve(),
   ]);
 
@@ -230,7 +288,11 @@ async function buildOverview(dates: string[], monthPrefix: string | null): Promi
       emps.add(a.employee_id);
       hours += a.scheduled_hours;
     }
-    crew.sort((x, y2) => (x.start ?? "99:99").localeCompare(y2.start ?? "99:99") || x.name.localeCompare(y2.name));
+    crew.sort(
+      (x, y2) =>
+        (x.start ?? "99:99").localeCompare(y2.start ?? "99:99") ||
+        x.name.localeCompare(y2.name),
+    );
     const off: DayOff[] = (absencesByDate.get(date) ?? []).map((a) => ({
       id: a.id,
       employee_id: a.employee_id,
@@ -271,37 +333,66 @@ export type DayAssignment = {
 
 /** Everyone scheduled on one date, with their job + times + note. Sorted by
  *  start time (unset last), then crew name. Powers the Calendar day panel. */
-export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> {
+export async function getDaySchedule(
+  dateIso: string,
+): Promise<DayAssignment[]> {
   const sb = commercialDb();
   const { data: aRows } = await sb
     .from("commercial_assignments")
-    .select("id, job_id, employee_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+    .select(
+      "id, job_id, employee_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note",
+    )
     .eq("work_date", dateIso)
     .neq("status", "cancelled");
   const assigns = (aRows ?? []) as {
-    id: string; job_id: string; employee_id: string; scheduled_hours: number;
-    scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
+    id: string;
+    job_id: string;
+    employee_id: string;
+    scheduled_hours: number;
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
+    note: string | null;
   }[];
   if (assigns.length === 0) return [];
 
   const empIds = [...new Set(assigns.map((a) => a.employee_id))];
   const jobIds = [...new Set(assigns.map((a) => a.job_id))];
   const [empRes, jobRes] = await Promise.all([
-    sb.from("commercial_employees").select("id, display_name, active").in("id", empIds),
-    sb.from("commercial_jobs").select("id, name, job_code, status, prevailing_wage, site_address, site_city").in("id", jobIds).is("deleted_at", null),
+    sb
+      .from("commercial_employees")
+      .select("id, display_name, active")
+      .in("id", empIds),
+    sb
+      .from("commercial_jobs")
+      .select(
+        "id, name, job_code, status, prevailing_wage, site_address, site_city",
+      )
+      .in("id", jobIds)
+      .is("deleted_at", null),
   ]);
   const empName = new Map(
     (empRes.data ?? []).map((r) => {
       const e = r as { id: string; display_name: string; active: boolean };
       // See the note above: shown with a marker, not hidden.
-      return [e.id, e.active === false ? `${e.display_name} (inactive)` : e.display_name];
-    })
+      return [
+        e.id,
+        e.active === false ? `${e.display_name} (inactive)` : e.display_name,
+      ];
+    }),
   );
   const jobsById = new Map(
     (jobRes.data ?? []).map((r) => {
-      const j = r as { id: string; name: string; job_code: string; status: JobStatus; prevailing_wage: boolean; site_address: string | null; site_city: string | null };
+      const j = r as {
+        id: string;
+        name: string;
+        job_code: string;
+        status: JobStatus;
+        prevailing_wage: boolean;
+        site_address: string | null;
+        site_city: string | null;
+      };
       return [j.id, j];
-    })
+    }),
   );
 
   return assigns
@@ -317,7 +408,8 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
         job_code: j?.job_code ?? "",
         job_status: (j?.status ?? "ready_to_schedule") as JobStatus,
         prevailing_wage: j?.prevailing_wage ?? false,
-        site: [j?.site_address, j?.site_city].filter(Boolean).join(", ") || null,
+        site:
+          [j?.site_address, j?.site_city].filter(Boolean).join(", ") || null,
         scheduled_hours: a.scheduled_hours,
         start_time: a.scheduled_start_time,
         end_time: a.scheduled_end_time,
@@ -327,7 +419,9 @@ export async function getDaySchedule(dateIso: string): Promise<DayAssignment[]> 
     .sort((x, y) => {
       const sx = x.start_time ?? "99:99";
       const sy = y.start_time ?? "99:99";
-      return sx === sy ? x.employee_name.localeCompare(y.employee_name) : sx.localeCompare(sy);
+      return sx === sy
+        ? x.employee_name.localeCompare(y.employee_name)
+        : sx.localeCompare(sy);
     });
 }
 
@@ -360,11 +454,17 @@ export async function upsertAssignment(input: {
     .eq("employee_id", input.employee_id)
     .eq("work_date", input.work_date)
     .maybeSingle();
-  const ex = existing as { scheduled_start_time: string | null; scheduled_end_time: string | null; scheduled_hours: number; note: string | null } | null;
+  const ex = existing as {
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
+    scheduled_hours: number;
+    note: string | null;
+  } | null;
   // Coalesce a blank note to the existing one too (symmetric with the times
   // below) — re-submitting the always-blank Schedule form to change only a time
   // must not wipe the crew's gate code / parking instructions (audit round 5).
-  const note = ((input.note ?? "").trim().slice(0, 500) || null) ?? ex?.note ?? null;
+  const note =
+    ((input.note ?? "").trim().slice(0, 500) || null) ?? ex?.note ?? null;
 
   // Coalesce BLANK time inputs to the existing row's values on an edit — so
   // re-submitting the (always-blank) Schedule form just to change a note doesn't
@@ -379,10 +479,18 @@ export async function upsertAssignment(input: {
     return { ok: false, error: "End time must be after start time." };
   }
   let hours: number;
-  const derived = finalStart && finalEnd ? hoursBetween(finalStart, finalEnd) : null;
+  const derived =
+    finalStart && finalEnd ? hoursBetween(finalStart, finalEnd) : null;
   if (derived != null) hours = derived;
-  else if (input.hours != null && Number.isFinite(input.hours) && input.hours > 0 && input.hours <= 24) hours = input.hours;
-  else if (ex) hours = ex.scheduled_hours; // preserve the existing hours on an edit
+  else if (
+    input.hours != null &&
+    Number.isFinite(input.hours) &&
+    input.hours > 0 &&
+    input.hours <= 24
+  )
+    hours = input.hours;
+  else if (ex)
+    hours = ex.scheduled_hours; // preserve the existing hours on an edit
   else hours = 8;
 
   const row = {
@@ -403,7 +511,13 @@ export async function upsertAssignment(input: {
       .select("*")
       .single();
     if (error) return { ok: false, error: error.message };
-    await logUpdate("commercial_assignments", (data as { id: string }).id, existing, data, input.actor_user_id);
+    await logUpdate(
+      "commercial_assignments",
+      (data as { id: string }).id,
+      existing,
+      data,
+      input.actor_user_id,
+    );
     assignmentId = (data as { id: string }).id;
   } else {
     const { data, error } = await sb
@@ -418,7 +532,12 @@ export async function upsertAssignment(input: {
       .select("*")
       .single();
     if (error) return { ok: false, error: error.message };
-    await logInsert("commercial_assignments", (data as { id: string }).id, data, input.actor_user_id);
+    await logInsert(
+      "commercial_assignments",
+      (data as { id: string }).id,
+      data,
+      input.actor_user_id,
+    );
     assignmentId = (data as { id: string }).id;
   }
 
@@ -441,10 +560,19 @@ export async function upsertAssignment(input: {
         .from("commercial_jobs")
         .update({ status: "scheduled", updated_at: new Date().toISOString() })
         .eq("id", input.job_id);
-      await logUpdate("commercial_jobs", input.job_id, { status: cur }, { status: "scheduled" }, input.actor_user_id);
+      await logUpdate(
+        "commercial_jobs",
+        input.job_id,
+        { status: cur },
+        { status: "scheduled" },
+        input.actor_user_id,
+      );
     }
   } catch (err) {
-    console.warn("[field-ops] auto-advance job status on schedule failed:", err);
+    console.warn(
+      "[field-ops] auto-advance job status on schedule failed:",
+      err,
+    );
   }
 
   // Email the crew member their shift (consolidated for the day) + schedule the
@@ -474,11 +602,26 @@ export async function copyWeekForward(
   actorUserId: string,
   opts?: { acknowledgeOffCrew?: boolean; excludeEmployeeIds?: string[] },
 ): Promise<
-  | { ok: true; copied: number; skippedExisting: number; skippedAbsent: number; skippedDeletedJob: number; skippedInactive: number; skippedOffCrew: number; targetMonday: string }
-  | { ok: true; needsConfirm: true; offCrew: { employee_id: string; name: string }[]; targetMonday: string }
+  | {
+      ok: true;
+      copied: number;
+      skippedExisting: number;
+      skippedAbsent: number;
+      skippedDeletedJob: number;
+      skippedInactive: number;
+      skippedOffCrew: number;
+      targetMonday: string;
+    }
+  | {
+      ok: true;
+      needsConfirm: true;
+      offCrew: { employee_id: string; name: string }[];
+      targetMonday: string;
+    }
   | { ok: false; error: string }
 > {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceMondayIso)) return { ok: false, error: "Invalid week." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceMondayIso))
+    return { ok: false, error: "Invalid week." };
   const srcMon = mondayOf(sourceMondayIso);
   const srcSun = addDaysIso(srcMon, 6); // full Mon–Sun week (Sunday is a real work day — PW crews)
   const tgtMon = addDaysIso(srcMon, 7);
@@ -488,40 +631,107 @@ export async function copyWeekForward(
   // Source week assignments (Mon–Sun, live).
   const { data: srcRows } = await sb
     .from("commercial_assignments")
-    .select("job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+    .select(
+      "job_id, employee_id, work_date, scheduled_hours, scheduled_start_time, scheduled_end_time, note",
+    )
     .gte("work_date", srcMon)
     .lte("work_date", srcSun)
     .neq("status", "cancelled");
   const src = (srcRows ?? []) as {
-    job_id: string; employee_id: string; work_date: string; scheduled_hours: number;
-    scheduled_start_time: string | null; scheduled_end_time: string | null; note: string | null;
+    job_id: string;
+    employee_id: string;
+    work_date: string;
+    scheduled_hours: number;
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
+    note: string | null;
   }[];
-  if (src.length === 0) return { ok: true, copied: 0, skippedExisting: 0, skippedAbsent: 0, skippedDeletedJob: 0, skippedInactive: 0, skippedOffCrew: 0, targetMonday: tgtMon };
+  if (src.length === 0)
+    return {
+      ok: true,
+      copied: 0,
+      skippedExisting: 0,
+      skippedAbsent: 0,
+      skippedDeletedJob: 0,
+      skippedInactive: 0,
+      skippedOffCrew: 0,
+      targetMonday: tgtMon,
+    };
 
   // Target-week existing assignments (to dedup), absences (to skip), live jobs +
   // active employees (don't re-schedule a terminated crew member — active=false).
-  const [{ data: tgtRows }, { data: absRows }, { data: jobRows }, { data: empRows }, { data: srcAbsRows }] = await Promise.all([
-    sb.from("commercial_assignments").select("job_id, employee_id, work_date").gte("work_date", tgtMon).lte("work_date", tgtSun).neq("status", "cancelled"),
-    sb.from("commercial_absences").select("employee_id, work_date, hours").gte("work_date", tgtMon).lte("work_date", tgtSun),
-    sb.from("commercial_jobs").select("id").is("deleted_at", null).in("id", [...new Set(src.map((s) => s.job_id))]),
-    sb.from("commercial_employees").select("id, display_name").eq("active", true).in("id", [...new Set(src.map((s) => s.employee_id))]),
+  const [
+    { data: tgtRows },
+    { data: absRows },
+    { data: jobRows },
+    { data: empRows },
+    { data: srcAbsRows },
+  ] = await Promise.all([
+    sb
+      .from("commercial_assignments")
+      .select("job_id, employee_id, work_date")
+      .gte("work_date", tgtMon)
+      .lte("work_date", tgtSun)
+      .neq("status", "cancelled"),
+    sb
+      .from("commercial_absences")
+      .select("employee_id, work_date, hours")
+      .gte("work_date", tgtMon)
+      .lte("work_date", tgtSun),
+    sb
+      .from("commercial_jobs")
+      .select("id")
+      .is("deleted_at", null)
+      .in("id", [...new Set(src.map((s) => s.job_id))]),
+    sb
+      .from("commercial_employees")
+      .select("id, display_name")
+      .eq("active", true)
+      .in("id", [...new Set(src.map((s) => s.employee_id))]),
     // SOURCE-week absences → crew who were marked off THIS week. Karan 2026-08:
     // don't silently carry a one-week absence forward — confirm they're working
     // next week before copying their shifts.
-    sb.from("commercial_absences").select("employee_id, hours").gte("work_date", srcMon).lte("work_date", srcSun),
+    sb
+      .from("commercial_absences")
+      .select("employee_id, hours")
+      .gte("work_date", srcMon)
+      .lte("work_date", srcSun),
   ]);
-  const existing = new Set(((tgtRows ?? []) as { job_id: string; employee_id: string; work_date: string }[]).map((r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`));
+  const existing = new Set(
+    (
+      (tgtRows ?? []) as {
+        job_id: string;
+        employee_id: string;
+        work_date: string;
+      }[]
+    ).map(
+      (r) => `${r.job_id}|${r.employee_id}|${String(r.work_date).slice(0, 10)}`,
+    ),
+  );
   // Only a FULL-day absence (hours == null) blocks copying a shift — a partial
   // (half-day) absence still lets the person's other shift copy forward (round 15).
   const absent = new Set(
-    ((absRows ?? []) as { employee_id: string; work_date: string; hours: number | null }[])
+    (
+      (absRows ?? []) as {
+        employee_id: string;
+        work_date: string;
+        hours: number | null;
+      }[]
+    )
       .filter((r) => r.hours == null)
-      .map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`)
+      .map((r) => `${r.employee_id}|${String(r.work_date).slice(0, 10)}`),
   );
-  const liveJobs = new Set(((jobRows ?? []) as { id: string }[]).map((r) => r.id));
-  const liveEmpRows = (empRows ?? []) as { id: string; display_name: string | null }[];
+  const liveJobs = new Set(
+    ((jobRows ?? []) as { id: string }[]).map((r) => r.id),
+  );
+  const liveEmpRows = (empRows ?? []) as {
+    id: string;
+    display_name: string | null;
+  }[];
   const liveEmps = new Set(liveEmpRows.map((r) => r.id));
-  const empName = new Map(liveEmpRows.map((r) => [r.id, (r.display_name ?? "").trim() || "(crew)"]));
+  const empName = new Map(
+    liveEmpRows.map((r) => [r.id, (r.display_name ?? "").trim() || "(crew)"]),
+  );
 
   // Crew marked OFF (full-day) in the SOURCE week who have shifts that would copy
   // forward. If the caller hasn't confirmed, return them for a confirm prompt so a
@@ -531,24 +741,49 @@ export async function copyWeekForward(
     const srcOffEmp = new Set(
       ((srcAbsRows ?? []) as { employee_id: string; hours: number | null }[])
         .filter((r) => r.hours == null)
-        .map((r) => r.employee_id)
+        .map((r) => r.employee_id),
     );
-    const srcShiftEmp = new Set(src.filter((s) => liveJobs.has(s.job_id) && liveEmps.has(s.employee_id)).map((s) => s.employee_id));
+    const srcShiftEmp = new Set(
+      src
+        .filter((s) => liveJobs.has(s.job_id) && liveEmps.has(s.employee_id))
+        .map((s) => s.employee_id),
+    );
     const offCrew = [...srcOffEmp]
       .filter((id) => srcShiftEmp.has(id))
       .map((id) => ({ employee_id: id, name: empName.get(id) ?? "(crew)" }));
-    if (offCrew.length > 0) return { ok: true, needsConfirm: true, offCrew, targetMonday: tgtMon };
+    if (offCrew.length > 0)
+      return { ok: true, needsConfirm: true, offCrew, targetMonday: tgtMon };
   }
 
-  let copied = 0, skippedExisting = 0, skippedAbsent = 0, skippedDeletedJob = 0, skippedInactive = 0, skippedOffCrew = 0;
+  let copied = 0,
+    skippedExisting = 0,
+    skippedAbsent = 0,
+    skippedDeletedJob = 0,
+    skippedInactive = 0,
+    skippedOffCrew = 0;
   const toInsert: Record<string, unknown>[] = [];
   for (const s of src) {
     const tgtDate = addDaysIso(String(s.work_date).slice(0, 10), 7);
-    if (!liveJobs.has(s.job_id)) { skippedDeletedJob += 1; continue; }
-    if (!liveEmps.has(s.employee_id)) { skippedInactive += 1; continue; } // terminated crew — don't re-schedule
-    if (excludeSet.has(s.employee_id)) { skippedOffCrew += 1; continue; } // off this week, user said skip them
-    if (existing.has(`${s.job_id}|${s.employee_id}|${tgtDate}`)) { skippedExisting += 1; continue; }
-    if (absent.has(`${s.employee_id}|${tgtDate}`)) { skippedAbsent += 1; continue; }
+    if (!liveJobs.has(s.job_id)) {
+      skippedDeletedJob += 1;
+      continue;
+    }
+    if (!liveEmps.has(s.employee_id)) {
+      skippedInactive += 1;
+      continue;
+    } // terminated crew — don't re-schedule
+    if (excludeSet.has(s.employee_id)) {
+      skippedOffCrew += 1;
+      continue;
+    } // off this week, user said skip them
+    if (existing.has(`${s.job_id}|${s.employee_id}|${tgtDate}`)) {
+      skippedExisting += 1;
+      continue;
+    }
+    if (absent.has(`${s.employee_id}|${tgtDate}`)) {
+      skippedAbsent += 1;
+      continue;
+    }
     toInsert.push({
       job_id: s.job_id,
       employee_id: s.employee_id,
@@ -576,7 +811,12 @@ export async function copyWeekForward(
     if (error) return { ok: false, error: error.message };
     copied = (inserted ?? []).length;
     for (const r of (inserted ?? []) as { id: string }[]) {
-      await logInsert("commercial_assignments", r.id, { bulk: "copy_week_forward" }, actorUserId);
+      await logInsert(
+        "commercial_assignments",
+        r.id,
+        { bulk: "copy_week_forward" },
+        actorUserId,
+      );
     }
     // Schedule clock-in nudges for any copied shift landing TODAY or TOMORROW —
     // the daily cron only nudges today+tomorrow and may have already run (e.g. a
@@ -588,7 +828,8 @@ export async function copyWeekForward(
     const nudgePairs = new Set<string>();
     for (const r of toInsert) {
       const wd = String((r as { work_date: string }).work_date);
-      if (wd === today || wd === tomorrow) nudgePairs.add(`${(r as { employee_id: string }).employee_id}|${wd}`);
+      if (wd === today || wd === tomorrow)
+        nudgePairs.add(`${(r as { employee_id: string }).employee_id}|${wd}`);
     }
     if (nudgePairs.size > 0) {
       const { resyncClockReminder } = await import("./schedule-email-send");
@@ -603,7 +844,9 @@ export async function copyWeekForward(
     // for is now Scheduled. Without this, Copy Week Forward would leave every
     // copied job stuck at "Ready to schedule" on the Status board even though the
     // crew is on it. Forward-only — never regresses in-progress/complete jobs.
-    const copiedJobIds = [...new Set(toInsert.map((r) => String((r as { job_id: string }).job_id)))];
+    const copiedJobIds = [
+      ...new Set(toInsert.map((r) => String((r as { job_id: string }).job_id))),
+    ];
     if (copiedJobIds.length > 0) {
       const { data: toAdvance } = await sb
         .from("commercial_jobs")
@@ -613,33 +856,70 @@ export async function copyWeekForward(
         .is("deleted_at", null);
       const advIds = ((toAdvance ?? []) as { id: string }[]).map((j) => j.id);
       if (advIds.length > 0) {
-        await sb.from("commercial_jobs").update({ status: "scheduled", updated_at: new Date().toISOString() }).in("id", advIds);
-        for (const id of advIds) await logUpdate("commercial_jobs", id, { status: "pre_schedule" }, { status: "scheduled" }, actorUserId);
+        await sb
+          .from("commercial_jobs")
+          .update({ status: "scheduled", updated_at: new Date().toISOString() })
+          .in("id", advIds);
+        for (const id of advIds)
+          await logUpdate(
+            "commercial_jobs",
+            id,
+            { status: "pre_schedule" },
+            { status: "scheduled" },
+            actorUserId,
+          );
       }
     }
   }
-  return { ok: true, copied, skippedExisting, skippedAbsent, skippedDeletedJob, skippedInactive, skippedOffCrew, targetMonday: tgtMon };
+  return {
+    ok: true,
+    copied,
+    skippedExisting,
+    skippedAbsent,
+    skippedDeletedJob,
+    skippedInactive,
+    skippedOffCrew,
+    targetMonday: tgtMon,
+  };
 }
 
 /** Remove one assignment (by id). Used by the Calendar day panel. */
 export async function deleteAssignmentById(
   assignmentId: string,
-  actorUserId: string
+  actorUserId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
-  const { data: existing } = await sb.from("commercial_assignments").select("*").eq("id", assignmentId).maybeSingle();
+  const { data: existing } = await sb
+    .from("commercial_assignments")
+    .select("*")
+    .eq("id", assignmentId)
+    .maybeSingle();
   if (!existing) return { ok: true };
-  const { error } = await sb.from("commercial_assignments").delete().eq("id", assignmentId);
+  const { error } = await sb
+    .from("commercial_assignments")
+    .delete()
+    .eq("id", assignmentId);
   if (error) return { ok: false, error: error.message };
-  await logDelete("commercial_assignments", assignmentId, existing, actorUserId);
+  await logDelete(
+    "commercial_assignments",
+    assignmentId,
+    existing,
+    actorUserId,
+  );
   // Re-sync the queued reminders (1-day / 1-hour / 10-min): cancel them, and if
   // the crew member still has ANOTHER shift that day, re-schedule for the earliest
   // remaining start. A bare cancel would drop reminders for a still-scheduled
   // shift, and the once-daily cron can't fix a same-day removal (audit 2026-08).
-  const ex = existing as { employee_id?: string; work_date?: string; job_id?: string };
+  const ex = existing as {
+    employee_id?: string;
+    work_date?: string;
+    job_id?: string;
+  };
   if (ex.employee_id && ex.work_date) {
     const { resyncClockReminder } = await import("./schedule-email-send");
-    await resyncClockReminder(ex.employee_id, ex.work_date).catch(() => undefined);
+    await resyncClockReminder(ex.employee_id, ex.work_date).catch(
+      () => undefined,
+    );
   }
 
   // Reverse the auto-status when that was the work order's LAST crew: scheduled →
@@ -664,15 +944,23 @@ export async function deleteAssignmentById(
       if ((job as { status: string } | null)?.status === "scheduled") {
         await sb
           .from("commercial_jobs")
-          .update({ status: "ready_to_schedule", updated_at: new Date().toISOString() })
+          .update({
+            status: "ready_to_schedule",
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", ex.job_id);
-        await logUpdate("commercial_jobs", ex.job_id, { status: "scheduled" }, { status: "ready_to_schedule" }, actorUserId);
+        await logUpdate(
+          "commercial_jobs",
+          ex.job_id,
+          { status: "scheduled" },
+          { status: "ready_to_schedule" },
+          actorUserId,
+        );
       }
     }
   }
   return { ok: true };
 }
-
 
 // ── Crew self-service (scoped to ONE employee) ─────────────────────────────
 
@@ -704,7 +992,7 @@ export type MyShift = {
 export async function listMyUpcomingShifts(
   employeeId: string,
   fromIso: string,
-  toIso: string
+  toIso: string,
 ): Promise<MyShift[]> {
   if (!employeeId) return [];
   const sb = commercialDb();
@@ -719,18 +1007,23 @@ export async function listMyUpcomingShifts(
   }>(() =>
     sb
       .from("commercial_assignments")
-      .select("id, work_date, job_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note")
+      .select(
+        "id, work_date, job_id, scheduled_hours, scheduled_start_time, scheduled_end_time, note",
+      )
       .eq("employee_id", employeeId)
       .neq("status", "cancelled")
       .gte("work_date", fromIso)
       .lte("work_date", toIso)
       .order("work_date", { ascending: true })
-      .order("id", { ascending: true })
+      .order("id", { ascending: true }),
   );
   if (rows.length === 0) return [];
 
   const jobIds = Array.from(new Set(rows.map((r) => r.job_id).filter(Boolean)));
-  const jobById = new Map<string, { name: string; code: string; site: string | null }>();
+  const jobById = new Map<
+    string,
+    { name: string; code: string; site: string | null }
+  >();
   if (jobIds.length > 0) {
     // Narrow column list on purpose — commercial_jobs also carries internal
     // notes, customer_name and estimated_labor_hours, none of which a crew
@@ -742,10 +1035,22 @@ export async function listMyUpcomingShifts(
       .select("id, name, job_code, site_address, site_city")
       .in("id", jobIds)
       .is("deleted_at", null);
-    if (error) console.warn("[listMyUpcomingShifts] job lookup failed:", error.message);
-    for (const j of (jobs ?? []) as { id: string; name: string | null; job_code: string | null; site_address: string | null; site_city: string | null }[]) {
-      const site = [j.site_address, j.site_city].filter(Boolean).join(", ") || null;
-      jobById.set(j.id, { name: j.name ?? "Job", code: j.job_code ?? "", site });
+    if (error)
+      console.warn("[listMyUpcomingShifts] job lookup failed:", error.message);
+    for (const j of (jobs ?? []) as {
+      id: string;
+      name: string | null;
+      job_code: string | null;
+      site_address: string | null;
+      site_city: string | null;
+    }[]) {
+      const site =
+        [j.site_address, j.site_city].filter(Boolean).join(", ") || null;
+      jobById.set(j.id, {
+        name: j.name ?? "Job",
+        code: j.job_code ?? "",
+        site,
+      });
     }
   }
   return rows.map((r) => {
@@ -769,7 +1074,7 @@ export async function listMyUpcomingShifts(
 export async function listMyAbsences(
   employeeId: string,
   fromIso: string,
-  toIso: string
+  toIso: string,
 ): Promise<{ work_date: string; reason: string | null }[]> {
   if (!employeeId) return [];
   const sb = commercialDb();
@@ -788,4 +1093,104 @@ export async function listMyAbsences(
     work_date: a.work_date,
     reason: absenceLabel(a.type as Parameters<typeof absenceLabel>[0]),
   }));
+}
+
+export type OppCrewSchedule = {
+  /** The next few shifts on this job, soonest first. */
+  next: {
+    date: string;
+    name: string;
+    start: string | null;
+    end: string | null;
+  }[];
+  /** Distinct future dates crew are booked on this job. */
+  upcomingDays: number;
+  /** Distinct people booked on it from today onward. */
+  upcomingPeople: number;
+  /** The most recent date anybody was scheduled on it, past or future. */
+  lastDate: string | null;
+};
+
+/**
+ * Is anyone scheduled on this job, and when?
+ *
+ * Karan 2026-09-17, looking at a deal's Activity rail: "we should have like
+ * Labor, and we can see if anyone's scheduled, when they're scheduled for,
+ * total labor costs."
+ *
+ * The platform knew all of this and the deal page showed none of it — the
+ * scheduling lives in Field Ops keyed on `commercial_jobs.id`, and a deal knows
+ * its jobs but never asked them anything. So a job with a crew booked for
+ * Tuesday read "Nothing has happened on this job yet".
+ *
+ * Deliberately NOT the same query as the calendar's: that one is date-ranged
+ * across every job, this one is job-scoped across every date. Sharing it would
+ * mean loading a month of the whole company to answer a question about one deal.
+ */
+export async function crewScheduleForOpp(
+  oppId: string,
+  todayIso: string,
+): Promise<OppCrewSchedule> {
+  const empty: OppCrewSchedule = {
+    next: [],
+    upcomingDays: 0,
+    upcomingPeople: 0,
+    lastDate: null,
+  };
+  const sb = commercialDb();
+  // Soft-deleted jobs included: their shifts were still worked, and the deal's
+  // labor figures beside this one count them for exactly that reason.
+  const { data: jobRows } = await sb
+    .from("commercial_jobs")
+    .select("id")
+    .eq("opportunity_id", oppId);
+  const jobIds = ((jobRows ?? []) as { id: string }[]).map((j) => j.id);
+  if (jobIds.length === 0) return empty;
+
+  const rows = await paginateAll<{
+    employee_id: string;
+    work_date: string;
+    scheduled_start_time: string | null;
+    scheduled_end_time: string | null;
+  }>(() =>
+    sb
+      .from("commercial_assignments")
+      .select(
+        "employee_id, work_date, scheduled_start_time, scheduled_end_time, id",
+      )
+      .in("job_id", jobIds)
+      .neq("status", "cancelled")
+      .order("work_date")
+      .order("id"),
+  );
+  if (rows.length === 0) return empty;
+
+  const future = rows.filter((r) => r.work_date >= todayIso);
+  const names = new Map<string, string>();
+  const ids = [...new Set(future.slice(0, 40).map((r) => r.employee_id))];
+  if (ids.length > 0) {
+    const { data: emps } = await sb
+      .from("commercial_employees")
+      .select("id, display_name")
+      .in("id", ids);
+    for (const e of (emps ?? []) as {
+      id: string;
+      display_name: string | null;
+    }[]) {
+      names.set(e.id, (e.display_name ?? "").trim() || "Crew member");
+    }
+  }
+
+  return {
+    next: future.slice(0, 4).map((r) => ({
+      date: r.work_date,
+      name: names.get(r.employee_id) ?? "Crew member",
+      start: r.scheduled_start_time,
+      end: r.scheduled_end_time,
+    })),
+    upcomingDays: new Set(future.map((r) => r.work_date)).size,
+    upcomingPeople: new Set(future.map((r) => r.employee_id)).size,
+    // rows are ordered by work_date, so the last one is the furthest out.
+    lastDate: rows[rows.length - 1]?.work_date ?? null,
+  };
 }

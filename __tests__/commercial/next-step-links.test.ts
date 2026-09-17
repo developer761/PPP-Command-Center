@@ -162,25 +162,53 @@ describe("every warning's Fix lands somewhere usable", () => {
  * separately, so it is checked here rather than remembered.
  */
 describe("every inline-editable field is actually rendered", () => {
+  /**
+   * MATCHED WITH WHITESPACE ALLOWED, and that is not fussiness.
+   *
+   * `PAGE.includes('inlineRow("x"')` silently stopped matching the moment
+   * prettier wrapped a long call onto three lines — reporting a field as
+   * unrendered while the row sat right there. A check that goes red on
+   * reformatting teaches people to add an exemption, which is the opposite of
+   * what it is for.
+   */
+  const rendersRow = (name: string) =>
+    new RegExp(`inlineRow\\(\\s*"${name}"`).test(PAGE);
+
   it("has an inlineRow() call on the deal page", async () => {
     const { INLINE_FIELDS } = await import("@/lib/commercial/opportunities/inline-fields");
-    // Fields the page renders through a different control than inlineRow are
-    // listed here WITH their reason, so an exemption is a decision rather than
-    // a hole. Empty today.
-    const renderedElsewhere = new Set<string>([
-      "client_name",
-      "description",
-      "property_street",
-      "property_city",
-      "property_state",
-      "property_zip",
-    ]);
+    /**
+     * Fields rendered through a different control are listed here WITH their
+     * reason, so an exemption is a decision rather than a hole.
+     *
+     * EMPTY AGAIN as of 2026-09-17, and it had drifted: the comment said "empty
+     * today" over a list of six. All six — client_name, description and the
+     * four address columns — had been on the editable allowlist since it was
+     * written and were only ever PRINTED, so the write was permitted and the
+     * pencil never appeared. Description's card was hidden entirely when empty,
+     * so a deal with no description could never gain one, and both address
+     * fallbacks read "edit the deal to set an address" while standing on the
+     * page that could. They all render rows now.
+     */
+    const renderedElsewhere = new Set<string>([]);
     for (const f of INLINE_FIELDS) {
       if (renderedElsewhere.has(f.name)) continue;
       expect(
-        PAGE.includes(`inlineRow("${f.name}"`),
+        rendersRow(f.name),
         `"${f.name}" is inline-editable but the deal page never renders it — a ?ef=${f.name} link opens nothing`
       ).toBe(true);
     }
+  });
+
+  it("does not render a row the allowlist would refuse to save", async () => {
+    // The other direction, which nothing checked: an `inlineRow("x")` for a
+    // name NOT on the allowlist renders a pencil that opens an editor whose
+    // save is refused with "That field can't be edited here" — a control that
+    // is dead on arrival.
+    const { INLINE_FIELDS } = await import("@/lib/commercial/opportunities/inline-fields");
+    const allowed = new Set(INLINE_FIELDS.map((f) => f.name));
+    const rendered = [...PAGE.matchAll(/inlineRow\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
+    // Guard against measuring nothing if the helper is ever renamed.
+    expect(rendered.length).toBeGreaterThanOrEqual(8);
+    expect(rendered.filter((n) => !allowed.has(n))).toEqual([]);
   });
 });
