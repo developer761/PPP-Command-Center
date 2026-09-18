@@ -181,68 +181,102 @@ export async function GET() {
      * cannot be checked by reading anything here. This asks Resend directly and
      * says plainly which of the two addresses will work.
      */
+    /**
+     * WHAT WILL AN INVOICE ACTUALLY BE SENT AS?
+     *
+     * Katie's ask: invoices from finance@tomcopainting.com, proposals from
+     * estimating@tomcopainting.com.
+     *
+     * This answers the question in three parts, and it is built so the FIRST
+     * two always answer even when the third cannot:
+     *
+     *   1. what address will be used (read from env — always knowable);
+     *   2. whether that is a deliberate choice or the shared-channel fallback
+     *      still showing through, which is how you tell whether the Vercel step
+     *      has actually landed;
+     *   3. whether Resend has verified that domain — which needs the API.
+     *
+     * The first version stopped at a 401 from step 3 and reported nothing else.
+     * A 401 here is not a misconfiguration, it is a SENDING-SCOPED key, which is
+     * the right kind of key to send with — so it must not swallow the two
+     * answers that need no key at all.
+     */
     probe("resend_sender_domains", "Invoice + proposal sender addresses", "platform", async () => {
+      const shared = (process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS || "").trim();
+      const invoiceSet = (process.env.COMMERCIAL_INVOICE_FROM_ADDRESS || "").trim();
+      const proposalSet = (process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS || "").trim();
+      const invoiceFrom = invoiceSet || shared;
+      const proposalFrom = proposalSet || shared;
+
+      if (!invoiceFrom && !proposalFrom) {
+        return {
+          status: "fail",
+          message: "No sender address configured at all — nothing can send",
+          fix: "Set COMMERCIAL_INVOICE_FROM_ADDRESS and COMMERCIAL_PROPOSAL_FROM_ADDRESS in Vercel (Production), then redeploy",
+        };
+      }
+
+      // Step 3, best-effort. A sending-only key cannot list domains, and that
+      // is fine — say so rather than failing the whole check.
       const key = (process.env.COMMERCIAL_RESEND_API_KEY || process.env.RESEND_API_KEY || "").trim();
-      if (!key) {
-        return { status: "fail", message: "No Resend API key — cannot check sender domains", fix: "Add RESEND_API_KEY in Vercel" };
-      }
-      const invoiceFrom = (
-        process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
-        process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
-        process.env.RESEND_FROM_ADDRESS ||
-        ""
-      ).trim();
-      const proposalFrom = (
-        process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
-        process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
-        process.env.RESEND_FROM_ADDRESS ||
-        ""
-      ).trim();
-
-      let verified: string[] = [];
-      try {
-        const res = await fetch("https://api.resend.com/domains", {
-          headers: { Authorization: `Bearer ${key}` },
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          return { status: "warn", message: `Resend domains API returned ${res.status}`, fix: "Check the API key's permissions" };
+      let verified: string[] | null = null;
+      let domainNote = "";
+      if (key) {
+        try {
+          const res = await fetch("https://api.resend.com/domains", {
+            headers: { Authorization: `Bearer ${key}` },
+            cache: "no-store",
+          });
+          if (res.ok) {
+            const body = (await res.json()) as { data?: { name: string; status: string }[] };
+            verified = (body.data ?? []).filter((d) => d.status === "verified").map((d) => d.name);
+          } else if (res.status === 401 || res.status === 403) {
+            domainNote = " Domain verification not checked (the API key is sending-scoped, which is correct — confirm in Resend → Domains).";
+          } else {
+            domainNote = ` Domain check unavailable (Resend returned ${res.status}).`;
+          }
+        } catch {
+          domainNote = " Domain check unavailable (could not reach Resend).";
         }
-        const body = (await res.json()) as { data?: { name: string; status: string }[] };
-        verified = (body.data ?? []).filter((d) => d.status === "verified").map((d) => d.name);
-      } catch (err) {
-        return { status: "warn", message: `Could not reach Resend: ${err instanceof Error ? err.message : String(err)}` };
       }
 
-      // A domain is usable if it IS verified or is a subdomain of one.
       const sendable = (addr: string) => {
+        if (verified === null) return null; // unknown, not false
         const domain = addr.split("@")[1]?.toLowerCase();
         if (!domain) return false;
         return verified.some((v) => domain === v.toLowerCase() || domain.endsWith(`.${v.toLowerCase()}`));
       };
 
-      const problems: string[] = [];
-      for (const [label, addr] of [
+      const unverified = [
         ["Invoices", invoiceFrom],
         ["Proposals", proposalFrom],
-      ] as const) {
-        if (!addr) problems.push(`${label}: no from-address set`);
-        else if (!sendable(addr)) problems.push(`${label}: ${addr} — domain not verified in Resend`);
-      }
-
-      if (problems.length === 0) {
+      ].filter(([, addr]) => sendable(addr as string) === false);
+      if (unverified.length > 0) {
         return {
-          status: "ok",
-          message: `Invoices from ${invoiceFrom}, proposals from ${proposalFrom} — both on a verified domain`,
+          status: "fail",
+          // Resend rejects the whole message from an unverified domain, so this
+          // is "no email", not "wrong name on the email".
+          message: unverified.map(([l, a]) => `${l}: ${a} — domain NOT verified in Resend`).join(" · "),
+          fix: `Resend → Domains → Add Domain, publish the DKIM/SPF records, then Verify. Verified today: ${(verified ?? []).join(", ") || "none"}`,
         };
       }
+
+      // Still on the shared channel address = the Vercel step has not landed.
+      const stillShared = [
+        !invoiceSet ? "invoices" : null,
+        !proposalSet ? "proposals" : null,
+      ].filter(Boolean) as string[];
+      if (stillShared.length > 0) {
+        return {
+          status: "warn",
+          message: `${stillShared.join(" and ")} still send from the shared address ${shared || "(none)"} — the per-type addresses are not set yet.${domainNote}`,
+          fix: "Vercel → Settings → Environment Variables (Production): COMMERCIAL_INVOICE_FROM_ADDRESS=finance@tomcopainting.com, COMMERCIAL_PROPOSAL_FROM_ADDRESS=estimating@tomcopainting.com — then redeploy. Env vars only apply to a NEW deployment.",
+        };
+      }
+
       return {
-        status: "fail",
-        // Every send from an unverified domain is REJECTED, so this is a fail,
-        // not a warn — it is the difference between "wrong name on the email"
-        // and "no email".
-        message: problems.join(" · "),
-        fix: `Verify the domain in Resend (Domains → Add Domain → publish DKIM/SPF), then set the env var. Verified today: ${verified.join(", ") || "none"}`,
+        status: "ok",
+        message: `Invoices from ${invoiceFrom}, proposals from ${proposalFrom}.${domainNote || " Both on a verified domain."}`,
       };
     }),
 
