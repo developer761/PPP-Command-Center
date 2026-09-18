@@ -165,6 +165,87 @@ export async function GET() {
       };
     }),
 
+    /**
+     * CAN WE ACTUALLY SEND AS finance@ AND estimating@?
+     *
+     * Karan 2026-09-17, Katie's ask: invoices from finance@tomcopainting.com,
+     * proposals from estimating@tomcopainting.com.
+     *
+     * Setting those env vars is the easy half. The half that decides whether
+     * anything sends is whether Resend has VERIFIED the domain they belong to —
+     * and Resend rejects the whole message if it has not, so a wrong address
+     * here means invoices silently stop going out rather than going out from
+     * the wrong name.
+     *
+     * That state lives in Resend's dashboard, not in this codebase, so it
+     * cannot be checked by reading anything here. This asks Resend directly and
+     * says plainly which of the two addresses will work.
+     */
+    probe("resend_sender_domains", "Invoice + proposal sender addresses", "platform", async () => {
+      const key = (process.env.COMMERCIAL_RESEND_API_KEY || process.env.RESEND_API_KEY || "").trim();
+      if (!key) {
+        return { status: "fail", message: "No Resend API key — cannot check sender domains", fix: "Add RESEND_API_KEY in Vercel" };
+      }
+      const invoiceFrom = (
+        process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
+        process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+        process.env.RESEND_FROM_ADDRESS ||
+        ""
+      ).trim();
+      const proposalFrom = (
+        process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
+        process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+        process.env.RESEND_FROM_ADDRESS ||
+        ""
+      ).trim();
+
+      let verified: string[] = [];
+      try {
+        const res = await fetch("https://api.resend.com/domains", {
+          headers: { Authorization: `Bearer ${key}` },
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          return { status: "warn", message: `Resend domains API returned ${res.status}`, fix: "Check the API key's permissions" };
+        }
+        const body = (await res.json()) as { data?: { name: string; status: string }[] };
+        verified = (body.data ?? []).filter((d) => d.status === "verified").map((d) => d.name);
+      } catch (err) {
+        return { status: "warn", message: `Could not reach Resend: ${err instanceof Error ? err.message : String(err)}` };
+      }
+
+      // A domain is usable if it IS verified or is a subdomain of one.
+      const sendable = (addr: string) => {
+        const domain = addr.split("@")[1]?.toLowerCase();
+        if (!domain) return false;
+        return verified.some((v) => domain === v.toLowerCase() || domain.endsWith(`.${v.toLowerCase()}`));
+      };
+
+      const problems: string[] = [];
+      for (const [label, addr] of [
+        ["Invoices", invoiceFrom],
+        ["Proposals", proposalFrom],
+      ] as const) {
+        if (!addr) problems.push(`${label}: no from-address set`);
+        else if (!sendable(addr)) problems.push(`${label}: ${addr} — domain not verified in Resend`);
+      }
+
+      if (problems.length === 0) {
+        return {
+          status: "ok",
+          message: `Invoices from ${invoiceFrom}, proposals from ${proposalFrom} — both on a verified domain`,
+        };
+      }
+      return {
+        status: "fail",
+        // Every send from an unverified domain is REJECTED, so this is a fail,
+        // not a warn — it is the difference between "wrong name on the email"
+        // and "no email".
+        message: problems.join(" · "),
+        fix: `Verify the domain in Resend (Domains → Add Domain → publish DKIM/SPF), then set the env var. Verified today: ${verified.join(", ") || "none"}`,
+      };
+    }),
+
     probe("daily_cron_freshness", "Daily commercial cron", "platform", async () => {
       // We don't store cron last-fire anywhere; infer from the
       // notifications table — any notification with a cron-fired kind

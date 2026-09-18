@@ -119,9 +119,33 @@ function escape(s: string): string {
 /** Prepend NEXT_PUBLIC_APP_URL (trailing-slash safe) to a relative
  *  path for use in EMAIL bodies. Bell rows store the relative path
  *  directly. */
+/**
+ * The deployed origin. Falls back to the known production host rather than to
+ * an empty string.
+ *
+ * With `NEXT_PUBLIC_APP_URL` unset this returned a RELATIVE path — and that
+ * path goes straight into every notification email's button:
+ * `<a href="/commercial/invoices/…">Open the invoice</a>`. In a mail client a
+ * relative href has no origin to resolve against, so it is a dead link, not a
+ * wrong one. The Slack side already handles this correctly (it drops the button
+ * when the URL is not absolute); email did not, and silently shipped broken
+ * CTAs on every kind at once.
+ *
+ * It also broke the List-Unsubscribe header, which must be an absolute URI —
+ * `<​/commercial/settings/notifications>` is malformed, so Gmail ignores the
+ * one-click unsubscribe that the header exists to provide. Which is the exact
+ * deliverability problem Stephanie reported ("half of them end up in spam").
+ */
+const APP_ORIGIN_FALLBACK = "https://hub.precisionpaintingplus.net";
+
+function appBase(): string {
+  const configured = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+  if (/^https?:\/\//i.test(configured)) return configured;
+  return APP_ORIGIN_FALLBACK;
+}
+
 function appendBase(relativePath: string): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
-  return `${base}${relativePath}`;
+  return `${appBase()}${relativePath}`;
 }
 
 /** Truncate a body string for bell row + email — keeps the dropdown

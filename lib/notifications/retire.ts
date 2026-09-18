@@ -32,10 +32,41 @@ export async function retireNotificationsFor(
     const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return { retired: 0 };
     const sb = createClient(url, key, { auth: { persistSession: false } });
+    /**
+     * THE ID MUST BE WHAT THE LINK POINTS AT, not merely mentioned in it.
+     *
+     * `%<id>%` matches the id ANYWHERE in the link, and ids nest: a proposal
+     * deep-link is `/commercial/accounts/<acct>/deals/<opp>/proposal/<pid>`.
+     * So soft-deleting an ACCOUNT silently marked read every unread bell for
+     * the live deals and proposals underneath it — including the
+     * approval-requested ones, which are the bells somebody is waiting on.
+     * The account is gone; those records are not.
+     *
+     * Anchoring on the FINAL path segment is what separates "a notification
+     * about this record" from "a notification about one of its children": a
+     * record's own link ends with its id, optionally followed by a query or a
+     * hash. `/accounts/<acct>/deals/<opp>` ends with the DEAL's id, so deleting
+     * the account no longer touches it — and deleting the deal still does.
+     */
     const { data, error } = await sb
       .from("notifications")
       .update({ read_at: new Date().toISOString() })
-      .like("link", `%${recordId}%`)
+      .or(
+        [
+          // `*`, not `%` — inside `.or()` this is PostgREST filter syntax,
+          // where the wildcard is `*`. A `%` here is a LITERAL percent sign and
+          // matches nothing, which would silently retire zero bells while
+          // reporting success. Verified against the live table.
+          `link.like.*/${recordId}`, // the link IS this record
+          `link.like.*/${recordId}?*`, // …with a query
+          `link.like.*/${recordId}#*`, // …with an anchor
+          // Some links carry the id as a PARAM rather than a segment
+          // (`?app=<uuid>`, `?wo=<id>`). That is still the record itself, not a
+          // parent — a parent id never appears after an `=`.
+          `link.like.*=${recordId}`,
+          `link.like.*=${recordId}&*`,
+        ].join(","),
+      )
       .is("read_at", null)
       .select("id");
     if (error) {
