@@ -11,6 +11,7 @@ import MaterialTypePicker from "@/components/material-type-picker";
 import SupplierPickList, { type ActiveSupplier } from "@/components/supplier-pick-list";
 import {
   claimedPlainKeys,
+  readProductOverride,
   formatOrderQuantity,
   formatBucketsCans,
   containerCount,
@@ -249,6 +250,12 @@ export default function OrderBuilderView({
    * payload and written on open — the very thing this prevents.
    */
   const savedPayloadJson = useRef<string | null>(null);
+  /** Same question as the ref, asked by the RENDER. A ref read while
+   *  rendering is not a value React can be trusted to have re-rendered for —
+   *  eslint flags it, and under a concurrent re-render the banner can disagree
+   *  with what was actually written. State, set at the two moments the answer
+   *  changes: a row came back from the server, or a save succeeded. */
+  const [orderSaved, setOrderSaved] = useState(false);
   const payloadJson = JSON.stringify(payload);
   useEffect(() => {
     if (savedPayloadJson.current === null && loadedFor) {
@@ -276,6 +283,7 @@ export default function OrderBuilderView({
         if (!r.ok) { setSaveError(r.error); setNotPersisted(false); return; }
         // The row now holds THIS payload — that is the baseline from here.
         savedPayloadJson.current = written;
+        setOrderSaved(true);
         setSaveError(null);
         setNotPersisted(!r.persisted);
       });
@@ -290,7 +298,7 @@ export default function OrderBuilderView({
         const seqRef = saveSeq;
         const seq = ++seqRef.current;
         void save(accountId, snapshot, false).then((r) => {
-          if (seq === seqRef.current && r.ok) savedPayloadJson.current = payloadJson;
+          if (seq === seqRef.current && r.ok) { savedPayloadJson.current = payloadJson; setOrderSaved(true); }
         });
       }
     };
@@ -339,6 +347,7 @@ export default function OrderBuilderView({
           // and on a new order the saved payload is empty, so they vanished
           // with no trace at all.
           setPayload((cur) => mergeBuildPayloads(saved, cur));
+          setOrderSaved(true);
         }
         if (!cancelled) setLoadedFor(supplier.accountId);
       } catch (err) {
@@ -911,6 +920,7 @@ export default function OrderBuilderView({
                 setPayload(emptyBuildPayload());
                 setLoadedFor(null);
                 savedPayloadJson.current = null;
+                setOrderSaved(false);
                 setSupplier(null);
               }}
               className="text-xs font-medium text-ppp-blue-700 hover:underline px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
@@ -939,7 +949,8 @@ export default function OrderBuilderView({
               // a vendor then threw their work away without a word.
               setPayload((cur) => ({ ...emptyBuildPayload(), customColorItems: cur.customColorItems }));
               setLoadedFor(null);
-                savedPayloadJson.current = null;
+              savedPayloadJson.current = null;
+              setOrderSaved(false);
               setSupplier({ accountId: s.accountId, name: s.name });
             }}
           />
@@ -1277,7 +1288,7 @@ export default function OrderBuilderView({
                         <div className="max-w-[190px]">
                           <MaterialTypePicker
                             id={`mt-${key}`}
-                            value={readForEstimate(payload.materialTypeOverrides, e) ?? ""}
+                            value={readProductOverride(payload.materialTypeOverrides, e) ?? ""}
                             onChange={(v) => setLineFor(e, v)}
                             // R5.3: when the builder has already decided a line
                             // for this color — the exterior answer on a mixed
@@ -1603,7 +1614,7 @@ export default function OrderBuilderView({
                 <span className="text-ppp-orange-700">
                   {needQty.length === 1 ? "1 color still needs" : `${needQty.length} colors still need`} a quantity — you can set them on the next step too.
                 </span>
-              ) : savedPayloadJson.current === null ? (
+              ) : !orderSaved ? (
                 // "Order saved." was printed whenever nothing was wrong —
                 // including before a single save had happened, and while the
                 // autosave was not even armed.

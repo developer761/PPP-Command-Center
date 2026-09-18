@@ -987,6 +987,28 @@ export function packageForUnit(total: number, unit: PaintUnit): { buckets: numbe
  * numbers and the hall's product, and a typed zero on the hall marked the
  * bathroom "not ordering" too.
  */
+/**
+ * The paint line (product) for a line — read differently from a quantity.
+ *
+ * A NUMBER is per line: the hall's 6 gallons are not the bathroom's, which is
+ * what `claimedPlainKeys` protects. A PRODUCT is per color until somebody
+ * picks another one: splitting the bathroom off its parent line is what lets it
+ * take Aura Bath & Spa, not a reason for it to start with none.
+ *
+ * Both the vendor email and the builder screen call THIS. When they each had
+ * their own copy of the rule the screen showed the job default and the vendor
+ * got "[NOT SET]" on the same line (seen live on WO 00318014, 2026-09-17).
+ */
+export function readProductOverride(
+  source: Map<string, string> | Record<string, string> | undefined,
+  e: Pick<GallonEstimate, "colorId" | "finish" | "isBathroom">
+): string | undefined {
+  if (!source) return undefined;
+  const get = (k: string) => (source instanceof Map ? source.get(k) : source[k]);
+  return get(quantityKey(e.colorId, e.finish, e.isBathroom))
+    ?? (e.isBathroom ? get(quantityKey(e.colorId, e.finish)) : undefined);
+}
+
 export function claimedPlainKeys(
   estimates: ReadonlyArray<{ colorId: string; finish: string | null; isBathroom?: boolean }>
 ): ReadonlySet<string> {

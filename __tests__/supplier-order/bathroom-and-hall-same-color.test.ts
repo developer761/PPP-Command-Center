@@ -5,6 +5,7 @@ import {
   claimedPlainKeys,
   lookupByKey,
   quantityKey,
+  readProductOverride,
   type RoomTakeoff,
 } from "@/lib/supplier-order/estimate-gallons";
 import { buildSupplierOrderDraft, type BuildSupplierOrderInput } from "@/lib/supplier-order/builder";
@@ -75,6 +76,28 @@ describe("one color, the hall and the bathroom", () => {
   });
 });
 
+describe("a product, unlike a number, belongs to the color", () => {
+  const bath = { colorId: "c1", finish: "Eggshell", isBathroom: true };
+  const hall = { colorId: "c1", finish: "Eggshell", isBathroom: false };
+
+  it("the bathroom reads the color's product when it has none of its own", () => {
+    expect(readProductOverride({ "c1::Eggshell": "Aura" }, bath)).toBe("Aura");
+    expect(readProductOverride(new Map([["c1::Eggshell", "Aura"]]), bath)).toBe("Aura");
+  });
+
+  it("its OWN product wins", () => {
+    const rec = { "c1::Eggshell": "Aura", "c1::Eggshell::bath": "Aura Bath & Spa" };
+    expect(readProductOverride(rec, bath)).toBe("Aura Bath & Spa");
+    expect(readProductOverride(rec, hall)).toBe("Aura");
+  });
+
+  it("a non-bathroom line never reads a bathroom key, and nothing reads nothing", () => {
+    expect(readProductOverride({ "c1::Eggshell::bath": "Aura Bath & Spa" }, hall)).toBeUndefined();
+    expect(readProductOverride(undefined, bath)).toBeUndefined();
+    expect(readProductOverride({}, bath)).toBeUndefined();
+  });
+});
+
 /* ── the same job, all the way to the vendor ─────────────────────────────── */
 
 const COLOR: SnapshotPaintColor = {
@@ -113,17 +136,22 @@ function draftInput(over: Partial<BuildSupplierOrderInput> = {}): BuildSupplierO
 }
 
 describe("the vendor's copy of that job", () => {
-  it("does not print the hall's product on the bathroom's line", async () => {
-    // The estimator set the HALL to Aura. Keyed plainly, the bathroom read it
-    // too — the exact failure the split exists to prevent.
-    const { body, gallonEstimates } = await buildSupplierOrderDraft(
+  it("the bathroom INHERITS the color's product until somebody changes it", () => {
+    // Reversed 2026-09-17 after reading a live email: splitting the bathroom
+    // ceiling off its parent line meant it lost the product that line carried
+    // and printed "[NOT SET]" to the vendor. The split exists so the bathroom
+    // CAN take a different product — not so it starts with none.
+    //
+    // A QUANTITY is still never inherited (see the tests above): a number is
+    // per line, a product is per color until someone says otherwise.
+    return buildSupplierOrderDraft(
       draftInput({ materialTypeOverrides: { [quantityKey(COLOR.id, "Eggshell")]: "Aura" } })
-    );
-    const bath = gallonEstimates.find((e) => e.isBathroom)!;
-    const bathLine = body.split("\n").find((l) => l.includes("(bathroom)")) ?? "";
-    expect(bath.isBathroom).toBe(true);
-    expect(bathLine).not.toContain("Aura");
-    expect(body).toContain("Aura");
+    ).then(({ body }) => {
+      expect(body).not.toContain("[NOT SET]");
+      const lines = body.split("\n").filter((l) => l.includes("White Dove"));
+      expect(lines).toHaveLength(2);
+      for (const l of lines) expect(l).toContain("Aura");
+    });
   });
 
   it("the bathroom's own product reaches the vendor", async () => {
