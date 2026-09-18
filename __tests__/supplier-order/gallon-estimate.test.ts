@@ -126,6 +126,28 @@ describe("the two constants that decide the order", () => {
     expect(b / a).toBeCloseTo(3 / COVERAGE_CONFIG.defaultCoats, 2);
   });
 
+  it("pins the coverage rate and the buffer, the other two numbers that decide every order", () => {
+    // Mutation-tested 2026-09-17: changing coverageSqftPerGallon 375 → 400, or
+    // bufferPct 0.10 → 0, left all 1766 tests green. They multiply into every
+    // gallon on every job — a 17% swing in what PPP buys, invisible.
+    expect(COVERAGE_CONFIG.coverageSqftPerGallon).toBe(375);
+    expect(COVERAGE_CONFIG.bufferPct).toBe(0.1);
+
+    // And pinned by behaviour, sized deliberately NEAR a whole-gallon boundary
+    // so a few percent moves the answer. A 20x24x8 room: perimeter 88 x 8 =
+    // 704, less one door and one window (35) = 669, x 1.5 coats = 1003.5 sq ft.
+    // 1003.5 / 375 x 1.1 = 2.94 gal → 2 cans. At 400 sq ft/gal it is 2.76 → 2
+    // as well, so the ROUNDING band is not enough on its own — assert the area
+    // and the gallons together.
+    const e = byColor([room(20, 24, 8)]).wall;
+    expect(e.totalSqft).toBe(1004);
+    expect(e.cans).toBe(2);
+    // One more gallon of demand and the buffer decides the can count: 1120 sq
+    // ft / 375 x 1.1 = 3.29 → 3, but with no buffer 2.99 → 2.
+    const bigger = byColor([room(22, 26, 8)]).wall;
+    expect(bigger.cans).toBe(3);
+  });
+
   it("rounds DOWN", () => {
     expect(packageGallons(2.9)).toEqual({ buckets: 0, cans: 2 });
     expect(packageGallons(1.99)).toEqual({ buckets: 0, cans: 1 });

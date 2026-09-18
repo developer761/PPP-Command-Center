@@ -196,6 +196,46 @@ describe("doors and windows are priced as themselves", () => {
   });
 });
 
+describe("a combined area is not a room-type default", () => {
+  it("an open-plan kitchen is not capped at the kitchen gallon", () => {
+    // The cap exists because cabinets cover most of a kitchen's wall. They
+    // cover a fraction of "Kitchen & Dining", and the whole area was ordered
+    // at roughly a third of what it needs — under a note blaming cabinets for
+    // a dining room's walls.
+    const [e] = estimateOrderGallons([
+      room("Kitchen & Dining", 20, 26, { surfaces: [surf("Walls", "one-white", "walls")] }),
+    ]);
+    expect(e.cans).toBeGreaterThan(1);
+    expect(e.defaultedNote ?? "").not.toMatch(/cabinets/i);
+  });
+
+  it("…but a plain kitchen still is", () => {
+    const [e] = estimateOrderGallons([
+      room("Kitchen", 20, 26, { surfaces: [surf("Walls", "one-white", "walls")] }),
+    ]);
+    expect(formatOrderQuantity(e)).toBe("1 gal");
+    expect(e.defaultedNote ?? "").toMatch(/cabinets/i);
+  });
+
+  it("a ceiling height typo cannot quietly order 87 gallons", () => {
+    const [e] = estimateOrderGallons([
+      room("Living Room", 10, 10, { heightFt: 500, surfaces: [surf("Walls", "w", "walls")] }),
+    ]);
+    // 30 ft is an atrium; 500 is a keystroke. Capped, so the line stays sane.
+    expect(e.cans).toBeLessThan(10);
+  });
+
+  it("the cap note does not claim credit for a room-type default", () => {
+    // A kitchen with a garbage square footage orders its 1 gal default —
+    // saying "capped at 99 gal" over a 1-gallon row is two contradicting
+    // numbers with the real reason suppressed.
+    const [e] = estimateOrderGallons([
+      room("Kitchen", 1, 1, { floorAreaSqft: 9_999_999, surfaces: [surf("Walls", "w", "walls")] }),
+    ]);
+    if (e.cans === 1) expect(e.defaultedNote ?? "").toMatch(/cabinets/i);
+  });
+});
+
 describe("the room labels PPP actually types", () => {
   it("shortened bathrooms still count", () => {
     for (const label of ["En suite", "Powder Rm", "Bathrm", "Half bath", "Bath 2", "WC",

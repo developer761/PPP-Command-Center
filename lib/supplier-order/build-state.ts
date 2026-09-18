@@ -172,10 +172,16 @@ export function pruneToLiveKeys(
   liveKeys: ReadonlyArray<{ key: string; legacyKey: string | null }>
 ): OrderBuildPayload {
   if (liveKeys.length === 0) return payload;
+  // A plain key that ANOTHER live line owns is that line's, not a leftover.
+  // Migrating it onto the bathroom copied the hall's quantity and product onto
+  // a second row — 4 gallons nobody typed, on the wrong product, reaching the
+  // vendor — which is exactly what claimedPlainKeys refuses everywhere else.
+  const claimed = new Set(liveKeys.map((k) => k.key));
   const migrate = <T,>(rec: Record<string, T>): Record<string, T> => {
     const out: Record<string, T> = {};
     for (const { key, legacyKey } of liveKeys) {
-      const v = rec[key] ?? (legacyKey ? rec[legacyKey] : undefined);
+      const usable = legacyKey && !claimed.has(legacyKey) ? rec[legacyKey] : undefined;
+      const v = rec[key] ?? usable;
       if (v !== undefined) out[key] = v;
     }
     return out;

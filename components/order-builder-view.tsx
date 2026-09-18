@@ -13,12 +13,13 @@ import {
   claimedPlainKeys,
   formatOrderQuantity,
   formatBucketsCans,
+  containerCount,
+  stepContainers,
   classifySurface,
   formatOrderTotal,
   summarizeOrder,
   addCustomItemsToTotal,
   quantityKey,
-  overrideTotal,
   packageForUnit,
   type GallonEstimate,
   type PaintUnit,
@@ -230,15 +231,28 @@ export default function OrderBuilderView({
     [workOrderId]
   );
 
-  /** The payload as it arrived. Merely OPENING the builder used to write the
-   *  row 600ms later — and `loadLatestBuildForWorkOrder` resumes by
-   *  `updated_at`, so on a two-vendor job opening vendor A pinned A as "latest"
-   *  and vendor B's half-built order became unreachable by resume. */
-  const pristinePayloadJson = useRef<string | null>(null);
+  /**
+   * The payload as last WRITTEN (or as loaded, before anything was written).
+   *
+   * Merely OPENING the builder used to write the row 600ms later, and
+   * `loadLatestBuildForWorkOrder` resumes by `updated_at` — so on a two-vendor
+   * job, opening vendor A pinned A as "latest" and vendor B's half-built order
+   * became unreachable by resume.
+   *
+   * It has to track every SAVE, not just the mount: baselined once, pressing
+   * "+" then "−" returns the payload to a string identical to the baseline
+   * while the row already holds the "+" — and the save that would put it back
+   * is skipped. The screen then shows 4 gal over a row holding 5, and
+   * fulfilment emails the 5.
+   *
+   * It also resets with the vendor, or vendor B is compared against A's
+   * payload and written on open — the very thing this prevents.
+   */
+  const savedPayloadJson = useRef<string | null>(null);
   const payloadJson = JSON.stringify(payload);
   useEffect(() => {
-    if (pristinePayloadJson.current === null && loadedFor) {
-      pristinePayloadJson.current = payloadJson;
+    if (savedPayloadJson.current === null && loadedFor) {
+      savedPayloadJson.current = payloadJson;
     }
   }, [loadedFor, payloadJson]);
 
@@ -250,15 +264,18 @@ export default function OrderBuilderView({
     if (loadedFor !== supplier.accountId) return;
     const accountId = supplier.accountId;
     const snapshot = payload;
-    // Nothing has been changed yet — do not touch the row (see above).
-    if (pristinePayloadJson.current !== null && pristinePayloadJson.current === payloadJson) return;
+    // Identical to what the row already holds — do not write it again.
+    if (savedPayloadJson.current !== null && savedPayloadJson.current === payloadJson) return;
     const t = setTimeout(() => {
       const seq = ++saveSeq.current;
+      const written = JSON.stringify(snapshot);
       void save(accountId, snapshot, false).then((r) => {
         // A response from a save that has since been superseded says nothing
         // about the row's current state — neither its success nor its failure.
         if (seq !== saveSeq.current) return;
         if (!r.ok) { setSaveError(r.error); setNotPersisted(false); return; }
+        // The row now holds THIS payload — that is the baseline from here.
+        savedPayloadJson.current = written;
         setSaveError(null);
         setNotPersisted(!r.persisted);
       });
@@ -599,12 +616,18 @@ export default function OrderBuilderView({
       const existing = readForEstimate(cur.quantities, e);
       const unit: PaintUnit = existing?.unit ?? e.unit ?? "gal";
       const currentTotal = existing
-        ? overrideTotal(existing)
-        : (e.manualOnly ? 0 : overrideTotal({ buckets: e.buckets, cans: e.cans, unit }));
-      const next = Math.max(0, Math.min(99, currentTotal + delta));
+        ? containerCount(existing)
+        : (e.manualOnly ? 0 : containerCount({ buckets: e.buckets, cans: e.cans, unit }));
+      // Steps CONTAINERS, not gallons: one more pail, one fewer quart. Going
+      // through packageForUnit stepped a pail line by a gallon and the pail
+      // rounding put it straight back, so "−" did nothing at all — on a button
+      // that rendered enabled, forever.
       return {
         ...cur,
-        quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: packageForUnit(next, unit) },
+        quantities: {
+          ...withoutLegacyKey(cur.quantities, e),
+          [key]: stepContainers({ buckets: 0, cans: currentTotal, unit }, delta),
+        },
       };
     });
   };
@@ -614,8 +637,8 @@ export default function OrderBuilderView({
     setPayload((cur) => {
       const existing = readForEstimate(cur.quantities, e);
       const total = existing
-        ? overrideTotal(existing)
-        : (e.manualOnly ? 0 : overrideTotal({ buckets: e.buckets, cans: e.cans, unit: e.unit ?? "gal" }));
+        ? containerCount(existing)
+        : (e.manualOnly ? 0 : containerCount({ buckets: e.buckets, cans: e.cans, unit: e.unit ?? "gal" }));
       return {
         ...cur,
         quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: packageForUnit(total, unit) },
@@ -855,6 +878,7 @@ export default function OrderBuilderView({
                 // load-replaces-payload code was there to prevent.
                 setPayload(emptyBuildPayload());
                 setLoadedFor(null);
+                savedPayloadJson.current = null;
                 setSupplier(null);
               }}
               className="text-xs font-medium text-ppp-blue-700 hover:underline px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
@@ -878,6 +902,7 @@ export default function OrderBuilderView({
             onPick={(s: ActiveSupplier) => {
               setPayload(emptyBuildPayload());
               setLoadedFor(null);
+                savedPayloadJson.current = null;
               setSupplier({ accountId: s.accountId, name: s.name });
             }}
           />
@@ -994,8 +1019,8 @@ export default function OrderBuilderView({
                 // the value that comes back. The server stays the source of
                 // truth for everything derived (totals, packaging, the email).
                 const total = override
-                  ? overrideTotal(override)
-                  : overrideTotal({ buckets: e.buckets, cans: e.cans, unit });
+                  ? containerCount(override)
+                  : containerCount({ buckets: e.buckets, cans: e.cans, unit });
                 // Two very different zeros. `excluded` is the worker saying
                 // "don't buy this one" — a decision, shown neutrally and
                 // reversible via "reset to estimate". A placeholder zero is the

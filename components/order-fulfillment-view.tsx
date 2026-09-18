@@ -169,13 +169,16 @@ export default function OrderFulfillmentView({
   // `savedFulfillment.requiredBy` permanently outranked the work order's own
   // date: move the start date in Salesforce and the vendor kept being told the
   // old one, silently.
-  const pristineFulfillmentJson = useRef<string | null>(null);
+  /** What the row holds. Updated on every successful save — baselined only at
+   *  mount, typing "AM delivery" and then deleting it left the row holding it,
+   *  and a Back-and-return brought it back and emailed it. */
+  const savedFulfillmentJson = useRef<string | null>(null);
   useEffect(() => {
     // Recorded once the draft has landed, since that is when this string stops
     // moving on its own. Written in an effect, not during render — a ref
     // assigned while rendering is a different bug.
-    if (pristineFulfillmentJson.current === null && draft) {
-      pristineFulfillmentJson.current = fulfillmentJson;
+    if (savedFulfillmentJson.current === null && draft) {
+      savedFulfillmentJson.current = fulfillmentJson;
     }
   }, [draft, fulfillmentJson]);
   useEffect(() => {
@@ -187,14 +190,19 @@ export default function OrderFulfillmentView({
     }
     // …and skip anything that still matches the untouched state, however many
     // renders it took to settle.
-    if (pristineFulfillmentJson.current === fulfillmentJson) return;
+    if (savedFulfillmentJson.current === fulfillmentJson) return;
     const parsed = JSON.parse(fulfillmentJson) as FulfillmentState;
     if (fulfillmentIsEmpty(parsed)) return;
     const t = setTimeout(() => {
+      const written = fulfillmentJson;
       void fetch("/api/admin/supplier-order/fulfillment", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workOrderId, supplierAccountId, fulfillment: parsed }),
+      }).then((res) => {
+        // The row now holds THIS state — the baseline moves with it, or a value
+        // typed and then deleted is never un-written.
+        if (res.ok) savedFulfillmentJson.current = written;
       }).catch(() => {
         // Convenience, not correctness — the order still sends from what's on
         // screen. Failing loudly here would interrupt an admin mid-order over

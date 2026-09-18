@@ -64,12 +64,33 @@ describe("a bathroom is ordered apart from the same color elsewhere", () => {
     expect(formatOrderQuantity(bath)).toBe("1 gal");
   });
 
-  it("two bathrooms in one color stay together", () => {
-    // The split is bathroom-vs-not, not room-by-room.
+  it("two bathrooms in one color stay together — and get a gallon EACH", () => {
+    // The split is bathroom-vs-not, not room-by-room. The quantity was the
+    // part nothing asserted (mutation-tested 2026-09-17): the floor is per
+    // BATHROOM, so three bathrooms sharing a white are 3 gal, not the 2 they
+    // came to when the floor was per line and the crew went back for the third.
     const out = estimateOrderGallons([room("Bathroom", 5, 8), room("Powder Room", 4, 5)]);
     expect(out).toHaveLength(1);
     expect(out[0].isBathroom).toBe(true);
     expect(out[0].rooms).toEqual(["Bathroom", "Powder Room"]);
+    expect(formatOrderQuantity(out[0])).toBe("2 gal");
+    expect(out[0].defaultedNote ?? "").toMatch(/2 bathrooms/);
+  });
+
+  it("three bathrooms are three gallons", () => {
+    const out = estimateOrderGallons([
+      room("Bathroom", 5, 8), room("Powder Room", 4, 5), room("Master Bath", 6, 8),
+    ]);
+    expect(formatOrderQuantity(out[0])).toBe("3 gal");
+  });
+
+  it("…and their CEILINGS are a quart each", () => {
+    const ceil = (label: string, w: number, l: number): RoomTakeoff => ({
+      ...room(label, w, l),
+      surfaces: [{ kind: "ceiling", surfaceLabel: "Ceiling", colorId: "ceil-white", colorName: "White", colorCode: null, finish: "Flat" }],
+    });
+    const out = estimateOrderGallons([ceil("Bathroom", 5, 8), ceil("Powder Room", 4, 5)]);
+    expect(formatOrderQuantity(out[0])).toBe("2 qt");
   });
 
   it("nothing changes for a job with no bathroom", () => {

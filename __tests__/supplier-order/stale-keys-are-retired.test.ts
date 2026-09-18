@@ -46,15 +46,37 @@ describe("keys no line claims any more", () => {
 
   it("the bathroom cannot inherit a LIVE line's key", () => {
     // Both lines exist, so the plain key belongs to the hall and must stay
-    // with it.
+    // with it — and must NOT be copied onto the bathroom.
+    //
+    // The first version of this test asserted the copy, under this exact
+    // title, with a comment saying the copy must not happen. It locked in 4
+    // gallons nobody typed, on the wrong product, going to a vendor. A test
+    // whose assertion contradicts its own name is worse than no test.
     const p = payload({ quantities: { "c1::Eggshell": { buckets: 0, cans: 4, unit: "gal" } } });
     const out = pruneToLiveKeys(
       p,
       live([{ key: "c1::Eggshell" }, { key: "c1::Eggshell::bath", legacyKey: "c1::Eggshell" }])
     );
     expect(out.quantities["c1::Eggshell"]).toEqual({ buckets: 0, cans: 4, unit: "gal" });
-    // The exact key wins for the hall; the bathroom's fallback must not COPY it.
-    expect(out.quantities["c1::Eggshell::bath"]).toEqual({ buckets: 0, cans: 4, unit: "gal" });
+    expect(out.quantities["c1::Eggshell::bath"]).toBeUndefined();
+  });
+
+  it("…nor a live line's PRODUCT", () => {
+    const p = payload({ materialTypeOverrides: { "c1::Eggshell": "Regal Select" } });
+    const out = pruneToLiveKeys(
+      p,
+      live([{ key: "c1::Eggshell" }, { key: "c1::Eggshell::bath", legacyKey: "c1::Eggshell" }])
+    );
+    expect(out.materialTypeOverrides["c1::Eggshell::bath"]).toBeUndefined();
+  });
+
+  it("a deliberate ZERO on the hall does not silence the bathroom", () => {
+    const p = payload({ quantities: { "c1::Eggshell": { buckets: 0, cans: 0, unit: "gal" } } });
+    const out = pruneToLiveKeys(
+      p,
+      live([{ key: "c1::Eggshell" }, { key: "c1::Eggshell::bath", legacyKey: "c1::Eggshell" }])
+    );
+    expect(out.quantities["c1::Eggshell::bath"]).toBeUndefined();
   });
 
   it("does nothing at all before a draft has arrived", () => {

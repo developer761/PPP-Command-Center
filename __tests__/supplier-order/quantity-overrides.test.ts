@@ -3,6 +3,7 @@ import {
   applyQuantityOverrides,
   packageForUnit,
   overrideTotal,
+  stepContainers,
   quantityKey,
   formatOrderQuantity,
   formatOrderTotal,
@@ -189,6 +190,63 @@ describe("normalizeBuildPayload (#18)", () => {
  * count toward TOTAL. If it didn't, the vendor would cross-check the total
  * against the lines and find it short, which is worse than no total at all.
  */
+describe("buckets, where every fixture used to be a multiple of five", () => {
+  it("converting an odd gallon count to pails rounds UP", () => {
+    // Every existing fixture used 10 gal, where ceil and floor agree — so the
+    // rounding this depends on had no test that could see it, and flooring
+    // silently dropped 2 gallons off a 7-gallon line (mutation-tested
+    // 2026-09-17).
+    expect(packageForUnit(7, "bucket")).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
+    expect(packageForUnit(6, "bucket")).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
+    expect(packageForUnit(5, "bucket")).toEqual({ buckets: 0, cans: 1, unit: "bucket" });
+    expect(packageForUnit(1, "bucket")).toEqual({ buckets: 0, cans: 1, unit: "bucket" });
+  });
+
+  it("a pail counts as five gallons in the job total", () => {
+    // summarizeOrder's bucket branch: the estimator never emits unit "bucket",
+    // so only an override produces one, and nothing exercised that path. It
+    // counted 2 pails as 2 gallons — a fifth of the paint.
+    const e = {
+      colorId: "c1", colorName: "White Dove", colorCode: "OC-17", finish: "Eggshell",
+      surfaces: ["Walls"], rooms: ["Living Room"], placements: [],
+      totalSqft: 900, buckets: 0, cans: 2, gallons: 10, unit: "bucket" as const,
+      sizedToZero: false, needsMeasurement: false, unsized: false, manualOnly: false,
+      accentWallReview: false, defaultedNote: null,
+    };
+    const t = summarizeOrder([e]);
+    expect(t.cans).toBe(10);
+    expect(formatOrderTotal(t)).toBe("10 gal");
+  });
+
+  it("the +/- buttons step CONTAINERS, so a pail line can come back down", () => {
+    // `overrideTotal` answers in GALLONS for a pail line and in containers for
+    // the other two. Stepping with that mismatch subtracted one GALLON from a
+    // pail line and the pail rounding put it straight back: "−" did nothing,
+    // forever, on a button that rendered enabled — and "+" jumped a whole pail.
+    const twoPails = { buckets: 0, cans: 2, unit: "bucket" as const };
+    expect(stepContainers(twoPails, -1)).toEqual({ buckets: 0, cans: 1, unit: "bucket" });
+    expect(stepContainers(twoPails, +1)).toEqual({ buckets: 0, cans: 3, unit: "bucket" });
+    // …all the way to zero, which is how a line is marked "not ordering".
+    expect(stepContainers({ buckets: 0, cans: 1, unit: "bucket" }, -1).cans).toBe(0);
+  });
+
+  it("…and steps quarts and gallons the same way", () => {
+    expect(stepContainers({ buckets: 0, cans: 3, unit: "qt" }, -1).cans).toBe(2);
+    expect(stepContainers({ buckets: 0, cans: 6, unit: "gal" }, +1).cans).toBe(7);
+    // A legacy row storing pails in `buckets` still counts as its gallons.
+    expect(stepContainers({ buckets: 1, cans: 2, unit: "gal" }, +1).cans).toBe(8);
+  });
+
+  it("never steps below zero or above the 99 every boundary clamps to", () => {
+    expect(stepContainers({ buckets: 0, cans: 0, unit: "gal" }, -1).cans).toBe(0);
+    expect(stepContainers({ buckets: 0, cans: 99, unit: "gal" }, +1).cans).toBe(99);
+  });
+
+  it("overrideTotal reads a pail as five gallons too", () => {
+    expect(overrideTotal({ buckets: 0, cans: 2, unit: "bucket" })).toBe(10);
+  });
+});
+
 describe("addCustomItemsToTotal (#28)", () => {
   const base = { buckets: 0, cans: 0, quarts: 0, sizedColors: 0, reviewColors: 0 };
 

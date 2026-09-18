@@ -279,7 +279,17 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   if (!s) return null;
   // "Kitchenette" counts; "Butler's pantry" deliberately does not — it is
   // shelving, not a cabinet wall, and PPP paints it like a normal room.
-  if (s.includes("kitchen")) return "kitchen";
+  const combined = /(\band\b|&|\+|\/|,|\bw\/)/.test(s);
+  if (s.includes("kitchen")) {
+    // The same guard the bathroom branch below carries. "Kitchen & Dining",
+    // "Kitchen/Dining", "Open Kitchen & Living Area" — labels PPP types, and
+    // ones roomLabelFrom reproduces from ProductName__c — were capped at ONE
+    // gallon for the whole open-plan area, because the cabinets that justify
+    // the cap cover a fraction of it. Roughly a third of what it needs.
+    const withOther = /\b(bed|bedrooms?|living|dining|family|hall|hallway|foyer|entry|basement|attic|office|study|den|great\s*room)\b/.test(s);
+    if (!(combined && withOther)) return "kitchen";
+    return null;
+  }
   // Word boundaries, not substrings. This used to decide only a note; since
   // the bathroom split (2026-09-17) it decides what is BOUGHT, and
   // "Pool bathhouse", "Bath House" and "Sunbathing deck" are not bathrooms.
@@ -346,7 +356,16 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   const floor = room.floorAreaSqft > 0 ? room.floorAreaSqft : 0;
   const noFloor = floor <= 0;
   const coats = room.coats > 0 ? room.coats : cfg.defaultCoats;
-  const height = room.heightFt > 0 ? room.heightFt : cfg.defaultHeightFt;
+  // Capped like the opening counts. `MAX_COVERAGE_VALUES.defaultHeightFt`
+  // guards the CONFIG default and never the per-room value, so a typed 500 on
+  // a 100 sq ft room quietly ordered 87 gallons — under the 99-gal rail, so
+  // not even flagged. A real ceiling is not 30 ft; an atrium is, and that is
+  // the cap.
+  const MAX_ROOM_HEIGHT_FT = 30;
+  const height = Math.min(
+    room.heightFt > 0 ? room.heightFt : cfg.defaultHeightFt,
+    MAX_ROOM_HEIGHT_FT
+  );
   const haveRealPerimeter = room.perimeterLf > 0;
   const perimeter = haveRealPerimeter
     ? room.perimeterLf
@@ -822,7 +841,11 @@ export function estimateOrderGallons(
       unit,
       // The cap wins: it says a number is wrong, and every other note here
       // only explains a number that is right.
-      defaultedNote: cappedNote ?? defaultedNote,
+      // The cap note wins only when the CAP is what decided the number. A
+      // kitchen with a garbage square footage orders its 1 gal default, and
+      // saying "capped at 99 gal" over a 1-gallon line is two contradicting
+      // numbers on one row with the real reason suppressed.
+      defaultedNote: defaultedNote ?? cappedNote,
       gallons: bucketsCount * cfg.bucketSizeGallons + cans,
       // Mixed sized + unsized (e.g. same color on walls AND cabinets in a
       // room): the gallons cover only the sized surfaces, so the figure is an
@@ -885,6 +908,32 @@ export function quantityKey(
 }
 
 /** Total container count for an override, in its own unit. */
+/**
+ * How many CONTAINERS this line is for, in its own unit — 3 quarts is 3, two
+ * pails is 2, six gallons is 6.
+ *
+ * Not `overrideTotal`, which answers in GALLONS for a pail line and in
+ * containers for the other two. Stepping a quantity with that mismatch stepped
+ * a bucket line by one GALLON and then rounded back to the same pail count, so
+ * "−" did nothing at all, forever, on a control that rendered enabled — and
+ * "+" jumped a whole pail.
+ */
+export function containerCount(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
+  if (o.unit === "qt" || o.unit === "bucket") return o.cans;
+  return o.buckets * GALLONS_PER_BUCKET + o.cans;
+}
+
+/** Step a line by whole CONTAINERS of its own unit — one more pail, one fewer
+ *  quart. Clamped to the same 0-99 every other boundary applies. */
+export function stepContainers(
+  o: { buckets: number; cans: number; unit?: PaintUnit },
+  delta: number
+): { buckets: number; cans: number; unit: PaintUnit } {
+  const unit: PaintUnit = o.unit ?? "gal";
+  const next = Math.max(0, Math.min(99, containerCount(o) + delta));
+  return { buckets: 0, cans: next, unit };
+}
+
 export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
   if (o.unit === "qt") return o.cans;
   if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;
@@ -901,12 +950,16 @@ export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUn
  *  other half, still turning a plain 6-gal order into "1 bucket + 1 gal" in
  *  the vendor's email. */
 export function packageForUnit(total: number, unit: PaintUnit): { buckets: number; cans: number; unit: PaintUnit } {
+  // `total` is in GALLONS for the bucket case — this is the UNIT TOGGLE's
+  // conversion, and a pail is five gallons, so 10 gal becomes 2 pails. Rounds
+  // UP: flooring silently dropped two gallons off a 7-gallon line.
+  //
+  // The +/- STEPPER must not come through here (it steps containers, not
+  // gallons); see stepContainers below. Routing the stepper through this
+  // conversion is what made "−" dead on a pail line: it subtracted one GALLON
+  // and the rounding put it straight back on the same pail.
   const t = Math.max(0, Math.floor(total));
   if (unit === "qt") return { buckets: 0, cans: t, unit };
-  // A bucket count is already whole pails — `total` is gallons, so divide.
-  // ROUND UP: flooring turned 7 gallons into one 5-gallon pail and silently
-  // dropped two, and only exact multiples of five survived the switch. A pail
-  // too many is a pail on the shelf; a pail too few is a crew stopping.
   if (unit === "bucket") return { buckets: 0, cans: Math.ceil(t / GALLONS_PER_BUCKET), unit };
   return { buckets: 0, cans: t, unit };
 }
