@@ -20,19 +20,107 @@ import { readFileSync } from "node:fs";
  *    when five people are on a deal, which is how a channel gets muted.
  */
 
-const SRC = readFileSync("lib/notifications/commercial-events.ts", "utf8");
+/**
+ * BOTH FILES, AND ANY `insert…Notification` NAME.
+ *
+ * The first version of this scanned only commercial-events.ts and only matched
+ * `insertCommercial*`. Two real event kinds escaped it in the two different
+ * ways that were available:
+ *
+ *   · `insertCustomRuleNotification` — right file, name does not begin
+ *     `insertCommercial`;
+ *   · `insertCommercialTeamAssignedNotification` — right name, lives in
+ *     insert.ts.
+ *
+ * Both post nothing to Slack, which is exactly the defect this file exists to
+ * prevent, and it reported green the whole time. A check whose scope is
+ * narrower than the rule it enforces is worse than no check: it is a standing
+ * claim that the gap cannot happen.
+ */
+const FILES = [
+  "lib/notifications/commercial-events.ts",
+  "lib/notifications/insert.ts",
+] as const;
 
-type Fn = { name: string; body: string };
+const SRC = FILES.map((f) => readFileSync(f, "utf8")).join("\n");
+
+/**
+ * Which functions are in scope, per file.
+ *
+ * `commercial-events.ts` IS the commercial event module — everything exported
+ * from it that raises a notification is in scope by definition.
+ *
+ * `insert.ts` is shared with the residential side, so only the functions that
+ * actually write a `commercial_` kind count. That excludes
+ * `insertCustomerFormSubmittedNotification` (the residential colour form),
+ * which has no business posting in Tomco's channel — and includes
+ * `insertCommercialTeamAssignedNotification`, which picks its kind with a
+ * ternary and so is invisible to any `kind: "commercial_…"` pattern.
+ *
+ * Scoping by FILE where the file answers it, and by CONTENT only where it does
+ * not, is what keeps this from being wrong in one direction or the other.
+ */
+function inScope(file: string, body: string): boolean {
+  if (file.endsWith("commercial-events.ts")) return true;
+  return /"commercial_[a-z_]+"/.test(body);
+}
+
+/**
+ * NOT EVERY NOTIFICATION IS A TEAM ANNOUNCEMENT.
+ *
+ * Widening this check surfaced two functions with no Slack post, and the
+ * obvious move — add one to each — would have been wrong. Both are written in
+ * the SECOND PERSON to a single recipient, which is the tell:
+ *
+ *   · `insertCustomRuleNotification` — "You created this alert." A custom rule
+ *     is somebody's own tripwire on their own criteria. Announcing it to the
+ *     room broadcasts what one person is quietly watching, and would put a line
+ *     in the channel for an event only they consider an event.
+ *   · `insertCommercialTeamAssignedNotification` — "…re-added you as Estimator."
+ *     A staffing change addressed to the person it happened to. The channel
+ *     carries BUSINESS events — a bid went out, an invoice was paid — and
+ *     Karan's standing rule is one post per event, not per notification.
+ *
+ * Listed with the reason, so an exemption stays a decision. Anything NOT here
+ * must post, which is what makes the check still worth having.
+ *
+ * Open for Karan: if team adds should be announced, delete the second entry and
+ * the check will tell you exactly where to add the call.
+ */
+const PERSONAL_NOT_TEAM = new Set([
+  "insertCustomRuleNotification",
+  "insertCommercialTeamAssignedNotification",
+]);
+
+type Fn = { name: string; body: string; file: string };
 
 function eventFunctions(): Fn[] {
   const out: Fn[] = [];
-  const re = /export async function (insertCommercial\w+)\(/g;
-  const hits = [...SRC.matchAll(re)];
-  hits.forEach((m, i) => {
-    const start = m.index!;
-    const end = i + 1 < hits.length ? hits[i + 1].index! : SRC.length;
-    out.push({ name: m[1], body: SRC.slice(start, end) });
-  });
+  for (const file of FILES) {
+    const src = readFileSync(file, "utf8");
+    const re = /export async function (insert\w*Notifications?)\(/g;
+    const hits = [...src.matchAll(re)];
+    hits.forEach((m, i) => {
+      const start = m.index!;
+      const end = i + 1 < hits.length ? hits[i + 1].index! : src.length;
+      const body = src.slice(start, end);
+      /**
+       * SCOPED BY THE KIND IT WRITES, not by its name or its file.
+       *
+       * Widening the name pattern pulled in
+       * `insertCustomerFormSubmittedNotification`, which raises
+       * `customer_form_submitted` — the RESIDENTIAL colour form. Requiring that
+       * to post in Tomco's commercial channel would be a wrong answer arrived at
+       * by a wider net, which is its own kind of broken check.
+       *
+       * The rule is about COMMERCIAL events, so the test asks what the function
+       * actually writes. It is also self-maintaining: a new commercial kind is
+       * in scope the moment it exists, without anyone updating a list.
+       */
+      if (!inScope(file, body)) return;
+      out.push({ name: m[1], body, file });
+    });
+  }
   return out;
 }
 
@@ -45,7 +133,10 @@ describe("notification coverage", () => {
   });
 
   it("every event posts to Slack", () => {
-    const missing = fns.filter((f) => !f.body.includes("postCommercialSlack")).map((f) => f.name);
+    const missing = fns
+      .filter((f) => !PERSONAL_NOT_TEAM.has(f.name))
+      .filter((f) => !f.body.includes("postCommercialSlack"))
+      .map((f) => f.name);
     expect(
       missing,
       `These raise a notification but never reach the channel:\n${missing.join("\n")}\n` +
@@ -92,7 +183,7 @@ describe("notification coverage", () => {
   it("every event still sends its email", () => {
     // Slack is additional, never a replacement. An event that lost its email
     // path would go quiet for anyone not watching the channel.
-    const noEmail = fns.filter(
+    const noEmail = fns.filter((f) => !PERSONAL_NOT_TEAM.has(f.name)).filter(
       (f) => !f.body.includes("dispatchCommercialNotification") && !f.body.includes("await sendEmail(")
     ).map((f) => f.name);
     expect(noEmail, `These no longer send email:\n${noEmail.join("\n")}`).toEqual([]);
