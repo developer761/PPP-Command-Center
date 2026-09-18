@@ -623,6 +623,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   useEffect(() => {
     if (catalog.status !== "ready") return;
     const byId = new Map(catalog.colors.map((c) => [c.id, c]));
+    // The "cascading renders" rule is a heuristic, and this updater is the
+    // case it cannot see: it returns the SAME object when nothing changed
+    // (`changed ? next : prev` below), so the one extra render happens only
+    // when the catalog genuinely resolved a name, and never repeats. Rewriting
+    // it as derived state would mean re-resolving every pick on every
+    // keystroke.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
     setState((prev) => {
       let changed = false;
       const next: Record<string, LineItemState> = {};
@@ -1485,6 +1492,27 @@ function LineItemSection({
   onApplyToAll: (surface: string, pick: SurfacePick) => void;
   onNotesChange: (notes: string) => void;
 }) {
+  // EVERY hook runs before the `state` guard below.
+  //
+  // `useState(collapsed)` used to sit a hundred lines under `if (!state)
+  // return null`, which is a conditional hook: the first render where `state`
+  // is missing runs one fewer hook than the next, and React throws "rendered
+  // more hooks than during the previous render" — a white screen, mid-entry,
+  // on a customer's form. It has not fired in the wild because `state` is
+  // populated for every rendered line today, but nothing enforces that, and
+  // the guard exists precisely because someone thought it might not be.
+  const surfaces = lineItem.surfaces;
+  // Default: an already-complete room (re-edit / preview with data) starts
+  // collapsed to keep long lists manageable; a fresh room starts expanded.
+  // Kate 2026-07-22 (#7): the auto-collapse that used to snap a room shut the
+  // moment it was filled was removed — it was jarring mid-entry. Collapsing is
+  // now ONLY driven by the header chevron.
+  const [collapsed, setCollapsed] = useState(
+    !!state && surfaces.every((s) => {
+      const p = state.picks[s];
+      return p?.skipped || (!!p?.colorId && !!p?.finish);
+    })
+  );
   if (!state) return null;
   // Room title (Katie 2026-05-29): Product Name + Area Label, in that order.
   //   "Interior Painting · Master Bedroom"
@@ -1504,24 +1532,15 @@ function LineItemSection({
   // that then had nowhere valid to be written. Round 2 blocked SENDING a form
   // in this state but left the form itself fabricating the surface, so anyone
   // holding an already-sent link (or using Internal Entry) still saw it.
-  const surfaces = lineItem.surfaces;
   const hasNoSurfaces = surfaces.length === 0;
 
   // Katie 2026-06-12: collapse a room after the customer has filled it in.
-  // Long-list WOs (8+ rooms) became overwhelming to scroll. Now the customer
-  // can collapse a finished room down to its header. Auto-collapse triggers
-  // when every surface has a color OR is explicitly skipped — same "done"
-  // signal the progress bar uses. User can override either direction.
+  // Long-list WOs (8+ rooms) became overwhelming to scroll. (The state itself
+  // is declared with the other hooks at the top — see the note there.)
   const filledOrSkipped = surfaces.every((s) => {
     const p = state.picks[s];
     return p?.skipped || (!!p?.colorId && !!p?.finish);
   });
-  // Per-room collapsed state. Default: an already-complete room (re-edit /
-  // preview with data) starts collapsed to keep long lists manageable; a
-  // fresh room starts expanded. Kate 2026-07-22 (#7): the auto-collapse that
-  // used to snap a room shut the moment it was filled was removed — it was
-  // jarring mid-entry. Collapsing is now ONLY driven by the header chevron.
-  const [collapsed, setCollapsed] = useState(filledOrSkipped);
 
   // Summary for the collapsed header: "3 of 3 colors picked · 1 note".
   const colorsPicked = surfaces.filter((s) => state.picks[s]?.colorId).length;
