@@ -903,12 +903,16 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       // What we kept, and what still needs an answer. Both lists are named on
       // the thank-you screen so the customer knows their work was saved AND
       // what is outstanding — rather than being sent back to find it.
-      const dropped = ((data as { droppedFinishes?: Array<{ surface: string; finish: string }> }).droppedFinishes ?? [])
-        .map((d) => `${d.surface} (you chose "${d.finish}")`);
+      const dropped = ((data as { droppedFinishes?: Array<{ room?: string; surface: string; finish: string }> }).droppedFinishes ?? [])
+        // The room, not just the surface: "Walls (you chose …)" on a
+        // twelve-room job left the customer hunting for which walls.
+        .map((d) => `${d.room ? `${d.room} — ` : ""}${d.surface} (you chose "${d.finish}")`);
       const outstanding = [...missingFinish, ...dropped];
       if (outstanding.length > 0) {
         addPostSubmitNote(
-          `Your colors are saved. We still need a finish for ${outstanding.join("; ")} — someone from PPP will confirm it with you, or you can reopen this link and choose one.`
+          // Never "your colors are saved" on a PREVIEW — that note sat directly
+          // under the one saying nothing had been saved at all.
+          `${(data as { preview?: boolean }).preview ? "In a real submit, these would still need a finish" : "Your colors are saved. We still need a finish"} for ${outstanding.join("; ")} — someone from PPP will confirm it with you, or you can reopen this link and choose one.`
         );
       }
       // Submitted successfully — the draft has done its job. Leaving it would

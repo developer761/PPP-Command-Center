@@ -87,7 +87,14 @@ vi.mock("@/lib/email/resend", () => ({
   }),
 }));
 vi.mock("@/lib/alerts/materials-alerts", () => ({ alertMaterialsFailure: async () => {} }));
-vi.mock("@/lib/supplier-order/builder", () => ({ nextPoNumber: async () => "00300099-2" }));
+/** What the route asked the allocator for. */
+const poArgs: Array<[string, string]> = [];
+vi.mock("@/lib/supplier-order/builder", () => ({
+  nextPoNumber: async (woId: string, woNumber: string) => {
+    poArgs.push([woId, woNumber]);
+    return "00300099-2";
+  },
+}));
 
 const { POST } = await import("@/app/api/admin/supplier-order/send/route");
 
@@ -125,6 +132,7 @@ beforeEach(() => {
   ops.length = 0;
   sent.length = 0;
   insertError = null;
+  poArgs.length = 0;
   process.env.NEXT_PUBLIC_SUPABASE_URL ??= "http://stub";
   process.env.SUPABASE_SECRET_KEY ??= "stub";
 });
@@ -165,6 +173,16 @@ describe("a PO number that was taken between drafting and sending", () => {
     // And the rewritten copy is persisted, or Mail Hub renders the stale text.
     const drafts = ops.filter((o) => o.table === "supplier_orders" && o.kind === "update" && "draft_body" in (o.values ?? {}));
     expect(String(drafts.at(-1)?.values?.draft_body ?? "")).toContain("00300099-2");
+  });
+
+  it("still allocates a number when the work order number is missing", async () => {
+    // `?? ""` here would hand the allocator a blank base, and the builder's own
+    // fallback is the record's last six characters — the retry has to match it
+    // or the recovery stores an order nobody can quote. Untested until now.
+    insertError = { code: "23505", message: 'duplicate key value violates unique constraint "supplier_orders_po_number_key"' };
+    const res = await send({ workOrderNumber: null });
+    expect(res.status).toBe(200);
+    expect(poArgs.at(-1)).toEqual([WO, WO.slice(-6)]);
   });
 
   it("only recovers from a PO collision, not from a concurrent draft", async () => {

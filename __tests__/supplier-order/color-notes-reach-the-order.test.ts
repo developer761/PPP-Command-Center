@@ -154,5 +154,25 @@ describe("the vendor email does not carry color notes", () => {
       }),
     );
     expect(body).toContain("Windham Cream");
+    expect(body).toContain("5 gallon");
+  });
+
+  it("…and a slipped keystroke on its quantity is capped before the store sees it", async () => {
+    // Every other quantity is clamped at three boundaries; this one is
+    // hand-typed and goes straight into the email. Its clamp had no test at
+    // all (mutation testing, 2026-09-17) — removing it sent a paint store an
+    // order for five thousand gallons of stain.
+    const { body } = await buildSupplierOrderDraft(
+      input({}, { customColorItems: [{ id: "c1", label: "Deck stain", qty: 5000, unit: "gal" }] }),
+    );
+    expect(body).toContain("99 gal — Deck stain");
+    expect(body).not.toContain("5000");
+  });
+
+  it("…and a zero or a missing quantity still orders one, not none", async () => {
+    const { body } = await buildSupplierOrderDraft(
+      input({}, { customColorItems: [{ id: "c1", label: "Deck stain", qty: 0, unit: "gal" }] }),
+    );
+    expect(body).toContain("1 gal — Deck stain");
   });
 });

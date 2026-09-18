@@ -164,6 +164,26 @@ describe("the vendor's copy of that job", () => {
     expect(bathLine).toContain("White Dove");
   });
 
+  it("tells the two lines apart only when the vendor would see two the same", async () => {
+    // Same color, same finish, same product: printed plainly, the store gets
+    // two identical rows and no way to know one is the bathroom's.
+    const { body } = await buildSupplierOrderDraft(draftInput());
+    expect(body.split("\n").filter((l) => l.includes("(bathroom)"))).toHaveLength(1);
+  });
+
+  it("…and does NOT tag it when the hall is zeroed out", async () => {
+    // A zeroed line never reaches the vendor, so there is nothing to tell
+    // apart, and "(bathroom)" on the only line reads as a restriction PPP did
+    // not make. The guard for it was untested (mutation testing, 2026-09-17).
+    const { body } = await buildSupplierOrderDraft(
+      draftInput({
+        quantityOverrides: { [quantityKey(COLOR.id, "Eggshell")]: { buckets: 0, cans: 0, unit: "gal" } },
+      })
+    );
+    expect(body).toContain("White Dove");
+    expect(body).not.toContain("(bathroom)");
+  });
+
   it("the hall's typed gallons are not repeated on the bathroom line", async () => {
     const { body } = await buildSupplierOrderDraft(
       draftInput({ quantityOverrides: { [quantityKey(COLOR.id, "Eggshell")]: { buckets: 0, cans: 6, unit: "gal" } } })

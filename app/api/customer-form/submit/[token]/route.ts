@@ -886,7 +886,11 @@ export async function POST(
   // globalNotes). For exterior / sparse WOs the customer's notes ARE the
   // full submission — admin needs to know it came in even though nothing
   // wrote to SF. The notes are preserved in submitted_payload regardless.
-  const notesOnly = !!(body.globalNotes && body.globalNotes.trim().length > 0);
+  // sanitizeNotesField, like every other read of this field: `.trim()` on a
+  // raw body is a TypeError the moment someone posts a number, and this
+  // endpoint is public — a token, not a login. A 500 there would tell a
+  // customer their colors were lost.
+  const notesOnly = sanitizeNotesField(body.globalNotes).trim().length > 0;
   const hasMeaningfulSubmission = attempts.length > 0 || notesOnly;
   const writebackHappened = decision.shouldWrite || notesOnly;
   // notesOnly = notes were the only meaningful content (no per-room color
@@ -1016,6 +1020,14 @@ export async function POST(
     // (WO 00317803: one bad value used to discard three good rooms), and the
     // form tells the customer which ones still need a finish rather than
     // refusing the whole submission.
-    droppedFinishes,
+    // Named by ROOM as well as surface: "Walls (you chose \"Eggshell Gloss\")"
+    // on a twelve-room job told the customer nothing about WHICH walls.
+    droppedFinishes: droppedFinishes.map((d) => ({
+      ...d,
+      room: roomLabelFrom(
+        freshById.get(d.lineItemId)?.areaLabel ?? null,
+        freshById.get(d.lineItemId)?.productName ?? null
+      ),
+    })),
   });
 }
