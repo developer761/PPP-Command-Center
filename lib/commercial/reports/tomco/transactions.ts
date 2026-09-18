@@ -1,5 +1,8 @@
 import "server-only";
-import { costToolHref as costToolHrefFor, moneyInHref } from "@/lib/commercial/reports/tomco/accounting-links";
+import {
+  costToolHref as costToolHrefFor,
+  moneyInHref,
+} from "@/lib/commercial/reports/tomco/accounting-links";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
@@ -50,7 +53,8 @@ export type MoneyInRow = {
   reference: string | null;
 };
 
-const ymdOf = (v: string | null | undefined): string | null => (v ? String(v).slice(0, 10) : null);
+const ymdOf = (v: string | null | undefined): string | null =>
+  v ? String(v).slice(0, 10) : null;
 
 /** Every purchase, with the job and vendor named. */
 export async function getSpendRows(): Promise<SpendRow[]> {
@@ -71,10 +75,10 @@ export async function getSpendRows(): Promise<SpendRow[]> {
     sb
       .from("commercial_project_purchases")
       .select(
-        "id, opportunity_id, account_id, category, vendor, amount_cents, purchased_at, description, receipt_document_id, reimburse_to, reimbursed_at"
+        "id, opportunity_id, account_id, category, vendor, amount_cents, purchased_at, description, receipt_document_id, reimburse_to, reimbursed_at",
       )
       .is("deleted_at", null)
-      .order("id", { ascending: true })
+      .order("id", { ascending: true }),
   );
   const names = await jobNames(purchases.map((p) => p.opportunity_id));
 
@@ -112,17 +116,23 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
   }>(() =>
     sb
       .from("commercial_invoice_payments")
-      .select("id, invoice_id, amount_cents, paid_at, deposited_at, method, reference")
-      .order("id", { ascending: true })
+      .select(
+        "id, invoice_id, amount_cents, paid_at, deposited_at, method, reference",
+      )
+      .order("id", { ascending: true }),
   );
   if (payments.length === 0) return [];
 
-  const invoices = await paginateAll<{ id: string; opportunity_id: string | null; account_id: string }>(() =>
+  const invoices = await paginateAll<{
+    id: string;
+    opportunity_id: string | null;
+    account_id: string;
+  }>(() =>
     sb
       .from("commercial_invoices")
       .select("id, opportunity_id, account_id")
       .in("id", [...new Set(payments.map((p) => p.invoice_id))])
-      .order("id", { ascending: true })
+      .order("id", { ascending: true }),
   );
   const invById = new Map(invoices.map((i) => [i.id, i]));
   const names = await jobNames(invoices.map((i) => i.opportunity_id));
@@ -130,7 +140,11 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
     .from("commercial_accounts")
     .select("id, company_name")
     .in("id", [...new Set(invoices.map((i) => i.account_id))]);
-  const acct = new Map(((accounts ?? []) as { id: string; company_name: string | null }[]).map((a) => [a.id, a.company_name]));
+  const acct = new Map(
+    ((accounts ?? []) as { id: string; company_name: string | null }[]).map(
+      (a) => [a.id, a.company_name],
+    ),
+  );
 
   return payments.map((p) => {
     const inv = invById.get(p.invoice_id);
@@ -164,16 +178,30 @@ async function jobNames(ids: (string | null)[]): Promise<Map<string, string>> {
   }>(() =>
     sb
       .from("commercial_opportunities")
-      .select("id, account_id, title, client_name, title_override, title_override_mode, property_street")
+      .select(
+        "id, account_id, title, client_name, title_override, title_override_mode, property_street",
+      )
       .in("id", unique)
-      .order("id", { ascending: true })
+      .order("id", { ascending: true }),
   );
   const { data: accounts } = await sb
     .from("commercial_accounts")
     .select("id, company_name")
     .in("id", [...new Set(opps.map((o) => o.account_id))]);
-  const acct = new Map(((accounts ?? []) as { id: string; company_name: string | null }[]).map((a) => [a.id, a.company_name]));
-  return new Map(opps.map((o) => [o.id, derivedOppName({ ...o, title: o.title ?? "" }, acct.get(o.account_id) ?? null)]));
+  const acct = new Map(
+    ((accounts ?? []) as { id: string; company_name: string | null }[]).map(
+      (a) => [a.id, a.company_name],
+    ),
+  );
+  return new Map(
+    opps.map((o) => [
+      o.id,
+      derivedOppName(
+        { ...o, title: o.title ?? "" },
+        acct.get(o.account_id) ?? null,
+      ),
+    ]),
+  );
 }
 
 // ─── Specs ──────────────────────────────────────────────────────────────────
@@ -189,7 +217,8 @@ async function jobNames(ids: (string | null)[]): Promise<Map<string, string>> {
  * into "← Purchases". Falls back to the deal page for a row with no account on
  * it, because a link that goes somewhere useful beats one that does nothing.
  */
-const costToolHref = (r: SpendRow, backView: string): string | null => costToolHrefFor(r.oppId, backView);
+const costToolHref = (r: SpendRow, backView: string): string | null =>
+  costToolHrefFor(r.oppId, backView);
 
 const jobColumn = {
   key: "job",
@@ -201,30 +230,92 @@ const jobColumn = {
 export const PURCHASES_BY_VENDOR_SPEC: ReportSpec<SpendRow> = {
   title: "Purchases by Vendor",
   sourceLabel: "Work Orders with Transactions",
-  blurb: "Every purchase, grouped by who we bought it from. Pick a vendor to get that vendor's own statement.",
-  totals: [{ label: "Total amount", value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0) }],
+  blurb:
+    "Every purchase, grouped by who we bought it from. Pick a vendor to get that vendor's own statement.",
+  totals: [
+    {
+      label: "Total amount",
+      value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0),
+    },
+  ],
   groupings: [
     [{ key: "vendor", label: "Vendor", of: (r) => r.vendor }],
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
-    [{ key: "month", label: "Month", of: (r) => (r.ymd ? r.ymd.slice(0, 7) : "—") }],
+    /**
+     * JOB → VENDOR. Stephanie via Katie, 2026-09-18:
+     *
+     *   "Can we add a job cost by vendor report? Where we can see how much
+     *   total we spent at each vendor for a specific job? Ex: for Home Goods,
+     *   Shirley we spent $4k at Sherwin, $5k at Aboffs, $3k at Sunbelt. There
+     *   are times when we have to complete reporting and waivers for GC showing
+     *   total material costs by vendor."
+     *
+     * Nothing new was needed to answer it. `groupings` is an array of arrays
+     * because a grouping can be SEVERAL LEVELS DEEP — `buildGroups` recurses —
+     * and the report already had Vendor and Job as separate one-level cuts.
+     * Nesting them gives a subtotal per vendor inside a subtotal per job, which
+     * is the shape of a waiver.
+     *
+     * It inherits the CSV export for free, which is the half that matters: a
+     * GC waiver is a document she has to hand over, not a screen to read.
+     */
+    [
+      { key: "job", label: "Job", of: (r) => r.jobName },
+      { key: "vendor", label: "Vendor", of: (r) => r.vendor },
+    ],
+    [
+      {
+        key: "month",
+        label: "Month",
+        of: (r) => (r.ymd ? r.ymd.slice(0, 7) : "—"),
+      },
+    ],
   ],
   columns: [
     jobColumn,
     { key: "date", label: "Date", text: (r) => r.ymd },
-    { key: "type", label: "Record type", text: (r) => r.categoryLabel, secondary: true },
-    { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
-    { key: "reference", label: "Reference", text: (r) => r.reference, secondary: true },
-    { key: "receipt", label: "Receipt", text: (r) => (r.hasReceipt ? "Yes" : null), secondary: true },
+    {
+      key: "type",
+      label: "Record type",
+      text: (r) => r.categoryLabel,
+      secondary: true,
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      kind: "money",
+      amount: (r) => r.amountCents,
+    },
+    {
+      key: "reference",
+      label: "Reference",
+      text: (r) => r.reference,
+      secondary: true,
+    },
+    {
+      key: "receipt",
+      label: "Receipt",
+      text: (r) => (r.hasReceipt ? "Yes" : null),
+      secondary: true,
+    },
   ],
 };
 
-const laborJobColumn = { ...jobColumn, href: (r: SpendRow) => costToolHref(r, "labor-out") };
+const laborJobColumn = {
+  ...jobColumn,
+  href: (r: SpendRow) => costToolHref(r, "labor-out"),
+};
 
 export const LABOR_PAYMENTS_SPEC: ReportSpec<SpendRow> = {
   title: "Labor Payments Out",
   sourceLabel: "Work Orders with Transactions",
   blurb: "What went out to the crews, grouped by who was paid.",
-  totals: [{ label: "Total amount", value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0) }],
+  totals: [
+    {
+      label: "Total amount",
+      value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0),
+    },
+  ],
   groupings: [
     [{ key: "payee", label: "Payee", of: (r) => r.vendor }],
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
@@ -232,7 +323,12 @@ export const LABOR_PAYMENTS_SPEC: ReportSpec<SpendRow> = {
   columns: [
     laborJobColumn,
     { key: "date", label: "Date", text: (r) => r.ymd },
-    { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
+    {
+      key: "amount",
+      label: "Amount",
+      kind: "money",
+      amount: (r) => r.amountCents,
+    },
     { key: "reference", label: "Reference", text: (r) => r.reference },
   ],
 };
@@ -241,17 +337,43 @@ export const REIMBURSEMENTS_SPEC: ReportSpec<SpendRow> = {
   title: "Reimbursements",
   sourceLabel: "Work Orders with Transactions",
   blurb: "Money paid back out of pocket, grouped by who it went to.",
-  totals: [{ label: "Total amount", value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0) }],
+  totals: [
+    {
+      label: "Total amount",
+      value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0),
+    },
+  ],
   groupings: [
-    [{ key: "to", label: "Reimbursed to", of: (r) => r.reimburseTo ?? r.vendor }],
+    [
+      {
+        key: "to",
+        label: "Reimbursed to",
+        of: (r) => r.reimburseTo ?? r.vendor,
+      },
+    ],
     [{ key: "job", label: "Job", of: (r) => r.jobName }],
   ],
   columns: [
     jobColumn,
     { key: "date", label: "Date", text: (r) => r.ymd },
-    { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
-    { key: "settled", label: "Reimbursed", text: (r) => r.reimbursedYmd ?? "Not yet", secondary: true },
-    { key: "reference", label: "Reference", text: (r) => r.reference, secondary: true },
+    {
+      key: "amount",
+      label: "Amount",
+      kind: "money",
+      amount: (r) => r.amountCents,
+    },
+    {
+      key: "settled",
+      label: "Reimbursed",
+      text: (r) => r.reimbursedYmd ?? "Not yet",
+      secondary: true,
+    },
+    {
+      key: "reference",
+      label: "Reference",
+      text: (r) => r.reference,
+      secondary: true,
+    },
   ],
 };
 
@@ -263,7 +385,12 @@ export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
   // "write it here so we know."
   blurb:
     "Money that has ARRIVED, by the day it landed — the history you read against the bank statement. Receivables is the other half: money that has not arrived yet. Tick each one off here as it clears.",
-  totals: [{ label: "Total amount", value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0) }],
+  totals: [
+    {
+      label: "Total amount",
+      value: (rows) => rows.reduce((n, r) => n + r.amountCents, 0),
+    },
+  ],
   groupings: [
     [{ key: "date", label: "Date", of: (r) => r.ymd ?? "—" }],
     [{ key: "gc", label: "GC", of: (r) => r.accountName }],
@@ -272,11 +399,26 @@ export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
   columns: [
     // Money IN, so the job opens its invoices — where the next payment gets
     // recorded — rather than the costs tool.
-    { key: "job", label: "Name", text: (r) => r.jobName, href: (r) => moneyInHref(r.oppId, "deposits") },
+    {
+      key: "job",
+      label: "Name",
+      text: (r) => r.jobName,
+      href: (r) => moneyInHref(r.oppId, "deposits"),
+    },
     { key: "gc", label: "GC", text: (r) => r.accountName, secondary: true },
-    { key: "amount", label: "Amount", kind: "money", amount: (r) => r.amountCents },
+    {
+      key: "amount",
+      label: "Amount",
+      kind: "money",
+      amount: (r) => r.amountCents,
+    },
     { key: "method", label: "Method", text: (r) => r.method },
-    { key: "deposited", label: "Deposited", text: (r) => r.depositedYmd, secondary: true },
+    {
+      key: "deposited",
+      label: "Deposited",
+      text: (r) => r.depositedYmd,
+      secondary: true,
+    },
   ],
 };
 
@@ -290,14 +432,23 @@ export const purchaseRows = (rows: SpendRow[], vendor?: string) =>
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const laborPaymentRows = (rows: SpendRow[]) =>
-  rows.filter((r) => r.category === "labor").sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
+  rows
+    .filter((r) => r.category === "labor")
+    .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const reimbursementRows = (rows: SpendRow[]) =>
-  rows.filter((r) => !!r.reimburseTo).sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
+  rows
+    .filter((r) => !!r.reimburseTo)
+    .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 /** Every distinct vendor, biggest spend first — the picker's options. */
-export function vendorOptions(rows: SpendRow[]): { name: string; cents: number }[] {
+export function vendorOptions(
+  rows: SpendRow[],
+): { name: string; cents: number }[] {
   const by = new Map<string, number>();
-  for (const r of rows) by.set(r.vendor, (by.get(r.vendor) ?? 0) + r.amountCents);
-  return [...by.entries()].map(([name, cents]) => ({ name, cents })).sort((a, b) => b.cents - a.cents);
+  for (const r of rows)
+    by.set(r.vendor, (by.get(r.vendor) ?? 0) + r.amountCents);
+  return [...by.entries()]
+    .map(([name, cents]) => ({ name, cents }))
+    .sort((a, b) => b.cents - a.cents);
 }
