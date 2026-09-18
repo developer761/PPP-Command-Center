@@ -46,11 +46,14 @@ Status: `TODO` · `WIP` · `DONE` (with commit) · `DEFERRED` (with why) · `ASK
 | 11 | Labor costs should appear under an opportunity's Costs | **DONE** `3ea21f93` | Careful: hours ≠ money, never sum (see labor report) |
 | 12 | Calendar week view | **DONE** `efc99e85` | |
 | 14 | AR sheet date filters (30 / 90 days) | **DONE** `bec55d75` | **Trap:** carried-over rows have `issuedYmd = null` and would vanish |
-| 15 | Notifications | TODO | Needs scoping — ask what is wrong with them today |
+| 15 | Notifications | **PARTIAL** `de295eaf` | Audit found 10 defects. The two that DROP notifications are fixed (Vercel freezing fire-and-forget work; a transient lookup error discarding and reporting success). Four smaller ones open — see below |
 | 16 | Add due dates | **DONE** `b9a38e18` | Due-date fields (RFP received, proposal due, follow-up) were already inline-editable. Expected start/finish were NOT — now are, plus 6 other allowlisted fields that had no control |
 | 17 | Invoices flow into the AR sheet; views by account; notes/editing; account names are the source of truth | PARTIAL `bec55d75` | **Views by account: DONE.** Notes/editing already exist under "Edit the sheet". Remaining: account names as source of truth — blocked, see below |
 | 18 | RFP — when we think the project will happen | **DONE** `d328deaa` | Expected start editable + two attention rules. See docs/PROJECTED_CALENDAR_PLAN.md |
 | 24 | "Bid range $2.1M-$2.1M" is confusing | **DONE** `7223ae28` | Added mid-batch. 34 of 34 priced open bids have low === high |
+| 25 | One-off work order auto-creates a job/opp, tagged | **DONE** `c125e0a7` | Migration applied. `npm run check:one-off` green end to end |
+| 26 | Labor on the deal (who's scheduled, when, total cost) | **DONE** `790774e6` | |
+| 27 | Better multi-select filters (Salesforce-style) | **DONE** `a1839423` | Stage + GC multi-select, clear-all. Estimator/Mine NOT built — 0 of 132 deals have an estimator |
 | 19 | Back button lands on an old/retired page | **DONE** `4eaa8ef9` | Suspect redirect-only routes left in history |
 
 ---
