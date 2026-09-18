@@ -79,8 +79,21 @@ describe("a bathhouse is not a bathroom", () => {
     }
   });
 
-  it("kitchen still wins where both words appear", () => {
-    expect(classifyRoomType("Kitchen & Bath")).toBe("kitchen");
+  it("a kitchen joined to a bathroom is neither — it is a combined area", () => {
+    // This used to answer "kitchen", which capped the whole combined area at
+    // one gallon for cabinets that cover a corner of it. The two guards had
+    // drifted: the bathroom branch treated a joined kitchen as combined, the
+    // kitchen branch did not treat a joined bath the same way. They read one
+    // list now, so every pairing answers the same in both directions.
+    expect(classifyRoomType("Kitchen & Bath")).toBe(null);
+    expect(classifyRoomType("Kitchen & Laundry")).toBe(null);
+    expect(classifyRoomType("Kitchen / Mudroom")).toBe(null);
+    expect(classifyRoomType("Bath & Kitchen")).toBe(null);
+    // …while each on its own, and each named by where it is, still classifies.
+    expect(classifyRoomType("Kitchen")).toBe("kitchen");
+    expect(classifyRoomType("Kitchenette")).toBe("kitchen");
+    expect(classifyRoomType("Hall bath")).toBe("bathroom");
+    expect(classifyRoomType("Master Bath - 2nd floor")).toBe("bathroom");
   });
 });
 

@@ -87,3 +87,52 @@ describe("merging an admin override over the code defaults", () => {
     expect(e.cans).toBeLessThanOrEqual(COVERAGE_CONFIG.maxGallonsPerLine);
   });
 });
+
+/* ── the note that must survive ──────────────────────────────────────────── */
+
+describe("a capped line always says so", () => {
+  const room = (label: string, kind: "walls" | "ceiling", over: Partial<RoomTakeoff> = {}): RoomTakeoff => ({
+    woliId: `w-${label}`, roomLabel: label,
+    floorAreaSqft: 200, wallSurfaceAreaSqft: 0, perimeterLf: 60, heightFt: 8,
+    doors: 0, windows: 0, closets: 0, coats: 0, paintDoorFaces: false,
+    surfaces: [{ kind, surfaceLabel: kind === "walls" ? "Walls" : "Ceiling", colorId: "c", colorName: "W", colorCode: null, finish: null }],
+    ...over,
+  });
+
+  // The rep's stray keystroke, on the field each surface actually reads.
+  const GARBAGE = 9_999_999;
+
+  it("even when a kitchen shares the color", () => {
+    // Kitchen WALLS are what `kitchenSharedSqft` counts (a kitchen ceiling is
+    // an ordinary ceiling), so this is the shape that reaches the branch —
+    // the first version of this test used ceilings and passed with the fix
+    // reverted, having exercised nothing.
+    const out = estimateOrderGallons([
+      room("Kitchen", "walls", { wallSurfaceAreaSqft: GARBAGE }),
+      room("Dining Room", "walls", { wallSurfaceAreaSqft: GARBAGE }),
+    ]);
+    const e = out.find((x) => x.colorId === "c")!;
+    expect(e.cans).toBe(COVERAGE_CONFIG.maxGallonsPerLine);
+    // The kitchen note here only EXPLAINS the number; the cap says the number
+    // is wrong. 99 gal once shipped under "counted at half for the cabinets".
+    expect(e.defaultedNote ?? "").toMatch(/Capped at/);
+  });
+
+  it("and that same pair says 'counted at half' when the numbers are sane", () => {
+    // Proof the branch is reached at all — without this, the assertion above
+    // could be passing because the kitchen note never fires in this shape.
+    const out = estimateOrderGallons([room("Kitchen", "walls"), room("Dining Room", "walls")]);
+    const e = out.find((x) => x.colorId === "c")!;
+    expect(e.defaultedNote ?? "").toMatch(/counted at half/);
+    expect(e.cans).toBeLessThan(COVERAGE_CONFIG.maxGallonsPerLine);
+  });
+
+  it("but a kitchen on its own color is 1 gal, and says why — not 'capped'", () => {
+    // Here the rule REPLACED the number, so the cap no longer describes what
+    // is being bought and "capped at 99" would be a lie.
+    const [e] = estimateOrderGallons([room("Kitchen", "walls", { wallSurfaceAreaSqft: GARBAGE })]);
+    expect(e.cans).toBe(COVERAGE_CONFIG.kitchenDefaultGallons);
+    expect(e.defaultedNote ?? "").not.toMatch(/Capped at/);
+    expect(e.defaultedNote ?? "").toMatch(/cabinets/);
+  });
+});

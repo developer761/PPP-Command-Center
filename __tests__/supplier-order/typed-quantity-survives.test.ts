@@ -6,7 +6,7 @@ import {
   type OrderBuildPayload,
 } from "@/lib/supplier-order/build-state";
 import { buildSupplierOrderDraft, type BuildSupplierOrderInput } from "@/lib/supplier-order/builder";
-import { quantityKey } from "@/lib/supplier-order/estimate-gallons";
+import { quantityKey, containerCount, overrideTotal, gallonsOfOverride } from "@/lib/supplier-order/estimate-gallons";
 import type { SnapshotAccount, SnapshotPaintColor, SnapshotWoli, SnapshotWorkOrder } from "@/lib/salesforce/queries";
 
 /**
@@ -155,5 +155,36 @@ describe("the typed quantity reaches the vendor email", () => {
     const key = quantityKey(COLOR.id, "Eggshell");
     const { body } = await buildSupplierOrderDraft(draftInput({ [key]: { buckets: 0, cans: 0, unit: "gal" } }));
     expect(body).not.toContain("White Dove");
+  });
+});
+
+/* ── a stored pail line that read as nothing ─────────────────────────────── */
+
+describe("three pails stored the old way", () => {
+  // Found by mutation testing, 2026-09-17: a pail line keeps its COUNT in
+  // `cans`, but a row written with the count in `buckets` — which
+  // normalizeBuildPayload happily loaded — was read as zero by containerCount,
+  // overrideTotal and summarizeOrder alike. Fifteen gallons, on the screen,
+  // in the totals and in the vendor's email, worth nothing.
+  const legacy = { buckets: 3, cans: 0, unit: "bucket" as const };
+
+  it("is three pails, not nothing, once loaded", () => {
+    const loaded = normalizeBuildPayload({ quantities: { "c1::Eggshell": legacy } });
+    expect(loaded.quantities["c1::Eggshell"]).toEqual({ buckets: 0, cans: 3, unit: "bucket" });
+  });
+
+  it("and reads as three pails even if it reaches the maths unloaded", () => {
+    expect(containerCount(legacy)).toBe(3);
+    expect(overrideTotal(legacy)).toBe(15);
+    expect(gallonsOfOverride(legacy)).toBe(15);
+  });
+
+  it("a row with both fields set is left exactly as it was", () => {
+    // Genuinely ambiguous, and it already reads as something. Guessing here
+    // would change orders that are currently right.
+    const both = { buckets: 1, cans: 2, unit: "bucket" as const };
+    const loaded = normalizeBuildPayload({ quantities: { k: both } });
+    expect(loaded.quantities.k).toEqual(both);
+    expect(containerCount(both)).toBe(2);
   });
 });

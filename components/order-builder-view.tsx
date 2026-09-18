@@ -262,11 +262,6 @@ export default function OrderBuilderView({
   /** Why a unit toggle did nothing, on the line it was pressed on. */
   const [unitNote, setUnitNote] = useState<{ key: string; text: string } | null>(null);
   const payloadJson = JSON.stringify(payload);
-  useEffect(() => {
-    if (savedPayloadJson.current === null && loadedFor) {
-      savedPayloadJson.current = payloadJson;
-    }
-  }, [loadedFor, payloadJson]);
 
   // Debounced autosave. Skipped until a supplier is chosen (the row is keyed by
   // work order + supplier).
@@ -397,6 +392,18 @@ export default function OrderBuilderView({
           // with no trace at all.
           setPayload((cur) => mergeBuildPayloads(saved, cur));
           setOrderSaved(true);
+          // The baseline is what the ROW holds — the saved payload alone, not
+          // the merge above. Recording the merge is what made the merge
+          // pointless: a quantity typed while this fetch was in flight was
+          // preserved on screen and then declared already-saved, so the
+          // autosave never wrote it and navigating away lost it. That is the
+          // symptom this whole batch started from ("sometimes I add like
+          // gallons and stuff and it didn't like save to the email").
+          //
+          // Left NULL when the vendor has no saved order at all, so the first
+          // autosave writes whatever is in memory — including custom color
+          // items typed before a vendor was even picked.
+          savedPayloadJson.current = JSON.stringify(mergeBuildPayloads(saved, emptyBuildPayload()));
         }
         if (!cancelled) setLoadedFor(supplier.accountId);
       } catch (err) {

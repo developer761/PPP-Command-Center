@@ -69,7 +69,21 @@ export function normalizeBuildPayload(raw: unknown): OrderBuildPayload {
       const buckets = Math.max(0, Math.min(99, Math.floor(Number(q.buckets) || 0)));
       const cans = Math.max(0, Math.min(99, Math.floor(Number(q.cans) || 0)));
       const unit = typeof q.unit === "string" && UNITS.has(q.unit) ? (q.unit as PaintUnit) : "gal";
-      out.quantities[k] = { buckets, cans, unit };
+      // A pail line keeps its PAIL COUNT in `cans`; `buckets` is the older
+      // gallon-line shape ("2 buckets + 3 gal"). A pail row stored the other
+      // way round — the count in `buckets`, nothing in `cans` — read as ZERO
+      // everywhere that matters: the stepper, the line total, the job total
+      // and the vendor's email all ask `cans`. Moved here so a stored order
+      // can never be silently worth nothing.
+      //
+      // Only that shape. A row with BOTH set is genuinely ambiguous (is it 3
+      // pails, or a pail and 2 gallons mislabelled?), it already reads as
+      // something rather than nothing, and guessing would change orders that
+      // are currently right.
+      out.quantities[k] =
+        unit === "bucket" && buckets > 0 && cans === 0
+          ? { buckets: 0, cans: buckets, unit }
+          : { buckets, cans, unit };
     }
   }
 
@@ -166,6 +180,14 @@ function unionById<T>(saved: T[], edited: T[], idOf: (x: T) => string): T[] {
  * a key is only dropped once we have seen the real line-up for this vendor.
  * Bathroom lines are migrated rather than dropped: their pre-split key still
  * carries what somebody typed.
+ *
+ * The `claimed` guard is BEST EFFORT, not a proof. It blocks the migration
+ * while another live line still owns the plain key — but in the scenario above,
+ * where the hall's color changed, the key stops being claimed at exactly that
+ * moment and the bathroom can still inherit it. The ambiguity is real: a
+ * bathroom saved before the split used that same key, and nothing in the row
+ * says which it was. The guard catches the common shape (both lines live at
+ * once); it does not make the migration safe in general.
  */
 export function pruneToLiveKeys(
   payload: OrderBuildPayload,

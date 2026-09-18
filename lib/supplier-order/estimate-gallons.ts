@@ -274,6 +274,19 @@ export function mentionsAccentWall(text: string | null | undefined): boolean {
   return /accent\s*wall/i.test(text ?? "");
 }
 
+/** Room words that make a label a COMBINED area when a conjunction joins them
+ *  to a kitchen or a bathroom. One list, because it was two: the kitchen's was
+ *  missing closet/laundry/garage/deck/porch/bath, so "Kitchen & Laundry" still
+ *  took the one-gallon cabinet cap for the whole combined area. */
+const OTHER_ROOM_WORDS =
+  "bed|bedrooms?|living|dining|family|hall|hallway|foyer|entry|basement|attic|office|study|den|" +
+  "great\\s*room|closets?|laundry|mud\\s*rooms?|sun\\s*rooms?|garage|deck|porch|stairs?|landing";
+
+const KITCHEN_WITH_OTHER = new RegExp(
+  `\\b(${OTHER_ROOM_WORDS}|bathrooms?|baths?|powder\\s*(rooms?|rms?))\\b`
+);
+const BATHROOM_WITH_OTHER = new RegExp(`\\b(${OTHER_ROOM_WORDS}|kitchens?)\\b`);
+
 export function classifyRoomType(label: string | null | undefined): "kitchen" | "bathroom" | null {
   const s = (label ?? "").toLowerCase();
   if (!s) return null;
@@ -286,7 +299,7 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
     // ones roomLabelFrom reproduces from ProductName__c — were capped at ONE
     // gallon for the whole open-plan area, because the cabinets that justify
     // the cap cover a fraction of it. Roughly a third of what it needs.
-    const withOther = /\b(bed|bedrooms?|living|dining|family|hall|hallway|foyer|entry|basement|attic|office|study|den|great\s*room)\b/.test(s);
+    const withOther = KITCHEN_WITH_OTHER.test(s);
     if (!(combined && withOther)) return "kitchen";
     return null;
   }
@@ -310,7 +323,7 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
     // most of the bathrooms PPP has. A dash is not a conjunction either —
     // "Master Bath - 2nd floor" is one room.
     const joined = /(\band\b|&|\+|\/|,|\bw\/)/.test(cleaned);
-    const otherRoom = /\b(bed|bedrooms?|living|dining|family|hall|hallway|foyer|entry|basement|attic|office|study|den|closets?|laundry|garage|deck|porch|kitchen)\b/.test(cleaned);
+    const otherRoom = BATHROOM_WITH_OTHER.test(cleaned);
     if (joined && otherRoom) return null;
     return "bathroom";
   }
@@ -717,7 +730,12 @@ export function estimateOrderGallons(
             `${Math.round(computedGallons).toLocaleString()} gal, which is almost certainly a typo in Salesforce. Please check.`
           : null;
       ({ buckets: bucketsCount, cans } = packageGallons(rawGallons, cfg));
-      if (shared && b.kitchenSharedSqft > 0) {
+      // Unlike the branches below, this note only EXPLAINS the number — it
+      // does not replace it. So it must not push aside a cap warning, which
+      // says the number is wrong: a color shared between a kitchen and another
+      // room, with a garbage Sq_Footage__c, shipped 99 gallons under a
+      // reassuring "counted at half for the cabinets".
+      if (shared && b.kitchenSharedSqft > 0 && !cappedNote) {
         defaultedNote = "Kitchen shares this color — its wall area counted at half for the cabinets. Please review.";
       }
 
@@ -925,7 +943,11 @@ export function quantityKey(
  * "+" jumped a whole pail.
  */
 export function containerCount(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
-  if (o.unit === "qt" || o.unit === "bucket") return o.cans;
+  if (o.unit === "qt") return o.cans;
+  // `|| o.buckets` is the legacy shape, where the pail count sat in `buckets`:
+  // normalizeBuildPayload moves it on load, and this is the belt to that
+  // braces — a pail line read as zero is paint nobody buys.
+  if (o.unit === "bucket") return o.cans || o.buckets;
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
@@ -951,7 +973,7 @@ export const QUARTS_PER_GALLON = 4;
  *  what made the unit toggle turn 2 pails into 2 gallons. */
 export function gallonsOfOverride(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
   if (o.unit === "qt") return o.cans / QUARTS_PER_GALLON;
-  if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;
+  if (o.unit === "bucket") return (o.cans || o.buckets) * GALLONS_PER_BUCKET;
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
@@ -986,7 +1008,7 @@ export function unitCanHold(
 
 export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
   if (o.unit === "qt") return o.cans;
-  if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;
+  if (o.unit === "bucket") return (o.cans || o.buckets) * GALLONS_PER_BUCKET;
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
