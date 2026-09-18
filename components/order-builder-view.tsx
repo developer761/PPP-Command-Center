@@ -1216,7 +1216,9 @@ export default function OrderBuilderView({
                               trip. Once an override exists the line is no
                               longer a placeholder either: a typed answer is an
                               answer. */}
-                          {override
+                          {override && containerCount(override) === 0
+                            ? "not ordering"
+                            : override
                             ? formatBucketsCans(override.buckets, override.cans, unit)
                             : isPlaceholder
                               ? "⚠️ set qty"

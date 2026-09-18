@@ -139,6 +139,22 @@ describe("the room travels with the color", () => {
     expect(isOnOrder([{ label: kitchen }], kitchen)).toBe(true);
   });
 
+  it("does not prefix a label that is not a room", () => {
+    // Seen live on WO 00316248, whose Area__c says "See Notes": the custom
+    // item came out as "See Notes · Siding: HC-6 Windham Cream" — which reads
+    // to a vendor as an instruction, on a line they are meant to price.
+    expect(customItemLabel("See Notes", "Siding: HC-6 Windham Cream")).toBe("Siding: HC-6 Windham Cream");
+    expect(customItemLabel("see notes for colors", "Trim: OC-95")).toBe("Trim: OC-95");
+    for (const placeholder of ["Untitled area", "Unnamed area", "unnamed room", "Area", "TBD"]) {
+      expect(customItemLabel(placeholder, "Trim: OC-95"), placeholder).toBe("Trim: OC-95");
+    }
+  });
+
+  it("still prefixes a REAL room", () => {
+    expect(customItemLabel("Kitchen", "Door: Super White")).toBe("Kitchen · Door: Super White");
+    expect(customItemLabel("Master Bath", "Walls: OC-17")).toBe("Master Bath · Walls: OC-17");
+  });
+
   it("does not repeat a room the note already names", () => {
     expect(customItemLabel("Exterior", "Exterior siding: HC-6")).toBe("Exterior siding: HC-6");
     expect(customItemLabel(null, "Siding: HC-6")).toBe("Siding: HC-6");

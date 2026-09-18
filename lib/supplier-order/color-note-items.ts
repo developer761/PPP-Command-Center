@@ -116,7 +116,21 @@ export function customItemLabel(room: string | null | undefined, line: string): 
   const r = (room ?? "").trim();
   const l = line.trim();
   if (!r || l.toLowerCase().startsWith(r.toLowerCase())) return l;
+  // Not every Area__c is a room. WO 00316248's says "See Notes", and the
+  // prefix went onto a custom item as "See Notes · Siding: HC-6 …" — which
+  // reads to a vendor as an instruction, on a line they are supposed to price.
+  // A placeholder identifies nothing, so it disambiguates nothing.
+  if (isPlaceholderRoom(r)) return l;
   return `${r} · ${l}`;
+}
+
+/** Labels that are not a room: our own fallbacks, and the notes-pointer reps
+ *  type into Area__c when the colors live somewhere else. */
+export function isPlaceholderRoom(room: string): boolean {
+  const r = room.trim().toLowerCase();
+  if (!r) return true;
+  if (["untitled area", "unnamed area", "unnamed room", "area", "room", "n/a", "tbd"].includes(r)) return true;
+  return /\bsee\s*(the\s*)?notes?\b/.test(r);
 }
 
 /**
