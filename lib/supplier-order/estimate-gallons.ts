@@ -940,6 +940,50 @@ export function stepContainers(
   return { buckets: 0, cans: next, unit };
 }
 
+export const QUARTS_PER_GALLON = 4;
+
+/** How much paint a line actually is, in gallons, whatever unit it is typed in.
+ *
+ *  Not the same question as `overrideTotal` (which counts quarts as quarts,
+ *  because the email and the totals list quarts separately) and not the same
+ *  as `containerCount` (which counts containers, because the +/- stepper steps
+ *  containers). Three questions, three functions — conflating the last two is
+ *  what made the unit toggle turn 2 pails into 2 gallons. */
+export function gallonsOfOverride(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
+  if (o.unit === "qt") return o.cans / QUARTS_PER_GALLON;
+  if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;
+  return o.buckets * GALLONS_PER_BUCKET + o.cans;
+}
+
+/** Re-express the SAME paint in another unit — what the Gal/Qt/Bucket toggle
+ *  does. Volume is preserved: 2 pails is 10 gallons is 40 quarts, in either
+ *  direction. Rounds UP, because coming back a gallon short means a second
+ *  trip to the store; clamped to the same 0-99 as every other quantity.
+ *
+ *  Before this existed the toggle read CONTAINERS and handed them to
+ *  `packageForUnit`, whose `total` means gallons for a pail and quarts for a
+ *  quart. Pressing "Gal" on 2 pails ordered 2 gallons — a fifth of the job's
+ *  paint — and neither the screen nor the email showed anything wrong. */
+export function convertUnit(
+  o: { buckets: number; cans: number; unit?: PaintUnit },
+  next: PaintUnit
+): { buckets: number; cans: number; unit: PaintUnit } {
+  const gal = gallonsOfOverride(o);
+  const raw =
+    next === "qt" ? gal * QUARTS_PER_GALLON : next === "bucket" ? gal / GALLONS_PER_BUCKET : gal;
+  return { buckets: 0, cans: Math.max(0, Math.min(99, Math.ceil(raw))), unit: next };
+}
+
+/** Whether `unit` can express this much paint inside the 99-container rail
+ *  every quantity is clamped to. 40 gallons is 160 quarts, and clamping that
+ *  to 99 would quietly send the vendor an order 15 gallons short. */
+export function unitCanHold(
+  o: { buckets: number; cans: number; unit?: PaintUnit },
+  unit: PaintUnit
+): boolean {
+  return convertUnit(o, unit).cans < 99 || gallonsOfOverride(o) <= gallonsOfOverride(convertUnit(o, unit));
+}
+
 export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
   if (o.unit === "qt") return o.cans;
   if (o.unit === "bucket") return o.cans * GALLONS_PER_BUCKET;

@@ -21,7 +21,8 @@ import {
   summarizeOrder,
   addCustomItemsToTotal,
   quantityKey,
-  packageForUnit,
+  convertUnit,
+  unitCanHold,
   type GallonEstimate,
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
@@ -140,6 +141,8 @@ type ExtraCatalogItem = {
   sort_order: number;
 };
 
+const UNIT_PLURAL: Record<string, string> = { gal: "gallons", qt: "quarts", bucket: "buckets" };
+
 export default function OrderBuilderView({
   workOrderId,
   workOrderNumber,
@@ -256,6 +259,8 @@ export default function OrderBuilderView({
    *  with what was actually written. State, set at the two moments the answer
    *  changes: a row came back from the server, or a save succeeded. */
   const [orderSaved, setOrderSaved] = useState(false);
+  /** Why a unit toggle did nothing, on the line it was pressed on. */
+  const [unitNote, setUnitNote] = useState<{ key: string; text: string } | null>(null);
   const payloadJson = JSON.stringify(payload);
   useEffect(() => {
     if (savedPayloadJson.current === null && loadedFor) {
@@ -288,21 +293,65 @@ export default function OrderBuilderView({
         setNotPersisted(!r.persisted);
       });
     }, 600);
-    return () => {
-      clearTimeout(t);
-      // Fire the pending save rather than dropping it. Stepping a quantity and
-      // clicking "← Back to work order" inside the debounce lost the edit
-      // silently — which is the exact symptom that started this whole batch
-      // ("sometimes I add like gallons and stuff and it didn't like save").
-      if (savedPayloadJson.current !== payloadJson) {
-        const seqRef = saveSeq;
-        const seq = ++seqRef.current;
-        void save(accountId, snapshot, false).then((r) => {
-          if (seq === seqRef.current && r.ok) { savedPayloadJson.current = payloadJson; setOrderSaved(true); }
-        });
-      }
-    };
+    return () => clearTimeout(t);
   }, [payload, payloadJson, supplier, save, loadedFor]);
+
+  /**
+   * The save the debounce has not fired yet, when the page is going away.
+   *
+   * Stepping a quantity and clicking "← Back to work order" inside those 600ms
+   * lost the edit silently — the symptom that started this batch ("sometimes I
+   * add like gallons and stuff and it didn't like save").
+   *
+   * It MUST NOT be the autosave effect's own cleanup, which is what it was
+   * first written as. That effect re-runs on every keystroke, so its cleanup
+   * fired on every keystroke too — writing the payload as it stood BEFORE the
+   * change. Press "+" then "−" inside one debounce and the vendor was sent the
+   * "+" the estimator had just undone, because that stale write landed last
+   * and left the baseline equal to the payload, so nothing wrote again.
+   *
+   * Keyed on the vendor alone, it runs only when the vendor changes or the
+   * page unmounts, and reads the payload as it stands at that moment.
+   */
+  const flushState = useRef({ payload, payloadJson, loadedFor, save });
+  useEffect(() => {
+    flushState.current = { payload, payloadJson, loadedFor, save };
+  });
+  /** The same flush, but for "Change vendor": that handler clears the payload
+   *  and the vendor together, so by the time the effect below tears down there
+   *  is nothing left to write. Called BEFORE the reset, it saves vendor A's
+   *  last 600ms instead of dropping them. */
+  const flushNow = useCallback(() => {
+    const st = flushState.current;
+    if (!supplier || st.loadedFor !== supplier.accountId) return;
+    if (savedPayloadJson.current === st.payloadJson) return;
+    const seq = ++saveSeq.current;
+    const written = st.payloadJson;
+    void st.save(supplier.accountId, st.payload, false).then((r) => {
+      if (seq === saveSeq.current && r.ok) savedPayloadJson.current = written;
+    });
+  }, [supplier]);
+
+  const accountIdForFlush = supplier?.accountId;
+  useEffect(() => {
+    if (!accountIdForFlush) return;
+    return () => {
+      const st = flushState.current;
+      // The payload in memory must still be THIS vendor's, and must differ
+      // from what the row already holds.
+      if (st.loadedFor !== accountIdForFlush) return;
+      if (savedPayloadJson.current === st.payloadJson) return;
+      const seq = ++saveSeq.current;
+      const written = st.payloadJson;
+      void st.save(accountIdForFlush, st.payload, false).then((r) => {
+        if (seq === saveSeq.current && r.ok) {
+          savedPayloadJson.current = written;
+          setOrderSaved(true);
+        }
+      });
+    };
+  }, [accountIdForFlush]);
+
 
   /* ── Load the saved order for THIS vendor ───────────────────────────────
    * Without this, switching vendors carried the previous vendor's payload:
@@ -666,16 +715,30 @@ export default function OrderBuilderView({
 
   const setUnit = (e: GallonEstimate, unit: PaintUnit) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
-    setPayload((cur) => {
-      const existing = readForEstimate(cur.quantities, e);
-      const total = existing
-        ? containerCount(existing)
-        : (e.manualOnly ? 0 : containerCount({ buckets: e.buckets, cans: e.cans, unit: e.unit ?? "gal" }));
-      return {
-        ...cur,
-        quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: packageForUnit(total, unit) },
-      };
-    });
+    // Decided OUT HERE, not inside the setPayload updater: an updater must be
+    // pure — React is free to run it twice — and this one has to set a note.
+    const existing = readForEstimate(payload.quantities, e);
+    const current = existing
+      ?? (e.manualOnly
+            ? { buckets: 0, cans: 0, unit }
+            : { buckets: e.buckets, cans: e.cans, unit: e.unit ?? "gal" });
+    // A unit that cannot hold this much paint would clamp at 99 containers and
+    // send the vendor a short order without saying so — 40 gallons is 160
+    // quarts. Leave the line alone and say why, rather than quietly change the
+    // number. (Karan's rule: warn, never reject outright — the line still
+    // orders exactly what it ordered, in the unit it already had.)
+    if (!unitCanHold(current, unit)) {
+      setUnitNote({ key, text: `That is more paint than 99 ${UNIT_PLURAL[unit]} — left in ${UNIT_PLURAL[current.unit ?? "gal"]}.` });
+      return;
+    }
+    setUnitNote((cur) => (cur && cur.key === key ? null : cur));
+    setPayload((cur) => ({
+      ...cur,
+      // The toggle converts VOLUME — 2 pails is 10 gallons — where the +/-
+      // stepper steps containers. Conflating the two made "−" dead on a pail
+      // line one week and turned 10 gallons into 2 the next.
+      quantities: { ...withoutLegacyKey(cur.quantities, e), [key]: convertUnit(current, unit) },
+    }));
   };
 
   const resetQuantity = (e: GallonEstimate) => {
@@ -917,6 +980,8 @@ export default function OrderBuilderView({
                 // this the merge on load would carry Sherwin's quantities onto
                 // the Benjamin Moore order — the contamination the
                 // load-replaces-payload code was there to prevent.
+                // Don't drop the last 600ms of vendor A's order on the way out.
+                flushNow();
                 setPayload(emptyBuildPayload());
                 setLoadedFor(null);
                 savedPayloadJson.current = null;
@@ -1272,6 +1337,9 @@ export default function OrderBuilderView({
                           </button>
                         ))}
                       </div>
+                      {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
+                        <span className="text-[11px] text-ppp-orange-700 basis-full text-right">{unitNote.text}</span>
+                      )}
                       {override && (
                         <button
                           type="button"
