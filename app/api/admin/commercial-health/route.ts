@@ -307,10 +307,41 @@ export async function GET() {
       }
       const rows = (data ?? []) as Array<{ created_at: string; kind: string }>;
       if (rows.length === 0) {
+        /**
+         * ASK THE CRON, don't infer from its output.
+         *
+         * This used to say "either nothing was due, or cron isn't firing" —
+         * two opposite conclusions the check could not separate. On a quiet
+         * book (today: zero overdue tasks, zero documents with an expiry) it
+         * sits amber permanently, which teaches people to ignore the one row
+         * that would tell them the nightly job had died.
+         *
+         * The cron now writes a heartbeat on every run, including runs that
+         * found nothing — which is exactly the case the inference got wrong.
+         */
+        const { getCommercialSetting } = await import("@/lib/commercial/settings");
+        const beat = await getCommercialSetting<{ at?: string; found?: number } | null>(
+          "commercial_daily_cron_last_run",
+          null,
+        );
+        if (beat?.at) {
+          const beatAgeH = Math.floor((Date.now() - new Date(beat.at).getTime()) / 3600000);
+          if (beatAgeH <= CRON_FRESHNESS_HOURS) {
+            return {
+              status: "ok",
+              message: `Cron ran ${beatAgeH}h ago and found nothing due — no overdue tasks, expiring documents or cooling deals`,
+            };
+          }
+          return {
+            status: "fail",
+            message: `Cron has not run in ${beatAgeH}h (last ran ${beat.at.slice(0, 16).replace("T", " ")} UTC)`,
+            fix: "Check Vercel → Settings → Cron Jobs. Note the Hobby plan allows a limited number of daily crons; an unsupported schedule is dropped rather than erroring.",
+          };
+        }
         return {
           status: "warn",
-          message: `No cron-fired notifications in last ${CRON_FRESHNESS_HOURS}h — either nothing was due, or cron isn't firing`,
-          fix: "If you expected reminders, check Vercel cron config + CRON_SECRET",
+          message: `No cron-fired notifications in last ${CRON_FRESHNESS_HOURS}h, and no heartbeat recorded yet — this resolves itself after the next run`,
+          fix: "If it is still saying this tomorrow, check Vercel cron config + CRON_SECRET",
         };
       }
       const lastIso = rows[0].created_at;

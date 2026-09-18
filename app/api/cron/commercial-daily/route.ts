@@ -152,6 +152,32 @@ export async function GET(request: Request) {
   const totalErrors =
     tasks.errors.length + docs.errors.length + hot.errors.length + rules.errors.length + debrief.errors.length + dunning.errors.length + aiaDunning.errors.length;
 
+  /**
+   * A HEARTBEAT, so "did this run?" is answerable.
+   *
+   * Setup Health infers cron liveness from whether any cron-fired notification
+   * exists in the last 25h — and says so itself: "either nothing was due, or
+   * cron isn't firing". Those are opposite conclusions and the check cannot
+   * separate them, so on a quiet book (today: zero overdue tasks, zero
+   * documents with an expiry) it sits amber forever and teaches people to
+   * ignore the one row that would tell them the nightly job had stopped.
+   *
+   * Written BEFORE the response and outside any conditional, so it records that
+   * the run happened even when the run had nothing to do — which is the case
+   * the inference gets wrong.
+   */
+  try {
+    const { setCommercialSetting } = await import("@/lib/commercial/settings");
+    await setCommercialSetting(
+      "commercial_daily_cron_last_run",
+      { at: new Date().toISOString(), found: totalFound, sent: totalSent },
+      null,
+    );
+  } catch (err) {
+    // Never fail the cron over its own bookkeeping.
+    console.warn("[cron/commercial-daily] heartbeat write failed:", err);
+  }
+
   console.log(
     `[cron/commercial-daily] ${durationMs}ms — found ${totalFound} (tasks=${tasks.found} docs=${docs.found} hot=${hot.found} rules=${rules.found} debrief=${debrief.found} dunning=${dunning.found} aiaDunning=${aiaDunning.found}) · sent ${totalSent} · skipped ${totalSkipped} · errors ${totalErrors}`
   );
