@@ -79,6 +79,26 @@ describe("keys no line claims any more", () => {
     expect(out.quantities["c1::Eggshell::bath"]).toBeUndefined();
   });
 
+  it("the bathroom's OWN answer beats the pre-split one it could migrate", () => {
+    // Both keys hold a value: the estimator typed 2 gal on the split bathroom
+    // line, and an older draft had 6 gal under the pre-split key. The newer,
+    // more specific answer wins — flipping the precedence would quietly
+    // replace it with a number from before the deploy, and no test had both
+    // keys populated to notice (mutation testing, 2026-09-17).
+    const p = payload({
+      quantities: {
+        "c1::Eggshell": { buckets: 0, cans: 6, unit: "gal" },
+        "c1::Eggshell::bath": { buckets: 0, cans: 2, unit: "gal" },
+      },
+      materialTypeOverrides: { "c1::Eggshell": "Regal Select", "c1::Eggshell::bath": "Aura Bath & Spa" },
+    });
+    const out = pruneToLiveKeys(p, live([{ key: "c1::Eggshell::bath", legacyKey: "c1::Eggshell" }]));
+    expect(out.quantities["c1::Eggshell::bath"]).toEqual({ buckets: 0, cans: 2, unit: "gal" });
+    expect(out.materialTypeOverrides["c1::Eggshell::bath"]).toBe("Aura Bath & Spa");
+    // …and the pre-split key is retired either way.
+    expect(out.quantities["c1::Eggshell"]).toBeUndefined();
+  });
+
   it("does nothing at all before a draft has arrived", () => {
     // An empty line-up is "we don't know yet", not "nothing is live".
     const p = payload({ quantities: { "c1::Eggshell": { buckets: 0, cans: 4, unit: "gal" } } });

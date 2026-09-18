@@ -177,6 +177,20 @@ describe("a color the buy-list already covers", () => {
   it("ignores a color with no usable code or name", () => {
     expect(inBuyList("Trim: OC-95", [{ colorName: "Ivy", colorCode: null }])).toBe(false);
   });
+
+  it("a three-letter color name never matches inside another word", () => {
+    // "Ice" inside "Office", "Ash" inside "Washington". A false match here is
+    // invisible and expensive: the line is marked "already on order" and the
+    // estimator is never offered it, so the color is simply never bought.
+    // The name guard is what prevents it, and nothing tested it (mutation
+    // testing, 2026-09-17).
+    const short = [{ colorName: "Ice", colorCode: null }];
+    expect(inBuyList("Office: repaint the trim", short)).toBe(false);
+    expect(inBuyList("Ash Grove Room: Ash", [{ colorName: "Ash", colorCode: null }])).toBe(false);
+    // …and a real four-letter name still matches, so the guard is a floor and
+    // not a blanket refusal.
+    expect(inBuyList("Hall: Snow", [{ colorName: "Snow", colorCode: null }])).toBe(true);
+  });
 });
 
 describe("quantities are whole units, rounded up", () => {

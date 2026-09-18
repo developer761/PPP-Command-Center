@@ -201,7 +201,6 @@ export type GallonEstimate = {
    *  the surface IS being painted, PPP just takes it off the truck rather than
    *  ordering it. Without this the line renders as a bare "—" and a worker
    *  cannot tell which of the three it means. */
-  sizedToZero: boolean;
   /** A contributing room had no floor area → this is an UNDER-count. */
   needsMeasurement: boolean;
   /** Surface we can't size from the data (accent wall, cabinets, …). */
@@ -469,11 +468,17 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
  * rounding up cost a can on every single line of every order.
  *
  * A consequence worth stating, because it is the point rather than a side
- * effect: a surface needing less than a gallon now orders NOTHING. Trim at
- * 0.13 gallons and a small ceiling at 0.41 stop appearing on the vendor email
- * at all, which is what PPP actually does — those come off the truck. Callers
- * must therefore treat a zero as "from stock", not as "no paint needed", and
- * `sizedToZero` on the estimate says so explicitly.
+ * effect: a surface needing less than a gallon rounds to NOTHING here. Trim at
+ * 0.13 gallons and a small ceiling at 0.41 come off the truck, which is what
+ * PPP actually does.
+ *
+ * Its CALLER decides what to do with that zero, and since the quart work
+ * (Katie item 6: "a door is a quart — we need to utilise quarts") every path
+ * out of estimateOrderGallons turns a sub-gallon line into a real quantity in
+ * a real unit. There used to be a `sizedToZero` flag here and an "under 1 gal
+ * — from stock" line on the order, for the case where nothing did: 24,000
+ * generated takeoffs produce it zero times, so it was removed rather than
+ * left standing as a branch nobody can reach and a flag that is always false.
  */
 export function packageGallons(rawGallons: number, cfg: CoverageConfig = COVERAGE_CONFIG): { buckets: number; cans: number } {
   // NO automatic bucketing (Karan 2026-09-09: "if I have 5 gallons it shouldn't
@@ -860,7 +865,6 @@ export function estimateOrderGallons(
       totalSqft: Math.round(reportedSqft),
       buckets: bucketsCount,
       cans,
-      sizedToZero: sizable && bucketsCount === 0 && cans === 0,
       accentWallReview: b.accentWall,
       unit,
       // The cap wins: it says a number is wrong, and every other note here
@@ -1245,10 +1249,6 @@ export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.excluded) return "not ordering";
   if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
-  // Checked BEFORE needsMeasurement: a line that rounded under a gallon is a
-  // stock item, not a data problem, and labelling it "needs measurement" would
-  // send a worker to re-measure a room that is measured fine.
-  if (e.sizedToZero) return "under 1 gal — from stock";
   if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
   return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal");
 }

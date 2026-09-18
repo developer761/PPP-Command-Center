@@ -39,7 +39,7 @@ describe("a bathroom ceiling is not always a quart", () => {
       room("Bathroom", 12, 15, { surfaces: [surf("Ceiling", "ceil-white", "ceiling")] }),
     ]);
     expect(e.cans).toBeGreaterThan(0);
-    expect(formatOrderQuantity(e)).not.toMatch(/from stock/);
+    expect(e.cans + e.buckets).toBeGreaterThan(0);
     expect(formatOrderSummaryBlock([e], "Regal Select")).not.toContain("TBD");
   });
 
@@ -52,19 +52,38 @@ describe("a bathroom ceiling is not always a quart", () => {
       ]);
       const printed = formatOrderQuantity(e);
       expect(e.cans + e.buckets, `${side}x${side} ordered nothing`).toBeGreaterThan(0);
-      expect(printed, `${side}x${side}`).not.toMatch(/from stock|TBD/);
+      expect(printed, `${side}x${side}`).not.toMatch(/TBD|needs (review|measurement)/);
     }
   });
 
   it("a bathroom painted one color top to bottom still gets the rule", () => {
     // kinds = {walls, ceiling} satisfied neither wallsOnly nor ceilingOnly, so
     // Katie's bathroom rule quietly skipped the commonest bathroom there is.
+    //
+    // Sized to a POWDER ROOM, 4x4. The first version of this test used a 5x8,
+    // whose walls reach a gallon on the ordinary maths — so reverting the fix
+    // left it green (mutation testing, 2026-09-17). At 4x4 the generic path
+    // gives a quart, and only the bathroom rule gives a gallon.
     const [e] = estimateOrderGallons([
-      room("Bathroom", 5, 8, {
+      room("Bathroom", 4, 4, {
         surfaces: [surf("Walls", "one-white", "walls"), surf("Ceiling", "one-white", "ceiling")],
       }),
     ]);
     expect(formatOrderQuantity(e)).toBe("1 gal");
+    // And it says WHICH rule fired, so a quantity nobody measured is never
+    // silent on the screen or in the email.
+    expect(e.defaultedNote ?? "").toMatch(/bathroom/i);
+  });
+
+  it("…and the same 4x4 room that is NOT a bathroom stays under a gallon", () => {
+    // The control. Without it the assertion above could be passing because
+    // every 4x4 room orders a gallon.
+    const [e] = estimateOrderGallons([
+      room("Closet", 4, 4, {
+        surfaces: [surf("Walls", "one-white", "walls"), surf("Ceiling", "one-white", "ceiling")],
+      }),
+    ]);
+    expect(formatOrderQuantity(e)).not.toBe("1 gal");
   });
 
   it("a bathroom's cabinets do not become a second line in the same color", () => {

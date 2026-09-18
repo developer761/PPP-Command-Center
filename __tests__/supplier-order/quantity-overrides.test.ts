@@ -37,7 +37,6 @@ function estimate(over: Partial<GallonEstimate> = {}): GallonEstimate {
     buckets: 0,
     cans: 0,
     gallons: 0,
-    sizedToZero: false,
       defaultedNote: null,
       accentWallReview: false,
     needsMeasurement: true,
@@ -160,6 +159,42 @@ describe("normalizeBuildPayload (#18)", () => {
     expect(p.quantities.k).toEqual({ buckets: 99, cans: 0, unit: "gal" });
   });
 
+  it("clamps the field the vendor actually reads", () => {
+    // The case above pins `buckets`' ceiling and `cans`' floor, and nothing
+    // pinned `cans`' CEILING — the number the email prints on nearly every
+    // line. Found by mutation testing (2026-09-17): raising the cap to 9999
+    // left the whole suite green.
+    const p = normalizeBuildPayload({
+      quantities: {
+        big: { buckets: 0, cans: 100_000, unit: "gal" },
+        pails: { buckets: 0, cans: 4_000, unit: "bucket" },
+        quarts: { buckets: 0, cans: 1e9, unit: "qt" },
+        fractional: { buckets: 0, cans: 3.99, unit: "gal" },
+      },
+    });
+    expect(p.quantities.big.cans).toBe(99);
+    expect(p.quantities.pails.cans).toBe(99);
+    expect(p.quantities.quarts.cans).toBe(99);
+    // Whole containers only — a store cannot sell 3.99 gallons.
+    expect(p.quantities.fractional.cans).toBe(3);
+  });
+
+  it("clamps an extra's and a custom item's quantity the same way", () => {
+    const p = normalizeBuildPayload({
+      extras: [{ extraId: "e1", name: "Tape", unit: "roll", qty: 5000 }],
+      customColorItems: [{ id: "cc-1", label: "Deck stain", qty: 5000, unit: "gal" }],
+    });
+    expect(p.extras[0].qty).toBe(99);
+    expect(p.customColorItems[0].qty).toBe(99);
+    // …and never below one: a zero on either is "remove it", not "order none".
+    const z = normalizeBuildPayload({
+      extras: [{ extraId: "e1", name: "Tape", unit: "roll", qty: 0 }],
+      customColorItems: [{ id: "cc-1", label: "Deck stain", qty: -3, unit: "gal" }],
+    });
+    expect(z.extras[0].qty).toBe(1);
+    expect(z.customColorItems[0].qty).toBe(1);
+  });
+
   it("rejects an unknown unit rather than passing it through", () => {
     const p = normalizeBuildPayload({ quantities: { k: { buckets: 0, cans: 2, unit: "barrel" } } });
     expect(p.quantities.k.unit).toBe("gal");
@@ -210,7 +245,7 @@ describe("buckets, where every fixture used to be a multiple of five", () => {
       colorId: "c1", colorName: "White Dove", colorCode: "OC-17", finish: "Eggshell",
       surfaces: ["Walls"], rooms: ["Living Room"], placements: [],
       totalSqft: 900, buckets: 0, cans: 2, gallons: 10, unit: "bucket" as const,
-      sizedToZero: false, needsMeasurement: false, unsized: false, manualOnly: false,
+      needsMeasurement: false, unsized: false, manualOnly: false,
       accentWallReview: false, defaultedNote: null,
     };
     const t = summarizeOrder([e]);

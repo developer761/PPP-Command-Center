@@ -163,7 +163,7 @@ describe("a line under a gallon is priced in quarts, not dropped", () => {
     // quart of this paint." Trim at 0.13 gal used to read "from stock" and
     // reach the vendor as no line at all.
     const e = byColor([room(8, 10, 8)]);
-    expect(e.trim.sizedToZero).toBe(false);
+    expect(e.trim.cans + e.trim.buckets).toBeGreaterThan(0);
     expect(formatOrderQuantity(e.trim)).toBe("1 qt");
   });
 
@@ -194,13 +194,20 @@ describe("a line under a gallon is priced in quarts, not dropped", () => {
     // not "take it off the truck".
     const blank = room(8, 10, 8, { floorAreaSqft: 0, perimeterLf: 0, wallSurfaceAreaSqft: 0 });
     const e = byColor([blank]);
-    expect(e.wall.sizedToZero).toBe(false);
-    expect(formatOrderQuantity(e.wall)).not.toBe("under 1 gal — from stock");
+    // A measured room always ends up with a quantity; this one has no numbers
+    // at all, so it must ask for them rather than order a guess — and must
+    // never read like a line somebody decided to take off the truck.
+    expect(e.wall.cans + e.wall.buckets).toBe(0);
+    // "manual entry required" — the estimator types the number, which is the
+    // same ask by another name (`manualOnly` is checked first in the
+    // formatter). Either way it is a question, not a quantity.
+    expect(e.wall.needsMeasurement).toBe(true);
+    expect(formatOrderQuantity(e.wall)).toBe("manual entry required");
   });
 
   it("a real order is not flagged", () => {
     const e = byColor([room(15, 20, 8)]);
-    expect(e.wall.sizedToZero).toBe(false);
+    expect(e.wall.cans + e.wall.buckets).toBeGreaterThan(0);
   });
 });
 
