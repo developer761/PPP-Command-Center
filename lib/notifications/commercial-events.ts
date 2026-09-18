@@ -319,9 +319,29 @@ async function dispatchCommercialNotification(input: {
     // Email target: the recipient's opted-in notify email, or — when the caller
     // marks this alwaysEmail (the approval loop) — their profile email as a
     // fallback so an approver/requester is never left with only a bell.
-    const notifyEmail = input.skipEmail
-      ? null
-      : (await getEnabledNotifyEmail(input.recipientUserId)) ?? (input.alwaysEmail ? p.email ?? null : null);
+    /**
+     * Three answers, not two: opted in, opted out, or WE COULD NOT TELL.
+     *
+     * The `alwaysEmail` fallback to the profile address is for the approval
+     * loop, where an approver must never be left with only a bell. It applies
+     * when the person has no preference — NOT when the preference could not be
+     * read. One of the five rows is an explicit `enabled = false`, so falling
+     * back on an unreadable table would send unsolicited mail to the one person
+     * who asked not to get it. A missed notification is recoverable; that is
+     * not.
+     */
+    const pref = input.skipEmail
+      ? { email: null, lookupFailed: false }
+      : await getEnabledNotifyEmail(input.recipientUserId);
+    if (pref.lookupFailed) {
+      // Visible, not silent. The bell below still lands, which is the half that
+      // must never be lost.
+      console.warn(
+        `[notify] ${input.kind}: email skipped for ${input.recipientUserId} — preference unreadable, NOT treated as an opt-out`
+      );
+    }
+    const notifyEmail =
+      pref.email ?? (input.alwaysEmail && !pref.lookupFailed ? p.email ?? null : null);
     if (notifyEmail) {
       // List-Unsubscribe on every notification email. Stephanie 2026-08-17:
       // "half of them end up in spam/junk." Gmail and Outlook read a
