@@ -186,6 +186,7 @@ const FINISH_OPTIONS = BASE_FINISHES;
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
 import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
+import { applyToAllTargets } from "@/lib/customer-form/apply-to-all";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -570,12 +571,31 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // in. It is its own answer, from the server.
   const [orderAlreadyPlaced, setOrderAlreadyPlaced] = useState(false);
   // Transient confirmation for "apply color to all areas".
-  const [applyToast, setApplyToast] = useState<string | null>(null);
+  /**
+   * The result of "Apply to all areas", shown AT the button that produced it.
+   *
+   * It used to be a toast pinned to the bottom of the window (Kate,
+   * 2026-09-18: "could you make the error appear near the 'apply to areas'
+   * button so it isn't missed?"). On a long form the button is halfway up a
+   * twelve-room page and the message announcing that nothing happened was a
+   * screen away from the click — so it read as if the button were broken.
+   *
+   * `canOverwrite` carries the rooms that already hold a DIFFERENT color, so
+   * the note can offer to overwrite them: a customer who changes their mind
+   * needs to update the rooms they already answered, which fill-empty-only
+   * deliberately refuses to touch.
+   */
+  const [applyNote, setApplyNote] = useState<
+    { lineId: string; surface: string; text: string; canOverwrite: number } | null
+  >(null);
   useEffect(() => {
-    if (!applyToast) return;
-    const t = setTimeout(() => setApplyToast(null), 3500);
+    // A note that only reports stays briefly. One that OFFERS to overwrite
+    // stays until the customer answers it — a button that disappears after
+    // three and a half seconds is a button nobody can press.
+    if (!applyNote || applyNote.canOverwrite > 0) return;
+    const t = setTimeout(() => setApplyNote(null), 3500);
     return () => clearTimeout(t);
-  }, [applyToast]);
+  }, [applyNote]);
 
   // Delivery address is DISPLAY-ONLY (Katie 2026-05-29). It's the address on
   // file in Salesforce; the customer can't edit it here — if it's wrong they
@@ -716,21 +736,52 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     }));
   };
 
-  // "Apply this color to all areas" (Katie 2026-05-29). Fills ONLY rooms that
-  // (a) have this surface in scope and (b) don't already have a color for it —
-  // never overwrites a deliberate pick. Carries the finish along so each filled
-  // surface lands complete. Targets are read from the current committed state
-  // (closure) so the count + toast are exact, then applied in one setState.
-  const applyColorToAll = (sourceLineId: string, surface: string, pick: SurfacePick) => {
+  // "Apply this color to all areas" (Katie 2026-05-29). By default it fills
+  // ONLY rooms that (a) have this surface in scope and (b) don't already have a
+  // color for it — a deliberate pick is never overwritten by accident.
+  //
+  // `overwrite` is the customer saying otherwise (Kate 2026-09-18: "add an
+  // 'overwrite anyway' option in case customers change their mind and need to
+  // update multiple rooms"). It replaces colors already chosen — but never a
+  // SKIP. "Don't paint this surface" is an answer too, and resurrecting a
+  // surface somebody opted out of is not what "apply this color" means.
+  //
+  // Carries the finish along so each filled surface lands complete. Targets are
+  // read from the current committed state (closure) so the count and the note
+  // are exact, then applied in one setState.
+  const applyColorToAll = (
+    sourceLineId: string,
+    surface: string,
+    pick: SurfacePick,
+    opts: { overwrite?: boolean } = {}
+  ) => {
     if (!pick.colorId) return;
-    const targets = formData.lineItems.filter((li) => {
-      if (li.id === sourceLineId) return false;
-      if (!li.surfaces.includes(surface)) return false;
-      const cur = state[li.id]?.picks[surface];
-      return !!cur && !cur.skipped && !cur.colorId;
+    // The rule itself is in lib/customer-form/apply-to-all.ts, so it can be
+    // tested — and so the counts in the message below are the same numbers the
+    // sweep used, rather than a second calculation that can disagree with it.
+    const { fill, differing } = applyToAllTargets({
+      lineItems: formData.lineItems,
+      picks: state,
+      sourceLineId,
+      surface,
+      colorId: pick.colorId,
     });
+    const targetIdList = opts.overwrite ? [...fill, ...differing] : fill;
+    const byId = new Map(formData.lineItems.map((li) => [li.id, li]));
+    const targets = targetIdList.map((id) => byId.get(id)!).filter(Boolean);
     if (targets.length === 0) {
-      setApplyToast(`Every other room's ${surface.toLowerCase()} is already set or skipped — nothing to fill.`);
+      // "Walls" is plural, "Ceiling" and "Trim" are not — and the message read
+      // "Every other walls already has a color" until somebody read it aloud.
+      const isPlural = /s$/i.test(surface);
+      const noun = `Every other room's ${surface.toLowerCase()}`;
+      setApplyNote({
+        lineId: sourceLineId,
+        surface,
+        text: differing.length > 0
+          ? `${noun} already ${isPlural ? "have" : "has"} a color.`
+          : `${noun} ${isPlural ? "are" : "is"} already set or skipped — nothing to fill.`,
+        canOverwrite: differing.length,
+      });
       return;
     }
     // The finish is resolved PER TARGET, not once for the whole sweep. "Apply
@@ -769,7 +820,17 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       }
       return next;
     });
-    setApplyToast(`Applied ${pick.colorName ?? "color"} to ${targets.length} more ${targets.length === 1 ? "room" : "rooms"}.`);
+    const name = pick.colorName ?? "color";
+    const n = targets.length;
+    setApplyNote({
+      lineId: sourceLineId,
+      surface,
+      text: `Applied ${name} to ${n} more ${n === 1 ? "room" : "rooms"}.`,
+      // Filling the empty rooms leaves the ones that already had a color
+      // untouched — say how many, and offer them, rather than letting the
+      // customer believe "all areas" meant all of them.
+      canOverwrite: opts.overwrite ? 0 : differing.length,
+    });
   };
 
   const updateLineNotes = (lineId: string, notes: string) => {
@@ -1243,6 +1304,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             canApplyToAll={formData.lineItems.length > 1}
             onSurfaceChange={(surface, patch) => updateSurfacePick(li.id, surface, patch)}
             onApplyToAll={(surface, pick) => applyColorToAll(li.id, surface, pick)}
+            applyNote={applyNote?.lineId === li.id ? applyNote : null}
+            onOverwriteAll={(surface, pick) => applyColorToAll(li.id, surface, pick, { overwrite: true })}
+            onDismissApplyNote={() => setApplyNote(null)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
             isInternal={isInternal}
             materialType={
@@ -1444,17 +1508,6 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
     </form>
-    {applyToast && (
-      <div
-        role="status"
-        // bottom-[max(1rem,env(safe-area-inset-bottom))] keeps the toast above
-        // the iOS home indicator on notched phones; a plain bottom-4 disappears
-        // under the gesture bar.
-        className="fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-full bg-ppp-navy text-white text-sm font-medium shadow-lg shadow-ppp-navy/30 animate-fade-up"
-      >
-        {applyToast}
-      </div>
-    )}
     </CatalogContext.Provider>
   );
 }
@@ -1467,8 +1520,11 @@ function LineItemSection({
   state,
   token,
   canApplyToAll,
+  applyNote = null,
   onSurfaceChange,
   onApplyToAll,
+  onOverwriteAll,
+  onDismissApplyNote,
   onNotesChange,
   isInternal = false,
   materialType,
@@ -1486,10 +1542,14 @@ function LineItemSection({
   state: LineItemState | undefined;
   token: string;
   canApplyToAll: boolean;
+  /** The "apply to all areas" result for THIS room, shown at the button. */
+  applyNote?: { surface: string; text: string; canOverwrite: number } | null;
   /** Staff view — the notes block takes the quieter neutral tone. */
   isInternal?: boolean;
   onSurfaceChange: (surface: string, patch: Partial<SurfacePick>) => void;
   onApplyToAll: (surface: string, pick: SurfacePick) => void;
+  onOverwriteAll: (surface: string, pick: SurfacePick) => void;
+  onDismissApplyNote: () => void;
   onNotesChange: (notes: string) => void;
 }) {
   // EVERY hook runs before the `state` guard below.
@@ -1645,6 +1705,9 @@ function LineItemSection({
               canApplyToAll={canApplyToAll}
               onChange={(patch) => onSurfaceChange(surface, patch)}
               onApplyToAll={() => onApplyToAll(surface, state.picks[surface] ?? emptyPick())}
+              applyNote={applyNote?.surface === surface ? applyNote : null}
+              onOverwriteAll={() => onOverwriteAll(surface, state.picks[surface] ?? emptyPick())}
+              onDismissApplyNote={onDismissApplyNote}
               // NOT forwarded before today. LineItemSection accepted
               // materialType and dropped it here, so SurfaceRow's
               // finishOptionsFor call always received undefined — which means
@@ -1682,8 +1745,11 @@ function SurfaceRow({
   pick,
   token,
   canApplyToAll,
+  applyNote = null,
   onChange,
   onApplyToAll,
+  onOverwriteAll,
+  onDismissApplyNote,
   materialType,
   scope,
 }: {
@@ -1698,8 +1764,11 @@ function SurfaceRow({
   pick: SurfacePick;
   token: string;
   canApplyToAll: boolean;
+  applyNote?: { text: string; canOverwrite: number } | null;
   onChange: (patch: Partial<SurfacePick>) => void;
   onApplyToAll: () => void;
+  onOverwriteAll: () => void;
+  onDismissApplyNote: () => void;
 }) {
   const toggleSkip = () => {
     if (pick.skipped) {
@@ -1829,8 +1898,46 @@ function SurfaceRow({
                 onClick={onApplyToAll}
                 className="inline-flex items-center justify-end gap-1 min-h-[44px] sm:min-h-0 text-[11px] text-ppp-blue hover:text-ppp-blue-700 font-medium text-right self-end px-3 py-2 sm:py-1 -mr-1"
               >
-                <span aria-hidden>⮌</span> Apply to all areas
+                {/* An inline SVG, not "⮌". That glyph has no font on Windows
+                    Chrome and rendered as a tofu box next to the label in
+                    Kate's screenshot — a missing character reads as a broken
+                    page, on the one control this row exists to offer. */}
+                <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+                  <path d="M3.5 6.5h7a2.5 2.5 0 0 1 0 5H7" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5.5 4.5 3.2 6.5l2.3 2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Apply to all areas
               </button>
+            )}
+            {/* The result, AT the button that produced it (Kate 2026-09-18).
+                It was a toast at the bottom of the window: on a twelve-room
+                form the message saying nothing had happened was a screen away
+                from the click, so the button read as broken. */}
+            {applyNote && (
+              <div
+                role="status"
+                className="self-end text-right max-w-[18rem] rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 px-2.5 py-2 text-[11px] leading-relaxed text-ppp-navy"
+              >
+                <div>{applyNote.text}</div>
+                {applyNote.canOverwrite > 0 && (
+                  <div className="mt-1.5 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={onOverwriteAll}
+                      className="font-semibold text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center px-2 sm:px-0 touch-manipulation"
+                    >
+                      Overwrite {applyNote.canOverwrite} {applyNote.canOverwrite === 1 ? "room" : "rooms"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onDismissApplyNote}
+                      className="text-ppp-charcoal-500 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center px-2 sm:px-0 touch-manipulation"
+                    >
+                      Leave them
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
             {/* Desktop-only skip link — under finish dropdown to match
                 visual rhythm. Mobile gets the inline link in the label row. */}
