@@ -85,6 +85,7 @@ import LineItemNotes from "@/components/line-item-notes";
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { STANDARD_SURFACES } from "@/lib/customer-form/surface-mapping";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
+import { resolveSurfaceColor } from "@/lib/materials/room-color-source";
 import { parseMachineColorLines } from "@/lib/customer-form/notes";
 import { pickIsAnswered, type RetainedPick } from "@/lib/customer-form/retained-picks";
 import { formatColorLabel } from "@/lib/supplier-order/estimate-gallons";
@@ -2252,62 +2253,45 @@ function LineItemRow({
     derived?: { name: string; code: string | null } | null;
     /** Customer chose "Don't paint this surface". */
     skipped?: boolean;
+    /** Salesforce names a DIFFERENT color for this surface — a rep's later
+     *  correction, or a stale record after a failed writeback. Shown under the
+     *  chip so it is never silently dropped. */
+    sfDisagrees?: SnapshotPaintColor | null;
   };
 
   const sfSlot = (label: string, surface: string, color: SnapshotPaintColor | null, finish: string | null): Slot =>
     ({ label, surface, color, finish });
 
   /**
-   * Does the retained payload OVERRIDE Salesforce for this surface, or only
-   * fill a gap Salesforce couldn't hold?
-   *
-   * This distinction matters more than it looks. Preferring the payload
-   * everywhere would fix Kate's two symptoms and quietly break a case that
-   * works today: a rep correcting a color directly in Salesforce AFTER the
-   * customer submitted. Their edit would stop showing, with no error and no
-   * clue why — a worse bug than the one being fixed, on a more common path.
-   *
-   * So the payload only wins where Salesforce is genuinely incapable:
-   *   - the customer SKIPPED the surface — Salesforce has no way to record
-   *     "don't paint this", so a blank field is indistinguishable from
-   *     "nobody has picked yet";
-   *   - the room has 2+ orphan surfaces — one shared ColorOther__c cannot
-   *     hold two colors, so whatever is in it is at best half the answer.
-   *
-   * Everything else — all four standard surfaces, and a lone orphan whose
-   * color fits in ColorOther__c — keeps reading Salesforce, which is lossless
-   * for them and lets a later correction through.
+   * The rule itself lives in `lib/materials/room-color-source.ts` — the
+   * customer's pick wins, Salesforce's is shown when it disagrees — so it can
+   * be tested against its ANSWERS rather than by reading this file's text,
+   * which is what the previous test did.
    */
-  const salesforceCanHold = (surface: string): boolean => {
-    if (STANDARD_SURFACES.includes(surface)) return true;
-    // A single orphan owns the shared slot outright.
-    return orphanSurfaces.length <= 1;
-  };
-
   const buildSlot = (label: string, surface: string, sfColor: SnapshotPaintColor | null, sfFinish: string | null): Slot => {
     const key = surface.toLowerCase();
-    const own = retainedBySurface.get(key);
-    // A skip is never recoverable from Salesforce, whatever the surface.
-    if (own?.skipped) return { label, surface, color: null, finish: null, skipped: true };
-    // Salesforce can represent this one and has a value — let it win, so a
-    // rep's later correction isn't masked by the customer's original pick.
-    if (salesforceCanHold(surface) && sfColor) {
-      return sfSlot(label, surface, sfColor, sfFinish);
+    const answer = resolveSurfaceColor({
+      retained: retainedBySurface.get(key) ?? null,
+      fromNotes: notesBySurface.get(key) ?? null,
+      salesforceColorId: sfColor?.id ?? null,
+      salesforceFinish: sfFinish,
+    });
+    if (answer.source === "skipped") return { label, surface, color: null, finish: null, skipped: true };
+    const sfDisagrees = answer.salesforceColorId
+      ? paintColorsById.get(answer.salesforceColorId) ?? sfColor ?? null
+      : null;
+    // Prefer the catalog record (it carries the hex for the swatch) and fall
+    // back to the name/code the answer recorded, which is all we have for a
+    // color that has since left the catalog.
+    const catalog = answer.colorId ? paintColorsById.get(answer.colorId) ?? null : null;
+    if (catalog) return { label, surface, color: catalog, finish: answer.finish, sfDisagrees };
+    if (answer.colorName) {
+      return {
+        label, surface, color: null, finish: answer.finish, sfDisagrees,
+        derived: { name: answer.colorName, code: answer.colorCode },
+      };
     }
-    if (own) {
-      // Prefer the catalog record (it carries the hex for the swatch) but fall
-      // back to the name/code the customer's submission recorded, which is all
-      // we have for a color that has since left the catalog.
-      const catalog = own.colorId ? paintColorsById.get(own.colorId) ?? null : null;
-      return catalog
-        ? { label, surface, color: catalog, finish: own.finish }
-        : { label, surface, color: null, finish: own.finish, derived: { name: own.colorName ?? "(color picked)", code: own.colorCode } };
-    }
-    const fromNotes = notesBySurface.get(key);
-    if (fromNotes) {
-      return { label, surface, color: null, finish: fromNotes.finish, derived: { name: fromNotes.colorName, code: fromNotes.colorCode } };
-    }
-    return sfSlot(label, surface, sfColor, sfFinish);
+    return sfSlot(label, surface, answer.source === "salesforce" ? sfColor : null, answer.finish);
   };
 
   const slots: Slot[] = [
@@ -2407,6 +2391,7 @@ function LineItemRow({
               finish={s.finish}
               derived={s.derived ?? null}
               skipped={s.skipped ?? false}
+              sfDisagrees={s.sfDisagrees ?? null}
             />
           ))}
         </div>
@@ -2618,6 +2603,7 @@ function ColorChip({
   finish,
   derived = null,
   skipped = false,
+  sfDisagrees = null,
 }: {
   surface: string;
   color: SnapshotPaintColor | null;
@@ -2628,6 +2614,11 @@ function ColorChip({
   /** Customer chose "Don't paint this surface" (R4.10). Distinct from "no
    *  color picked yet" — this is an answer, and the crew needs to see it. */
   skipped?: boolean;
+  /** Salesforce names a different color for this surface. The customer's pick
+   *  is what gets ordered (Karan 2026-09-18), so this is shown rather than
+   *  used — a rep's correction in Salesforce is a real signal and must not
+   *  disappear just because it no longer wins. */
+  sfDisagrees?: SnapshotPaintColor | null;
 }) {
   // Strict hex validation — only #RGB, #RRGGBB, #RRGGBBAA shapes render.
   // PPP's HexValue__c is mostly null on production data so most chips hit
@@ -2673,6 +2664,11 @@ function ColorChip({
           )}
           {finish && <span className="truncate">{finish}</span>}
         </div>
+        {sfDisagrees && (
+          <div className="text-[10px] text-ppp-orange-700 mt-0.5 truncate">
+            Salesforce says {formatColorLabel(sfDisagrees.name, sfDisagrees.code)} — the customer&apos;s pick is what gets ordered.
+          </div>
+        )}
       </div>
     </div>
   );

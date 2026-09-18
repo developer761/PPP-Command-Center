@@ -1,49 +1,123 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { resolveSurfaceColor } from "@/lib/materials/room-color-source";
+import type { RetainedPick } from "@/lib/customer-form/retained-picks";
 
 /**
- * Which source wins for a surface in Rooms & Colors (R4.9 / R4.10).
+ * Which source names the color for a surface in Rooms & Colors (R4.9 / R4.10),
+ * and the decision Karan settled on 2026-09-18: **the customer wins**.
  *
- * The obvious fix — "the retained payload is the truth, always" — fixes Kate's
- * two symptoms and silently breaks something that works today: a rep correcting
- * a color directly in Salesforce AFTER the customer submitted would stop
- * showing, with no error and no clue why. That's a worse bug than the one being
- * fixed, on a more common path.
+ * It used to be Salesforce, for the four standard surfaces, so a rep's later
+ * correction was not masked. But the order and the vendor email have always
+ * read the customer's payload first — so the screen showed the rep's
+ * correction, the store was sent the customer's original, and nothing said the
+ * two disagreed.
  *
- * So the payload only wins where Salesforce is genuinely incapable of holding
- * the answer, and this pins that rule in place.
+ * This file used to read `components/materials-view.tsx` as TEXT and assert
+ * that it contained `if (STANDARD_SURFACES.includes(surface)) return true;`.
+ * It could only ever pin the shape of the code, never its answer: when the
+ * rule was reversed it went red for the wrong reason, and it would have stayed
+ * green through any rewrite that kept the same words. The rule now lives in a
+ * function, and this asks it questions.
  */
-const src = readFileSync(join(process.cwd(), "components/materials-view.tsx"), "utf8");
-const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-const buildSlot = code.slice(code.indexOf("const salesforceCanHold"), code.indexOf("const slots: Slot[]"));
 
-describe("Rooms & Colors source precedence", () => {
-  it("lets Salesforce win where Salesforce is lossless", () => {
-    // All four standard surfaces have their own SF field, and a LONE orphan
-    // owns the shared ColorOther__c outright — a rep's edit must show.
-    expect(buildSlot).toMatch(/if \(STANDARD_SURFACES\.includes\(surface\)\) return true;/);
-    expect(buildSlot).toMatch(/orphanSurfaces\.length <= 1/);
-    expect(buildSlot).toMatch(/if \(salesforceCanHold\(surface\) && sfColor\)/);
+const pick = (over: Partial<RetainedPick> = {}): RetainedPick => ({
+  surface: "Walls",
+  colorId: "a02CUSTOMER",
+  colorName: "Chantilly Lace",
+  colorCode: "OC-65",
+  finish: "Eggshell",
+  skipped: false,
+  ...over,
+});
+
+describe("the customer's pick wins", () => {
+  it("even on a standard surface Salesforce could hold perfectly well", () => {
+    const a = resolveSurfaceColor({ retained: pick(), salesforceColorId: "a02REP", salesforceFinish: "Flat" });
+    expect(a.source).toBe("customer");
+    expect(a.colorId).toBe("a02CUSTOMER");
+    expect(a.finish).toBe("Eggshell");
   });
 
-  it("always honours a skip, on any surface", () => {
-    // Salesforce has no way to record "don't paint this", so a blank field is
-    // indistinguishable from "nobody picked yet". This is what put Super White
-    // on the Kitchen cabinets the customer opted out of (WO 00308360).
-    const skipLine = buildSlot.indexOf("own?.skipped");
-    const sfWinsLine = buildSlot.indexOf("salesforceCanHold(surface) && sfColor");
-    expect(skipLine).toBeGreaterThan(-1);
-    // The skip check must come FIRST, or the shared slot's color wins over it.
-    expect(skipLine).toBeLessThan(sfWinsLine);
+  it("and the vendor email agrees, because both read the payload first", () => {
+    // The whole point of the change: one rule in both places. The builder's
+    // own resolution is `customerPick?.colorId ?? slot.existingColorId`, and
+    // this must not diverge from it again.
+    const a = resolveSurfaceColor({ retained: pick(), salesforceColorId: "a02REP" });
+    const whatTheVendorGets = pick().colorId ?? "a02REP";
+    expect(a.colorId).toBe(whatTheVendorGets);
   });
 
-  it("falls back to the payload when Salesforce could not hold the answer", () => {
-    // 2+ orphans: ColorOther__c is deliberately blank and both colors went to
-    // Color Notes (WO 00306643's Bathroom).
-    const payloadBranch = buildSlot.indexOf("if (own) {");
-    expect(payloadBranch).toBeGreaterThan(buildSlot.indexOf("salesforceCanHold(surface) && sfColor"));
-    // …and Color Notes is the last resort, for submissions predating retention.
-    expect(buildSlot.indexOf("notesBySurface.get(key)")).toBeGreaterThan(payloadBranch);
+  it("but Salesforce's different answer is carried, not discarded", () => {
+    // A rep's correction is a real signal. It stops winning; it must not stop
+    // being visible, or a correction simply vanishes.
+    const a = resolveSurfaceColor({ retained: pick(), salesforceColorId: "a02REP" });
+    expect(a.salesforceColorId).toBe("a02REP");
+  });
+
+  it("and says nothing when the two agree", () => {
+    const a = resolveSurfaceColor({ retained: pick({ colorId: "a02SAME" }), salesforceColorId: "a02SAME" });
+    expect(a.salesforceColorId).toBeNull();
+  });
+});
+
+describe("a skip is an answer", () => {
+  it("wins over any Salesforce color, on any surface", () => {
+    // Salesforce cannot record "don't paint this", so a blank field there is
+    // indistinguishable from "nobody picked yet". Reading it back is what put
+    // Super White on the Kitchen cabinets the customer opted OUT of
+    // (WO 00308360).
+    const a = resolveSurfaceColor({
+      retained: pick({ surface: "Cabinets", skipped: true, colorId: null, colorName: null }),
+      salesforceColorId: "a02SHARED",
+    });
+    expect(a.source).toBe("skipped");
+    expect(a.colorId).toBeNull();
+    expect(a.salesforceColorId).toBeNull();
+  });
+
+  it("is checked before the color, so a skip with a stale colorId still skips", () => {
+    const a = resolveSurfaceColor({ retained: pick({ skipped: true }), salesforceColorId: "a02REP" });
+    expect(a.source).toBe("skipped");
+  });
+});
+
+describe("when the customer never answered this surface", () => {
+  it("Color Notes is the next resort — submissions predating retention", () => {
+    const a = resolveSurfaceColor({
+      fromNotes: { colorName: "Henderson Buff", colorCode: "HC-15", finish: "Satin" },
+      salesforceColorId: "a02SHARED",
+    });
+    expect(a.source).toBe("notes");
+    expect(a.colorName).toBe("Henderson Buff");
+    // The shared ColorOther__c may belong to a different orphan surface, so it
+    // is reported rather than used — this is WO 00306643's Bathroom.
+    expect(a.salesforceColorId).toBe("a02SHARED");
+  });
+
+  it("and Salesforce still renders a line nobody used the form on", () => {
+    // The common case on older work orders: a rep typed the colors straight
+    // into Salesforce. Preferring the payload everywhere must not blank these.
+    const a = resolveSurfaceColor({ salesforceColorId: "a02REP", salesforceFinish: "Semi-Gloss" });
+    expect(a.source).toBe("salesforce");
+    expect(a.colorId).toBe("a02REP");
+    expect(a.finish).toBe("Semi-Gloss");
+    expect(a.salesforceColorId).toBeNull();
+  });
+
+  it("and an empty surface stays empty rather than inventing a color", () => {
+    const a = resolveSurfaceColor({});
+    expect(a.source).toBe("none");
+    expect(a.colorId).toBeNull();
+    expect(a.colorName).toBeNull();
+  });
+
+  it("a retained row with no color and no skip is not an answer either", () => {
+    // The customer opened the form and left this surface alone.
+    const a = resolveSurfaceColor({
+      retained: pick({ colorId: null, colorName: null }),
+      salesforceColorId: "a02REP",
+    });
+    expect(a.source).toBe("salesforce");
+    expect(a.colorId).toBe("a02REP");
   });
 });

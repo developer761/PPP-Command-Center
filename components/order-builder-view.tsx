@@ -23,6 +23,7 @@ import {
   quantityKey,
   convertUnit,
   unitCanHold,
+  conversionShortfallGal,
   type GallonEstimate,
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
@@ -738,7 +739,14 @@ export default function OrderBuilderView({
       setUnitNote({ key, text: `That is more paint than 99 ${UNIT_PLURAL[unit]} — left in ${UNIT_PLURAL[current.unit ?? "gal"]}.` });
       return;
     }
-    setUnitNote((cur) => (cur && cur.key === key ? null : cur));
+    // Pails round DOWN (Karan 2026-09-18), so say what the change left behind
+    // rather than letting two gallons vanish between one press and the vendor.
+    const short = conversionShortfallGal(current, unit);
+    setUnitNote(
+      short > 0
+        ? { key, text: `${convertUnit(current, unit).cans} ${UNIT_PLURAL[unit]} — ${short} gal short of the estimate, from stock. Press + for another.` }
+        : (cur) => (cur && cur.key === key ? null : cur)
+    );
     setPayload((cur) => ({
       ...cur,
       // The toggle converts VOLUME — 2 pails is 10 gallons — where the +/-
@@ -1345,7 +1353,9 @@ export default function OrderBuilderView({
                         ))}
                       </div>
                       {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
-                        <span className="text-[11px] text-ppp-orange-700 basis-full text-right">{unitNote.text}</span>
+                        <span className={`text-[11px] basis-full text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
+                          {unitNote.text}
+                        </span>
                       )}
                       {override && (
                         <button

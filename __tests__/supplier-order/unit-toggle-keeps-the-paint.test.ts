@@ -3,6 +3,7 @@ import {
   convertUnit,
   gallonsOfOverride,
   unitCanHold,
+  conversionShortfallGal,
   containerCount,
   overrideTotal,
   stepContainers,
@@ -45,38 +46,41 @@ describe("changing the unit does not change how much paint was ordered", () => {
     expect(convertUnit(fortyQt, "bucket")).toEqual({ buckets: 0, cans: 2, unit: "bucket" });
   });
 
-  it("a round trip never comes back with less paint than it left with", () => {
-    // Rounding UP is deliberate: a gallon short is a second trip to the store,
-    // a gallon over is a gallon on the shelf. So the round trip may grow — it
-    // must never shrink. The one way it could is the 99-container rail, and
-    // that is exactly what `unitCanHold` refuses before it happens.
+  it("never loses more than one container, and never loses all of it", () => {
+    // Pails round DOWN (Karan 2026-09-18: "round down always"), so a
+    // conversion CAN come back with less paint — deliberately. What it must
+    // never do is round away more than the container it is rounding to, or
+    // round a real order down to nothing.
     let conversionsChecked = 0;
-    let refusals = 0;
+    let shortfalls = 0;
     for (const from of UNITS) {
       for (const to of UNITS) {
         for (const n of [1, 2, 3, 5, 7, 12, 40, 99]) {
           const start = { buckets: 0, cans: n, unit: from };
-          const where = `${n} ${from} -> ${to} -> ${from}`;
-          if (!unitCanHold(start, to)) {
-            // Refused, so the line keeps the volume it had. Prove the refusal
-            // was warranted rather than trusting it.
-            expect(gallonsOfOverride(convertUnit(start, to)), where).toBeLessThan(gallonsOfOverride(start));
-            refusals++;
-            continue;
-          }
+          const where = `${n} ${from} -> ${to}`;
+          if (!unitCanHold(start, to)) continue;
           const there = convertUnit(start, to);
           conversionsChecked++;
-          expect(gallonsOfOverride(there), where).toBeGreaterThanOrEqual(gallonsOfOverride(start));
-          if (unitCanHold(there, from)) {
-            expect(gallonsOfOverride(convertUnit(there, from)), where).toBeGreaterThanOrEqual(gallonsOfOverride(start));
-          }
+          expect(there.cans, where).toBeGreaterThan(0);
+          const lost = gallonsOfOverride(start) - gallonsOfOverride(there);
+          const oneContainer = to === "bucket" ? GALLONS_PER_BUCKET : to === "qt" ? 1 / QUARTS_PER_GALLON : 1;
+          expect(lost, where).toBeLessThan(oneContainer);
+          if (lost > 0) shortfalls++;
         }
       }
     }
-    // The proof this measured something: a loop that refused everything, or
-    // converted nothing, would pass every assertion above.
+    // The proof this measured something: a loop that converted nothing, or
+    // that never rounded down at all, would pass every assertion above.
     expect(conversionsChecked).toBeGreaterThan(50);
-    expect(refusals).toBeGreaterThan(0);
+    expect(shortfalls).toBeGreaterThan(0);
+  });
+
+  it("names the gallons a pail conversion leaves behind", () => {
+    // 7 gallons is one pail and two gallons of stock. The estimator is told
+    // the number rather than left to notice it.
+    expect(conversionShortfallGal({ buckets: 0, cans: 7, unit: "gal" }, "bucket")).toBe(2);
+    expect(conversionShortfallGal({ buckets: 0, cans: 10, unit: "gal" }, "bucket")).toBe(0);
+    expect(conversionShortfallGal({ buckets: 0, cans: 3, unit: "gal" }, "bucket")).toBe(0);
   });
 
   it("refuses only the conversions that would lose paint", () => {
@@ -90,9 +94,18 @@ describe("changing the unit does not change how much paint was ordered", () => {
     expect(unitCanHold({ buckets: 0, cans: 99, unit: "bucket" }, "bucket")).toBe(true);
   });
 
-  it("a part-pail rounds up to a whole pail, never down to none", () => {
+  it("a part-pail rounds DOWN — but never to none", () => {
+    // Karan 2026-09-18. A pail is five gallons of a mixed color; the spare
+    // gallons of an over-bought pail sit on a shelf forever, and the crew
+    // carries stock for a two-gallon remainder.
+    expect(convertUnit({ buckets: 0, cans: 6, unit: "gal" }, "bucket").cans).toBe(1);
+    expect(convertUnit({ buckets: 0, cans: 9, unit: "gal" }, "bucket").cans).toBe(1);
+    expect(convertUnit({ buckets: 0, cans: 10, unit: "gal" }, "bucket").cans).toBe(2);
+    expect(convertUnit({ buckets: 0, cans: 14, unit: "gal" }, "bucket").cans).toBe(2);
+    // …and the floor: rounding down must never mean ordering nothing.
     expect(convertUnit({ buckets: 0, cans: 1, unit: "gal" }, "bucket").cans).toBe(1);
-    expect(convertUnit({ buckets: 0, cans: 6, unit: "gal" }, "bucket").cans).toBe(2);
+    expect(convertUnit({ buckets: 0, cans: 4, unit: "gal" }, "bucket").cans).toBe(1);
+    expect(convertUnit({ buckets: 0, cans: 0, unit: "gal" }, "bucket").cans).toBe(0);
     // A single quart is still a pail's worth of nothing — but it is not zero.
     expect(convertUnit({ buckets: 0, cans: 1, unit: "qt" }, "gal").cans).toBe(1);
     expect(convertUnit({ buckets: 0, cans: 3, unit: "qt" }, "gal").cans).toBe(1);
@@ -109,7 +122,8 @@ describe("changing the unit does not change how much paint was ordered", () => {
   it("reads a legacy bucket+can pair as its real volume", () => {
     // Older saved payloads still carry `buckets` alongside `cans`.
     expect(gallonsOfOverride({ buckets: 2, cans: 3, unit: "gal" })).toBe(13);
-    expect(convertUnit({ buckets: 2, cans: 3, unit: "gal" }, "bucket").cans).toBe(3);
+    // 13 gallons is two pails and three gallons of stock — rounded down.
+    expect(convertUnit({ buckets: 2, cans: 3, unit: "gal" }, "bucket").cans).toBe(2);
   });
 });
 

@@ -981,15 +981,30 @@ export function gallonsOfOverride(o: { buckets: number; cans: number; unit?: Pai
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
-/** Re-express the SAME paint in another unit — what the Gal/Qt/Bucket toggle
- *  does. Volume is preserved: 2 pails is 10 gallons is 40 quarts, in either
- *  direction. Rounds UP, because coming back a gallon short means a second
- *  trip to the store; clamped to the same 0-99 as every other quantity.
+/**
+ * Re-express the SAME paint in another unit — what the Gal/Qt/Bucket toggle
+ * does. 2 pails is 10 gallons is 40 quarts.
  *
- *  Before this existed the toggle read CONTAINERS and handed them to
- *  `packageForUnit`, whose `total` means gallons for a pail and quarts for a
- *  quart. Pressing "Gal" on 2 pails ordered 2 gallons — a fifth of the job's
- *  paint — and neither the screen nor the email showed anything wrong. */
+ * PAILS ROUND DOWN (Karan, 2026-09-18: "round down always"). Seven gallons
+ * pressed to Bucket is ONE pail, not two: a pail is five gallons of a mixed
+ * color, and the third and fourth gallons of an over-bought pail sit on a
+ * shelf forever. The crew carries stock for the remainder, which is the same
+ * reasoning that already sends a sub-gallon surface off the truck.
+ *
+ * Two floors on that, because "round down" must never become "order nothing":
+ *   · never below ONE container while there is any paint at all;
+ *   · the shortfall is always under one container, so nothing can round away
+ *     more than a pail — and the builder tells the estimator what it came to.
+ *
+ * Gallons and quarts still round UP. Nobody has asked for a room to arrive
+ * short by a whole gallon, and unlike a pail there is no waste to weigh
+ * against it.
+ *
+ * Before this function existed the toggle read CONTAINERS and handed them to
+ * `packageForUnit`, whose `total` means gallons for a pail and quarts for a
+ * quart. Pressing "Gal" on 2 pails ordered 2 gallons — a fifth of the job's
+ * paint — and neither the screen nor the email showed anything wrong.
+ */
 export function convertUnit(
   o: { buckets: number; cans: number; unit?: PaintUnit },
   next: PaintUnit
@@ -997,17 +1012,40 @@ export function convertUnit(
   const gal = gallonsOfOverride(o);
   const raw =
     next === "qt" ? gal * QUARTS_PER_GALLON : next === "bucket" ? gal / GALLONS_PER_BUCKET : gal;
-  return { buckets: 0, cans: Math.max(0, Math.min(99, Math.ceil(raw))), unit: next };
+  const rounded = next === "bucket" ? Math.floor(raw) : Math.ceil(raw);
+  // `gal > 0` rather than `rounded > 0`: the whole point of the floor is the
+  // case where rounding down reached zero.
+  const atLeastOne = gal > 0 ? Math.max(1, rounded) : 0;
+  return { buckets: 0, cans: Math.max(0, Math.min(99, atLeastOne)), unit: next };
+}
+
+/** Gallons a conversion leaves behind — 7 gal to pails buys 5 and leaves 2.
+ *  Always under one container, and never a reason to block the change; the
+ *  estimator is told and can press "+". */
+export function conversionShortfallGal(
+  o: { buckets: number; cans: number; unit?: PaintUnit },
+  next: PaintUnit
+): number {
+  const before = gallonsOfOverride(o);
+  const after = gallonsOfOverride(convertUnit(o, next));
+  return Math.max(0, Math.round((before - after) * 100) / 100);
 }
 
 /** Whether `unit` can express this much paint inside the 99-container rail
  *  every quantity is clamped to. 40 gallons is 160 quarts, and clamping that
- *  to 99 would quietly send the vendor an order 15 gallons short. */
+ *  to 99 would quietly send the vendor an order 15 gallons short.
+ *
+ *  Asks how many containers the paint NEEDS, independently of which way
+ *  `convertUnit` rounds — otherwise the deliberate round-down below would read
+ *  as "this unit cannot hold it" and refuse every pail conversion. */
 export function unitCanHold(
   o: { buckets: number; cans: number; unit?: PaintUnit },
   unit: PaintUnit
 ): boolean {
-  return convertUnit(o, unit).cans < 99 || gallonsOfOverride(o) <= gallonsOfOverride(convertUnit(o, unit));
+  const gal = gallonsOfOverride(o);
+  const needed =
+    unit === "qt" ? gal * QUARTS_PER_GALLON : unit === "bucket" ? gal / GALLONS_PER_BUCKET : gal;
+  return Math.ceil(needed) <= 99;
 }
 
 export function overrideTotal(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
