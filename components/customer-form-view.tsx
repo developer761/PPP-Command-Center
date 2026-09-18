@@ -102,7 +102,16 @@ type PriorSurface = {
   skipped?: boolean;
 };
 type PriorLineItem = { id: string; surfaces?: PriorSurface[]; notes?: string };
-type PriorSubmission = { lineItems?: PriorLineItem[]; globalNotes?: string } | null;
+type PriorSubmission = {
+  lineItems?: PriorLineItem[];
+  globalNotes?: string;
+  /** What was picked last time. The exterior line has no Salesforce field of
+   *  its own on the work order, so this payload is the ONLY place it survives
+   *  — and it was never read back, so a second internal entry started blank
+   *  and saved a null over it. */
+  materialType?: string | null;
+  materialTypeExterior?: string | null;
+} | null;
 
 type Props = {
   token: string;
@@ -474,11 +483,18 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // WorkOrder.MaterialType__c if admin set it, else empty so customer picks.
   // Katie 2026-06-03: this dictates which Benjamin Moore / Sherwin-Williams
   // product line we mix the customer's chosen colors in.
-  const [materialType, setMaterialType] = useState<string>(formData.materialType ?? "");
+  // The last submission wins over the work order's default: it is the more
+  // recent decision, and on a re-edit the default is what was there BEFORE
+  // anyone chose anything.
+  const [materialType, setMaterialType] = useState<string>(
+    priorSubmission?.materialType ?? formData.materialType ?? ""
+  );
   // R4.3: the second line. Only meaningful when the job has exterior work —
   // on an exterior-ONLY job `materialType` IS the exterior line, so this stays
   // empty and the single picker below is labelled accordingly.
-  const [materialTypeExterior, setMaterialTypeExterior] = useState<string>("");
+  const [materialTypeExterior, setMaterialTypeExterior] = useState<string>(
+    priorSubmission?.materialTypeExterior ?? ""
+  );
 
   const [submitting, setSubmitting] = useState(false);
   // Ref-based guard — React batches setState so two rapid clicks could
@@ -929,7 +945,8 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               clearLocalDraft(token);
               setState(initialState);
               setGlobalNotes(priorSubmission?.globalNotes ?? "");
-              setMaterialType(formData.materialType ?? "");
+              setMaterialType(priorSubmission?.materialType ?? formData.materialType ?? "");
+              setMaterialTypeExterior(priorSubmission?.materialTypeExterior ?? "");
               setMaterialTypeExterior("");
               setRestoredRooms(0);
               setDraftDismissed(true);

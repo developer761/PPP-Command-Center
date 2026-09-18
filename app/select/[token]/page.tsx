@@ -68,6 +68,11 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
       notes?: string;
     }>;
     globalNotes?: string;
+    /** Both paint lines the last submission chose. Not reading these back is
+     *  why a staff member's exterior line vanished the second time they
+     *  opened the form — it was stored, and nothing looked. */
+    materialType?: string | null;
+    materialTypeExterior?: string | null;
   };
   // Kate round-3 #10: seed from this token's own submission when it has one,
   // and otherwise from the Command Center's most recent submission for this

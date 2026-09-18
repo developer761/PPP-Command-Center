@@ -1,3 +1,4 @@
+import { MACHINE_NOTE_HEADINGS } from "@/lib/customer-form/machine-notes";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { sanitizeFinishes } from "@/lib/customer-form/finish-sanitize";
 import { NextResponse } from "next/server";
@@ -320,6 +321,36 @@ export async function POST(
     }, { status: 409 });
   }
 
+  // Paint product lines → WorkOrder.Product_Lines__c  (Kate R6.2)
+  //
+  // The hub writes what the AM/customer actually selected, and NEVER touches
+  // MaterialType__c. That field stays the estimator's answer from the quote, so
+  // what was SOLD can always be read next to what was ORDERED.
+  //
+  // This replaces a write that had been failing silently since at least
+  // 2026-07-14. MaterialType__c is a restricted picklist whose vocabulary
+  // carries a scope ("Regal Select Exterior") while the hub works in line names
+  // alone, so every value had to be translated — and the four with no
+  // equivalent (Ben, Mooreglo, Mooregard, Moore Life) were dropped rather than
+  // guessed at. Worse, it holds ONE value, so a mixed job's exterior line could
+  // not be recorded at all. A plain text field has neither limit.
+  // …but it still has to be a paint line PPP sells. This endpoint is public —
+  // it takes a token, not a login — and when the write moved from the
+  // restricted MaterialType__c picklist to plain text, the last thing checking
+  // the value went with it. Anything typed into the payload reached
+  // Product_Lines__c on a real work order AND the vendor email as the product
+  // to mix, because paintLineFromValue passes an unknown value through
+  // verbatim. An off-list value is dropped and reported, the same way an
+  // off-list finish is.
+  const rawInterior = typeof body.materialType === "string" ? body.materialType.trim() : "";
+  const rawExterior = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
+  const interiorLine = !rawInterior || VALID_MATERIAL_TYPES.has(rawInterior) ? rawInterior : "";
+  const exteriorLine = !rawExterior || VALID_MATERIAL_TYPES.has(rawExterior) ? rawExterior : "";
+  const droppedMaterialTypes = [
+    ...(rawInterior && !interiorLine ? [rawInterior] : []),
+    ...(rawExterior && !exteriorLine ? [rawExterior] : []),
+  ];
+
   // 3. Build SF write batch
   const attempts: SfWriteAttempt[] = [];
   /** Finishes that were not on the list — kept out of Salesforce, recorded in
@@ -404,10 +435,25 @@ export async function POST(
         continue;
       }
 
-      // Skip surfaces the customer didn't pick. Empty/null colorId means the
-      // customer chose to skip — don't overwrite any existing value with null
-      // unintentionally. (If admin wants to force-clear, they edit in SF.)
-      if (!s.colorId) continue;
+      // A surface the customer didn't pick.
+      //
+      // On a FIRST submit that means "no answer", and writing null over a
+      // color the office already entered would destroy it — so it is left
+      // alone.
+      //
+      // On a RE-EDIT it means the opposite. The form is seeded with what is
+      // already there, so a blank surface is a color the customer removed:
+      // pressing "Change" and not re-picking left Salesforce holding the old
+      // color while the form showed the surface empty, and the crew painted
+      // what the customer had deleted. The re-edit payload is the current
+      // answer for every surface it carries.
+      if (!s.colorId) {
+        if (isReedit && std) {
+          fields[std.color] = null;
+          fields[std.finish] = null;
+        }
+        continue;
+      }
 
       // Ask the ORG what it accepts rather than relying only on the hardcoded
       // switch. Katie is adding Velvet, High-Gloss and the stain opacities to
@@ -501,7 +547,7 @@ export async function POST(
     }
     if (unstorableFinishes.length > 0) {
       if (noteLines.length > 0) noteLines.push("");
-      noteLines.push("Finish not available in the Salesforce list — recorded here:");
+      noteLines.push(MACHINE_NOTE_HEADINGS.unstorableFinish);
       for (const f of unstorableFinishes) noteLines.push(`  ${f}`);
     }
     // A finish that was not on the list at all. The colors still saved; this is
@@ -510,8 +556,33 @@ export async function POST(
     const droppedHere = droppedFinishes.filter((d) => d.lineItemId === submitted.id);
     if (droppedHere.length > 0) {
       if (noteLines.length > 0) noteLines.push("");
-      noteLines.push("Finish not recognised — please confirm with the customer:");
+      noteLines.push(MACHINE_NOTE_HEADINGS.droppedFinish);
       for (const d of droppedHere) noteLines.push(`  ${d.surface} — ${d.finish}`);
+    }
+    // A color picked with NO finish at all. Katie 2026-05-29 required one
+    // "wherever a color is picked", and that was enforced as a BLOCK until
+    // WO 00317803 showed the block discarding three correctly-filled rooms.
+    // Dropping the block without recording the gap moved the problem rather
+    // than solving it: the vendor line would print a color with an empty sheen
+    // segment, and two sheens of one color are two different SKUs (Kate, see
+    // formatOrderSummaryBlock). So it is written where PPP reads it.
+    const missingFinishHere = surfaces
+      .filter((x) => x && typeof x === "object" && x.colorId && !x.finish)
+      .map((x) => String(x.surface ?? ""))
+      .filter(Boolean);
+    if (missingFinishHere.length > 0) {
+      if (noteLines.length > 0) noteLines.push("");
+      noteLines.push(MACHINE_NOTE_HEADINGS.missingFinish);
+      for (const surf of missingFinishHere) noteLines.push(`  ${surf}`);
+    }
+    // A paint line the payload carried that we do not sell. Same reasoning:
+    // dropped rather than rejected (2026-09-17), and `materialTypeDropped` is
+    // returned but rendered NOWHERE, so this note is the only way PPP learns
+    // the customer's pick did not save.
+    if (droppedMaterialTypes.length > 0 && submitted.id === body.lineItems[0]?.id) {
+      if (noteLines.length > 0) noteLines.push("");
+      noteLines.push(MACHINE_NOTE_HEADINGS.droppedPaintLine);
+      for (const m of droppedMaterialTypes) noteLines.push(`  ${m}`);
     }
     // Kate #09: record each "Don't paint this surface" pick as an explicit note.
     for (const surf of skippedSurfaces) {
@@ -567,35 +638,6 @@ export async function POST(
     });
   }
 
-  // Paint product lines → WorkOrder.Product_Lines__c  (Kate R6.2)
-  //
-  // The hub writes what the AM/customer actually selected, and NEVER touches
-  // MaterialType__c. That field stays the estimator's answer from the quote, so
-  // what was SOLD can always be read next to what was ORDERED.
-  //
-  // This replaces a write that had been failing silently since at least
-  // 2026-07-14. MaterialType__c is a restricted picklist whose vocabulary
-  // carries a scope ("Regal Select Exterior") while the hub works in line names
-  // alone, so every value had to be translated — and the four with no
-  // equivalent (Ben, Mooreglo, Mooregard, Moore Life) were dropped rather than
-  // guessed at. Worse, it holds ONE value, so a mixed job's exterior line could
-  // not be recorded at all. A plain text field has neither limit.
-  // …but it still has to be a paint line PPP sells. This endpoint is public —
-  // it takes a token, not a login — and when the write moved from the
-  // restricted MaterialType__c picklist to plain text, the last thing checking
-  // the value went with it. Anything typed into the payload reached
-  // Product_Lines__c on a real work order AND the vendor email as the product
-  // to mix, because paintLineFromValue passes an unknown value through
-  // verbatim. An off-list value is dropped and reported, the same way an
-  // off-list finish is.
-  const rawInterior = typeof body.materialType === "string" ? body.materialType.trim() : "";
-  const rawExterior = typeof body.materialTypeExterior === "string" ? body.materialTypeExterior.trim() : "";
-  const interiorLine = !rawInterior || VALID_MATERIAL_TYPES.has(rawInterior) ? rawInterior : "";
-  const exteriorLine = !rawExterior || VALID_MATERIAL_TYPES.has(rawExterior) ? rawExterior : "";
-  const droppedMaterialTypes = [
-    ...(rawInterior && !interiorLine ? [rawInterior] : []),
-    ...(rawExterior && !exteriorLine ? [rawExterior] : []),
-  ];
   const productLines = formatProductLines({ interior: interiorLine, exterior: exteriorLine });
   if (productLines) {
     attempts.push({

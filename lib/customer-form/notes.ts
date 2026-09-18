@@ -1,4 +1,5 @@
 import { ORPHAN_SURFACES } from "@/lib/customer-form/surface-mapping";
+import { stripMachineNoteBlocks } from "@/lib/customer-form/machine-notes";
 
 /**
  * Extract just the CUSTOMER's own free-text from a WorkOrderLineItem's raw
@@ -24,13 +25,17 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
   // contains that label, so the first occurrence is always the wrapper. Keep
   // only what follows it.
   const idx = s.indexOf("Customer notes:");
-  if (idx !== -1) return s.slice(idx + "Customer notes:".length).trim();
+  if (idx !== -1) return stripMachineNoteBlocks(s.slice(idx + "Customer notes:".length)).trim();
   // No wrapper. This is either crew-written free-text (show as-is) or an
   // orphan-color preamble with no customer note attached — which must NOT be
   // handed back to the customer as if they'd typed it. Kate round-3 #31 gave
   // those lines a room header, so strip the header too when everything under
   // it is machine-generated.
-  return stripOrphanColorPreamble(s).trim();
+  // Without this, a customer who typed nothing had our own bookkeeping —
+  // "No finish chosen — please confirm with the customer: Walls" — handed back
+  // as their note on a re-sent form, and stored a second time when they
+  // submitted it.
+  return stripOrphanColorPreamble(stripMachineNoteBlocks(s)).trim();
 }
 
 /**

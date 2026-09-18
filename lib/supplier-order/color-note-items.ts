@@ -1,4 +1,5 @@
 import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
+import { isMachineNoteHeading } from "@/lib/customer-form/machine-notes";
 
 /**
  * Color Notes → custom color items, one color at a time.
@@ -33,7 +34,9 @@ const SURFACE_LEAD = /^[A-Za-z][A-Za-z0-9 ,'&/()+-]{0,60}:\s*\S/;
  * something a vendor can sell. Both the header and everything indented under
  * it are bookkeeping.
  */
-const UNSTORABLE_FINISH_HEADER = /finish(es)? not available in the salesforce list/i;
+/** All four are recognised from one shared list — this file used to know only
+ *  about the finish one, so the estimator was offered "Walls" and a rejected
+ *  paint line as things to buy. */
 /** The submit route's own cap marker. Never a color. */
 const TRUNCATION_MARKER = /^\[…?\s*truncated/i;
 
@@ -68,7 +71,7 @@ export function colorNoteLines(raw: string | null | undefined): string[] {
       .replace(/^\s*(?:[-–—•*]|\d+[.)])\s+/, "")
       .trim();
     if (!line) { inFinishTrailer = false; continue; }
-    if (UNSTORABLE_FINISH_HEADER.test(line)) { inFinishTrailer = true; continue; }
+    if (isMachineNoteHeading(line)) { inFinishTrailer = true; continue; }
     // The trailer's values are indented under its header. An unindented line
     // ends it — a customer's own words are not part of our bookkeeping.
     if (inFinishTrailer && indented) continue;
