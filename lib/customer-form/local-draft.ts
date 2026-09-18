@@ -70,7 +70,15 @@ function storage(): Storage | null {
   }
 }
 
-export function readLocalDraft(token: string, now: number = Date.now()): LocalDraft | null {
+export function readLocalDraft(
+  token: string,
+  now: number = Date.now(),
+  /** When this token has already been submitted, the time of that submission.
+   *  A draft saved BEFORE it is older than the answer the customer actually
+   *  gave — restoring it silently replaced a newer submission with what was on
+   *  the device when they last typed. */
+  submittedAt?: string | null
+): LocalDraft | null {
   const s = storage();
   if (!s) return null;
   try {
@@ -80,6 +88,13 @@ export function readLocalDraft(token: string, now: number = Date.now()): LocalDr
     if (parsed?.v !== VERSION || !parsed.state || typeof parsed.state !== "object") return null;
     const savedMs = Date.parse(parsed.savedAt ?? "");
     if (Number.isNaN(savedMs) || now - savedMs > MAX_AGE_MS) {
+      clearLocalDraft(token);
+      return null;
+    }
+    // Superseded by the customer's own submission. Dropped rather than kept:
+    // whatever is in Salesforce came later and is what they meant.
+    const submittedMs = submittedAt ? Date.parse(submittedAt) : NaN;
+    if (!Number.isNaN(submittedMs) && savedMs <= submittedMs) {
       clearLocalDraft(token);
       return null;
     }
@@ -174,7 +189,7 @@ export function mergeDraftIntoState<T extends { picks: Record<string, StoredPick
       // work order, and submitting it would fail drift detection all over again.
       if (!(surface in picks)) continue;
       if (!pick || typeof pick !== "object") continue;
-      picks[surface] = {
+      const next = {
         colorId: pick.colorId ?? null,
         colorName: pick.colorName ?? null,
         colorCode: pick.colorCode ?? null,
@@ -182,7 +197,19 @@ export function mergeDraftIntoState<T extends { picks: Record<string, StoredPick
         finish: pick.finish ?? null,
         skipped: !!pick.skipped,
       };
-      touched = true;
+      const before = picks[surface];
+      picks[surface] = next;
+      // "Restored" means the draft CHANGED something. Counting every surface
+      // the draft mentioned told a customer who had filled one room that 12
+      // rooms were restored — on a re-edit the draft echoes the seeded picks,
+      // so it claimed the whole job.
+      if (
+        before?.colorId !== next.colorId ||
+        before?.finish !== next.finish ||
+        !!before?.skipped !== next.skipped
+      ) {
+        touched = true;
+      }
     }
     const notes = typeof saved.notes === "string" ? saved.notes : baseLine.notes;
     if (notes !== baseLine.notes) touched = true;

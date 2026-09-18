@@ -111,6 +111,9 @@ type PriorSubmission = {
    *  and saved a null over it. */
   materialType?: string | null;
   materialTypeExterior?: string | null;
+  /** When the last submission happened. A device draft older than this is
+   *  stale and must not overwrite it. */
+  submittedAt?: string | null;
 } | null;
 
 type Props = {
@@ -518,7 +521,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // behind, or resume one.
   useEffect(() => {
     if (isPreview) return;
-    const draft = readLocalDraft(token);
+    const draft = readLocalDraft(token, Date.now(), priorSubmission?.submittedAt ?? null);
     if (!draft || !draftHasContent(draft)) return;
     const merged = mergeDraftIntoState(initialState, draft);
     // localStorage doesn't exist during SSR, and reading it in render would

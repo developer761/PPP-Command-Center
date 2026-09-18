@@ -73,6 +73,7 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
      *  opened the form — it was stored, and nothing looked. */
     materialType?: string | null;
     materialTypeExterior?: string | null;
+    submittedAt?: string | null;
   };
   // Kate round-3 #10: seed from this token's own submission when it has one,
   // and otherwise from the Command Center's most recent submission for this

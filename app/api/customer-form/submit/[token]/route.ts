@@ -566,10 +566,21 @@ export async function POST(
     // than solving it: the vendor line would print a color with an empty sheen
     // segment, and two sheens of one color are two different SKUs (Kate, see
     // formatOrderSummaryBlock). So it is written where PPP reads it.
+    // `surfaces` has already had unrecognised finishes stripped, so a surface
+    // whose finish was DROPPED looks identical to one the customer never gave
+    // a finish for — and the note said both, about the same surface, in
+    // contradictory words:
+    //
+    //   Finish not recognised …:  Walls — Eggshell Gloss
+    //   No finish chosen …:       Walls
+    //
+    // The first is the true account; the second is an artefact of the order
+    // these two run in.
+    const droppedSurfacesHere = new Set(droppedHere.map((d) => d.surface));
     const missingFinishHere = surfaces
       .filter((x) => x && typeof x === "object" && x.colorId && !x.finish)
       .map((x) => String(x.surface ?? ""))
-      .filter(Boolean);
+      .filter((surf) => surf && !droppedSurfacesHere.has(surf));
     if (missingFinishHere.length > 0) {
       if (noteLines.length > 0) noteLines.push("");
       noteLines.push(MACHINE_NOTE_HEADINGS.missingFinish);
@@ -690,8 +701,25 @@ export async function POST(
       );
       const existing = String(woRes.records?.[0]?.Scheduling_Notes__c ?? "");
       const stamp = `Customer (color form): ${globalNotesText}`;
+      // A customer who EDITS their note used to get both copies on the work
+      // order — "please knock" above "please ring the bell", with nothing to
+      // say which came later. The startsWith guard only caught an UNCHANGED
+      // re-submit.
+      //
+      // The previous stamp is removed by exact text: the last submission's
+      // own note is in submitted_payload, so there is no need to guess where
+      // our block ended (a note with a blank line in it would have been cut in
+      // half by any delimiter rule).
+      const priorNotes = String(
+        (status.token.submitted_payload as { globalNotes?: unknown } | null)?.globalNotes ?? ""
+      ).trim();
+      const priorStamp = priorNotes ? `Customer (color form): ${priorNotes}` : "";
+      const withoutPrior =
+        priorStamp && existing.includes(priorStamp)
+          ? existing.split(priorStamp).join("").replace(/^\s*\n+/, "").trim()
+          : existing;
       if (!existing.trimStart().startsWith(stamp)) {
-        const combined = existing.trim() ? `${stamp}\n\n${existing}` : stamp;
+        const combined = withoutPrior.trim() ? `${stamp}\n\n${withoutPrior.trim()}` : stamp;
         attempts.push({
           sObject: "WorkOrder",
           recordId: status.token.work_order_id,

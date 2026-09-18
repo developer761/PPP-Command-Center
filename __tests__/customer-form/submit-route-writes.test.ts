@@ -56,8 +56,11 @@ vi.mock("@/lib/salesforce/writeback", () => ({
   }),
 }));
 
+let schedulingNotes = "";
 vi.mock("@/lib/salesforce/client", () => ({
-  getSalesforceClient: vi.fn(async () => ({})),
+  getSalesforceClient: vi.fn(async () => ({
+    query: async () => ({ records: [{ Scheduling_Notes__c: schedulingNotes }] }),
+  })),
 }));
 
 vi.mock("@/lib/salesforce/picklists", () => ({
@@ -114,8 +117,19 @@ const woliFields = () => {
 beforeEach(() => {
   captured.attempts = [];
   captured.payloads = [];
+  schedulingNotes = "";
   tokenStatus = { kind: "valid", token: token() };
 });
+
+/** Every WorkOrder field written by the last submit (it writes more than one
+ *  attempt against the same record — ColorsReceived__c, Product_Lines__c and
+ *  Scheduling_Notes__c each arrive separately). */
+const woFields = () => {
+  const last = captured.attempts[captured.attempts.length - 1] ?? [];
+  return last
+    .filter((a) => a.sObject === "WorkOrder")
+    .reduce<Record<string, unknown>>((acc, a) => ({ ...acc, ...a.fields }), {});
+};
 
 describe("a color the customer picked", () => {
   it("reaches Salesforce with its finish", async () => {
@@ -165,6 +179,18 @@ describe("an answer Salesforce cannot store", () => {
     expect(String(f.ColorNotes__c ?? "")).toMatch(/Rainbow Sparkle/);
   });
 
+  it("does not ALSO call that surface 'no finish chosen'", async () => {
+    // Both notes described the same surface in contradictory words: the finish
+    // was recognised-but-unusable, not absent. The second was an artefact of
+    // reading the already-sanitized list.
+    await post({
+      lineItems: line([{ surface: "Walls", colorId: "a02C1", finish: "Rainbow Sparkle" }]),
+    });
+    const note = String(woliFields().ColorNotes__c ?? "");
+    expect(note).toMatch(/not recogni[sz]ed/i);
+    expect(note).not.toMatch(/No finish chosen/i);
+  });
+
   it("records a color picked with no finish at all", async () => {
     // Two sheens of one color are two SKUs, so a missing finish has to be
     // visible rather than silently ordered.
@@ -180,8 +206,9 @@ describe("an answer Salesforce cannot store", () => {
     // Not a 400: the colors are the point, the typo is a note.
     expect(res.status).toBe(200);
     expect(String(woliFields().ColorNotes__c ?? "")).toMatch(/Paint line not recogni[sz]ed/i);
-    const last = captured.attempts[captured.attempts.length - 1] ?? [];
-    expect(last.find((a) => a.sObject === "WorkOrder")?.fields.Product_Lines__c ?? null).toBe(null);
+    // Merged across every WorkOrder write: `.find` could have matched the
+    // ColorsReceived__c attempt and passed this without looking at the field.
+    expect(woFields().Product_Lines__c ?? null).toBe(null);
   });
 
   it("and saves a paint line it DOES sell", async () => {
@@ -191,8 +218,7 @@ describe("an answer Salesforce cannot store", () => {
       lineItems: line([{ surface: "Walls", colorId: "a02C1", finish: "Eggshell" }]),
       materialType: "Regal Select",
     });
-    const last = captured.attempts[captured.attempts.length - 1] ?? [];
-    expect(String(last.find((a) => a.sObject === "WorkOrder")?.fields.Product_Lines__c ?? "")).toMatch(/Regal Select/);
+    expect(String(woFields().Product_Lines__c ?? "")).toMatch(/Regal Select/);
   });
 });
 
@@ -206,5 +232,52 @@ describe("what gets stored for next time", () => {
     const stored = captured.payloads[captured.payloads.length - 1] as Record<string, unknown>;
     expect(stored.materialType).toBe("Regal Select");
     expect(stored.materialTypeExterior).toBe("Ultra Spec Exterior Satin");
+  });
+});
+
+describe("the note the customer leaves for the crew", () => {
+  const withNote = (globalNotes: string) =>
+    post({ lineItems: line([{ surface: "Walls", colorId: "a02C1", finish: "Eggshell" }]), globalNotes });
+
+  it("goes to the top of the work order's scheduling notes", async () => {
+    schedulingNotes = "Gate code 4321";
+    await withNote("Please knock, the bell is broken");
+    expect(String(woFields().Scheduling_Notes__c ?? "")).toBe(
+      "Customer (color form): Please knock, the bell is broken\n\nGate code 4321"
+    );
+  });
+
+  it("REPLACES what the same customer said last time, instead of stacking it", async () => {
+    // Two contradictory instructions, with nothing to say which came later,
+    // is worse than either one alone.
+    schedulingNotes = "Customer (color form): Please knock, the bell is broken\n\nGate code 4321";
+    tokenStatus = {
+      kind: "editable",
+      token: token({ submitted_payload: { globalNotes: "Please knock, the bell is broken" } }),
+    };
+    await withNote("Actually the bell works now, please ring it");
+    const out = String(woFields().Scheduling_Notes__c ?? "");
+    expect(out).toBe("Customer (color form): Actually the bell works now, please ring it\n\nGate code 4321");
+    expect(out).not.toMatch(/knock/);
+  });
+
+  it("writes nothing at all when the note has not changed", async () => {
+    schedulingNotes = "Customer (color form): Please knock, the bell is broken\n\nGate code 4321";
+    tokenStatus = {
+      kind: "editable",
+      token: token({ submitted_payload: { globalNotes: "Please knock, the bell is broken" } }),
+    };
+    await withNote("Please knock, the bell is broken");
+    expect(woFields()).not.toHaveProperty("Scheduling_Notes__c");
+  });
+
+  it("keeps a multi-paragraph note whole", async () => {
+    // Any "cut at the blank line" rule would have split this one in half.
+    const old = "First thing.\n\nSecond thing.";
+    schedulingNotes = `Customer (color form): ${old}\n\nGate code 4321`;
+    tokenStatus = { kind: "editable", token: token({ submitted_payload: { globalNotes: old } }) };
+    await withNote("Just one thing now.");
+    const out = String(woFields().Scheduling_Notes__c ?? "");
+    expect(out).toBe("Customer (color form): Just one thing now.\n\nGate code 4321");
   });
 });

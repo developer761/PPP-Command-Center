@@ -144,3 +144,81 @@ describe("merging a draft onto a changed job (the drift-reload path)", () => {
     expect(state.li1.picks.Walls.colorId).toBeNull();
   });
 });
+
+/* ── a draft the customer's own submission has overtaken ─────────────────── */
+
+describe("a draft older than the submission it would overwrite", () => {
+  const T0 = Date.parse("2026-09-10T10:00:00Z");
+  const pick = (colorId: string | null): StoredPick => ({
+    colorId, colorName: "White Dove", colorCode: "OC-17", colorHex: null, finish: "Eggshell", skipped: false,
+  });
+  const draft = { state: { "wl-1": { picks: { Walls: pick("a02C1") }, notes: "" } }, globalNotes: "", materialType: "", materialTypeExterior: "" };
+
+  it("is dropped, not restored over it", () => {
+    // They typed on this device, submitted from it, and came back to the same
+    // link. What is in Salesforce came later and is what they meant.
+    writeLocalDraft(TOKEN, draft, T0);
+    const submittedAt = new Date(T0 + 60_000).toISOString();
+    expect(readLocalDraft(TOKEN, T0 + 120_000, submittedAt)).toBeNull();
+    // …and cleared, so it cannot come back on the next load either.
+    expect(window.localStorage.getItem(draftKey(TOKEN))).toBeNull();
+  });
+
+  it("but a draft typed AFTER the submission is a real re-edit and survives", () => {
+    writeLocalDraft(TOKEN, draft, T0);
+    const submittedAt = new Date(T0 - 60_000).toISOString();
+    expect(readLocalDraft(TOKEN, T0 + 1000, submittedAt)).not.toBeNull();
+  });
+
+  it("and a token that was never submitted is unaffected", () => {
+    writeLocalDraft(TOKEN, draft, T0);
+    expect(readLocalDraft(TOKEN, T0 + 1000, null)).not.toBeNull();
+    expect(readLocalDraft(TOKEN, T0 + 1000, "not a date")).not.toBeNull();
+  });
+});
+
+describe("how many rooms the banner says were restored", () => {
+  const pick = (colorId: string | null, finish: string | null = "Eggshell"): StoredPick => ({
+    colorId, colorName: "White Dove", colorCode: "OC-17", colorHex: null, finish, skipped: false,
+  });
+  const base = {
+    "wl-1": { picks: { Walls: pick("a02C1") }, notes: "" },
+    "wl-2": { picks: { Walls: pick("a02C2") }, notes: "" },
+    "wl-3": { picks: { Walls: pick(null, null) }, notes: "" },
+  };
+
+  it("counts only the rooms the draft actually changed", () => {
+    // On a re-edit the form is seeded with the prior picks and the draft
+    // echoes them back. Counting every room the draft mentioned told a
+    // customer who had filled ONE room that the whole house was restored.
+    const draft = {
+      state: {
+        "wl-1": { picks: { Walls: pick("a02C1") }, notes: "" },       // unchanged
+        "wl-2": { picks: { Walls: pick("a02C2") }, notes: "" },       // unchanged
+        "wl-3": { picks: { Walls: pick("a02C9") }, notes: "" },       // the one they did
+      },
+    };
+    const out = mergeDraftIntoState(base, draft);
+    expect(out.restoredRooms).toBe(1);
+    // The values still come through — this is about the COUNT, not the merge.
+    expect(out.state["wl-3"].picks.Walls.colorId).toBe("a02C9");
+    expect(out.state["wl-1"].picks.Walls.colorId).toBe("a02C1");
+  });
+
+  it("counts a finish change, and a 'don't paint' pick, as changes too", () => {
+    expect(
+      mergeDraftIntoState(base, { state: { "wl-1": { picks: { Walls: pick("a02C1", "Flat") }, notes: "" } } }).restoredRooms
+    ).toBe(1);
+    expect(
+      mergeDraftIntoState(base, {
+        state: { "wl-1": { picks: { Walls: { ...pick("a02C1"), skipped: true } }, notes: "" } },
+      }).restoredRooms
+    ).toBe(1);
+  });
+
+  it("and a note the customer typed still counts", () => {
+    expect(
+      mergeDraftIntoState(base, { state: { "wl-1": { picks: {}, notes: "please knock first" } } }).restoredRooms
+    ).toBe(1);
+  });
+});
