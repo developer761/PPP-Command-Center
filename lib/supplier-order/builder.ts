@@ -933,8 +933,16 @@ export function formatOrderSummaryBlock(
   const printedIdentity = estimates.map((e, i) =>
     `${effective[i] ?? ""}||${formatColorLabel(e.colorName, e.colorCode)}||${e.finish ?? ""}`
   );
+  // Only lines that will actually PRINT can be confused with each other. An
+  // excluded twin — a hall the estimator set to 0 — is not in the email, so
+  // tagging the surviving row "(bathroom)" explained nothing and put a room
+  // back on the vendor's copy for no reason (Kate R4.25).
   const ambiguous = new Set(
-    printedIdentity.filter((id, i) => printedIdentity.some((other, j) => j !== i && other === id))
+    printedIdentity.filter(
+      (id, i) =>
+        !estimates[i].excluded &&
+        printedIdentity.some((other, j) => j !== i && other === id && !estimates[j].excluded)
+    )
   );
 
   for (let i = 0; i < estimates.length; i++) {

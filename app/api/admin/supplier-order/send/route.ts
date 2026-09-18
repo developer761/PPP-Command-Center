@@ -75,6 +75,10 @@ export async function POST(request: Request) {
     pickupLocation?: string;
     requiredByDate?: string;
     lineItems?: unknown[];
+    /** True when at least one color line carries a quantity — `lineItems` is
+     *  the per-surface placement list and stays non-empty when every color was
+     *  zeroed, so it cannot answer this. */
+    paintOrdered?: boolean;
     extras?: unknown[];
     specialInstructions?: string;
     // Per-color Material Type overrides — already baked into `body` at draft
@@ -431,7 +435,7 @@ export async function POST(request: Request) {
   // tell a customer their color change came too late, and a General Supplies
   // order — rollers, tape, drop cloths — or an extras-only order would have
   // said that about a job whose paint nobody has bought yet.
-  const orderedPaint = (body.lineItems ?? []).length > 0;
+  const orderedPaint = body.paintOrdered ?? (body.lineItems ?? []).length > 0;
   try {
     const { error: stampErr } = orderedPaint
       ? await sbAdmin

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { formatOrderSummaryBlock } from "@/lib/supplier-order/builder";
 import {
+  applyQuantityOverrides,
+  quantityKey,
   estimateOrderGallons,
   formatOrderQuantity,
   isWindowSurface,
@@ -233,6 +235,33 @@ describe("a combined area is not a room-type default", () => {
       room("Kitchen", 1, 1, { floorAreaSqft: 9_999_999, surfaces: [surf("Walls", "w", "walls")] }),
     ]);
     if (e.cans === 1) expect(e.defaultedNote ?? "").toMatch(/cabinets/i);
+  });
+});
+
+describe("warnings a person can actually clear", () => {
+  it("typing a quantity clears 'needs measurement'", () => {
+    // It stayed true after an override, so the ⚠ sat on the row forever —
+    // there was no way to answer it.
+    const out = estimateOrderGallons([
+      room("Bedroom", 12, 15, { surfaces: [surf("Cabinets", "one-white", "unsized")] }),
+    ]);
+    expect(out[0].needsMeasurement || out[0].manualOnly).toBe(true);
+    const applied = applyQuantityOverrides(
+      out,
+      new Map([[quantityKey(out[0].colorId, out[0].finish), { buckets: 0, cans: 2, unit: "gal" as const }]])
+    );
+    expect(applied[0].needsMeasurement).toBe(false);
+    expect(applied[0].manualOnly).toBe(false);
+  });
+
+  it("openings bigger than the wall do not zero a measured room", () => {
+    // 20 doors in a 10x10 room deducts 415 sq ft from 320. Clamping to zero
+    // ordered nothing and blamed the measurement.
+    const [e] = estimateOrderGallons([
+      room("Bedroom", 10, 10, { doors: 20, windows: 0, surfaces: [surf("Walls", "w", "walls")] }),
+    ]);
+    expect(e.cans + e.buckets).toBeGreaterThan(0);
+    expect(e.manualOnly ?? false).toBe(false);
   });
 });
 

@@ -31,6 +31,8 @@ type Draft = {
   subject: string;
   body: string;
   lineItems: Array<Record<string, unknown>>;
+  /** The buy-list, so Send can say whether any paint was actually bought. */
+  gallonEstimates: Array<{ excluded?: boolean; buckets: number; cans: number }>;
   unresolvedAddress: boolean;
   deliveryAddress: DeliveryAddress | null;
   requiredByDate: string;
@@ -188,9 +190,11 @@ export default function OrderFulfillmentView({
       fulfillmentDirty.current = true;
       return;
     }
-    // …and skip anything that still matches the untouched state, however many
-    // renders it took to settle.
-    if (savedFulfillmentJson.current === fulfillmentJson) return;
+    // …and skip anything that still matches what the row already holds. Only
+    // once the baseline EXISTS: before the first draft lands it is null, and
+    // returning early here threw away edits typed in that window — which is
+    // most of a second, since the first draft is a full Salesforce rebuild.
+    if (savedFulfillmentJson.current !== null && savedFulfillmentJson.current === fulfillmentJson) return;
     const parsed = JSON.parse(fulfillmentJson) as FulfillmentState;
     if (fulfillmentIsEmpty(parsed)) return;
     const t = setTimeout(() => {
@@ -392,6 +396,13 @@ export default function OrderFulfillmentView({
           pickupLocation: fulfillment === "pickup" ? pickupLocation : null,
           requiredByDate: requiredByValue || draft.requiredByDate,
           lineItems: draft.lineItems,
+          // Did this order actually BUY paint? `lineItems` is the per-surface
+          // placement list — it is non-empty even when every color was zeroed
+          // — and the send route uses this to decide whether to record that
+          // the job's paint has been ordered.
+          paintOrdered: draft.gallonEstimates.some(
+            (e) => !e.excluded && (e.buckets > 0 || e.cans > 0)
+          ),
           extras: build.extras,
           specialInstructions: instructions.trim() || null,
           materialType: build.mainMaterialType || undefined,
@@ -695,6 +706,17 @@ export default function OrderFulfillmentView({
         )}
       </section>
 
+      {/* Chose "Other" and left it blank: the sentinel trims to empty and the
+          email falls back to the vendor's billing address or their first
+          branch — so a worker who said "not one of these" gets branch one, and
+          the row disagrees with the vendor's copy. */}
+      {fulfillment === "pickup" && pickupLocation.trim() === "" && (
+        <p role="alert" className="text-[11px] text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-3 py-2">
+          No pickup branch named — the email will say whichever address this vendor has on file.
+          Type the branch if it matters.
+        </p>
+      )}
+
       {/* Contact (#29) */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap">
         <div className="min-w-0">
@@ -743,6 +765,10 @@ export default function OrderFulfillmentView({
         <div className="relative">
           <textarea
             value={editedBody ?? draft?.body ?? ""}
+            // Editing before the draft exists set `editedBody` to a fragment,
+            // and `bodyToSend` prefers it forever — so the vendor was emailed
+            // the two words somebody typed while waiting.
+            readOnly={!draft}
             onChange={(e) => {
               // Captured on the first CHANGE, not on focus. On focus, clicking
               // into the body and then pressing Pickup — which correctly
@@ -772,8 +798,8 @@ export default function OrderFulfillmentView({
           </span>
           {editedBody !== null && editedUnder && editedUnder !== fulfillmentFingerprint && (
             <span role="alert" className="text-ppp-orange-700 font-semibold">
-              You changed the fulfilment AFTER editing this email, so the text below is out of date —
-              it still has the old delivery details. Reset it, or edit those lines by hand.
+              You changed the order&apos;s details AFTER editing this email, so the text below is out of
+              date — it still has what was there before. Reset it, or edit those lines by hand.
             </span>
           )}
           {editedBody !== null && (
@@ -807,7 +833,11 @@ export default function OrderFulfillmentView({
               <button
                 type="button"
                 onClick={handleCopy}
-                disabled={!draft || sending}
+                // `loadingDraft` too, exactly as Send is: `draft` still holds the
+            // PREVIOUS body while a rebuild is in flight, and for a phone-only
+            // vendor this button is the only path to them, so nothing else
+            // would catch it.
+            disabled={!draft || sending || loadingDraft}
                 className="px-3.5 py-2 min-h-[44px] rounded-lg border border-ppp-charcoal-100 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors disabled:opacity-60"
               >
                 {copied ? "✓ Copied" : "Copy to Clipboard"}

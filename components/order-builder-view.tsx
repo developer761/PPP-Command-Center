@@ -280,7 +280,20 @@ export default function OrderBuilderView({
         setNotPersisted(!r.persisted);
       });
     }, 600);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      // Fire the pending save rather than dropping it. Stepping a quantity and
+      // clicking "← Back to work order" inside the debounce lost the edit
+      // silently — which is the exact symptom that started this whole batch
+      // ("sometimes I add like gallons and stuff and it didn't like save").
+      if (savedPayloadJson.current !== payloadJson) {
+        const seqRef = saveSeq;
+        const seq = ++seqRef.current;
+        void save(accountId, snapshot, false).then((r) => {
+          if (seq === seqRef.current && r.ok) savedPayloadJson.current = payloadJson;
+        });
+      }
+    };
   }, [payload, payloadJson, supplier, save, loadedFor]);
 
   /* ── Load the saved order for THIS vendor ───────────────────────────────
@@ -368,12 +381,17 @@ export default function OrderBuilderView({
 
   /* ── Extras catalogue ──────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!supplier) return;
+    if (!supplierId) return;
     let cancelled = false;
     (async () => {
+      // A vendor's catalogue is that vendor's. Leaving the previous one on
+      // screen while the new one loads (or fails) let A-only sundries be
+      // ticked onto B's order.
+      setCatalog([]);
+      setExtrasError(null);
       try {
         const res = await fetch(
-          `/api/admin/supplier-order/extras?supplierAccountId=${encodeURIComponent(supplier.accountId)}`
+          `/api/admin/supplier-order/extras?supplierAccountId=${encodeURIComponent(supplierId)}`
         );
         const data = await res.json();
         if (cancelled) return;
@@ -388,10 +406,15 @@ export default function OrderBuilderView({
         if (Array.isArray(data?.extras)) setCatalog(data.extras);
       } catch (err) {
         console.warn("[order-builder] extras fetch failed:", err);
+        // A THROWN fetch — offline, DNS, a dropped connection, the ordinary
+        // case on a phone — used to leave the panel reading "No matches.",
+        // which is the very thing the ok===false branch above was added to
+        // stop. Both paths say the same thing now.
+        if (!cancelled) setExtrasError(err instanceof Error ? err.message : String(err));
       }
     })();
     return () => { cancelled = true; };
-  }, [supplier]);
+  }, [supplierId]);
 
   /* ── Draft (the estimate + what-to-buy list) ────────────────────────────
    * Re-fetched when the inputs that change the ORDER change. Crucially the
@@ -712,6 +735,15 @@ export default function OrderBuilderView({
   /* ── Advance ───────────────────────────────────────────────────────────── */
   const handleAdvance = async () => {
     if (!supplier || advancing) return;
+    // The load effect leaves `loadedFor` unset when the GET failed, precisely
+    // so the autosave cannot write over a row we could not read. Continue used
+    // the same payload through the door next to it — and stamped it committed.
+    if (loadedFor !== supplier.accountId) {
+      setSaveError(
+        "This vendor's saved order hasn't loaded, so continuing would overwrite it. Refresh the page first."
+      );
+      return;
+    }
     setAdvancing(true);
     setSaveError(null);
     const r = await save(supplier.accountId, payload, true);
@@ -900,7 +932,12 @@ export default function OrderBuilderView({
         ) : (
           <SupplierPickList
             onPick={(s: ActiveSupplier) => {
-              setPayload(emptyBuildPayload());
+              // Keep the custom color items typed before a vendor existed. The
+              // Color Notes "Add" buttons sit in the source panel ABOVE the
+              // vendor picker — deliberately, Katie item 9 — so on a fresh work
+              // order they are the first thing a person can act on, and picking
+              // a vendor then threw their work away without a word.
+              setPayload((cur) => ({ ...emptyBuildPayload(), customColorItems: cur.customColorItems }));
               setLoadedFor(null);
                 savedPayloadJson.current = null;
               setSupplier({ accountId: s.accountId, name: s.name });
@@ -1564,6 +1601,11 @@ export default function OrderBuilderView({
                 <span className="text-ppp-orange-700">
                   {needQty.length === 1 ? "1 color still needs" : `${needQty.length} colors still need`} a quantity — you can set them on the next step too.
                 </span>
+              ) : savedPayloadJson.current === null ? (
+                // "Order saved." was printed whenever nothing was wrong —
+                // including before a single save had happened, and while the
+                // autosave was not even armed.
+                <>Fulfilment is next: required-by date, delivery or pickup, and the email.</>
               ) : (
                 <>Order saved. Fulfilment is next: required-by date, delivery or pickup, and the email.</>
               )}

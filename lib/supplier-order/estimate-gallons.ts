@@ -395,7 +395,13 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
   } else {
     const grossWall = perimeter * height;
     const wallDeduct = doors * cfg.deductDoorSqft + windows * cfg.deductWindowSqft + closets * cfg.deductClosetSqft;
-    wallSqft = Math.max(0, grossWall - wallDeduct) * coats;
+    // Openings can exceed the wall they are cut into — 20 doors in a 10x10
+    // room deducts 415 sq ft from 320. Clamping to zero made a MEASURED room
+    // order nothing and report "needs measurement", blaming the measurement
+    // for a count. A floor of 20% of the gross keeps the line orderable and
+    // visibly small, which is what an estimator can act on.
+    const MIN_WALL_FRACTION = 0.2;
+    wallSqft = Math.max(grossWall * MIN_WALL_FRACTION, grossWall - wallDeduct) * coats;
   }
 
   // Jason's model: the room's linear feet plus a flat 25% for door and window
@@ -1046,6 +1052,11 @@ export function applyQuantityOverrides(
       // An explicitly-typed quantity is an answer, not a gap.
       manualOnly: false,
       unsized: false,
+      // …and the room no longer "needs measurement" either: the worker has
+      // answered the question measuring would have answered. It stayed true,
+      // so typing the cabinet quantity left "⚠ a room is unmeasured — this may
+      // be low" on the row forever, with no way to clear it.
+      needsMeasurement: false,
       // ...including zero, which is the answer "don't order this one".
       excluded: buckets === 0 && cans === 0,
     };
