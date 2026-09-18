@@ -52,7 +52,7 @@ const SRC = FILES.map((f) => readFileSync(f, "utf8")).join("\n");
  *
  * `insert.ts` is shared with the residential side, so only the functions that
  * actually write a `commercial_` kind count. That excludes
- * `insertCustomerFormSubmittedNotification` (the residential colour form),
+ * `insertCustomerFormSubmittedNotification` (the residential color form),
  * which has no business posting in Tomco's channel — and includes
  * `insertCommercialTeamAssignedNotification`, which picks its kind with a
  * ternary and so is invisible to any `kind: "commercial_…"` pattern.
@@ -109,7 +109,7 @@ function eventFunctions(): Fn[] {
        *
        * Widening the name pattern pulled in
        * `insertCustomerFormSubmittedNotification`, which raises
-       * `customer_form_submitted` — the RESIDENTIAL colour form. Requiring that
+       * `customer_form_submitted` — the RESIDENTIAL color form. Requiring that
        * to post in Tomco's commercial channel would be a wrong answer arrived at
        * by a wider net, which is its own kind of broken check.
        *
