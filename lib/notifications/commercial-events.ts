@@ -453,13 +453,33 @@ export async function insertCommercialTaskAssignedNotification(input: {
 
   // ONE post per event — inserted above the per-recipient work below, so a
   // bell that fans out to five people still puts a single line in the channel.
-  await postCommercialSlack({
-    text: `*${slackEscape(title)}*`,
-    context: slackEscape(body),
-    url: relativeLink,
-    urlLabel: "Open the task",
-    tone: "neutral",
-  });
+  //
+  // …EXCEPT when you assigned it to yourself.
+  //
+  // Everywhere else on this page the Slack post deliberately runs before, and
+  // outside, the recipient check: the channel is the room the team watches, and
+  // "invoice paid" or "proposal sent" is exactly as true when the deal has no
+  // assignees. That reasoning holds for company facts. It does not hold here.
+  //
+  // A task you assign to yourself is a private to-do — the single most common
+  // way anyone uses a task list — and the dispatcher below self-skips it, so
+  // the bell correctly goes nowhere. The channel post did not, which meant
+  // every personal reminder landed in the team channel, worded "<name> assigned
+  // you a task" in a room where "you" is nobody.
+  //
+  // One rule for both channels now: if there is nobody to tell, don't tell a
+  // room either. A task assigned to someone ELSE still posts, as it should.
+  const selfAssigned =
+    !!input.actingUserId && input.actingUserId === input.recipientUserId;
+  if (!selfAssigned) {
+    await postCommercialSlack({
+      text: `*${slackEscape(title)}*`,
+      context: slackEscape(body),
+      url: relativeLink,
+      urlLabel: "Open the task",
+      tone: "neutral",
+    });
+  }
 
   await dispatchCommercialNotification({
     kind: "commercial_task_assigned",
@@ -1481,7 +1501,10 @@ export async function insertCommercialInvoiceCreatedNotifications(input: {
   actorName: string;
 }): Promise<{ fanout: number }> {
   const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
-  if (recipients.length === 0) return { fanout: 0 };
+  // NOTE: the recipient gate is deliberately BELOW the Slack post, not above
+  // it — see the block comment on the post. 130 of the 132 live deals have no
+  // assignee at all, so gating here silenced the channel for virtually every
+  // invoice on the platform.
 
   const relativeLink = `/commercial/invoices/${input.invoiceId}`;
   const emailLink = appendBase(relativeLink);
@@ -1510,8 +1533,18 @@ export async function insertCommercialInvoiceCreatedNotifications(input: {
 </div>`;
 
   let fanout = 0;
-  // ONE post per event — inserted above the per-recipient work below, so a
-  // bell that fans out to five people still puts a single line in the channel.
+  // ONE post per event, and it runs BEFORE the recipient check.
+  //
+  // This used to sit after `if (recipients.length === 0) return` — so an
+  // invoice raised on a deal with nobody assigned produced no bell, no email
+  // AND no channel post. Nothing, anywhere. 130 of the 132 live deals have no
+  // assignee, so that was very nearly every invoice on the platform.
+  //
+  // Bells and emails are per-person and giving up when nobody is assigned is
+  // right for them. The channel is not per-person — it is the room the team
+  // watches — and this event is exactly as true when the deal has no
+  // assignees. `insertCommercialInvoicePaidNotifications` already had the
+  // ordering right and says so; these two had drifted from it.
   await postCommercialSlack({
     text: `*${slackEscape(title)}*`,
     context: slackEscape(body),
@@ -1519,6 +1552,9 @@ export async function insertCommercialInvoiceCreatedNotifications(input: {
     urlLabel: "Open the invoice",
     tone: "neutral",
   });
+
+  // Per-person work only. The channel has already been told.
+  if (recipients.length === 0) return { fanout: 0 };
 
   await Promise.allSettled(
     recipients.map(async (uid) => {
@@ -1552,7 +1588,10 @@ export async function insertCommercialInvoicePaymentRecordedNotifications(input:
   actorName: string;
 }): Promise<{ fanout: number }> {
   const recipients = await resolveOppTeamRecipients(input.opportunityId, input.actingUserId);
-  if (recipients.length === 0) return { fanout: 0 };
+  // NOTE: the recipient gate is deliberately BELOW the Slack post, not above
+  // it — see the block comment on the post. 130 of the 132 live deals have no
+  // assignee at all, so gating here silenced the channel for virtually every
+  // invoice on the platform.
 
   const relativeLink = `/commercial/invoices/${input.invoiceId}#payments`;
   const emailLink = appendBase(relativeLink);
@@ -1586,8 +1625,18 @@ export async function insertCommercialInvoicePaymentRecordedNotifications(input:
 </div>`;
 
   let fanout = 0;
-  // ONE post per event — inserted above the per-recipient work below, so a
-  // bell that fans out to five people still puts a single line in the channel.
+  // ONE post per event, and it runs BEFORE the recipient check.
+  //
+  // This used to sit after `if (recipients.length === 0) return` — so an
+  // invoice raised on a deal with nobody assigned produced no bell, no email
+  // AND no channel post. Nothing, anywhere. 130 of the 132 live deals have no
+  // assignee, so that was very nearly every invoice on the platform.
+  //
+  // Bells and emails are per-person and giving up when nobody is assigned is
+  // right for them. The channel is not per-person — it is the room the team
+  // watches — and this event is exactly as true when the deal has no
+  // assignees. `insertCommercialInvoicePaidNotifications` already had the
+  // ordering right and says so; these two had drifted from it.
   await postCommercialSlack({
     text: `*${slackEscape(title)}*`,
     context: slackEscape(body),
@@ -1595,6 +1644,9 @@ export async function insertCommercialInvoicePaymentRecordedNotifications(input:
     urlLabel: "Open the invoice",
     tone: "good",
   });
+
+  // Per-person work only. The channel has already been told.
+  if (recipients.length === 0) return { fanout: 0 };
 
   await Promise.allSettled(
     recipients.map(async (uid) => {

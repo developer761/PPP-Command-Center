@@ -25,15 +25,34 @@ import { commercialDb } from "./db";
  *   · Stale "crew"     → someone briefly MORE restricted than they should be.
  *                        Harmless; they see their own crew home for <30s.
  *   · Stale "not crew" → someone briefly LESS restricted. This is the one that
- *                        matters, and it is closed by invalidating at the write
- *                        path: `setCrewRole` is the ONLY place the application
- *                        writes this table (verified by grep across app/, lib/
- *                        and scripts/), so a grant or revoke takes effect on the
- *                        very next request rather than up to 30s later.
+ *                        matters. `setCrewRole` is the ONLY place the
+ *                        application writes this table (verified by grep across
+ *                        app/, lib/ and scripts/) and it invalidates on both
+ *                        sides of the write.
  *
- * A role changed by hand in the SQL editor is not seen for up to 30 seconds.
- * That is the identical trade already accepted for `profiles.is_admin`, which
- * is a strictly LARGER privilege than the crew role this gates.
+ * ── The limit of that invalidation, stated plainly ─────────────────────────
+ *
+ * This cache is a module-level Map, so `invalidateRolesCache` clears it on THE
+ * INSTANCE THAT HANDLED THE WRITE and nowhere else. On a single long-lived
+ * server that is the whole story. On Vercel, with more than one warm lambda,
+ * it is not: an admin's revoke can land on instance A while the revoked user's
+ * next request is served by instance B, which keeps answering from its own
+ * cache until its TTL expires.
+ *
+ * So the honest statement is: a crew grant or revoke is effective immediately
+ * on the instance that took the write, and within 30 seconds everywhere else.
+ * An earlier version of this comment claimed the invalidation closed the
+ * window outright. It does not, and a claim like that on a security boundary
+ * is worse than the window itself, because the next reader trusts it.
+ *
+ * A role changed by hand in the SQL editor has the same 30-second ceiling.
+ *
+ * WHY THAT IS ACCEPTED HERE: `getProfileByUserId` has carried exactly this
+ * trade — same TTL, same per-instance invalidation — since the 2026-06-14
+ * speed pass, and it gates `is_admin`, a strictly LARGER privilege than the
+ * crew role. Taking a different line here would be inconsistent rather than
+ * safer. If that ceiling is ever judged too long, the fix is to lower TTL_MS
+ * for both, not to un-cache one of them.
  *
  * ── A failed read is never cached ──────────────────────────────────────────
  *
