@@ -2073,13 +2073,40 @@ export default async function OpportunityDetailPage({
    * It is memoised per request, so it is one call however many times it is
    * asked.
    */
-  const [account, pageViewerRes, proposalTotals, dealProposals] =
-    await Promise.all([
-      getCommercialAccount(opp.account_id),
-      createClient().then((c) => c.auth.getUser()),
-      listCurrentProposalTotalByOpp([opp.id]),
-      listProposalsForOpp(opp.id),
-    ]);
+  // ── Status path reads folded in (2026-09-19) ────────────────────────────
+  //
+  // These were TWO Promise.alls, one after the other: the account/viewer/
+  // proposal group, then the project/work-order/invoice/status-log group. The
+  // second waited on the first for no reason at all — every one of the eight
+  // needs only `opp`, which is already in hand, and nothing in the first group
+  // feeds the second. At the 106–436ms these loaders measure, that ordering
+  // cost a whole extra round trip on every open of the page and on every
+  // server action, since each action ends in a revalidate that renders it
+  // again.
+  //
+  // `canViewReport` still comes after: it needs the user fetched here. It is
+  // memoised per request, so it is one call however many times it is asked.
+  const [
+    account,
+    pageViewerRes,
+    proposalTotals,
+    dealProposals,
+    pathProject,
+    pathWorkOrder,
+    pathInvoices,
+    pathStatusLog,
+  ] = await Promise.all([
+    getCommercialAccount(opp.account_id),
+    createClient().then((c) => c.auth.getUser()),
+    listCurrentProposalTotalByOpp([opp.id]),
+    listProposalsForOpp(opp.id),
+    getProjectForOpportunity(opp.id),
+    getWorkOrderForOpp(opp.id).catch(() => null),
+    listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
+    // Feeds the progress bar's "skipped" marks. Unconditional: the SALES path
+    // renders for every deal, bids included, not just won ones.
+    listOpportunityStatusLog(opp.id).catch(() => []),
+  ]);
   // The Jobs report's per-job page is this deal, read-only, on one printable
   // sheet — the thing people ask for when they want to send "everything about
   // this job" somewhere. Offered only when the viewer can actually open it:
@@ -2097,16 +2124,8 @@ export default async function OpportunityDetailPage({
   const pageProposalTotal = proposalTotals.get(opp.id);
 
   // ── Status path, attention and stage KPIs (steps 4–5) ────────────────────
-  // Reads first, so everything below is derived from ONE set of numbers.
-  const [pathProject, pathWorkOrder, pathInvoices, pathStatusLog] =
-    await Promise.all([
-      getProjectForOpportunity(opp.id),
-      getWorkOrderForOpp(opp.id).catch(() => null),
-      listCommercialInvoices({ opportunityId: opp.id }).catch(() => []),
-      // Feeds the progress bar's "skipped" marks. Unconditional: the SALES path
-      // renders for every deal, bids included, not just won ones.
-      listOpportunityStatusLog(opp.id).catch(() => []),
-    ]);
+  // The four reads these derive from are fetched in the block above, so
+  // everything below is derived from ONE set of numbers.
 
   // A deal keeps its project when un-won IF the project holds anything (the
   // un-win archive guard in ensure.ts). So a deal dragged back to a pre-sale
@@ -2886,11 +2905,31 @@ export default async function OpportunityDetailPage({
   // The Activity rail. A read of records that already exist — status log,
   // notes, tasks, proposals — merged into one chronology. Fetched only for the
   // tab that renders it, so every other tab pays nothing for it.
-  const activityFeed = buildActivityFeed(
-    tab === "info" && !isDeletedDeal ? await loadActivityEntries(opp.id) : [],
-    etTodayIso(),
-    { at: opp.follow_up_at, notes: opp.follow_up_notes },
-  );
+  //
+  // Fetched alongside the crew panel below rather than before it. Both are
+  // gated on the same tab and both need only `opp.id`, so running them one
+  // after the other cost a round trip that bought nothing — on the DEFAULT
+  // tab, which is the one every button on this page revalidates back into.
+  // The two gates are deliberately NOT the same. The crew panel renders on a
+  // soft-deleted deal (Alex still reaches the money history there); the
+  // activity rail does not. Collapsing them into one condition would quietly
+  // drop the labor panel from every deleted deal.
+  const onInfoTab = tab === "info";
+  const wantActivity = onInfoTab && !isDeletedDeal;
+  const [activityEntries, oppCrewSchedule, oppCrewDetail, oppLaborCosts] =
+    onInfoTab
+      ? await Promise.all([
+          wantActivity ? loadActivityEntries(opp.id) : Promise.resolve([]),
+          crewScheduleForOpp(opp.id, etTodayIso()),
+          fieldOpsCrewDetailForOpp(opp.id),
+          costBreakdownForProject(opp.id),
+        ])
+      : [[], null, null, null];
+
+  const activityFeed = buildActivityFeed(activityEntries, etTodayIso(), {
+    at: opp.follow_up_at,
+    notes: opp.follow_up_notes,
+  });
 
   /**
    * Crew on this job — booked, worked, paid.
@@ -2906,16 +2945,9 @@ export default async function OpportunityDetailPage({
    *
    * All three in ONE Promise.all, and only for the tab that renders them — this
    * page is already the slowest in the platform and three more sequential round
-   * trips on every load is exactly how it got that way.
+   * trips on every load is exactly how it got that way. They are fetched in the
+   * block above, together with the activity rail, for the same reason.
    */
-  const [oppCrewSchedule, oppCrewDetail, oppLaborCosts] =
-    tab === "info"
-      ? await Promise.all([
-          crewScheduleForOpp(opp.id, etTodayIso()),
-          fieldOpsCrewDetailForOpp(opp.id),
-          costBreakdownForProject(opp.id),
-        ])
-      : [null, null, null];
   const laborPanel = oppCrewSchedule
     ? {
         upcomingDays: oppCrewSchedule.upcomingDays,

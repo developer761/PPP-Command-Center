@@ -142,26 +142,77 @@ try {
   }
   if (acc?.[0]) paths.push(`/commercial/accounts/${acc[0].id}`, `/commercial/accounts/${acc[0].id}/edit`);
   if (inv?.[0]) paths.push(`/commercial/invoices/${inv[0].id}`);
+  // ONE DEAL OF EVERY STATUS, not just one deal.
+  //
+  // This picked a single opportunity and walked its tabs. But the detail page
+  // branches hard on status: a won deal fetches financials, change orders,
+  // submittals, closeout, retainage and the AIA roll-up, and a bid fetches none
+  // of them — so whichever deal came back first was the only path covered, and
+  // the other six statuses rendered in nobody's test. The page is 8,300 lines
+  // and the most-edited file in the platform; that is the wrong one to cover
+  // a seventh of.
+  const OPP_TABS = [
+    "", "?tab=info", "?tab=proposals", "?tab=docs", "?tab=activity",
+    "?tab=project&sub=invoices", "?tab=project&sub=aia",
+    "?tab=project&sub=change-orders", "?tab=project&sub=submittals",
+  ];
+  const OPP_STATUSES = [
+    "post_sale_closed", "pre_construction", "proposal",
+    "estimating", "billing", "in_progress", "pre_sale_closed",
+  ];
+  for (const st of OPP_STATUSES) {
+    const { data, error } = await admin
+      .from("commercial_opportunities")
+      .select("id, account:commercial_accounts!inner(deleted_at)")
+      .is("deleted_at", null)
+      .is("account.deleted_at", null)
+      .eq("status", st)
+      .limit(1);
+    // A bad column name here comes back as zero rows, and a silent zero reads
+    // exactly like "no deal in that status" — which is how a probe reports
+    // full coverage of nothing. (It did: `name` is not a column on this table.)
+    if (error) { console.log(`  ⚠ status ${st} lookup FAILED (${error.message}) — NOT smoke-tested`); continue; }
+    if (!data?.[0]) { console.log(`  ⚠ no live ${st} deal — that status was NOT smoke-tested`); continue; }
+    for (const t of OPP_TABS) paths.push(`/commercial/opportunities/${data[0].id}${t}`);
+  }
   if (opp?.[0]) {
     const id = opp[0].id;
-    for (const t of ["", "?tab=info", "?tab=proposals", "?tab=docs", "?tab=activity",
-                     "?tab=project&sub=invoices", "?tab=project&sub=aia",
-                     "?tab=project&sub=change-orders", "?tab=project&sub=submittals"]) {
-      paths.push(`/commercial/opportunities/${id}${t}`);
-    }
     // The per-job report lives under a [dynamic] folder, so the directory walk
     // above cannot see it — the deepest new Reports page would have had zero
     // coverage.
     paths.push(`/commercial/reports/jobs/${id}`, `/commercial/reports/jobs/${id}?period=this_year`);
   }
 
+  /**
+   * Retry across a dev-server RESTART, not just a blip.
+   *
+   * `next dev` restarts itself when it nears its heap limit — loading the
+   * residential Command Center pulls a Salesforce snapshot of ~17k
+   * opportunities and ~20k work orders, which reaches that threshold on a
+   * normal run. Every request in flight then fails with a bare `fetch failed`,
+   * and so does every request after it until the server is listening again.
+   *
+   * The old version retried twice with NO delay, so both attempts landed
+   * inside the same restart window and the rest of the run reported every
+   * remaining page DOWN. That is precisely the false alarm AGENTS.md warns
+   * about — "69 of 73 pages are down" was a dying server, not the code — and
+   * it happened twice more today: 21 pages, then 71, all of which rendered
+   * fine when asked again.
+   *
+   * So a connection error now WAITS for the port to come back rather than
+   * counting it as a failure. A page that is genuinely broken still returns a
+   * 500, which is a response, and is reported as it always was.
+   */
   async function fetchWithRetry(url, cookie) {
     let lastErr;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       try {
         return await fetch(url, { headers: { cookie }, redirect: "manual", signal: AbortSignal.timeout(120_000) });
       } catch (e) {
         lastErr = e;
+        // Give the server time to finish restarting, backing off up to ~8s.
+        const waitMs = Math.min(500 * 2 ** attempt, 8000);
+        await new Promise((r) => setTimeout(r, waitMs));
       }
     }
     throw lastErr;
@@ -174,7 +225,10 @@ try {
   // find — a tab behind ?view=, a filtered report. Without it "is that form on
   // the page?" is unanswerable for anything that is not the default view.
   const extra = (process.env.SMOKE_EXTRA ?? "").split(",").map((p) => p.trim()).filter(Boolean);
-  const all = [...paths, ...extra];
+  // Deduped: the per-status sweep above and the single `opp` fixture can land
+  // on the same deal, and loading the same URL twice is only slower, never
+  // more coverage.
+  const all = [...new Set([...paths, ...extra])];
   const list = only ? all.filter((p) => p.includes(only)) : all;
   for (const p of list) {
     let code = "ERR";
