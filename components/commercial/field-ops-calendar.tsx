@@ -155,6 +155,25 @@ function mondayOfIso(iso: string): string {
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CHIP_CAP = 3;
+/**
+ * The week grid is ONE row, not six — so a cell has roughly six times the
+ * vertical room and no reason to hide anybody.
+ *
+ * Karan 2026-09-17 asked for a week view; it shipped sharing the month cell
+ * verbatim ("Same cell shape either way"), which meant the whole point of it
+ * was lost: a Tuesday with nine people on it still showed three names and
+ * "+6 more" in a 110px box with the rest of the screen empty underneath. The
+ * reason to open a week view is to see the week.
+ *
+ * 20 covers the entire active crew (23 on the books, never all on one job), so
+ * in practice the week view caps nothing — the "+N more" line is kept for the
+ * day that proves me wrong rather than removed.
+ */
+const CHIP_CAP_WEEK = 20;
+/** Minimum cell height per mode. Cells grow with their content either way;
+ *  this is what an EMPTY day looks like. A week of empty 110px cells reads as
+ *  a broken month grid, and 400 would be a screen of whitespace. */
+const CELL_MIN_H = { month: "min-h-[110px]", week: "min-h-[260px]" } as const;
 
 /* ── main ─────────────────────────────────────────────────────────────────── */
 export function FieldOpsCalendar({
@@ -212,6 +231,8 @@ export function FieldOpsCalendar({
   }, [addDay]);
 
   const isWeek = mode === "week";
+  // A week cell has six times the room a month cell does — see CHIP_CAP_WEEK.
+  const chipCap = isWeek ? CHIP_CAP_WEEK : CHIP_CAP;
   // Step by the period you are LOOKING at — a week view whose arrows jumped a
   // month would be a week view in name only.
   const prevStart = isWeek ? addDays(monthStart, -7) : addDays(monthStart, -1).slice(0, 7) + "-01";
@@ -585,7 +606,7 @@ export function FieldOpsCalendar({
                   openDay(day.date);
                 }
               }}
-              className={`group cursor-pointer min-h-[110px] rounded-lg border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-500 ${day.inMonth ? "bg-surface border-ppp-charcoal-100 hover:border-cc-brand-300" : "bg-ppp-charcoal-50/40 border-transparent"} ${isToday ? "ring-2 ring-cc-brand-400" : ""} ${isOpen ? "ring-2 ring-ppp-navy-500" : ""}`}
+              className={`group cursor-pointer ${CELL_MIN_H[isWeek ? "week" : "month"]} rounded-lg border p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-500 ${day.inMonth ? "bg-surface border-ppp-charcoal-100 hover:border-cc-brand-300" : "bg-ppp-charcoal-50/40 border-transparent"} ${isToday ? "ring-2 ring-cc-brand-400" : ""} ${isOpen ? "ring-2 ring-ppp-navy-500" : ""}`}
               style={day.headcount > 0 ? { backgroundColor: `rgba(43,170,225,${heat})` } : undefined}
             >
               <div className="flex items-center justify-between">
@@ -595,7 +616,7 @@ export function FieldOpsCalendar({
                   : day.inMonth && <span className="text-[13px] leading-none font-bold text-ppp-charcoal-300 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden>+</span>}
               </div>
               <div className="mt-1 space-y-0.5">
-                {day.crew.slice(0, CHIP_CAP).map((c, i) => (
+                {day.crew.slice(0, chipCap).map((c, i) => (
                   <button
                     key={`${c.employee_id}-${c.job_id}-${i}`}
                     onClick={(e) => { e.stopPropagation(); openPerson(c.employee_id, c.name, day.date); }}
@@ -606,7 +627,7 @@ export function FieldOpsCalendar({
                     <span className="truncate"><span className={offByEmpG.has(c.employee_id) ? "line-through" : ""}>{c.name}</span>{offByEmpG.get(c.employee_id) ? ` · ${offByEmpG.get(c.employee_id)!.short}` : `${c.start ? ` · ${fmtTimeShort(c.start)}` : ""}${c.prevailing_wage ? " · PW" : ""}`}</span>
                   </button>
                 ))}
-                {day.crew.length > CHIP_CAP && <div className="text-[9.5px] text-ppp-charcoal-400 px-1">+{day.crew.length - CHIP_CAP} more</div>}
+                {day.crew.length > chipCap && <div className="text-[9.5px] text-ppp-charcoal-400 px-1">+{day.crew.length - chipCap} more</div>}
                 {offOnlyG.length > 0 && (
                   <div className="text-[9.5px] font-medium text-amber-700 px-1 truncate" title={offOnlyG.map((o) => `${o.name} (${o.short})`).join(", ")}>
                     {offOnlyG.length === 1 ? `${offOnlyG[0].name} off` : `${offOnlyG.length} off`}
