@@ -670,32 +670,69 @@ export default async function AccountingPage({
   const over90Cents = over90.reduce((n, r) => n + r.openCents, 0);
   const over90Count = over90.length;
 
-  // Only fetched for the view that renders it — the money band above doesn't
-  // use aging, so paying for it on every page load would be waste.
-  const aging = view === "aging" ? await getArAging() : null;
-  // A second, filtered read for the Receivables view. Cheap relative to a wrong
-  // number: reusing the unfiltered `receivables` would ignore the filter bar.
-  const receivablesView =
-    view === "receivables" ? await getReceivablesReport(Date.now(), filtersFor(q)) : null;
-  // Same rule as aging: only paid for on the view that renders it.
-  const transactions = view === "transactions" ? await getTransactionsReport(txFilters) : null;
-  // Both windowed by the same shared activity preset the ledger uses, so a
-  // period means the same thing on every view of this page.
-  const salesTax =
+  //
+  // ── EVERY PER-VIEW READ, IN ONE WAVE ─────────────────────────────────────
+  //
+  // These were eleven separate sequential awaits. Each is guarded by `view`
+  // (or `entryOn`, itself derived from `view`), and every one of those guards
+  // comes from `sp` — NOT from the wave above — so nothing here was waiting on
+  // anything. On the views that render two or three of them, that was two or
+  // three round trips taken one at a time for no reason. `getCachedRowNotes`
+  // runs on every view, so this is never a no-op.
+  //
+  // NOT merged: the filtered `getReceivablesReport` on the Receivables view
+  // stays exactly as it was. It looks like a duplicate of the unfiltered read
+  // above — with no filters in the URL the only difference is the `sort`
+  // argument — but proving the ordering comes out the same is a bigger claim
+  // than one query is worth, and getting it wrong would silently reorder
+  // Mary's sheet.
+  const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
+  const spendOn = view === "purchases" || view === "labor-out";
+  const { getCachedRowNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
+  const [
+    aging,
+    receivablesView,
+    transactions,
+    salesTax,
+    reimbursements,
+    owedRows,
+    arRows,
+    entry,
+    spendRows,
+    depositRows,
+    rowNotes,
+  ] = await Promise.all([
+    // Only fetched for the view that renders it — the money band above doesn't
+    // use aging, so paying for it on every page load would be waste.
+    view === "aging" ? getArAging() : Promise.resolve(null),
+    // A second, filtered read for the Receivables view. Cheap relative to a
+    // wrong number: reusing the unfiltered `receivables` would ignore the
+    // filter bar.
+    view === "receivables" ? getReceivablesReport(Date.now(), filtersFor(q)) : Promise.resolve(null),
+    view === "transactions" ? getTransactionsReport(txFilters) : Promise.resolve(null),
+    // Both windowed by the same shared activity preset the ledger uses, so a
+    // period means the same thing on every view of this page.
     view === "tax"
-      ? await getSalesTaxReport({
+      ? getSalesTaxReport({
           fromYmd: txRange?.fromYmd,
           toYmd: txRange?.toYmd,
           uncertifiedOnly: pickFirst(sp.nocert) === "1" || undefined,
         })
-      : null;
-  const reimbursements =
+      : Promise.resolve(null),
     view === "reimbursements"
-      ? await getReimbursementsReport({ fromYmd: txRange?.fromYmd, toYmd: txRange?.toYmd })
-      : null;
-  // Mary's four, each paid for only on the view that renders it.
-  const owedRows = view === "owed" ? await getBalanceOwedRows() : null;
-  const arRows = view === "ar" ? await getArSheetRows() : null;
+      ? getReimbursementsReport({ fromYmd: txRange?.fromYmd, toYmd: txRange?.toYmd })
+      : Promise.resolve(null),
+    // Mary's four, each paid for only on the view that renders it.
+    view === "owed" ? getBalanceOwedRows() : Promise.resolve(null),
+    view === "ar" ? getArSheetRows() : Promise.resolve(null),
+    // The pickers for Mary's entry forms, built only on the views that show one.
+    entryOn ? getAccountingEntryOptions() : Promise.resolve(null),
+    spendOn ? getSpendRows() : Promise.resolve(null),
+    view === "deposits" ? getMoneyInRows() : Promise.resolve(null),
+    // Rows whose read is missing OR written from facts that have since moved —
+    // including a note somebody typed after the last draft.
+    getCachedRowNotes(receivables),
+  ]);
   /**
    * The period, applied — with undated lines ALWAYS kept.
    *
@@ -710,11 +747,7 @@ export default async function AccountingPage({
   const arRowsFiltered =
     arRows && arCutoff ? arRows.filter((r) => !r.issuedYmd || r.issuedYmd >= arCutoff) : arRows;
   const arUndatedKept = (arRowsFiltered ?? []).filter((r) => !r.issuedYmd).length;
-  // The pickers for Mary's entry forms, built only on the views that show one.
-  const entryOn = view === "receivables" || view === "purchases" || view === "labor-out";
-  const entry = entryOn ? await getAccountingEntryOptions() : null;
-  const spendRows = view === "purchases" || view === "labor-out" ? await getSpendRows() : null;
-  const depositRows = view === "deposits" ? await getMoneyInRows() : null;
+  // `entry`, `spendRows` and `depositRows` are fetched in the wave above.
   const production = summarizeProduction(projects);
   // Work that is won and carries a DRAFT invoice — raised but never sent. A
   // project row exists only once a job is won, so no pre-sale bid can land here.
@@ -725,11 +758,8 @@ export default async function AccountingPage({
   // the brief restated the tiles, and the schedule is a setting, not a figure.
   // Neither is read here any more, so neither is loaded — one fewer model call
   // and one fewer settings read on every load of the page Mary lives on.
-  const { getCachedRowNotes, rowNotesAvailable } = await import("@/lib/commercial/reports/receivables-row-notes");
-  // Rows whose read is missing OR written from facts that have since moved —
-  // including a note somebody typed after the last draft. Only offered when
-  // there is actually something to redraw.
-  const silentRows = (await getCachedRowNotes(receivables)).staleCount;
+  // Only offered when there is actually something to redraw.
+  const silentRows = rowNotes.staleCount;
   const canDraftNotes = rowNotesAvailable();
   const previewedTo = pickFirst(sp.preview);
 
