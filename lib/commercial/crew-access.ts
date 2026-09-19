@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "./db";
+import { invalidateRolesCache, readUserRoles } from "./user-roles";
 import { EMPLOYEE_COLS, type CommercialEmployee } from "./field-ops/employees";
 
 /**
@@ -103,27 +104,10 @@ export function isCrewAllowedPath(pathname: string): boolean {
  * fail-closed behaviour by folding unknown back to restricted.
  */
 export async function crewOnlyStatus(userId: string): Promise<"crew" | "not-crew" | "unknown"> {
-  try {
-    const sb = commercialDb();
-    const { data, error } = await sb
-      .from("commercial_user_roles")
-      .select("role")
-      .eq("user_id", userId);
-    if (error) {
-      // An admin is never crew, and that is knowable from a different table —
-      // so this is only "unknown" for everyone else.
-      try {
-        const { getProfileByUserId } = await import("@/lib/auth/profile");
-        if ((await getProfileByUserId(userId))?.is_admin) return "not-crew";
-      } catch {
-        /* fall through */
-      }
-      return "unknown";
-    }
-    const roles = ((data ?? []) as { role: string }[]).map((r) => r.role);
-    if (roles.length === 0) return "not-crew";
-    return roles.includes("crew") && roles.every((r) => r === "crew") ? "crew" : "not-crew";
-  } catch {
+  const roles = await readUserRoles(userId);
+  if (roles === null) {
+    // An admin is never crew, and that is knowable from a different table —
+    // so this is only "unknown" for everyone else.
     try {
       const { getProfileByUserId } = await import("@/lib/auth/profile");
       if ((await getProfileByUserId(userId))?.is_admin) return "not-crew";
@@ -132,33 +116,18 @@ export async function crewOnlyStatus(userId: string): Promise<"crew" | "not-crew
     }
     return "unknown";
   }
+  if (roles.length === 0) return "not-crew";
+  return roles.includes("crew") && roles.every((r) => r === "crew") ? "crew" : "not-crew";
 }
 
 export async function isCrewOnlyUser(userId: string): Promise<boolean> {
-  const restrictOnError = async (): Promise<boolean> => {
-    // Don't strand an admin behind a transient error on the roles table.
-    try {
-      const { getProfileByUserId } = await import("@/lib/auth/profile");
-      const profile = await getProfileByUserId(userId);
-      if (profile?.is_admin) return false;
-    } catch {
-      /* fall through — deny */
-    }
-    return true;
-  };
-  try {
-    const sb = commercialDb();
-    const { data, error } = await sb
-      .from("commercial_user_roles")
-      .select("role")
-      .eq("user_id", userId);
-    if (error) return restrictOnError();
-    const roles = ((data ?? []) as { role: string }[]).map((r) => r.role);
-    if (roles.length === 0) return false;
-    return roles.includes("crew") && roles.every((r) => r === "crew");
-  } catch {
-    return restrictOnError();
-  }
+  // The fail-CLOSED half of the pair: "I could not tell" folds to restricted.
+  // `crewOnlyStatus` has already given an admin the benefit of the doubt via
+  // the profile, which is what keeps a blip from stranding one — so the only
+  // thing left to decide here is the direction unknown leans, and for ACCESS
+  // it leans shut. This used to be a second, near-identical copy of the query
+  // and the admin fallback; one read now answers both questions.
+  return (await crewOnlyStatus(userId)) !== "not-crew";
 }
 
 /** Grant/revoke the crew role. Admin-only at the callsite. */
@@ -169,6 +138,13 @@ export async function setCrewRole(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { logInsert, logDelete } = await import("@/lib/commercial/audit-log");
+  // Roles are cached for 30s (see lib/commercial/user-roles.ts). This is the
+  // only place the app writes this table, so invalidating here is what keeps a
+  // grant or a revoke effective on the very NEXT request instead of up to half
+  // a minute later. Dropped before AND after the write: before, so a read
+  // racing this one re-reads; after, so the entry reflects what actually
+  // landed rather than what was true when the admin opened the page.
+  invalidateRolesCache(userId);
   if (isCrew) {
     const { error } = await sb
       .from("commercial_user_roles")
@@ -184,6 +160,7 @@ export async function setCrewRole(
     if (error) return { ok: false, error: error.message };
     await logDelete("commercial_user_roles", userId, { user_id: userId, role: "crew" }, actorUserId).catch(() => undefined);
   }
+  invalidateRolesCache(userId);
   return { ok: true };
 }
 

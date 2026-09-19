@@ -1,6 +1,7 @@
 import "server-only";
 
-import { commercialDb, type CommercialRole } from "./db";
+import { type CommercialRole } from "./db";
+import { readUserRoles } from "./user-roles";
 
 /**
  * Role-based access primitive for the New Platform.
@@ -29,17 +30,13 @@ export type RoleCheck = {
 
 /** Read all roles assigned to a Supabase user inside the New Platform. */
 export async function getCommercialRoles(userId: string): Promise<RoleCheck> {
-  const sb = commercialDb();
-  const { data, error } = await sb
-    .from("commercial_user_roles")
-    .select("role")
-    .eq("user_id", userId);
-  if (error) {
-    console.warn("[commercial/rbac] getCommercialRoles failed:", error.message);
-    return emptyRoleCheck();
-  }
+  // Shares the cached read with the crew gate — this was a second, identical
+  // query against the same table for the same user, so a render that asked
+  // both questions paid the round trip twice.
+  const rows = await readUserRoles(userId);
+  if (rows === null) return emptyRoleCheck();
 
-  const roles = (data ?? []).map((r) => r.role as CommercialRole);
+  const roles = rows as CommercialRole[];
   return {
     hasAdminRole: roles.includes("admin"),
     hasEstimatorRole: roles.includes("estimator"),
