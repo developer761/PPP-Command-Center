@@ -45,7 +45,13 @@ export default async function JobCostsReportPage() {
   // Report folders: only reports in a folder you belong to (admins see all).
   await requireReportAccess(user.id, user.email, "job-costs");
 
-  const report = await getJobCostsReport();
+  // The whole-book invoice read has no dependency on the report — `allOppIds`
+  // below is passed to `monthlyBilledSeries`, not to the query, which takes an
+  // empty filter. Two whole-book reads that were queued one behind the other.
+  const [report, invoices] = await Promise.all([
+    getJobCostsReport(),
+    listCommercialInvoices({}),
+  ]);
   const t = report.totals;
   // Neutral until something has actually been spent. A contract with no costs
   // logged computes to 100%, which reads as a spectacular job and only means
@@ -67,7 +73,6 @@ export default async function JobCostsReportPage() {
   // Monthly billed-revenue trend (line) across every deal in the report — the
   // same pre-tax, ET-bucketed helper the dashboard uses, so it ties out.
   const allOppIds = new Set(report.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
-  const invoices = await listCommercialInvoices({});
   const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
 
   return (

@@ -746,11 +746,15 @@ export async function InvoiceDetailView({
   // Prefill the invoice-email recipient with the account's primary contact
   // (else the first contact that has an email). Katie: autofill aggressively.
   const emailRecipientDefault = contacts.find((c) => c.contact.email)?.contact.email ?? "";
-  // Per-milestone lien-waiver docs (for the ✓/download state on each row).
-  // One documents query for all milestones (was a 3N-query loop).
-  const milestoneWaivers = await getMilestoneLienWaivers(milestones);
-  // Per-payment PARTIAL waiver docs (one query for every payment on this invoice).
-  const paymentWaivers = await getPaymentLienWaivers(payments);
+  // Both lien-waiver reads together: one takes `milestones`, the other takes
+  // `payments`, both already resolved above, and neither reads the other.
+  const [milestoneWaivers, paymentWaivers] = await Promise.all([
+    // Per-milestone lien-waiver docs (for the ✓/download state on each row).
+    // One documents query for all milestones (was a 3N-query loop).
+    getMilestoneLienWaivers(milestones),
+    // Per-payment PARTIAL waiver docs (one query for every payment here).
+    getPaymentLienWaivers(payments),
+  ]);
   const hasMilestones = milestones.length > 0;
   // Order milestones by DUE DATE (earliest first; undated sink to the end, stable
   // by position within that group) so the schedule bar AND the milestone list

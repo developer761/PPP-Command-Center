@@ -5394,15 +5394,22 @@ async function AccountKpisTab({
   // P&L is reachable on — so a pre-sale bid's costs (and its typically-$0 billed
   // gross) roll into the account too; otherwise a cost shown in a bid's own P&L
   // would be missing from the account/portfolio and break deal ⊂ account (audit #6).
-  const [allAccountRows, pnlRows] = await Promise.all([
+  const [allAccountRows, pnlRows, accountOpps] = await Promise.all([
     listProjects({ accountId, includeClosed: true }),
     listProjects({ accountId, includeClosed: true, allDeals: true }),
+    // Was fetched a hundred lines further down, in a wave of its own, to feed
+    // the open-bid fallback total. It takes only `accountId` — a prop — so it
+    // never needed to wait for either of the reads beside it.
+    listCommercialOpportunities({ accountId }),
   ]);
   const activeRows = allAccountRows.filter((p) => p.opp.status !== "post_sale_closed");
   const production = summarizeProduction(activeRows);
-  const [accountInvoices, accountCosts] = await Promise.all([
+  const openBidOpps = accountOpps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
+  const [accountInvoices, accountCosts, openProposalTotals] = await Promise.all([
     listCommercialInvoices({ accountId }),
     costBreakdownForOpps(pnlRows.map((p) => p.opp.id)),
+    // Needs `openBidOpps` from the wave above, and nothing from its siblings.
+    listCurrentProposalTotalByOpp(openBidOpps.map((o) => o.id)),
   ]);
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
@@ -5468,10 +5475,7 @@ async function AccountKpisTab({
   // beside an "Open bids: 3" count taken from the same status set, with live
   // money showing on every deal block below it. Same proposal fallback the rest
   // of the platform uses.
-  const openBidOpps = (await listCommercialOpportunities({ accountId })).filter((o) =>
-    PRE_SALE_OPEN_STATUSES.includes(o.status)
-  );
-  const openProposalTotals = await listCurrentProposalTotalByOpp(openBidOpps.map((o) => o.id));
+  // `openBidOpps` and `openProposalTotals` are fetched in the two waves above.
   const fallbackTotal = openBidOpps.reduce(
     (sum, o) => sum + dealValueCents(o, openProposalTotals.get(o.id) ?? null),
     0
