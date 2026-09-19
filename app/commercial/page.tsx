@@ -92,24 +92,56 @@ export default async function CommercialDashboardPage() {
   // mid-render and put a row in two different aging buckets on one screen.
   const nowMs = Date.now();
   const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
-  // Report folders: the dashboard links into AR aging and Win/Loss. Someone
-  // outside those folders gets the number without a link that would bounce
-  // them. The /commercial layout has already required a signed-in user.
-  const reportAccess = await (async () => {
-    const { createClient } = await import("@/lib/supabase/server");
-    const { getReportAccess } = await import("@/lib/commercial/reports/access");
-    const { data: { user } } = await (await createClient()).auth.getUser();
-    return user ? getReportAccess(user.id, user.email) : null;
-  })();
-  const canOpenArAging = !!reportAccess?.visible.has("ar-aging");
-  const canOpenWinLoss = !!reportAccess?.visible.has("win-loss");
-  const [opps, accounts, invoices, projectRows, operatingCompany] = await Promise.all([
+  //
+  // ── EVERY READ THIS PAGE MAKES, IN ONE WAVE ──────────────────────────────
+  //
+  // This is the landing page — the one Alex opens every morning — and it ran
+  // its reads in SIX sequential waves: the report folders, then the five
+  // headline lists, then the archived deals, then the full project rows, then
+  // the cost roll-up, then the work orders. Only two of those genuinely
+  // depended on anything: the proposal map needs `opps`, and the cost
+  // breakdown needs `allProjectRows`. The other four waves were ordered by
+  // nothing but the order they were written in, and each one is a round trip
+  // measured at 78ms median from a laptop.
+  //
+  // Two waves now. Nothing here writes, so nothing depends on the ordering.
+  const [
+    reportAccess,
+    opps,
+    accounts,
+    invoices,
+    projectRows,
+    operatingCompany,
+    archivedOpps,
+    allProjectRows,
+    liveWorkOrders,
+  ] = await Promise.all([
+    // Report folders: the dashboard links into AR aging and Win/Loss. Someone
+    // outside those folders gets the number without a link that would bounce
+    // them. The /commercial layout has already required a signed-in user.
+    (async () => {
+      const { createClient } = await import("@/lib/supabase/server");
+      const { getReportAccess } = await import("@/lib/commercial/reports/access");
+      const { data: { user } } = await (await createClient()).auth.getUser();
+      return user ? getReportAccess(user.id, user.email) : null;
+    })(),
     listCommercialOpportunities({}),
     listCommercialAccounts({}),
     listCommercialInvoices({}),
     listProjects({}),
     getOperatingCompany(),
+    // Archived deals: a deal that legitimately exists but was tidied out of
+    // the pipeline. See the note further down on why they stay in the books.
+    listCommercialOpportunities({ onlyArchived: true }),
+    // The WIDER project scope — deal ⊂ account ⊂ portfolio. `allDeals` so a
+    // pre-sale bid's costs roll into the portfolio too.
+    listProjects({ includeClosed: true, allDeals: true }),
+    // Work-order state per job, loaded rather than inferred (Brendan
+    // 2026-08-26).
+    listAllWorkOrders().catch(() => []),
   ]);
+  const canOpenArAging = !!reportAccess?.visible.has("ar-aging");
+  const canOpenWinLoss = !!reportAccess?.visible.has("win-loss");
   // Fallback deal value for deals with no bid range. The meeting removed Bid
   // low/high from both create forms (pricing lives on the proposal now), so
   // without this every deal created since then contributes ZERO to weighted
@@ -118,7 +150,14 @@ export default async function CommercialDashboardPage() {
   // The fuller query — same round trip `listCurrentProposalTotalByOpp` was
   // already making under the hood, minus throwing the state away. Totals feed
   // weighted pipeline; the state feeds each row's next-step button.
-  const currentProposalByOpp = await listCurrentProposalByOpp(opps.map((o) => o.id));
+  //
+  // WAVE 2 — the only two reads with a real dependency. The proposal map needs
+  // `opps`; the cost breakdown needs `allProjectRows`. Both come from the wave
+  // above, and neither needs the other, so they go together.
+  const [currentProposalByOpp, byOpp] = await Promise.all([
+    listCurrentProposalByOpp(opps.map((o) => o.id)),
+    costBreakdownByOpp(allProjectRows.map((p) => p.opp.id)),
+  ]);
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
   );
@@ -164,7 +203,7 @@ export default async function CommercialDashboardPage() {
   // deletion, not a tidy-up. Archived + live = every opp that legitimately
   // exists; anything else is orphaned. Account-less invoices are account-level
   // and unaffected either way.
-  const archivedOpps = await listCommercialOpportunities({ onlyArchived: true });
+  // `archivedOpps` is fetched in the single wave at the top.
   const realOppIds = new Set([...opps.map((o) => o.id), ...archivedOpps.map((o) => o.id)]);
   const archivedOppIds = new Set(archivedOpps.map((o) => o.id));
   const billableInvoices = invoices.filter(
@@ -389,9 +428,9 @@ export default async function CommercialDashboardPage() {
   // is a different, wider scope than the active-only "Under contract" strip.
   // allDeals:true so a PRE-SALE bid's costs (shown in its own reachable P&L) roll
   // into the portfolio too — otherwise deal ⊄ portfolio for pre-sale costs (#6).
-  const allProjectRows = await listProjects({ includeClosed: true, allDeals: true });
+  // `allProjectRows` is fetched in the single wave at the top.
   const allProjectOppIds = new Set(allProjectRows.map((p) => p.opp.id));
-  const byOpp = await costBreakdownByOpp(allProjectRows.map((p) => p.opp.id));
+  // `byOpp` is fetched in wave 2 at the top.
   const costs = emptyCostBreakdown();
   for (const b of byOpp.values()) {
     for (const c of PURCHASE_CATEGORIES) costs[c] += b[c];
@@ -414,7 +453,7 @@ export default async function CommercialDashboardPage() {
   // the deals." Everything above is a company aggregate; this is the same money
   // cut by job, with the one fact each job still owes. Work-order state is the
   // fact he named, so it is loaded here rather than inferred.
-  const liveWorkOrders = await listAllWorkOrders().catch(() => []);
+  // `liveWorkOrders` is fetched in the single wave at the top.
   const woByOpp = new Map<string, { sent: boolean }>();
   for (const w of liveWorkOrders) {
     const prev = woByOpp.get(w.opportunity_id);

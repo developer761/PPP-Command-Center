@@ -392,7 +392,41 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // At current volumes (< 5K invoices per workspace) this is fast enough
   // to be worth the simplicity. If we hit scale we swap in an RPC that
   // joins commercial_invoices to commercial_opportunities server-side.
-  const [invoicesRaw, accounts, accountFilter, allOpps, products, taxJurisdictions] = await Promise.all([
+  // ── ET month boundary, computed BEFORE the read that needs it ──────────
+  //
+  // Pure Intl arithmetic, no I/O. It sat below the first wave, and that was
+  // the only reason `sumCommercialPaymentsSince` had to be a round trip of
+  // its own — these two strings are all it needs. Moved up so it joins the
+  // wave instead of following it.
+  // "Paid this month" uses an America/New_York month boundary so a
+  // payment recorded at 11pm ET on the 1st doesn't count as previous
+  // month for viewers in earlier UTC. All commercial ops live in ET.
+  // We resolve the offset (EST -05:00 vs EDT -04:00) dynamically via
+  // Intl so DST transitions can't skew the boundary by an hour.
+  const now = new Date();
+  const nowEtParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const etYear = nowEtParts.find((p) => p.type === "year")?.value ?? "1970";
+  const etMonth = nowEtParts.find((p) => p.type === "month")?.value ?? "01";
+  const offsetToken = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "longOffset",
+  })
+    .formatToParts(now)
+    .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
+  const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00${offsetToken.replace("GMT", "")}`;
+  // Upper bound = start of NEXT ET month, so a future-dated payment can't count
+  // toward the current month forever (2026-07-28 re-audit).
+  const etMonthNum = parseInt(etMonth, 10);
+  const nextMonthNum = etMonthNum === 12 ? 1 : etMonthNum + 1;
+  const nextYearStr = etMonthNum === 12 ? String(parseInt(etYear, 10) + 1) : etYear;
+  const monthEndEtIso = `${nextYearStr}-${String(nextMonthNum).padStart(2, "0")}-01T00:00:00${offsetToken.replace("GMT", "")}`;
+
+  const [invoicesRaw, accounts, accountFilter, allOpps, products, taxJurisdictions, paidThisMonthCents] = await Promise.all([
     listCommercialInvoices({ status: statusFilter, accountId: accountIdFilter, opportunityId: opportunityIdFilter }),
     listCommercialAccounts(),
     // Include-deleted so a deleted-account invoice cluster can render
@@ -403,6 +437,12 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
     listProducts(),
     // Sales tax by ZIP: active jurisdictions feed the invoice tax auto-fill.
     listTaxJurisdictions({ activeOnly: true }),
+    // Sum actual payment ROWS recorded this ET month (not lifetime paid_cents
+    // on invoices finished this month) so partials + multi-month invoices
+    // count right. Bounded to [monthStart, monthEnd), excludes voided
+    // invoices, and scoped to the active account filter so it matches the
+    // other tiles. Needs only the ET strings computed just above.
+    sumCommercialPaymentsSince(monthStartEtIso, monthEndEtIso, accountIdFilter || undefined),
   ]);
   // Phase D: hand the picker a lean shape so we're not shipping the
   // full CommercialProduct rows (audit cols, notes, cost) to the client.
@@ -502,36 +542,21 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // match the visible rows; otherwise reflects the whole book. Refetches
   // when no other filters are active so the numbers aren't skewed by
   // search/status pills.
-  const kpiSource = accountIdFilter
-    ? await listCommercialInvoices({ accountId: accountIdFilter })
-    : await listCommercialInvoices();
-  // "Paid this month" uses an America/New_York month boundary so a
-  // payment recorded at 11pm ET on the 1st doesn't count as previous
-  // month for viewers in earlier UTC. All commercial ops live in ET.
-  // We resolve the offset (EST -05:00 vs EDT -04:00) dynamically via
-  // Intl so DST transitions can't skew the boundary by an hour.
-  const now = new Date();
-  const nowEtParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const etYear = nowEtParts.find((p) => p.type === "year")?.value ?? "1970";
-  const etMonth = nowEtParts.find((p) => p.type === "month")?.value ?? "01";
-  const offsetToken = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    timeZoneName: "longOffset",
-  })
-    .formatToParts(now)
-    .find((p) => p.type === "timeZoneName")?.value ?? "GMT-05:00";
-  const monthStartEtIso = `${etYear}-${etMonth}-01T00:00:00${offsetToken.replace("GMT", "")}`;
-  // Upper bound = start of NEXT ET month, so a future-dated payment can't count
-  // toward the current month forever (2026-07-28 re-audit).
-  const etMonthNum = parseInt(etMonth, 10);
-  const nextMonthNum = etMonthNum === 12 ? 1 : etMonthNum + 1;
-  const nextYearStr = etMonthNum === 12 ? String(parseInt(etYear, 10) + 1) : etYear;
-  const monthEndEtIso = `${nextYearStr}-${String(nextMonthNum).padStart(2, "0")}-01T00:00:00${offsetToken.replace("GMT", "")}`;
+  //
+  // …and on the DEFAULT view it is the same query the page already ran.
+  // `invoicesRaw` above is `listCommercialInvoices({ status, accountId,
+  // opportunityId })`, and every one of those filters is `if (truthy)`-guarded
+  // in the loader — so with no status and no deal filter this was a second,
+  // byte-identical read of the whole invoice book, on the page most people
+  // land on. (`search` never reaches the query; it is applied in JS below.)
+  //
+  // The refetch still happens when it is genuinely a different question: the
+  // KPI strip deliberately IGNORES the status and deal pills so the numbers
+  // aren't skewed by them, which is the whole reason it re-reads.
+  const kpiSource =
+    statusFilter || opportunityIdFilter
+      ? await listCommercialInvoices({ accountId: accountIdFilter })
+      : invoicesRaw;
   // Karan 2026-08: ONE "Outstanding" definition platform-wide = Σ per-invoice
   // max(0, balance) over ISSUED invoices (exclude draft + void). A draft isn't
   // billed to the GC, so it isn't owed yet (drafts show on their own "Drafts"
@@ -568,11 +593,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // invoices finished this month) so partials + multi-month invoices count
   // right. Bounded to [monthStart, monthEnd), excludes voided invoices, and
   // scoped to the active account filter so it matches the other tiles.
-  const paidThisMonthCents = await sumCommercialPaymentsSince(
-    monthStartEtIso,
-    monthEndEtIso,
-    accountIdFilter || undefined
-  );
+  // `paidThisMonthCents` is fetched in the single wave at the top.
   const draftCount = kpiSource.filter((i) => i.status === "draft").length;
 
   // Charts: monthly billing trend ($K) + an Outstanding on-time-vs-overdue
@@ -650,14 +671,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // on 2026-08-17, so a GC who is current on payables but holding $50k back has
   // a zero open balance, and the statement — which states that retainage
   // explicitly — is exactly what they should be sent.
-  const statementRollup =
-    accountIdFilter && !scopedAccountIsDeleted
-      ? await getInvoiceRollupForAccount(accountIdFilter)
-      : null;
-  const statementContacts =
-    accountIdFilter && !scopedAccountIsDeleted
-      ? await listAccountContacts(accountIdFilter).catch(() => [])
-      : [];
+  // One wave: identical guard, independent arguments, and `hasStatement` just
+  // below is the first thing that reads either of them.
+  const showStatement = !!accountIdFilter && !scopedAccountIsDeleted;
+  const [statementRollup, statementContacts] = await Promise.all([
+    showStatement ? getInvoiceRollupForAccount(accountIdFilter!) : Promise.resolve(null),
+    showStatement ? listAccountContacts(accountIdFilter!).catch(() => []) : Promise.resolve([]),
+  ]);
   const hasStatement =
     !!statementRollup &&
     (statementRollup.open_balance_cents > 0 || statementRollup.retainage_held_cents > 0);
