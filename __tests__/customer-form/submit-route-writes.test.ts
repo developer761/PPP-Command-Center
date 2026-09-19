@@ -281,3 +281,61 @@ describe("the note the customer leaves for the crew", () => {
     expect(out).toBe("Customer (color form): Just one thing now.\n\nGate code 4321");
   });
 });
+
+describe("un-skipping a surface (Katie 2026-09-19: \"can they undo it?\")", () => {
+  const skip = (surface: string) => ({ surface, colorId: null, finish: null, skipped: true });
+
+  it("records the skip, and says so where the crew reads it", async () => {
+    await post({ lineItems: line([skip("Walls")]) });
+    expect(String(woliFields().ColorNotes__c ?? "")).toMatch(/Don't paint this surface.*Walls/i);
+  });
+
+  it("changing their mind TO 'don't paint' clears the color they had chosen", async () => {
+    // The other direction, and the one that was uncovered: on a re-edit the
+    // skip has to null the Salesforce color, or the crew paints a surface the
+    // customer has just told us to leave. (Mutation testing, 2026-09-19.)
+    tokenStatus = { kind: "editable", token: token() };
+    await post({ lineItems: line([skip("Walls")]) });
+    const f = woliFields();
+    expect(f).toHaveProperty("ColorWall__c", null);
+    expect(f).toHaveProperty("FinishWall__c", null);
+    expect(String(f.ColorNotes__c ?? "")).toMatch(/Don't paint this surface.*Walls/i);
+  });
+
+  it("and a re-edit that picks a color CLEARS the skip everywhere", async () => {
+    // The customer changed their mind and chose a color. Salesforce has to
+    // carry the color, and the note has to stop saying "don't paint" — a
+    // stale line there tells the crew to leave a wall the customer now wants
+    // painted.
+    tokenStatus = { kind: "editable", token: token() };
+    await post({
+      lineItems: line([{ surface: "Walls", colorId: "a02C1", finish: "Eggshell" }]),
+    });
+    const f = woliFields();
+    expect(f.ColorWall__c).toBe("a02C1");
+    expect(f.FinishWall__c).toBe("Eggshell");
+    expect(String(f.ColorNotes__c ?? "")).not.toMatch(/Don't paint this surface/i);
+  });
+
+  it("…and an un-skip with no color chosen leaves the surface genuinely blank", async () => {
+    // Un-skipping clears the color, so this is the state between the undo and
+    // the new pick. It must read as "nobody has answered" rather than keeping
+    // either the skip or a color nobody chose.
+    tokenStatus = { kind: "editable", token: token() };
+    await post({ lineItems: line([{ surface: "Walls", colorId: null, finish: null }]) });
+    const f = woliFields();
+    expect(f).toHaveProperty("ColorWall__c", null);
+    expect(String(f.ColorNotes__c ?? "")).not.toMatch(/Don't paint this surface/i);
+  });
+
+  it("a prior submission's skip note is not re-stacked on top of the new one", async () => {
+    // The note is regenerated from the CURRENT state every submit; the old
+    // copy is stripped first. Two contradictory lines would be worse than
+    // either one alone.
+    tokenStatus = { kind: "editable", token: token() };
+    await post({ lineItems: line([skip("Walls"), skip("Ceiling")]) });
+    const note = String(woliFields().ColorNotes__c ?? "");
+    expect(note.match(/Don't paint this surface/gi) ?? []).toHaveLength(2);
+  });
+});
+
