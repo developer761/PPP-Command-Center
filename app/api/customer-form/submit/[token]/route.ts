@@ -391,6 +391,8 @@ export async function POST(
     // Kate round-2 #09: surfaces the customer explicitly chose NOT to paint —
     // recorded as a note in ColorNotes__c so the crew knows it was deliberate.
     const skippedSurfaces: string[] = [];
+    /** Orphan surfaces the customer explicitly said not to paint. */
+    const skippedOrphans: string[] = [];
     /**
      * Finishes the customer picked that Salesforce has no picklist value for.
      *
@@ -419,19 +421,30 @@ export async function POST(
       const std = STANDARD_SURFACE_FIELDS[key];
       const isOrphan = !std && ORPHAN_SURFACES.has(key);
 
-      // On a RE-EDIT, an explicit "don't paint this" (skipped) must CLEAR any
-      // color+finish we previously wrote — otherwise a customer removing a
-      // color on a second pass silently leaves the old values in SF. First
-      // submit keeps the conservative behavior (a blank surface never
-      // overwrites with null), so we only force-clear on re-edit.
-      if (isReedit && s.skipped) {
+      // "Don't paint this surface" CLEARS the color — on a first submit as
+      // well as a re-edit (Karan, 2026-09-19).
+      //
+      // It used to clear only on a re-edit, on the same conservative rule that
+      // protects a BLANK surface: never write null over a color the office
+      // entered. But a blank surface is "no answer" and a skip is an answer —
+      // the customer said not to paint it. Leaving the color there wrote a
+      // record that contradicted itself: ColorWall__c holding a color, and
+      // ColorNotes__c beside it reading "Customer selected 'Don't paint this
+      // surface' on Walls." The Command Center screen and the vendor email
+      // both honour the skip, so nothing was ordered wrong — but PPP reads
+      // Salesforce directly, and a record that argues with itself is one
+      // somebody eventually believes the wrong half of.
+      if (s.skipped) {
         if (std) {
           fields[std.color] = null;
           fields[std.finish] = null;
         }
-        // Orphan skips need no explicit clear here — the shared Other fields
-        // are recomputed from the surviving orphan set below (and cleared
-        // there on re-edit when 0 or 2+ orphans remain).
+        // An orphan (Cabinets, Door…) has no field of its own — it shares
+        // ColorOther__c — so its skip is cleared with the others below. Noted
+        // here because "nobody picked an orphan" and "the customer said don't
+        // paint this one" are the same empty list otherwise, and only the
+        // second is an instruction to clear.
+        if (isOrphan) skippedOrphans.push(s.surface.trim());
         continue;
       }
 
@@ -521,7 +534,13 @@ export async function POST(
           `${o.surface}: ${o.colorName ?? "(color picked)"}${codeText}${finishText ? ` — ${finishText}` : ""}`.trim()
         );
       }
-    } else if (isReedit) {
+    } else if (isReedit || skippedOrphans.length > 0) {
+      // No orphan carries a color. Cleared on a re-edit (the customer removed
+      // one), and on a FIRST submit when they explicitly skipped one — the
+      // same rule as a standard surface: a blank is no answer, a skip is an
+      // answer (Karan 2026-09-19). Without the second condition, skipping
+      // Cabinets left the office's color sitting in ColorOther__c under a note
+      // saying not to paint them.
       fields.ColorOther__c = null;
       fields.FinishOther__c = null;
     }

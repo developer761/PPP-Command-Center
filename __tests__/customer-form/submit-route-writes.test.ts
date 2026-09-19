@@ -290,6 +290,46 @@ describe("un-skipping a surface (Katie 2026-09-19: \"can they undo it?\")", () =
     expect(String(woliFields().ColorNotes__c ?? "")).toMatch(/Don't paint this surface.*Walls/i);
   });
 
+  it("clears the color on a FIRST submit too, not just a re-edit", async () => {
+    // Karan 2026-09-19. A blank surface is "no answer" and is left alone; a
+    // skip is an answer. Clearing only on re-edit left Salesforce holding a
+    // color with a note beside it saying not to paint that surface — a record
+    // that argues with itself, on the system PPP reads directly.
+    await post({ lineItems: line([skip("Walls")]) });
+    const f = woliFields();
+    expect(f).toHaveProperty("ColorWall__c", null);
+    expect(f).toHaveProperty("FinishWall__c", null);
+  });
+
+  it("and the same for an orphan surface, which shares one Salesforce field", async () => {
+    // Cabinets and Door have no color field of their own — they share
+    // ColorOther__c. Skipping the only one left the office's color sitting in
+    // that shared field, under a note saying not to paint it.
+    await post({
+      lineItems: [{ id: "wl-1", surfaces: [{ surface: "Cabinets", colorId: null, finish: null, skipped: true }], notes: "" }],
+    });
+    const f = woliFields();
+    expect(f).toHaveProperty("ColorOther__c", null);
+    expect(f).toHaveProperty("FinishOther__c", null);
+    expect(String(f.ColorNotes__c ?? "")).toMatch(/Don't paint this surface.*Cabinets/i);
+  });
+
+  it("…but an orphan nobody answered is still left alone on a first submit", async () => {
+    // The control: an empty orphan list is "no answer", and clearing there
+    // would destroy an office entry on every submit that never mentioned it.
+    await post({
+      lineItems: [{ id: "wl-1", surfaces: [{ surface: "Walls", colorId: "a02C1", finish: "Eggshell" }], notes: "" }],
+    });
+    expect(woliFields()).not.toHaveProperty("ColorOther__c");
+  });
+
+  it("but a surface left BLANK on a first submit is still left alone", async () => {
+    // The distinction the change rests on. No answer is not an instruction,
+    // and writing null here would destroy a color the office entered.
+    await post({ lineItems: line([{ surface: "Walls", colorId: null, finish: null }]) });
+    expect(woliFields()).not.toHaveProperty("ColorWall__c");
+  });
+
   it("changing their mind TO 'don't paint' clears the color they had chosen", async () => {
     // The other direction, and the one that was uncovered: on a re-edit the
     // skip has to null the Salesforce color, or the crew paints a surface the
