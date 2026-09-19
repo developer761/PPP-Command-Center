@@ -3692,6 +3692,7 @@ export default async function OpportunityDetailPage({
               }
               editField={pickFirst(sp.ef) ?? null}
               editError={pickFirst(sp.ef_error) ?? null}
+              oppProposalTotal={pageProposalTotal}
             />
           </div>
           {!isDeletedDeal && (
@@ -5061,6 +5062,7 @@ async function InfoTab({
   invoiceErrors,
   editField,
   editError,
+  oppProposalTotal,
 }: {
   opp: CommercialOpportunity;
   account: CommercialAccount | null;
@@ -5082,28 +5084,43 @@ async function InfoTab({
   editError?: string | null;
   invoicesCreated?: number;
   invoiceErrors?: number;
+  /** The deal's current proposal total, already fetched by the page. Bid
+   *  low/high was removed from the create forms (2026-08 meeting) and pricing
+   *  now lives on the proposal, so without it a bid-less deal's Weighted tile
+   *  reads $0 here while the dashboard shows it correctly. Passed rather than
+   *  re-queried — this tab used to fetch it a second time for the same deal in
+   *  the same render. */
+  oppProposalTotal?: number;
 }) {
-  // Team data for the editable Team row below. getEffectiveOwnerTeam resolves
-  // a deal with no team of its own to the account's.
-  const [allTeams, effectiveTeam, proposalTotalByOpp] = await Promise.all([
-    listTeams(),
-    getEffectiveOwnerTeam(opp.team_id, account?.team_id ?? null),
-    // Bid low/high was removed from the create forms (2026-08 meeting); pricing
-    // now lives on the proposal. Without this, a bid-less deal's Weighted tile
-    // reads $0 on the detail page even though the dashboard shows it correctly.
-    listCurrentProposalTotalByOpp([opp.id]),
-  ]);
-  const oppProposalTotal = proposalTotalByOpp.get(opp.id);
-
-  // Per-job contacts, plus the account's people offered as the source to pick
-  // from — a job contact is a REUSE of an existing person, not a new record,
-  // so one superintendent across three jobs keeps one phone number.
+  // ── Everything this tab reads, in ONE wave ──────────────────────────────
+  //
+  // These were three sequential awaits — teams, then contacts, then the
+  // lifecycle dates — and not one of them needed anything from the one before
+  // it. All they need is `opp` and `account`, both props. On the DEFAULT tab of
+  // the busiest page in the platform, which every button on it revalidates
+  // back into, that was two round trips bought and thrown away.
+  //
+  // `listCurrentProposalTotalByOpp` is gone from here entirely: the page
+  // component already fetched exactly this for exactly this deal, so it ran
+  // twice per render. It arrives as a prop now. React's `cache()` would not
+  // have caught it — the argument is a fresh `[opp.id]` array each call and
+  // cache() keys on reference.
   const { listOpportunityContacts } =
     await import("@/lib/commercial/opportunities/contacts");
-  const [oppContacts, accountContactRows] = await Promise.all([
-    listOpportunityContacts(opp.id),
-    account ? listAccountContacts(account.id) : Promise.resolve([]),
-  ]);
+  const [allTeams, effectiveTeam, oppContacts, accountContactRows, lifecycle] =
+    await Promise.all([
+      listTeams(),
+      getEffectiveOwnerTeam(opp.team_id, account?.team_id ?? null),
+      // Per-job contacts, plus the account's people offered as the source to
+      // pick from — a job contact is a REUSE of an existing person, not a new
+      // record, so one superintendent across three jobs keeps one phone number.
+      listOpportunityContacts(opp.id),
+      account ? listAccountContacts(account.id) : Promise.resolve([]),
+      // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
+      // durations. Time metrics are null-safe: null → "—", so a fresh deal
+      // with no RFP renders clean instead of "NaN days".
+      fetchOpportunityLifecycle(opp),
+    ]);
   const alreadyOnJob = new Set(oppContacts.map((c) => c.contact_id));
   const accountContactOptions = accountContactRows
     // Someone already on the job is dropped from the picker: re-adding them in
@@ -5149,12 +5166,7 @@ async function InfoTab({
   const allOtherStatuses = allowedNextStatuses(opp.status).filter(
     (st) => !sensible.includes(st) && st !== opp.status,
   ) as ReadonlyArray<OpportunityStatus>;
-  // Katie 2026-07-20: lifecycle strip — 4 canonical dates + 2 derived
-  // durations. fetch happens here (server component, one extra query)
-  // so the Bid lifecycle card renders in the same paint. Time metrics
-  // are null-safe: null → "—", so a fresh deal with no RFP renders
-  // clean instead of "NaN days".
-  const lifecycle = await fetchOpportunityLifecycle(opp);
+  // `lifecycle` is fetched in the single wave at the top of this component.
   // One helper for every in-place field, so the read view, the pencil, the open
   // editor and the error all stay in lockstep instead of being re-derived per
   // row. Dates render as the ET calendar day; everything else as stored.
