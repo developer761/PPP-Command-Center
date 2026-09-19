@@ -7,9 +7,16 @@
  * `overwrite` is the customer saying otherwise (Kate 2026-09-18: "add an
  * 'overwrite anyway' option in case customers change their mind and need to
  * update multiple rooms/areas"). It replaces colors already chosen — but never
- * a SKIP. "Don't paint this surface" is an answer too, and resurrecting a
- * surface somebody deliberately opted out of is not what "apply this color"
- * means; that is the same rule the order builder and Salesforce writeback keep.
+ * a SKIP.
+ *
+ * That limit is DELIBERATE and confirmed (Karan, 2026-09-19: "I would keep it
+ * where applying to all areas does not override a 'skip this surface'"). Do
+ * not widen it without asking him again. "Don't paint this surface" is an
+ * answer, not an absence of one — the same reading the order builder, the
+ * vendor email and the Salesforce writeback all take — and a sweep started in
+ * another room is the last place it should be reversed from. The only way to
+ * un-skip is the "Add color instead" button on that surface, where the person
+ * doing it can see what they are undoing.
  *
  * Extracted from the component because the rule is the interesting part and a
  * component in this repo cannot be rendered by the test suite (node env, no

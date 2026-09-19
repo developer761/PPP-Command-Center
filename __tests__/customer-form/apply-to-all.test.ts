@@ -98,8 +98,11 @@ describe("the rooms an overwrite would change", () => {
   });
 
   it("and a skip still wins, even when the customer asks to overwrite", () => {
-    // Every other consumer treats "don't paint this surface" as an answer.
-    // An overwrite changes colors; it does not un-skip a surface.
+    // Confirmed by Karan 2026-09-19: "I would keep it where applying to all
+    // areas does not override a 'skip this surface'." Every other consumer
+    // treats "don't paint this surface" as an answer; an overwrite changes
+    // colors, it does not un-skip a surface. If this test is ever failing
+    // because the rule was widened, that is a decision to take back to him.
     const { fill, differing } = applyToAllTargets({
       ...JOB,
       picks: {
