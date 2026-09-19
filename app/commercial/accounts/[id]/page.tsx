@@ -808,6 +808,7 @@ export default async function CommercialAccountDetailPage({
       {tab === "team" && (
         <TeamTab
           accountId={account.id}
+          account={account}
           errorMessage={typeof sp.error === "string" ? sp.error : undefined}
           appliedNote={typeof sp.team_applied === "string" ? sp.team_applied : undefined}
         />
@@ -2911,23 +2912,29 @@ async function assignTeamAction(formData: FormData) {
 
 async function TeamTab({
   accountId,
+  account,
   errorMessage,
   appliedNote,
 }: {
   accountId: string;
+  /** The account the PAGE already loaded. This tab used to call
+   *  `getCommercialAccount(accountId)` itself — the same query, for the same
+   *  row, in the same render — and because the row then arrived inside the
+   *  wave, `getOwnerTeam(account.team_id)` had to be a whole second wave after
+   *  it. Taking it as a prop removes a duplicate query AND a round trip. */
+  account: CommercialAccount | null;
   errorMessage?: string;
   /** What assigning a team just did, e.g. "Added 4 team members to this
    *  customer". Rendered as a quiet confirmation strip, not a banner. */
   appliedNote?: string;
 }) {
-  const [team, assignableStaff, allPppEmails, allTeams, account] = await Promise.all([
+  const [team, assignableStaff, allPppEmails, allTeams, assignedTeam] = await Promise.all([
     listAccountTeam(accountId),
     listAssignableStaff(),
     listAllPppProfileEmails(),
     listTeams(),
-    getCommercialAccount(accountId),
+    getOwnerTeam(account?.team_id ?? null),
   ]);
-  const assignedTeam = await getOwnerTeam(account?.team_id ?? null);
   const teamUserIds = new Set(team.map((t) => t.user_id));
   // Count by role so we can show "1 sales rep · 2 PMs" inline at the top
   // — gives Alex a one-glance read of the team shape without scanning.

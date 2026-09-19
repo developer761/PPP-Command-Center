@@ -796,7 +796,7 @@ export default async function CommercialOpportunitiesPage({
   // step is the one that's actually correct — Qualifying and Request for
   // Proposal share the real status `qualifying`, and Proposal spans two
   // statuses, so no single .eq() expresses either column on its own.
-  const [oppsUnfiltered, accounts] = await Promise.all([
+  const [oppsUnfiltered, accounts, allTeams] = await Promise.all([
     listCommercialOpportunities({
       search,
       // Only narrowed in the DB when exactly ONE GC is picked — with several,
@@ -813,6 +813,9 @@ export default async function CommercialOpportunitiesPage({
       includeArchived,
     }),
     listCommercialAccounts(),
+    // For the New-opportunity sheet (audit #14 — it had drifted behind the
+    // account's form). Takes no arguments, so it never needed its own wave.
+    listTeams(),
   ]);
   const oppsRaw =
     stageSet.size > 0
@@ -833,6 +836,7 @@ export default async function CommercialOpportunitiesPage({
     fileCountMap,
     submittalCountMap,
     finishCountMap,
+    currentProposalByOpp,
   ] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(oppIds),
     listOpenTaskStatsByOpp(oppIds),
@@ -841,18 +845,19 @@ export default async function CommercialOpportunitiesPage({
     listAttachmentCountByOpp(oppIds),
     listSubmittalCountByOpp(oppIds),
     listFinishCountByOpp(oppIds),
+    // Current proposal total per deal — the fallback the $ KPIs use when a
+    // deal has no bid range. Since the meeting removed Bid low/high from the
+    // create forms, every NEW deal has none, and weighted pipeline / bid range
+    // / the stage funnel were all counting those deals as zero.
+    //
+    // Keyed on `oppIds` like its seven siblings, and reads none of their
+    // results — so it belongs in the wave, not after it.
+    listCurrentProposalByOpp(oppIds),
   ]);
-  // Current proposal total per deal — the fallback the $ KPIs use when a deal
-  // has no bid range. Since the meeting removed Bid low/high from the create
-  // forms, every NEW deal has none, and weighted pipeline / bid range / the
-  // stage funnel were all counting those deals as zero.
-  const currentProposalByOpp = await listCurrentProposalByOpp(oppIds);
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const),
   );
-  // For the New-opportunity sheet (audit #14 — it had drifted behind the
-  // account's form). Cheap, and only this page renders that sheet.
-  const allTeams = await listTeams();
+  // `allTeams` is fetched in the first wave — it takes no arguments.
   const todayEtIso = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/New_York",
   });
