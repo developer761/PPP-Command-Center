@@ -1362,23 +1362,72 @@ async function readAll(table, columns, shape = (q) => q) {
 
 async function reconcile() {
   const problems = [];
+  /** Invoices billed in Command Center during the dual run — reported, never flagged. */
+  const platformInvoices = [];
+  /** How much of the headline outstanding gap the platform billing accounts for. */
+  let explainedDeltaCents = 0;
 
   let sfContract = 0, sfBalance = 0, sfPaid = 0, ourContract = 0, ourBalance = 0, ourPaid = 0;
   for (const w of SF.wos) {
     const dealId = mapped("deal", w.Opportunity__c);
     if (!dealId) { problems.push(`${w.WorkOrderNumber}: no deal imported`); continue; }
-    const { data: inv } = await sb
+    const { data: inv, error: invErr } = await sb
       .from("commercial_invoices")
-      .select("subtotal_cents, total_cents, paid_cents, balance_cents")
+      .select("invoice_number, subtotal_cents, total_cents, paid_cents, balance_cents")
       .eq("opportunity_id", dealId)
       .is("deleted_at", null);
+    // A failed read here reads as "this job has no invoices", which would
+    // invent a discrepancy in correct data — the same mistake the paginated
+    // purchases read above exists to avoid.
+    if (invErr) { problems.push(`${w.WorkOrderNumber}: could not read invoices — ${invErr.message}`); continue; }
     const ourTotal = (inv ?? []).reduce((n, i) => n + Number(i.subtotal_cents), 0);
     const ourPaidJob = (inv ?? []).reduce((n, i) => n + Number(i.paid_cents), 0);
     const ourBalanceJob = (inv ?? []).reduce((n, i) => n + Number(i.balance_cents), 0);
     const sfBalanceJob = cents(w.BalanceOwed__c);
     const sfPaidJob = cents(w.TotalPaymentsIn__c);
 
-    if (ourBalanceJob !== sfBalanceJob) problems.push(`${w.WorkOrderNumber} balance: ours ${money(ourBalanceJob)} vs Salesforce ${money(sfBalanceJob)}`);
+    // ── Invoices RAISED HERE are not a discrepancy ─────────────────────────
+    //
+    // Everything imported from Salesforce is numbered `SF-<work order>`;
+    // anything else was billed in Command Center during the dual run, and
+    // Salesforce has never heard of it. It will therefore differ, permanently
+    // and correctly, and saying "❌" about it trains the reader to skim a
+    // report whose whole value is that it is usually all ticks.
+    //
+    // Found 2026-09-19 with the first two: INV-0025 ($865.57) made DuCon read
+    // high, and on Station Yards Salesforce counts the whole un-invoiced
+    // contract as owed while we count only what has actually been billed —
+    // a definition gap, not a data one. Both were real and neither was wrong.
+    const raisedHere = (inv ?? []).filter((i) => !String(i.invoice_number ?? "").startsWith("SF-"));
+    const raisedHereBalance = raisedHere.reduce((n, i) => n + Number(i.balance_cents), 0);
+    if (raisedHere.length > 0) {
+      platformInvoices.push(
+        `${w.WorkOrderNumber}: ${raisedHere.length} invoice(s) raised here — ${raisedHere.map((i) => `${i.invoice_number} ${money(Number(i.balance_cents))}`).join(", ")}`
+      );
+    }
+
+    // Compare on the Salesforce-sourced invoices only, so a genuine import
+    // error on this job still surfaces even once it also carries new billing.
+    const sfSourced = (inv ?? []).filter((i) => String(i.invoice_number ?? "").startsWith("SF-"));
+    const ourBalanceFromSf = ourBalanceJob - raisedHereBalance;
+    if (ourBalanceFromSf !== sfBalanceJob) {
+      if (sfSourced.length === 0 && raisedHere.length > 0) {
+        // Billed ENTIRELY here. Salesforce has no invoice on this job, so its
+        // BalanceOwed__c is simply the un-invoiced contract — it is not the
+        // same quantity as ours and there is nothing to reconcile. Comparing
+        // them is apples to oranges, and calling it ❌ every night is how a
+        // report stops being read.
+        explainedDeltaCents += ourBalanceJob - sfBalanceJob;
+        platformInvoices.push(
+          `${w.WorkOrderNumber}: billed entirely here — Salesforce still carries the whole contract ${money(sfBalanceJob)} as owed`
+        );
+      } else {
+        problems.push(`${w.WorkOrderNumber} balance: ours ${money(ourBalanceFromSf)} vs Salesforce ${money(sfBalanceJob)}${raisedHere.length ? ` (excludes ${money(raisedHereBalance)} raised here)` : ""}`);
+      }
+    } else if (raisedHere.length > 0) {
+      // Salesforce side ties out exactly; the only difference is new billing.
+      explainedDeltaCents += raisedHereBalance;
+    }
     if (ourPaidJob !== sfPaidJob) problems.push(`${w.WorkOrderNumber} collected: ours ${money(ourPaidJob)} vs Salesforce ${money(sfPaidJob)}`);
 
     sfContract += cents(w.Quoted_Subtotal_with_Change_Order__c);
@@ -1425,9 +1474,18 @@ async function reconcile() {
   ];
   console.log("\n            what            ours              Salesforce        ");
   for (const [label, ours, theirs] of rows) {
-    const ok = ours === theirs;
+    // `outstanding` is the one total the dual run legitimately moves: every
+    // invoice raised in Command Center is money Salesforce has never heard of,
+    // and every job billed only here leaves Salesforce carrying the whole
+    // contract as owed. Both were counted per-job above, so if the headline
+    // gap is exactly what those add up to, the books agree and saying ❌ would
+    // be wrong. Anything left over is real and still reported.
+    const explained = label === "outstanding" ? explainedDeltaCents : 0;
+    const ok = ours === theirs || (explained !== 0 && ours - theirs === explained);
+    const accountedFor = ok && ours !== theirs;
     if (!ok) problems.push(`TOTAL ${label}: ours ${money(ours)} vs Salesforce ${money(theirs)}`);
-    console.log(`  ${ok ? "✅" : "❌"} ${label.padEnd(16)} ${money(ours).padStart(16)}  ${money(theirs).padStart(16)}`);
+    console.log(`  ${ok ? "✅" : "❌"} ${label.padEnd(16)} ${money(ours).padStart(16)}  ${money(theirs).padStart(16)}` +
+      (accountedFor ? `   ← differs by ${money(ours - theirs)}, all of it billing raised here` : ""));
   }
   if (arrivedSince.length) {
     console.log(`     ↳ ${arrivedSince.length} transaction(s) entered in Salesforce since the import` +
@@ -1564,13 +1622,29 @@ async function reconcile() {
     console.log(`  (excluded on purpose: ${SF.txOutOfScope.length} transaction(s) ${money(amt)} on canceled work orders)`);
   }
 
+  if (platformInvoices.length) {
+    console.log(`\n  ℹ ${platformInvoices.length} job(s) carry invoices raised HERE, which Salesforce has never seen.`);
+    console.log(`    Expected during the dual run — reported so the totals below make sense, not as a problem:`);
+    for (const p of platformInvoices.slice(0, 20)) console.log(`      ${p}`);
+    if (platformInvoices.length > 20) console.log(`      …and ${platformInvoices.length - 20} more`);
+  }
+
   if (problems.length) {
     console.log(`\n❌ ${problems.length} difference(s):`);
     for (const p of problems.slice(0, 40)) console.log(`   ${p}`);
     if (problems.length > 40) console.log(`   …and ${problems.length - 40} more`);
     process.exit(1);
   }
-  console.log("\n✅ every figure matches Salesforce to the cent");
+  // Say which of the two it is. Once Command Center starts raising invoices,
+  // "matches to the cent" stops being true — outstanding legitimately differs
+  // by exactly the billing Salesforce has never seen — and a report that
+  // overclaims is worse than one that flags too much, because the reader
+  // stops checking.
+  console.log(
+    explainedDeltaCents !== 0
+      ? `\n✅ every figure reconciles — outstanding differs by ${money(explainedDeltaCents)}, which is exactly the billing raised in Command Center and listed above. Everything else matches Salesforce to the cent.`
+      : "\n✅ every figure matches Salesforce to the cent"
+  );
 }
 
 /**
