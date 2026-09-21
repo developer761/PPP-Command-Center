@@ -73,6 +73,7 @@ import { pickFirst } from "@/lib/commercial/form-utils";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import DueDatePickerWithPresets from "@/components/commercial/due-date-picker-with-presets";
 import CopyInvoiceLinkButton from "@/components/commercial/copy-invoice-link";
+import { INVOICE_COPY_EMAILS } from "@/lib/commercial/invoices/email";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { MoneyInput } from "@/components/commercial/money-input";
 
@@ -1172,11 +1173,33 @@ export async function InvoiceDetailView({
                 </>
               )}
               <span>Created {fmtEtDate(invoice.created_at)}</span>
-              {invoice.sent_at && (
+              {invoice.sent_at ? (
                 <>
                   <span aria-hidden>·</span>
                   <span>Sent {fmtEtDate(invoice.sent_at)}</span>
                 </>
+              ) : (
+                /* SAY SO WHEN NOTHING WAS EMAILED.
+                   An invoice created from a deal is issued immediately — the
+                   money is owed and it belongs in AR — but that is not the
+                   same as the customer having received it. The status pill
+                   reads "Sent" either way, which is how Brendan came to
+                   believe an invoice had gone out when it had not. The pill
+                   is load-bearing for AR and can't change; this line tells
+                   the truth beside it. */
+                !isVoid &&
+                invoice.status !== "draft" && (
+                  <>
+                    <span aria-hidden>·</span>
+                    <a
+                      href="#email-invoice"
+                      className="inline-flex items-center gap-1 font-semibold text-amber-800 underline decoration-amber-300 underline-offset-2 hover:decoration-amber-600"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /></svg>
+                      Not emailed yet — send it
+                    </a>
+                  </>
+                )
               )}
             </div>
             {invoice.proposal_id && (
@@ -1416,7 +1439,17 @@ export async function InvoiceDetailView({
                   Email to GC
                 </h2>
                 <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
-                  Sends the branded PDF{invoice.status === "draft" ? " and marks this invoice sent" : ""}. Brendan + ops are BCC&rsquo;d.
+                  {/* NAMES THE REAL ADDRESSES. This said "Brendan + ops are
+                      BCC'd" as fixed text. Katie moved invoice copies to Mary
+                      on 2026-09-17 and the sentence was never updated, so on
+                      2026-09-21 Brendan sent an invoice, was told he would be
+                      copied, and was not — while Mary got a BCC he could not
+                      see. A promise about who receives an email has to be read
+                      from the list that actually receives it. */}
+                  Sends the branded PDF{invoice.status === "draft" ? " and marks this invoice sent" : ""}.
+                  {INVOICE_COPY_EMAILS.length > 0
+                    ? ` Blind-copied to ${INVOICE_COPY_EMAILS.join(", ")} — they are BCC'd, so the recipient can't see them and neither can you on your own copy.`
+                    : " No internal copies are configured, so nobody here receives a copy."}
                 </p>
               </div>
               <span className="text-[12px] font-semibold text-ppp-blue-700 shrink-0">Compose →</span>

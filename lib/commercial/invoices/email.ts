@@ -31,7 +31,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * So the two documents no longer share a copy list — money goes to Mary,
  * pricing goes to Brendan.
  */
-const INVOICE_COPY_EMAILS = (
+export const INVOICE_COPY_EMAILS = (
   process.env.COMMERCIAL_INVOICE_COPY_EMAILS ||
   "mary@tomcopainting.com,developer@precisionpaintingplus.net"
 )
@@ -182,8 +182,18 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
     return { ok: false, error: `The invoice didn't go out: ${r.error}` };
   }
 
+  // RECORD THE SEND. Always — not only from draft.
+  //
   // A draft becomes SENT on delivery (stamps issued_at/sent_at + status log).
-  // Best-effort — the email already went, so a status hiccup doesn't fail it.
+  // But an invoice created straight from a deal is ALREADY `sent`, so this
+  // branch never ran for it and `sent_at` was never stamped by the thing that
+  // actually sends. Combined with create stamping it optimistically, the
+  // column recorded when the invoice was written rather than when it was
+  // delivered — and once create stopped stamping it, an issued invoice that
+  // really was emailed would have shown nothing at all.
+  //
+  // Best-effort throughout: the email has already gone, so a bookkeeping
+  // hiccup must never be reported as a failed send.
   if (invoice.status === "draft") {
     const flip = await changeInvoiceStatus({
       invoice_id: input.invoice_id,
@@ -194,6 +204,29 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
     if (!flip.ok) {
       console.warn(`[emailInvoiceToGc] sent email but status flip failed for ${input.invoice_id}: ${flip.error}`);
     }
+  } else {
+    // Already live (issued on create, viewed, or part-paid). Don't touch the
+    // status — a re-send must not drag a partial back to `sent` — just record
+    // that an email went out, and backfill issued_at if it was never set.
+    const nowIso = new Date().toISOString();
+    const { error: stampErr } = await commercialDb()
+      .from("commercial_invoices")
+      .update({
+        sent_at: nowIso,
+        ...(invoice.issued_at ? {} : { issued_at: nowIso }),
+      })
+      .eq("id", input.invoice_id);
+    if (stampErr) {
+      console.warn(`[emailInvoiceToGc] sent email but could not stamp sent_at for ${input.invoice_id}: ${stampErr.message}`);
+    }
+    const { logStatusChange } = await import("./db");
+    await logStatusChange(
+      input.invoice_id,
+      invoice.status,
+      invoice.status,
+      input.actor_user_id,
+      `Emailed to ${toEmail}`,
+    ).catch((err: unknown) => console.warn("[emailInvoiceToGc] status log failed:", err));
   }
 
   // Timeline note (system-posted, links back to the deal).

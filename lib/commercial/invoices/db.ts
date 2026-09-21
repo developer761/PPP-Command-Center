@@ -482,7 +482,26 @@ export async function createCommercialInvoice(
       invoice_number,
       status: input.issue ? "sent" : "draft",
       issued_at: input.issue ? nowIso : null,
-      sent_at: input.issue ? nowIso : null,
+      // NOT stamped here. `issued` and `sent` are different facts.
+      //
+      // Brendan, 2026-09-21: "as soon as it was generated, it marked the
+      // invoice as sent without actually sending the invoice." He was right.
+      // INV-0024 was created at 21:46 already carrying status `sent` and a
+      // `sent_at`, and the email did not leave until 21:49 — and if he had
+      // never emailed it, the invoice would have claimed delivery forever
+      // while the customer waited for a bill that was never sent. That is a
+      // money-collection risk, not a cosmetic one.
+      //
+      // The status stays `sent` because that is what puts an invoice into AR
+      // (BILLABLE_INVOICE_STATUSES), and issuing it genuinely does mean the
+      // money is owed. There is no `issued` status to move to, and inventing
+      // one touches every AR surface on the platform.
+      //
+      // `sent_at` now means exactly one thing: an email actually went out.
+      // It is stamped by changeInvoiceStatus on a real send, and read only to
+      // display "Sent <date>", so leaving it null costs nothing and stops the
+      // record asserting something that did not happen.
+      sent_at: null,
       subtotal_cents,
       tax_pct:
         taxExempt ||
@@ -544,7 +563,7 @@ export async function createCommercialInvoice(
     null,
     input.issue ? "sent" : "draft",
     input.created_by_user_id,
-    input.issue ? "Issued on create" : "Created",
+    input.issue ? "Issued on create — not emailed yet" : "Created",
   );
   // Central audit trail (Karan 2026-07-27 audit): invoice mutations were the
   // only domain with no logInsert/logUpdate/logDelete — the money had no trail.
