@@ -37,12 +37,12 @@ export function schedulerDeps(): SchedulerDeps {
     async resolve(a) {
       const { data } = await sb
         .from("sms_conversations")
-        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, reply_to_email, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, origination_identity, reply_to_email, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id)
         .maybeSingle();
       if (!data) return null;
       const ws = data.sms_sub_accounts as unknown as {
-        id: string; name: string; phone_e164: string | null; time_zone: string;
+        id: string; name: string; phone_e164: string | null; origination_identity: string | null; time_zone: string;
         quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
         reply_to_email: string | null;
       } | null;
@@ -121,7 +121,7 @@ export function schedulerDeps(): SchedulerDeps {
     async draftReply(a: DueAction) {
       const { data: conv } = await sb
         .from("sms_conversations")
-        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
@@ -135,7 +135,7 @@ export function schedulerDeps(): SchedulerDeps {
       }
 
       const ws = conv.sms_sub_accounts as unknown as {
-        id: string; name: string; autosend_enabled: boolean;
+        id: string; name: string; autosend_enabled: boolean; origination_identity: string | null;
         phone_e164: string | null; time_zone: string;
         quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
       } | null;
@@ -288,11 +288,11 @@ export function schedulerDeps(): SchedulerDeps {
     async sendHeldReply(a: DueAction) {
       const { data: conv } = await sb
         .from("sms_conversations")
-        .select("id, customer_phone, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("id, customer_phone, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       const ws = conv.sms_sub_accounts as unknown as {
-        id: string; name: string; phone_e164: string | null; time_zone: string;
+        id: string; name: string; phone_e164: string | null; origination_identity: string | null; time_zone: string;
         quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
       } | null;
       if (!ws) return { kind: "skipped" as const, reason: "conversation has no workspace" };

@@ -126,7 +126,7 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     .update({ reviewed_by: userId, reviewed_at: new Date().toISOString() })
     .eq("id", input.draftId).eq("state", "pending")
     .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
-    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
+    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
 
   const d = claimedRows?.[0];
   if (!d) return { ok: false, error: "Somebody else is already dealing with this one." };

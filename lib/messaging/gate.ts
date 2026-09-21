@@ -28,6 +28,18 @@ export type GateWorkspace = {
   id: string;
   name: string;
   phone_e164: string | null;
+  /**
+   * What the carrier is told to send FROM, when that is not just the number.
+   *
+   * PPP's numbers live in an AWS account that is not PPP's own. AWS does not
+   * accept ported numbers into End User Messaging, so each number is shared
+   * across accounts instead — and a shared number must be addressed by its
+   * full ARN in SendTextMessage, not by its digits. NULL means send from
+   * phone_e164, which is right for a number this account owns.
+   *
+   * The customer still sees the number; this only changes what we hand AWS.
+   */
+  origination_identity?: string | null;
   time_zone: string;
   quiet_hours_start: number;
   quiet_hours_end: number;
@@ -259,7 +271,11 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   }
 
   const transport = deps.transport ?? activeTransport();
-  const { providerId } = await transport.send(ws.phone_e164 as E164, to, outgoing);
+  // The ARN of a number shared from another AWS account, when there is one;
+  // otherwise the number itself. Either is a valid OriginationIdentity, and
+  // the customer sees the same number on their handset regardless.
+  const from = (ws.origination_identity?.trim() || ws.phone_e164) as E164;
+  const { providerId } = await transport.send(from, to, outgoing);
   return { ok: true, providerId, body: outgoing };
 }
 
