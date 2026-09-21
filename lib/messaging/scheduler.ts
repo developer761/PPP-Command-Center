@@ -70,7 +70,23 @@ export type SchedulerDeps = {
    * so Emily's real first reply went out without the opt-out line.
    */
   markDone(a: DueAction): Promise<void>;
-  reschedule(a: DueAction, at: Date, reason: string): Promise<void>;
+  /**
+   * Put the row back with a new time.
+   *
+   * `why` is not decoration. `attempts` increments when a row is CLAIMED, and
+   * nothing reset it, so every deferral used to spend one of the five tries a
+   * row gets. That made the kindest branches lethal: with the opt-out list not
+   * yet imported the gate defers every send, so an opener would be refused
+   * hourly and permanently failed about five hours later — the exact opposite
+   * of the comment in classifyRefusal promising the queue "drains by itself the
+   * moment somebody imports it". A person holding a conversation over lunch did
+   * the same to every campaign step on it.
+   *
+   * "error" spends an attempt, because something is broken and retries must be
+   * bounded. "deferral" gives it back, because nothing is wrong: the message is
+   * simply not allowed yet.
+   */
+  reschedule(a: DueAction, at: Date, reason: string, why: "error" | "deferral"): Promise<void>;
   cancel(a: DueAction, reason: string): Promise<void>;
   fail(a: DueAction, reason: string): Promise<void>;
   /**
@@ -195,7 +211,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
         return { kind: "failed", reason };
       }
       const at = new Date((deps.now ?? new Date()).getTime() + backoffMs(a.attempts));
-      await deps.reschedule(a, at, reason);
+      await deps.reschedule(a, at, reason, "error");
       return { kind: "rescheduled", at, reason };
     }
   }
@@ -211,7 +227,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   if (ctx.conversationState === "human_active") {
     const reason = "a person has taken this conversation over";
     const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
-    await deps.reschedule(a, at, reason);
+    await deps.reschedule(a, at, reason, "deferral");
     return { kind: "rescheduled", at, reason };
   }
 
@@ -249,7 +265,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
         return { kind: "failed", reason };
       }
       const at = new Date((deps.now ?? new Date()).getTime() + backoffMs(a.attempts));
-      await deps.reschedule(a, at, reason);
+      await deps.reschedule(a, at, reason, "error");
       return { kind: "rescheduled", at, reason };
     }
   }
@@ -272,7 +288,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       return { kind: "failed", reason };
     }
     const at = new Date((deps.now ?? new Date()).getTime() + backoffMs(a.attempts));
-    await deps.reschedule(a, at, reason);
+    await deps.reschedule(a, at, reason, "error");
     return { kind: "rescheduled", at, reason };
   }
 
@@ -295,7 +311,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   // The gate told us when. If it somehow did not, an hour is a safer guess
   // than dropping the message.
   const at = result.retryAt ?? new Date((deps.now ?? new Date()).getTime() + 3600_000);
-  await deps.reschedule(a, at, result.reason);
+  await deps.reschedule(a, at, result.reason, "deferral");
   return { kind: "rescheduled", at, reason: result.reason };
 }
 

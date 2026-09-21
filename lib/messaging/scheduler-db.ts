@@ -10,7 +10,7 @@ import { toE164 } from "./phone";
 import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
-import { runAgentTurn } from "./agent-run";
+import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
@@ -198,7 +198,26 @@ export function schedulerDeps(): SchedulerDeps {
         examples: selectExamples(corpus, { stage: stageFromIntents(priorIntents.map((p) => p.intent)) }),
       });
 
-      if (!res.ok) return { kind: "skipped" as const, reason: res.rejected ?? res.error };
+      if (!res.ok) {
+        // TWO VERY DIFFERENT FAILURES, and treating them alike lost replies.
+        //
+        // `rejected` is our own output validator refusing what the model
+        // chose. That is semantic: it will be refused again next minute, so
+        // retrying is pointless and the turn is closed.
+        //
+        // Everything else — a 429, a 529 overloaded, a socket reset, a
+        // missing ANTHROPIC_API_KEY — is infrastructure. runAgentTurn catches
+        // those and returns ok:false rather than throwing, so they arrived
+        // here looking identical to a rejection and runAction CANCELLED the
+        // action: the customer was never answered, there was no draft, no
+        // "needs human", and no alert, because a cancel is not a failure.
+        // A rate-limited minute silently dropped every reply in it.
+        //
+        // Throwing puts it on runAction's retry path instead, where it gets
+        // backoff and, if it really is broken, an honest `failed`.
+        if (!agentFailureIsTransient(res)) return { kind: "skipped" as const, reason: res.rejected! };
+        throw new Error(`the agent could not produce a reply: ${res.error}`);
+      }
       if (!res.rendered.trim()) return { kind: "skipped" as const, reason: "the agent had nothing to say" };
 
       // AUTOSEND, and what it does and does not mean.
@@ -339,10 +358,20 @@ export function schedulerDeps(): SchedulerDeps {
       await sb.from("sms_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", a.conversation_id);
     },
 
-    async reschedule(a, at, reason) {
+    async reschedule(a, at, reason, why) {
       await sb.from("sms_scheduled_actions").update({
         state: "pending", claimed_at: null, run_at: at.toISOString(),
         last_error: reason, updated_at: new Date().toISOString(),
+        // GIVE THE ATTEMPT BACK when nothing actually went wrong.
+        //
+        // sms_claim_due_actions increments attempts on CLAIM, so a row that
+        // was merely deferred — quiet hours, the daily cap, an opt-out list
+        // nobody has imported yet, a person holding the conversation — spent
+        // one of its five lives for doing nothing. Five deferrals and the
+        // message was failed permanently, which is how "held so the queue
+        // drains by itself" became "the queue kills itself by morning".
+        // An "error" still spends one, so a genuinely broken row stays bounded.
+        ...(why === "deferral" ? { attempts: Math.max(0, a.attempts - 1) } : {}),
       }).eq("id", a.id);
     },
 

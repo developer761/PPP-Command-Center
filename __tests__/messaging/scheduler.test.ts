@@ -434,3 +434,108 @@ describe("what went out is recorded on the channel it went out on", () => {
     expect(channel).toBe("sms");
   });
 });
+
+/**
+ * A DEFERRAL IS NOT AN ATTEMPT.
+ *
+ * `attempts` increments when a row is claimed and nothing reset it, so every
+ * deferral spent one of the five tries a row gets. With the opt-out list not
+ * yet imported the gate defers EVERY send, so an opener was refused hourly and
+ * permanently failed about five hours later — instead of waiting for the
+ * import, which is the whole thing classifyRefusal promises.
+ */
+describe("being told to wait does not use up the tries", () => {
+  const rescheduleSpy = () => {
+    const seen: Array<{ why: string; attempts: number }> = [];
+    const d = deps({
+      reschedule: async (a: DueAction, _at: Date, _r: string, why: "error" | "deferral") => {
+        seen.push({ why, attempts: a.attempts });
+      },
+    });
+    return { d, seen };
+  };
+
+  it("calls quiet hours a deferral", async () => {
+    const { d, seen } = rescheduleSpy();
+    await runAction(action(), { ...d, send: async () => ({ ok: false, reason: "quiet_hours" }) });
+    expect(seen[0].why).toBe("deferral");
+  });
+
+  it("calls an unimported opt-out list a deferral — the one that is live today", async () => {
+    const { d, seen } = rescheduleSpy();
+    await runAction(action(), { ...d, send: async () => ({ ok: false, reason: "suppression_list_empty" }) });
+    expect(seen[0].why).toBe("deferral");
+  });
+
+  it("calls a person holding the conversation a deferral", async () => {
+    const { d, seen } = rescheduleSpy();
+    await runAction(action(), {
+      ...d,
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+      }),
+    });
+    expect(seen[0].why).toBe("deferral");
+  });
+
+  it("calls a carrier that threw an error, because something IS broken", async () => {
+    const { d, seen } = rescheduleSpy();
+    await runAction(action(), { ...d, send: async () => { throw new Error("socket hang up"); } });
+    expect(seen[0].why).toBe("error");
+  });
+
+  it("a row deferred at the cap is still deferred, not failed", async () => {
+    // The shape that killed messages: attempts is already at the ceiling
+    // BECAUSE of deferrals, and the next deferral failed it permanently.
+    const { d, seen } = rescheduleSpy();
+    const out = await runAction(action({ attempts: MAX_ATTEMPTS }), {
+      ...d, send: async () => ({ ok: false, reason: "suppression_list_empty" }),
+    });
+    expect(out.kind).toBe("rescheduled");
+    expect(seen[0].why).toBe("deferral");
+    expect(d.calls.fail).toBe(0);
+  });
+});
+
+/**
+ * An Anthropic outage must not answer the customer with silence.
+ */
+describe("a model that could not be reached is retried, not cancelled", () => {
+  const turn = () => action({ action: "agent_turn", campaign_step_id: null });
+
+  it("reschedules when the agent dep throws, and never cancels", async () => {
+    const d = deps({ draftReply: async () => { throw new Error("Rate limited — try again shortly."); } });
+    const out = await runAction(turn(), d);
+    expect(out.kind).toBe("rescheduled");
+    // The bug: cancel is terminal, so the customer was never answered and
+    // nothing reported it — a cancel is not counted as a failure.
+    expect(d.calls.cancel).toBe(0);
+    expect(d.calls.reschedule).toBe(1);
+  });
+
+  it("spends an attempt on it, so a genuinely broken turn still stops", async () => {
+    const seen: string[] = [];
+    const d = deps({
+      draftReply: async () => { throw new Error("boom"); },
+      reschedule: async (_a: DueAction, _at: Date, _r: string, why: "error" | "deferral") => { seen.push(why); },
+    });
+    await runAction(turn(), d);
+    expect(seen[0]).toBe("error");
+  });
+
+  it("gives up honestly at the cap — failed, not cancelled", async () => {
+    const d = deps({ draftReply: async () => { throw new Error("still down"); } });
+    const out = await runAction(action({ action: "agent_turn", campaign_step_id: null, attempts: MAX_ATTEMPTS }), d);
+    expect(out.kind).toBe("failed");
+    expect(d.calls.fail).toBe(1);
+  });
+
+  it("still cancels when the agent's own validator refused the reply", async () => {
+    // Semantic, not transient: the same input will be refused next minute too.
+    const d = deps({ draftReply: async () => ({ kind: "skipped" as const, reason: "banned phrase: guarantee" }) });
+    const out = await runAction(turn(), d);
+    expect(out.kind).toBe("cancelled");
+    expect(d.calls.cancel).toBe(1);
+  });
+});

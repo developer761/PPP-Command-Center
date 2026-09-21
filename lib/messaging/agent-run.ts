@@ -56,6 +56,31 @@ export type RunResult =
   | { ok: false; error: string; rejected?: string };
 
 /**
+ * Is this failure worth trying again in a minute?
+ *
+ * Two failures arrive through the same `ok: false` and mean opposite things.
+ *
+ * `rejected` is OUR OWN output validator refusing what the model chose — a
+ * banned phrase, a price, a question asked out of order. The same input will
+ * be refused again next minute, so retrying is pointless and the turn closes.
+ *
+ * Everything else is infrastructure: a 429, a 529 overloaded, a socket reset,
+ * a missing ANTHROPIC_API_KEY. runAgentTurn deliberately catches those and
+ * returns rather than throwing, so they used to be indistinguishable from a
+ * rejection — and the scheduler CANCELLED the action for both. A cancel is
+ * terminal and is not counted as a failure, so a rate-limited minute dropped
+ * every reply in it: no answer to the customer, no draft, no "needs human",
+ * and no alert.
+ *
+ * A named function rather than an inline `if`, because this is the rule that
+ * decides whether a customer gets answered at all, and an inline `if` buried
+ * in a database module is a rule with nowhere to put a test.
+ */
+export function agentFailureIsTransient(res: { error: string; rejected?: string }): boolean {
+  return !res.rejected;
+}
+
+/**
  * The system prompt, built from config rather than hard-coded.
  *
  * Everything here comes from sms_agent_configs, which is what makes the state

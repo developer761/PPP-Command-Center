@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSystemPrompt, agentAvailable, type AgentConfigForRun } from "@/lib/messaging/agent-run";
+import { buildSystemPrompt, agentAvailable, agentFailureIsTransient, type AgentConfigForRun } from "@/lib/messaging/agent-run";
 
 const cfg: AgentConfigForRun = {
   persona_name: "Emily",
@@ -78,5 +78,50 @@ describe("agentAvailable", () => {
     // Same shape as briefAvailable() in the commercial reports — no key means
     // the feature says so rather than failing at call time.
     expect(agentAvailable()).toBe(!!process.env.ANTHROPIC_API_KEY);
+  });
+});
+
+/**
+ * WHICH FAILURES DESERVE ANOTHER MINUTE.
+ *
+ * This rule decides whether a customer is answered at all. Both failures
+ * arrive as `ok: false`; treating them alike meant an Anthropic rate limit
+ * permanently cancelled the reply — no answer, no draft, no alert, because a
+ * cancel is not counted as a failure.
+ */
+describe("agentFailureIsTransient", () => {
+  it("retries a rate limit", () => {
+    expect(agentFailureIsTransient({ error: "Rate limited — try again shortly." })).toBe(true);
+  });
+
+  it("retries an overloaded or broken API", () => {
+    expect(agentFailureIsTransient({ error: "Anthropic API error 529: overloaded" })).toBe(true);
+    expect(agentFailureIsTransient({ error: "Anthropic API error 500: internal" })).toBe(true);
+  });
+
+  it("retries a socket that dropped", () => {
+    expect(agentFailureIsTransient({ error: "fetch failed" })).toBe(true);
+  });
+
+  it("retries a missing API key, because the fix is a deploy and not a lost customer", () => {
+    // Silently cancelling here meant a key that had not been set yet dropped
+    // every inbound reply with nothing on any screen to say so.
+    expect(agentFailureIsTransient({ error: "The Anthropic API key was rejected." })).toBe(true);
+  });
+
+  it("does NOT retry our own validator refusing the reply", () => {
+    // Semantic. The same conversation will be refused again next minute, so
+    // retrying is a loop, not a recovery.
+    expect(agentFailureIsTransient({
+      error: "The reply was rejected before sending.",
+      rejected: "banned_phrase: we guarantee",
+    })).toBe(false);
+  });
+
+  it("does not retry an out-of-order question either", () => {
+    expect(agentFailureIsTransient({
+      error: "The reply was rejected before sending.",
+      rejected: "out_of_order: ask_address",
+    })).toBe(false);
   });
 });
