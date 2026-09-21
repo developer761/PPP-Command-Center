@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
  * gated by app/messaging/layout.tsx.
  */
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
+import type { WorkspaceOptOuts } from "./optout-rate";
 import type { CorpusExample } from "./retrieval";
 import type { Service, ServiceException } from "./services";
 
@@ -848,4 +849,64 @@ export async function loadTrainingCoverage() {
     ungraded: tagged.filter((e) => !e.conduct).length,
     gradedNoReason: tagged.filter((e) => e.conduct && e.tags.length === 0).length,
   };
+}
+
+/**
+ * Opt-out rate per number, for the reporting console.
+ *
+ * WHOSE OPT-OUT IS IT? An opt-out row carries a phone number and nothing about
+ * which of the fifteen numbers annoyed them. It is attributed to the workspace
+ * that texted that person most recently before they said stop, which is the
+ * honest reading: the last number to text somebody is the one they replied
+ * STOP to.
+ *
+ * Counted per PERSON, not per message — see optout-rate.ts.
+ */
+export async function loadOptOutRates(range: ReportRange = "30d"): Promise<WorkspaceOptOuts[]> {
+  const sb = messagingDb();
+  const from = new Date(Date.now() - RANGE_DAYS[range] * 86400_000).toISOString();
+
+  const [{ data: workspaces }, { data: convs }, { data: outs }] = await Promise.all([
+    sb.from("sms_sub_accounts").select("id, name").eq("is_active", true).order("name"),
+    // Every conversation that sent something in the window, with its person.
+    sb.from("sms_conversations").select("id, workspace_id, customer_phone, last_message_at, created_at"),
+    sb.from("sms_opt_outs").select("phone_e164, opted_out_at, opted_in_at").gte("opted_out_at", from),
+  ]);
+
+  const { data: outbound } = await sb
+    .from("sms_messages").select("conversation_id, created_at")
+    .eq("direction", "outbound").gte("created_at", from);
+
+  const convById = new Map((convs ?? []).map((c) => [c.id, c]));
+  // Who each workspace texted in the window, and when it last texted them.
+  const peopleByWs = new Map<string, Set<string>>();
+  const lastTexted = new Map<string, { workspaceId: string; at: string }>();
+  for (const m of outbound ?? []) {
+    const c = convById.get(m.conversation_id);
+    if (!c?.workspace_id || !c.customer_phone) continue;
+    const people = peopleByWs.get(c.workspace_id) ?? new Set<string>();
+    people.add(c.customer_phone);
+    peopleByWs.set(c.workspace_id, people);
+
+    const seen = lastTexted.get(c.customer_phone);
+    if (!seen || seen.at < m.created_at) lastTexted.set(c.customer_phone, { workspaceId: c.workspace_id, at: m.created_at });
+  }
+
+  const optOutsByWs = new Map<string, number>();
+  for (const o of outs ?? []) {
+    // Someone who opted back in is not an opt-out.
+    if (o.opted_in_at) continue;
+    const who = lastTexted.get(o.phone_e164);
+    // An opt-out from somebody this system never texted in the window belongs
+    // to nobody here — an import, or a number that has not sent lately.
+    if (!who) continue;
+    optOutsByWs.set(who.workspaceId, (optOutsByWs.get(who.workspaceId) ?? 0) + 1);
+  }
+
+  return (workspaces ?? []).map((w) => ({
+    workspaceId: w.id,
+    name: w.name,
+    peopleTexted: peopleByWs.get(w.id)?.size ?? 0,
+    optOuts: optOutsByWs.get(w.id) ?? 0,
+  }));
 }

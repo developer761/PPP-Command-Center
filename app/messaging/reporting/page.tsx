@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { loadReporting, integrityChecks, activeWorkspaces, type ReportRange } from "@/lib/messaging/db";
+import { loadReporting, integrityChecks, activeWorkspaces, loadOptOutRates, type ReportRange } from "@/lib/messaging/db";
 import { humanSeconds, HATCH_POLL_SECONDS, TARGET_SECONDS } from "@/lib/messaging/metrics";
+import { rank, summarise, formatRate, WATCH_RATE, HIGH_RATE, MIN_PEOPLE } from "@/lib/messaging/optout-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +39,17 @@ export default async function ReportingConsole({
   const range: ReportRange = isRange(sp.range) ? sp.range : "30d";
   const workspaceId = sp.ws || undefined;
 
-  const [r, integrity, workspaces] = await Promise.all([
+  const [r, integrity, workspaces, optOutRows] = await Promise.all([
     loadReporting(range, workspaceId),
     integrityChecks(),
     activeWorkspaces(),
+    loadOptOutRates(range),
   ]);
+  // Per NUMBER, always — the one measure that must not be filtered to the
+  // workspace being viewed, because its whole job is to say which number is
+  // the problem.
+  const optOuts = rank(optOutRows);
+  const optOutSummary = summarise(optOuts);
   const wsName = workspaces.find((w) => w.id === workspaceId)?.name;
   const q = (extra: Record<string, string>) =>
     "?" + new URLSearchParams({ range, ...(workspaceId ? { ws: workspaceId } : {}), ...extra }).toString();
@@ -74,6 +81,59 @@ export default async function ReportingConsole({
           Could not load reporting. {r.error}
         </div>
       )}
+
+      {/* OPT-OUTS PER NUMBER. Karan, 2026-09-21, choosing a 10DLC brand: "I
+          don't want the brand to suffer because of one number having a high
+          opt out rate." The brand cannot be firewalled from one bad number —
+          the trust score is scored on the company and T-Mobile's daily limits
+          apply across the whole brand — so the protection is noticing
+          quickly. Carriers filter a number that annoys people, and the first
+          sign is otherwise delivery quietly falling off. */}
+      <section className={[
+        "rounded-xl border-2 overflow-hidden",
+        optOutSummary.needsAttention > 0 ? "border-ppp-orange-100" : "border-ppp-charcoal-100",
+      ].join(" ")}>
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">Who asked each number to stop</h2>
+          <span className="text-[11.5px] text-ppp-charcoal-500">
+            share of people texted · watch above {formatRate(WATCH_RATE)} · trouble above {formatRate(HIGH_RATE)}
+          </span>
+        </div>
+        <p className={[
+          "px-4 py-2 text-[12.5px] leading-relaxed",
+          optOutSummary.needsAttention > 0 ? "bg-ppp-orange-50 text-ppp-orange-700" : "text-ppp-charcoal-600",
+        ].join(" ")}>
+          {optOutSummary.headline}
+        </p>
+        <ul className="divide-y divide-ppp-charcoal-100">
+          {optOuts.map((o) => (
+            <li key={o.workspaceId} className="px-4 py-2.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[13px] text-ppp-charcoal truncate min-w-0">{o.name}</span>
+                <span className={[
+                  "shrink-0 text-[13px] font-bold tabular-nums",
+                  o.verdict === "high" ? "text-ppp-orange-700"
+                    : o.verdict === "watch" ? "text-ppp-charcoal"
+                    : "text-ppp-charcoal-400",
+                ].join(" ")}>
+                  {formatRate(o.rate)}
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                {o.optOuts} of {o.peopleTexted} people. {o.note}
+              </p>
+            </li>
+          ))}
+          {optOuts.length === 0 && (
+            <li className="px-4 py-3 text-[12.5px] text-ppp-charcoal-500">No live workspaces yet.</li>
+          )}
+        </ul>
+        <p className="px-4 py-2 border-t border-ppp-charcoal-100 text-[11px] text-ppp-charcoal-400 leading-snug">
+          Counted per person rather than per message, which is what carriers
+          care about. Fewer than {MIN_PEOPLE} people texted is shown but never
+          called high: one opt-out in eight is 12% and means nothing.
+        </p>
+      </section>
 
       {/* Waiting now. First, because it is the only thing on the page that
           somebody can fix in the next five minutes. */}

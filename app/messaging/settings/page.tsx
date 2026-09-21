@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { messagingDb } from "@/lib/messaging/db";
 import { federalBound } from "@/lib/messaging/workspace-settings";
+import { loadOptOutRates } from "@/lib/messaging/db";
+import { rank, formatRate } from "@/lib/messaging/optout-rate";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +26,9 @@ export default async function MessagingSettings({
   const sp = await searchParams;
   const sb = messagingDb();
   const bound = await federalBound();
+  // Shown on the workspace it belongs to, because this is where somebody
+  // changes what that number does. The whole picture is on Reports.
+  const optOuts = rank(await loadOptOutRates("30d"));
 
   const { data } = await sb
     .from("sms_sub_accounts")
@@ -96,6 +101,21 @@ export default async function MessagingSettings({
                 : " · using the default window"}
             </p>
           </div>
+          {(() => {
+            const o = optOuts.find((x) => x.workspaceId === r.id);
+            if (!o || (o.verdict !== "watch" && o.verdict !== "high")) return null;
+            return (
+              <p className={[
+                "px-4 py-2.5 border-b text-[12.5px] leading-relaxed",
+                o.verdict === "high"
+                  ? "border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700"
+                  : "border-ppp-charcoal-100 bg-ppp-charcoal-50 text-ppp-charcoal-600",
+              ].join(" ")}>
+                <strong>{formatRate(o.rate)} of the people this number texted in the last 30 days asked it to stop.</strong>{" "}
+                {o.note} <Link href="/messaging/reporting" className="underline underline-offset-2">See every number</Link>.
+              </p>
+            );
+          })()}
           <WorkspaceHoursForm row={r} bound={bound} />
         </section>
       ))}
