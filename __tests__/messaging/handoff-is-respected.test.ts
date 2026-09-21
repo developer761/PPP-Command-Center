@@ -27,6 +27,10 @@ const CARRIER_CALLERS: Record<string, RegExp> = {
   "lib/messaging/drafts-write.ts": /owning_user_id/,
   // Runs agent turns. Must skip a conversation a person has.
   "lib/messaging/scheduler-db.ts": /human_active/,
+  // A person typing their own reply. The fourth door, added because claiming a
+  // conversation stops the other three and left nobody able to answer it at
+  // all. Must refuse when somebody ELSE holds it.
+  "lib/messaging/reply-write.ts": /owning_user_id/,
 };
 
 /** The gate itself and the transports are the chokepoint, not callers. */

@@ -6,6 +6,7 @@ import { activeTags } from "@/lib/messaging/authoring";
 import { HandoffBar } from "@/components/messaging/handoff-bar";
 import { assertMessagingAccess } from "@/lib/messaging/auth";
 import { ThreadTeach } from "@/components/messaging/thread-teach";
+import { ThreadComposer } from "@/components/messaging/thread-composer";
 import type { AuthoredTurn } from "@/lib/messaging/authoring";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +131,17 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
           })}
         </ol>
       )}
+
+      {/* THE FOURTH DOOR. Claiming a conversation stops the bot and holds the
+          campaign, and the draft queue only has something to approve if the bot
+          happened to write one — so before this, taking a conversation over
+          left nobody able to answer it at all. */}
+      <ThreadComposer
+        conversationId={c.id}
+        ended={ended}
+        heldByOther={!!c.owning_user_id && !isMine}
+        holderName={c.owning_agent}
+      />
 
       <ThreadTeach
         turns={turns}
