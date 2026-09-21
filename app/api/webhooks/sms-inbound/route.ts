@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { verifySns, fetchAwsCert, type SnsMessage } from "@/lib/messaging/sns-verify";
+import { verifySns, fetchAwsCert, allowedTopics, type SnsMessage } from "@/lib/messaging/sns-verify";
 import { decideInbound, type EumInbound } from "@/lib/messaging/inbound";
 import { recordInbound } from "@/lib/messaging/record-inbound";
 import { reportError, reportWarn } from "@/lib/observability";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "body is not JSON" }, { status: 400 });
   }
 
-  const verified = await verifySns(envelope, fetchAwsCert);
+  const verified = await verifySns(envelope, fetchAwsCert, allowedTopics());
   if (!verified.ok) {
     // Unsigned or badly signed traffic is somebody pretending to be a
     // customer. 403, and loud, because this endpoint is public.
@@ -62,9 +62,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "not verified" }, { status: 403 });
   }
 
-  // AWS confirms a subscription by asking us to visit a URL it signed. Doing
-  // it automatically is safe ONLY because the signature was checked first —
-  // otherwise anyone could subscribe us to their topic.
+  // AWS confirms a subscription by asking us to visit a URL it signed.
+  //
+  // Doing that automatically is safe only because BOTH checks ran above: the
+  // signature, and the topic. The signature alone was not enough and the
+  // comment here used to claim it was — anyone with an AWS account could point
+  // their own topic at this endpoint, and AWS would sign the confirmation with
+  // its own real certificate. Pinning SMS_INBOUND_TOPIC_ARN is what makes this
+  // line true.
   if (envelope.Type === "SubscriptionConfirmation" && envelope.SubscribeURL) {
     try {
       await fetch(envelope.SubscribeURL);

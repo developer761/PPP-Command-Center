@@ -82,10 +82,43 @@ export function canonicalString(msg: SnsMessage): string | null {
 
 export type VerifyResult = { ok: true } | { ok: false; reason: string };
 
+/**
+ * The topics whose messages we accept, from SMS_INBOUND_TOPIC_ARN.
+ *
+ * Comma-separated, because End User Messaging can publish from more than one
+ * region. Empty when unset, and empty means nothing is accepted.
+ */
+export function allowedTopics(env: NodeJS.ProcessEnv = process.env): string[] {
+  return (env.SMS_INBOUND_TOPIC_ARN ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export async function verifySns(
   msg: SnsMessage,
-  fetchCert: (url: string) => Promise<string>
+  fetchCert: (url: string) => Promise<string>,
+  /**
+   * REQUIRED, with no default, because every default here is wrong.
+   *
+   * A valid signature proves AWS sent the message — NOT that it came from
+   * PPP's topic. Anyone with an AWS account can create their own SNS topic,
+   * subscribe this endpoint to it, and publish to it; AWS signs that with its
+   * own real certificate and every check below passes. They could then forge a
+   * customer saying STOP (suppressing a real person), invent conversations,
+   * poison the training corpus, and make the agent reply to a number they
+   * chose. Pinning the topic is the only thing that closes it, so it is an
+   * argument the caller cannot omit rather than an option it can forget.
+   */
+  allowedTopicArns: readonly string[]
 ): Promise<VerifyResult> {
+  // Checked FIRST. Everything below costs a certificate fetch, and a message
+  // from a topic we do not know is refused whatever it is signed with.
+  if (allowedTopicArns.length === 0) {
+    return { ok: false, reason: "no inbound SNS topic is configured, so no message can be trusted" };
+  }
+  if (!msg.TopicArn || !allowedTopicArns.includes(msg.TopicArn)) {
+    return { ok: false, reason: "message came from an SNS topic this endpoint does not accept" };
+  }
+
   const certUrl = msg.SigningCertURL ?? msg.SigningCertUrl;
   if (!certUrlIsAws(certUrl)) {
     return { ok: false, reason: "signing certificate URL is not an AWS SNS URL" };

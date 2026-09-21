@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateKeyPairSync, createSign, X509Certificate } from "crypto";
-import { verifySns, certUrlIsAws, canonicalString, type SnsMessage } from "@/lib/messaging/sns-verify";
+import { verifySns, certUrlIsAws, canonicalString, allowedTopics, type SnsMessage } from "@/lib/messaging/sns-verify";
 
 /**
  * Signed with a real key so the check is proven, not assumed. A test that
@@ -9,6 +9,7 @@ import { verifySns, certUrlIsAws, canonicalString, type SnsMessage } from "@/lib
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const pubPem = publicKey.export({ type: "spki", format: "pem" }).toString();
 
+const TOPIC = "arn:aws:sns:us-east-1:1:inbound";
 const CERT_URL = "https://sns.us-east-1.amazonaws.com/SimpleNotificationService-abc123.pem";
 
 function sign(msg: SnsMessage): string {
@@ -36,7 +37,7 @@ describe("SNS signature verification", () => {
   it("accepts a genuinely signed notification", async () => {
     const m = base();
     m.Signature = sign(m);
-    expect(await verifySns(m, fetchCert)).toEqual({ ok: true });
+    expect(await verifySns(m, fetchCert, [TOPIC])).toEqual({ ok: true });
   });
 
   /** The control: the check must be able to fail. */
@@ -44,14 +45,14 @@ describe("SNS signature verification", () => {
     const m = base();
     m.Signature = sign(m);
     m.Message = JSON.stringify({ originationNumber: "+15551230000", messageBody: "STOP" });
-    const res = await verifySns(m, fetchCert);
+    const res = await verifySns(m, fetchCert, [TOPIC]);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toMatch(/does not match/);
   });
 
   it("rejects a signature that is simply wrong", async () => {
     const m = base({ Signature: Buffer.from("nope").toString("base64") });
-    expect((await verifySns(m, fetchCert)).ok).toBe(false);
+    expect((await verifySns(m, fetchCert, [TOPIC])).ok).toBe(false);
   });
 
   /**
@@ -64,7 +65,7 @@ describe("SNS signature verification", () => {
     const spy = async (u: string) => { fetched = true; return pubPem; };
     const m = base({ SigningCertURL: "https://evil.example.com/cert.pem" });
     m.Signature = sign(m);
-    const res = await verifySns(m, spy);
+    const res = await verifySns(m, spy, [TOPIC]);
     expect(res.ok).toBe(false);
     expect(fetched).toBe(false);
   });
@@ -91,7 +92,7 @@ describe("SNS signature verification", () => {
       SubscribeURL: "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription",
     });
     m.Signature = sign(m);
-    expect(await verifySns(m, fetchCert)).toEqual({ ok: true });
+    expect(await verifySns(m, fetchCert, [TOPIC])).toEqual({ ok: true });
   });
 
   it("omits Subject entirely when absent rather than signing an empty one", () => {
@@ -103,20 +104,93 @@ describe("SNS signature verification", () => {
 
   it("refuses a message type it does not know", async () => {
     const m = base({ Type: "SomethingElse" });
-    const res = await verifySns(m, fetchCert);
+    const res = await verifySns(m, fetchCert, [TOPIC]);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toMatch(/unknown message type/);
   });
 
   it("refuses a signature version AWS does not produce", async () => {
     const m = base({ SignatureVersion: "9" });
-    expect((await verifySns(m, fetchCert)).ok).toBe(false);
+    expect((await verifySns(m, fetchCert, [TOPIC])).ok).toBe(false);
   });
 
   it("fails closed when the certificate cannot be fetched", async () => {
     const m = base();
     m.Signature = sign(m);
-    const res = await verifySns(m, async () => { throw new Error("network"); });
+    const res = await verifySns(m, async () => { throw new Error("network"); }, [TOPIC]);
     expect(res.ok).toBe(false);
+  });
+});
+
+/**
+ * A valid signature proves AWS sent the message. It does NOT prove the message
+ * came from PPP's topic.
+ *
+ * Anyone with an AWS account can create an SNS topic, subscribe this public
+ * endpoint to it, and publish. AWS signs that with its own real certificate,
+ * from a real sns.*.amazonaws.com host, so every other check in this file
+ * passes. Without the topic pin they could forge a customer saying STOP and
+ * suppress a real person, invent conversations, poison the training corpus,
+ * and make the agent answer a number they chose.
+ */
+describe("the topic is pinned, not just the signature", () => {
+  it("refuses a perfectly signed message from somebody else's topic", async () => {
+    const m = base({ TopicArn: "arn:aws:sns:us-east-1:999999999999:attacker" });
+    m.Signature = sign(m);
+    // Genuinely signed — this is the point. The signature is not the problem.
+    const res = await verifySns(m, fetchCert, [TOPIC]);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toMatch(/topic/i);
+  });
+
+  it("refuses everything when no topic is configured, rather than everything passing", async () => {
+    const m = base();
+    m.Signature = sign(m);
+    const res = await verifySns(m, fetchCert, []);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toMatch(/no inbound SNS topic/i);
+  });
+
+  it("refuses a subscription confirmation from a foreign topic — the way in", async () => {
+    // This is the actual attack step: get us to auto-confirm a subscription to
+    // a topic the attacker controls. After that every publish looks genuine.
+    const m = base({
+      Type: "SubscriptionConfirmation",
+      TopicArn: "arn:aws:sns:us-east-1:999999999999:attacker",
+      Token: "t", SubscribeURL: "https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription",
+    });
+    m.Signature = sign(m);
+    expect((await verifySns(m, fetchCert, [TOPIC])).ok).toBe(false);
+  });
+
+  it("accepts more than one topic, because regions publish separately", async () => {
+    const m = base();
+    m.Signature = sign(m);
+    expect(await verifySns(m, fetchCert, ["arn:aws:sns:us-west-2:1:other", TOPIC])).toEqual({ ok: true });
+  });
+
+  it("does not fetch a certificate for a topic it will refuse", async () => {
+    // The cheap check first: a refused topic must not become an outbound
+    // request to anything, however AWS-shaped the URL looks.
+    let fetched = 0;
+    const m = base({ TopicArn: "arn:aws:sns:us-east-1:999999999999:attacker" });
+    m.Signature = sign(m);
+    await verifySns(m, async () => { fetched++; return pubPem; }, [TOPIC]);
+    expect(fetched).toBe(0);
+  });
+});
+
+describe("allowedTopics reads the environment", () => {
+  it("is empty when unset, which refuses everything", () => {
+    expect(allowedTopics({} as unknown as NodeJS.ProcessEnv)).toEqual([]);
+  });
+
+  it("splits a comma-separated list and trims it", () => {
+    expect(allowedTopics({ SMS_INBOUND_TOPIC_ARN: " arn:a , arn:b " } as unknown as NodeJS.ProcessEnv))
+      .toEqual(["arn:a", "arn:b"]);
+  });
+
+  it("ignores empty entries rather than allowing a blank topic", () => {
+    expect(allowedTopics({ SMS_INBOUND_TOPIC_ARN: "arn:a,,  ," } as unknown as NodeJS.ProcessEnv)).toEqual(["arn:a"]);
   });
 });
