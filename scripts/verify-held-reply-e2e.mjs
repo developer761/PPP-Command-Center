@@ -16,6 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import { runAction } from "../lib/messaging/scheduler.ts";
 import { schedulerDeps } from "../lib/messaging/scheduler-db.ts";
 import { withinQuietHours } from "../lib/messaging/compliance.ts";
+import { clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
 
 if (process.env.SMS_LIVE_SENDING === "true") {
   console.log("SMS_LIVE_SENDING is true here. Refusing: this check must not reach a carrier.");
@@ -64,7 +65,21 @@ async function holdReply(convId, msgId, body) {
   return data;
 }
 
+// The gate refuses everything while the suppression list is empty (the port
+// rail). A probe row on a reserved 999 number stands in for Kate's import.
+const LIST_PROBE = "+19992220186";
+let listProbeAdded = false;
+
 try {
+  const { count: loaded } = await sb.from("sms_opt_outs").select("*", { count: "exact", head: true });
+  if ((loaded ?? 0) === 0) {
+    const { error } = await sb.from("sms_opt_outs").insert({
+      phone_e164: LIST_PROBE, channel: "sms", source: "manual", opted_out_at: new Date().toISOString(),
+    });
+    if (error) throw new Error(`could not seed the suppression list: ${error.message}`);
+    listProbeAdded = true;
+  }
+  clearSuppressionListCache();
   const { data: ws } = await sb.from("sms_sub_accounts")
     .select("id, name, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("is_active", true).not("phone_e164", "is", null).limit(1).single();
@@ -128,6 +143,8 @@ try {
   fail++;
   console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
+  if (listProbeAdded) await sb.from("sms_opt_outs").delete().eq("phone_e164", LIST_PROBE);
+  clearSuppressionListCache();
   if (conversations.length) await sb.from("sms_conversations").delete().in("id", conversations);
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   process.exit(fail ? 1 : 0);

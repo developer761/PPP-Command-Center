@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { gatedSend } from "../lib/messaging/gate.ts";
 import { gateDeps } from "../lib/messaging/gate-deps.ts";
 import { isStale, wasEdited } from "../lib/messaging/drafts.ts";
+import { clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
 
 /**
  * A fixed midday, in the workspace's own timezone.
@@ -37,7 +38,23 @@ const ok = (label, cond, extra = "") => {
 const CUSTOMER = "+15165551234";
 const made = { conversations: [], optOuts: [] };
 
+// THE SUPPRESSION LIST HAS TO EXIST. The gate refuses every send while
+// sms_opt_outs is empty (the port rail), which is right in production and
+// would make every check below fail for the wrong reason. A probe row on a
+// reserved 999 number stands in for Kate's import, and is removed in finally.
+const LIST_PROBE = "+19992220187";
+let listProbeAdded = false;
+
 try {
+  const { count: loaded } = await sb.from("sms_opt_outs").select("*", { count: "exact", head: true });
+  if ((loaded ?? 0) === 0) {
+    const { error } = await sb.from("sms_opt_outs").insert({
+      phone_e164: LIST_PROBE, channel: "sms", source: "manual", opted_out_at: new Date().toISOString(),
+    });
+    if (error) throw new Error(`could not seed the suppression list: ${error.message}`);
+    listProbeAdded = true;
+  }
+  clearSuppressionListCache();
   const { data: ws } = await sb.from("sms_sub_accounts")
     .select("id, name, phone_e164, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends")
     .eq("is_active", true).not("phone_e164", "is", null).limit(1).single();
@@ -178,6 +195,8 @@ try {
   fail++;
   console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
+  if (listProbeAdded) await sb.from("sms_opt_outs").delete().eq("phone_e164", LIST_PROBE);
+  clearSuppressionListCache();
   for (const id of made.conversations) {
     await sb.from("sms_scheduled_actions").delete().eq("conversation_id", id);
     await sb.from("sms_drafts").delete().eq("conversation_id", id);

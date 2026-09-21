@@ -116,6 +116,11 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
     case "daily_cap":
       // Legal or permitted later; the gate already said when.
       return "reschedule";
+    case "suppression_list_empty":
+      // Not a broken message: a list nobody has loaded yet. Held rather than
+      // failed, so the queue drains by itself the moment somebody imports it,
+      // instead of a day of campaign steps having to be dug out by hand.
+      return "reschedule";
     case "no_workspace_number":
     case "no_email_address":
     case "empty_body":

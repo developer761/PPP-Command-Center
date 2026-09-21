@@ -101,6 +101,8 @@ export function refusalText(reason: string): string {
       return "There is no address for this to be sent FROM, so it was not sent.";
     case "channel_not_supported":
       return "This is an email and email sending is not switched on, so it was not sent.";
+    case "suppression_list_empty":
+      return "The opt-out list has not been loaded yet, so nothing can be sent to anybody. Import Hatch's export first.";
     default:                    return `The send was refused: ${reason}.`;
   }
 }

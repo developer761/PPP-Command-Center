@@ -85,6 +85,23 @@ export type GateDeps = {
   hasEverSent?(to: E164): Promise<boolean>;
   /** Messages already sent to this handset today, across every agent and workspace. */
   sentToday(to: E164): Promise<number>;
+  /**
+   * Is there a suppression list at all?
+   *
+   * THE PORT RAIL. Kate's Hatch export has not been imported: sms_opt_outs
+   * holds zero rows. An empty list cannot refuse anybody, so every check above
+   * would pass for somebody who told Hatch to stop months ago — and while the
+   * numbers are being ported, "live sending" and "a workflow switched on" are
+   * two toggles away from each other.
+   *
+   * So an empty list is not treated as "nobody has opted out". It stops every
+   * send until the list is loaded, or until somebody states in the environment
+   * that it really is empty (SUPPRESSION_LIST_CONFIRMED_EMPTY=true).
+   *
+   * Optional: a caller that supplies no answer is not blocked, which keeps
+   * every existing test and the simulator working.
+   */
+  suppressionListLoaded?(): Promise<boolean>;
   /** Supplied only by tests. App callers never hold a transport — the gate
    *  resolves its own — so there is no object to pass around that could be
    *  used to send around this function. */
@@ -126,6 +143,7 @@ export type GateRefusal =
   | "unresolved_merge_field"  // "Call us at {{workspace_phone}}" must never send
   | "no_sender_address"       // nowhere for an email to come FROM
   | "channel_not_supported"   // an email step reaching an SMS-only transport;
+  | "suppression_list_empty"  // nothing loaded to check against — see GateDeps
 
 export type GateResult =
   /** `body` is what was ACTUALLY sent, which may differ from what was asked:
@@ -158,6 +176,13 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   // {{workspace_phone}}" is visibly broken, is the first thing that customer
   // ever sees from PPP, and cannot be unsent.
   if (hasUnresolved(body)) return { ok: false, reason: "unresolved_merge_field" };
+
+  // 0. IS THERE A LIST TO CHECK AT ALL? Before suppression, because an empty
+  //    list makes the suppression check below answer "not suppressed" for
+  //    everybody, including the people most important to refuse.
+  if (deps.suppressionListLoaded && !(await deps.suppressionListLoaded())) {
+    return { ok: false, reason: "suppression_list_empty" };
+  }
 
   // 1. Suppression, on the channel we are about to use. Absolute, and first,
   //    so nothing below can reorder past it.
