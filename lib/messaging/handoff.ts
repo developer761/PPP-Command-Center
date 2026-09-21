@@ -82,6 +82,45 @@ export function stateOnRelease(lastDirection: "inbound" | "outbound" | null):
   return lastDirection === "outbound" ? "awaiting_customer" : "ai_active";
 }
 
+/**
+ * Does the bot still owe this conversation a reply?
+ *
+ * The last message being OUTBOUND means somebody already answered — a person
+ * who took the conversation over, a campaign step, or the bot itself. In every
+ * one of those cases there is nothing left to reply to.
+ *
+ * THE BUG THIS CLOSES needs the whole sequence to see:
+ *
+ *   A customer texts and an agent_turn is queued. A person claims the
+ *   conversation, so the turn is DEFERRED an hour rather than cancelled —
+ *   correctly, since they may hand it straight back. The person answers the
+ *   customer themselves and releases. stateOnRelease sees an outbound last
+ *   message and returns 'awaiting_customer', which is right, and because that
+ *   is not 'ai_active' nothing re-queues and nothing cancels. An hour later
+ *   the deferred turn runs. draftReply guarded only 'ended' and 'human_active'
+ *   and the conversation is now neither — so Emily answers a message a person
+ *   has already answered.
+ *
+ *   Worse: `history.slice(0, -1)` assumes the last message is the customer's,
+ *   so the human's reply was stripped out of the transcript and the model was
+ *   told the customer had just sent the message it had already been answered.
+ *
+ * Checking the TRANSCRIPT rather than the state is what makes this hold. State
+ * cannot carry it: a conversation sitting in 'awaiting_customer' must still get
+ * a turn when the customer writes again, so that state on its own is no reason
+ * to stay quiet. A reply already sitting after their last word is.
+ */
+export function latestInboundIsAnswered(
+  msgs: { direction: string; created_at: string }[]
+): boolean {
+  if (!msgs.length) return true; // nothing said, nothing owed
+  let last = msgs[0];
+  for (const m of msgs) {
+    if (new Date(m.created_at).getTime() >= new Date(last.created_at).getTime()) last = m;
+  }
+  return last.direction === "outbound";
+}
+
 /** How long somebody has been sitting on a conversation, in plain words. */
 export function heldFor(since: string, now: Date): string {
   const mins = Math.max(0, Math.floor((now.getTime() - new Date(since).getTime()) / 60000));

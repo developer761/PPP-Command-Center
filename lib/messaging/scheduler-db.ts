@@ -14,7 +14,7 @@ import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
-import { takeoverReasonFor } from "./handoff";
+import { takeoverReasonFor, latestInboundIsAnswered } from "./handoff";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import { emailAddressesFor } from "./reply-to";
 import type { E164 } from "./phone";
@@ -157,6 +157,15 @@ export function schedulerDeps(): SchedulerDeps {
       }));
       const lastInbound = [...(msgs ?? [])].reverse().find((m) => m.direction === "inbound");
       if (!lastInbound) return { kind: "skipped" as const, reason: "nothing to reply to" };
+
+      // SOMEBODY ALREADY ANSWERED. Usually a person who took the conversation
+      // over, replied, and handed it back — which leaves this turn pending,
+      // because releasing to 'awaiting_customer' neither re-queues nor cancels.
+      // Without this the bot answers a message a person answered an hour ago,
+      // and the slice below strips their reply out of the transcript first.
+      if (latestInboundIsAnswered(msgs ?? [])) {
+        return { kind: "skipped" as const, reason: "somebody has already answered the customer" };
+      }
 
       // A reply already held for this conversation. If it answers the latest
       // message, this turn has nothing to add: it is the second turn queued by

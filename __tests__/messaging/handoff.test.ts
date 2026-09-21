@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import {
   TAKEOVER_REASONS, takeoverReasonLabel, takeoverReasonFor,
-  isTakeoverReason, stateOnRelease, heldFor,
+  isTakeoverReason, stateOnRelease, heldFor, latestInboundIsAnswered,
 } from "@/lib/messaging/handoff";
 
 describe("takeover reasons match the database", () => {
@@ -99,5 +99,76 @@ describe("how long it has been held", () => {
     // Server and browser clocks drift, and "held for -3 min" is nonsense on a
     // screen someone is trying to read.
     expect(heldFor("2026-09-12T10:05:00Z", at("2026-09-12T10:00:00Z"))).toBe("just now");
+  });
+});
+
+/**
+ * EMILY ANSWERING ON TOP OF A PERSON.
+ *
+ * The sequence, all of it real code paths: a customer texts and a turn is
+ * queued; a person claims the conversation so the turn is DEFERRED an hour
+ * rather than cancelled; the person answers the customer and releases;
+ * stateOnRelease correctly returns 'awaiting_customer', which is not
+ * 'ai_active', so nothing re-queues and nothing cancels; an hour later the
+ * deferred turn runs and draftReply guarded only 'ended' and 'human_active'.
+ */
+describe("who still owes the customer a reply", () => {
+  const at = (n: number) => new Date(Date.UTC(2026, 8, 21, 12, n)).toISOString();
+
+  it("the bot owes one when the customer spoke last", () => {
+    expect(latestInboundIsAnswered([
+      { direction: "outbound", created_at: at(0) },
+      { direction: "inbound", created_at: at(1) },
+    ])).toBe(false);
+  });
+
+  it("the bot owes nothing once a person has replied", () => {
+    // The whole bug in three rows.
+    expect(latestInboundIsAnswered([
+      { direction: "outbound", created_at: at(0) },
+      { direction: "inbound", created_at: at(1) },
+      { direction: "outbound", created_at: at(2) },
+    ])).toBe(true);
+  });
+
+  it("owes one again when the customer comes back after that reply", () => {
+    // 'awaiting_customer' must NOT be a reason to stay quiet forever, which is
+    // why this reads the transcript rather than the state.
+    expect(latestInboundIsAnswered([
+      { direction: "inbound", created_at: at(1) },
+      { direction: "outbound", created_at: at(2) },
+      { direction: "inbound", created_at: at(3) },
+    ])).toBe(false);
+  });
+
+  it("does not depend on the rows arriving in order", () => {
+    // Postgres returns what it is asked for, but nothing in the type says the
+    // array is sorted, and a reordering here would silently invert the answer.
+    expect(latestInboundIsAnswered([
+      { direction: "outbound", created_at: at(2) },
+      { direction: "inbound", created_at: at(1) },
+    ])).toBe(true);
+  });
+
+  it("owes nothing on an empty thread rather than guessing", () => {
+    expect(latestInboundIsAnswered([])).toBe(true);
+  });
+
+  it("owes one when the only message is the customer's", () => {
+    expect(latestInboundIsAnswered([{ direction: "inbound", created_at: at(0) }])).toBe(false);
+  });
+
+  it("lines up with what stateOnRelease decided", () => {
+    // The two have to agree: if release says 'awaiting_customer' because the
+    // last message was outbound, the pending turn must also see it answered.
+    const msgs = [
+      { direction: "inbound", created_at: at(1) },
+      { direction: "outbound", created_at: at(2) },
+    ];
+    expect(stateOnRelease("outbound")).toBe("awaiting_customer");
+    expect(latestInboundIsAnswered(msgs)).toBe(true);
+
+    expect(stateOnRelease("inbound")).toBe("ai_active");
+    expect(latestInboundIsAnswered([{ direction: "inbound", created_at: at(1) }])).toBe(false);
   });
 });
