@@ -12,6 +12,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decideInbound } from "../lib/messaging/inbound.ts";
 import { recordInbound } from "../lib/messaging/record-inbound.ts";
+import { helpReplyChecks } from "../lib/messaging/help-reply.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -110,7 +111,32 @@ try {
     .select("*", { count: "exact", head: true }).eq("phone_e164", CUSTOMER).is("opted_in_at", null);
   ok("…and there is still exactly one active suppression", supCount === 1, `got ${supCount}`);
 
-  // 6. A number nobody owns is not silently threaded somewhere wrong.
+  // 6. HELP must be answered, and never by the model.
+  //
+  //    compliance.ts has said "a reply is legally required" since the keywords
+  //    were written, and nothing ever replied — the classification was used
+  //    only to keep the agent away. Carriers check this during A2P vetting.
+  const help = await ingest(msg("HELP", "e2e-help"));
+  ok("HELP is recognised as a carrier keyword", help.keyword === "help");
+
+  const { data: queued } = await sb.from("sms_scheduled_actions")
+    .select("action, reply_body, reply_intent, run_at")
+    .eq("conversation_id", help.conversationId)
+    .eq("reply_intent", "help_response");
+  const helpRow = (queued ?? [])[0];
+  ok("…and a reply is queued for it", (queued ?? []).length === 1, String(queued?.length));
+  ok("…carrying the four things CTIA asks for",
+     helpReplyChecks(helpRow?.reply_body ?? "").every((c) => c.ok),
+     helpRow?.reply_body ?? "nothing queued");
+  ok("…due immediately, not after the human-pacing delay",
+     new Date(helpRow?.run_at ?? 0).getTime() <= Date.now() + 1000);
+
+  const { data: turns } = await sb.from("sms_scheduled_actions")
+    .select("action").eq("conversation_id", help.conversationId).eq("action", "agent_turn");
+  ok("…and the model is never asked to improvise it", (turns ?? []).length === 0,
+     `${turns?.length ?? 0} agent turns`);
+
+  // 7. A number nobody owns is not silently threaded somewhere wrong.
   // A VALID number that simply is not ours. 555-01XX would be refused by
   // phone.ts before the workspace lookup ever ran, which would prove nothing
   // about the lookup.

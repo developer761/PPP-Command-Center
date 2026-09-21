@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
+import { helpReply } from "./help-reply";
 
 export type Accepted = Extract<InboundDecision, { kind: "accept" }>;
 
@@ -80,7 +81,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
   const { data: ws } = await sb.from("sms_sub_accounts")
-    .select("id, autosend_enabled, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
+    .select("id, phone_e164, autosend_enabled, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
 
   // 3. The open conversation on this pair, if there is one.
@@ -134,6 +135,50 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     if (error && error.code !== "23505") throw asError("writing the inbound message", error);
     isNew = error?.code !== "23505";
     const receivedAt = new Date();
+
+    // HELP IS ANSWERED, and it never reaches the model.
+    //
+    // compliance.ts has said "a reply is legally required" since the keywords
+    // were written, and the only consumer of that classification was the line
+    // below, which used it to keep the agent away — so HELP was recognised and
+    // then answered by nobody. The reasoning was that the carrier replies
+    // itself; that is true of a Twilio Messaging Service's Advanced Opt-Out,
+    // and the adapter deliberately does not use one, so nothing in the path
+    // ever did.
+    //
+    // A fixed body rather than a generated one: what a HELP reply must contain
+    // is a rule, not a judgement, and a model that improvises it could drop
+    // half the obligations on a bad day. It goes out as a send_reply so it
+    // passes through the same gate as everything else — the suppression check,
+    // the cap and the hours all still apply.
+    if (isNew && decision.keyword === "help" && ws?.id) {
+      const { data: inbound } = await sb.from("sms_messages")
+        .select("id").eq("provider_id", decision.providerId).maybeSingle();
+      // Needs the message it answers: sms_scheduled_actions_send_reply_chk
+      // requires body, moment and answers_message_id together.
+      if (inbound?.id) {
+        const { error: hErr } = await sb.from("sms_scheduled_actions").insert({
+          conversation_id: conversationId,
+          action: "send_reply",
+          // Now, not in thirty seconds. Somebody asking for help is waiting,
+          // and the human-pacing delay exists to make marketing feel less
+          // robotic — it has no business slowing down a required reply.
+          run_at: receivedAt.toISOString(),
+          reply_due_at: receivedAt.toISOString(),
+          reply_body: helpReply(ws.phone_e164 ?? null),
+          reply_intent: "help_response",
+          answers_message_id: inbound.id,
+        });
+        if (hErr) {
+          reportWarn({
+            key: "sms_help_reply_not_queued",
+            message: "Somebody texted HELP and the required reply could not be queued",
+            platform: "ppp_cc",
+            context: { conversationId, error: hErr.message },
+          });
+        }
+      }
+    }
 
     // Queue a reply, unless they just told us to stop.
     //
