@@ -165,7 +165,20 @@ async function emailSigner(input: {
   attachments?: Array<{ filename: string; content: Buffer }>;
 }): Promise<void> {
   const oc = await getOperatingCompany();
-  const fromAddr = process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
+  /**
+   * estimating@ — a signature request is part of the proposal conversation
+   * (this module copies PROPOSAL_COPY_EMAILS for the same reason).
+   *
+   * It was falling through to the shared commercial pool, so the one email on
+   * this platform that asks a customer to SIGN something arrived from
+   * deals@orders.precisionpaintingplus.net — a domain the signer has no
+   * relationship with, which is the worst possible sender for a request to
+   * sign. Same defect Brendan reported on an invoice, 2026-09-21.
+   */
+  const fromAddr =
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
+    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+    process.env.RESEND_FROM_ADDRESS;
   const to = input.request.signer_email;
   const bcc = PROPOSAL_COPY_EMAILS.filter((e) => e !== to);
   const { sendEmail } = await import("@/lib/email/resend");

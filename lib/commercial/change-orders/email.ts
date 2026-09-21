@@ -113,6 +113,18 @@ export async function emailChangeOrderToGc(
 
   const oc = await getOperatingCompany();
   const fromAddr =
+    /**
+     * estimating@, same as the proposal it amends.
+     *
+     * A change order is a priced document the GC signs, so it belongs with
+     * proposals rather than with invoices. It was falling through to the
+     * shared pool (deals@orders.precisionpaintingplus.net) — the same wrong
+     * sender Brendan reported on an invoice on 2026-09-21.
+     *
+     * If Tomco would rather these came from finance@, this is a one-line
+     * change to COMMERCIAL_INVOICE_FROM_ADDRESS. Falls back to the pool.
+     */
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
     process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = CO_COPY_EMAILS.length > 0 ? CO_COPY_EMAILS : oc.email || undefined;

@@ -104,6 +104,20 @@ export async function emailStatementToGc(
 
   const safeName = account.company_name.replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 40) || "Account";
   const fromAddr =
+    /**
+     * finance@, same as the invoice itself.
+     *
+     * A statement is an AR document addressed to the GC, and it was falling
+     * through to the shared commercial pool — deals@orders.precisionpaintingplus.net.
+     * That is the exact complaint Brendan raised on 2026-09-21 about an
+     * invoice ("it came from a precision painting email and not a Tomco
+     * email"), and it was still true here for every other money document;
+     * nobody had hit it only because no statement had gone out since the
+     * per-type addresses were configured on 2026-09-17.
+     *
+     * Falls back to the pool, so an unset address still sends.
+     */
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
     process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = STATEMENT_COPY_EMAILS.length > 0 ? STATEMENT_COPY_EMAILS : oc.email || undefined;
