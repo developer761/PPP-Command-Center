@@ -51,8 +51,17 @@ describe("classifyInbound — opt-out keywords", () => {
   });
 
   it("separates opt-in and help from opt-out", () => {
-    for (const s of ["start", "START", "Unstop", "yes"]) expect(classifyInbound(s)).toBe("opt_in");
+    for (const s of ["start", "START", "Unstop"]) expect(classifyInbound(s)).toBe("opt_in");
     for (const s of ["help", "HELP", "Info", "info."]) expect(classifyInbound(s)).toBe("help");
+  });
+
+  it("does NOT read a bare yes as a re-subscribe", () => {
+    // "YES" is a re-subscribe only inside a double opt-in confirmation flow,
+    // and PPP has never had one. For a bot that asks a question in nearly
+    // every message it is the commonest one-word reply there is — so treating
+    // it as opt_in silently put anyone who had opted out back on the list the
+    // moment they answered a question, and made them textable again.
+    for (const s of ["yes", "Yes", "YES", "yes."]) expect(classifyInbound(s)).toBe("normal");
   });
 
   it("normalizeKeyword collapses to a bare comparable token", () => {

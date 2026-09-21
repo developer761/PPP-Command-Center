@@ -28,8 +28,26 @@ const OPT_OUT_KEYWORDS = [
   "stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "opt out",
 ] as const;
 
-/** Re-subscribe keywords. Only ever honoured for a number that opted out. */
-const OPT_IN_KEYWORDS = ["start", "unstop", "yes"] as const;
+/**
+ * Re-subscribe keywords. Only ever honoured for a number that opted out.
+ *
+ * "YES" USED TO BE HERE AND IS NOT ANY MORE.
+ *
+ * It is a re-subscribe only inside a double opt-in confirmation flow — "reply
+ * YES to confirm" — and PPP has never had one. What it actually is, for a bot
+ * that asks a question in almost every message, is the commonest one-word
+ * reply a customer sends. So anyone who had opted out and then texted "Yes"
+ * for any reason at all was silently put back on the list and became textable
+ * again, on the strength of a word that in this system means "yes to your
+ * question", not "start texting me again".
+ *
+ * Getting it wrong this way costs somebody who genuinely wanted back in one
+ * extra message saying START. Getting it wrong the old way texts a person who
+ * told us to stop.
+ *
+ * START and UNSTOP are what carriers mandate, and neither is ambiguous.
+ */
+const OPT_IN_KEYWORDS = ["start", "unstop"] as const;
 
 /** Help keywords. A reply is legally required. */
 const HELP_KEYWORDS = ["help", "info"] as const;

@@ -115,7 +115,27 @@ export function buildOptOutPreview(text: string): OptOutPreview {
   };
 }
 
-/** What actually gets written, per usable row. */
+/**
+ * What actually gets written: ONE ROW PER IDENTIFIER.
+ *
+ * Not a stylistic choice. Migration 186 puts two PARTIAL unique indexes on
+ * this table — one on the active phone, one on the active lowercased email —
+ * and a single row carrying BOTH identifiers can only ever violate one of
+ * them. optout-import-write treats any 23505 as "already suppressed on that
+ * channel".
+ *
+ * So Bob appears email-only in one export and again, later, WITH his phone.
+ * The second insert collides on the EMAIL index, is counted as already
+ * present, and Bob's HANDSET is never suppressed — while the importer reports
+ * success. He is textable, out of the one table whose entire purpose is that
+ * he is not. Kate's export is exactly this shape, and the import screen
+ * actively tells her to split large files because "overlapping is fine".
+ *
+ * Suppression semantics are unchanged. The gate reads the phone column for SMS
+ * and the email column for email, so a row per identifier suppresses precisely
+ * what the combined row did; what changes is that each channel now hits its
+ * own index and can be inserted, or recognised as a duplicate, on its own.
+ */
 export function toOptOutRecords(preview: OptOutPreview): {
   phone_e164: string | null;
   email: string | null;
@@ -123,17 +143,24 @@ export function toOptOutRecords(preview: OptOutPreview): {
   source: "hatch_import";
   opted_out_at: string | null;
 }[] {
-  return preview.rows
-    .filter((r) => !r.problem)
-    .map((r) => ({
-      phone_e164: r.phone,
-      email: r.email,
-      // A row with a phone suppresses SMS; an email-only row suppresses email.
-      // Both is not assumed — suppressing a channel somebody never opted out
-      // of is its own kind of wrong, and the gate treats any matching row as
-      // suppression for that channel anyway.
-      channel: r.phone ? "sms" : "email",
-      source: "hatch_import" as const,
-      opted_out_at: r.optedOutAt,
-    }));
+  const out: {
+    phone_e164: string | null; email: string | null;
+    channel: "sms" | "email"; source: "hatch_import"; opted_out_at: string | null;
+  }[] = [];
+  // Per identifier, not per row: the same address on two lines must not be
+  // written twice, or the second write is a 23505 that masks the first.
+  const written = new Set<string>();
+
+  for (const r of preview.rows) {
+    if (r.problem) continue;
+    if (r.phone && !written.has(`p:${r.phone}`)) {
+      written.add(`p:${r.phone}`);
+      out.push({ phone_e164: r.phone, email: null, channel: "sms", source: "hatch_import", opted_out_at: r.optedOutAt });
+    }
+    if (r.email && !written.has(`e:${r.email}`)) {
+      written.add(`e:${r.email}`);
+      out.push({ phone_e164: null, email: r.email, channel: "email", source: "hatch_import", opted_out_at: r.optedOutAt });
+    }
+  }
+  return out;
 }

@@ -74,3 +74,71 @@ describe("importing Hatch's suppression list", () => {
     expect(toOptOutRecords(p)[0].source).toBe("hatch_import");
   });
 });
+
+/**
+ * ONE ROW CANNOT COLLIDE ON TWO INDEXES.
+ *
+ * migration 186 puts two PARTIAL unique indexes on sms_opt_outs — one on the
+ * active phone, one on the active lowercased email. A single row carrying both
+ * identifiers can only ever violate one of them, and the importer treats any
+ * 23505 as "already suppressed on that channel".
+ *
+ * So: Bob appears email-only in one export, then appears again WITH his phone.
+ * The second insert collides on the EMAIL index, is counted as already
+ * present, and Bob's handset is never suppressed — while the importer reports
+ * success. He is then textable, which is the one outcome this table exists to
+ * prevent. Kate's export is exactly this shape, and splitting a large file is
+ * something the screen actively tells her to do ("overlapping is fine").
+ *
+ * Suppression semantics do not change: the gate matches the phone column for
+ * SMS and the email column for email, so a row per identifier suppresses
+ * precisely what the combined row did.
+ */
+describe("a person with both a phone and an email", () => {
+  const both = () => toOptOutRecords(buildOptOutPreview("phone,email\n+15163448418,bob@example.com\n"));
+
+  it("is written as one row per identifier, not one row with both", () => {
+    const recs = both();
+    expect(recs).toHaveLength(2);
+  });
+
+  it("suppresses the handset on its own row, so the phone index is what it hits", () => {
+    const sms = both().find((r) => r.channel === "sms");
+    expect(sms?.phone_e164).toBe("+15163448418");
+    // Not carrying the email too: that is what made it collide on the wrong
+    // index and lose the phone suppression entirely.
+    expect(sms?.email).toBeNull();
+  });
+
+  it("suppresses the address on its own row", () => {
+    const email = both().find((r) => r.channel === "email");
+    expect(email?.email).toBe("bob@example.com");
+    expect(email?.phone_e164).toBeNull();
+  });
+
+  it("still writes one row for a phone-only person", () => {
+    const recs = toOptOutRecords(buildOptOutPreview("phone,email\n+15163448418,\n"));
+    expect(recs).toHaveLength(1);
+    expect(recs[0].channel).toBe("sms");
+  });
+
+  it("still writes one row for an email-only person", () => {
+    const recs = toOptOutRecords(buildOptOutPreview("phone,email\n,bob@example.com\n"));
+    expect(recs).toHaveLength(1);
+    expect(recs[0].channel).toBe("email");
+  });
+
+  it("does not write the same identifier twice from one file", () => {
+    // Bob email-only on one line and Bob with his phone on another — the shape
+    // that produced the lost suppression. His address must not be written
+    // twice, or the second write is a 23505 that masks the first.
+    const recs = toOptOutRecords(buildOptOutPreview(
+      "phone,email\n,bob@example.com\n+15163448418,bob@example.com\n"
+    ));
+    const emails = recs.filter((r) => r.email);
+    const phones = recs.filter((r) => r.phone_e164);
+    expect(emails).toHaveLength(1);
+    expect(phones).toHaveLength(1);
+    expect(phones[0].phone_e164).toBe("+15163448418");
+  });
+});
