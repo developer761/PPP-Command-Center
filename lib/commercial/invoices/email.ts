@@ -28,12 +28,22 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Katie, 2026-09-17: "Invoices sent from finance@ ; cc: mary@tomcopainting.com.
  * Proposals sent from estimating@tomcopainting.com ; cc: Brendan."
  *
- * So the two documents no longer share a copy list — money goes to Mary,
- * pricing goes to Brendan.
+ * So the two documents stopped sharing a copy list — money to Mary, pricing to
+ * Brendan.
+ *
+ * Karan, 2026-09-21, after Brendan sent an invoice and got nothing: Brendan
+ * gets invoices too. He runs the jobs these bill for, and the first anyone knew
+ * that he was not on the list was a customer-facing send. He is ADDED, not
+ * swapped in — Mary is finance and still needs every invoice.
+ *
+ * These addresses become the Reply-To and a silent BCC. BCC is the reason this
+ * went unnoticed: Mary was receiving them all along and no one else could see
+ * that, so the send sheet now names this list on screen instead of describing
+ * it from memory.
  */
 export const INVOICE_COPY_EMAILS = (
   process.env.COMMERCIAL_INVOICE_COPY_EMAILS ||
-  "mary@tomcopainting.com,developer@precisionpaintingplus.net"
+  "mary@tomcopainting.com,brendan@tomcopainting.com,developer@precisionpaintingplus.net"
 )
   .split(",")
   .map((e) => e.trim().toLowerCase())

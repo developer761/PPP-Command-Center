@@ -103,6 +103,46 @@ describe("the send sheet's promise about who gets a copy", () => {
   });
 });
 
+describe("who is copied on an invoice", () => {
+  /**
+   * Karan, 2026-09-21: "Yes he should get an email." Brendan runs the jobs
+   * these bill for, and the first anyone knew he was not on the list was a
+   * customer-facing send. Added alongside Mary, not instead of her — she is
+   * finance and needs every invoice.
+   *
+   * Asserted on the DEFAULT rather than on env, because
+   * COMMERCIAL_INVOICE_COPY_EMAILS is not set in Vercel: the literal below IS
+   * what production sends to, so an edit here changes who gets paid attention.
+   */
+  const defaultList = email.slice(
+    email.indexOf("process.env.COMMERCIAL_INVOICE_COPY_EMAILS"),
+    email.indexOf(".split(\",\")")
+  );
+
+  it("includes Brendan", () => {
+    expect(defaultList).toContain("brendan@tomcopainting.com");
+  });
+
+  it("still includes Mary — he was added, not swapped in", () => {
+    expect(defaultList).toContain("mary@tomcopainting.com");
+  });
+
+  it("keeps the ops inbox copy", () => {
+    expect(defaultList).toContain("developer@precisionpaintingplus.net");
+  });
+
+  it("is a comma list the parser will actually accept", () => {
+    // The list is split on commas and each address must pass EMAIL_RE, so a
+    // stray space or a missing comma silently drops somebody — which is the
+    // exact failure being fixed. Parse it the way the module does.
+    const literal = defaultList.match(/"([^"]+)"/)?.[1] ?? "";
+    const parsed = literal.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    expect(parsed.length, "every address must survive the parse").toBe(3);
+    for (const a of parsed) expect(EMAIL_RE.test(a), a).toBe(true);
+  });
+});
+
 describe("the invoice header", () => {
   it("shows when an invoice has NOT been emailed", () => {
     expect(page).toContain("Not emailed yet");
