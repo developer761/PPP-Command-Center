@@ -18,6 +18,7 @@ import type { E164 } from "./phone";
 import { randomUUID } from "crypto";
 import { signRequest, amzDate } from "./aws-sigv4";
 import { transportChoice, emailChoice } from "./transport-config";
+import { TwilioTransport } from "./transports/twilio";
 
 export type SendResult = { providerId: string };
 
@@ -243,6 +244,12 @@ export function activeTransport(): MessageTransport {
   // The fake does email too, so shadow mode records both channels rather than
   // losing the email half.
   if (!choice.live) return email ? new SplitTransport(new LoggingTransport(), email) : new LoggingTransport();
-  return new SplitTransport(new EndUserMessagingTransport(choice.aws), email);
+  // Exhaustive on purpose. A third carrier added to the union without a branch
+  // here is a type error, not a silent fall-through to the wrong one.
+  const sms: MessageTransport =
+    choice.carrier === "twilio"
+      ? new TwilioTransport(choice.twilio)
+      : new EndUserMessagingTransport(choice.aws);
+  return new SplitTransport(sms, email);
 }
 

@@ -12,19 +12,34 @@
  * to say what is happening. One source of truth, and no way for a page to hold
  * a reference to a carrier.
  */
+export type AwsChoice = {
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  configurationSetName?: string;
+};
+
+/**
+ * Twilio, once the fifteen numbers are ported out of Salesforce's AWS account.
+ *
+ * An API KEY, not the account's Auth Token. Both authenticate the same REST
+ * call, but a key can be revoked on its own without rotating everything else
+ * the account does — and the Auth Token additionally signs inbound webhooks,
+ * so leaking it lets somebody forge a customer saying STOP.
+ */
+export type TwilioChoice = {
+  /** AC… — whose account the message is billed to, and part of the URL. */
+  accountSid: string;
+  /** SK… — the Basic auth username. */
+  apiKeySid: string;
+  apiKeySecret: string;
+};
+
 export type TransportChoice =
   | { live: false; why: string }
-  | {
-      live: true;
-      why: string;
-      aws: {
-        region: string;
-        accessKeyId: string;
-        secretAccessKey: string;
-        sessionToken?: string;
-        configurationSetName?: string;
-      };
-    };
+  | { live: true; why: string; carrier: "aws"; aws: AwsChoice }
+  | { live: true; why: string; carrier: "twilio"; twilio: TwilioChoice };
 
 /**
  * TWO switches, deliberately. Credentials appearing in the environment is not
@@ -57,6 +72,20 @@ export function transportChoice(env: NodeJS.ProcessEnv = process.env): Transport
   if (env.SMS_LIVE_SENDING !== "true") {
     return { live: false, why: "Live sending is switched off. Everything is recorded and nothing is delivered." };
   }
+  if (env.SMS_TRANSPORT === "twilio") {
+    const accountSid = env.TWILIO_ACCOUNT_SID;
+    const apiKeySid = env.TWILIO_API_KEY_SID;
+    const apiKeySecret = env.TWILIO_API_KEY_SECRET;
+    if (!accountSid || !apiKeySid || !apiKeySecret) {
+      return { live: false, why: "The carrier is selected but its credentials are incomplete, so sends are recorded only." };
+    }
+    return {
+      live: true,
+      why: "Messages are being delivered to real phones.",
+      carrier: "twilio",
+      twilio: { accountSid, apiKeySid, apiKeySecret },
+    };
+  }
   if (env.SMS_TRANSPORT !== "aws") {
     return { live: false, why: "No carrier is configured, so sends are recorded only." };
   }
@@ -69,6 +98,7 @@ export function transportChoice(env: NodeJS.ProcessEnv = process.env): Transport
   return {
     live: true,
     why: "Messages are being delivered to real phones.",
+    carrier: "aws",
     aws: {
       region, accessKeyId, secretAccessKey,
       sessionToken: env.AWS_SMS_SESSION_TOKEN,

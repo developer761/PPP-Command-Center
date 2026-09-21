@@ -11,6 +11,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { decideInbound } from "../lib/messaging/inbound.ts";
+import { recordInbound } from "../lib/messaging/record-inbound.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -30,50 +31,25 @@ const ok = (label, cond, extra = "") => {
 const CUSTOMER = "+15165551234";
 const created = { conversations: [], optOuts: [] };
 
-/** The webhook's own logic, extracted so the script runs what ships. */
+/**
+ * THE WEBHOOK'S OWN CODE, not a copy of it.
+ *
+ * This used to be a hand-written reimplementation of the route, under a
+ * comment claiming it was "extracted so the script runs what ships" — it was
+ * not, and a divergence between the two would have gone unnoticed here, which
+ * is the one place it would have mattered. recordInbound is now a real module
+ * that both webhook routes call, so this exercises the shipping path.
+ */
 async function ingest(payload) {
   const d = decideInbound(payload);
   if (d.kind === "reject") return { rejected: d.code };
 
-  if (d.keyword === "opt_out") {
-    const { error } = await sb.from("sms_opt_outs").insert({
-      phone_e164: d.from, channel: "sms", source: "inbound_keyword",
-      inbound_body: d.body, opted_out_at: new Date().toISOString(),
-    });
-    if (error && error.code !== "23505") throw error;
-    if (!error) created.optOuts.push(d.from);
+  const res = await recordInbound(sb, d);
+  if (res.conversationId && !created.conversations.includes(res.conversationId)) {
+    created.conversations.push(res.conversationId);
   }
-
-  const { data: ws } = await sb.from("sms_sub_accounts").select("id").eq("phone_e164", d.to).maybeSingle();
-  let conversationId = null;
-  if (ws?.id) {
-    const { data: convo } = await sb.from("sms_conversations")
-      .select("id").eq("workspace_id", ws.id).eq("customer_phone", d.from)
-      .neq("state", "ended").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    conversationId = convo?.id ?? null;
-    if (!conversationId) {
-      const { data: c, error } = await sb.from("sms_conversations").insert({
-        workspace_id: ws.id, customer_phone: d.from,
-        state: d.keyword === "opt_out" ? "ended" : "ai_active",
-        outcome: d.keyword === "opt_out" ? "discard" : null,
-        first_inbound_at: new Date().toISOString(),
-      }).select("id").single();
-      if (error) throw error;
-      conversationId = c.id;
-      created.conversations.push(c.id);
-    }
-  }
-
-  let duplicate = false;
-  if (conversationId) {
-    const { error } = await sb.from("sms_messages").insert({
-      conversation_id: conversationId, direction: "inbound", channel: "sms",
-      body: d.body, provider_id: d.providerId,
-    });
-    if (error && error.code === "23505") duplicate = true;
-    else if (error) throw error;
-  }
-  return { conversationId, keyword: d.keyword, duplicate };
+  if (d.keyword === "opt_out") created.optOuts.push(d.from);
+  return { conversationId: res.conversationId, keyword: d.keyword, duplicate: !res.isNew };
 }
 
 try {
@@ -116,9 +92,20 @@ try {
   ok("…and the number is suppressed", (sup ?? []).length === 1);
   ok("…with the exact words kept as evidence", sup?.[0]?.inbound_body === "STOP", sup?.[0]?.inbound_body ?? "");
 
-  // 5. A second STOP must not explode on the partial unique index.
+  // 5. A second STOP must not explode — on the partial unique index, nor on
+  //    sms_conversations_ended_shape.
+  //
+  //    The first STOP ended the conversation, so this one finds nothing open
+  //    and opens a fresh already-ended row. That row needs state, outcome AND
+  //    ended_at together or the check constraint rejects it, which is exactly
+  //    what the live webhook was doing: 500, and SNS retrying it for hours.
+  //    The old hand-written copy of the webhook in this script never ended the
+  //    conversation at all, so it never reached this path and the bug sat
+  //    behind a passing test.
   const stopAgain = await ingest(msg("STOP", "e2e-4"));
   ok("a second STOP is harmless, not an error", stopAgain.keyword === "opt_out");
+  ok("…and it is recorded rather than lost", typeof stopAgain.conversationId === "string",
+     String(stopAgain.conversationId));
   const { count: supCount } = await sb.from("sms_opt_outs")
     .select("*", { count: "exact", head: true }).eq("phone_e164", CUSTOMER).is("opted_in_at", null);
   ok("…and there is still exactly one active suppression", supCount === 1, `got ${supCount}`);
@@ -143,6 +130,10 @@ try {
   console.log(`  ✗  stopped early: ${err instanceof Error ? err.message : String(err)}`);
 } finally {
   for (const id of created.conversations) {
+    // Scheduled actions first. recordInbound queues an agent_turn for every
+    // reply that is not a STOP, and those rows reference the conversation —
+    // the old hand-written copy never created them, so this delete is new.
+    await sb.from("sms_scheduled_actions").delete().eq("conversation_id", id);
     await sb.from("sms_messages").delete().eq("conversation_id", id);
     await sb.from("sms_conversations").delete().eq("id", id);
   }

@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifySns, fetchAwsCert, type SnsMessage } from "@/lib/messaging/sns-verify";
 import { decideInbound, type EumInbound } from "@/lib/messaging/inbound";
+import { recordInbound } from "@/lib/messaging/record-inbound";
 import { reportError, reportWarn } from "@/lib/observability";
-import { replyDueAt, TURN_START_SECONDS } from "@/lib/messaging/reply-delay";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +16,17 @@ export const dynamic = "force-dynamic";
  * customer replying — the funnel, adherence, the whole conversation — has been
  * waiting on it.
  *
+ * This is the AWS half. Twilio posts to /api/webhooks/twilio-inbound and both
+ * hand the same decision to the same recordInbound, so the carrier changes how
+ * a message ARRIVES and nothing about what happens to it.
+ *
  * WHAT IT DOES NOT DO. It does not reply. Recording what arrived and deciding
  * what to say back are separate jobs, and keeping them separate means a bug in
  * the second one cannot lose the first. The tick drafts; the gate decides
  * whether a draft may ever leave. This endpoint only ever writes down what
  * happened.
  *
- * STOP IS HANDLED HERE AND NOWHERE LATER. Suppression is written before the
- * conversation is threaded and before the workspace is resolved, because both
- * of those can fail and neither is an excuse. It is keyed on the handset
- * alone: somebody who says stop has said stop to PPP, not to one campaign.
+ * STOP IS HANDLED FIRST AND NOWHERE LATER — see recordInbound.
  *
  * Returns 200 for anything it has durably handled, INCLUDING a message it
  * decided to drop. SNS retries a non-200 for hours, and re-delivering a
@@ -110,147 +111,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, dropped: decision.reason });
   }
 
-  const sb = db();
-
   try {
-    // 1. Opt-out FIRST. Before threading, before the workspace lookup, before
-    //    anything that can fail.
-    if (decision.keyword === "opt_out") {
-      // A plain insert, not an upsert. The unique index is PARTIAL — one
-      // ACTIVE opt-out per number, `WHERE opted_in_at IS NULL` — so it cannot
-      // be named as a conflict target, and a duplicate key here means the
-      // number is already suppressed, which is the outcome we wanted anyway.
-      //
-      // The body is stored verbatim because the table asks for it: if an
-      // opt-out is ever disputed, "they replied 'Stop.'" is the evidence.
-      const { error } = await sb.from("sms_opt_outs").insert({
-        phone_e164: decision.from,
-        channel: "sms",
-        source: "inbound_keyword",
-        inbound_body: decision.body,
-        opted_out_at: new Date().toISOString(),
-      });
-      if (error && error.code !== "23505") throw error;
-    }
-    if (decision.keyword === "opt_in") {
-      // Never delete. The schema is explicit about this: START sets
-      // opted_in_at so both decisions survive, because a deleted row makes
-      // somebody who re-opted-out indistinguishable from somebody who never
-      // opted out at all.
-      const { error } = await sb.from("sms_opt_outs")
-        .update({ opted_in_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq("phone_e164", decision.from)
-        .is("opted_in_at", null);
-      if (error) throw error;
-    }
+    const { conversationId, unknownNumber } = await recordInbound(db(), decision);
 
-    // 2. Which workspace was texted. Unknown is recorded, not discarded — a
-    //    reply to a number we have forgotten about is a real customer and a
-    //    real configuration problem.
-    const { data: ws } = await sb.from("sms_sub_accounts")
-      .select("id, autosend_enabled, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
-      .eq("phone_e164", decision.to).maybeSingle();
-
-    // 3. The open conversation on this pair, if there is one.
-    let conversationId: string | null = null;
-    if (ws?.id) {
-      const { data: convo } = await sb.from("sms_conversations")
-        .select("id")
-        .eq("workspace_id", ws.id)
-        .eq("customer_phone", decision.from)
-        .neq("state", "ended")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      conversationId = convo?.id ?? null;
-
-      if (!conversationId) {
-        const { data: created, error } = await sb.from("sms_conversations").insert({
-          workspace_id: ws.id,
-          customer_phone: decision.from,
-          // Somebody texting a number we own without an open thread is an
-          // inbound lead, not an error.
-          state: decision.keyword === "opt_out" ? "ended" : "ai_active",
-          outcome: decision.keyword === "opt_out" ? "discard" : null,
-          first_inbound_at: new Date().toISOString(),
-        }).select("id").single();
-        if (error) throw error;
-        conversationId = created.id;
-      }
-    }
-
-    // 4. Write the message down. UNIQUE(provider_id) makes an SNS retry a
-    //    no-op rather than a duplicate in the thread.
-    if (conversationId) {
-      const { error } = await sb.from("sms_messages").insert({
-        conversation_id: conversationId,
-        direction: "inbound",
-        channel: "sms",
-        body: decision.body,
-        provider_id: decision.providerId,
-      });
-      // 23505 is the retry we expected.
-      if (error && error.code !== "23505") throw error;
-      // A retry of a message already queued must not queue a second turn.
-      const isRetry = error?.code === "23505";
-      const receivedAt = new Date();
-
-      // Queue a reply, unless they just told us to stop.
-      //
-      // Enqueued rather than generated here on purpose: asking a model takes
-      // seconds, SNS retries anything slow, and a webhook that times out gets
-      // redelivered — which would produce a second draft for the same message.
-      // The tick picks this up, and the unique index on one pending draft per
-      // conversation is the backstop if it somehow runs twice.
-      if (!isRetry && decision.keyword !== "opt_out" && decision.keyword !== "help") {
-        // TWO DIFFERENT WAITS, and they are not the same thing.
-        //
-        // When the turn STARTS: TURN_START_SECONDS after the text, fixed. A
-        // customer sending three texts in a row gets one answer to all three.
-        //
-        // When the reply ARRIVES: reply_due_at, drawn from the workspace's
-        // range (30-90 seconds by default), counted from this message. The
-        // turn writes the reply and holds it until then. That applies only
-        // where Emily sends on her own; where a person approves each reply
-        // the customer already waits for review.
-        const dueAt = ws?.autosend_enabled
-          ? replyDueAt({
-              receivedAt,
-              config: {
-                minSeconds: ws?.reply_delay_min_seconds ?? 0,
-                maxSeconds: ws?.reply_delay_max_seconds ?? 0,
-              },
-              timeZone: ws?.time_zone ?? "America/New_York",
-              quietHours: {
-                startHour: ws?.quiet_hours_start ?? 9,
-                endHour: ws?.quiet_hours_end ?? 20,
-              },
-            })
-          : null;
-
-        const { error: qErr } = await sb.from("sms_scheduled_actions").insert({
-          conversation_id: conversationId,
-          action: "agent_turn",
-          run_at: new Date(receivedAt.getTime() + TURN_START_SECONDS * 1000).toISOString(),
-          reply_due_at: dueAt?.toISOString() ?? null,
-        });
-        if (qErr) {
-          reportWarn({
-            key: "sms_inbound_queue_failed",
-            message: "Recorded an inbound SMS but could not queue a reply",
-            platform: "ppp_cc",
-            context: { conversationId, error: qErr.message },
-          });
-        }
-      }
-
-      await sb.from("sms_conversations").update({
-        last_message_at: new Date().toISOString(),
-        ...(decision.keyword === "opt_out"
-          ? { state: "ended", outcome: "discard", ended_at: new Date().toISOString() }
-          : {}),
-      }).eq("id", conversationId);
-    } else {
+    if (unknownNumber) {
       reportWarn({
         key: "sms_inbound_unknown_number",
         message: `A customer texted ${decision.to} and no workspace owns that number`,
