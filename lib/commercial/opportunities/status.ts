@@ -157,6 +157,30 @@ export type ChangeStatusInput = {
 /** @see ChangeStatusInput.source */
 export type StatusChangeSource = "user" | "auto_advance" | "reconcile";
 
+/**
+ * What to tell a PERSON whose status change was a no-op.
+ *
+ * `ok: true, skipped: "guard"` means zero rows matched: the deal had already
+ * moved, so nothing was written and nothing went wrong. That reading is right
+ * for the automatic callers — auto-advance losing a race with a human is
+ * exactly the outcome the guard exists to produce — and wrong for every path
+ * with a person at the end of it, which was reporting a move that never
+ * happened. Worse on a Won flip: the placeholder "won" note went out and the
+ * browser was sent to the debrief page for a deal still in its old column.
+ *
+ * So every user-facing caller checks `statusMoveRaced` and stops. The message
+ * says what to do, because "nothing happened" is not actionable on its own.
+ */
+export const STATUS_MOVE_RACED_MESSAGE =
+  "That deal has already moved on — someone else changed it a moment ago. Refresh to see where it is now.";
+
+/** True when the change was a no-op because the deal had already moved. */
+export function statusMoveRaced(
+  result: { ok: true; skipped?: "guard" } | { ok: false; error: string },
+): boolean {
+  return result.ok === true && result.skipped === "guard";
+}
+
 export async function changeOpportunityStatus(
   input: ChangeStatusInput,
 ): Promise<

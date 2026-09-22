@@ -102,7 +102,7 @@ async function closeAsLostAction(formData: FormData) {
     redirect(`/commercial/accounts/${account_id}/debrief/${opp_id}?just_closed=1`);
   }
 
-  const { changeOpportunityStatus } = await import("@/lib/commercial/opportunities/status");
+  const { changeOpportunityStatus, statusMoveRaced, STATUS_MOVE_RACED_MESSAGE } = await import("@/lib/commercial/opportunities/status");
   const result = await changeOpportunityStatus({
     opp_id,
     to_status: "pre_sale_closed",
@@ -112,6 +112,9 @@ async function closeAsLostAction(formData: FormData) {
     note,
   });
   if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
+  // Nothing was written — the deal had already moved. Posting the loss note
+  // anyway would put "lost" on the timeline of a deal that is not lost.
+  if (statusMoveRaced(result)) redirect(`${back}&error=${encodeURIComponent(STATUS_MOVE_RACED_MESSAGE)}`);
 
   const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");
   await postPlaceholderAutoNote({
@@ -146,7 +149,7 @@ async function startProjectAction(formData: FormData) {
         )
     );
   }
-  const { changeOpportunityStatus } = await import(
+  const { changeOpportunityStatus, statusMoveRaced, STATUS_MOVE_RACED_MESSAGE } = await import(
     "@/lib/commercial/opportunities/status"
   );
   const result = await changeOpportunityStatus({
@@ -160,6 +163,13 @@ async function startProjectAction(formData: FormData) {
     redirect(
       `/commercial/accounts/${account_id}/debrief/${opp_id}?error=` +
         encodeURIComponent(result.error)
+    );
+  }
+  // The hand-off to delivery did not happen; don't announce that it did.
+  if (statusMoveRaced(result)) {
+    redirect(
+      `/commercial/accounts/${account_id}/debrief/${opp_id}?error=` +
+        encodeURIComponent(STATUS_MOVE_RACED_MESSAGE)
     );
   }
   redirect(

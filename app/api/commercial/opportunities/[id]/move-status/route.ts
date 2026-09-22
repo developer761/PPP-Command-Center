@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import {
   changeOpportunityStatus,
+  statusMoveRaced,
+  STATUS_MOVE_RACED_MESSAGE,
 } from "@/lib/commercial/opportunities/status";
 import {
   OPPORTUNITY_STATUSES,
@@ -166,6 +168,16 @@ export async function POST(
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+  // THE MOVE DID NOT HAPPEN. The forward-only guard rides on the UPDATE, so a
+  // rejected move comes back `ok: true` with zero rows changed — a successful
+  // no-op, which is right for the function and wrong for everything below it.
+  // Reporting success here told the user the card moved when it had not, and
+  // on a Won drag it was worse than silence: the placeholder "won" note got
+  // posted and the browser was sent to the debrief page for a deal still
+  // sitting in its old column. Say what happened instead.
+  if (statusMoveRaced(result)) {
+    return NextResponse.json({ error: STATUS_MOVE_RACED_MESSAGE }, { status: 409 });
   }
   // For Won, drop the placeholder auto-note so the account timeline
   // reflects the closure instantly. Client redirects to the account-

@@ -134,6 +134,8 @@ import {
   changeOpportunityStatus,
   shouldWarnTransition,
   listOpportunityStatusLog,
+  statusMoveRaced,
+  STATUS_MOVE_RACED_MESSAGE,
 } from "@/lib/commercial/opportunities/status";
 import {
   listOpportunityTeam,
@@ -483,6 +485,14 @@ async function changeStatusAction(formData: FormData) {
     redirect(
       `/commercial/opportunities/${opp_id}?error=` +
         encodeURIComponent(result.error),
+    );
+  }
+  // Zero rows changed: somebody else moved this deal while the form was open.
+  // Reporting success here showed the old status back with a green tick.
+  if (statusMoveRaced(result)) {
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent(STATUS_MOVE_RACED_MESSAGE),
     );
   }
 
@@ -889,6 +899,14 @@ async function reopenOpportunityAction(formData: FormData) {
     redirect(
       `/commercial/opportunities/${opp_id}?error=` +
         encodeURIComponent(result.error),
+    );
+  }
+  // The reopen did not happen — don't clear the debrief flag on a deal that
+  // is still closed, which would drop it off the "awaiting debrief" list.
+  if (statusMoveRaced(result)) {
+    redirect(
+      `/commercial/opportunities/${opp_id}?error=` +
+        encodeURIComponent(STATUS_MOVE_RACED_MESSAGE),
     );
   }
   await clearDebriefFlagOnReopen(opp_id, user.id);

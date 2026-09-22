@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
-import { changeOpportunityStatus } from "@/lib/commercial/opportunities/status";
+import { changeOpportunityStatus, statusMoveRaced, STATUS_MOVE_RACED_MESSAGE } from "@/lib/commercial/opportunities/status";
 import { OPPORTUNITY_STATUSES, type OpportunityStatus } from "@/lib/commercial/opportunities/constants";
 
 /**
@@ -59,6 +59,10 @@ export async function moveOpportunityStatusAction(formData: FormData): Promise<v
   });
   if (!result.ok) {
     redirect(`${base}?error=${encodeURIComponent(result.error)}`);
+  }
+  // A no-op is not a move: stop before the Won trail below.
+  if (statusMoveRaced(result)) {
+    redirect(`${base}?error=${encodeURIComponent(STATUS_MOVE_RACED_MESSAGE)}`);
   }
 
   if (toStatus === "pre_sale_closed" && toSub === "won") {

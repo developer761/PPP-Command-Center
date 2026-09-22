@@ -54,7 +54,7 @@ import { proposalDisplayId, getProposal, listCurrentProposalTotalByOpp } from "@
 import { relativeAgoEt } from "@/lib/date-et";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { revalidatePath } from "next/cache";
-import { listCurrentStatusEnteredAtByOpp, changeOpportunityStatus } from "@/lib/commercial/opportunities/status";
+import { listCurrentStatusEnteredAtByOpp, changeOpportunityStatus, statusMoveRaced, STATUS_MOVE_RACED_MESSAGE } from "@/lib/commercial/opportunities/status";
 import { KANBAN_COLUMNS, columnKeyForOpp, kanbanMoveToLabel, resolveColumnTarget } from "@/lib/commercial/opportunities/kanban-columns";
 import { listOpenTaskStatsByOpp } from "@/lib/commercial/opportunities/tasks";
 import { listLastNoteByOpp } from "@/lib/commercial/opportunities/notes";
@@ -1430,6 +1430,11 @@ async function quickFlipFromAccountAction(formData: FormData) {
     // ?tab=opportunities so the error shows — ?tab=deals is the Home tab, which
     // renders no sp.error, so a failed status flip vanished (round-3 #7 class).
     redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(result.error)}`);
+  }
+  // Nothing written: the deal moved under us. Never run the Won side effects
+  // for a flip that did not happen.
+  if (statusMoveRaced(result)) {
+    redirect(`/commercial/accounts/${account_id}?tab=opportunities&error=${encodeURIComponent(STATUS_MOVE_RACED_MESSAGE)}`);
   }
   if (isWonFlip) {
     const { postPlaceholderAutoNote } = await import("@/lib/commercial/win-loss/debrief");

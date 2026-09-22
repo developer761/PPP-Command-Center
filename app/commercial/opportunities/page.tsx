@@ -138,6 +138,8 @@ import {
 import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
+  statusMoveRaced,
+  STATUS_MOVE_RACED_MESSAGE,
 } from "@/lib/commercial/opportunities/status";
 import { createCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
@@ -356,6 +358,12 @@ async function quickFlipStatusAction(formData: FormData) {
   });
   if (!result.ok) {
     redirect(buildFlipReturnHref(returnHref, "status_error", result.error));
+  }
+  // Nothing was written — the deal had already moved. Stop before the Won
+  // side effects below, which would post a "won" note for a flip that never
+  // happened and send the user to a debrief for a deal in another column.
+  if (statusMoveRaced(result)) {
+    redirect(buildFlipReturnHref(returnHref, "status_error", STATUS_MOVE_RACED_MESSAGE));
   }
   if (isWonFlip) {
     const { postPlaceholderAutoNote } =
