@@ -535,6 +535,22 @@ async function stageContacts() {
  * stage). Without the second part the deal reads "over-billed" against its own
  * contract.
  */
+/**
+ * The ORIGINAL contract — Salesforce's with-change-order figure, minus the
+ * change orders. See the note on contractCentsFor.
+ *
+ * Extracted because there were TWO places writing a "base" contract from the
+ * WITH-change-order field, and only one of them was found when Stephanie
+ * reported the double-count. `commercial_projects.contract_base_cents` had the
+ * same wrong value — latent rather than live, since the money math reads the
+ * contract ladder rather than that column, but wrong all the same and exactly
+ * the sort of thing a future reader trusts. One definition now.
+ */
+function originalContractCents(wo, opp) {
+  const withCo = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp?.QuotedSubtotalWithChangeOrder__c);
+  return withCo - cents(wo?.TotalChangeOrder__c ?? 0);
+}
+
 function contractCentsFor(wo, opp) {
   /**
    * THE ORIGINAL CONTRACT, WITHOUT THE CHANGE ORDERS.
@@ -559,9 +575,7 @@ function contractCentsFor(wo, opp) {
    * Brinkmann's has TotalChangeOrder__c = 0 in Salesforce and a $1,575.40 CO
    * raised here, and comes out right either way.
    */
-  const withCo = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp.QuotedSubtotalWithChangeOrder__c);
-  const sfChangeOrders = cents(wo?.TotalChangeOrder__c ?? 0);
-  const base = withCo - sfChangeOrders;
+  const base = originalContractCents(wo, opp);
   if (!wo) return base;
   const plan = planInvoice({
     quotedSubtotalWithCo: wo.Quoted_Subtotal_with_Change_Order__c,
@@ -1344,7 +1358,7 @@ async function stageProjects() {
       opportunity_id: dealId,
       project_number: deal?.project_number ?? null,
       name: (w.Name__c || deal?.title || w.WorkOrderNumber || "Project").slice(0, 200),
-      contract_base_cents: cents(w.Quoted_Subtotal_with_Change_Order__c),
+      contract_base_cents: originalContractCents(w, null),
       contract_source: "accepted_snapshot",
       status: PROJECT_STATUS[st.status] ?? "awarded",
       started_at: ymd(w.StartDate),
