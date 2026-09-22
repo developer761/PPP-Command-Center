@@ -97,58 +97,79 @@ So the work splits cleanly, and the second half is the one with something in it 
 
 ---
 
-## 3. What gets written, concretely
+## 3. What gets written — through a QUOTE, not three records by hand
 
-These are the real record shapes, read live out of PPP's production org rather than
-assumed — taken from an existing Tomco work order and its parents.
+**Changed 2026-09-22.** Katie: *"Would it make more sense to sync the proposal from
+Commercial Command Center to the Quote and then move that to Approved & Sync and allow
+Salesforce to trigger its automations rather than perform the creation on its own?"*
 
-> The record-type rows below assume the **first** reading in §1.2 (keep Tomco's
-> identity). If Katie wants standard PPP record types instead, swap the two ids; nothing
-> else in this section changes.
+Yes, and it is the better design. The reasoning is in
+[`ppp-salesforce-reference/salesforce/BUSINESS_RULES.md` → "The Closed Won cascade"],
+pushed by Katie as `c07be4b`.
 
-### 3.1 Account — only if it doesn't already exist
+Creating the Opportunity and Work Order ourselves means **re-implementing PPP's own rules
+in a second place**, where they will drift the moment Salesforce changes. Driving a Quote
+to Approved makes Salesforce build everything downstream using the rules it already has,
+so a Tomco sale comes out shaped like every other PPP sale rather than a sparse variant.
 
-| Salesforce field | Value |
+### The sequence
+
+1. **Account** — create only if new (Tomco record type `012Kf000000L8Q5IAK`).
+2. **Opportunity** — created **NOT won**. `Opportunity_SetStageWhenQuoteSync` requires
+   "not-yet-won + `SyncedQuoteId` populated + synced quote `Approved`/`Accepted`", so
+   creating it already-won would skip the very cascade we want.
+3. **Quote + line item**, on the opportunity's pricebook.
+4. **`Opportunity.SyncedQuoteId`** → the quote.
+5. **Quote → `Approved`.** Everything below happens on its own.
+
+### What Salesforce then does for us
+
+| Fires | Result |
 |---|---|
-| `Name` | `commercial_accounts.company_name` |
-| `RecordTypeId` | `012Kf000000L8Q5IAK` — the **Tomco** account record type |
-| `Type` | `Customer` |
-| `BillingCity` / `BillingState` | `billing_city` / `billing_state` |
-| `OwnerId` | **open question — see §7** |
+| `Quote_SetOpportunityStageClosedWonOnApproved` / `Opportunity_SetStageWhenQuoteSync` | Opp → **Closed Won**, `TotalAmount__c` ← quote `GrandTotal__c`, `CloseDate` = today |
+| `Opportunity_WorkOrderWhenClosedWon` | **the Work Order**, its line items, and `Payment_Term__c` rows — with `Corporate_Name__c`, `CostMaterials__c`, `MaterialType__c`, `Materials_Included__c` mapped properly |
+| `Opportunity_SetAccountTypeOnClosedWon` | Account.Type → Customer / Repeat Customer |
+| `Opportunity_Quota_Points_Record_Creation` | QuotaPoints at $1 = 1 point |
+| `WorkOrder_SetOpportunityFinancialFields` | the money written back up to the Opp |
 
-No fields are strictly required by the schema, but see the validation-rule risk in §6.
+### Two consequences that change what we write
 
-### 3.2 Opportunity — Closed Won
+**① We must NOT set the money on the Opportunity.** `WorkOrder_SetOpportunityFinancialFields`
+copies `TotalAmount__c` and `QuotedSubtotalWithChangeOrder__c` **up from the Work Order**,
+last-writer-wins, not a sum. Anything we write on the Opportunity is overwritten the
+moment the Work Order saves. **The contract value belongs on the Quote's `GrandTotal__c`**
+and flows down to the WO and back up. Writing it on the Opportunity directly would look
+correct for a second and then be replaced.
 
-Required on create, per Salesforce: **`Name`, `StageName`, `CloseDate`.** That's all three.
+**② Close Date resolves itself.** Katie, 2026-09-22: *"Close Date should always reflect
+the date of the sale aka moving to Won."* Because we push at the moment a deal is won in
+CCC, `CloseDate = TODAY()` **is** the sale date, so the automation is already correct and
+we set nothing. The one gap: if the push fails and the nightly sweep retries a day later,
+the close date is a day late and the validation rule forbids correcting it. Those must be
+**flagged for manual correction**, not silently accepted.
 
-| Salesforce field | Value |
-|---|---|
-| `Name` | the deal's title |
-| `AccountId` | the account from 3.1 |
-| `StageName` | `Closed Won` *(confirmed a valid picklist value)* |
-| `CloseDate` | **`commercial_opportunities.decided_at`** — the date the deal was decided. This is the CCC "close date" Katie means. |
-| `RecordTypeId` | `012Kf000000L8Q6IAK` — the **Tomco** opportunity record type |
-| `QuotedSubtotalWithChangeOrder__c` | `accepted_contract_cents ÷ 100` |
-| `Amount` | see the warning below |
+### What makes this easy — and it was the thing I expected to be hard
 
-> ⚠️ **`Amount` is not the contract value in this org.** On the sample deal I read,
-> `Amount` was **$500** while `QuotedSubtotalWithChangeOrder__c` was **$21,328.40**.
-> `QuotedSubtotalWithChangeOrder__c` is the canonical sales metric — every PPP report is
-> built on it. If we write the contract into `Amount`, Tomco's numbers will look right on
-> the record and wrong in every report. **Katie needs to confirm what `Amount` should
-> hold**, or we leave it alone.
+Tomco quotes do not itemise. A real one (`0Q0Wj000006WmKbKAK`) carries **one** line: the
+generic product **"Other"**, qty 1, unit $500, with the real $21,328.40 in `GrandTotal__c`.
+That is why every Tomco opportunity shows `Amount = 500`. **So there is no product
+mapping to do** — we reproduce the shape Tomco already uses.
 
-### 3.3 Work Order — Interior Painting
+### Still to confirm in the sandbox
 
-| Salesforce field | Value |
-|---|---|
-| `AccountId` | as above |
-| `Opportunity__c` | the opportunity from 3.2 — this is the link field |
-| `WorkTypeId` | `08q6g000000dTxNAAU` — **Interior Painting** *(confirmed to exist)* |
-| `Status` | open question — real Tomco records use values like `Work In Progress`, `Complete Balance Owed` |
-| `Quoted_Subtotal_with_Change_Order__c` | same contract value *(note: the Work Order field name uses underscores, the Opportunity one does not — a long-standing trap in this org)* |
-| `RecordTypeId` | ⚠️ **blocked — see §6** |
+- Is `GrandTotal__c` **writable**, or derived? The whole design hinges on getting the
+  contract value in there.
+- Which **stage** to create the opportunity in before the quote approves.
+- Does the quote need to pass through **`Quote Sent`** first, or can it go straight to
+  `Approved`? (Values: Draft | Quote Sent | Approved | Rejected.)
+- Should Tomco sales generate **quota points** at all? They will, automatically, and
+  re-fire whenever `TotalAmount__c` changes.
+
+### Risks this removes outright
+
+The Work Order record type our user appeared not to have, the Work Order status to start
+in, whether Work Type is always Interior Painting, and the fields we would have missed —
+**all gone.** Salesforce creates the Work Order, so Salesforce decides all of it.
 
 ---
 
