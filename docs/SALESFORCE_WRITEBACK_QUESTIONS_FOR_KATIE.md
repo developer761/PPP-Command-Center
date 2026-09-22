@@ -9,6 +9,71 @@ Salesforce. (There's only one org — Tomco's records live inside PPP's, as a re
 
 ---
 
+## ✅ Katie's answers (2026-09-22)
+
+| | Decision |
+|---|---|
+| **Q1 Close date** | **Set on create, never update.** "Close Date should not move after something has been marked as Closed Won." No validation-rule exemption needed — the rule stands and we work with it. **Consequence: the 132 already-migrated deals keep their existing Salesforce close date forever.** |
+| **Q4 Work Order record type** | Brendan's Tomco user has access. |
+| **Q6 Record type** | **Tomco record types.** Account `012Kf000000L8Q5IAK`, Opportunity `012Kf000000L8Q6IAK`. |
+| **Q5 Automation** | Katie sending details. **Still open — blocks the first real write.** |
+| **Q2 Duplicate prevention** | Katie: use Salesforce's own 18-digit record Id. *See §A below — this covers updates but not creates.* |
+| **Q3 User** | Brendan's Tomco user (`brendan@tomcopainting.com`, `005Kf0000021SPzIAM`) should **own** the records; Katie asked whether the sync can run through his user, and is sending sandbox credentials. *See §B below.* |
+
+### §A — Q2 needs one more round
+
+Using Salesforce's 18-digit Id works perfectly for the **132 existing deals**: they
+already have Ids, we already store them in `commercial_import_map`, and updates will
+match exactly. No new field needed for that half.
+
+It does not cover **creating** a record, because the Id does not exist until Salesforce
+makes it. The failure is narrow but real:
+
+> We insert a new GC. Salesforce creates it. The response is lost — timeout, deploy,
+> crash. We never learn the Id. Next run, we look for the GC, don't find one we recognise,
+> and **create it a second time.**
+
+With an External ID we control, that is impossible — `upsert` on our own key either
+creates once or updates the existing one, however many times it runs.
+
+**Options:**
+- **(a)** Add `CCC_Id__c` as originally proposed — makes duplicates structurally impossible.
+- **(b)** Stay with Salesforce Ids and accept the narrow window, mitigated by writing the
+  Id back immediately and having the nightly reconcile flag any Salesforce record that
+  looks like an unrecorded orphan.
+
+Either is workable. (a) is the safe one; (b) adds no fields. **Katie's call.**
+
+### §B — Q3: ownership and login are two different things
+
+**Brendan can own every record without the sync running as him.** `OwnerId` is settable
+on create for all three objects (confirmed), so we write
+`OwnerId = 005Kf0000021SPzIAM` and the records are his — which is what rep reporting
+needs. He already owns 181 of the 188 Tomco opportunities, so this matches reality.
+
+Running *as* Brendan is a different thing, and carries costs: the integration breaks when
+his password changes or he's deactivated, his API limits are consumed by it, and the
+audit trail says Brendan did things he wasn't at his desk for.
+
+> ⚠️ **And one hard constraint.** This is a single shared Salesforce connection — the
+> residential Command Center's analytics read through the *same* credentials. The current
+> login sees **95,441 opportunities** and **268 users**, which is what those dashboards
+> need. Brendan's user is profile `*Tomco`, role `Tomco`; if that role only sees Tomco's
+> branch of the hierarchy, pointing the shared connection at him would **break the
+> residential dashboards**. That is testable in the sandbox Katie is providing, and it is
+> the first thing to test.
+
+**Recommendation:** keep the connection on a user with full org visibility, and set
+`OwnerId` to Brendan. If Tomco would rather the connection itself be Brendan's, we should
+first confirm in the sandbox that he can see everything the residential side reads.
+
+**To answer Katie's direct question — what we need to connect to a user:** *no credentials.*
+It is an interactive OAuth approval: whoever is signing in visits the hub's Integrations
+page, clicks Connect, logs into Salesforce **as that user**, and approves once. We never
+see or store a password — only a refresh token. The user needs API Enabled.
+
+---
+
 ## The six questions
 
 ### Q1 — Close date is locked once a deal is Closed Won. How do you want to handle it?
