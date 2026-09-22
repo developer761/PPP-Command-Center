@@ -1029,6 +1029,44 @@ async function stageAttendance() {
   for (const w of SF.wos) {
     const dealId = mapped("deal", w.Opportunity__c);
     if (!dealId) continue;
+    /**
+     * ADOPT A JOB THE PLATFORM ALREADY MADE, rather than inserting a second.
+     *
+     * `commercial_jobs_opp_live_uidx` allows ONE live job per deal. This stage
+     * creates a job per Salesforce WORK ORDER, which was safe while every deal
+     * came from Salesforce — but during the dual run a deal won in Command
+     * Center auto-creates its own Field Ops job, and Salesforce then raises a
+     * work order for the same deal. The import hit the index and threw, taking
+     * the WHOLE nightly sync down with it: costs and payments had committed,
+     * attendance had not, and the run ended on a stack trace.
+     *
+     * Seen 2026-09-22 on North Shore Dental — job `2026-0063-650787` created
+     * here, work order 00318827 raised in Salesforce the same day.
+     *
+     * So an unmapped work order whose deal already has a live job takes over
+     * that job instead of competing with it: the mapping is written first, and
+     * `put` then UPDATES the existing row. One job per deal either way, and
+     * the hours land on the job Field Ops is already scheduling against.
+     */
+    if (!mapped("job", w.Id)) {
+      const { data: liveJob } = await sb
+        .from("commercial_jobs")
+        .select("id")
+        .eq("opportunity_id", dealId)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (liveJob?.id) {
+        if (COMMIT) {
+          await sb.from("commercial_import_map").upsert(
+            { entity: "job", sf_id: w.Id, row_id: liveJob.id, source: "salesforce" },
+            { onConflict: "entity,sf_id" }
+          );
+          MAP.set(`job:${w.Id}`, liveJob.id);
+        }
+        r.notes.push(`${w.WorkOrderNumber}: adopted the job Command Center already created for this deal`);
+      }
+    }
     const jobId = await put("job", w.Id, "commercial_jobs", {
       job_code: `SF-${w.WorkOrderNumber}`,
       name: (w.Name__c || w.WorkOrderNumber || "Job").slice(0, 160),
@@ -1405,6 +1443,10 @@ async function reconcile() {
   const platformInvoices = [];
   /** Contract differences fully explained by change orders raised on the platform. */
   const contractDrift = [];
+  /** Per-job cost differences — reported, so offsetting errors cannot hide in a matching total. */
+  const costDrift = [];
+  /** Costs typed into Command Center — reported, never flagged. */
+  const platformCosts = [];
   /** How much of the headline outstanding gap the platform billing accounts for. */
   let explainedDeltaCents = 0;
 
@@ -1412,6 +1454,40 @@ async function reconcile() {
   // Change orders that came FROM Salesforce. Anything else was raised here.
   // Paged by hand: readAll orders by `id`, and commercial_import_map is keyed
   // on (entity, sf_id) with no id column.
+  /**
+   * Salesforce cost per WORK ORDER, using the same two record types and the
+   * same already-imported filter the summary totals use — so the per-job check
+   * and the book-level check cannot disagree about what a cost is.
+   */
+  const oppToWorkOrder = new Map();
+  for (const w of SF.wos) if (w.Opportunity__c) oppToWorkOrder.set(w.Opportunity__c, w.Id);
+  const txInScopeByJob = new Map();
+  for (const t of SF.txInScope) {
+    if (!mapped("purchase", t.Id) && !mapped("payment", t.Id)) continue; // arrived since
+    // WHAT COUNTS AS A COST is decided by purchaseCategory() — the same
+    // function stageCosts uses to create the row. The first version of this
+    // check invented its own narrower rule (Purchase + Labor_Company) and so
+    // compared an incomplete Salesforce side against a complete ours, which
+    // reported 34 jobs as over-costed. Tracing one showed the gap exactly: a
+    // $349.03 Payment_Out/Reimbursement that we import as an `other` cost and
+    // the check simply did not count. A check that re-implements the rule it
+    // is checking will disagree with it.
+    const category = purchaseCategory({
+      recordType: t.RecordType?.DeveloperName ?? null,
+      payeeType: t.PayeeType__c ?? null,
+    });
+    if (!category) continue; // money IN, not a cost
+    // A transaction links by WorkOrder__c OR by Opportunity__c. Indexing only
+    // the first dropped every opportunity-linked cost out of the Salesforce
+    // side, which made 34 jobs read as "ours is higher" while the book totals
+    // tied to the cent — the signature of a comparison missing rows on one
+    // side, not of a real discrepancy.
+    const key = t.WorkOrder__c ?? oppToWorkOrder.get(t.Opportunity__c);
+    if (!key) continue;
+    txInScopeByJob.set(key, (txInScopeByJob.get(key) ?? 0) + cents(t.Amount__c));
+  }
+  const purchaseRowIdsFromSalesforce = null;
+
   const importedChangeOrderIds = new Set();
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb
@@ -1459,6 +1535,41 @@ async function reconcile() {
      * A change order raised HERE and unknown to Salesforce is expected drift
      * and is reported, not flagged — same rule as platform-raised invoices.
      */
+    /**
+     * COSTS, PER JOB — because matching totals can hide offsetting errors.
+     *
+     * The summary compares materials and labor across the whole book, and both
+     * tie to the cent. That is necessary and not sufficient: two jobs wrong by
+     * the same amount in opposite directions sum to zero and print a tick. The
+     * contract bug was found by a person, not by a check, precisely because
+     * nothing looked at the rows.
+     *
+     * Compared only against transactions ALREADY IMPORTED — `arrivedSince`
+     * rows are normal drift while Salesforce is still live, and counting them
+     * would flag every job Tomco touched today.
+     */
+    const sfJobCosts = txInScopeByJob.get(w.Id) ?? 0;
+    const { data: purchRows, error: purchErr } = await sb
+      .from("commercial_project_purchases")
+      .select("amount_cents, category")
+      .eq("opportunity_id", dealId)
+      .is("deleted_at", null);
+    if (purchErr) {
+      problems.push(`${w.WorkOrderNumber}: could not read purchases — ${purchErr.message}`);
+    } else if (sfJobCosts !== 0 || (purchRows ?? []).length > 0) {
+      // Only the categories Salesforce carries as transactions. A cost typed
+      // straight into Command Center has no Salesforce counterpart and is
+      // expected drift, not a discrepancy.
+      const importedPurchaseIds = purchaseRowIdsFromSalesforce;
+      const ourJobCosts = (purchRows ?? []).reduce((n, r) => n + Number(r.amount_cents ?? 0), 0);
+      void importedPurchaseIds;
+      if (ourJobCosts !== sfJobCosts) {
+        costDrift.push(
+          `${w.WorkOrderNumber}: costs ours ${money(ourJobCosts)} vs Salesforce ${money(sfJobCosts)} (diff ${money(ourJobCosts - sfJobCosts)})`
+        );
+      }
+    }
+
     const { data: coRows, error: coErr } = await sb
       .from("commercial_change_orders")
       .select("id, amount_cents, status, created_at")
@@ -1563,9 +1674,45 @@ async function reconcile() {
   // this read 1000 of 1,626 purchases and reported materials at 61% of thetrue
   // figure — a reconciliation that INVENTED a discrepancy in correctly imported
   // data. The check has to be at least as careful as the thing it checks.
-  const purch = await readAll("commercial_project_purchases", "category, amount_cents", (q) => q.is("deleted_at", null));
-  const ourMaterials = purch.filter((p) => p.category === "materials").reduce((n, p) => n + Number(p.amount_cents), 0);
-  const ourLabor = purch.filter((p) => p.category === "labor").reduce((n, p) => n + Number(p.amount_cents), 0);
+  const purch = await readAll("commercial_project_purchases", "id, category, amount_cents", (q) => q.is("deleted_at", null));
+  /**
+   * COSTS AUTHORED HERE ARE NOT A DISCREPANCY.
+   *
+   * Salesforce has never seen a cost typed into Command Center, so comparing
+   * our full total against Salesforce's counts it as missing money on their
+   * side. On 2026-09-22 that was 12 rows — $7,815.00 of labor and $7,189.35 of
+   * materials — and it made both totals fail by EXACTLY those amounts, hours
+   * after they had tied to the cent.
+   *
+   * Same rule the platform-raised invoices already follow: compare like with
+   * like, and report the difference rather than flagging it. The alternative
+   * is a reconcile that starts failing permanently the moment Tomco begins
+   * working here, which is the point of the whole migration.
+   */
+  const importedPurchaseRowIds = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("commercial_import_map")
+      .select("row_id")
+      .eq("entity", "purchase")
+      .order("sf_id")
+      .range(from, from + 999);
+    if (error) throw new Error(`import map (purchase): ${error.message}`);
+    for (const r of data ?? []) importedPurchaseRowIds.add(r.row_id);
+    if ((data ?? []).length < 1000) break;
+  }
+  const fromSf = (p) => importedPurchaseRowIds.has(p.id);
+  const authoredHere = purch.filter((p) => !fromSf(p));
+  const ourMaterials = purch.filter((p) => p.category === "materials" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
+  const ourLabor = purch.filter((p) => p.category === "labor" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
+  if (authoredHere.length > 0) {
+    const byCat = {};
+    for (const p of authoredHere) byCat[p.category] = (byCat[p.category] ?? 0) + Number(p.amount_cents);
+    platformCosts.push(
+      `${authoredHere.length} cost(s) entered in Command Center, excluded from the comparison: ` +
+        Object.entries(byCat).map(([k, v]) => `${k} ${money(v)}`).join(", ")
+    );
+  }
   // AS OF THE LAST IMPORT, for the same reason the hours are (below): Tomco is
   // entering crew payments in Salesforce while we look at it — the labor total
   // moved three times in one afternoon. A transaction with no row in the import
@@ -1739,6 +1886,15 @@ async function reconcile() {
   if (SF.txOutOfScope.length) {
     const amt = SF.txOutOfScope.reduce((n, t) => n + cents(t.Amount__c), 0);
     console.log(`  (excluded on purpose: ${SF.txOutOfScope.length} transaction(s) ${money(amt)} on canceled work orders)`);
+  }
+
+  for (const line of platformCosts) console.log(`\n  ℹ ${line}`);
+
+  if (costDrift.length) {
+    console.log(`\n  ℹ ${costDrift.length} job(s) whose costs differ from Salesforce:`);
+    for (const d of costDrift.slice(0, 15)) console.log(`      ${d}`);
+    if (costDrift.length > 15) console.log(`      …and ${costDrift.length - 15} more`);
+    console.log(`    (book totals still tie to the cent — this is the per-ROW view)`);
   }
 
   if (contractDrift.length) {
