@@ -396,7 +396,7 @@ async function loadSalesforce(conn) {
       FROM Opportunity WHERE ${TOMCO}`);
   SF.wos = await all(conn, `SELECT Id, WorkOrderNumber, Name__c, Status, Opportunity__c, AccountId, Account.Name,
       Street, City, State, PostalCode, StartDate, EndDate, CreatedDate,
-      Quoted_Subtotal_with_Change_Order__c, Original_Quoted_Subtotal__c, TotalChangeOrder__c, Tax, GrandTotal__c,
+      Quoted_Subtotal_with_Change_Order__c, QuotedSubtotal__c, Original_Quoted_Subtotal__c, TotalChangeOrder__c, Tax, GrandTotal__c,
       TotalPaymentsIn__c, BalanceOwed__c, Customer_PO__c, Payment_Terms__c
       FROM WorkOrder WHERE (${TOMCO} OR Opportunity__r.${TOMCO}) AND Status != 'Canceled'`);
   const woIds = SF.wos.map((w) => `'${w.Id}'`).join(",");
@@ -556,7 +556,13 @@ function originalContractCents(wo, opp) {
    * arithmetic to get wrong. Verified: the subtraction equals it on 93 of 93
    * work orders. Read it directly.
    */
-  if (wo?.Quoted_Subtotal__c != null) return cents(wo.Quoted_Subtotal__c);
+  // NOTE THE SPELLING. The field on WorkOrder is `QuotedSubtotal__c`, with no
+  // underscores — `Quoted_Subtotal__c` does not exist on the object, and the
+  // first version of this line read exactly that. Salesforce does not error on
+  // a missing field you never asked for; it simply arrives undefined, the
+  // branch never fires, and the "preferred" source is dead code that looks
+  // deliberate. Same failure mode as every other wrong-name bug found today.
+  if (wo?.QuotedSubtotal__c != null) return cents(wo.QuotedSubtotal__c);
   if (wo) return cents(wo.Quoted_Subtotal_with_Change_Order__c) - cents(wo.TotalChangeOrder__c ?? 0);
 
   /**
