@@ -186,9 +186,9 @@ const FINISH_OPTIONS = BASE_FINISHES;
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
 import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
-import { applyToAllTargets } from "@/lib/customer-form/apply-to-all";
+import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to-all";
 import { recommendedFinishes, recommendationReason } from "@/lib/customer-form/recommended-finish";
-import { roomLabelFrom } from "@/lib/customer-form/room-label";
+import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -784,17 +784,30 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     // different products with different finishes — copying the source's
     // "Soft Gloss" onto an interior Regal Select writes a finish that product
     // is not sold in, which is the same wrong-finish failure item 19 was about.
+    // What PPP would have suggested on the row the click came from — the test
+    // for whether the finish travelling with this color is the customer's
+    // decision or only our own suggestion. See finishForTarget.
+    const sourceLi = formData.lineItems.find((l) => l.id === sourceLineId);
+    const sourceIsExterior = /^exterior/i.test(sourceLi?.productFamily ?? "");
+    const sourceSuggestion = defaultFinishFor(
+      surface,
+      sourceIsExterior ? materialTypeExterior || materialType : materialType,
+      sourceIsExterior ? "exterior" : "interior",
+      sourceLi ? roomTypeTextFrom(sourceLi.areaLabel, sourceLi.productName) : null
+    );
     const finishForLine = (li: FormLineItem): string => {
       const mt = /^exterior/i.test(li.productFamily ?? "")
         ? materialTypeExterior || materialType
         : materialType;
       const sc = /^exterior/i.test(li.productFamily ?? "") ? "exterior" : "interior";
-      const options = finishOptionsFor(BASE_FINISHES, mt, sc);
-      if (pick.finish && options.includes(pick.finish)) return pick.finish;
-      // Per TARGET room, not the source room: "apply to all" can carry a
-      // wall color from a bedroom into a bathroom, where PPP recommends Satin
-      // rather than the bedroom's Eggshell.
-      return defaultFinishFor(surface, mt, sc, roomLabelFrom(li.areaLabel, li.productName));
+      return finishForTarget({
+        sourceFinish: pick.finish,
+        sourceSuggestion,
+        // Per TARGET room: a wall color carried from a bedroom into a bathroom
+        // should land on the bathroom's Satin, not the bedroom's Eggshell.
+        targetSuggestion: defaultFinishFor(surface, mt, sc, roomTypeTextFrom(li.areaLabel, li.productName)),
+        targetSells: finishOptionsFor(BASE_FINISHES, mt, sc),
+      });
     };
     const finishByLine = new Map(targets.map((li) => [li.id, finishForLine(li)]));
     const targetIds = new Set(targets.map((li) => li.id));
@@ -1698,6 +1711,7 @@ function LineItemSection({
               key={surface}
               surface={surface}
               roomLabel={title}
+              roomTypeText={roomTypeTextFrom(lineItem.areaLabel, lineItem.productName)}
               pick={state.picks[surface] ?? emptyPick()}
               token={token}
               canApplyToAll={canApplyToAll}
@@ -1743,6 +1757,7 @@ function SurfaceRow({
   pick,
   token,
   canApplyToAll,
+  roomTypeText,
   applyNote = null,
   onChange,
   onApplyToAll,
@@ -1762,6 +1777,9 @@ function SurfaceRow({
   pick: SurfacePick;
   token: string;
   canApplyToAll: boolean;
+  /** Area label + product name — what the room TYPE is read from. The display
+   *  title happens to contain it today; this does not depend on that. */
+  roomTypeText: string;
   applyNote?: { text: string; canOverwrite: number } | null;
   onChange: (patch: Partial<SurfacePick>) => void;
   onApplyToAll: () => void;
@@ -1792,7 +1810,7 @@ function SurfaceRow({
   // doesn't linger on an empty surface.
   const handleColorPick = (patch: Partial<SurfacePick>) => {
     if (patch.colorId) {
-      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope, roomLabel), ...patch });
+      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope, roomTypeText), ...patch });
     } else if (patch.colorId === null) {
       onChange({ ...patch, finish: null });
     } else {
@@ -1809,8 +1827,8 @@ function SurfaceRow({
   const rowContext = `${surface}, ${roomLabel}`;
   // PPP's recommendation for this room + surface, and the one-line reason —
   // only for the cases where the guide departs from the ordinary answer.
-  const recommended = defaultFinishFor(surface, materialType, scope, roomLabel);
-  const finishHint = recommendationReason(surface, roomLabel, scope);
+  const recommended = defaultFinishFor(surface, materialType, scope, roomTypeText);
+  const finishHint = recommendationReason(surface, roomTypeText, scope);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">

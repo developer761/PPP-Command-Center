@@ -67,3 +67,44 @@ export function applyToAllTargets(input: {
   }
   return { fill, differing };
 }
+
+/**
+ * Which finish a room should get when a color is applied INTO it.
+ *
+ * "Apply to all areas" carries the source row's finish along so each filled
+ * surface lands complete. That was harmless while every room recommended the
+ * same sheen. Once PPP's guide made the bathroom different (Satin on the
+ * walls, 2026-09-22), applying a bathroom's color to the rest of the house
+ * started carrying SATIN into every bedroom — a finish nobody chose, on rooms
+ * the guide says should be Eggshell.
+ *
+ * So it turns on WHOSE answer the source finish is:
+ *
+ *   · the customer picked something themselves → it travels with the color,
+ *     because it is a decision and applying it everywhere is what they asked
+ *     for;
+ *   · it is only what WE suggested for the source room → each target room gets
+ *     its OWN suggestion instead.
+ *
+ * The target's product still decides: a finish it is not sold in is never
+ * returned, and where the target has no suggestion at all the source's finish
+ * is better than an empty box.
+ */
+export function finishForTarget(input: {
+  /** What the source row currently holds. */
+  sourceFinish: string | null;
+  /** What PPP would have suggested for the SOURCE room + surface. */
+  sourceSuggestion: string;
+  /** What PPP suggests for the TARGET room + surface. */
+  targetSuggestion: string;
+  /** Finishes the target line's product is actually sold in. */
+  targetSells: readonly string[];
+}): string {
+  const { sourceFinish, sourceSuggestion, targetSuggestion, targetSells } = input;
+  const sourceIsSellable = !!sourceFinish && targetSells.includes(sourceFinish);
+  const chosenByAPerson = !!sourceFinish && sourceFinish !== sourceSuggestion;
+  if (chosenByAPerson && sourceIsSellable) return sourceFinish!;
+  // Our own suggestion — re-ask per room. Falling back to the source's finish
+  // keeps a surface from landing blank when the target has no suggestion.
+  return targetSuggestion || (sourceIsSellable ? sourceFinish! : "");
+}

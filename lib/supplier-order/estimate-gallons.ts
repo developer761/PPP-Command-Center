@@ -130,6 +130,11 @@ export type RoomSurface = {
 export type RoomTakeoff = {
   woliId: string;
   roomLabel: string;
+  /** What to CLASSIFY this room on — area label AND product name, because PPP
+   *  keeps the room type in ProductName__c and a qualifier in AreaLabel__c.
+   *  See roomTypeTextFrom. Falls back to roomLabel when absent, so older
+   *  callers and fixtures behave exactly as before. */
+  roomTypeText?: string;
   /** WOLI.Sq_Footage__c (floor area W×L). 0 / missing → "needs measurement". */
   floorAreaSqft: number;
   /** WOLI.Wall_Surface_Area__c — the MEASURED paintable wall area. When > 0 we
@@ -509,7 +514,9 @@ export function estimateOrderGallons(
    * The suffix is appended only for bathrooms, so every other line keeps the
    * `colorId::finish` key that saved drafts and quantity overrides use.
    */
-  const bucketFor = (s: RoomSurface, roomLabel: string): Bucket => {
+  // `roomTypeText`, not the display label — see roomTypeTextFrom. Passing the
+  // label alone answered "not a bathroom" for 1,781 of the org's bathrooms.
+  const bucketFor = (s: RoomSurface, roomTypeText: string): Bucket => {
     // Walls and ceilings only. The bathroom products exist for those surfaces
     // (Aura Bath & Spa is Matte, Regal Select Kitchen & Bath is Pearl), and
     // splitting TRIM would both invent a line no bathroom product can carry and
@@ -521,7 +528,7 @@ export function estimateOrderGallons(
     // vendor reads as a duplicate, and that phantom line then claims the
     // pre-split key the real bathroom line needs.
     const isBathroom =
-      classifyRoomType(roomLabel) === "bathroom" &&
+      classifyRoomType(roomTypeText) === "bathroom" &&
       (s.kind === "walls" || s.kind === "ceiling" || s.kind === "unsized");
     const key = quantityKey(s.colorId, s.finish, isBathroom);
     let b = buckets.get(key);
@@ -554,7 +561,7 @@ export function estimateOrderGallons(
       room.surfaces.some((x) => mentionsAccentWall(x.surfaceLabel));
     for (const s of room.surfaces) {
       if (!s.colorId) continue;
-      const b = bucketFor(s, room.roomLabel);
+      const b = bucketFor(s, room.roomTypeText || room.roomLabel);
       b.surfaces.add(s.surfaceLabel);
       // Windows join doors here: both are priced from their own area, so a
       // window-only line must take the quart path rather than the trim floor
@@ -577,7 +584,7 @@ export function estimateOrderGallons(
       if (room.roomLabel) placed.add(room.roomLabel);
       if (!seenThisRoom.has(b)) {
         b.contributingRoomCount += 1;
-        b.roomTypes.add(classifyRoomType(room.roomLabel) ?? "other");
+        b.roomTypes.add(classifyRoomType(room.roomTypeText || room.roomLabel) ?? "other");
         // If ANY contributing room has real data, the bucket isn't manualOnly.
         if (!cov.noDataAtAll) b.allRoomsNoData = false;
         seenThisRoom.add(b);
@@ -618,7 +625,7 @@ export function estimateOrderGallons(
         // every room has been walked, so the halved figure is accumulated
         // separately and chosen at the end.
         b.totalSqft += sqft;
-        b.kitchenSharedSqft += s.kind === "walls" && classifyRoomType(room.roomLabel) === "kitchen"
+        b.kitchenSharedSqft += s.kind === "walls" && classifyRoomType(room.roomTypeText || room.roomLabel) === "kitchen"
           ? sqft * (1 - cfg.kitchenSharedAreaFactor)
           : 0;
         if (missing) b.anyMissingFloor = true;

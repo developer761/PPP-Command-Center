@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import {
   estimateOrderGallons,
   applyQuantityOverrides,
@@ -171,5 +172,56 @@ describe("an order saved before the split still means what it said", () => {
     const out = estimateOrderGallons([room("Bedroom", 10, 12)]);
     const bathKey = new Map([[quantityKey(out[0].colorId, out[0].finish, true), { buckets: 0, cans: 9, unit: "gal" as const }]]);
     expect(applyQuantityOverrides(out, bathKey)[0].cans).not.toBe(9);
+  });
+});
+
+/* ── the bathrooms the split was never reaching ──────────────────────────── */
+
+describe("a bathroom named the way PPP's work orders name them", () => {
+  /**
+   * Measured 2026-09-22 across 30,000 live WorkOrderLineItems: 1,781 of the
+   * org's 1,784 bathrooms carry the room type in ProductName__c and a
+   * qualifier in AreaLabel__c — "Master", "Guest", "1st Floor". The estimator
+   * classified on the DISPLAY label, which is the qualifier, so Jason and
+   * Alex's bathroom line had been firing on three rooms out of 1,784.
+   */
+  const bathroom = (area: string, product: string): RoomTakeoff => ({
+    woliId: `w-${area}`,
+    roomLabel: area,
+    roomTypeText: roomTypeTextFrom(area, product),
+    floorAreaSqft: 40, wallSurfaceAreaSqft: 0, perimeterLf: 26, heightFt: 8,
+    doors: 1, windows: 1, closets: 0, coats: 0, paintDoorFaces: false,
+    surfaces: [surf("walls", "Walls", "white")],
+  });
+
+  it("gets its own order line, like any other bathroom", () => {
+    const out = estimateOrderGallons([
+      bathroom("Master", "Interior Painting: Bathroom: Master"),
+      {
+        woliId: "w-bed", roomLabel: "Bedroom",
+        roomTypeText: roomTypeTextFrom("Bedroom", "Interior Painting: Bedroom: Bedroom"),
+        floorAreaSqft: 180, wallSurfaceAreaSqft: 0, perimeterLf: 54, heightFt: 8,
+        doors: 1, windows: 1, closets: 0, coats: 0, paintDoorFaces: false,
+        surfaces: [surf("walls", "Walls", "white")],
+      },
+    ]);
+    // One color, two lines: the bathroom is separable so it can take a
+    // Kitchen & Bath product.
+    expect(out).toHaveLength(2);
+    expect(out.filter((e) => e.isBathroom)).toHaveLength(1);
+  });
+
+  it("and without the type text it is missed — the bug this pins", () => {
+    // Same two rooms, classified on the display label alone.
+    const out = estimateOrderGallons([
+      { ...bathroom("Master", "Interior Painting: Bathroom: Master"), roomTypeText: undefined },
+      {
+        woliId: "w-bed", roomLabel: "Bedroom", roomTypeText: undefined,
+        floorAreaSqft: 180, wallSurfaceAreaSqft: 0, perimeterLf: 54, heightFt: 8,
+        doors: 1, windows: 1, closets: 0, coats: 0, paintDoorFaces: false,
+        surfaces: [surf("walls", "Walls", "white")],
+      },
+    ]);
+    expect(out.filter((e) => e.isBathroom)).toHaveLength(0);
   });
 });

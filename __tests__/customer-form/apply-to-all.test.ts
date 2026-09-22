@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyToAllTargets } from "@/lib/customer-form/apply-to-all";
+import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to-all";
 
 /**
  * "Apply to all areas", and the overwrite Kate asked for on 2026-09-18:
@@ -149,5 +149,93 @@ describe("the message the customer reads", () => {
     });
     expect(fill).toHaveLength(0);
     expect(differing).toHaveLength(0);
+  });
+});
+
+/* ── which finish travels with the color ─────────────────────────────────── */
+
+describe("applying a bathroom's color to the rest of the house", () => {
+  const SELLS = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss"];
+
+  it("does NOT carry the bathroom's Satin into the bedrooms", () => {
+    // The gap PPP's room guide opened (2026-09-22): "apply to all" carried the
+    // source row's finish, which was fine while every room suggested the same
+    // sheen. Satin is the bathroom's answer, not the bedroom's — and nobody
+    // chose it, we suggested it.
+    expect(
+      finishForTarget({
+        sourceFinish: "Satin",          // what the bathroom row holds
+        sourceSuggestion: "Satin",      // …which is exactly what we suggested
+        targetSuggestion: "Eggshell",   // the bedroom's own answer
+        targetSells: SELLS,
+      })
+    ).toBe("Eggshell");
+  });
+
+  it("but DOES carry a finish the customer chose themselves", () => {
+    // They changed the bathroom to Semi-Gloss on purpose. Applying the color
+    // everywhere should apply their decision too.
+    expect(
+      finishForTarget({
+        sourceFinish: "Semi-Gloss",
+        sourceSuggestion: "Satin",
+        targetSuggestion: "Eggshell",
+        targetSells: SELLS,
+      })
+    ).toBe("Semi-Gloss");
+  });
+
+  it("and the other direction: a bedroom's Eggshell lands as Satin in the bathroom", () => {
+    expect(
+      finishForTarget({
+        sourceFinish: "Eggshell",
+        sourceSuggestion: "Eggshell",
+        targetSuggestion: "Satin",
+        targetSells: SELLS,
+      })
+    ).toBe("Satin");
+  });
+
+  it("never returns a finish the target's product is not sold in", () => {
+    // Aura Bath & Spa is Matte and nothing else. A chosen Semi-Gloss cannot
+    // travel into it — that is an order no store can mix.
+    expect(
+      finishForTarget({
+        sourceFinish: "Semi-Gloss",
+        sourceSuggestion: "Satin",
+        targetSuggestion: "Matte",
+        targetSells: ["Matte"],
+      })
+    ).toBe("Matte");
+  });
+
+  it("falls back to the source finish rather than leaving a surface blank", () => {
+    // Exterior woodwork has no suggestion at all; an empty box is worse than
+    // carrying the finish that was already working on the source row.
+    expect(
+      finishForTarget({
+        sourceFinish: "Satin",
+        sourceSuggestion: "Satin",
+        targetSuggestion: "",
+        targetSells: SELLS,
+      })
+    ).toBe("Satin");
+  });
+
+  it("and leaves it blank when there is genuinely nothing to put there", () => {
+    expect(
+      finishForTarget({
+        sourceFinish: "Eggshell",
+        sourceSuggestion: "Eggshell",
+        targetSuggestion: "",
+        targetSells: ["Low Lustre", "Soft Gloss"],   // an exterior line
+      })
+    ).toBe("");
+  });
+
+  it("handles a source row with no finish at all", () => {
+    expect(
+      finishForTarget({ sourceFinish: null, sourceSuggestion: "Eggshell", targetSuggestion: "Satin", targetSells: SELLS })
+    ).toBe("Satin");
   });
 });

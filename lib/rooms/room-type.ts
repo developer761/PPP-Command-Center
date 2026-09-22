@@ -70,3 +70,29 @@ export function classifyRoomType(label: string | null | undefined): "kitchen" | 
   }
   return null;
 }
+
+/**
+ * The text to CLASSIFY a room on — which is NOT the label a person reads.
+ *
+ * PPP's Salesforce convention puts the room TYPE in `ProductName__c` and a
+ * qualifier in `AreaLabel__c`:
+ *
+ *     AreaLabel__c  "Master"
+ *     ProductName__c "Interior Painting: Bathroom: Master"
+ *
+ * `roomLabelFrom` returns "Master" for that, correctly — it is what the room
+ * should be CALLED. Classifying on it answers "not a bathroom", and on the
+ * production org that was the answer for **1,781 of 1,784 bathrooms** and 499
+ * kitchens (measured 2026-09-22 across 30,000 line items).
+ *
+ * Everything keyed on the room type was therefore firing on almost nothing:
+ * the bathroom's own order line and Kitchen & Bath product (Jason & Alex), the
+ * kitchen's one-gallon cabinet rule, the bathroom gallon floor, and the Satin
+ * recommendation added the same week. Classify on both fields and they work.
+ */
+export function roomTypeTextFrom(
+  areaLabel: string | null | undefined,
+  productName: string | null | undefined
+): string {
+  return [areaLabel ?? "", productName ?? ""].map((s) => s.trim()).filter(Boolean).join(" ");
+}

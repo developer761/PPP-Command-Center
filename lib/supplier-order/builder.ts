@@ -5,6 +5,7 @@ import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, readProductOverride, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -735,6 +736,10 @@ function resolveLineItems(
       rooms.push({
         woliId: woli.id,
         roomLabel,
+        // Classified on BOTH fields: the room type lives in ProductName__c on
+        // most of PPP's work orders, and the area label is a qualifier
+        // ("Master", "Guest", "1st Floor"). See roomTypeTextFrom.
+        roomTypeText: roomTypeTextFrom(woli.areaLabel, woli.productName),
         // A number a human measured beats a blank (or stale) Salesforce field.
         // 0 means "cleared" and correctly falls back to Salesforce.
         floorAreaSqft: input.sqftOverrides?.[woli.id] || woli.sqFootage,

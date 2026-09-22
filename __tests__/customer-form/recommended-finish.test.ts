@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { recommendedFinishes, recommendationReason } from "@/lib/customer-form/recommended-finish";
 import { finishOptionsFor, BASE_FINISHES } from "@/lib/customer-form/material-types";
+import { roomTypeTextFrom } from "@/lib/rooms/room-type";
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 
 /**
  * "Precision Painting Plus — Standardized Paint Finishes, Interior &
@@ -135,5 +137,59 @@ describe("the hint shown next to the dropdown", () => {
     expect(recommendationReason("Ceiling", "Bedroom", "interior")).toBeNull();
     expect(recommendationReason("Trim", "Bathroom", "interior")).toBeNull();
     expect(recommendationReason("Walls", "Exterior", "exterior")).toBeNull();
+  });
+});
+
+/* ── the shape PPP's Salesforce data is actually in ──────────────────────── */
+
+describe("a bathroom PPP's data does not call a bathroom", () => {
+  // Measured 2026-09-22 across 30,000 live line items: the room TYPE is in
+  // ProductName__c and AreaLabel__c holds a qualifier. Classifying on the
+  // display name alone — which is what `roomLabelFrom` correctly returns —
+  // answered "not a bathroom" for 1,781 of the 1,784 bathrooms on the org.
+  const REAL: Array<[area: string, product: string]> = [
+    ["Master", "Interior Painting: Bathroom: Master"],
+    ["off living room", "Interior Painting: Bathroom: off living room"],
+    ["1st Floor", "Interior Painting: Bathroom: 1st Floor"],
+    ["Front", "Interior Painting: Bathroom: Front"],
+    ["Guest", "Interior Painting: Bathroom: Guest"],
+    ["2nd Floor", "Interior Painting: Bathroom: 2nd Floor"],
+  ];
+
+  for (const [area, product] of REAL) {
+    it(`"${area}" + "${product}" is a bathroom`, () => {
+      expect(recommendedFinishes("Walls", roomTypeTextFrom(area, product), "interior")[0]).toBe("Satin");
+    });
+  }
+
+  it("the display label alone still misses them — which is why this exists", () => {
+    // roomLabelFrom is not wrong; it answers a different question ("what should
+    // this room be CALLED"). This test records the difference so nobody
+    // 'simplifies' the two back into one.
+    for (const [area, product] of REAL) {
+      expect(roomLabelFrom(area, product)).toBe(area);
+      expect(recommendedFinishes("Walls", roomLabelFrom(area, product), "interior")[0]).toBe("Eggshell");
+    }
+  });
+
+  it("and a kitchen the same way", () => {
+    expect(
+      recommendedFinishes("Ceiling", roomTypeTextFrom("1st Floor", "Interior Painting: Kitchen: 1st Floor"), "interior")[0]
+    ).toBe("Flat");
+    // A real bedroom must NOT become a bathroom just because both fields are read.
+    expect(
+      recommendedFinishes("Walls", roomTypeTextFrom("Master", "Interior Painting: Bedroom: Master"), "interior")[0]
+    ).toBe("Eggshell");
+  });
+
+  it("a combined area is still not one room", () => {
+    // The conjunction guard has to survive reading both fields, or
+    // "Kitchen & Dining" starts taking the kitchen rules again.
+    expect(
+      recommendedFinishes("Walls", roomTypeTextFrom("1st Floor", "Interior Painting: Kitchen & Dining: 1st Floor"), "interior")[0]
+    ).toBe("Eggshell");
+    expect(
+      recommendedFinishes("Walls", roomTypeTextFrom("Pool", "Interior Painting: Bath House: Pool"), "interior")[0]
+    ).toBe("Eggshell");
   });
 });
