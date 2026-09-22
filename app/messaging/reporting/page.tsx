@@ -2,6 +2,8 @@ import Link from "next/link";
 import { loadReporting, integrityChecks, activeWorkspaces, loadOptOutRates, type ReportRange } from "@/lib/messaging/db";
 import { humanSeconds, HATCH_POLL_SECONDS, TARGET_SECONDS } from "@/lib/messaging/metrics";
 import { rank, summarise, formatRate, WATCH_RATE, HIGH_RATE, MIN_PEOPLE } from "@/lib/messaging/optout-rate";
+import { heldLeads } from "@/lib/messaging/lead-redrive-write";
+import { HeldLeads } from "@/components/messaging/held-leads";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +41,14 @@ export default async function ReportingConsole({
   const range: ReportRange = isRange(sp.range) ? sp.range : "30d";
   const workspaceId = sp.ws || undefined;
 
-  const [r, integrity, workspaces, optOutRows] = await Promise.all([
+  const [r, integrity, workspaces, optOutRows, held] = await Promise.all([
     loadReporting(range, workspaceId),
     integrityChecks(),
     activeWorkspaces(),
     loadOptOutRates(range),
+    // Leads that never entered a campaign. Nothing re-runs them on its own,
+    // so they need somewhere visible to be seen and released.
+    heldLeads(),
   ]);
   // Per NUMBER, always — the one measure that must not be filtered to the
   // workspace being viewed, because its whole job is to say which number is
@@ -134,6 +139,11 @@ export default async function ReportingConsole({
           called high: one opt-out in eight is 12% and means nothing.
         </p>
       </section>
+
+      {/* Leads that never entered a campaign, and the one control that lets
+          them through. Near the top because the whole point is that nothing
+          re-runs them on its own — off-screen, they are invisible forever. */}
+      <HeldLeads summary={held} />
 
       {/* Waiting now. First, because it is the only thing on the page that
           somebody can fix in the next five minutes. */}
