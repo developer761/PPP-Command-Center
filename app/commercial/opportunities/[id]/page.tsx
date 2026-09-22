@@ -5174,12 +5174,33 @@ async function InfoTab({
   const inlineRow = (name: string, raw: string) => {
     const def = inlineField(name);
     if (!def) return null;
+    /**
+     * A money field is STORED in cents and TYPED in dollars.
+     *
+     * The input has to prefill with dollars or the first edit multiplies the
+     * contract by 100 — you open a $165,000 contract, see "16500000", save it
+     * unchanged, and the job is now worth $165,000.00 hundred. So the raw
+     * value is converted on the way in, and the read view is formatted money
+     * rather than a bare integer.
+     */
+    const isMoney = def.type === "money";
+    const moneyCents = isMoney && raw !== "" ? Number(raw) : null;
+    const inputValue = isMoney
+      ? moneyCents === null || !Number.isFinite(moneyCents)
+        ? ""
+        : (moneyCents / 100).toFixed(2)
+      : raw ?? "";
+    const displayValue = isMoney
+      ? moneyCents === null || !Number.isFinite(moneyCents)
+        ? null
+        : formatCentsFull(moneyCents)
+      : raw || null;
     return (
       <InlineFieldRow
         key={name}
         field={def}
-        value={raw ?? ""}
-        display={raw || null}
+        value={inputValue}
+        display={displayValue}
         editing={editField === name}
         // Hidden rather than shown-and-refusing: a pencil that appears for
         // someone who cannot save is a trap.
@@ -5310,6 +5331,19 @@ async function InfoTab({
             since it was written and never given a control — it fed
             `derivedOppName` and appeared nowhere you could change it. */}
         {inlineRow("client_name", opp.client_name ?? "")}
+        {/* THE SIGNED CONTRACT, before change orders.
+            Stephanie 2026-09-22: "I was looking for somewhere to change the
+            original contract amount and couldn't find it." There was nowhere —
+            the field was deliberately excluded from inline editing, which was
+            defensible until the migration put a wrong number in it on 18 jobs.
+            Approved COs are added to this automatically, so what belongs here
+            is the ORIGINAL amount. */}
+        {inlineRow(
+          "accepted_contract_cents",
+          opp.accepted_contract_cents === null || opp.accepted_contract_cents === undefined
+            ? ""
+            : String(opp.accepted_contract_cents),
+        )}
         <Field
           label="Status"
           value={oppStatusDisplayLabel(opp.status, opp.sub_status)}

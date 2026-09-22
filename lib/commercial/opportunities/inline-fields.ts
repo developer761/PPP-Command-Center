@@ -18,12 +18,21 @@
  *                          creates the project. A bare column write skips all
  *                          of it.
  *   decided_at           — derived from the status change that set it.
- *   accepted_contract_*  — the signed contract. Set at award, never by hand
- *                          from a text box.
+ *   accepted_contract_cents — WAS absent on exactly that reasoning ("set at
+ *                          award, never by hand"). Stephanie, 2026-09-22:
+ *                          "I need to be able to change original contract
+ *                          amounts on jobs to correct this." The migration put
+ *                          Salesforce's WITH-change-order figure into the
+ *                          contract BASE on 18 jobs, and there was nowhere in
+ *                          the product to correct it. A number that can be
+ *                          wrong and cannot be fixed is worse than one that
+ *                          can be edited, so it is editable now — typed in
+ *                          DOLLARS, stored in cents, and audit-logged like
+ *                          every other field write.
  *   project_number       — already printed on documents in the field.
  */
 
-export type InlineFieldType = "text" | "textarea" | "date" | "number";
+export type InlineFieldType = "text" | "textarea" | "date" | "number" | "money";
 
 export type InlineField = {
   name: string;
@@ -38,6 +47,16 @@ export type InlineField = {
 
 export const INLINE_FIELDS: InlineField[] = [
   { name: "title", label: "Title", type: "text", maxLength: 200 },
+  /**
+   * THE SIGNED CONTRACT, before change orders.
+   *
+   * Change orders are added on top of this by every consumer
+   * (`contractCents = base + netApprovedCOs`), so this must be the ORIGINAL
+   * amount — entering the with-change-orders total here is precisely the
+   * double-count Stephanie reported.
+   */
+  { name: "accepted_contract_cents", label: "Original contract", type: "money",
+    hint: "The signed contract BEFORE change orders — approved COs are added to this automatically." },
   { name: "client_name", label: "Client name", type: "text", maxLength: 160,
     hint: "The end client, when it differs from the GC." },
   { name: "description", label: "Description", type: "textarea", maxLength: 4000 },
@@ -111,6 +130,30 @@ export function parseInlineValue(
     const n = Number(trimmed);
     if (!Number.isFinite(n)) return { error: `${field.label} must be a number.` };
     return { value: Math.round(n) };
+  }
+
+  if (field.type === "money") {
+    /**
+     * DOLLARS IN, CENTS OUT.
+     *
+     * The column is cents and the human types dollars. Reading "165000" as
+     * 165,000 cents would silently record a $165,000 contract as $1,650 — a
+     * money field that is wrong by 100x and looks plausible is worse than one
+     * that refuses. So the parse is explicit, and strips the punctuation
+     * people actually type ("$165,000.00").
+     */
+    const cleaned = trimmed.replace(/[$,\s]/g, "");
+    if (!/^-?\d+(\.\d{1,2})?$/.test(cleaned)) {
+      return { error: `${field.label} must be an amount, like 165000 or 165,000.00.` };
+    }
+    const dollars = Number(cleaned);
+    if (!Number.isFinite(dollars)) return { error: `${field.label} must be an amount.` };
+    // Guard the fat finger. Nothing Tomco bills is anywhere near this, and a
+    // stray keystroke on a contract feeds margin, AR and the GC's invoice.
+    if (Math.abs(dollars) > 100_000_000) {
+      return { error: `${field.label} looks too large — check the amount.` };
+    }
+    return { value: Math.round(dollars * 100) };
   }
 
   if (field.type === "date") {

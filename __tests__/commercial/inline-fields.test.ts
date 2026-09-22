@@ -9,15 +9,57 @@ import { INLINE_FIELDS, inlineField, parseInlineValue } from "@/lib/commercial/o
 describe("INLINE_FIELDS — what the pencil may write", () => {
   it("refuses the columns that have their own writers", () => {
     // status/sub_status cascade to proposals, stamp decided_at and create the
-    // project; decided_at is derived; accepted_contract_cents is the signed
-    // contract. A bare column write skips all of that.
+    // project; decided_at is derived. A bare column write skips all of that.
+    //
+    // `accepted_contract_cents` WAS on this list and came off it deliberately
+    // on 2026-09-22 — see the next test. Everything else stays.
     for (const forbidden of [
       "status", "sub_status", "decided_at", "closed_out_at",
-      "accepted_contract_cents", "accepted_contract_proposal_id",
+      "accepted_contract_proposal_id",
       "project_number", "account_id", "deleted_at", "archived_at",
     ]) {
       expect(inlineField(forbidden), forbidden).toBeUndefined();
     }
+  });
+
+  /**
+   * The contract is editable, and it is MONEY — so the parse is the guard.
+   *
+   * Stephanie, 2026-09-22: "I need to be able to change original contract
+   * amounts on jobs to correct this." The migration wrote Salesforce's
+   * WITH-change-order figure into the contract BASE on 18 jobs, and every
+   * consumer adds approved COs on top of that base — so the contract-to-date
+   * was inflated by exactly the change order, and nothing in the product could
+   * fix it.
+   *
+   * Opening a money column to a text box is the risk this pins down: the
+   * column is CENTS and a human types DOLLARS, so an unconverted "165000"
+   * would record $1,650 on a $165,000 job.
+   */
+  it("lets the original contract be corrected, and reads it as DOLLARS", () => {
+    const f = inlineField("accepted_contract_cents");
+    expect(f, "the contract must be editable").toBeDefined();
+    expect(f!.type).toBe("money");
+
+    // Dollars in, cents out.
+    expect(parseInlineValue(f!, "165000")).toEqual({ value: 16_500_000 });
+    expect(parseInlineValue(f!, "3000.50")).toEqual({ value: 300_050 });
+    // The punctuation people actually paste.
+    expect(parseInlineValue(f!, "$165,000.00")).toEqual({ value: 16_500_000 });
+    // Clearing it is allowed — a deal can legitimately have no contract yet.
+    expect(parseInlineValue(f!, "")).toEqual({ value: null });
+    // A credit change order can make it negative.
+    expect(parseInlineValue(f!, "-500")).toEqual({ value: -50_000 });
+  });
+
+  it("refuses money it cannot read, rather than storing something plausible", () => {
+    const f = inlineField("accepted_contract_cents")!;
+    for (const junk of ["abc", "1.2.3", "165,00.000", "12.345"]) {
+      expect(parseInlineValue(f, junk), junk).toHaveProperty("error");
+    }
+    // …and catches the fat finger, because this number feeds margin, AR and
+    // the invoice the GC receives.
+    expect(parseInlineValue(f, "999999999")).toHaveProperty("error");
   });
 
   it("allows the fields people actually retype", () => {

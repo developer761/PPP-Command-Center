@@ -536,7 +536,32 @@ async function stageContacts() {
  * contract.
  */
 function contractCentsFor(wo, opp) {
-  const base = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp.QuotedSubtotalWithChangeOrder__c);
+  /**
+   * THE ORIGINAL CONTRACT, WITHOUT THE CHANGE ORDERS.
+   *
+   * Stephanie, 2026-09-22: "CCC is totaling the CO's and original contract
+   * amount and taking that number as the original contract amount, and then
+   * the CO's were also added separately, kind of double dipping." She was
+   * exactly right, on all 19 migrated jobs that carry change orders.
+   *
+   * `Quoted_Subtotal_with_Change_Order__c` is what its name says — it ALREADY
+   * INCLUDES the change orders. This wrote it into
+   * `accepted_contract_cents`, which the platform treats as the original
+   * contract BASE, and every consumer then adds net approved COs on top
+   * (`contractCents = base + netCo` in projects/financials.ts). So a $165,000
+   * job with an $8,383 change order stored $173,383 as its base and displayed
+   * $181,766 of contract-to-date — inflated by exactly the CO, on the number
+   * the GC is billed against.
+   *
+   * Salesforce carries the CO total separately in `TotalChangeOrder__c`, so
+   * the original contract is the difference. Subtracting it also leaves a
+   * CCC-authored change order (one Salesforce never saw) correctly additive:
+   * Brinkmann's has TotalChangeOrder__c = 0 in Salesforce and a $1,575.40 CO
+   * raised here, and comes out right either way.
+   */
+  const withCo = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp.QuotedSubtotalWithChangeOrder__c);
+  const sfChangeOrders = cents(wo?.TotalChangeOrder__c ?? 0);
+  const base = withCo - sfChangeOrders;
   if (!wo) return base;
   const plan = planInvoice({
     quotedSubtotalWithCo: wo.Quoted_Subtotal_with_Change_Order__c,
