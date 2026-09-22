@@ -140,6 +140,12 @@ export const NOT_OURS: Record<string, string> = {
   //
   // Two leads arrived from Orange County zips in the 90 days to 2026-09-22,
   // against 224 Californian leads overall — consistent with self-gen only.
+  //
+  // Katie settled it the same day: "we can leave those off of Connect Hub for
+  // now and then discuss with Alex what are the plans for those zips moving
+  // forward." So this is PROVISIONAL. If Orange is brought in later the fix is
+  // one line — delete this entry and add the territory to TERRITORY_WORKSPACE
+  // pointing at whichever workspace is stood up for it.
   "CA Orange": "Orange County is active for commercial work only, which the residential bot does not cover",
 };
 
