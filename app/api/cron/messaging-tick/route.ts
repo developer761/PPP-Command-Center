@@ -53,7 +53,12 @@ export async function GET(request: Request) {
   if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
     try {
       const conn = await getSalesforceClient();
-      leads = await pollSalesforceLeads(messagingDb(), (soql) => conn.query(soql) as never);
+      leads = await pollSalesforceLeads(messagingDb(), (soql, opts) =>
+        (opts?.all
+          // SOQL pages at 2,000 rows. The zip map is larger than that, and
+          // without this it arrives quietly truncated.
+          ? conn.query(soql, { autoFetch: true, maxFetch: 50_000 })
+          : conn.query(soql)) as never);
       if (leads.failed > 0) {
         reportWarn({ key: "lead_poll_failed_rows", platform: "ppp_cc", message: `${leads.failed} lead(s) failed intake`, context: leads });
       }

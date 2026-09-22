@@ -22,6 +22,9 @@ export type IncomingLead = {
   leadSource?: string | null;
   state?: string | null;
   locality?: string | null;
+  /** The lead's PostalCode. Present on 99.5% of real leads, and the signal
+   *  routing actually trusts — see territory.ts. */
+  postalCode?: string | null;
   sfCreatedAt?: string | null;
 };
 
@@ -34,7 +37,15 @@ export type TriageReason =
   | "no_contactable_phone"
   | "no_matching_workspace"
   | "region_not_live"
-  | "workspace_has_no_number";
+  | "workspace_has_no_number"
+  /** Kate A2: outside the service area, Out of Area, or an inactive
+   *  territory. A person checks with the estimator; the bot never promises
+   *  coverage it cannot deliver. */
+  | "not_serviced"
+  /** A state PPP covers, split across several teams, and nothing said which.
+   *  Ten seconds of a person, rather than a guess that texts somebody two
+   *  counties away from a local number. */
+  | "region_unclear";
 
 export type IntakeContext = {
   workspaces: RoutableWorkspace[];
@@ -43,6 +54,15 @@ export type IntakeContext = {
    *  somebody who opted out and only discovering it at send time leaves a
    *  thread in the inbox that should never have existed. */
   isSuppressed?: (phone: E164) => boolean;
+  /**
+   * Resolve a ZIP against PPP's own Zip_Code__c map — see territory.ts.
+   *
+   * Injected rather than looked up here so this stays pure and the caller can
+   * fetch all 2,194 rows once per batch instead of once per lead. Omitted, and
+   * routing falls back to the city and state, which is what it did before and
+   * is markedly worse.
+   */
+  territoryFor?: (postalCode: string | null) => import("./territory").TerritoryVerdict | null;
 };
 
 export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDecision {
@@ -67,7 +87,13 @@ export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDeci
   }
 
   const routed = routeLead(
-    { source: lead.leadSource ?? null, state: lead.state ?? null, locality: lead.locality ?? null },
+    {
+      source: lead.leadSource ?? null,
+      state: lead.state ?? null,
+      locality: lead.locality ?? null,
+      // Resolved by the caller against PPP own zip map. The primary signal.
+      territory: ctx.territoryFor?.(lead.postalCode ?? null) ?? null,
+    },
     ctx.workspaces
   );
 
@@ -87,6 +113,8 @@ export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDeci
   const reason: TriageReason =
     routed.reason === "matched_inactive" ? "region_not_live"
     : routed.reason === "matched_no_number" ? "workspace_has_no_number"
+    : routed.reason === "not_serviced" ? "not_serviced"
+    : routed.reason === "ambiguous_region" ? "region_unclear"
     : "no_matching_workspace";
 
   return { action: "triage", reason, detail: routed.detail };

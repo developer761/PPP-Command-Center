@@ -19,6 +19,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decideIntake } from "./lead-intake";
 import { leadFromSalesforce, LEAD_FIELDS, type SalesforceLead } from "./lead-map";
+import { territoryFor as territoryOf, zipIndex, normalizeZip, type ZipRow } from "./territory";
 import { enrolLeadWith } from "./enrol-core";
 import { toE164 } from "./phone";
 
@@ -41,7 +42,17 @@ export type PollSummary = {
   why?: string;
 };
 
-type Query = (soql: string) => Promise<{ records: SalesforceLead[] }>;
+/**
+ * `all: true` asks the caller to follow Salesforce's pagination.
+ *
+ * SOQL returns 2,000 records per batch and then stops. The zip map is 2,194
+ * rows, so the first version of loadZipMap silently lost 194 of them — about
+ * 9% of PPP's service area, whose leads would have fallen back to the city
+ * and, for a split state, to triage. Found by printing the size of the map
+ * next to the number Salesforce reports, which is the only reason it did not
+ * ship looking fine.
+ */
+type Query = (soql: string, opts?: { all?: boolean }) => Promise<{ records: SalesforceLead[] }>;
 
 export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now = new Date()): Promise<PollSummary> {
   const summary: PollSummary = { polled: false, found: 0, inserted: 0, routed: 0, triaged: 0, ignored: 0, failed: 0 };
@@ -78,19 +89,74 @@ export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now 
     last_polled_at: now.toISOString(), last_run_found: summary.found, updated_at: now.toISOString(),
   }).eq("id", true);
 
-  const processed = await processPendingLeads(sb, now);
+  const processed = await processPendingLeads(sb, now, query);
   return { ...summary, ...processed };
 }
 
 /**
- * Route and enrol whatever is pending, from the poll or (later) the webhook.
- * Each lead ends with a status and, when it did not enter a campaign, why.
+ * PPP's zip map, fetched once and reused.
+ *
+ * 2,194 Zip_Code__c rows. Loaded per batch rather than per lead — fifty leads
+ * would otherwise be fifty SOQL queries against an API PPP shares with the
+ * rest of the business — and cached for an hour on top, because the map
+ * changes when somebody opens a territory, not by the minute.
+ *
+ * Fails to an EMPTY map rather than throwing. Routing then falls back to the
+ * city and state, which is worse but still refuses to guess between regions.
+ * A Salesforce blip must not stop every lead in the batch.
  */
-export async function processPendingLeads(sb: SupabaseClient, now = new Date()) {
+let zipCache: { index: Map<string, ZipRow>; at: number } | null = null;
+const ZIP_TTL_MS = 60 * 60_000;
+
+export function clearZipCache(): void {
+  zipCache = null;
+}
+
+export async function loadZipMap(query: Query, now = Date.now()): Promise<Map<string, ZipRow>> {
+  if (zipCache && now - zipCache.at < ZIP_TTL_MS) return zipCache.index;
+  try {
+    const res = (await query(
+      "SELECT Zip_Code__c, City__c, State__c, County__c, Service_Territory__r.Name, " +
+      "Service_Territory__r.IsActive FROM Zip_Code__c",
+      { all: true }
+    )) as unknown as { records: Record<string, unknown>[] };
+    const rows: ZipRow[] = (res.records ?? []).map((r) => {
+      const t = r.Service_Territory__r as { Name?: string; IsActive?: boolean } | null;
+      return {
+        zip: String(r.Zip_Code__c ?? ""),
+        territoryName: t?.Name ?? null,
+        territoryActive: !!t?.IsActive,
+        state: (r.State__c as string | null) ?? null,
+        city: (r.City__c as string | null) ?? null,
+        county: (r.County__c as string | null) ?? null,
+      };
+    });
+    const index = zipIndex(rows);
+    zipCache = { index, at: now };
+    return index;
+  } catch {
+    // Not cached: a blip must not mean an hour of routing without the map.
+    return new Map();
+  }
+}
+
+export async function processPendingLeads(sb: SupabaseClient, now = new Date(), query?: Query) {
   const out = { routed: 0, triaged: 0, ignored: 0, failed: 0 };
   const { data: pending } = await sb.from("sf_lead_inbound")
     .select("id, payload").eq("status", "pending").order("received_at").limit(50);
   if (!pending?.length) return out;
+
+  // The zip map, once for the whole batch. Absent when the poll was called
+  // without a Salesforce client, which is how every existing test calls it.
+  const zips = query ? await loadZipMap(query) : new Map<string, ZipRow>();
+  const territoryFor = (postalCode: string | null) => {
+    const key = normalizeZip(postalCode);
+    // No zip at all is NOT "not serviced" — it is simply no information, and
+    // routing should fall back to the city rather than refuse the lead.
+    if (!key) return null;
+    if (!zips.size) return null;
+    return territoryOf(zips.get(key) ?? null);
+  };
 
   const { data: workspaces } = await sb.from("sms_sub_accounts").select("id, name, is_active, phone_e164");
   const phones = pending
@@ -109,6 +175,7 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date()) 
       const decision = decideIntake(lead, {
         workspaces: workspaces ?? [],
         isSuppressed: (ph) => suppressed.has(ph),
+        territoryFor,
       });
 
       if (decision.action === "ignore") {

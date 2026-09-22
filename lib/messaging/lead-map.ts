@@ -61,6 +61,7 @@ export function leadFromSalesforce(r: SalesforceLead): { lead: IncomingLead; rec
     leadSource: r.LeadSource ?? null,
     state: stateCode(r.State),
     locality: r.City ?? null,
+    postalCode: r.PostalCode ?? null,
     sfCreatedAt: r.CreatedDate ?? null,
   };
   // What the entry and exit rules read. RecordType flattened to its name,

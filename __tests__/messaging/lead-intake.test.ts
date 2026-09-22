@@ -77,8 +77,14 @@ describe("decideIntake — a lead with no usable phone is triage, not a routing 
 describe("decideIntake — triage reasons stay distinguishable", () => {
   it("region not live is not the same as no match", () => {
     // Different fixes: one is a rollout decision, the other is a missing rule.
+    //
+    // Given the ZIP this names the real problem — CA LA Leads exists and is
+    // switched off. Without one it is "region_unclear" instead, because
+    // California is split between LA and San Diego and nothing said which;
+    // that case is asserted on its own below.
     const inactive = decideIntake(
-      { sfRecordId: "00Q6", phone: "3238923401", state: "CA", locality: "Los Angeles" }, ctx);
+      { sfRecordId: "00Q6", phone: "3238923401", state: "CA", locality: "Los Angeles", postalCode: "90012" },
+      { ...ctx, territoryFor: () => ({ serviced: true, territory: "CA Los Angeles East", workspaceFragment: "CA LA" }) });
     if (inactive.action === "triage") expect(inactive.reason).toBe("region_not_live");
     else throw new Error("expected triage");
 
@@ -146,3 +152,66 @@ describe("speedToLeadSeconds — the number PPP is buying", () => {
     expect(speedToLeadSeconds(new Date("2026-09-07T10:00:00Z"), new Date("2026-09-07T10:01:00Z"))).toBe(60);
   });
 });
+
+/**
+ * The two triage reasons the zip map introduced.
+ *
+ * Both replace a silent wrong answer. "region_unclear" replaces guessing the
+ * first sub-region for a state; "not_serviced" replaces texting somebody PPP
+ * cannot send an estimator to.
+ */
+describe("decideIntake — the zip decides, and says so when it cannot", () => {
+  const laterritory = (workspaceFragment: string) =>
+    () => ({ serviced: true as const, territory: "t", workspaceFragment });
+
+  it("routes on the zip's territory, over the city", () => {
+    const d = decideIntake(
+      { sfRecordId: "00QZ", phone: "5168923401", state: "NY", locality: "somewhere nobody lists", postalCode: "11024" },
+      { ...ctx, territoryFor: laterritory("NY LI Nassau") }
+    );
+    if (d.action === "route") expect(d.workspaceName).toBe("NY LI Nassau Leads");
+    else throw new Error(JSON.stringify(d));
+  });
+
+  it("triages a split state it cannot place, rather than guessing", () => {
+    // Buffalo used to land on Nassau. Four hundred miles.
+    const d = decideIntake(
+      { sfRecordId: "00QY", phone: "5168923401", state: "NY", locality: "Buffalo" }, ctx);
+    if (d.action === "triage") expect(d.reason).toBe("region_unclear");
+    else throw new Error(JSON.stringify(d));
+  });
+
+  it("triages a lead outside the service area — Kate's rule A2", () => {
+    const d = decideIntake(
+      { sfRecordId: "00QX", phone: "5168923401", state: "TX", locality: "Austin", postalCode: "73301" },
+      { ...ctx, territoryFor: () => ({ serviced: false, why: "TX is outside the states PPP covers", territory: null }) }
+    );
+    if (d.action === "triage") {
+      expect(d.reason).toBe("not_serviced");
+      expect(d.detail).toMatch(/outside the states/);
+    } else throw new Error(JSON.stringify(d));
+  });
+
+  it("triages an active territory nobody covers, naming it", () => {
+    // CA Orange: 87 zips, active in Salesforce, no workspace here.
+    const d = decideIntake(
+      { sfRecordId: "00QW", phone: "9498923401", state: "CA", locality: "Irvine", postalCode: "92602" },
+      { ...ctx, territoryFor: () => ({ serviced: false, why: "CA Orange is active in Salesforce but no workspace covers it", territory: "CA Orange" }) }
+    );
+    if (d.action === "triage") {
+      expect(d.reason).toBe("not_serviced");
+      expect(d.detail).toMatch(/CA Orange/);
+    } else throw new Error(JSON.stringify(d));
+  });
+
+  it("falls back to the city when there is no zip map at all", () => {
+    // A Salesforce blip returns an empty map. Routing degrades to what it did
+    // before rather than refusing every lead in the batch.
+    const d = decideIntake(
+      { sfRecordId: "00QV", phone: "5168923401", state: "NY", locality: "Garden City", postalCode: "11530" },
+      { ...ctx, territoryFor: () => null }
+    );
+    if (d.action === "route") expect(d.workspaceName).toBe("NY LI Nassau Leads");
+    else throw new Error(JSON.stringify(d));
+  });
+})
