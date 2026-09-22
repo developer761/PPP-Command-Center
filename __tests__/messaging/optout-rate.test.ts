@@ -90,3 +90,64 @@ describe("it reads like a person wrote it", () => {
     expect(assess(ws("A", 0, 0)).note).toMatch(/Nobody texted/);
   });
 });
+
+import { selectAll } from "@/lib/messaging/db";
+
+/**
+ * PostgREST caps an unbounded select at 1,000 rows and says nothing — no
+ * error, no flag, just a short array. loadOptOutRates read the whole
+ * conversations table to build the DENOMINATOR of this rate, so past a
+ * thousand conversations the denominator truncated while the numerator did
+ * not, and the rate over-reported. On this screen that means telling somebody
+ * to pause a number that is fine.
+ */
+describe("reading every row, not the first thousand", () => {
+  const rows = (n: number, offset = 0) => Array.from({ length: n }, (_, i) => ({ id: i + offset }));
+
+  it("returns a single short page as-is", async () => {
+    const out = await selectAll<{ id: number }>(async () => ({ data: rows(42), error: null }), "t");
+    expect(out).toHaveLength(42);
+  });
+
+  it("keeps paging while pages come back full", async () => {
+    const pages = [rows(1000), rows(1000, 1000), rows(7, 2000)];
+    let i = 0;
+    const out = await selectAll<{ id: number }>(async () => ({ data: pages[i++] ?? [], error: null }), "t");
+    expect(out).toHaveLength(2007);
+    // Every row, in order, not just the first page.
+    expect(out[0].id).toBe(0);
+    expect(out[2006].id).toBe(2006);
+  });
+
+  it("stops on an exact multiple of the page size", async () => {
+    // The off-by-one that loops forever: a full last page followed by an empty
+    // one has to terminate.
+    const pages = [rows(1000), []];
+    let i = 0;
+    const out = await selectAll<{ id: number }>(async () => ({ data: pages[i++] ?? [], error: null }), "t");
+    expect(out).toHaveLength(1000);
+  });
+
+  it("asks for the right window each time", async () => {
+    const seen: [number, number][] = [];
+    let i = 0;
+    await selectAll<{ id: number }>(async (a, b) => {
+      seen.push([a, b]);
+      return { data: i++ === 0 ? rows(1000) : [], error: null };
+    }, "t");
+    expect(seen).toEqual([[0, 999], [1000, 1999]]);
+  });
+
+  it("throws rather than returning a partial count", async () => {
+    // A rate built from half the rows is worse than no rate.
+    await expect(
+      selectAll<{ id: number }>(async () => ({ data: null, error: { message: "timeout" } }), "reading conversations")
+    ).rejects.toThrow(/reading conversations: timeout/);
+  });
+
+  it("refuses to loop forever against a paging bug", async () => {
+    await expect(
+      selectAll<{ id: number }>(async () => ({ data: rows(1000), error: null }), "t")
+    ).rejects.toThrow(/200,000 rows/);
+  });
+});

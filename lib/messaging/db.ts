@@ -21,6 +21,42 @@ export function messagingDb() {
   );
 }
 
+/**
+ * Read every row, not the first thousand.
+ *
+ * PostgREST caps an unbounded select at 1,000 rows and says nothing about it —
+ * no error, no flag, just a short array. A query that counts things then
+ * quietly counts the first thousand of them, and the number on the screen is
+ * wrong in a direction nobody can see.
+ *
+ * loadOptOutRates was doing exactly that: reading the whole conversations
+ * table to build the DENOMINATOR of the opt-out rate. Truncate the denominator
+ * while the numerator stays whole and the rate over-reports — which on that
+ * screen means telling somebody to pause a number that is fine. Harmless at
+ * ten conversations; wrong within about a week at 171 leads a day.
+ *
+ * Pages explicitly. The last page is the one shorter than the page size, which
+ * is also how it stops on an exact multiple.
+ */
+const PAGE = 1000;
+
+export async function selectAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  label: string
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw new Error(`${label}: ${error.message}`);
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+    // A runaway guard. Nothing here should ever reach this, and looping
+    // forever against a paging bug is worse than a short answer that throws.
+    if (out.length > 200_000) throw new Error(`${label}: refusing to read more than 200,000 rows`);
+  }
+}
+
 export type InboxBucket = "needs_human" | "active" | "waiting" | "ended";
 
 /** The buckets the office actually triages by, in the order they matter.
@@ -883,16 +919,30 @@ export async function loadOptOutRates(range: ReportRange = "30d"): Promise<Works
   const sb = messagingDb();
   const from = new Date(Date.now() - RANGE_DAYS[range] * 86400_000).toISOString();
 
-  const [{ data: workspaces }, { data: convs }, { data: outs }] = await Promise.all([
+  // EVERY ROW, paged. All three of these feed a rate, and a truncated read
+  // makes that rate wrong rather than missing — see selectAll.
+  const [{ data: workspaces }, convs, outs, outbound] = await Promise.all([
     sb.from("sms_sub_accounts").select("id, name").eq("is_active", true).order("name"),
-    // Every conversation that sent something in the window, with its person.
-    sb.from("sms_conversations").select("id, workspace_id, customer_phone, last_message_at, created_at"),
-    sb.from("sms_opt_outs").select("phone_e164, opted_out_at, opted_in_at").gte("opted_out_at", from),
+    selectAll<{ id: string; workspace_id: string; customer_phone: string; last_message_at: string | null; created_at: string }>(
+      (a, b) => sb.from("sms_conversations")
+        .select("id, workspace_id, customer_phone, last_message_at, created_at")
+        .order("id").range(a, b),
+      "reading conversations for the opt-out rate"
+    ),
+    selectAll<{ phone_e164: string; opted_out_at: string; opted_in_at: string | null }>(
+      (a, b) => sb.from("sms_opt_outs")
+        .select("phone_e164, opted_out_at, opted_in_at")
+        .gte("opted_out_at", from).order("phone_e164").range(a, b),
+      "reading opt-outs"
+    ),
+    selectAll<{ conversation_id: string; created_at: string }>(
+      (a, b) => sb.from("sms_messages")
+        .select("conversation_id, created_at")
+        .eq("direction", "outbound").gte("created_at", from)
+        .order("created_at").range(a, b),
+      "reading outbound messages"
+    ),
   ]);
-
-  const { data: outbound } = await sb
-    .from("sms_messages").select("conversation_id, created_at")
-    .eq("direction", "outbound").gte("created_at", from);
 
   const convById = new Map((convs ?? []).map((c) => [c.id, c]));
   // Who each workspace texted in the window, and when it last texted them.
