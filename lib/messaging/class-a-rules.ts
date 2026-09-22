@@ -228,21 +228,31 @@ export function forPrompt(rules: ClassARule[]): string {
   const live = promptable(rules);
   if (!live.length) return "";
 
+  // "What good looks like", NOT "Instead". Kate's corrective-action column is
+  // written in the past tense for a RATER marking a finished conversation —
+  // "gave no price, no ballpark and no range". Prefixed with "Instead:" that
+  // reads as a garbled instruction; prefixed with this it reads as the
+  // description of a passing reply, which is what it actually is.
   const line = (r: ClassARule) => {
-    const fix = r.correctiveAction ? `\n  Instead: ${r.correctiveAction}` : "";
+    const fix = r.correctiveAction ? `\n   What good looks like: ${r.correctiveAction}` : "";
     return `${r.code}. ${r.statement}${fix}`;
   };
 
   const critical = live.filter((r) => r.severity === "critical");
   const mild = live.filter((r) => r.severity !== "critical");
 
-  return [
+  // Joined rather than filtered: a `.filter(Boolean)` here ate the blank line
+  // between the heading and the first rule, so the whole section arrived at
+  // the model as one unbroken wall.
+  const parts = [
     "THE RULES YOU ARE GRADED AGAINST.",
     "Every one of these came from a real conversation that was marked wrong.",
     "",
     "BREAKING ANY OF THESE IS A SERIOUS FAILURE:",
     critical.map(line).join("\n"),
-    mild.length ? "\nGET THESE RIGHT TOO:" : "",
-    mild.length ? mild.map(line).join("\n") : "",
-  ].filter(Boolean).join("\n");
+  ];
+  if (mild.length) {
+    parts.push("", "GET THESE RIGHT TOO:", mild.map(line).join("\n"));
+  }
+  return parts.join("\n");
 }

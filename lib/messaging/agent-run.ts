@@ -87,7 +87,22 @@ export function agentFailureIsTransient(res: { error: string; rejected?: string 
  * tier meaningful: change the office location for New York and this prompt
  * changes for every New York workspace without an edit.
  */
-export function buildSystemPrompt(cfg: AgentConfigForRun, hardNos: string[], track: Track = "new_lead", known?: KnownCustomer, examples?: Selection, services?: ResolvedService[]): string {
+export function buildSystemPrompt(
+  cfg: AgentConfigForRun,
+  hardNos: string[],
+  track: Track = "new_lead",
+  known?: KnownCustomer,
+  examples?: Selection,
+  services?: ResolvedService[],
+  /**
+   * Kate's Class A rules, already rendered — see class-a-rules.ts.
+   *
+   * A STRING, not the rule objects, and deliberately so. The type that carries
+   * her rater-only guidance cannot reach this function, because what arrives
+   * here has already been through forPrompt, which never had it either.
+   */
+  classARules?: string
+): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
   // Nurture is talking to somebody who has already had an estimator in their
@@ -137,7 +152,7 @@ what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
-
+${classARules ? `\n${classARules}\n` : ""}
 You reply by choosing an intent and filling its slots. You never write the
 message that is sent. If you are unsure, choose "escalate" — a person picking
 it up costs far less than a wrong answer to a customer.`;
@@ -207,6 +222,9 @@ export async function runAgentTurn(
      *  be answered by saying the same thing again. */
     lastIntent?: string;
     ctx?: ValidateContext;
+    /** Kate's Class A rules, already rendered by forPrompt. A string, so the
+     *  type that carries her rater-only guidance can never arrive here. */
+    classARules?: string;
   } = {}
 ): Promise<RunResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -243,7 +261,7 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model

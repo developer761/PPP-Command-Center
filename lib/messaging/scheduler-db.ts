@@ -16,6 +16,8 @@ import { bumpStage, priorIntentsFor } from "./stage";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
+import { forPrompt } from "./class-a-rules";
+import { loadClassARules } from "./class-a-rules-db";
 import { takeoverReasonFor, latestInboundIsAnswered } from "./handoff";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import { emailAddressesFor } from "./reply-to";
@@ -232,8 +234,14 @@ export function schedulerDeps(): SchedulerDeps {
       const priorIntents = await priorIntentsFor(sb, conv.id);
       const stage = stageFromIntents(priorIntents);
 
+      // Kate 44 Class A rules, the standard this reply will be graded
+      // against. Rendered by forPrompt, which never sees her rater-only
+      // column because it is not in the table this loader reads.
+      const classARules = forPrompt(await loadClassARules());
+
       const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
         hardNos: cfg.hardNos,
+        classARules,
         stage,
         lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,
         known: {

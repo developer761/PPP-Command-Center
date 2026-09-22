@@ -21,6 +21,8 @@ import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type Turn } from "./agent-run";
+import { forPrompt } from "./class-a-rules";
+import { loadClassARules } from "./class-a-rules-db";
 import { assertMessagingAccess } from "./auth";
 
 export type SimTurn = {
@@ -128,6 +130,10 @@ export async function runSimTurn(input: {
 
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
+    // THE SAME RULES THE LIVE PATH GETS. A bot that behaves differently in the
+    // sandbox than in production is a bot nobody has actually tested, and this
+    // file already carries that lesson twice.
+    classARules: forPrompt(await loadClassARules()),
     lastAskedForInfo: input.lastAskedForInfo,
     mediaCount: input.mediaCount,
     track,

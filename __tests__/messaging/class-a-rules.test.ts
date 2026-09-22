@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
+import { buildSystemPrompt } from "@/lib/messaging/agent-run";
 import {
   parseClassARules, promptable, forPrompt, statusOf, severityOf, numberOf,
   type ClassARule,
@@ -172,7 +173,7 @@ describe("what the model is actually told", () => {
   });
 
   it("gives the corrective action, which is the useful half", () => {
-    expect(forPrompt([rule()])).toMatch(/Instead: gave no price/);
+    expect(forPrompt([rule()])).toMatch(/What good looks like: gave no price/);
   });
 
   it("is empty when there are no live rules, rather than a stray heading", () => {
@@ -238,3 +239,81 @@ describe.skipIf(!existsSync(REAL))("Kate's real file, 2026-09-22", () => {
     }
   });
 });
+
+/**
+ * The rules reaching the actual system prompt.
+ *
+ * buildSystemPrompt takes a STRING, not the rule objects — so the type that
+ * carries Kate's rater-only guidance cannot arrive there, and what does arrive
+ * has already been through forPrompt, which never had it either.
+ */
+describe("the system prompt carries the rules", () => {
+  const cfg = {
+    persona_name: "Emily", persona_role: "the team's assistant",
+    required_flow: ["project_details", "full_address"],
+    services_included: null, services_excluded: null, offsite_rules: null,
+    tone_rules: null, office_location: null, service_area_note: null,
+    confidence_threshold: 0.95,
+  } as Parameters<typeof buildSystemPrompt>[0];
+
+  it("includes them when they are supplied", () => {
+    const rendered = forPrompt([rule({ code: "A1", statement: "Never provide a quoted price" })]);
+    const prompt = buildSystemPrompt(cfg, [], "new_lead", undefined, undefined, undefined, rendered);
+    expect(prompt).toContain("A1.");
+    expect(prompt).toContain("Never provide a quoted price");
+  });
+
+  it("is unchanged when there are none, rather than growing an empty heading", () => {
+    const withNone = buildSystemPrompt(cfg, [], "new_lead", undefined, undefined, undefined, "");
+    const without = buildSystemPrompt(cfg, [], "new_lead");
+    expect(withNone).toBe(without);
+    expect(withNone).not.toMatch(/THE RULES YOU ARE GRADED AGAINST/);
+  });
+
+  it("keeps them alongside the hard-nos rather than replacing them", () => {
+    // The two overlap but are not the same list, and losing the hard-nos to a
+    // richer rule set would be a silent downgrade.
+    const rendered = forPrompt([rule({ code: "A1" })]);
+    const prompt = buildSystemPrompt(cfg, ["say we are licensed in Ohio"], "new_lead", undefined, undefined, undefined, rendered);
+    expect(prompt).toMatch(/NEVER, under any circumstances/);
+    expect(prompt).toMatch(/licensed in Ohio/);
+    expect(prompt).toContain("A1.");
+  });
+
+  it("cannot be handed the rater-only guidance, by construction", () => {
+    // buildSystemPrompt's parameter is a string. There is no overload that
+    // takes ClassARuleNotes, and forPrompt takes ClassARule, which has no
+    // field for it. This asserts the shape of that guarantee.
+    const { rules, notes } = parseClassARules(csv(
+      row(["A1", "Never provide a quoted price", "", "Yes", "", "", "no price", "", "", "RATER: check every number in the thread carefully", "", "", "", "critical", "LIVE — port this"])
+    ));
+    const prompt = buildSystemPrompt(cfg, [], "new_lead", undefined, undefined, undefined, forPrompt(rules));
+    expect(notes[0].ratingGuidance).toMatch(/^RATER:/);
+    expect(prompt).not.toContain("RATER:");
+  });
+})
+
+describe("how it reads to the model", () => {
+  it("does not prefix Kate's past-tense corrective action with 'Instead'", () => {
+    // Her column is written for a RATER marking a finished conversation —
+    // "gave no price, no ballpark and no range". "Instead: gave no price"
+    // reads as a garbled instruction; this reads as a passing reply.
+    const out = forPrompt([rule()]);
+    expect(out).not.toMatch(/Instead:/);
+    expect(out).toMatch(/What good looks like:/);
+  });
+
+  it("keeps the blank line under the heading", () => {
+    // A .filter(Boolean) ate it, and the section arrived as one wall of text.
+    const out = forPrompt([rule()]);
+    expect(out).toMatch(/marked wrong\.\n\nBREAKING ANY OF THESE/);
+  });
+
+  it("separates the mild rules from the critical ones", () => {
+    const out = forPrompt([
+      rule({ code: "A1", severity: "critical" }),
+      rule({ code: "A21", severity: "mild", statement: "Tone: friendly" }),
+    ]);
+    expect(out).toMatch(/\n\nGET THESE RIGHT TOO:\n/);
+  });
+})
