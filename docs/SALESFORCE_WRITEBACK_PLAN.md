@@ -119,8 +119,32 @@ so a Tomco sale comes out shaped like every other PPP sale rather than a sparse 
    "not-yet-won + `SyncedQuoteId` populated + synced quote `Approved`/`Accepted`", so
    creating it already-won would skip the very cascade we want.
 3. **Quote + line item**, on the opportunity's pricebook.
-4. **`Opportunity.SyncedQuoteId`** → the quote.
-5. **Quote → `Approved`.** Everything below happens on its own.
+4. **Quote → `Approved`.**
+5. **THEN sync it** — set `Opportunity.SyncedQuoteId`. Everything below happens on its own.
+
+> ### ⚠️ Approve BEFORE syncing. This order is not interchangeable.
+>
+> **Katie, 2026-09-22: "Quote created with quote line item, Status = Approved, then Sync.
+> Sync can't come before Approved or it won't work."** I had it the other way round.
+>
+> The reason is worth understanding, because nothing errors when you get it wrong — it
+> just silently does nothing. `Opportunity_SetStageWhenQuoteSync` is a record-triggered
+> flow **on the Opportunity**, and its entry criteria are *not-yet-won + `SyncedQuoteId`
+> populated + the synced quote `Approved`/`Accepted`*.
+>
+> Setting `SyncedQuoteId` **is** the Opportunity save that evaluates those criteria. So:
+>
+> - **Sync first, approve after** → at the moment of the Opp save the quote is still
+>   `Draft`, the criteria are false, and the flow does not fire. Approving the quote
+>   afterwards does not save the Opportunity, so nothing re-evaluates it. The deal sits in
+>   an open stage with an approved quote attached and **no cascade at all** — no Closed
+>   Won, no Work Order, no quota points.
+> - **Approve first, sync after** → the quote is already `Approved` when the Opportunity
+>   saves, the criteria are true, and the whole cascade runs.
+>
+> The failure mode is a deal that looks half-finished in Salesforce with nothing to
+> explain it, so the sync should **verify the stage actually moved** after syncing rather
+> than assume it did.
 
 ### What Salesforce then does for us
 
