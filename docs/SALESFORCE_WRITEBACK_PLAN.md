@@ -169,6 +169,67 @@ That single decision gives us, for free:
 
 ---
 
+## 4b. It should NOT be a nightly manual run — push on the event, sweep nightly
+
+Karan, 2026-09-22: *"why can't we just autosync from Commercial Command Center to
+Salesforce instead of a nightly manual run?"* — right, and it should.
+
+**The nightly-by-hand habit belongs to the other direction.** Salesforce → CCC is manual
+because it has to *poll* an external system for changes nobody told us about, and Karan
+chose not to automate that for a two-week dual run. Write-back is the opposite situation:
+**we own the event.** The platform knows the exact moment a deal is won, because the deal
+is won *here*. Nothing to poll.
+
+Every piece needed already exists:
+
+| Need | What we already have |
+|---|---|
+| The moment a deal is won | `changeOpportunityStatus()` — one choke point every win passes through |
+| Push without making the user wait | `afterResponse()` — runs past the response and survives Vercel freezing the instance |
+| A nightly safety net | the `commercial-daily` cron, already running (heartbeat fired 12:00 UTC today) |
+
+### The design
+
+1. **On win** — `afterResponse()` pushes to Salesforce. The user's click returns
+   immediately; the sync happens behind it. If Salesforce is slow or down, nobody is
+   blocked and nothing is lost, because of step 2.
+2. **Nightly** — the existing cron sweeps for anything **not yet confirmed in Salesforce**
+   and retries it.
+
+The push is what makes it feel instant. **The sweep is what makes it reliable**, and it is
+not optional — the push can fail for reasons that have nothing to do with us:
+
+- Salesforce down, or API limits hit
+- A validation rule rejects the record (there are twelve, and we cannot see the flows)
+- The deploy rolled mid-push
+- A won deal is edited days later
+- The 132 existing deals need back-filling once, on a schedule nobody clicks
+
+### …and the sweep is also the answer to the duplicate problem (§6③)
+
+This is the part worth noticing: **one mechanism solves both.** The workaround for staying
+on Salesforce's own Ids instead of adding `CCC_Id__c` is simply **never create blind**:
+
+1. **Record the intent first**, in our own database — *"about to create account X"* — before
+   calling Salesforce at all.
+2. **Search before creating.** Look for a matching record (name + Tomco record type +
+   created recently). If one is there, **adopt it** — store its Id — rather than making a
+   second.
+3. **Create** only when the search comes back empty.
+4. **Store the returned Id immediately.**
+5. **The nightly sweep finishes the job**: any intent row still carrying no Salesforce Id
+   gets searched again — and either adopts the orphan that step 1's crash left behind, or
+   retries the create.
+
+The lost-response window that worried us closes at step 2, because a re-run *looks* before
+it writes. It costs one extra query per created record, which at 94 records is nothing.
+
+`CCC_Id__c` would still be better — it makes duplicates *structurally* impossible rather
+than *very unlikely*, with no search and no intent table. But this is a real workaround,
+and it needs nothing from Katie.
+
+---
+
 ## 5. The steps
 
 **Phase 0 — decide (blocks everything).** Answer §1. Confirm `Amount`, Work Order
