@@ -21,6 +21,7 @@ import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { helpReply } from "./help-reply";
+import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 
 export type Accepted = Extract<InboundDecision, { kind: "accept" }>;
 
@@ -81,7 +82,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
   const { data: ws } = await sb.from("sms_sub_accounts")
-    .select("id, phone_e164, autosend_enabled, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
+    .select("id, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
 
   // 3. The open conversation on this pair, if there is one.
@@ -176,6 +177,52 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
             platform: "ppp_cc",
             context: { conversationId, error: hErr.message },
           });
+        }
+      }
+    }
+
+    // OUT OF HOURS. The toggle on the Settings screen has been saved and read
+    // by nothing since workspace hours were built, so a customer texting at
+    // 10pm got silence while two other screens advertised the feature.
+    //
+    // Inside the federal 8am-9pm window only, and once per person per day —
+    // see after-hours.ts for why that is the line.
+    if (isNew && ws?.id && ws.after_hours_autoreply) {
+      const dayAgo = new Date(receivedAt.getTime() - 24 * 3600_000).toISOString();
+      const { count } = await sb.from("sms_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("agent_intent", AFTER_HOURS_INTENT)
+        .gte("created_at", dayAgo);
+
+      const autoReply = afterHoursReply({
+        workspace: ws,
+        now: receivedAt,
+        alreadySentToday: count ?? 0,
+        keyword: decision.keyword,
+      });
+
+      if (autoReply.send) {
+        const { data: inbound } = await sb.from("sms_messages")
+          .select("id").eq("provider_id", decision.providerId).maybeSingle();
+        if (inbound?.id) {
+          const { error: aErr } = await sb.from("sms_scheduled_actions").insert({
+            conversation_id: conversationId,
+            action: "send_reply",
+            run_at: receivedAt.toISOString(),
+            reply_due_at: receivedAt.toISOString(),
+            reply_body: autoReply.body,
+            reply_intent: AFTER_HOURS_INTENT,
+            answers_message_id: inbound.id,
+          });
+          if (aErr) {
+            reportWarn({
+              key: "sms_after_hours_not_queued",
+              message: "Could not queue the after-hours reply",
+              platform: "ppp_cc",
+              context: { conversationId, error: aErr.message },
+            });
+          }
         }
       }
     }

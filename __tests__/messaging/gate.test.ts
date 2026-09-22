@@ -256,3 +256,78 @@ describe("the runaway message rail", () => {
     expect(classifyRefusal({ ok: false, reason: "too_long" })).toBe("fail");
   });
 });
+
+/**
+ * THE ONLY CONCESSION IN THE GATE.
+ *
+ * `answersInbound` lets a reply to a message the customer just sent go out
+ * within the FEDERAL window (8am-9pm) rather than the workspace's own narrower
+ * hours. The workspace hours exist so PPP does not START conversations at odd
+ * times; somebody who texted at 8:30pm has started one, and answering them is
+ * not soliciting them. Karan chose this over replying at any hour, 2026-09-22.
+ *
+ * Deliberately NOT keyed on `agent` — no caller earns an exemption by being
+ * itself, which is why that field is recorded and never read.
+ */
+describe("answering somebody who texted after hours", () => {
+  /** New York local hours, as UTC. EDT in July is UTC-4. */
+  const ny = (h: number, m = 0) => new Date(Date.UTC(2026, 6, 15, h + 4, m));
+
+  it("is refused at 8:30pm without the flag — the workspace shut at 8", async () => {
+    const r = await gatedSend(req({ now: ny(20, 30) }), deps());
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toBe("quiet_hours");
+  });
+
+  it("is allowed at 8:30pm when it answers an inbound", async () => {
+    const r = await gatedSend(req({ now: ny(20, 30), answersInbound: true }), deps());
+    expect(r.ok).toBe(true);
+  });
+
+  it("is allowed at 8am, before the office opens", async () => {
+    expect((await gatedSend(req({ now: ny(8, 5), answersInbound: true }), deps())).ok).toBe(true);
+  });
+
+  it("IS STILL REFUSED AT 2AM — the federal bound is not relaxed", async () => {
+    // The whole point of choosing the federal window over "any hour".
+    const r = await gatedSend(req({ now: ny(2), answersInbound: true }), deps());
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toBe("quiet_hours");
+  });
+
+  it("is still refused at 9pm exactly, where the federal window closes", async () => {
+    expect((await gatedSend(req({ now: ny(21), answersInbound: true }), deps())).ok).toBe(false);
+  });
+
+  it("does NOT relax suppression", async () => {
+    // A person who said STOP is never answered, at any hour, for any reason.
+    const r = await gatedSend(
+      req({ now: ny(20, 30), answersInbound: true }),
+      deps({ isSuppressed: async () => true })
+    );
+    expect(r.ok === false && r.reason).toBe("suppressed");
+  });
+
+  it("does NOT relax the daily cap", async () => {
+    const r = await gatedSend(
+      req({ now: ny(20, 30), answersInbound: true }),
+      deps({ sentToday: async () => 99 })
+    );
+    expect(r.ok === false && r.reason).toBe("daily_cap");
+  });
+
+  it("does NOT relax the empty-opt-out-list rail", async () => {
+    const r = await gatedSend(
+      req({ now: ny(20, 30), answersInbound: true }),
+      deps({ suppressionListLoaded: async () => false })
+    );
+    expect(r.ok === false && r.reason).toBe("suppression_list_empty");
+  });
+
+  it("gives no exemption to any agent name on its own", async () => {
+    // The flag is the concession, not the caller. An agent claiming to be an
+    // auto-reply gets nothing without it.
+    const r = await gatedSend(req({ now: ny(20, 30), agent: "after_hours" }), deps());
+    expect(r.ok).toBe(false);
+  });
+})

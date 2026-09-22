@@ -195,6 +195,33 @@ export function schedulerDeps(): SchedulerDeps {
       ]);
       if (!cfg) return { kind: "skipped" as const, reason: "no agent configuration" };
 
+      // THE LEASH. max_turns has been saved, resolved and displayed on the
+      // Agent page under "Longer than this hands to a human rather than
+      // looping" — and enforced by nothing, so there was no cap on how long a
+      // conversation could run, nor on what it could cost.
+      //
+      // Checked BEFORE the model is called, not after: a conversation that has
+      // already gone too far should not spend another request to find that
+      // out. Counted in replies we actually sent, because that is what the
+      // customer experienced.
+      if (cfg.maxTurns != null && cfg.maxTurns > 0) {
+        const sentSoFar = (msgs ?? []).filter((m) => m.direction === "outbound").length;
+        if (sentSoFar >= cfg.maxTurns) {
+          // Handed over with no message. Karan, 2026-09-22: a customer the bot
+          // has already failed to help does not need one more text from it.
+          // human_active with no owner IS the "Needs a person" queue.
+          await sb.from("sms_conversations").update({
+            state: "human_active",
+            takeover_reason: "repeated_confusion",
+            takeover_at: new Date().toISOString(),
+          }).eq("id", conv.id).neq("state", "ended").is("owning_user_id", null);
+          return {
+            kind: "skipped" as const,
+            reason: `handed to a person after ${sentSoFar} replies (max_turns is ${cfg.maxTurns})`,
+          };
+        }
+      }
+
       // SENT MESSAGES AS WELL AS DRAFTS. This read sms_drafts alone, which is
       // complete only while a person reviews every reply — the autosend and
       // held-reply paths send without writing one. On an autosending workspace
@@ -346,7 +373,17 @@ export function schedulerDeps(): SchedulerDeps {
 
       const to = toE164(conv.customer_phone);
       if (!to) return { kind: "skipped" as const, reason: "no textable number" };
-      const sent = await gatedSend({ workspace: ws, to, body: a.reply_body, agent: "agent_autosend" }, gateDeps(sb));
+      // ANSWERS AN INBOUND, so the workspace's own sending hours give way to
+      // the federal 8am-9pm bound. Every held reply is by definition a reply
+      // to a message the customer sent — that is what answers_message_id
+      // means — and this is what lets the HELP reply and the after-hours reply
+      // reach somebody who texted at half past eight. Nothing else relaxes:
+      // suppression, the empty-list rail, the daily cap and the federal window
+      // all still apply, and 2am is still refused.
+      const sent = await gatedSend(
+        { workspace: ws, to, body: a.reply_body, agent: "agent_autosend", answersInbound: true },
+        gateDeps(sb)
+      );
       if (sent.ok) return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
 
       // Refused at its moment (quiet hours began, the cap was reached). It

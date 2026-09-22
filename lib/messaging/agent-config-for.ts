@@ -15,7 +15,15 @@ import type { Track } from "./agent-output";
  * is the third time this session that two implementations of one idea were
  * about to drift.
  */
-export async function agentConfigFor(workspaceId?: string, track: Track = "new_lead"): Promise<{ cfg: AgentConfigForRun; hardNos: string[] } | null> {
+export async function agentConfigFor(
+  workspaceId?: string,
+  track: Track = "new_lead"
+): Promise<{
+  cfg: AgentConfigForRun;
+  hardNos: string[];
+  /** The caller's leash on the model — see below. Null means no cap is set. */
+  maxTurns: number | null;
+} | null> {
   const sb = messagingDb();
   const [{ data: rows }, { data: ws }] = await Promise.all([
     sb.from("sms_agent_configs").select("*"),
@@ -55,5 +63,19 @@ export async function agentConfigFor(workspaceId?: string, track: Track = "new_l
       confidence_threshold: Number(value.confidence_threshold ?? 0.95),
     },
     hardNos,
+    /**
+     * How many replies the bot may send before a person takes over.
+     *
+     * Resolved here at last. max_turns has been validated on save, stored,
+     * resolved through the config layers and displayed on the Agent page under
+     * the words "Longer than this hands to a human rather than looping" — and
+     * read by nothing. There was no conversation-length cap anywhere in the
+     * system, and therefore no ceiling on tokens or cost either.
+     *
+     * Kept OUT of cfg on purpose: cfg is what reaches the model, and the model
+     * has no business knowing how long its own leash is. This is the caller's
+     * rule about the model, not an instruction to it.
+     */
+    maxTurns: value.max_turns == null ? null : Number(value.max_turns),
   };
 }

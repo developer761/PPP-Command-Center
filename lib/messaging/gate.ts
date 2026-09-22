@@ -20,7 +20,7 @@ import { hasUnresolved } from "./merge-fields";
 import { emailAddressesFor } from "./reply-to";
 import {
   withinQuietHours, nextSendableTime, withinDailyCap,
-  DEFAULT_DAILY_CAP, type QuietHours,
+  DEFAULT_DAILY_CAP, FEDERAL_BOUND, type QuietHours,
 } from "./compliance";
 
 /** The subset of a workspace row the gate needs. */
@@ -141,6 +141,26 @@ export type SendRequest = {
   /** Which agent asked. Recorded, and used for nothing else — no agent gets an
    *  exemption, which is the point. */
   agent: string;
+  /**
+   * This message ANSWERS one the customer just sent.
+   *
+   * The single concession in this file, and it is deliberately not keyed on
+   * `agent` — no caller earns an exemption by being itself, which is why that
+   * field is recorded and never read.
+   *
+   * What it changes: the workspace's own sending hours (9am-8pm) give way to
+   * the FEDERAL bound (8am-9pm). Nothing else. Suppression, the empty-list
+   * rail, the daily cap and the federal window itself all still apply, and a
+   * message at 2am is still refused.
+   *
+   * Why that is the right line: the workspace hours exist so PPP does not
+   * START conversations at odd times. Somebody who texts at 8:30pm has started
+   * one, and answering them is not soliciting them. Karan chose this over
+   * replying at any hour, 2026-09-22.
+   *
+   * It does NOT make the message unconditional. It makes it answerable.
+   */
+  answersInbound?: boolean;
   now?: Date;
 };
 
@@ -238,10 +258,13 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   );
   if (suppressed) return { ok: false, reason: "suppressed" };
 
-  const hours: QuietHours = {
-    startHour: ws.quiet_hours_start,
-    endHour: ws.quiet_hours_end,
-  };
+  // A reply to a message the customer just sent answers within the FEDERAL
+  // window rather than the workspace's own narrower one. See answersInbound:
+  // the workspace hours exist so PPP does not start conversations at odd
+  // times, and somebody who texted at 8:30pm has already started one.
+  const hours: QuietHours = req.answersInbound
+    ? { ...FEDERAL_BOUND }
+    : { startHour: ws.quiet_hours_start, endHour: ws.quiet_hours_end };
 
   // 2. Quiet hours, in the WORKSPACE's timezone, never the server's.
   //    Applied to EMAIL as well as SMS. Quiet hours are a TCPA bound on texts
