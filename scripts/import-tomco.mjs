@@ -1389,10 +1389,27 @@ async function reconcile() {
   const problems = [];
   /** Invoices billed in Command Center during the dual run — reported, never flagged. */
   const platformInvoices = [];
+  /** Contract differences fully explained by change orders raised on the platform. */
+  const contractDrift = [];
   /** How much of the headline outstanding gap the platform billing accounts for. */
   let explainedDeltaCents = 0;
 
   let sfContract = 0, sfBalance = 0, sfPaid = 0, ourContract = 0, ourBalance = 0, ourPaid = 0;
+  // Change orders that came FROM Salesforce. Anything else was raised here.
+  // Paged by hand: readAll orders by `id`, and commercial_import_map is keyed
+  // on (entity, sf_id) with no id column.
+  const importedChangeOrderIds = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("commercial_import_map")
+      .select("row_id")
+      .eq("entity", "change_order")
+      .order("sf_id")
+      .range(from, from + 999);
+    if (error) throw new Error(`import map (change_order): ${error.message}`);
+    for (const r of data ?? []) importedChangeOrderIds.add(r.row_id);
+    if ((data ?? []).length < 1000) break;
+  }
   for (const w of SF.wos) {
     const dealId = mapped("deal", w.Opportunity__c);
     if (!dealId) { problems.push(`${w.WorkOrderNumber}: no deal imported`); continue; }
@@ -1406,6 +1423,69 @@ async function reconcile() {
     // purchases read above exists to avoid.
     if (invErr) { problems.push(`${w.WorkOrderNumber}: could not read invoices — ${invErr.message}`); continue; }
     const ourTotal = (inv ?? []).reduce((n, i) => n + Number(i.subtotal_cents), 0);
+
+    /**
+     * THE CONTRACT ITSELF — which nothing checked until 2026-09-22.
+     *
+     * The summary line below labelled "contract" sums INVOICE SUBTOTALS. It
+     * never read `accepted_contract_cents`, so the number the platform shows
+     * as the contract was compared against nothing, by anything, ever. On
+     * 2026-09-22 Stephanie found 18 jobs where it was inflated by their own
+     * change order — wrong since the migration, through every green reconcile,
+     * under a heading that said "contract".
+     *
+     * What has to be compared is what the platform DISPLAYS: the stored base
+     * PLUS net approved change orders, which is how `contractCents` is built
+     * in projects/financials.ts. Checking the stored base alone would have
+     * matched Salesforce perfectly and still been wrong, because the base was
+     * a faithful copy of the wrong field.
+     *
+     * Salesforce's `Quoted_Subtotal_with_Change_Order__c` is the with-CO
+     * figure, so it is the right thing to compare a with-CO total against.
+     * A change order raised HERE and unknown to Salesforce is expected drift
+     * and is reported, not flagged — same rule as platform-raised invoices.
+     */
+    const { data: coRows, error: coErr } = await sb
+      .from("commercial_change_orders")
+      .select("id, amount_cents, status, created_at")
+      .eq("opportunity_id", dealId)
+      .is("deleted_at", null);
+    if (coErr) {
+      problems.push(`${w.WorkOrderNumber}: could not read change orders — ${coErr.message}`);
+    } else {
+      const { data: oppRow } = await sb
+        .from("commercial_opportunities")
+        .select("accepted_contract_cents")
+        .eq("id", dealId)
+        .maybeSingle();
+      const baseCents = Number(oppRow?.accepted_contract_cents ?? 0);
+      const netCo = (coRows ?? [])
+        .filter((c) => c.status === "approved")
+        .reduce((n, c) => n + Number(c.amount_cents ?? 0), 0);
+      const shownCents = baseCents + netCo;
+      const sfWithCo = cents(w.Quoted_Subtotal_with_Change_Order__c);
+      // Only meaningful once a contract exists on our side.
+      if (baseCents !== 0 && shownCents !== sfWithCo) {
+        // WHICH change orders Salesforce has never seen — from the import map,
+        // not from a date. A cutover timestamp is a guess: Brinkmann's CO was
+        // imported FROM Salesforce on 2026-06-02 and a date heuristic called
+        // it platform-raised, hiding a real disagreement between two
+        // Salesforce fields. The map is the fact.
+        const raisedHere = (coRows ?? []).filter(
+          (c) => c.status === "approved" && !importedChangeOrderIds.has(c.id)
+        );
+        const raisedHereCents = raisedHere.reduce((n, c) => n + Number(c.amount_cents ?? 0), 0);
+        if (shownCents - raisedHereCents === sfWithCo) {
+          contractDrift.push(
+            `${w.WorkOrderNumber}: contract ${money(shownCents)} vs Salesforce ${money(sfWithCo)} — the ${money(raisedHereCents)} difference is ${raisedHere.length} change order(s) raised here`
+          );
+        } else {
+          problems.push(
+            `${w.WorkOrderNumber} CONTRACT: we show ${money(shownCents)} (base ${money(baseCents)} + ${money(netCo)} approved COs) vs Salesforce ${money(sfWithCo)}`
+          );
+        }
+      }
+    }
     const ourPaidJob = (inv ?? []).reduce((n, i) => n + Number(i.paid_cents), 0);
     const ourBalanceJob = (inv ?? []).reduce((n, i) => n + Number(i.balance_cents), 0);
     const sfBalanceJob = cents(w.BalanceOwed__c);
@@ -1645,6 +1725,12 @@ async function reconcile() {
   if (SF.txOutOfScope.length) {
     const amt = SF.txOutOfScope.reduce((n, t) => n + cents(t.Amount__c), 0);
     console.log(`  (excluded on purpose: ${SF.txOutOfScope.length} transaction(s) ${money(amt)} on canceled work orders)`);
+  }
+
+  if (contractDrift.length) {
+    console.log(`\n  ℹ ${contractDrift.length} job(s) whose contract differs from Salesforce by change orders raised HERE:`);
+    for (const d of contractDrift.slice(0, 15)) console.log(`      ${d}`);
+    if (contractDrift.length > 15) console.log(`      …and ${contractDrift.length - 15} more`);
   }
 
   if (platformInvoices.length) {
