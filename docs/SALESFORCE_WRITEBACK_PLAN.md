@@ -207,19 +207,31 @@ Salesforce which Work Order record types our connected user can use, it returned
 could land on the wrong record type — or the create could fail outright. **This needs
 checking with Katie before Phase 3.** It is the single most likely thing to break.
 
-**② Validation rules are invisible to the schema check.**
-Salesforce says only three fields are required on Opportunity, but validation rules and
-required-on-layout fields do not show up that way. Phase 3 exists precisely to find these
-the cheap way — on one record, not 132.
+**② Validation rules — now read, and one of them blocks the request.**
+`Close_Date_Uneditable_after_Closed_Won_L` is ACTIVE on Opportunity: the close date
+cannot be changed once a deal is Closed Won. Every one of the 132 deals we would update
+is already Closed Won, so **every close-date update will be rejected** until the
+integration user is exempted. `OnlyLostAfterClosedWon` constrains stage moves, and Work
+Order carries seven active rules gating completion (start/end dates, assigned crew,
+undeposited payments, attendance). Flows and triggers still cannot be read from the API,
+so Phase 3 remains the cheap way to find whatever is left — on one record, not 132.
 
-**③ "An account if it doesn't already exist" is the hardest sentence in the request.**
+**③ Idempotency wants a new External ID field.** `LegacyId__c` exists as a unique
+External ID on all three objects but is already in use (50,592 / 47,794 / 39,225
+records), so it must not be reused. A fresh `CCC_Id__c` on Account, Opportunity and Work
+Order turns the whole sync into an `upsert` — natively idempotent, no query-then-insert
+race, and duplicates become impossible rather than merely unlikely. Note
+`WorkOrder.Command_Center__c` already exists and is NOT this: it is a read-only formula
+rendering a link back to the hub, populated on all 95,896 work orders.
+
+**④ "An account if it doesn't already exist" is the hardest sentence in the request.**
 Matching on company name is fragile: *Above All Services* vs *Above All Services Inc.*
 creates a duplicate GC in Salesforce, and a duplicate customer is much worse than a
 missing one. 75 of our 76 accounts already carry a Salesforce id, so they are exact
 matches. For genuinely new accounts I'd propose: exact name match → use it; near match →
 **stop and ask a human**, never guess.
 
-**④ Two-way editing needs a rule, and doesn't have one.**
+**⑤ Two-way editing needs a rule, and doesn't have one.**
 Today the sync is one-way and the platform wins: an edit made in Command Center is never
 overwritten by Salesforce (the guard reported one such row again tonight). Write-back
 introduces the opposite collision — a deal edited in *both* systems since the last run.
@@ -227,16 +239,20 @@ introduces the opposite collision — a deal edited in *both* systems since the 
 owns, because that is where the work now happens, and anything else gets reported rather
 than silently resolved.
 
-**⑤ Closed Won is not reversible in the same way on both sides.**
+**⑥ Closed Won is not reversible in the same way on both sides.**
 A deal un-won in Command Center would need its Salesforce opportunity moved *out* of
 Closed Won, which may trip org automation. Worth deciding whether write-back handles
 un-winning at all, or refuses and flags it.
 
-**⑥ Record ownership, and whose name is on it.** The integration is currently connected
+**⑦ Record ownership, and whose name is on it.** The integration is currently connected
 as **`malhotrak038@gmail.com`** — Karan's own login. Left alone, every account,
 opportunity and work order the sync creates in PPP's production org is created and owned
 by Karan, which is wrong for rep-level reporting and wrong for the audit trail. This
 wants a dedicated integration user, and an explicit `OwnerId` per record.
+
+> **The full, sendable question list is in
+> [`SALESFORCE_WRITEBACK_QUESTIONS_FOR_KATIE.md`](./SALESFORCE_WRITEBACK_QUESTIONS_FOR_KATIE.md).**
+> The summary below is the short form.
 
 ---
 
@@ -248,8 +264,8 @@ wants a dedicated integration user, and an explicit `OwnerId` per record.
 3. **What should `Amount` hold** on the Opportunity, given the contract value belongs in
    `QuotedSubtotalWithChangeOrder__c`? (§3.2)
 4. **What `Status` should a new Work Order start in?**
-5. **Who owns records the sync creates** — one service user, or the Tomco rep? (§6⑥)
-6. **When Command Center and Salesforce disagree, which wins?** (§6④)
+5. **Who owns records the sync creates** — one service user, or the Tomco rep? (§6⑦)
+6. **When Command Center and Salesforce disagree, which wins?** (§6⑤)
 
 ---
 
@@ -257,7 +273,7 @@ wants a dedicated integration user, and an explicit `OwnerId` per record.
 
 - Phases 1–3 — writer, dry run, one real deal: **the bulk of the work**, and where the
   unknowns live.
-- Phase 4 — the 132 back-updates: small *if* the conflict rule (§6④) is settled,
+- Phase 4 — the 132 back-updates: small *if* the conflict rule (§6⑤) is settled,
   open-ended if not.
 - Phase 5 — nightly + reconcile coverage: small, and the part that keeps it honest.
 
