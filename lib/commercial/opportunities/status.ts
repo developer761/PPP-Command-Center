@@ -750,6 +750,56 @@ export async function changeOpportunityStatus(
     }
   }
 
+  /**
+   * UN-WINNING HAS TO CLEAR THE SIGNED CONTRACT.
+   *
+   * `snapshotAcceptedContract` runs only on ENTRY to won, and had no inverse —
+   * accepted-contract.ts is explicit that it never clears ("No winning proposal
+   * to snapshot. Leave whatever is already there"). So a deal dragged back out
+   * of won kept `accepted_contract_cents` populated and
+   * `accepted_contract_proposal_id` pointing at a proposal that is no longer
+   * won: a deal sitting in Estimating with a signed contract attached, feeding
+   * the contract ladder, margin, the stage KPIs and the pipeline.
+   *
+   * Nobody has un-won a deal yet (0 rows in that state today), which is why it
+   * has never been seen — this is the path being closed before it is walked.
+   *
+   * ONLY when the deal genuinely leaves the won family. A won deal moving
+   * FORWARD into delivery — pre_construction, in_progress, billing,
+   * post_sale_closed — keeps its contract, obviously. And the project is left
+   * alone on purpose: `ensureProjectForOpportunity` already refuses to archive
+   * a project holding invoices, change orders or work orders, and stranding
+   * that delivery data is worse than a stale stage on one row.
+   */
+  const WON_OR_DELIVERING = new Set([
+    "pre_sale_closed",
+    "pre_construction",
+    "in_progress",
+    "billing",
+    "post_sale_closed",
+  ]);
+  const wasWon =
+    WON_OR_DELIVERING.has(beforeRow.status) &&
+    !(beforeRow.status === "pre_sale_closed" && beforeRow.sub_status !== "won");
+  const nowWon =
+    WON_OR_DELIVERING.has(input.to_status) &&
+    !(input.to_status === "pre_sale_closed" && nextSubStatus !== "won");
+  if (wasWon && !nowWon) {
+    const { error: clearErr } = await sb
+      .from("commercial_opportunities")
+      .update({
+        accepted_contract_cents: null,
+        accepted_contract_proposal_id: null,
+        accepted_contract_set_at: null,
+      })
+      .eq("id", input.opp_id);
+    if (clearErr) {
+      console.warn(
+        `[changeOpportunityStatus] could not clear the accepted contract on un-win for ${input.opp_id}: ${clearErr.message}`,
+      );
+    }
+  }
+
   // ── The PROJECT half of the job (migration 131) ─────────────────────────
   //
   // Winning creates the project. It hangs off THIS function rather than the

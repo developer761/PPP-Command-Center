@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 const EDITOR = readFileSync(
   "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
@@ -75,7 +76,10 @@ describe('"click off the items that were approved and not approved"', () => {
     // sent document must not change. This field is not part of that document,
     // and can only be answered once it has gone out, so guarding it the same
     // way would make it unreachable exactly when it means something.
-    const fn = DB.slice(DB.indexOf("export async function setLineCustomerApproved"));
+    // Comments stripped first: the docblock explaining WHY this path is exempt
+    // names the guard, and this assertion went red on the prose alone.
+    const src = stripComments(DB);
+    const fn = src.slice(src.indexOf("export async function setLineCustomerApproved"));
     const body = fn.slice(0, fn.indexOf("\nexport async function", 10));
     expect(body).not.toContain("assertProposalDraft");
 

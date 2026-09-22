@@ -84,7 +84,27 @@ export async function GET(
   const url = new URL(req.url);
   const mode: "internal" | "customer" =
     url.searchParams.get("mode") === "internal" ? "internal" : "customer";
-  const showSignatureBlock = url.searchParams.get("signature") === "1";
+  /**
+   * UNDEFINED, not false, when the caller did not ask.
+   *
+   * `renderProposalPdf` resolves `showSignatureBlock ?? mode === "customer"`,
+   * so an explicit prop wins and an absent one takes the mode default. This
+   * route passed a BOOLEAN either way — `get(...) === "1"` is `false` when the
+   * param is missing — and `false ?? x` is `false`, so the preview could never
+   * take the default.
+   *
+   * `sendProposal` passes nothing, so the filed snapshot and the emailed
+   * attachment DID take it and carried an "Accepted by" signature block that
+   * appeared in nothing anyone could look at before approving. It also changes
+   * the document height, so renderFitToOnePage compressed the sent copy
+   * differently from the previewed one.
+   *
+   * The comment on the shared resolver says it exists "so the archived
+   * snapshot can't differ from what the customer saw". Now it doesn't.
+   */
+  const showSignatureBlock = url.searchParams.has("signature")
+    ? url.searchParams.get("signature") === "1"
+    : undefined;
 
   const proposal = await getProposal(proposalId);
   if (!proposal) {

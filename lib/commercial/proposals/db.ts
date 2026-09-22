@@ -689,7 +689,29 @@ export async function updateProposalStatus(input: {
     status: input.to_status,
     updated_by_user_id: input.acting_user_id ?? null,
   };
-  if (input.to_status === "sent") patch.sent_at = new Date().toISOString();
+  /**
+   * STAMP THE FIRST SEND, NOT EVERY ARRIVAL AT `sent`.
+   *
+   * Two paths flip an already-decided proposal BACK to `sent` and both come
+   * through here: `reopenProposal`, whose own comment concedes
+   * "updateProposalStatus stamps sent_at again", and the deal-axis cascade in
+   * opportunities/status.ts, which demotes a won or lost proposal to `sent`
+   * when someone drags a Won deal back to Proposal · Sent or into a delivery
+   * stage from a closed one.
+   *
+   * Nothing was sent on either path, but `sent_at` is what the deal page
+   * prints — stage-kpis renders `sent ${agoLabel(...)}` from it — so
+   * correcting a mis-marked win made a bid that went out in March read
+   * "Proposal sent — today", and reset the follow-up clock, the ageing and the
+   * auto-advance engine with it.
+   *
+   * Only set it when it is not already set. A genuine RE-send goes through
+   * `sendProposal`, which files a fresh PDF and stamps it deliberately; this
+   * is the status writer, and re-entering a status is not a delivery.
+   */
+  if (input.to_status === "sent" && !beforeRow.sent_at) {
+    patch.sent_at = new Date().toISOString();
+  }
   if (input.to_status === "won" || input.to_status === "lost") {
     patch.approved_at = new Date().toISOString();
   }
@@ -2452,6 +2474,36 @@ export async function setLineCustomerApproved(
     after,
     actingUserId,
   );
+
+  /**
+   * AN AWARDED ALTERNATE HAS TO REACH THE CONTRACT NUMBER.
+   *
+   * `proposalLineItemSumCents` was deliberately changed so an accepted
+   * alternate counts toward the contract sum, and the note on it says why:
+   * "an awarded alternate vanished from the contract, G702 line 1 came out
+   * short by exactly that amount, and the only way left to bill it was for
+   * somebody to raise a CO — which is how the GC ends up holding a change
+   * order for work they never approved as one."
+   *
+   * The SUM was fixed. The PERSISTED total was not. `commercial_proposals.
+   * total_cents` is only ever rewritten by recomputeProposalTotal, and all
+   * four of its callers sit behind `assertProposalDraft` — while this toggle
+   * is deliberately exempt from that gate and only appears once the proposal
+   * is sent or won. So on exactly the proposals where ticking "✓ Taken" means
+   * something, no writer that could update the total was reachable, and the
+   * alternate's money was stranded for good.
+   *
+   * `total_cents` is the single contract number the AIA ladder, invoicing,
+   * the customer PDF's TOTAL, the tax base and accepted_contract_cents all
+   * consume. recomputeProposalTotal has no draft gate of its own, so calling
+   * it here is safe and is the whole fix.
+   */
+  const proposalId = (before as { proposal_id?: string | null } | null)?.proposal_id ?? null;
+  if (proposalId) {
+    await recomputeProposalTotal(proposalId, actingUserId).catch((err) =>
+      console.warn("[proposals] recompute after customer-approved toggle failed:", err),
+    );
+  }
   return { ok: true };
 }
 

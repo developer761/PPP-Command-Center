@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * No <form> inside another form — including forms that are COMPONENTS.
@@ -30,21 +31,11 @@ const FORM_COMPONENTS = [
   "AutosaveForm",
 ];
 
-/**
- * Strip comments before counting anything.
- *
- * Without this, prose describing the problem counts as the problem: the first
- * run flagged six files, and every one was a comment mentioning `<form>` —
- * including the note explaining this very bug. Grepping source text catches
- * writing about code as readily as code.
- */
-function stripComments(src: string): string {
-  return src
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "") // {/* JSX comment */}
-    .replace(/\/\*[\s\S]*?\*\//g, "")               // /* block */
-    .replace(/^\s*\/\/.*$/gm, "")                     // // line
-    .replace(/\/\/.*$/gm, "");                        // trailing //
-}
+// Strip comments before counting anything: without it, prose describing the
+// problem counts as the problem. The first run here flagged six files and
+// every one was a comment mentioning `<form>` — including the note explaining
+// this very bug. The helper is shared (see its docblock for the other four
+// tests that have made this mistake).
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
