@@ -111,12 +111,36 @@ export const TERRITORY_WORKSPACE: Record<string, string> = {
   "CA Los Angeles South": "CA LA",
   "CA San Diego": "CA San Diego",
 
-  // "CA Orange" IS DELIBERATELY ABSENT. It is an ACTIVE territory with 87
-  // zips and there is no Connect Hub workspace for Orange County at all — not
-  // off, not unnamed, absent. Guessing "CA LA Leads" would text an Orange
-  // County customer from a Los Angeles number, which is the exact class of
-  // mistake this file exists to stop. Those leads go to triage and say so
-  // until somebody decides where they belong.
+  // "CA Orange" IS DELIBERATELY ABSENT — see NOT_OURS below.
+};
+
+/**
+ * Territories that are active in Salesforce and deliberately NOT ours.
+ *
+ * "No workspace covers this" and "this is not our work" look identical from
+ * the outside and need opposite responses: the first is a gap somebody should
+ * close, the second is correct and should be left alone. Saying which spares
+ * whoever works the triage queue from trying to fix something that is not
+ * broken.
+ */
+export const NOT_OURS: Record<string, string> = {
+  // Kate, 2026-09-22, asked why Orange County was active at all:
+  //
+  //   "Dave handled it for a short time, and I think that's only active
+  //    because Evan had some commercial projects there, which don't qualify
+  //    for Hatch. It likely hasn't had much if any activity since there's been
+  //    no marketing budget since the beginning of the FY, so should be
+  //    self-gen only."
+  //
+  // The territory is active for COMMERCIAL work, and this is the residential
+  // SMS bot. Its sibling CA Orange North was deactivated in February 2025
+  // alongside CA Los Angeles West and CA San Diego North; Orange itself was
+  // kept and modified again in April 2026, which is why it does not read as an
+  // oversight. It is not one.
+  //
+  // Two leads arrived from Orange County zips in the 90 days to 2026-09-22,
+  // against 224 Californian leads overall — consistent with self-gen only.
+  "CA Orange": "Orange County is active for commercial work only, which the residential bot does not cover",
 };
 
 /** Territories that mean "we do not cover this", whatever else the row says. */
@@ -149,10 +173,16 @@ export function territoryFor(row: ZipRow | null | undefined): TerritoryVerdict {
     return { serviced: false, why: `${name} is not an active territory`, territory: name };
   }
 
+  // Active, and deliberately somebody else's work. Distinguished from the gap
+  // below because the two need opposite responses: this one is correct.
+  const notOurs = NOT_OURS[name];
+  if (notOurs) return { serviced: false, why: notOurs, territory: name };
+
   const fragment = TERRITORY_WORKSPACE[name];
   if (!fragment) {
-    // Known, active, and nobody here covers it. Said plainly rather than
-    // guessed at, because the guess texts a real person from a wrong number.
+    // Known, active, ours to cover, and nobody here does. A real gap. Said
+    // plainly rather than guessed at, because the guess texts a real person
+    // from a wrong number.
     return { serviced: false, why: `${name} is active in Salesforce but no workspace covers it`, territory: name };
   }
 

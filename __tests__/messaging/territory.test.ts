@@ -54,14 +54,25 @@ describe("A2 — is this zip serviced", () => {
     expect(territoryFor(row({ territoryName: null })).serviced).toBe(false);
   });
 
-  it("names an active territory no workspace covers, instead of guessing", () => {
-    // CA Orange is real: 87 zips, active, and nobody here covers Orange County.
+  it("says Orange County is commercial work, not an unfilled gap", () => {
+    // Kate, 2026-09-22: Orange is active only because Evan had commercial
+    // projects there, and commercial does not qualify for the residential bot.
+    // "Nobody covers this" would send somebody off to fix a thing that is
+    // working as intended.
     const v = territoryFor(row({ territoryName: "CA Orange", state: "CA", territoryActive: true }));
     expect(v.serviced).toBe(false);
     if (!v.serviced) {
-      expect(v.why).toMatch(/CA Orange/);
-      expect(v.why).toMatch(/no workspace covers it/);
+      expect(v.why).toMatch(/commercial/i);
+      expect(v.why).not.toMatch(/no workspace covers it/);
     }
+  });
+
+  it("still reports a genuine gap as a gap", () => {
+    // A territory that IS ours and simply has no workspace must not be quietly
+    // absorbed into the deliberate list.
+    const v = territoryFor(row({ territoryName: "NY Albany", state: "NY", territoryActive: true }));
+    expect(v.serviced).toBe(false);
+    if (!v.serviced) expect(v.why).toMatch(/no workspace covers it/);
   });
 
   it("covers exactly the six states Kate lists", () => {
