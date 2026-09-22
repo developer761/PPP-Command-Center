@@ -135,8 +135,21 @@ export type RuleFinding = {
   conduct: "good" | "mixed" | "bad" | null;
 };
 
+export type RuleChangeEntry = {
+  id: string;
+  field: string;
+  before: string | null;
+  after: string | null;
+  changeType: string | null;
+  note: string | null;
+  changedBy: string;
+  changedAt: string;
+};
+
 export type RuleDetail = {
   rule: RuleOverview;
+  /** Newest first. Written by the import when Kate re-issues her sheet. */
+  changes: RuleChangeEntry[];
   /** RATER ONLY — never passed to a model. See the note at the top. */
   ratingGuidance: string | null;
   history: string | null;
@@ -156,13 +169,16 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
   if (error) throw new Error(`could not read rule ${code}: ${error.message}`);
   if (!row) return null;
 
-  const [{ data: notes }, findingsRes] = await Promise.all([
+  const [{ data: notes }, findingsRes, changesRes] = await Promise.all([
     sb.from("sms_class_a_rule_notes").select("rating_guidance, history").eq("code", row.code).maybeSingle(),
     sb.from("sms_example_findings")
       .select("id, example_id, turn_ordinal, kind, severity, what, should_have, created_at")
       .eq("code", row.code)
       .order("created_at", { ascending: false })
       .limit(EXAMPLES_PER_KIND * 4),
+    sb.from("sms_class_a_rule_changes")
+      .select("id, field, before, after, change_type, note, changed_by, changed_at")
+      .eq("code", row.code).order("changed_at", { ascending: false }).limit(50),
   ]);
   if (findingsRes.error) throw new Error(`could not read findings: ${findingsRes.error.message}`);
   const findings = findingsRes.data ?? [];
@@ -188,11 +204,48 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
   });
 
   const all = findings.map(shape);
-  const counts = await loadRuleOverview();
-  const withCounts = counts.find((r) => r.code === row.code);
+
+  // COUNTED FOR THIS RULE ONLY. The first version called loadRuleOverview(),
+  // which reads every rule and every one of the ~3,000 findings in order to
+  // pick one row out of the result — the whole corpus fetched to render a
+  // single page. Three head-counts instead.
+  const [fell, well, convos] = await Promise.all([
+    sb.from("sms_example_findings").select("id", { count: "exact", head: true })
+      .eq("code", row.code).neq("kind", "did_well"),
+    sb.from("sms_example_findings").select("id", { count: "exact", head: true })
+      .eq("code", row.code).eq("kind", "did_well"),
+    // Distinct conversations cannot be head-counted, so this reads the ids —
+    // one narrow column for one rule, not the whole table.
+    selectAll<{ example_id: string }>(
+      (a, b) => sb.from("sms_example_findings").select("example_id")
+        .eq("code", row.code).order("example_id").range(a, b),
+      "counting conversations for this rule"
+    ),
+  ]);
+
+  // Tolerates its migration not being applied: no table means no history
+  // yet, which is true, rather than a page that will not render.
+  const changes: RuleChangeEntry[] = (changesRes.error ? [] : (changesRes.data ?? [])).map((c) => ({
+    id: c.id as string,
+    field: c.field as string,
+    before: (c.before as string | null) ?? null,
+    after: (c.after as string | null) ?? null,
+    changeType: (c.change_type as string | null) ?? null,
+    note: (c.note as string | null) ?? null,
+    changedBy: (c.changed_by as string) ?? "import",
+    changedAt: c.changed_at as string,
+  }));
 
   return {
-    rule: withCounts ?? { ...asRule(row), counts: { fellShort: 0, didWell: 0, conversations: 0 } },
+    changes,
+    rule: {
+      ...asRule(row),
+      counts: {
+        fellShort: fell.count ?? 0,
+        didWell: well.count ?? 0,
+        conversations: new Set(convos.map((c) => c.example_id)).size,
+      },
+    },
     ratingGuidance: (notes?.rating_guidance as string | null) ?? null,
     history: (notes?.history as string | null) ?? null,
     fellShort: all.filter((f) => f.kind === "fell_short").slice(0, EXAMPLES_PER_KIND),

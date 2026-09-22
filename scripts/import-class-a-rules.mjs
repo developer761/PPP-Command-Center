@@ -16,6 +16,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { parseClassARules, promptable, forPrompt } from "../lib/messaging/class-a-rules.ts";
+import { diffRule, describeChange } from "../lib/messaging/rule-diff.ts";
 
 const path = process.argv[2];
 if (!path) {
@@ -46,6 +47,22 @@ try {
     for (const p of problems) console.log(`    line ${p.row}: ${p.why}`);
   }
   if (!rules.length) throw new Error("nothing usable in that file");
+
+  // WHAT CHANGED SINCE LAST TIME, recorded before the write that changes it.
+  //
+  // Kate asked for a change history so "why did X improve" has an answer in
+  // six months. The only way it exists in six months is if nobody has to
+  // remember to write it — she re-issues this sheet as she re-grades, this
+  // already re-runs against it, so the log is a by-product of the work.
+  const { data: existing } = await sb.from("sms_class_a_rules")
+    .select("code, statement, rule_card, corrective_action, severity, status, binds, phrasing_only, short_name");
+  const before = new Map((existing ?? []).map((r) => [r.code, r]));
+
+  const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r));
+  const edits = changes.filter((c) => c.field !== "added");
+  console.log(`\n  changes since the last import: ${edits.length}${changes.length - edits.length ? ` (+${changes.length - edits.length} new rules)` : ""}`);
+  for (const c of edits.slice(0, 12)) console.log(`    ${c.code.padEnd(5)} ${describeChange(c)}`);
+  if (edits.length > 12) console.log(`    …and ${edits.length - 12} more`);
 
   // Rules first: the notes table references them.
   const { error: rErr } = await sb.from("sms_class_a_rules").upsert(
@@ -79,6 +96,20 @@ try {
     { onConflict: "code" }
   );
   if (nErr) throw new Error(`writing rater notes: ${nErr.message}`);
+
+  // The history, after the write that made it true.
+  if (changes.length) {
+    const { error: cErr } = await sb.from("sms_class_a_rule_changes").insert(
+      changes.map((c) => ({
+        code: c.code, field: c.field, before: c.before, after: c.after,
+        change_type: c.changeType, changed_by: "import",
+      }))
+    );
+    // Tolerates the migration not being applied: the rules still import,
+    // and the history starts the day the table exists.
+    if (cErr) console.log(`  ⚠ change history not recorded: ${cErr.message}`);
+    else console.log(`  ✓ ${changes.length} change(s) recorded`);
+  }
 
   console.log(`\n  ✓ written`);
 

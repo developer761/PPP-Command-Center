@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { loadRuleDetail, EXAMPLES_PER_KIND, type RuleFinding } from "@/lib/messaging/rules-db";
+import { loadRuleDetail, EXAMPLES_PER_KIND, type RuleFinding, type RuleChangeEntry } from "@/lib/messaging/rules-db";
+import { describeChange } from "@/lib/messaging/rule-diff";
 import { assertMessagingAccess } from "@/lib/messaging/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,10 @@ export const dynamic = "force-dynamic";
  * the guidance lives in its own table, and the loader that feeds the prompt
  * does not know that table exists.
  */
+/** The stored row, in the shape describeChange reads. */
+const describe = (c: RuleChangeEntry) =>
+  describeChange({ code: "", field: c.field as never, before: c.before, after: c.after, changeType: c.changeType });
+
 function Finding({ f }: { f: RuleFinding }) {
   return (
     <li className="px-4 py-3">
@@ -140,9 +145,48 @@ export default async function RulePage({ params }: { params: Promise<{ code: str
         </dl>
         {d.history && (
           <>
-            <h3 className="mt-3 text-[12px] font-semibold text-ppp-charcoal">History</h3>
+            <h3 className="mt-3 text-[12px] font-semibold text-ppp-charcoal">Background</h3>
+            {/* Kate's own History column. She flagged that some of it "may only
+                be relevant to the rule-building period", so it sits as
+                background rather than being parsed into a timeline it was
+                never written to be. What happens from here is recorded below. */}
             <p className="mt-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed whitespace-pre-wrap">{d.history}</p>
           </>
+        )}
+      </section>
+
+      {/* THE CHANGE LOG. Written by the import when Kate re-issues her sheet,
+          so it accumulates without anybody remembering to keep it. This is the
+          half that makes "did a rule change cause that?" answerable later. */}
+      <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">What has changed</h2>
+        </div>
+        {d.changes.length === 0 ? (
+          <p className="px-4 py-3 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
+            Nothing recorded yet. Changes are logged from the next time the rule
+            sheet is imported, so this fills in as the rules move rather than
+            needing anyone to keep it.
+          </p>
+        ) : (
+          <ul className="divide-y divide-ppp-charcoal-100">
+            {d.changes.map((c) => (
+              <li key={c.id} className="px-4 py-2.5">
+                <div className="flex flex-wrap items-baseline gap-2 text-[11.5px] font-mono text-ppp-charcoal-400">
+                  <span>{new Date(c.changedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}</span>
+                  {/* BINDING means the meaning moved; WORDING means it did not.
+                      That is the distinction that matters when asking whether a
+                      change could have moved the numbers. */}
+                  {c.changeType && (
+                    <span className={c.changeType === "BINDING" ? "text-ppp-orange-700" : undefined}>{c.changeType}</span>
+                  )}
+                  <span>{c.changedBy}</span>
+                </div>
+                <p className="mt-0.5 text-[13px] text-ppp-charcoal leading-relaxed">{describe(c)}</p>
+                {c.note && <p className="mt-0.5 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">{c.note}</p>}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
