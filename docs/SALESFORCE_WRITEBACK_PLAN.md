@@ -68,6 +68,10 @@ picklists, validation rules, automation and reporting. My read is that the *firs
 what's wanted (Tomco sales staying identifiable inside PPP's org, which is what the
 record types exist for), but I am not guessing on something this structural.
 
+⚠️ **The ids in this table are production's and belong nowhere in code** — the
+Tomco ones differ in the sandbox. See "Record type ids are NOT the same in the
+sandbox" below: resolve by name, per org, at runtime.
+
 ---
 
 ## 2. Where things actually stand today
@@ -226,6 +230,68 @@ record types, so Katie was right that Brendan's user has the access ours lacks.
 opportunities, so "this user can see all of them" proves nothing about
 production's 95,434. That question still decides whether the shared connection
 can run as Brendan without breaking the residential dashboards.
+
+### ⚠️ Record type ids are NOT the same in the sandbox — resolve them by name
+
+Checked directly, 2026-09-22, in `precisionplus--dev.sandbox`:
+
+| Record type | Sandbox id | Production id | Same? |
+|---|---|---|---|
+| Account · Tomco | `012DG000000g8mIYAQ` | `012Kf000000L8Q5IAK` | **no** |
+| Opportunity · Tomco | `012DG000000g8mNYAQ` | `012Kf000000L8Q6IAK` | **no** |
+| Account · Customer | `0126g000000Oic8AAC` | `0126g000000Oic8AAC` | yes |
+| Opportunity · New | `0126g0000004CX5AAM` | `0126g0000004CX5AAM` | yes |
+| WorkOrder · Tomco | `012DG000000g94CYAQ` | — | sandbox only so far |
+| Quote · Tomco Quote | `012DG000000g8mSYAQ` | — | sandbox only so far |
+
+The ids in §1.2 are production's and must not be pasted into code. **Look record
+types up by NAME at runtime, per org, and cache per connection.** Hardcoding
+them means code that passes every sandbox test writes into the wrong record type
+— or fails outright — the first time it runs against production. The half that
+happen to match makes this worse, not better: a partial match is what makes a
+hardcoded table look like it works.
+
+Tomco is the **default** record type for this user on all four objects, and all
+four report `createable = true`, so the permissions for the write-back exist.
+
+### ⚠️ The work order's money fields cannot be written — they are roll-ups
+
+Confirmed twice, by `describe()` and by `FieldDefinition` (which ignores the
+running user's field-level security):
+
+| WorkOrder field | What it actually is |
+|---|---|
+| `Subtotal` / `Subtotal__c` | **Roll-Up Summary (SUM of Work Order Line Item)** |
+| `QuotedSubtotal__c` | Formula |
+| `TotalChangeOrder__c` | **Roll-Up Summary (SUM of Change Order)** |
+| `Canceled_Line_Items__c` | Roll-Up Summary (SUM of Work Order Line Item) |
+| `Quoted_Subtotal_with_Change_Order__c` | Formula = `QuotedSubtotal__c + TotalChangeOrder__c` |
+
+This is the mechanical reason Katie's order of operations is not a preference:
+
+> "Quote created with quote line item, Status = Approved, then Sync. Sync can't
+> come before Approved or it won't work."
+
+There is no total to write anywhere. Money reaches a work order only by
+existing as LINE ITEMS underneath it, and a change order total only by a
+CHANGE ORDER RECORD existing. Any design that writes a contract figure onto the
+work order is impossible, not merely inelegant — and a CO write-back has to
+create Change Order records, not set `TotalChangeOrder__c`.
+
+**And one trap to write down now**, because this project has been caught by this
+exact shape twice already (`QuotedSubtotal__c` vs `Quote_Subtotal__c`):
+
+| Field | |
+|---|---|
+| `OriginalQuotedSubtotal__c` | Formula — **not writable** |
+| `Original_Quoted_Subtotal__c` | plain Currency(16,2) — **writable** |
+
+One underscore apart, and only one of them accepts a write.
+
+Verified end-to-end on a real sandbox record rather than reasoned about: the
+opportunity *Test Commercial Chagning Oppty Name* is Closed Won with an
+**Approved** synced quote and a work order carrying `QuotedSubtotal__c =
+100,000` — the shape this write-back has to reproduce.
 
 ### Still to confirm in the sandbox
 
