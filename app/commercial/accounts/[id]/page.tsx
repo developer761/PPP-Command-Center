@@ -5507,6 +5507,15 @@ async function AccountKpisTab({
     .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
   const currentOpenCents = Math.max(0, rollup.open_balance_cents - overdueBalanceCents);
 
+  // What the Collections ring can draw: payment APPLIED inside invoices. It is
+  // not the same number as the "Paid" KPI whenever any invoice is overpaid, and
+  // the gap is exactly the credit — so the ring says which one it is. Gated on
+  // the credit itself, NOT on `isCredit`: that also requires a zero balance, and
+  // an account with one overpaid invoice and one open one has a credit, a
+  // balance, and two different "Paid" numbers.
+  const appliedCents = Math.max(0, rollup.paid_cents - rollup.credit_cents);
+  const paidDiffersFromApplied = rollup.credit_cents > 0;
+
   // Monthly billing trend ($K) — pre-tax, ET-bucketed, issued-only (shared
   // helper). Same basis as the Profitability trend so a Collections "billed"
   // chart never disagrees with it over pass-through tax (money audit #6).
@@ -5597,7 +5606,10 @@ async function AccountKpisTab({
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           <MiniFig label="Invoiced" value={formatCentsCompact(rollup.invoiced_cents)} tone="brand" sub={billedSourceSub} />
-          <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={hasInvoicing ? `${paidPct}% collected` : "—"} />
+          {/* Says so when part of what came in sits as a credit rather than
+              against an invoice — otherwise this figure and the ring below it
+              differ by that amount with nothing on the page accounting for it. */}
+          <MiniFig label="Paid" value={formatCentsCompact(rollup.paid_cents)} tone="emerald" sub={!hasInvoicing ? "—" : paidDiffersFromApplied ? `${paidPct}% collected · ${formatCentsCompact(rollup.credit_cents)} on credit` : `${paidPct}% collected`} />
           <MiniFig
             label={isCredit ? "Credit" : "Outstanding"}
             value={formatCentsCompact(isCredit ? rollup.credit_cents : rollup.open_balance_cents)}
@@ -5626,12 +5638,19 @@ async function AccountKpisTab({
             <DonutChart
               size={150}
               segments={[
-                // Paid = payment APPLIED within invoices (paid − credit) so an
-                // overpaid invoice's credit can't over-draw the ring; the credit
-                // shows in the KPI box above. Open balance splits into on-time
-                // (blue) vs genuinely overdue (rose) — only the overdue portion is
-                // labeled "Overdue", never the whole balance (2026-08 audits).
-                { label: "Paid", value: Math.max(0, rollup.paid_cents - rollup.credit_cents), tone: "emerald", valueLabel: formatCentsCompact(Math.max(0, rollup.paid_cents - rollup.credit_cents)) },
+                // The ring shows payment APPLIED within invoices (paid − credit)
+                // so an overpaid invoice's credit can't over-draw it. That makes
+                // it a DIFFERENT number from the "Paid" KPI six inches above,
+                // which is the plain total received — and while both were
+                // labeled "Paid", an overpaid account showed the same word twice
+                // on one card with two figures under it and nothing to say why.
+                // So the ring says what it actually measures whenever the two
+                // diverge, and keeps the simple word when they agree.
+                //
+                // Open balance splits into on-time (blue) vs genuinely overdue
+                // (rose) — only the overdue portion is labeled "Overdue", never
+                // the whole balance (2026-08 audits).
+                { label: paidDiffersFromApplied ? "Applied to invoices" : "Paid", value: appliedCents, tone: "emerald", valueLabel: formatCentsCompact(appliedCents) },
                 ...(currentOpenCents > 0
                   ? [{ label: "Open (current)", value: currentOpenCents, tone: "blue" as ChartTone, valueLabel: formatCentsCompact(currentOpenCents) }]
                   : []),

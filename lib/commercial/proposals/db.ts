@@ -2672,11 +2672,33 @@ export function acceptedBeforeWin(
   if (!approvedAt) return true;
   const ms = Date.parse(approvedAt);
   if (!Number.isFinite(ms)) return true;
-  // Same ET calendar day as the win counts as part of the award, not after it —
+  // Same ET calendar day as the win counts as part of the award, not after it:
   // an alternate confirmed by email the afternoon the job was awarded is not a
   // change order, and `decided_at` is a DATE while this is a timestamp.
-  const endOfWinDay = wonAtMs + 86_400_000;
-  return ms < endOfWinDay;
+  //
+  // COMPARED AS CALENDAR DAYS, not as `win + 24h`. `decided_at` is a bare DATE,
+  // so it parses at UTC midnight, and a 24-hour window from there ends at 8pm
+  // ET on the win day (7pm on standard time). An alternate the GC confirmed at
+  // 9pm the evening the job was awarded therefore fell outside the contract and
+  // became a change order they never raised — the exact outcome Stephanie
+  // described, reintroduced by the fix for it, in a four-hour band nobody would
+  // reproduce on purpose. Two calendar days have no window to fall out of.
+  //
+  // The two sides are read differently ON PURPOSE. The win is a DATE: its UTC
+  // date IS the calendar day somebody typed, and re-reading it in Eastern would
+  // shift it back to the 16th. `customer_approved_at` is a real timestamp, so
+  // its calendar day is whatever day it was in Eastern, the office's clock.
+  return etDayOf(ms) <= utcDayOf(wonAtMs);
+}
+
+/** A timestamp as its Eastern calendar day, `YYYY-MM-DD` — lexically sortable. */
+function etDayOf(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+/** A bare DATE's own calendar day: it parsed at UTC midnight, so read it back there. */
+function utcDayOf(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 /** Recompute `commercial_proposals.total_cents` = the FINAL PRICE OVERRIDE when

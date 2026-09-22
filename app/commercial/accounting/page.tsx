@@ -1583,6 +1583,21 @@ export default async function AccountingPage({
               sub="weighted by balance"
             />
           </div>
+          {/* The same caveat the AR-aging REPORT carries, on the tab that shows
+              the same four numbers. Without it "Current $X · not yet due" and
+              "Avg age 0d" can describe a book that is entirely overdue: an item
+              with no due date cannot age, so it sits in Current. Tomco's 92
+              migrated invoices are all like that, deliberately — a due date
+              would arm the daily dunning email to their GCs — so this tab was
+              showing a healthy-looking aging of a book it could not age. */}
+          {aging.noDueDateCents > 0 && (
+            <p className="text-[12px] rounded-lg border px-3 py-2 border-amber-200 bg-amber-50 text-amber-900">
+              <strong>{formatCentsFull(aging.noDueDateCents)}</strong> across {aging.noDueDateCount} open item
+              {aging.noDueDateCount === 1 ? " has" : "s have"} no due date, so {aging.noDueDateCount === 1 ? "it is" : "they are"} counted as
+              Current here and can never show as overdue &mdash; the ageing above is only as complete as the due dates behind it. Set one on
+              the invoice to bring {aging.noDueDateCount === 1 ? "it" : "them"} into the buckets.
+            </p>
+          )}
           {aging.rows.length === 0 ? (
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
               <p className="px-4 py-10 text-center text-[13px] text-ppp-charcoal-500">

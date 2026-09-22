@@ -38,6 +38,19 @@ describe("was the alternate awarded, or added later?", () => {
     expect(acceptedBeforeWin("2026-08-17T16:30:00Z", won)).toBe(true);
   });
 
+  it("taken the same EVENING as the win is still contract", () => {
+    // 9pm ET on 2026-08-17 is 01:00Z on the 18th. The first fix compared
+    // against `win + 24h` from UTC midnight, a window that closes at 8pm ET —
+    // so an alternate the GC confirmed after dinner on the day they awarded
+    // the job became a change order they never raised. Four hours a day, every
+    // day, and nobody would reproduce it deliberately.
+    expect(acceptedBeforeWin("2026-08-18T01:00:00Z", won)).toBe(true);
+    // 11:59pm ET, the last minute of the win day.
+    expect(acceptedBeforeWin("2026-08-18T03:59:00Z", won)).toBe(true);
+    // And the boundary holds on the other side: 12:01am ET the NEXT day is a CO.
+    expect(acceptedBeforeWin("2026-08-18T04:01:00Z", won)).toBe(false);
+  });
+
   it("taken AFTER the win is a genuine change order", () => {
     expect(acceptedBeforeWin("2026-09-20T09:00:00Z", won)).toBe(false);
   });
