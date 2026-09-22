@@ -18,6 +18,8 @@ export type FieldOpsOverview = {
   scheduledHoursWeek: number;
   clockedHoursWeek: number;
   approvedHoursWeek: number;
+  /** The slice of the above that the payroll export will actually carry (W-2 only). */
+  approvedPayrollHoursWeek: number;
   crewScheduledWeek: number;
   crewOnToday: number;
   jobsToday: number;
@@ -30,6 +32,44 @@ export type FieldOpsOverview = {
 
 const OT_WEEK_HOURS = 40;
 const OPEN_STATUSES = ["estimating", "ready_to_schedule", "scheduled", "in_progress", "almost_done", "on_hold"];
+
+/**
+ * The week's hours, split three ways. Pure so the rule below is testable.
+ *
+ * Counts EVERY in-week entry, soft-deleted-job hours included, so clocked and
+ * approved reconcile with Payroll and the Hours Log — both of which count
+ * worked hours regardless of the job's `deleted_at` (audit round 13). The
+ * `liveJobIds` gate stays on SCHEDULED hours only; that one exists to match the
+ * Calendar, a separate invariant.
+ *
+ * APPROVED COUNTS EVERYBODY. It used to be W-2 only, "matching what Payroll
+ * pays", and for Tomco that pinned the tile at 0h forever: all 23 of their crew
+ * are `worker_type = 'sub'` — they pay crews through labor companies, not
+ * payroll — so 760 approved hours since 2026-09-01 displayed as zero. Worse,
+ * the "Time to review" count two tiles away has no W-2 filter, so Mary could
+ * clear forty sub entries out of the review queue and watch "Approved this
+ * week" stay on zero. Approval is an ATTENDANCE sign-off; it means the same
+ * thing for a sub as for a W-2.
+ *
+ * What IS genuinely W-2-only is the payroll export, so that figure is carried
+ * separately for the tile's caption instead of silently deciding the headline.
+ */
+export function splitWeekHours(
+  entries: { employee_id: string; actual_hours: number; status: string }[],
+  w2EmployeeIds: ReadonlySet<string>,
+): { clocked: number; approved: number; approvedPayroll: number } {
+  let clocked = 0;
+  let approved = 0;
+  let approvedPayroll = 0;
+  for (const e of entries) {
+    clocked += e.actual_hours;
+    if (e.status === "approved" || e.status === "exported") {
+      approved += e.actual_hours;
+      if (w2EmployeeIds.has(e.employee_id)) approvedPayroll += e.actual_hours;
+    }
+  }
+  return { clocked, approved, approvedPayroll };
+}
 
 export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
   const sb = commercialDb();
@@ -122,17 +162,7 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     .map(([employee_id, scheduled]) => ({ employee_id, name: empName.get(employee_id) ?? "(crew)", scheduled: Math.round(scheduled * 4) / 4 }))
     .sort((a, b) => b.scheduled - a.scheduled);
 
-  // Count EVERY in-week entry (incl. soft-deleted-job hours) so clocked/approved
-  // reconcile with Payroll + Hours Log, which pay/count worked hours regardless of
-  // the job's deleted_at (audit round 13). Only "approved (ready for payroll)" is
-  // W-2, matching what Payroll pays. The liveJobIds gate stays on SCHEDULED hours
-  // above — that one exists to match the Calendar, a separate invariant.
-  let clockedHoursWeek = 0;
-  let approvedHoursWeek = 0;
-  for (const e of entries) {
-    clockedHoursWeek += e.actual_hours;
-    if ((e.status === "approved" || e.status === "exported") && w2Emp.has(e.employee_id)) approvedHoursWeek += e.actual_hours;
-  }
+  const { clocked: clockedHoursWeek, approved: approvedHoursWeek, approvedPayroll: approvedPayrollHoursWeek } = splitWeekHours(entries, w2Emp);
 
   const jobsInProgress = jobs.filter((j) => j.status === "in_progress").length;
   const readyToSchedule = jobs.filter((j) => j.status === "ready_to_schedule").length;
@@ -147,6 +177,7 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     scheduledHoursWeek: round(scheduledHoursWeek),
     clockedHoursWeek: round(clockedHoursWeek),
     approvedHoursWeek: round(approvedHoursWeek),
+    approvedPayrollHoursWeek: round(approvedPayrollHoursWeek),
     crewScheduledWeek: crewWeek.size,
     crewOnToday: crewToday.size,
     jobsToday: jobsTodaySet.size,

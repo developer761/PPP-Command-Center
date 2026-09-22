@@ -39,6 +39,19 @@ export default async function FieldOpsOverviewPage() {
   const o = await getFieldOpsOverview();
   const clockedPct = o.scheduledHoursWeek > 0 ? Math.round((o.clockedHoursWeek / o.scheduledHoursWeek) * 100) : 0;
 
+  // "Ready for payroll" is only true of W-2 hours, and Tomco has none — every
+  // crew member is paid through a labor company. Saying it over a number made
+  // of sub hours sends somebody to the Payroll export expecting to find them.
+  const subHours = Math.round((o.approvedHoursWeek - o.approvedPayrollHoursWeek) * 4) / 4;
+  const approvedSub =
+    o.approvedHoursWeek <= 0
+      ? "nothing approved yet"
+      : o.approvedPayrollHoursWeek <= 0
+        ? "crew hours · paid through labor companies"
+        : subHours > 0
+          ? `${o.approvedPayrollHoursWeek}h ready for payroll`
+          : "ready for payroll";
+
   return (
     <div className="pb-8">
       <div className="mb-4">
@@ -50,7 +63,7 @@ export default async function FieldOpsOverviewPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <Kpi label="Scheduled this week" value={`${o.scheduledHoursWeek}h`} sub={`${o.crewScheduledWeek} crew scheduled`} />
         <Kpi label="Clocked this week" value={`${o.clockedHoursWeek}h`} sub={o.scheduledHoursWeek > 0 ? `${clockedPct}% of scheduled` : "—"} tone="navy" />
-        <Kpi label="Approved this week" value={`${o.approvedHoursWeek}h`} sub="ready for payroll" tone="green" />
+        <Kpi label="Approved this week" value={`${o.approvedHoursWeek}h`} sub={approvedSub} tone="green" />
         <Kpi label="On today" value={`${o.crewOnToday}`} sub={`${o.jobsToday} work order${o.jobsToday === 1 ? "" : "s"} running`} />
       </div>
 

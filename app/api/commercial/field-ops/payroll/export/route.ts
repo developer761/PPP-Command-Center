@@ -44,6 +44,20 @@ export async function GET(request: Request) {
   const csv = redownload
     ? await redownloadPayroll(from, to)
     : await exportPayroll(from, to, data.user.id);
+
+  // A header row with nothing under it is a SILENT failure: the browser saves
+  // `Payroll_….csv`, the file opens empty, and nothing anywhere says whether
+  // that means "already paid", "nothing approved" or "this company has no W-2
+  // staff at all". Rows are joined with CRLF, so no CRLF = header only. Send
+  // the operator back to the page with the reason instead of a blank file.
+  if (!csv.includes("\r\n")) {
+    const back = new URL("/commercial/field-ops/payroll", request.url);
+    back.searchParams.set("from", from);
+    back.searchParams.set("to", to);
+    back.searchParams.set("empty", redownload ? "redownload" : "export");
+    return NextResponse.redirect(back, { status: 303 });
+  }
+
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
   return csvResponse(csv, `Payroll_${from}_to_${to}.csv`, "Payroll", `${from} to ${to}`);
 }

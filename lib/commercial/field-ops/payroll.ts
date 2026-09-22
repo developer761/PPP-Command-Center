@@ -31,12 +31,26 @@ export type PayrollSummary = {
   unapprovedCount: number;
   periodStart: string; // snapped to a Monday
   periodEnd: string; // snapped to the following Sunday
+  /**
+   * How many ACTIVE W-2 employees exist at all — not in this range, in the
+   * company. Zero means this page can never produce a row no matter what is
+   * approved or how wide the range, which is exactly Tomco's situation: all 23
+   * crew are `worker_type = 'sub'`, paid through labor companies. The empty
+   * state used to say "Approve time first, or widen the date range", advice
+   * that cannot work, so the page needs to be able to tell the two apart.
+   */
+  w2Workforce: number;
 };
 
 export async function getPayrollSummary(fromIso: string, toIso: string): Promise<PayrollSummary> {
   const periodStart = mondayOf(fromIso);
   const periodEnd = addDaysIso(mondayOf(toIso), 6); // Sunday of the week containing `to`
   const sb = commercialDb();
+  const { count: w2Workforce } = await sb
+    .from("commercial_employees")
+    .select("id", { count: "exact", head: true })
+    .eq("worker_type", "w2")
+    .eq("active", true);
   const entries = await paginateAll<{ id: string; employee_id: string; work_date: string; actual_hours: number; status: string }>(() =>
     sb
       .from("commercial_time_entries")
@@ -64,7 +78,7 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
 
   const approved = entries.filter((e) => e.status === "approved" && isW2(e.employee_id));
   const unapprovedCount = entries.filter((e) => (e.status === "submitted" || e.status === "questioned") && isW2(e.employee_id)).length;
-  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd };
+  if (approved.length === 0) return { rows: [], approvedCount: 0, unapprovedCount, periodStart, periodEnd, w2Workforce: w2Workforce ?? 0 };
 
   // employee -> week(Monday) -> { approved: pay now, exported: already-paid baseline }.
   // OT is computed over the FULL week (already-exported + newly-approved) so a
@@ -112,7 +126,7 @@ export async function getPayrollSummary(fromIso: string, toIso: string): Promise
     });
   }
   rows.sort((a, b) => a.employee_name.localeCompare(b.employee_name));
-  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd };
+  return { rows, approvedCount: approved.length, unapprovedCount, periodStart, periodEnd, w2Workforce: w2Workforce ?? 0 };
 }
 
 // Shared, hardened escaper — this file feeds an OUTSIDE payroll processor, so

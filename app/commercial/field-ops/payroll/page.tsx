@@ -22,13 +22,20 @@ async function requireAdmin(): Promise<void> {
   if (!(profile?.is_admin ?? isAdminEmail(user.email))) redirect("/commercial");
 }
 
-export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string }> }) {
+export default async function PayrollPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; empty?: string }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const today = todayEtIso();
   const from = /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? "") ? sp.from! : addDaysIso(today, -13);
   const to = /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? "") ? sp.to! : today;
-  const { rows, approvedCount, unapprovedCount, periodStart, periodEnd } = await getPayrollSummary(from, to);
+  const { rows, approvedCount, unapprovedCount, periodStart, periodEnd, w2Workforce } = await getPayrollSummary(from, to);
+  // Nobody on payroll at all is a different situation from nobody approved
+  // THIS period, and only one of them has an action attached. Tomco is the
+  // former permanently: every crew member is a sub, paid through a labor
+  // company, so their hours live on Attendance and their cost on Labor
+  // payments. Telling them to "approve time or widen the range" sends them
+  // looking for a row that cannot exist.
+  const noPayrollWorkforce = w2Workforce === 0;
   const totals = rows.reduce((t, r) => ({ reg: t.reg + r.regHours, ot: t.ot + r.otHours, all: t.all + r.totalHours }), { reg: 0, ot: 0, all: 0 });
   // OT is a whole-week concept, so the summary snaps the range out to full
   // Mon-Sun weeks. Surface it when the picked range wasn't already aligned.
@@ -59,16 +66,33 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
         {/* The export is one-shot by design: it locks approved hours so nothing
             can be paid twice. That leaves no way back if the download is
             interrupted, so this re-issues the same file for hours already
-            exported — read-only, no status changes, no new pay period. */}
+            exported — read-only, no status changes, no new pay period.
+            Disabled when nobody is on payroll: it would download a file with a
+            header row and nothing under it, which reads as "payroll ran and
+            found no hours" rather than "this company has no W-2 staff". */}
         <Link
           href={`/api/commercial/field-ops/payroll/export?from=${from}&to=${to}&mode=redownload`}
           prefetch={false}
-          className="inline-flex items-center px-3 rounded-lg border border-ppp-charcoal-200 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px]"
-          title="Re-issue the CSV for hours already exported in this range. Changes nothing."
+          className={`inline-flex items-center px-3 rounded-lg border text-[12.5px] font-semibold min-h-[44px] ${noPayrollWorkforce ? "border-ppp-charcoal-100 text-ppp-charcoal-300 pointer-events-none" : "border-ppp-charcoal-200 text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+          aria-disabled={noPayrollWorkforce || undefined}
+          title={noPayrollWorkforce ? "Nobody is on payroll, so there is no export to re-issue." : "Re-issue the CSV for hours already exported in this range. Changes nothing."}
         >
           Re-download
         </Link>
       </form>
+
+      {/* The export route bounces back here rather than handing over a CSV with
+          nothing in it — see the route for why a blank file is worse than no
+          file. */}
+      {(sp.empty === "redownload" || sp.empty === "export") && (
+        <div className="mb-4 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-200 px-3 py-2 text-[12.5px] text-ppp-charcoal-700">
+          {noPayrollWorkforce
+            ? "Nothing to download — nobody is on payroll. Every active crew member is a sub, paid through a labor company."
+            : sp.empty === "redownload"
+              ? `Nothing to re-issue: no payroll has been exported for ${fmtEtDate(periodStart)} – ${fmtEtDate(periodEnd)} yet.`
+              : `Nothing to export: no approved W-2 hours in ${fmtEtDate(periodStart)} – ${fmtEtDate(periodEnd)}. Anything already exported has been paid.`}
+        </div>
+      )}
 
       {unapprovedCount > 0 && (
         <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">
@@ -77,9 +101,23 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
       )}
 
       {rows.length === 0 ? (
-        <div className="text-center py-12 bg-surface border border-ppp-charcoal-100 rounded-xl">
-          <p className="text-sm font-semibold text-ppp-charcoal">No approved W-2 hours in {fmtEtDate(from)} – {fmtEtDate(to)}</p>
-          <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Approve time first, or widen the date range.</p>
+        <div className="text-center py-12 px-4 bg-surface border border-ppp-charcoal-100 rounded-xl">
+          {noPayrollWorkforce ? (
+            <>
+              <p className="text-sm font-semibold text-ppp-charcoal">Nobody is on payroll</p>
+              <p className="text-[12.5px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
+                Every active crew member is a sub or temp, paid through a labor company — so this page has nothing to export, in this or any date range.
+              </p>
+              <p className="text-[12.5px] text-ppp-charcoal-500 mt-2">
+                Their <Link href="/commercial/field-ops/hours" className="font-semibold text-cc-brand-700 hover:underline">hours are on Attendance</Link>, and what you paid them is on <Link href="/commercial/accounting?view=labor-out" className="font-semibold text-cc-brand-700 hover:underline">Labor payments</Link>.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-ppp-charcoal">No approved W-2 hours in {fmtEtDate(from)} – {fmtEtDate(to)}</p>
+              <p className="text-[12.5px] text-ppp-charcoal-500 mt-1">Approve time first, or widen the date range.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto bg-surface border border-ppp-charcoal-100 rounded-xl">
