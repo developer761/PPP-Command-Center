@@ -11,11 +11,17 @@ import { classifyRoomType } from "@/lib/rooms/room-type";
  *
  *   INTERIOR
  *     Main-area ceilings ......... Flat
- *     Bathroom ceilings .......... Kitchen & Bath product / low-sheen finish
+ *     Bathroom ceilings .......... SATIN (Kate, 2026-09-22 — see below)
  *     Kitchen ceilings ........... Flat, or Kitchen & Bath product
  *     Main-area walls ............ Matte or Eggshell
  *     Bathroom walls ............. Satin / Kitchen & Bath product
  *     Trim / doors / baseboards .. Semi-Gloss (PPP's preference) or Satin
+ *
+ * The guide asks for "a Kitchen & Bath product / appropriate low-sheen finish"
+ * on a bathroom CEILING without naming a sheen, so this first shipped as Matte
+ * — the low-sheen option in the guide's own quick reference. Kate settled it
+ * on 2026-09-22: "satin can be the standard rec for bathroom walls and
+ * ceilings." One answer for the whole room.
  *
  *   EXTERIOR
  *     Siding ..................... Low Lustre (or Soft Gloss)
@@ -63,11 +69,10 @@ export function recommendedFinishes(
 
   // ── interior ──────────────────────────────────────────────────────────────
   if (s.includes("ceiling")) {
-    // The guide separates bathroom ceilings from main-area ceilings rather
-    // than leaving them on Flat, and asks for a "low-sheen finish" without
-    // naming one; its own quick-reference calls Matte the low-sheen option.
-    // Flat stays as the fallback, which is where a bathroom ceiling sits today.
-    if (room === "bathroom") return ["Matte", "Flat"];
+    // Satin, the same as the walls (Kate 2026-09-22). Matte and Flat stay
+    // behind it for a product that is not sold in Satin — a bathroom ceiling
+    // wants a low sheen before it wants no answer at all.
+    if (room === "bathroom") return ["Satin", "Matte", "Flat"];
     return ["Flat"];
   }
   if (/trim|door|window|baseboard|crown|molding|moulding|cabinet|shelf|shelves/.test(s)) {
@@ -94,7 +99,9 @@ export function recommendationReason(
   const room = classifyRoomType(roomLabel);
   if (scope === "exterior") return null;
   if (room !== "bathroom") return null;
-  if (s.includes("ceiling")) return "PPP recommends a low-sheen finish on a bathroom ceiling.";
+  if (s.includes("ceiling")) {
+    return "PPP recommends Satin on a bathroom ceiling — it stands up to moisture better than Flat.";
+  }
   if (/trim|door|window|floor|cabinet|shelf|shelves/.test(s)) return null;
   return "PPP recommends Satin in a bathroom — it stands up to moisture better than Eggshell.";
 }

@@ -18,7 +18,7 @@ const INTERIOR: Array<[surface: string, room: string, want: string]> = [
   ["Ceiling",              "Bedroom",            "Flat"],
   ["Ceiling",              "Hallway",            "Flat"],
   ["Ceiling",              "Kitchen",            "Flat"],           // kitchen ceilings → Flat or K&B
-  ["Ceiling",              "Bathroom",           "Matte"],          // bathroom ceilings → low-sheen
+  ["Ceiling",              "Bathroom",           "Satin"],          // bathroom ceilings → Satin (Kate 2026-09-22)
   ["Walls",                "Living Room",        "Eggshell"],       // main-area walls → Matte or Eggshell
   ["Walls",                "Primary Bedroom",    "Eggshell"],
   ["Walls",                "Bathroom",           "Satin"],          // bathroom walls → Satin
@@ -49,6 +49,22 @@ describe("the guide's interior table", () => {
   it("Kate's example, by name: a bathroom's walls are Satin, not Eggshell", () => {
     expect(recommendedFinishes("Walls", "Bathroom", "interior")[0]).toBe("Satin");
     expect(recommendedFinishes("Walls", "Living Room", "interior")[0]).toBe("Eggshell");
+  });
+
+  it("…and her follow-up: the ceiling is Satin too, the whole room", () => {
+    // Kate 2026-09-22: "satin can be the standard rec for bathroom walls and
+    // ceilings." The guide itself only said "low-sheen" for the ceiling.
+    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")[0]).toBe("Satin");
+    expect(recommendedFinishes("Ceiling", "Master Bath", "interior")[0]).toBe("Satin");
+    // A main-area ceiling is untouched by that — still Flat.
+    expect(recommendedFinishes("Ceiling", "Living Room", "interior")[0]).toBe("Flat");
+    expect(recommendedFinishes("Ceiling", "Kitchen", "interior")[0]).toBe("Flat");
+  });
+
+  it("but a product not sold in Satin still gets a low sheen, not a blank", () => {
+    // Aura Bath & Spa is Matte only; Regal Select Kitchen & Bath is Pearl only.
+    // The preference order is what keeps those rooms from landing empty.
+    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")).toEqual(["Satin", "Matte", "Flat"]);
   });
 });
 
@@ -129,7 +145,7 @@ describe("a recommendation is only ever a suggestion", () => {
 describe("the hint shown next to the dropdown", () => {
   it("explains a bathroom's Satin, which is the surprising one", () => {
     expect(recommendationReason("Walls", "Bathroom", "interior")).toMatch(/Satin/);
-    expect(recommendationReason("Ceiling", "Bathroom", "interior")).toMatch(/low-sheen/);
+    expect(recommendationReason("Ceiling", "Bathroom", "interior")).toMatch(/Satin/);
   });
 
   it("stays quiet everywhere the answer is the ordinary one", () => {
