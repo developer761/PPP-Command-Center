@@ -1414,14 +1414,21 @@ async function stageDates() {
  *
  * So: create the project, then backfill the links the trigger could not.
  */
+/**
+ * Deal status → project stage. ONE copy, read by the write and the reconcile
+ * below it — two spellings of a mapping is how they come to disagree.
+ * Mirrors `projectStateForOpportunity` in lib/commercial/projects/ensure.ts.
+ */
+const PROJECT_STAGE_FOR_DEAL = {
+  post_sale_closed: "closed_out",
+  billing: "billing",
+  in_progress: "in_progress",
+  pre_construction: "pre_construction",
+};
+
 async function stageProjects() {
   const r = newReport("projects");
-  const PROJECT_STATUS = {
-    post_sale_closed: "closed_out",
-    billing: "billing",
-    in_progress: "in_progress",
-    pre_construction: "pre_construction",
-  };
+  const PROJECT_STATUS = PROJECT_STAGE_FOR_DEAL;
   for (const w of SF.wos) {
     const dealId = mapped("deal", w.Opportunity__c);
     if (!dealId) { r.skipped.push(`${w.WorkOrderNumber}: no deal`); continue; }
@@ -1450,7 +1457,57 @@ async function stageProjects() {
       if (error) r.skipped.push(`${table} link for ${w.WorkOrderNumber}: ${error.message}`);
     }
   }
+  await reconcileProjectStages(r);
   return r;
+}
+
+/**
+ * A project's stage is DERIVED from its deal — make it say so, every run.
+ *
+ * `commercial_projects.status` is not a field anybody sets. `lib/commercial/
+ * projects/ensure.ts` is the only writer in the entire application, and it
+ * mirrors the deal through `projectStateForOpportunity`. There is no screen
+ * that edits it.
+ *
+ * Which is why the edit guard must not hold it. `editedHere` protects a row
+ * Salesforce would otherwise stamp over — the right rule for a name, an
+ * address, a contract figure somebody corrected by hand. Applied to a DERIVED
+ * mirror it does the opposite: any platform write to the project row (the
+ * reconcile after a status change, a contract figure filled in later) makes the
+ * row look hand-edited, and from then on every sync skips it. The deal keeps
+ * moving; its project stays where it was, for good. A dry run on 2026-09-22
+ * found 18 of 93 project rows already frozen that way, and three whose stage
+ * openly disagreed with their deal — a project reading "Pre-construction" under
+ * a deal that was on site, and one reading "In progress" under a deal that had
+ * finished billing.
+ *
+ * So the stage is reconciled here, after the guarded write, straight from the
+ * deal. Stage only: never creates a project, never archives one, never touches
+ * a figure a person could have edited.
+ */
+async function reconcileProjectStages(r) {
+  const deals = await readAll("commercial_opportunities", "id, status, sub_status", (q) => q.is("deleted_at", null));
+  const dealById = new Map(deals.map((d) => [d.id, d]));
+  const projects = await readAll("commercial_projects", "id, opportunity_id, status, name", (q) => q.is("deleted_at", null));
+
+  let fixed = 0;
+  for (const p of projects) {
+    const deal = dealById.get(p.opportunity_id);
+    if (!deal) continue;
+    // Mirrors projectStateForOpportunity. `pre_sale_closed/won` is "awarded" —
+    // won, not yet started — and anything else there has no project stage to
+    // speak of, so it is left alone rather than guessed at.
+    const want =
+      PROJECT_STAGE_FOR_DEAL[deal.status] ??
+      (deal.status === "pre_sale_closed" && deal.sub_status === "won" ? "awarded" : null);
+    if (!want || want === p.status) continue;
+    r.notes.push(`${p.name ?? p.id}: stage ${p.status} → ${want} (deal is ${deal.status}/${deal.sub_status ?? "-"})`);
+    fixed += 1;
+    if (!COMMIT) continue;
+    const { error } = await sb.from("commercial_projects").update({ status: want }).eq("id", p.id);
+    if (error) r.skipped.push(`project stage ${p.id}: ${error.message}`);
+  }
+  if (fixed === 0) r.notes.push("every project's stage already matches its deal");
 }
 
 const RUNNERS = {
