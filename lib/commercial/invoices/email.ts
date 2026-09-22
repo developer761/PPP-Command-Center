@@ -8,6 +8,7 @@ import { buildInvoicePdfInput } from "./invoice-pdf-data";
 import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
+import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
  * Email a branded invoice PDF to the general contractor via Resend (Katie's #1 —
@@ -168,7 +169,11 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
     process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = INVOICE_COPY_EMAILS.length > 0 ? INVOICE_COPY_EMAILS : oc.email || undefined;
-  const bcc = INVOICE_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
+  const bcc = withArchiveBcc(
+    INVOICE_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail),
+    { opportunityId: invoice.opportunity_id, accountId: invoice.account_id },
+    [toEmail, ccEmail]
+  );
 
   const { sendEmail } = await import("@/lib/email/resend");
   const r = await sendEmail({

@@ -7,6 +7,7 @@ import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
 import { PROPOSAL_COPY_EMAILS } from "./copy-emails";
+import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
  * Kim — email an approved proposal PDF to the general contractor via Resend.
@@ -141,7 +142,11 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
       ? PROPOSAL_COPY_EMAILS
       : oc.email || input.actor_email || undefined;
   // Don't BCC an address that's already the visible recipient/CC.
-  const bcc = PROPOSAL_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
+  const bcc = withArchiveBcc(
+    PROPOSAL_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail),
+    { opportunityId: proposal.opportunity_id, accountId: opp?.account_id },
+    [toEmail, ccEmail]
+  );
 
   const projectLabel =
     proposal.header_json.project_name?.trim() || proposal.header_json.gc_company?.trim() || "Proposal";

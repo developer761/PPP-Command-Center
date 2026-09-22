@@ -22,6 +22,7 @@ import {
 } from "./db";
 import { assembleSignedDocument, renderAuditTrailPdf, renderSignaturePagePdf, type EsignCompany } from "./pdf";
 import { sha256Hex } from "./token";
+import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
  * E-signature side effects: the PDFs, the filing, the emails, the bells.
@@ -178,7 +179,11 @@ async function emailSigner(input: {
   const fromAddr =
     process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const to = input.request.signer_email;
-  const bcc = PROPOSAL_COPY_EMAILS.filter((e) => e !== to);
+  const bcc = withArchiveBcc(
+    PROPOSAL_COPY_EMAILS.filter((e) => e !== to),
+    { opportunityId: input.request.opportunity_id },
+    [to]
+  );
   const { sendEmail } = await import("@/lib/email/resend");
   // sendEmail THROWS when no API key is configured outside production. A mailer
   // that throws must not abort what comes after it — the signed contract still

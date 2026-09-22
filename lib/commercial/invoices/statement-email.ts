@@ -4,6 +4,7 @@ import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getOpenInvoiceStatementForAccount } from "./statement";
 import { formatCentsFull } from "./format";
+import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
  * Email the AR statement to a GC (Katie).
@@ -120,7 +121,12 @@ export async function emailStatementToGc(
     process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = STATEMENT_COPY_EMAILS.length > 0 ? STATEMENT_COPY_EMAILS : oc.email || undefined;
-  const bcc = STATEMENT_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
+  // A statement is account-level, so it files against the GC, not a job.
+  const bcc = withArchiveBcc(
+    STATEMENT_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail),
+    { accountId: input.account_id },
+    [toEmail, ccEmail]
+  );
 
   const { sendEmail } = await import("@/lib/email/resend");
   const r = await sendEmail({

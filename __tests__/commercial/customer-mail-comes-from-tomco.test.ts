@@ -33,7 +33,7 @@ const FILES: Array<[string, string, string]> = [
   ["lib/commercial/invoices/email.ts", "COMMERCIAL_INVOICE_FROM_ADDRESS", "the invoice"],
   ["lib/commercial/invoices/statement-email.ts", "COMMERCIAL_INVOICE_FROM_ADDRESS", "the AR statement"],
   ["lib/commercial/proposals/email.ts", "COMMERCIAL_PROPOSAL_FROM_ADDRESS", "the proposal"],
-  ["lib/commercial/change-orders/email.ts", "COMMERCIAL_PROPOSAL_FROM_ADDRESS", "the change order"],
+  ["lib/commercial/change-orders/email.ts", "COMMERCIAL_INVOICE_FROM_ADDRESS", "the change order"],
   ["lib/commercial/esign/workflow.ts", "COMMERCIAL_PROPOSAL_FROM_ADDRESS", "the signature request"],
 ];
 

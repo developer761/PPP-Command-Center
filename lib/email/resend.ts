@@ -97,6 +97,51 @@ const RESEND_API_URL = "https://api.resend.com/emails";
  * do with the failure — typically log to sf_writes_audit or surface a "retry"
  * banner to the admin.
  */
+/**
+ * The commercial channel's own sender, and everything that sends as us.
+ *
+ * Exported because two other places need to KNOW what we send as, and both
+ * were getting it wrong by asking somewhere else:
+ *
+ *   · the email archive's Sent/Received split, which read
+ *     commercial_operating_company.reply_to_email — a column that DOES NOT
+ *     EXIST, so the query errored, "our domains" was always empty, and every
+ *     archived email was labelled Received. The UI told you to set it in
+ *     Settings, which was impossible.
+ *   · anything else that later needs to recognise our own mail.
+ *
+ * Deriving it from what we actually send as cannot drift, which a nullable
+ * column nobody filled in plainly did.
+ */
+export const COMMERCIAL_TOMCO_DEFAULT_FROM = "Tomco Painting <finance@tomcopainting.com>";
+
+/** Bare address out of `Name <a@b>` or `a@b`. Lowercased. */
+function bareAddress(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const m = raw.match(/<([^>]+)>/);
+  return (m?.[1] ?? raw).trim().toLowerCase();
+}
+
+/** Every address the COMMERCIAL channel can send from, configured or default. */
+export function commercialSenderAddresses(): string[] {
+  return [
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS,
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS,
+    process.env.COMMERCIAL_TOMCO_FROM_ADDRESS,
+    COMMERCIAL_TOMCO_DEFAULT_FROM,
+    // The legacy PPP pool: still ours, so mail sent under it before the
+    // 2026-09-21 switch must keep reading as Sent, not Received.
+    process.env.COMMERCIAL_RESEND_FROM_ADDRESS,
+  ]
+    .map(bareAddress)
+    .filter((a) => a.includes("@"));
+}
+
+/** The domains those addresses live on. */
+export function commercialSenderDomains(): string[] {
+  return [...new Set(commercialSenderAddresses().map((a) => a.split("@")[1]).filter(Boolean))];
+}
+
 export async function sendEmail(input: ResendSendInput): Promise<ResendSendResult> {
   // Channel routing — picks the right API key + From address.
   // Commercial path falls back to customer envs if commercial-specific
@@ -138,7 +183,7 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
    * orders. finance@ is a real, monitored inbox. Swap it for a dedicated ops
    * address the moment one exists, via COMMERCIAL_TOMCO_FROM_ADDRESS.
    */
-  const TOMCO_DEFAULT_FROM = "Tomco Painting <finance@tomcopainting.com>";
+  const TOMCO_DEFAULT_FROM = COMMERCIAL_TOMCO_DEFAULT_FROM;
   const defaultFrom =
     channel === "commercial"
       ? (process.env.COMMERCIAL_TOMCO_FROM_ADDRESS ||

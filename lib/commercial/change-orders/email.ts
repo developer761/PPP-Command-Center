@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { formatChangeOrderNumber } from "./constants";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
+import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
  * Email a change order to the GC for written approval.
@@ -114,20 +115,24 @@ export async function emailChangeOrderToGc(
   const oc = await getOperatingCompany();
   const fromAddr =
     /**
-     * estimating@, same as the proposal it amends.
+     * finance@ — Karan's call, 2026-09-21 ("it can be from finance also").
      *
-     * A change order is a priced document the GC signs, so it belongs with
-     * proposals rather than with invoices. It was falling through to the
+     * I had put change orders with proposals on the reasoning that both are
+     * priced documents the GC signs. Tomco read it the other way: a change
+     * order changes what gets BILLED, so it belongs with the money. It was falling through to the
      * shared pool (deals@orders.precisionpaintingplus.net) — the same wrong
      * sender Brendan reported on an invoice on 2026-09-21.
      *
-     * If Tomco would rather these came from finance@, this is a one-line
-     * change to COMMERCIAL_INVOICE_FROM_ADDRESS. Unset falls through to the Tomco channel default.
+     * Unset falls through to the Tomco channel default in resend.ts.
      */
-    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = CO_COPY_EMAILS.length > 0 ? CO_COPY_EMAILS : oc.email || undefined;
-  const bcc = CO_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
+  const bcc = withArchiveBcc(
+    CO_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail),
+    { opportunityId: co.opportunity_id },
+    [toEmail, ccEmail]
+  );
   const coNo = row.co_number != null ? formatChangeOrderNumber(row.co_number) : "Change Order";
 
   const { sendEmail } = await import("@/lib/email/resend");

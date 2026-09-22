@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import type { ArchivedEmail } from "@/lib/commercial/email-archive/db";
+import { commercialSenderDomains } from "@/lib/email/resend";
 
 /**
  * Every archived email, across every job and GC, in one place.
@@ -85,13 +86,36 @@ export async function getEmailHub(limit = 400): Promise<EmailHub> {
   // OUR domains, learned from the operating company and from what the platform
   // sends as — rather than hard-coding "tomcopainting.com", which would be
   // wrong the moment the sending domain changes (which it is about to).
-  const { data: company } = await sb
+  //
+  // WHAT COUNTS AS OURS.
+  //
+  // This asked the operating company for `email, reply_to_email`.
+  // `reply_to_email` IS NOT A COLUMN on that table — the migration never ran —
+  // so PostgREST rejected the whole select, `company` came back null, and
+  // `ourDomains` was ALWAYS empty. Every archived email was therefore labelled
+  // "Received", the Sent tab was permanently empty, and the banner told the
+  // reader to set a sending address in Settings, which was impossible. A
+  // silent query error that produced a plausible-looking wrong answer.
+  //
+  // The reliable source is what the platform actually sends as, which is now
+  // explicit (invoices finance@, proposals estimating@, everything else the
+  // Tomco default) and cannot drift the way an unfilled column did. The
+  // operating-company address is still honoured when someone sets one, and a
+  // failure to read it no longer takes the answer down with it.
+  const { data: company, error: companyErr } = await sb
     .from("commercial_operating_company")
-    .select("email, reply_to_email")
+    .select("email")
     .limit(1)
     .maybeSingle();
-  const c = (company ?? {}) as { email?: string | null; reply_to_email?: string | null };
-  const ourDomains = [...new Set([c.email, c.reply_to_email].map((e) => domainOf(e ?? "")).filter(Boolean))];
+  if (companyErr) {
+    console.warn("[email-archive/hub] operating company lookup failed:", companyErr.message);
+  }
+  const c = (company ?? {}) as { email?: string | null };
+  const ourDomains = [
+    ...new Set(
+      [domainOf(c.email ?? ""), ...commercialSenderDomains()].filter(Boolean)
+    ),
+  ];
 
   const hub: HubEmail[] = emails
     .map((e) => ({
