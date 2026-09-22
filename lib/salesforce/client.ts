@@ -82,7 +82,16 @@ export function getSalesforceAuthorizationUrl(redirectUri: string): string {
     client_id: process.env.SF_CONSUMER_KEY!,
     redirect_uri: redirectUri,
     scope: "api refresh_token",
-    prompt: "consent",
+    // `login` as well as `consent` — FORCE RE-AUTHENTICATION.
+    //
+    // `consent` alone only re-shows the approval screen; it happily reuses
+    // whatever Salesforce session the browser already has. So an admin trying
+    // to move the integration onto a dedicated user would click Connect, see a
+    // consent screen, approve it, and silently reconnect as THEMSELVES — with
+    // nothing on screen to say which user it bound to. Adding `login` makes
+    // Salesforce ask who you are every time, which is the whole point of
+    // reconnecting.
+    prompt: "login consent",
   });
   return `${process.env.SF_LOGIN_URL}/services/oauth2/authorize?${params.toString()}`;
 }
@@ -329,7 +338,17 @@ export async function getSalesforceClient(): Promise<Connection> {
 
 /** Quick health-check: returns true if SF is connected and a token refresh succeeded. */
 export async function pingSalesforce(): Promise<
-  | { ok: true; userInfo: { id: string; organizationId: string; url: string } }
+  | {
+      ok: true;
+      userInfo: {
+        id: string;
+        organizationId: string;
+        url: string;
+        /** The Salesforce login this integration is acting as. */
+        username: string;
+        displayName: string;
+      };
+    }
   | { ok: false; reason: string }
 > {
   try {
@@ -341,6 +360,13 @@ export async function pingSalesforce(): Promise<
         id: identity.user_id,
         organizationId: identity.organization_id,
         url: identity.urls?.profile ?? "",
+        // WHO, not just a row id. The page showed an opaque 18-character user
+        // id, which cannot answer the only question anyone asks after
+        // reconnecting: did it bind to the right login? Every record this
+        // integration creates is attributed to this user, so it belongs on
+        // screen.
+        username: (identity as { username?: string }).username ?? "",
+        displayName: (identity as { display_name?: string }).display_name ?? "",
       },
     };
   } catch (err) {

@@ -50,7 +50,16 @@ export default async function IntegrationsPage({
 
   // Try a live ping to confirm credentials work, not just that they exist.
   let liveStatus:
-    | { ok: true; userInfo: { id: string; organizationId: string; url: string } }
+    | {
+        ok: true;
+        userInfo: {
+          id: string;
+          organizationId: string;
+          url: string;
+          username: string;
+          displayName: string;
+        };
+      }
     | { ok: false; reason: string }
     | { ok: false; reason: "not_connected" } = { ok: false, reason: "not_connected" };
 
@@ -195,8 +204,18 @@ export default async function IntegrationsPage({
               </dd>
             </div>
             <div>
+              {/* The LOGIN, not just its row id. Every record the integration
+                  writes to Salesforce is attributed to this user, so after
+                  reconnecting this line is the one that answers "did it bind
+                  to the right account?". The id stays underneath for support. */}
               <dt className="text-ppp-charcoal-500 uppercase tracking-wide font-semibold">Authenticated user</dt>
-              <dd className="mt-0.5 text-ppp-charcoal font-mono break-all">
+              <dd className="mt-0.5 text-ppp-charcoal font-medium break-all">
+                {liveStatus.userInfo.username || "(username unavailable)"}
+                {liveStatus.userInfo.displayName ? (
+                  <span className="text-ppp-charcoal-500 font-normal"> · {liveStatus.userInfo.displayName}</span>
+                ) : null}
+              </dd>
+              <dd className="mt-0.5 text-[11px] text-ppp-charcoal-400 font-mono break-all">
                 {liveStatus.userInfo.id}
               </dd>
             </div>
