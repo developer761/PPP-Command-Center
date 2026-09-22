@@ -187,6 +187,8 @@ const FINISH_OPTIONS = BASE_FINISHES;
 // exterior products and vice versa) — Katie 2026-06-05.
 import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
 import { applyToAllTargets } from "@/lib/customer-form/apply-to-all";
+import { recommendedFinishes, recommendationReason } from "@/lib/customer-form/recommended-finish";
+import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import MaterialTypePicker from "@/components/material-type-picker";
 
 /**
@@ -214,28 +216,21 @@ import MaterialTypePicker from "@/components/material-type-picker";
 function defaultFinishFor(
   surface: string,
   materialType?: string | null,
-  scope?: "interior" | "exterior" | null
+  scope?: "interior" | "exterior" | null,
+  roomLabel?: string | null
 ): string {
   const options = finishOptionsFor(BASE_FINISHES, materialType, scope);
   if (options.length === 1) return options[0];
-  const preferred = defaultFinishForSurface(surface);
-  return preferred && options.includes(preferred) ? preferred : "";
-}
-
-function defaultFinishForSurface(surface: string): string {
-  const s = surface.toLowerCase();
-  if (s.includes("ceiling")) return "Flat";
-  if (s.includes("trim") || s.includes("door") || s.includes("window")) return "Semi-Gloss";
-  if (s.includes("floor")) return "Satin";
-  // Katie item 19, 2026-09-08 — a REAR DECK fell through this chain to
-  // "Eggshell", and stain does not come in eggshell. Exterior woodwork is
-  // stained or solid-coated depending on the product, which we do not know at
-  // this point, so it defaults to NOTHING and the person chooses. An empty box
-  // is a smaller cost than an order a supplier cannot fill.
-  if (s.includes("deck") || s.includes("fence") || s.includes("railing") || s.includes("siding")) {
-    return "";
+  // PPP's recommendation for THIS room and surface, in preference order —
+  // Satin on bathroom walls, Flat on a main-area ceiling, Low Lustre on
+  // siding (Mac's finishes guide, Kate 2026-09-22). The product still has the
+  // last word: a line that is not sold in the recommended sheen gets the next
+  // choice, and if it sells none of them the box stays empty for a person to
+  // fill rather than carrying a finish no supplier can mix.
+  for (const preferred of recommendedFinishes(surface, roomLabel, scope)) {
+    if (options.includes(preferred)) return preferred;
   }
-  return "Eggshell";
+  return "";
 }
 
 /** Kate round-2 #13: SF's ProductName__c sometimes already embeds the room name
@@ -796,7 +791,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       const sc = /^exterior/i.test(li.productFamily ?? "") ? "exterior" : "interior";
       const options = finishOptionsFor(BASE_FINISHES, mt, sc);
       if (pick.finish && options.includes(pick.finish)) return pick.finish;
-      return defaultFinishFor(surface, mt, sc);
+      // Per TARGET room, not the source room: "apply to all" can carry a
+      // wall color from a bedroom into a bathroom, where PPP recommends Satin
+      // rather than the bedroom's Eggshell.
+      return defaultFinishFor(surface, mt, sc, roomLabelFrom(li.areaLabel, li.productName));
     };
     const finishByLine = new Map(targets.map((li) => [li.id, finishForLine(li)]));
     const targetIds = new Set(targets.map((li) => li.id));
@@ -1794,7 +1792,7 @@ function SurfaceRow({
   // doesn't linger on an empty surface.
   const handleColorPick = (patch: Partial<SurfacePick>) => {
     if (patch.colorId) {
-      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope), ...patch });
+      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope, roomLabel), ...patch });
     } else if (patch.colorId === null) {
       onChange({ ...patch, finish: null });
     } else {
@@ -1809,6 +1807,10 @@ function SurfaceRow({
   // its left and the room heading above it — neither of which a screen reader
   // ties to the control. Spelled out here so each one announces itself.
   const rowContext = `${surface}, ${roomLabel}`;
+  // PPP's recommendation for this room + surface, and the one-line reason —
+  // only for the cases where the guide departs from the ordinary answer.
+  const recommended = defaultFinishFor(surface, materialType, scope, roomLabel);
+  const finishHint = recommendationReason(surface, roomLabel, scope);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
@@ -1886,6 +1888,33 @@ function SurfaceRow({
             {finishMissing && (
               <span className="text-[10px] text-ppp-orange-700 font-medium">
                 Pick a finish for this color
+              </span>
+            )}
+            {/* PPP's recommendation for this room (Mac's finishes guide via
+                Kate, 2026-09-22).
+                
+                Shown whether or not it is what is selected, because the case
+                that matters most is when it ISN'T: nearly every work order
+                arrives with a finish already on the Salesforce line, so the
+                auto-fill only ever fires on a blank one. Overwriting that
+                silently would throw away what the office recorded — offering
+                it in one tap does not. The guide is explicit that these are
+                "guidelines, not requirements". */}
+            {finishHint && !pick.skipped && (
+              <span className="text-[10px] text-ppp-charcoal-500">
+                {finishHint}
+                {recommended && pick.finish !== recommended && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => onChange({ finish: recommended })}
+                      className="text-ppp-blue-700 font-medium hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center px-1 touch-manipulation"
+                    >
+                      Use {recommended}
+                    </button>
+                  </>
+                )}
               </span>
             )}
             {/* Apply this color to the same surface in every other room that

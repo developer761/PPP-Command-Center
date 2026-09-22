@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { finishOptionsFor, isStainProduct } from "@/lib/customer-form/material-types";
+import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
 
 /**
  * Katie item 19, 2026-09-08: "one of the items was rear deck and it defaulted as
@@ -54,10 +55,21 @@ describe("stain does not offer interior sheens", () => {
 describe("a rear deck no longer defaults to eggshell", () => {
   const view = readFileSync(join(process.cwd(), "components/customer-form-view.tsx"), "utf8");
 
-  it("exterior woodwork defaults to nothing, so a person chooses", () => {
+  it("exterior woodwork recommends nothing, so a person chooses", () => {
     // An empty box costs a tap. An order a supplier cannot fill costs a job.
-    expect(view).toMatch(/s\.includes\("deck"\)/);
-    expect(view).toMatch(/s\.includes\("railing"\)/);
+    //
+    // This used to grep the component for `s.includes("deck")`. When the
+    // surface defaults moved into lib/customer-form/recommended-finish.ts to
+    // take PPP's room guide (2026-09-22), the rule was intact and the test
+    // failed anyway — it was pinned to where the words lived, not to what the
+    // code answers. It asks the rule now.
+    for (const surface of ["Deck", "Rear Deck", "Fence", "Railing"]) {
+      expect(recommendedFinishes(surface, "Rear Deck", "exterior"), surface).toEqual([]);
+      expect(recommendedFinishes(surface, "Rear Deck", "interior"), surface).toEqual([]);
+    }
+    // …while the surfaces the guide DOES cover still recommend something, so
+    // this cannot pass by recommending nothing anywhere.
+    expect(recommendedFinishes("Trim", "Exterior", "exterior")).toEqual(["Soft Gloss"]);
   });
 
   it("the product actually REACHES the finish dropdown", () => {
