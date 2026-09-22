@@ -16,6 +16,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { scrub, residualPii } from "../lib/messaging/pii.ts";
+import { parseFindings as parseFindingLines } from "../lib/messaging/finding-line.ts";
 
 const PDF = process.argv.find((a) => a.endsWith(".pdf"))
   ?? "/Users/karanmalhotra/Downloads/Karan Connect Hub Training Sheet - Batch 1 + 2.pdf";
@@ -62,25 +63,21 @@ const SEV = { mild: "mild", medium: "medium", critical: "critical", crit: "criti
  * A CSV export keeps the column boundary. That is the fix.
  */
 function parseFindings(segment) {
-  const out = [];
-  const re = /T(\d+)\s*\[(A\d+)[^\]|]*(?:\|\s*([^\]/]+?)\s*\/?\s*([a-z]+)?)?\]\s*([\s\S]*?)(?=T\d+\s*\[A\d+|$)/g;
-  let m;
-  while ((m = re.exec(segment)) !== null) {
-    const [, turn, code, , sevRaw, body] = m;
-    const parts = body.split(/->\s*SHOULD HAVE:\s*/);
-    const what = parts[0].trim();
-    if (!what) continue;
-    out.push({
-      turn_ordinal: Number(turn),
-      code,
-      kind: parts[1] ? "fell_short" : null,
-      severity: SEV[(sevRaw ?? "").toLowerCase()] ?? null,
-      what: what.slice(0, 2000),
-      should_have: parts[1]?.trim().slice(0, 2000) || null,
-    });
-  }
-  return out;
+  // THE LIBRARY PARSER, not a copy of it. The copy that used to live here was
+  // written for her older bracket shape and read a lone "critical" as the
+  // RULE'S NAME, filing severity as null — 92 of the 192 findings already
+  // imported are missing a severity that was plainly written in the source.
+  // lib/messaging/finding-line.ts handles both shapes and has a test per shape.
+  return parseFindingLines(segment).map((f) => ({
+    turn_ordinal: f.turnOrdinal,
+    code: f.code,
+    kind: f.kind,
+    severity: f.severity,
+    what: f.what,
+    should_have: f.shouldHave,
+  }));
 }
+
 
 const rows = text.split(/(?=\{"data":\{"id")/).filter((p) => p.startsWith('{"data"'));
 console.log(`\nKATE BATCH 1 + 2 — ${APPLY ? "APPLYING" : "DRY RUN (pass --apply to write)"}\n`);
