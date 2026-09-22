@@ -20,6 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import type { Intent } from "./agent-output";
+import type { AddressGap } from "./address";
 
 /** Intents that END the conversation without sending anything. Sending a
  *  cheerful sign-off to somebody who asked to be left alone is how a
@@ -64,6 +65,7 @@ export const SAYS: Record<Intent, string[]> = {
     "Are weekdays or weekends easier on your end?",
     "What sort of days work for you to have someone take a look?",
   ],
+
 
   // — Reading back what we already have —
   // Wording lifted from the two conversations Kate graded well, so the good
@@ -231,10 +233,47 @@ export type RenderInput = {
    *  are system data, not model output — interpolating them keeps the
    *  guarantee that nothing the model wrote reaches the customer unfiltered. */
   known?: { address?: string | null; phone?: string | null; email?: string | null; scope?: string | null };
+  /** What is missing from a partial address. Narrows ask_address to the gap,
+   *  which is what A11 requires. See ASK_ADDRESS_GAP below. */
+  addressGap?: AddressGap;
+};
+
+/**
+ * Asking for only the part of the address we are missing.
+ *
+ * A11, the most broken critical rule in Kate's grading at 287 breaches: "Ask
+ * only for the MISSING part of a partial address." Somebody who has already
+ * sent "482 Marchmont Ave" is asked for a zip, not for an address, and the
+ * street is read back so it lands as us having it rather than as a second
+ * unrelated question.
+ *
+ * NOT an intent. The model's vocabulary is unchanged: it still chooses
+ * ask_address, and the renderer narrows the question to the gap. Widening the
+ * enum would give the model two more ways to be wrong in exchange for nothing,
+ * since it is the system, not the model, that knows which half is missing.
+ *
+ * City and state are never asked for. A zip resolves both out of the 2,194
+ * rows PPP already curates, and asking somebody to type what we can look up is
+ * the complaint this entire family of rules is about.
+ */
+const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
+  zip: [
+    "Thanks! What's the zip code for {address}?",
+    "Got it. And what's the zip code there?",
+  ],
+  street: [
+    "Thanks! And what's the street address?",
+    "Got it. What's the street address there?",
+  ],
 };
 
 export function renderMessage(input: RenderInput): string {
-  const variants = SAYS[input.intent] ?? [""];
+  // A partial address narrows the question before anything else happens.
+  // "both" missing is the ordinary ask, which is already the right question.
+  const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
+    ? input.addressGap
+    : null;
+  const variants = gap ? ASK_ADDRESS_GAP[gap] : SAYS[input.intent] ?? [""];
   let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
 
   // Substitute verified values. A template whose value is missing must not go

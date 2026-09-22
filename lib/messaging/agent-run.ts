@@ -18,6 +18,7 @@ import {
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
+import { addressGap } from "./address";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, type ResolvedService } from "./services";
 import { renderMessage, SILENT_INTENTS } from "./render";
@@ -295,6 +296,9 @@ Choose the next action.`;
         name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
         address: !!kf.address, inquiryScope: !!kf.inquiryScope,
       },
+      // A11: which HALF of the address is missing, not whether one exists.
+      // Undefined when we hold nothing, so the ordinary ask applies.
+      addressGap: kf.address ? addressGap(kf.address) : undefined,
       ...opts.ctx,
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
@@ -305,6 +309,8 @@ Choose the next action.`;
       turn: history.length,
       photos: opts.mediaCount ?? 0,
       known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
+      // Narrows ask_address to the part we are actually missing.
+      addressGap: kf.address ? addressGap(kf.address) : undefined,
     });
 
     // An intent that renders to nothing, and is not one of the intents that

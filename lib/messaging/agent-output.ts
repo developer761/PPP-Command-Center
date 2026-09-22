@@ -16,6 +16,7 @@
  *
  * Pure: validation and rendering only. Nothing here calls a model or a network.
  */
+import type { AddressGap } from "./address";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -91,11 +92,27 @@ export const CONFIRM_REQUIRES: Record<string, "inquiryScope" | "address" | "emai
   confirm_contact: "email",
 };
 
-/** The ask that is forbidden once we hold the value. */
-export const ASK_SUPERSEDED_BY: Record<string, "inquiryScope" | "address" | "phone"> = {
-  ask_project_details: "inquiryScope",
-  ask_address: "address",
+/**
+ * The ask that is forbidden once we hold the value.
+ *
+ * EVERY field listed must be held before the ask is refused, because an ask
+ * that collects two things is still worth making when we only have one of
+ * them. ask_contact collects a name and an email, and refusing it because we
+ * happen to know the name would strand the conversation with no email.
+ *
+ * ask_contact was missing from this table entirely. That is A13 — "Do not ask
+ * the customer to RETYPE data already held" — 206 breaches and critical: with
+ * the email and name on file, nothing stopped the bot asking for them again.
+ * The old type even declared "phone" as a legal value with no entry using it,
+ * which is the shape of an intention that never landed.
+ */
+export const ASK_SUPERSEDED_BY: Record<string, readonly KnownField[]> = {
+  ask_project_details: ["inquiryScope"],
+  ask_address: ["address"],
+  ask_contact: ["name", "email"],
 };
+
+export type KnownField = "name" | "phone" | "email" | "address" | "inquiryScope";
 
 /**
  * Nurture: the quote already went out and the job is to get a decision.
@@ -275,7 +292,17 @@ export type ValidateContext = {
   track?: Track;
   /** Which known fields we hold. Drives both directions: confirm_* needs the
    *  value to exist, and ask_* is refused once it does. */
-  knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
+  knownFields?: Partial<Record<KnownField, boolean>>;
+  /**
+   * What is still missing from a PARTIAL address, when one is held.
+   *
+   * A boolean cannot express A11. "482 Marchmont Ave" with no zip is neither
+   * held nor missing: refusing the ask strands the conversation without a zip,
+   * and allowing the ordinary ask makes the customer retype the street they
+   * already sent. Undefined means the caller does not track addresses in
+   * parts, and the plain held/not-held rule applies.
+   */
+  addressGap?: AddressGap;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
   /** The customer reacted negatively to the previous message. */
@@ -332,11 +359,21 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // number + to type out phone number" — the reason that reached her was a
   // prompt instruction, which the model ignored. This is not an instruction.
   const supersededBy = ASK_SUPERSEDED_BY[a.intent];
-  if (supersededBy && ctx.knownFields?.[supersededBy]) {
-    return {
-      ok: false, reason: "unknown_intent",
-      detail: `${a.intent} was chosen but ${supersededBy} is already on file — read it back instead of asking`,
-    };
+  if (supersededBy && ctx.knownFields && supersededBy.every((f) => ctx.knownFields?.[f])) {
+    // A PARTIAL ADDRESS IS NOT AN ADDRESS ON FILE.
+    //
+    // A11 asks for the missing part only. Refusing the ask outright when we
+    // hold a street but no zip is how a conversation stalls holding half an
+    // address, so the ask survives here and the renderer narrows it to the
+    // gap. Only a complete address supersedes the ask.
+    const partial = a.intent === "ask_address" && ctx.addressGap != null && ctx.addressGap !== undefined;
+    if (!partial) {
+      const names = supersededBy.join(" and ");
+      return {
+        ok: false, reason: "unknown_intent",
+        detail: `${a.intent} was chosen but ${names} is already on file. Read it back instead of asking`,
+      };
+    }
   }
 
   if (typeof a.confidence !== "number" || Number.isNaN(a.confidence) || a.confidence < 0 || a.confidence > 1) {
