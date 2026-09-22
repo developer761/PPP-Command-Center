@@ -33,7 +33,16 @@ export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
  * to agent-output.ts without giving it words here fails the type check rather
  * than silently sending an empty message.
  */
-const SAYS: Record<Intent, string[]> = {
+/**
+ * Exported so a test can hold the templates to Kate's own tone rules.
+ *
+ * A23 is the most broken rule in her grading by a distance, and three of the
+ * four hyphenated compounds the bot was sending came from right here rather
+ * than from the model: "the write-up", "an off-site quote", "a friendly
+ * check-in". The style check only ever saw the model's rapport, so a template
+ * could break the rule on every single send and nothing would ever say so.
+ */
+export const SAYS: Record<Intent, string[]> = {
   // — Collecting, in the required order —
   ask_project_details: [
     "What are you looking to have painted?",
@@ -48,7 +57,7 @@ const SAYS: Record<Intent, string[]> = {
   ask_contact: [
     "And what's the best name and email for the estimate?",
     "Who should we put the estimate under, and what's a good email?",
-    "Can I grab your name and email for the write-up?",
+    "Can I grab your name and email for the quote?",
   ],
   ask_availability: [
     "What days generally work best for you?",
@@ -86,8 +95,8 @@ const SAYS: Record<Intent, string[]> = {
     "Understood, let me not push on that. What would you prefer?",
   ],
   offer_offsite_quote: [
-    "Since you're not able to be at the property, we can put together an off-site quote from photos and measurements instead. Would that work?",
-    "No problem, we can do this as an off-site quote using photos rather than a visit. Want to go that route?",
+    "Since you're not able to be at the property, we can put together a quote from photos and measurements instead. Would that work?",
+    "No problem, we can do this from photos rather than a visit. Want to go that route?",
   ],
   escalate: [
     "Let me get one of our team on this. Someone will follow up with you shortly.",
@@ -99,7 +108,7 @@ const SAYS: Record<Intent, string[]> = {
   // No name or estimator is interpolated: those would be slots, and a template
   // that greets the wrong person by name is worse than one that greets nobody.
   nurture_check_in: [
-    "Hope all is well! Just a friendly check-in to see whether you had any questions about the quote we sent over, or have made any decisions yet. Let us know when you get a chance.",
+    "Hope all is well! Just checking in to see whether you had any questions about the quote we sent over, or have made any decisions yet. Let us know when you get a chance.",
     "Checking in on the quote we sent across. Any thoughts on how you'd like to move forward?",
   ],
   ask_for_decision: [

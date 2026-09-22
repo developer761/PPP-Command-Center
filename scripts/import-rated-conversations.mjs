@@ -30,7 +30,11 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { parseCsvRows } from "../lib/messaging/csv.ts";
 import { parseFindings } from "../lib/messaging/finding-line.ts";
-import { scrub, residualPii } from "../lib/messaging/pii.ts";
+import { scrub, residualPii, suspectedNames } from "../lib/messaging/pii.ts";
+
+/** The bot introduces itself by name, so customers greet it by name. That is
+ *  the assistant, not a customer, and it is not PII. */
+const PERSONAS = ["Emily", "Emma", "Sarah"];
 
 const path = process.argv.find((a) => a.endsWith(".csv"));
 const APPLY = process.argv.includes("--apply");
@@ -48,6 +52,19 @@ const CONDUCT = { good: "good", mixed: "mixed", bad: "bad" };
 /** Her Hatch status onto Emily's own outcome vocabulary. */
 const OUTCOME = { success: "success", bailed_out: "bailout" };
 
+/**
+ * Did the name we handed the scrubber survive it?
+ *
+ * Mirrors what scrub() does with knownNames — whole words, any case, parts of
+ * three characters or more — so this asks the same question of the output that
+ * scrub asked of the input. It is the check residualPii structurally cannot
+ * make, and the one that would have caught this import going wrong.
+ */
+function nameSurvives(text, full) {
+  const parts = [...new Set([full.trim(), ...full.trim().split(/\s+/)])].filter((p) => p.length >= 3);
+  return parts.some((p) => new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+}
+
 let failed = false;
 
 try {
@@ -63,6 +80,12 @@ try {
     defects: at("Class A Defects"),
     good: at("Class A Good Turns"),
     status: at("Hatch Status"),
+    // NOT stored. Read only so the scrubber can be TOLD the customer's name —
+    // which is the whole reason scrub() takes knownNames. Detecting names in
+    // free text either misses them or redacts "Bill" and "Rose"; redacting a
+    // name the file hands you is exact. Required, not optional: a file without
+    // this column must fail loudly rather than import 1,234 unscrubbed names.
+    name: at("Contact Name"),
   };
   for (const [k, v] of Object.entries(I)) {
     if (v < 0) throw new Error(`no column found for ${k}`);
@@ -72,6 +95,9 @@ try {
   console.log(`  rows in file: ${body.length}`);
 
   const prepared = [];
+  /** Rows that failed the PII check and may ALREADY be in the database from an
+   *  earlier import. Skipping them is not enough on its own. */
+  const quarantine = [];
   let skippedPii = 0, skippedEmpty = 0, noGrade = 0;
   const sample = [];
 
@@ -80,11 +106,25 @@ try {
     const raw = (r[I.transcript] ?? "").trim();
     if (!sourceRef || !raw) { skippedEmpty++; continue; }
 
-    const transcript = scrub(raw);
+    // DESTRUCTURE .text. scrub() returns { text, found }, and assigning the
+    // whole result was the bug that made every check below inert: residualPii
+    // stringified the object to "[object Object]", matched nothing, and
+    // reported a clean run on 1,234 rows it had not actually looked at.
+    const contactName = (r[I.name] ?? "").trim();
+    const { text: transcript } = scrub(raw, contactName ? [contactName] : []);
     const left = residualPii(transcript);
+    // residualPii checks email/phone/address and cannot check a name — it has
+    // no way to know what is one. Here we do: if the name we were given is
+    // still in the transcript after scrubbing it, the scrub did not work.
+    if (contactName && nameSurvives(transcript, contactName)) left.push("name");
+    // And the names we were never given. The bot's own persona is greeted by
+    // customers constantly and is not a customer's name, so it is allowed.
+    const suspects = suspectedNames(transcript, PERSONAS);
+    if (suspects.length) left.push(`name?(${suspects.join("/")})`);
     if (left?.length) {
       // Never imported on a maybe. These are fed to a model.
       skippedPii++;
+      quarantine.push(sourceRef);
       if (sample.length < 3) sample.push(`${sourceRef}: ${left.slice(0, 2).join(", ")}`);
       continue;
     }
@@ -133,7 +173,26 @@ try {
   }
 
   /* ── Write ─────────────────────────────────────────────────────────── */
-  let examples = 0, wrote = 0;
+
+  // WITHDRAW WHAT AN EARLIER IMPORT LET THROUGH.
+  //
+  // Skipping a row only protects a database that has never seen it. This
+  // script ran once with a broken scrubber, so a row failing the check today
+  // is exactly the row most likely to be sitting in the table already, with
+  // the name still in it. Clearing pii_scrubbed is what makes that structural
+  // rather than a promise: retrieval filters on the flag in the query, so an
+  // unflagged row cannot reach a prompt however the corpus is later read.
+  //
+  // The row and Kate's grading of it stay, because the human screens should
+  // still show what she graded. Only the permission to teach from it goes.
+  if (quarantine.length) {
+    const { data: hit, error: qErr } = await sb.from("sms_training_examples")
+      .update({ pii_scrubbed: false }).in("source_ref", quarantine).eq("pii_scrubbed", true).select("source_ref");
+    if (qErr) { failed = true; console.log(`  ✗ could not withdraw ${quarantine.length} row(s): ${qErr.message}`); }
+    else if (hit.length) console.log(`  ⚠ withdrew ${hit.length} previously imported row(s) that fail the PII check now`);
+  }
+
+  let examples = 0, wrote = 0, dropped = 0;
   for (const p of prepared) {
     // LOOK UP, THEN INSERT OR UPDATE — not upsert.
     //
@@ -175,12 +234,16 @@ try {
     examples++;
 
     // Replace this conversation's findings rather than adding to them, so a
-    // re-import after re-grading reflects the new grading exactly.
-    await sb.from("sms_example_findings").delete().eq("example_id", ex.id);
+    // re-import after re-grading reflects the new grading exactly — but only
+    // KATE'S. A repair's own per-turn fixes carry a repair_id and are not hers
+    // to replace; deleting them would silently destroy a repair record because
+    // she re-exported the conversation it was written against.
+    await sb.from("sms_example_findings").delete().eq("example_id", ex.id).is("repair_id", null);
     if (!p.findings.length) continue;
 
+    const filed = p.findings.filter((f) => known.has(f.code));
     const { error: fErr } = await sb.from("sms_example_findings").insert(
-      p.findings.filter((f) => known.has(f.code)).map((f) => ({
+      filed.map((f) => ({
         example_id: ex.id,
         turn_ordinal: f.turnOrdinal,
         code: f.code,
@@ -191,10 +254,15 @@ try {
       }))
     );
     if (fErr) { failed = true; console.log(`  ✗ findings for ${p.sourceRef}: ${fErr.message}`); continue; }
-    wrote += p.findings.length;
+    // What was FILED, not what was parsed. Counting the unfiltered list made
+    // the total over-report by exactly the findings whose rule code is missing
+    // from sms_class_a_rules — the case warned about sixty lines above.
+    wrote += filed.length;
+    dropped += p.findings.length - filed.length;
   }
 
   console.log(`\n  ✓ ${examples} conversations, ${wrote} findings written`);
+  if (dropped) console.log(`  ⚠ ${dropped} finding(s) NOT written — their rule code is not in sms_class_a_rules`);
   console.log(`\n${failed ? "FINISHED WITH FAILURES" : "ALL GOOD"}\n`);
 } catch (err) {
   failed = true;

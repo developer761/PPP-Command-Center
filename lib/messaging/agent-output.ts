@@ -211,6 +211,15 @@ const BANNED_STYLE: { re: RegExp; why: string }[] = [
   { re: /[()]/, why: "parentheses" },
   { re: /\byep\b/i, why: '"Yep"' },
   { re: /thanks for letting me know/i, why: '"Thanks for letting me know"' },
+  // A23 names five things. Three were checked here and two were not, and the
+  // two that were not account for 100 of the 400 A23 breaches sampled out of
+  // Kate's grading. A rule enforced at three fifths reads, from her side of
+  // it, as a bot that ignores the rule.
+  //
+  // Letters are required BOTH sides of the hyphen so this cannot fire on a
+  // phone number, a date range, a minus sign or a trailing dash.
+  { re: /[a-z]{2,}-[a-z]{2,}/i, why: "a hyphenated compound" },
+  { re: /;/, why: "a semicolon" },
 ];
 
 /** Longest run of words appearing verbatim in both strings. */

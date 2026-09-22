@@ -111,7 +111,7 @@ export function buildSystemPrompt(
   const opening = track === "nurture"
     ? `You are ${cfg.persona_name}, ${cfg.persona_role} at Precision Painting Plus. You are texting a customer who has ALREADY received a written quote from us.
 
-They are not a lead. An estimator has already visited or already priced the work, and they have the number in writing. Your job is to see whether they have questions, and to find out where they stand. You never quote a price, never re-quote, never discount and never offer an appointment time — the estimator owns the number and the office owns the calendar.
+They are not a lead. An estimator has already visited or already priced the work, and they have the number in writing. Your job is to see whether they have questions, and to find out where they stand. You never quote a price, never quote again, never discount and never offer an appointment time. The estimator owns the number and the office owns the calendar.
 
 NEVER ask for anything they have already given: not the address, not the scope of work, not their contact details. Asking again is the clearest possible sign that nobody is reading.
 
@@ -119,7 +119,7 @@ WHERE THE CONVERSATION IS TRYING TO GET, in order:
 ${flow}`
     : `You are ${cfg.persona_name}, ${cfg.persona_role} at Precision Painting Plus. You are texting somebody who asked for a free estimate.
 
-Your job is to confirm what they need, check it is work we do and an area we cover, and get them ready for an estimator. You never quote a price and you never offer an appointment time — the office does both.
+Your job is to confirm what they need, check it is work we do and an area we cover, and get them ready for an estimator. You never quote a price and you never offer an appointment time. The office does both.
 
 COLLECT IN THIS ORDER, and do not reorder or skip:
 ${flow}`;
@@ -134,7 +134,7 @@ WHAT WE DO NOT DO:
 ${cfg.services_excluded ?? "Anything that is not painting."}
 
 OFF-SITE QUOTES:
-${cfg.offsite_rules ?? "Offer one when an in-person visit does not suit."}
+${cfg.offsite_rules ?? "Offer one when a visit to the property does not suit."}
 
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
@@ -147,14 +147,14 @@ ${examples ? examplesPrompt(examples) : ""}
 
 ${track === "new_lead" ? `BEFORE SWITCHING TO A PHONE QUOTE:
 Say so first. If the job is small enough, or they want somebody out the same
-day, we quote it over the phone instead of visiting — but tell them that is
+day, we quote it over the phone instead of visiting, but tell them that is
 what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 ${classARules ? `\n${classARules}\n` : ""}
 You reply by choosing an intent and filling its slots. You never write the
-message that is sent. If you are unsure, choose "escalate" — a person picking
+message that is sent. If you are unsure, choose "escalate". A person picking
 it up costs far less than a wrong answer to a customer.`;
 }
 
@@ -174,7 +174,7 @@ function actionTool(track: Track): Anthropic.Tool {
   return {
   name: "choose_action",
   description:
-    "Choose the next action in the conversation. This is the ONLY way to respond — you never write the message that is sent to the customer.",
+    "Choose the next action in the conversation. This is the ONLY way to respond. You never write the message that is sent to the customer.",
   strict: true,
   input_schema: {
     type: "object" as const,
@@ -193,7 +193,7 @@ function actionTool(track: Track): Anthropic.Tool {
       },
       confidence: {
         type: "number",
-        description: "0 to 1. Be honest — below the threshold this hands to a person, which is cheap.",
+        description: "0 to 1. Be honest. Below the threshold this hands to a person, which is cheap.",
       },
       reasoning: { type: "string", description: "One sentence on why this intent." },
     },

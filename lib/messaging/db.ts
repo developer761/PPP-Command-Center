@@ -302,6 +302,23 @@ export type AgentConfig = {
 };
 
 /**
+ * The transcript, whatever shape the row is in.
+ *
+ * A string is the shape everything writes today. The `{ text, found }` object
+ * is what one importer stored for 1,234 rows before it was fixed; reading
+ * .text out of it is how those rows stay usable without a migration being a
+ * prerequisite for the bot working. Anything else returns "" and is filtered
+ * out upstream — an unreadable transcript must not become prompt text.
+ */
+function transcriptText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
+    return (v as { text: string }).text;
+  }
+  return "";
+}
+
+/**
  * The corpus, for retrieval.
  *
  * Deliberately narrow: only the columns a prompt can use, and only rows that
@@ -311,26 +328,47 @@ export type AgentConfig = {
  */
 export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
   const sb = messagingDb();
-  const [{ data: rows }, { data: links }] = await Promise.all([
-    sb.from("sms_training_examples")
-      .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note, source")
-      .eq("pii_scrubbed", true),
-    sb.from("sms_training_example_tags").select("example_id, tag_key, note"),
+  // PAGED. This was an unbounded select, and PostgREST caps those at 1,000
+  // silently — 1,294 conversations qualified, so the corpus the bot actually
+  // learns from was missing 294 of them with nothing anywhere saying so.
+  // Every other unbounded read got fixed; the one feeding the model was missed.
+  const [rows, links] = await Promise.all([
+    selectAll<{
+      id: string; transcript: unknown; conduct: string | null; approved: boolean;
+      pii_scrubbed: boolean; conduct_note: string | null; source: string;
+    }>(
+      (a, b) => sb.from("sms_training_examples")
+        .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note, source")
+        .eq("pii_scrubbed", true).order("id").range(a, b) as never,
+      "reading the retrieval corpus"
+    ),
+    selectAll<{ example_id: string; tag_key: string; note: string | null }>(
+      (a, b) => sb.from("sms_training_example_tags")
+        .select("example_id, tag_key, note").order("example_id").range(a, b),
+      "reading example tags"
+    ),
   ]);
 
   const tagsOf = new Map<string, string[]>();
   const noteOf = new Map<string, string>();
-  for (const l of links ?? []) {
+  for (const l of links) {
     const list = tagsOf.get(l.example_id) ?? [];
     list.push(l.tag_key);
     tagsOf.set(l.example_id, list);
     if (l.note && !noteOf.has(l.example_id)) noteOf.set(l.example_id, l.note);
   }
 
-  return (rows ?? []).map((r) => ({
+  return rows.map((r) => ({
     id: r.id,
     source: r.source,
-    transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript),
+    // A transcript that is not a string is a broken row, not a prompt.
+    //
+    // The rated import stored { text, found } objects instead of the scrubbed
+    // string, and JSON.stringify here dutifully rendered the whole blob into
+    // the model's context as a worked example. Reading .text recovers the real
+    // transcript; anything else is dropped by the trim() filter in retrieval
+    // rather than shown to the model as gibberish.
+    transcript: transcriptText(r.transcript),
     conduct: r.conduct as CorpusExample["conduct"],
     approved: r.approved,
     piiScrubbed: r.pii_scrubbed,

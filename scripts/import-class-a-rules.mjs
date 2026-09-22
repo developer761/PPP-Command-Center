@@ -54,9 +54,15 @@ try {
   // six months. The only way it exists in six months is if nobody has to
   // remember to write it — she re-issues this sheet as she re-grades, this
   // already re-runs against it, so the log is a by-product of the work.
-  const { data: existing } = await sb.from("sms_class_a_rules")
+  // THROWS on a read failure rather than carrying on with an empty baseline.
+  // Swallowing this error meant a transient blip made every one of the 44
+  // rules look brand new: 44 spurious "Added" rows, every real edit in that
+  // import lost, and the write below still succeeding so nothing said a word.
+  // A history nobody trusts is a history nobody reads.
+  const { data: existing, error: eErr } = await sb.from("sms_class_a_rules")
     .select("code, statement, rule_card, corrective_action, severity, status, binds, phrasing_only, short_name");
-  const before = new Map((existing ?? []).map((r) => [r.code, r]));
+  if (eErr) throw new Error(`could not read the current rules to diff against: ${eErr.message}`);
+  const before = new Map(existing.map((r) => [r.code, r]));
 
   const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r));
   const edits = changes.filter((c) => c.field !== "added");
