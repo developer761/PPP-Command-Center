@@ -22,6 +22,7 @@ import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
+import { trackForWorkspace } from "./track";
 
 export type Accepted = Extract<InboundDecision, { kind: "accept" }>;
 
@@ -82,7 +83,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
   const { data: ws } = await sb.from("sms_sub_accounts")
-    .select("id, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
+    .select("id, name, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
 
   // 3. The open conversation on this pair, if there is one.
@@ -115,6 +116,9 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         // instead of its own copy, which had quietly skipped the whole path.
         ended_at: decision.keyword === "opt_out" ? new Date().toISOString() : null,
         first_inbound_at: new Date().toISOString(),
+        // Same rule as enrolment: somebody texting an AM number already has a
+        // quote, and is not a new lead.
+        track: trackForWorkspace(ws.name as string | null),
       }).select("id").single();
       if (error) throw asError("opening a conversation", error);
       conversationId = created.id;

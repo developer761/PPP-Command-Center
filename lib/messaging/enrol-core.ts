@@ -20,6 +20,7 @@ import { scheduleSteps, firstMessageAt, type CampaignStep } from "./campaign-sch
 import { TICK_SECONDS } from "./reply-delay";
 import type { LeadRecord, Rule } from "./rules";
 import { toE164 } from "./phone";
+import { trackForWorkspace } from "./track";
 
 export type EnrolResult =
   | { ok: true; conversationId: string; workflow: string; stepsScheduled: number; alreadyLive?: boolean; firstMessageAt?: string }
@@ -133,6 +134,11 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     // which it does not, so every enrolment ever attempted would have failed
     // at this insert. Nothing called this until the lead poll.
     consent_basis: "inquiry",
+    // WHICH CONVERSATION THIS IS. Migration 196 named the rule — AM
+    // workspaces carry nurture, Leads and Meta carry new leads — and nothing
+    // ever applied it, so every AM conversation ran the NEW LEAD prompt and
+    // asked a customer already holding a written quote for their address.
+    track: trackForWorkspace(ws.name),
   }).select("id").single();
   if (convErr) return { ok: false, reason: `could not open a conversation: ${convErr.message}` };
 

@@ -19,6 +19,7 @@ import { selectExamples } from "./retrieval";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
 import { takeoverReasonFor, latestInboundIsAnswered } from "./handoff";
+import { trackForWorkspace, asTrack } from "./track";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import { emailAddressesFor } from "./reply-to";
 import type { E164 } from "./phone";
@@ -125,7 +126,7 @@ export function schedulerDeps(): SchedulerDeps {
     async draftReply(a: DueAction) {
       const { data: conv } = await sb
         .from("sms_conversations")
-        .select("id, state, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("id, state, track, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
@@ -190,8 +191,15 @@ export function schedulerDeps(): SchedulerDeps {
       }
 
       // Everything the sandbox resolves, resolved the same way.
+      // THE TRACK. A conversation in an AM workspace has already had an
+      // estimator at the house and holds a written quote; running the
+      // new-lead prompt on it asks for their address. Stored on the row, and
+      // falling back to the workspace name for conversations created before
+      // anything wrote it.
+      const track = conv.track ? asTrack(conv.track as string) : trackForWorkspace(ws.name);
+
       const [cfg, corpus, svc] = await Promise.all([
-        agentConfigFor(conv.workspace_id),
+        agentConfigFor(conv.workspace_id, track),
         loadRetrievalCorpus(),
         loadWorkspaceServices(conv.workspace_id),
       ]);
@@ -242,6 +250,7 @@ export function schedulerDeps(): SchedulerDeps {
       const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
         hardNos: cfg.hardNos,
         classARules,
+        track,
         stage,
         lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,
         known: {

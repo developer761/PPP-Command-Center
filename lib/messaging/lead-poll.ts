@@ -30,6 +30,8 @@ const MAX_LOOKBACK_MS = 60 * 60 * 1000;
  *  and the unique index makes the overlap free. */
 const OVERLAP_MS = 5 * 60 * 1000;
 const MIN_INTERVAL_MS = 55 * 1000;
+/** How many leads one poll reads. See the watermark note in pollSalesforceLeads. */
+export const POLL_LIMIT = 200;
 
 export type PollSummary = {
   polled: boolean;
@@ -39,6 +41,9 @@ export type PollSummary = {
   triaged: number;
   ignored: number;
   failed: number;
+  /** The batch came back full, so more is waiting and the watermark was held
+   *  back rather than advanced to now. */
+  more?: boolean;
   why?: string;
 };
 
@@ -64,7 +69,7 @@ export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now 
   }
 
   const since = new Date(Math.max(last.getTime() - OVERLAP_MS, now.getTime() - MAX_LOOKBACK_MS));
-  const soql = `SELECT ${LEAD_FIELDS.join(", ")} FROM Lead WHERE CreatedDate > ${since.toISOString()} ORDER BY CreatedDate LIMIT 200`;
+  const soql = `SELECT ${LEAD_FIELDS.join(", ")} FROM Lead WHERE CreatedDate > ${since.toISOString()} ORDER BY CreatedDate LIMIT ${POLL_LIMIT}`;
   const res = await query(soql);
   summary.polled = true;
   summary.found = res.records.length;
@@ -85,8 +90,24 @@ export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now 
     summary.inserted = ins?.length ?? 0;
   }
 
+  // THE WATERMARK ONLY MOVES PAST WHAT WE ACTUALLY READ.
+  //
+  // The query takes 200 at a time, ordered oldest first. If it came back FULL
+  // there are almost certainly more behind it, and setting the watermark to
+  // `now` would step over every one of them — permanently, because nothing
+  // looks backwards. A Data Loader import, a Flow backfill, or catching up
+  // after an outage would silently lose every lead past the two-hundredth.
+  //
+  // So on a full batch the watermark goes to the newest lead we read, and the
+  // next tick carries on from there. The 5-minute overlap re-reads a handful,
+  // which the unique index makes free.
+  const full = res.records.length >= POLL_LIMIT;
+  const newest = res.records[res.records.length - 1]?.CreatedDate;
+  const watermark = full && newest ? new Date(newest) : now;
+  summary.more = full;
+
   await sb.from("sf_poll_state").update({
-    last_polled_at: now.toISOString(), last_run_found: summary.found, updated_at: now.toISOString(),
+    last_polled_at: watermark.toISOString(), last_run_found: summary.found, updated_at: now.toISOString(),
   }).eq("id", true);
 
   const processed = await processPendingLeads(sb, now, query);
