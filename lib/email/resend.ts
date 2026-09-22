@@ -108,9 +108,43 @@ export async function sendEmail(input: ResendSendInput): Promise<ResendSendResul
     channel === "commercial"
       ? (process.env.COMMERCIAL_RESEND_API_KEY || process.env.RESEND_API_KEY)
       : process.env.RESEND_API_KEY;
+  /**
+   * THE COMMERCIAL CHANNEL IS TOMCO'S. It does not fall back to a Precision
+   * Painting address.
+   *
+   * Karan, 2026-09-21: "can we change all tomco emails to go from tomco, like
+   * even field ops." Yes — and this is the one place that decides it. Every
+   * commercial email that doesn't pass an explicit `from` resolves here: work
+   * orders and schedules to crew, bell notifications, the daily digest, the AR
+   * email. All of them were coming from deals@orders.precisionpaintingplus.net.
+   *
+   * That address predates tomcopainting.com being verified in Resend (2026-09-17).
+   * It was the right call when the only verified domain belonged to PPP — the
+   * original reason for a separate commercial channel was deliverability
+   * isolation, so a commercial spam complaint couldn't hurt residential
+   * sending reputation. A SEPARATE DOMAIN gives strictly better isolation than
+   * a subdomain of the same one, so moving to Tomco improves that and fixes
+   * the branding at the same time.
+   *
+   * The Tomco default deliberately wins over COMMERCIAL_RESEND_FROM_ADDRESS,
+   * which still holds the old PPP pool address in Vercel. That env var is now
+   * legacy: point it at a Tomco address or delete it. An explicit `input.from`
+   * (invoices → finance@, proposals/change-orders/e-sign → estimating@) still
+   * takes precedence over everything here.
+   *
+   * WHY finance@ AND NOT A PRETTIER NAME like office@ or noreply@: Resend
+   * verifies the DOMAIN, so any @tomcopainting.com address would deliver — but
+   * a mailbox that doesn't exist bounces every reply, and crew reply to work
+   * orders. finance@ is a real, monitored inbox. Swap it for a dedicated ops
+   * address the moment one exists, via COMMERCIAL_TOMCO_FROM_ADDRESS.
+   */
+  const TOMCO_DEFAULT_FROM = "Tomco Painting <finance@tomcopainting.com>";
   const defaultFrom =
     channel === "commercial"
-      ? (process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS)
+      ? (process.env.COMMERCIAL_TOMCO_FROM_ADDRESS ||
+         TOMCO_DEFAULT_FROM ||
+         process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
+         process.env.RESEND_FROM_ADDRESS)
       : process.env.RESEND_FROM_ADDRESS;
   if (!apiKey) {
     const msg = `${channel === "commercial" ? "COMMERCIAL_RESEND_API_KEY (or RESEND_API_KEY)" : "RESEND_API_KEY"} not set — cannot send email`;

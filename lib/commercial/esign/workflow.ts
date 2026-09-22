@@ -176,9 +176,7 @@ async function emailSigner(input: {
    * sign. Same defect Brendan reported on an invoice, 2026-09-21.
    */
   const fromAddr =
-    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
-    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
-    process.env.RESEND_FROM_ADDRESS;
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const to = input.request.signer_email;
   const bcc = PROPOSAL_COPY_EMAILS.filter((e) => e !== to);
   const { sendEmail } = await import("@/lib/email/resend");

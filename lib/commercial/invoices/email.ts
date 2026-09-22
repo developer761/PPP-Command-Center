@@ -165,9 +165,7 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
    * starts sending from it with no code change.
    */
   const fromAddr =
-    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
-    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
-    process.env.RESEND_FROM_ADDRESS;
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = INVOICE_COPY_EMAILS.length > 0 ? INVOICE_COPY_EMAILS : oc.email || undefined;
   const bcc = INVOICE_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);

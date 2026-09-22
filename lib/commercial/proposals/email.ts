@@ -132,9 +132,7 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
    * is verified.
    */
   const fromAddr =
-    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
-    process.env.COMMERCIAL_RESEND_FROM_ADDRESS ||
-    process.env.RESEND_FROM_ADDRESS;
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   // Replies from the GC go to Brendan (approver) + the ops inbox; fall back to
   // the company/actor address only if the copy list is somehow empty.

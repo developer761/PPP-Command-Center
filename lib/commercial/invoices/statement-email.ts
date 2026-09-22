@@ -115,10 +115,9 @@ export async function emailStatementToGc(
      * nobody had hit it only because no statement had gone out since the
      * per-type addresses were configured on 2026-09-17.
      *
-     * Falls back to the pool, so an unset address still sends.
+     * Unset falls through to the Tomco channel default in resend.ts.
      */
-    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS ||
-    process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = STATEMENT_COPY_EMAILS.length > 0 ? STATEMENT_COPY_EMAILS : oc.email || undefined;
   const bcc = STATEMENT_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);

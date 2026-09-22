@@ -37,6 +37,25 @@ const FILES: Array<[string, string, string]> = [
   ["lib/commercial/esign/workflow.ts", "COMMERCIAL_PROPOSAL_FROM_ADDRESS", "the signature request"],
 ];
 
+
+/**
+ * Source with COMMENTS STRIPPED.
+ *
+ * Every positional or "must not contain" assertion in this file has to run
+ * against code. The docblocks here deliberately quote the old PPP address to
+ * explain what went wrong, so a naive `not.toContain("precisionpaintingplus")`
+ * goes red against a correct file — which it did, and it is the third time
+ * today a check in this repo matched its own explanation. Assert on code.
+ */
+function codeOf(path: string): string {
+  const raw = readFileSync(join(process.cwd(), path), "utf8");
+  return raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")   // block comments
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("//"))
+    .join("\n");
+}
+
 describe("customer-facing commercial email", () => {
   for (const [path, expected, what] of FILES) {
     const src = readFileSync(join(process.cwd(), path), "utf8");
@@ -45,20 +64,28 @@ describe("customer-facing commercial email", () => {
       expect(src, `${path} must read ${expected}`).toContain(expected);
     });
 
-    it(`${what} reads the per-type address BEFORE the shared pool`, () => {
-      // Order is the whole fix. Reading the pool first means the per-type
-      // address is dead config that looks set.
-      const perType = src.indexOf(expected);
-      const pool = src.indexOf("COMMERCIAL_RESEND_FROM_ADDRESS");
-      expect(perType, `${path}: ${expected} not found`).toBeGreaterThan(-1);
-      if (pool > -1) {
-        expect(perType, `${path}: pool address is consulted first`).toBeLessThan(pool);
-      }
+    it(`${what} never SENDS from the Precision Painting pool domain`, () => {
+      /**
+       * Scoped to the sending domain on purpose. The first version of this
+       * banned "precisionpaintingplus" anywhere in the file and went red on
+       * four correct files: the copy lists legitimately BCC
+       * developer@precisionpaintingplus.net (the ops inbox keeps a copy) and
+       * e-sign legitimately falls back to hub.precisionpaintingplus.net for
+       * the app origin. Neither is a SENDER. A check that cannot tell a
+       * recipient from a sender would just get deleted the first time it was
+       * inconvenient.
+       */
+      expect(codeOf(path), `${path} sends from the PPP pool`).not.toMatch(/orders\.precisionpaintingplus\.net/);
     });
 
-    it(`${what} still falls back, so an unset address cannot stop the send`, () => {
-      // Not sending is worse than sending from the wrong name.
-      expect(src).toMatch(/RESEND_FROM_ADDRESS/);
+    it(`${what} has NO Precision Painting fallback`, () => {
+      // Karan 2026-09-21: "can we change all tomco emails to go from tomco."
+      // These used to end their chain at COMMERCIAL_RESEND_FROM_ADDRESS, which
+      // holds the old PPP pool address — so an unset per-type address silently
+      // put Precision Painting on a Tomco document. They now read only the
+      // per-type address; unset falls through to the commercial channel
+      // default in lib/email/resend.ts, which is Tomco's.
+      expect(codeOf(path), `${path} still chains to the PPP pool`).not.toContain("COMMERCIAL_RESEND_FROM_ADDRESS");
     });
   }
 
@@ -74,5 +101,43 @@ describe("customer-facing commercial email", () => {
       if (!hasPerType) offenders.push(path);
     }
     expect(offenders, `these send to customers from the shared pool: ${offenders.join(", ")}`).toEqual([]);
+  });
+});
+
+/**
+ * …and the CHANNEL default, which is what everything else uses.
+ *
+ * Work orders and schedules to crew, bell notifications, the daily digest and
+ * the AR email pass no `from` at all, so they resolve to the commercial
+ * channel default. That default was the PPP pool, which is why a subcontractor
+ * received a Tomco work order from precisionpaintingplus.net.
+ */
+describe("the commercial channel default", () => {
+  const resend = readFileSync(join(process.cwd(), "lib/email/resend.ts"), "utf8");
+  const resendCode = codeOf("lib/email/resend.ts");
+
+  it("is a Tomco address", () => {
+    expect(resend).toMatch(/TOMCO_DEFAULT_FROM\s*=\s*"[^"]*@tomcopainting\.com>"/);
+  });
+
+  it("wins over the legacy PPP pool env var", () => {
+    // COMMERCIAL_RESEND_FROM_ADDRESS still holds the old PPP address in
+    // Vercel. If it were read first, this whole change would be inert.
+    const block = resendCode.slice(resendCode.indexOf("const TOMCO_DEFAULT_FROM"), resendCode.indexOf("if (!apiKey)"));
+    const tomco = block.indexOf("TOMCO_DEFAULT_FROM ||");
+    const pool = block.indexOf("COMMERCIAL_RESEND_FROM_ADDRESS");
+    expect(tomco).toBeGreaterThan(-1);
+    if (pool > -1) expect(tomco, "the PPP pool is consulted first").toBeLessThan(pool);
+  });
+
+  it("still lets an explicit per-document sender win", () => {
+    // invoices → finance@, proposals/COs/e-sign → estimating@.
+    expect(resend).toMatch(/const from = input\.from \?\? defaultFrom/);
+  });
+
+  it("leaves the RESIDENTIAL channel alone", () => {
+    // Precision Painting's own mail must keep its own sender.
+    const block = resendCode.slice(resendCode.indexOf("const defaultFrom"), resendCode.indexOf("if (!apiKey)"));
+    expect(block).toMatch(/:\s*process\.env\.RESEND_FROM_ADDRESS;/);
   });
 });

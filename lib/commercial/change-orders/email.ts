@@ -122,10 +122,9 @@ export async function emailChangeOrderToGc(
      * sender Brendan reported on an invoice on 2026-09-21.
      *
      * If Tomco would rather these came from finance@, this is a one-line
-     * change to COMMERCIAL_INVOICE_FROM_ADDRESS. Falls back to the pool.
+     * change to COMMERCIAL_INVOICE_FROM_ADDRESS. Unset falls through to the Tomco channel default.
      */
-    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS ||
-    process.env.COMMERCIAL_RESEND_FROM_ADDRESS || process.env.RESEND_FROM_ADDRESS;
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = CO_COPY_EMAILS.length > 0 ? CO_COPY_EMAILS : oc.email || undefined;
   const bcc = CO_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail);
