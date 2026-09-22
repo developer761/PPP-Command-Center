@@ -1,0 +1,201 @@
+/**
+ * Kate's rules, with the evidence attached.
+ *
+ * Her ask, 2026-09-22: "a section in the connect hub for the established bot
+ * rules + having a change/decision history for them… and we could have a
+ * section for tagged conversations to see the good vs the bad of that rule +
+ * determine if it needs updating."
+ *
+ * The pieces already existed separately and had never been joined: the rules
+ * in sms_class_a_rules, her per-turn findings in sms_example_findings, and the
+ * conversations behind them in sms_training_examples. A rule code is the join.
+ *
+ * ── THE RATER-ONLY COLUMN, ON A HUMAN SCREEN ────────────────────────────
+ *
+ * Her guidance column is headed "RATER ONLY — NEVER give this to a bot". That
+ * is about the MODEL, not about people: she is the rater, and the guidance is
+ * written for whoever is grading. It belongs here and nowhere near a prompt.
+ *
+ * The separation holds because it is structural rather than remembered — the
+ * notes live in their own table, class-a-rules-db.ts (which feeds the prompt)
+ * does not know that table exists, and this module reads both on purpose.
+ * Two loaders, two audiences, no field anybody has to remember to omit.
+ */
+import { messagingDb, selectAll } from "./db";
+import type { ClassARule } from "./class-a-rules";
+
+export type RuleCounts = { fellShort: number; didWell: number; conversations: number };
+
+export type RuleOverview = ClassARule & {
+  shortName: string | null;
+  counts: RuleCounts;
+};
+
+type FindingRow = {
+  code: string | null;
+  kind: string | null;
+  example_id: string;
+};
+
+const asRule = (r: Record<string, unknown>): ClassARule & { shortName: string | null } => ({
+  code: r.code as string,
+  statement: r.statement as string,
+  ruleCard: (r.rule_card as string | null) ?? null,
+  correctiveAction: (r.corrective_action as string | null) ?? null,
+  severity: (r.severity as "critical" | "mild" | null) ?? null,
+  status: (r.status as "live" | "retired") ?? "live",
+  phrasingOnly: !!r.phrasing_only,
+  binds: r.binds !== false,
+  source: (r.source as string | null) ?? null,
+  measuredBreaches: (r.measured_breaches as string | null) ?? null,
+  changeType: (r.change_type as string | null) ?? null,
+  lastModified: (r.last_modified as string | null) ?? null,
+  lastReRated: (r.last_re_rated as string | null) ?? null,
+  shortName: (r.short_name as string | null) ?? null,
+});
+
+const RULE_COLUMNS =
+  "code, statement, rule_card, corrective_action, severity, status, phrasing_only, " +
+  "binds, source, measured_breaches, change_type, last_modified, last_re_rated, short_name";
+
+/**
+ * Every rule, with how often it has actually been broken.
+ *
+ * Counted across ALL findings rather than only approved conversations: this is
+ * a measure of the bot's behaviour, not a corpus the bot learns from, and
+ * excluding unapproved gradings would undercount the very thing Kate graded.
+ */
+export async function loadRuleOverview(): Promise<RuleOverview[]> {
+  const sb = messagingDb();
+
+  const [rules, findings] = await Promise.all([
+    selectAll<Record<string, unknown>>(
+      // Cast at the boundary: RULE_COLUMNS is a variable rather than a
+      // literal, so supabase-js cannot infer the row shape from it. asRule
+      // below is where the shape is actually asserted.
+      (a, b) => sb.from("sms_class_a_rules").select(RULE_COLUMNS).order("code").range(a, b) as never,
+      "reading the rules"
+    ),
+    selectAll<FindingRow>(
+      (a, b) => sb.from("sms_example_findings")
+        .select("code, kind, example_id").not("code", "is", null).order("id").range(a, b),
+      "reading findings"
+    ),
+  ]);
+
+  const counts = new Map<string, { fellShort: number; didWell: number; convos: Set<string> }>();
+  for (const f of findings) {
+    if (!f.code) continue;
+    const c = counts.get(f.code) ?? { fellShort: 0, didWell: 0, convos: new Set<string>() };
+    if (f.kind === "did_well") c.didWell++;
+    else c.fellShort++;
+    c.convos.add(f.example_id);
+    counts.set(f.code, c);
+  }
+
+  return rules.map((r) => {
+    const rule = asRule(r);
+    const c = counts.get(rule.code);
+    return {
+      ...rule,
+      counts: {
+        fellShort: c?.fellShort ?? 0,
+        didWell: c?.didWell ?? 0,
+        conversations: c?.convos.size ?? 0,
+      },
+    };
+  });
+}
+
+/**
+ * MOST BROKEN FIRST.
+ *
+ * A list of 44 rules in code order is a reference document. Ordered by how
+ * often the bot actually breaks each one, it is a to-do list — and A23 sitting
+ * at the top with 618 breaches is the single most useful sentence on the page.
+ * Retired rules go last whatever their history, because nobody is fixing them.
+ */
+export function rankRules(rules: RuleOverview[]): RuleOverview[] {
+  return [...rules].sort((a, b) => {
+    if ((a.status === "retired") !== (b.status === "retired")) return a.status === "retired" ? 1 : -1;
+    if (b.counts.fellShort !== a.counts.fellShort) return b.counts.fellShort - a.counts.fellShort;
+    return a.code.localeCompare(b.code, undefined, { numeric: true });
+  });
+}
+
+export type RuleFinding = {
+  id: string;
+  exampleId: string;
+  turnOrdinal: number | null;
+  kind: "fell_short" | "did_well";
+  severity: "mild" | "medium" | "critical" | null;
+  what: string;
+  shouldHave: string | null;
+  /** The conversation's overall grade, for context on a single finding. */
+  conduct: "good" | "mixed" | "bad" | null;
+};
+
+export type RuleDetail = {
+  rule: RuleOverview;
+  /** RATER ONLY — never passed to a model. See the note at the top. */
+  ratingGuidance: string | null;
+  history: string | null;
+  fellShort: RuleFinding[];
+  didWell: RuleFinding[];
+};
+
+/** How many examples of each kind one rule page shows. */
+export const EXAMPLES_PER_KIND = 25;
+
+export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
+  const sb = messagingDb();
+
+  const { data: row, error } = await sb
+    .from("sms_class_a_rules").select(RULE_COLUMNS).eq("code", code.toUpperCase()).maybeSingle() as unknown as
+      { data: Record<string, unknown> | null; error: { message: string } | null };
+  if (error) throw new Error(`could not read rule ${code}: ${error.message}`);
+  if (!row) return null;
+
+  const [{ data: notes }, findingsRes] = await Promise.all([
+    sb.from("sms_class_a_rule_notes").select("rating_guidance, history").eq("code", row.code).maybeSingle(),
+    sb.from("sms_example_findings")
+      .select("id, example_id, turn_ordinal, kind, severity, what, should_have, created_at")
+      .eq("code", row.code)
+      .order("created_at", { ascending: false })
+      .limit(EXAMPLES_PER_KIND * 4),
+  ]);
+  if (findingsRes.error) throw new Error(`could not read findings: ${findingsRes.error.message}`);
+  const findings = findingsRes.data ?? [];
+
+  // The grade of the conversation each finding came from, so a reader can tell
+  // a lone slip in a good conversation from one of many in a bad one.
+  const ids = [...new Set(findings.map((f) => f.example_id as string))];
+  const conductOf = new Map<string, "good" | "mixed" | "bad" | null>();
+  if (ids.length) {
+    const { data: exs } = await sb.from("sms_training_examples").select("id, conduct").in("id", ids);
+    for (const e of exs ?? []) conductOf.set(e.id as string, (e.conduct as "good" | "mixed" | "bad" | null) ?? null);
+  }
+
+  const shape = (f: Record<string, unknown>): RuleFinding => ({
+    id: f.id as string,
+    exampleId: f.example_id as string,
+    turnOrdinal: (f.turn_ordinal as number | null) ?? null,
+    kind: f.kind === "did_well" ? "did_well" : "fell_short",
+    severity: (f.severity as RuleFinding["severity"]) ?? null,
+    what: (f.what as string) ?? "",
+    shouldHave: (f.should_have as string | null) ?? null,
+    conduct: conductOf.get(f.example_id as string) ?? null,
+  });
+
+  const all = findings.map(shape);
+  const counts = await loadRuleOverview();
+  const withCounts = counts.find((r) => r.code === row.code);
+
+  return {
+    rule: withCounts ?? { ...asRule(row), counts: { fellShort: 0, didWell: 0, conversations: 0 } },
+    ratingGuidance: (notes?.rating_guidance as string | null) ?? null,
+    history: (notes?.history as string | null) ?? null,
+    fellShort: all.filter((f) => f.kind === "fell_short").slice(0, EXAMPLES_PER_KIND),
+    didWell: all.filter((f) => f.kind === "did_well").slice(0, EXAMPLES_PER_KIND),
+  };
+}
