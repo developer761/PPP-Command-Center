@@ -143,6 +143,9 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
     case "unresolved_merge_field":
     case "no_sender_address":
     case "channel_not_supported":
+    // The same body is the same length in an hour. Somebody has to look at why
+    // the agent produced eighteen texts' worth of prose.
+    case "too_long":
       // Retrying cannot fix any of these. Surface them instead of hiding them
       // in a queue — a placeholder nobody defined needs somebody to define it.
       return "fail";

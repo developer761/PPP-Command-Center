@@ -117,17 +117,26 @@ export type ThreadMessage = {
 
 export async function loadThread(id: string) {
   const sb = messagingDb();
-  const { data: conv } = await sb
+  const { data: conv, error } = await sb
     .from("sms_conversations")
     .select("id, customer_phone, customer_name, customer_email, state, outcome, owning_agent, owning_user_id, takeover_reason, takeover_at, consent_basis, sf_lead_id, sf_opportunity_id, created_at, sms_sub_accounts(name, phone_e164)")
     .eq("id", id)
     .maybeSingle();
+  // A FAILED READ IS NOT A MISSING CONVERSATION. The error was discarded, so
+  // any blip returned null, the page called notFound(), and a person was shown
+  // "this conversation does not exist" about a real customer's thread.
+  // Throwing reaches app/messaging/error.tsx, which says the screen could not
+  // load — true, and retryable.
+  if (error) throw new Error(`could not load the conversation: ${error.message}`);
   if (!conv) return null;
-  const { data: msgs } = await sb
+  const { data: msgs, error: msgErr } = await sb
     .from("sms_messages")
     .select("id, direction, channel, body, subject, sent_by_agent, delivery_status, created_at")
     .eq("conversation_id", id)
     .order("created_at", { ascending: true });
+  // Likewise: "No messages yet" over a thread that has messages is a lie the
+  // reader has no way to catch.
+  if (msgErr) throw new Error(`could not load the messages: ${msgErr.message}`);
   const ws = conv.sms_sub_accounts as unknown as { name: string; phone_e164: string | null } | null;
   return {
     conversation: { ...conv, workspace_name: ws?.name ?? "—", workspace_phone: ws?.phone_e164 ?? null },
@@ -791,8 +800,11 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
  */
 export async function integrityChecks() {
   const sb = messagingDb();
-  const [{ count: unrouted }, { count: failedSends }, { count: staleClaims }, { count: numberless }] =
-    await Promise.all([
+  // THE ONE SCREEN THAT MUST NOT FAIL QUIETLY. Every count here discarded its
+  // error, so a failed read rendered "Nothing stuck. 0 numbers suppressed." —
+  // an all-clear produced by the check itself being broken, which is the exact
+  // shape of reassurance nobody should ever be given.
+  const results = await Promise.all([
       sb.from("sf_lead_inbound").select("*", { count: "exact", head: true }).eq("status", "triage"),
       sb.from("sms_scheduled_actions").select("*", { count: "exact", head: true }).eq("state", "failed"),
       sb.from("sms_scheduled_actions").select("*", { count: "exact", head: true })
@@ -800,9 +812,14 @@ export async function integrityChecks() {
       sb.from("sms_sub_accounts").select("*", { count: "exact", head: true })
         .eq("is_active", true).is("phone_e164", null),
     ]);
+  for (const r of results) {
+    if (r.error) throw new Error(`could not run the integrity checks: ${r.error.message}`);
+  }
+  const [{ count: unrouted }, { count: failedSends }, { count: staleClaims }, { count: numberless }] = results;
 
-  const { count: suppressed } = await sb.from("sms_opt_outs")
+  const { count: suppressed, error: supErr } = await sb.from("sms_opt_outs")
     .select("*", { count: "exact", head: true }).is("opted_in_at", null);
+  if (supErr) throw new Error(`could not count suppressions: ${supErr.message}`);
 
   return {
     unroutedLeads: unrouted ?? 0,

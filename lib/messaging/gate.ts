@@ -144,6 +144,19 @@ export type SendRequest = {
   now?: Date;
 };
 
+/**
+ * The longest text the gate will let out.
+ *
+ * Seven segments. Deliberately generous: PPP's own longest campaign opener is
+ * around 280 characters, the editor already warns above 480, and the tone
+ * rules ask for something that reads like texting. Anything past this is not a
+ * long message, it is a runaway — the model emitting its full 700-token budget
+ * as prose, which is about 2,800 characters and eighteen billed texts.
+ *
+ * A rail catches the catastrophe. Style is somebody else's job.
+ */
+export const MAX_SMS_CHARS = 1000;
+
 export type GateRefusal =
   | "suppressed"        // they told us to stop. Never retried, never deferred.
   | "quiet_hours"       // legal later — the caller should reschedule.
@@ -156,6 +169,7 @@ export type GateRefusal =
   | "no_sender_address"       // nowhere for an email to come FROM
   | "channel_not_supported"   // an email step reaching an SMS-only transport;
   | "suppression_list_empty"  // nothing loaded to check against — see GateDeps
+  | "too_long"                // a text nobody meant to send — see MAX_SMS_CHARS
 
 export type GateResult =
   /** `body` is what was ACTUALLY sent, which may differ from what was asked:
@@ -183,6 +197,26 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   if (channel === "sms" && !ws.phone_e164) return { ok: false, reason: "no_workspace_number" };
   if (channel === "email" && !req.toEmail) return { ok: false, reason: "no_email_address" };
   if (!body.trim()) return { ok: false, reason: "empty_body" };
+
+  // A TEXT NOBODY MEANT TO SEND.
+  //
+  // Nothing capped the agent's output. runAgentTurn allows max_tokens: 700,
+  // which is roughly 2,800 characters — about eighteen texts, billed as
+  // eighteen, arriving on a handset as a wall. For the answer_question intent
+  // the model's own prose IS the whole message, so there was no template
+  // holding it down either.
+  //
+  // This is a RAIL, not a style rule: it is set well above anything a real
+  // message reaches, because brevity belongs to the tone rules and the editor
+  // warning at 480 characters, and a gate that enforced taste would start
+  // refusing legitimate messages. What it catches is the runaway — the case
+  // where something has clearly gone wrong and the customer should not be the
+  // one to find out.
+  //
+  // SMS only. An email is meant to be longer than a text.
+  if (channel === "sms" && body.length > MAX_SMS_CHARS) {
+    return { ok: false, reason: "too_long" };
+  }
   // A placeholder that survived to here is a field nobody defined. Refusing is
   // the only safe answer: a first message reading "Call us at
   // {{workspace_phone}}" is visibly broken, is the first thing that customer

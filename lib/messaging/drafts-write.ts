@@ -42,7 +42,15 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
 
-  const { data: rows } = await sb
+  // THROWS RATHER THAN RETURNING AN EMPTY QUEUE.
+  //
+  // This discarded its error, so any failure — a timeout, a 5xx, a dropped
+  // connection — returned [] and the review screen rendered "Nothing waiting —
+  // every reply has been dealt with" over a queue of customers waiting for an
+  // answer. Autosend is off everywhere, so this IS the path every reply takes:
+  // a lie here is the most expensive one in the product. app/messaging/error.tsx
+  // catches this and says the screen could not load, which is the truth.
+  const { data: rows, error } = await sb
     .from("sms_drafts")
     .select("id, conversation_id, answers_message_id, intent, confidence, reasoning, body, review_reason, created_at, sms_conversations(customer_phone, customer_name, sms_sub_accounts(name))")
     .eq("state", "pending")
@@ -51,6 +59,7 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
     .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
     .order("created_at")
     .limit(limit);
+  if (error) throw new Error(`could not load the review queue: ${error.message}`);
 
   const ids = (rows ?? []).map((r) => r.conversation_id);
   // The newest inbound per conversation, so the screen can tell whether a

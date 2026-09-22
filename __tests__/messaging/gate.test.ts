@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { gatedSend, type GateWorkspace, type SendRequest } from "@/lib/messaging/gate";
+import { gatedSend, MAX_SMS_CHARS, type GateWorkspace, type SendRequest } from "@/lib/messaging/gate";
+import { classifyRefusal } from "@/lib/messaging/scheduler";
 import { LoggingTransport } from "@/lib/messaging/transport";
 import type { E164 } from "@/lib/messaging/phone";
 
@@ -191,5 +192,67 @@ describe("gatedSend — email is a separate suppression list", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("no_email_address");
     expect(d.transport.sent).toHaveLength(0);
+  });
+});
+
+/**
+ * A TEXT NOBODY MEANT TO SEND.
+ *
+ * Nothing capped the agent's output. runAgentTurn allows max_tokens: 700 —
+ * roughly 2,800 characters, about eighteen texts, billed as eighteen and
+ * arriving on a handset as a wall. For the answer_question intent the model's
+ * own prose IS the entire message, so no template held it down either.
+ */
+describe("the runaway message rail", () => {
+  const long = (n: number) => "a".repeat(n);
+
+  it("lets a normal reply through", async () => {
+    const res = await gatedSend(
+      req({ body: "Sounds good, what is the address?" }),
+      deps()
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("lets a long-but-real campaign opener through", async () => {
+    // PPP's actual opener is around 280 characters. A rail that refused this
+    // would be enforcing taste, which is the editor's job and the tone rules'.
+    const res = await gatedSend(
+      req({ body: long(480) }),
+      deps()
+    );
+    expect(res.ok).toBe(true);
+  });
+
+  it("refuses the full 700-token runaway", async () => {
+    const res = await gatedSend(
+      req({ body: long(2800) }),
+      deps()
+    );
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toBe("too_long");
+  });
+
+  it("refuses at the boundary and not one character before it", async () => {
+    const at = await gatedSend(req({ body: long(MAX_SMS_CHARS) }), deps());
+    expect(at.ok).toBe(true);
+    const over = await gatedSend(req({ body: long(MAX_SMS_CHARS + 1) }), deps());
+    expect(over.ok).toBe(false);
+  });
+
+  it("does not cap an email, which is meant to be longer than a text", async () => {
+    const res = await gatedSend(
+      req({
+        body: long(2800), channel: "email", toEmail: "someone@example.com",
+        fromEmail: "ppp@example.com", subject: "Your free estimate",
+      }),
+      deps()
+    );
+    // Refused for some other reason or sent, but never for length.
+    expect(res.ok === false && res.reason).not.toBe("too_long");
+  });
+
+  it("is a failure, not a retry — the body is the same length in an hour", () => {
+    expect(classifyRefusal({ ok: false, reason: "too_long" })).toBe("fail");
   });
 });
