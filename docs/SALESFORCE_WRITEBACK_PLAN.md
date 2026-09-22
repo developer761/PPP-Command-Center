@@ -179,10 +179,56 @@ generic product **"Other"**, qty 1, unit $500, with the real $21,328.40 in `Gran
 That is why every Tomco opportunity shows `Amount = 500`. **So there is no product
 mapping to do** — we reproduce the shape Tomco already uses.
 
+### ✅ Where the money actually goes — answered 2026-09-22 in the sandbox
+
+`Quote.GrandTotal__c` **cannot be written.** It is `calculated=true,
+createable=false, updateable=false`. So "put the contract in GrandTotal__c"
+was not possible, and the design would have failed on the first write.
+
+The money goes on the **line item**, and the field is writable:
+
+| QuoteLineItem field | Value |
+|---|---|
+| `PricebookEntryId` | the generic **"Other"** entry (`01uKf000003rzzJIAQ` in production) |
+| `Quantity` / `UnitPrice` | 1 / the pricebook's own 500 — placeholders, they do not drive the total |
+| **`PriceOverride__c`** | **`true`** |
+| **`PriceOverrideAmount__c`** | **the contract value, pre-tax** |
+| `AreaLabel__c` | the job/area name |
+
+That flows `PriceOverrideAmount__c` → `TotalPrice__c` → the quote's
+`Subtotal__c` / `QuotedSubtotal__c` → the work order's
+`Quoted_Subtotal_with_Change_Order__c`, which is the contract figure the
+platform reconciles against.
+
+**Verified against 10 real Tomco quotes:** every one has `PriceOverride__c =
+true` on every line, and on 7 the overrides sum exactly to `GrandTotal__c`. The
+other 3 differ by precisely **8.75%** (1,000 → 1,087.50; 1,850 → 2,011.88) —
+Suffolk County sales tax. So `GrandTotal__c` is the **with-tax** total and
+`QuotedSubtotal__c` is pre-tax. **The contract belongs in the pre-tax
+override**, which matters because Katie's cascade doc has
+`Opportunity.TotalAmount__c ← SyncedQuote.GrandTotal__c` — i.e. `TotalAmount__c`
+carries tax, while the contract figure does not. Two different numbers that
+look alike.
+
+### Sandbox access — working
+
+`precisionplus--dev.sandbox.my.salesforce.com` (org `00DDG00000N95Ji2AJ`), via
+username + password + security token. **It is a developer sandbox, not a
+copy**: 28 opportunities, 29 work orders, 13 accounts against production's
+95k/95k/92k. Good enough to test the mechanics; useless for testing visibility.
+
+**Q4 is answered.** That Tomco-profile user CAN see the record types we need —
+Account `[Customer, Tomco]`, Opportunity `[New, Tomco]`, Quote `[Tomco Quote]`,
+WorkOrder `[Tomco]`. In production our current login reported *no* Work Order
+record types, so Katie was right that Brendan's user has the access ours lacks.
+
+**Still unanswered: can a Tomco user see the whole org?** The sandbox has 28
+opportunities, so "this user can see all of them" proves nothing about
+production's 95,434. That question still decides whether the shared connection
+can run as Brendan without breaking the residential dashboards.
+
 ### Still to confirm in the sandbox
 
-- Is `GrandTotal__c` **writable**, or derived? The whole design hinges on getting the
-  contract value in there.
 - Which **stage** to create the opportunity in before the quote approves.
 - Does the quote need to pass through **`Quote Sent`** first, or can it go straight to
   `Approved`? (Values: Draft | Quote Sent | Approved | Rejected.)
