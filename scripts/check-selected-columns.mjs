@@ -21,7 +21,9 @@
  *
  * ── What this does ────────────────────────────────────────────────────────
  *
- * Finds every `.from("table")…select("a, b, c")` pair with LITERAL strings,
+ * Finds every `.from("table")…select("a, b, c")` pair with LITERAL strings —
+ * plus the `.eq`/`.order`/`.in`/… columns in the same chain, which fail the
+ * request in exactly the same way —
  * then asks the live database to select those columns with `limit(0)` — no
  * rows read, no data moved, and it still fails on an unknown column. One query
  * per table; on failure it re-probes column by column to name the culprit.
@@ -100,6 +102,27 @@ for (const file of files) {
     const line = src.slice(0, m.index).split("\n").length;
     if (!usages.has(table)) usages.set(table, new Map());
     for (const c of cols) if (!usages.get(table).has(c)) usages.get(table).set(c, `${file}:${line}`);
+
+    // FILTER AND ORDER COLUMNS TOO.
+    //
+    // `.order("created_at")` on a table whose column is `at` fails exactly the
+    // same way a bad select does — PostgREST rejects the request and the
+    // caller gets null. Checking only `.select()` would have missed half of
+    // the repairs bug: it named created_at in BOTH the select and the order,
+    // and only the select was covered.
+    //
+    // Scanned from the end of the select to the end of the statement, so the
+    // filters belong to this chain and not the next one.
+    // Cut at the next `.from(` as well as the next `;`. Inside a Promise.all
+    // there is NO semicolon between chains, so scanning to the next statement
+    // let one query's filters be attributed to the previous query's table —
+    // it reported commercial_opportunities.opportunity_id, which is really
+    // the aia_applications filter sitting on the next line.
+    const chainTail = after.slice(0, 600).split(";")[0].split(".from(")[0];
+    for (const f of chainTail.matchAll(/\.(?:eq|neq|gt|gte|lt|lte|like|ilike|is|in|contains|order)\(\s*"([a-z0-9_]+)"/g)) {
+      const col = f[1];
+      if (!usages.get(table).has(col)) usages.get(table).set(col, `${file}:${line}`);
+    }
   }
 }
 
