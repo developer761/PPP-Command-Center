@@ -93,13 +93,18 @@ export async function findContractRepairs(): Promise<RepairRow[]> {
 
   const { data: logRows } = await sb
     .from("commercial_audit_log")
-    .select("row_id, before_json, after_json, created_at")
+    // The timestamp column on commercial_audit_log is `at`, not `created_at`.
+    // Selecting a column that does not exist made PostgREST reject the whole
+    // query, so this returned nothing and "recover the signed contract from
+    // the audit log" silently found zero repairs — with 548 matching rows
+    // sitting in the table.
+    .select("row_id, before_json, after_json, at")
     .eq("table_name", "commercial_proposals")
     .eq("action", "update")
-    .order("created_at", { ascending: false })
+    .order("at", { ascending: false })
     .limit(2000);
 
-  type LogRow = { row_id: string; before_json: Record<string, unknown> | null; after_json: Record<string, unknown> | null; created_at: string };
+  type LogRow = { row_id: string; before_json: Record<string, unknown> | null; after_json: Record<string, unknown> | null; at: string };
   const wonToSuperseded = new Map<string, { proposalId: string; cents: number; at: string }>();
   for (const r of (logRows ?? []) as LogRow[]) {
     const b = r.before_json ?? {};
@@ -110,7 +115,7 @@ export async function findContractRepairs(): Promise<RepairRow[]> {
     wonToSuperseded.set(oppId, {
       proposalId: r.row_id,
       cents: Number(b.total_cents) || 0,
-      at: String(b.approved_at ?? r.created_at),
+      at: String(b.approved_at ?? r.at),
     });
   }
 

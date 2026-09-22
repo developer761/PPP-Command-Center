@@ -27,7 +27,8 @@
     "check:sf-picklists": "node --import ./scripts/ts-resolve-register.mjs scripts/check-sf-picklists.mjs",
     "verify:drafts": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-drafts-e2e.mjs",
     "verify:workflow": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-workflow-e2e.mjs",
-    "verify:campaign-edit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-campaign-edit-e2e.mjs"
+    "verify:campaign-edit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-campaign-edit-e2e.mjs",
+    "check:columns": "node --env-file=.env.local scripts/check-selected-columns.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

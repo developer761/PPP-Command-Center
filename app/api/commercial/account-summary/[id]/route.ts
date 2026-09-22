@@ -36,7 +36,12 @@ export async function GET(
 
   const { data: account } = await sb
     .from("commercial_accounts")
-    .select("id, company_name, city, state, industry, account_seq")
+    // `city`/`state` are not columns on this table — the address fields are
+    // billing_*/site_*. PostgREST rejects the WHOLE select on an unknown
+    // column, so `account` came back null and this route answered 404 for
+    // EVERY account, which meant the hover card never worked once. Billing is
+    // the account's own address; site addresses vary per job.
+    .select("id, company_name, billing_city, billing_state, industry, account_seq")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -84,8 +89,8 @@ export async function GET(
   return NextResponse.json({
     id: account.id,
     company_name: (account as { company_name: string }).company_name,
-    city: (account as { city: string | null }).city,
-    state: (account as { state: string | null }).state,
+    city: (account as { billing_city: string | null }).billing_city,
+    state: (account as { billing_state: string | null }).billing_state,
     industry: (account as { industry: string | null }).industry,
     account_seq: (account as { account_seq: number | null }).account_seq ?? null,
     open_bids_count: openBidsRes.count ?? 0,

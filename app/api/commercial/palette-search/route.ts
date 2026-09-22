@@ -114,7 +114,11 @@ export async function GET(request: Request) {
   const [accountsRes, oppsRes, proposalsRes, invoicesRes, documentsRes, contactsRes] = await Promise.all([
     want("account") ? sb
       .from("commercial_accounts")
-      .select("id, company_name, city, state, account_seq")
+      // billing_city/billing_state — `city`/`state` are not columns here, and
+      // PostgREST rejects the WHOLE select on an unknown one, so the ACCOUNTS
+      // arm of the command palette returned nothing at all. Searching a GC by
+      // name in the palette silently found no accounts.
+      .select("id, company_name, billing_city, billing_state, account_seq")
       .is("deleted_at", null)
       .or(acctOr)
       .order("company_name")
@@ -179,12 +183,12 @@ export async function GET(request: Request) {
   for (const a of (accountsRes.data ?? []) as {
     id: string;
     company_name: string;
-    city: string | null;
-    state: string | null;
+    billing_city: string | null;
+    billing_state: string | null;
     account_seq: number | null;
   }[]) {
     const hint =
-      [formatAccountNumber(a.account_seq), [a.city, a.state].filter(Boolean).join(", ")]
+      [formatAccountNumber(a.account_seq), [a.billing_city, a.billing_state].filter(Boolean).join(", ")]
         .filter(Boolean)
         .join(" · ") || "Account";
     results.push({
