@@ -51,6 +51,7 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classnames";
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { MoneyInput } from "@/components/commercial/money-input";
+import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
 
 export const dynamic = "force-dynamic";
 
@@ -674,9 +675,25 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
   // One wave: identical guard, independent arguments, and `hasStatement` just
   // below is the first thing that reads either of them.
   const showStatement = !!accountIdFilter && !scopedAccountIsDeleted;
-  const [statementRollup, statementContacts] = await Promise.all([
+  const [statementRollup, statementContacts, statementDoc] = await Promise.all([
     showStatement ? getInvoiceRollupForAccount(accountIdFilter!) : Promise.resolve(null),
     showStatement ? listAccountContacts(accountIdFilter!).catch(() => []) : Promise.resolve([]),
+    /**
+     * The statement ITSELF, so the covering email can count what is actually
+     * on it.
+     *
+     * The message said "across {rollup.invoice_count} open items", and
+     * `invoice_count` is every NON-VOID invoice on the account — drafts and
+     * fully-paid ones included — while the attached PDF lists only items with
+     * a balance. Measured 2026-09-22: LMJ Management was told "21 open items"
+     * over a statement listing 9, of which 6 were drafts and 6 already paid.
+     * The number goes to the GC's accounts-payable desk on every statement.
+     *
+     * `statement.rows.length` is the count of what is on the page.
+     */
+    showStatement
+      ? getOpenInvoiceStatementForAccount(accountIdFilter!).catch(() => null)
+      : Promise.resolve(null),
   ]);
   const hasStatement =
     !!statementRollup &&
@@ -820,7 +837,7 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                     companyName: statementCompany,
                     totalOutstandingCents: statementRollup.open_balance_cents,
                     retainageHeldCents: statementRollup.retainage_held_cents,
-                    invoiceCount: statementRollup.invoice_count,
+                    invoiceCount: statementDoc?.rows.length ?? statementRollup.invoice_count,
                   })}
                   className={TEXTAREA_CLS}
                 />

@@ -134,6 +134,39 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
       ),
   ]);
 
+  /**
+   * APPROVED CHANGE ORDERS, which this report's own column promised and never
+   * delivered.
+   *
+   * The column is labelled "Contract (incl. COs)" and the doc comment on
+   * SCHEDULING_SPEC states outright: "ours INCLUDES approved change orders,
+   * which is what the job is now worth." It did not — `contractCents` read
+   * `accepted_contract_cents` raw, which is the base BEFORE change orders.
+   *
+   * Measured 2026-09-22: $122,610.49 of approved change orders missing from
+   * "Total contract" on Open Sales, and $72,683.40 on Scheduling. A label that
+   * asserts what the number is not is worse than an unlabelled one, because
+   * nobody re-checks it.
+   *
+   * Same definition the deal page and the AIA ladder use:
+   * contract-to-date = base + net approved COs.
+   */
+  const coByOpp = new Map<string, number>();
+  {
+    const cos = await paginateAll<{ opportunity_id: string; amount_cents: number }>(() =>
+      sb
+        .from("commercial_change_orders")
+        .select("opportunity_id, amount_cents")
+        .eq("status", "approved")
+        .is("deleted_at", null)
+        .in("opportunity_id", opps.map((o) => o.id))
+        .order("id")
+    );
+    for (const c of cos) {
+      coByOpp.set(c.opportunity_id, (coByOpp.get(c.opportunity_id) ?? 0) + Number(c.amount_cents ?? 0));
+    }
+  }
+
   const money = new Map<string, { sub: number; total: number; paid: number; bal: number }>();
   for (const i of invoices) {
     const e = money.get(i.opportunity_id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
@@ -169,7 +202,7 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
       phone: a?.phone ?? c?.phone ?? null,
       email: c?.email ?? null,
       closeYmd: o.decided_at ? String(o.decided_at).slice(0, 10) : null,
-      contractCents: Number(o.accepted_contract_cents ?? 0),
+      contractCents: Number(o.accepted_contract_cents ?? 0) + (coByOpp.get(o.id) ?? 0),
       bidCents: bid,
       taxCents: Math.max(0, m.total - m.sub),
       billedCents: m.sub,

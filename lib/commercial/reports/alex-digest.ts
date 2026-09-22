@@ -145,13 +145,33 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
   const win = digestWindow(cadence, todayYmd);
   const range = { fromYmd: win.fromYmd, toYmd: win.toYmd };
 
-  const [receivables, txns, tax, reimb, projects, coVendor] = await Promise.all([
+  const [receivables, txns, tax, reimb, pnlProjects, projects, coVendor] = await Promise.all([
     // WHOLE book, deliberately: what is owed is a position, and narrowing it to
     // a day would make "outstanding" mean something different every morning.
     getReceivablesReport(),
     getTransactionsReport(range),
     getSalesTaxReport(range),
     getReimbursementsReport(range),
+    /**
+     * THE SAME SCOPE THE DASHBOARD USES for the P&L — `includeClosed` and
+     * `allDeals`.
+     *
+     * companyPnl exists precisely so "are we making money?" has one answer,
+     * and the comment below says the email and the screen "cannot answer the
+     * same question differently". The ARITHMETIC was shared; the INPUTS were
+     * not. This passed the narrow default — post-sale, not closed — while
+     * app/commercial/page.tsx passes includeClosed + allDeals, so the 56
+     * closed jobs dropped out of the email entirely.
+     *
+     * Measured 2026-09-22: the screen said gross $2,222,613.58 / net
+     * $1,178,309.25 / 53%; the email said $1,738,750.61 / $1,002,338.24 / 58%
+     * — $175,971.01 apart on a tile labelled "the whole company, every
+     * opportunity".
+     *
+     * Production stays on the NARROW scope below, which is also what the
+     * dashboard does: closed jobs are not in production.
+     */
+    listProjects({ includeClosed: true, allDeals: true }),
     listProjects(),
     getChangeOrderVendorReport(changeOrderRange("this_year")),
   ]);
@@ -163,12 +183,12 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
   const { costBreakdownByOpp } = await import("@/lib/commercial/purchases/db");
   const { getArSheetRows } = await import("./tomco/ar-applications");
   const [breakdown, arRows] = await Promise.all([
-    costBreakdownByOpp(projects.map((p) => p.opp.id)),
+    costBreakdownByOpp(pnlProjects.map((p) => p.opp.id)),
     getArSheetRows(),
   ]);
   let purchaseCostCents = 0;
   for (const b of breakdown.values()) purchaseCostCents += b.total;
-  const pnl = companyPnl({ projects, purchaseCostCents });
+  const pnl = companyPnl({ projects: pnlProjects, purchaseCostCents });
 
   // FOUR DIFFERENT FACTS, not one fact four times. The band printed
   // $1,369,044.37 as Outstanding, again as Collectible now (no retention is

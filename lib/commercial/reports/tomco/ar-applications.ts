@@ -133,10 +133,27 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
           issuedYmd: day,
         });
       }
-      // Retention on its own line, the way she writes it. It is held, not
-      // late — putting it in the same row as the payment hides how much of
-      // what is "open" is money nobody is chasing yet.
-      if (g702.retainageCents > 0 && !app.is_retainage_release) {
+      /**
+       * Retention on its own line, the way she writes it. It is held, not
+       * late — putting it in the same row as the payment hides how much of
+       * what is "open" is money nobody is chasing yet.
+       *
+       * ONE ROW PER JOB, FROM THE LATEST CERTIFICATE ONLY.
+       *
+       * `retainageCents` is G702 line 5, which is a percentage of line 4 —
+       * completed-and-stored TO DATE. It is cumulative, unlike
+       * `currentPaymentDueCents` (line 8), which is per-period and is why the
+       * payment rows above are correct.
+       *
+       * Emitting one per application therefore ADDS UP the same held money
+       * once per certificate. Measured 2026-09-22 on Home Goods, Shirley:
+       * apps 1/2/3 carry $1,000 / $3,250 / $3,750 cumulative, and the sheet
+       * summed them to $8,000 against $3,750 actually held — 2.13x, on the
+       * sheet Mary sends Alex, disagreeing with the statement and the account
+       * page which both read $3,750.
+       */
+      const isLatestIssued = app.id === issued[issued.length - 1]?.id;
+      if (isLatestIssued && g702.retainageCents > 0 && !app.is_retainage_release) {
         rows.push({
           id: `${app.id}:retention`,
           // The retention half belongs to the same certificate, so it opens
