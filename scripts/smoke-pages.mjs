@@ -49,6 +49,35 @@ function staticPages(dir = "app/commercial", path = "/commercial") {
   return out;
 }
 
+/**
+ * SWEEP ANY PROBE USER A PREVIOUS RUN LEFT BEHIND.
+ *
+ * Cleanup lives in a `finally`, which does not run when the process is KILLED
+ * — a timeout, a Ctrl-C, a dev server taken down mid-run. Each of those leaves
+ * behind a fully-privileged account: is_admin, active, commercial access.
+ *
+ * Found 2026-09-22 while looking at something else: FOUR of them were sitting
+ * in production, the oldest five days old, and they outnumbered the real
+ * non-admin users on the platform. Nobody would ever think to look, because
+ * the script that made them reports success.
+ *
+ * So the run starts by deleting every probe account it finds. Self-healing
+ * beats remembering.
+ */
+{
+  const { data: stale } = await admin
+    .from("profiles")
+    .select("user_id, email")
+    .like("email", "smoke-%@example.invalid");
+  for (const u of stale ?? []) {
+    await admin.from("profiles").delete().eq("user_id", u.user_id);
+    await admin.auth.admin.deleteUser(u.user_id).catch(() => {});
+  }
+  if ((stale ?? []).length > 0) {
+    console.log(`  (cleared ${stale.length} probe account(s) a killed run left behind)`);
+  }
+}
+
 const email = `smoke-${Date.now()}@example.invalid`;
 const password = "Smoke-" + Math.random().toString(36).slice(2) + "Aa1!";
 const { data: created, error: cErr } = await admin.auth.admin.createUser({

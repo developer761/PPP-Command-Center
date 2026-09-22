@@ -196,6 +196,52 @@ export async function getDailyLog(
  * Refuses once the entry is settled: approved hours are payroll, and the
  * approval step means nothing if the person can revise afterwards.
  */
+/**
+ * THE OFFICE RECORDING HOURS FOR SOMEBODY ELSE.
+ *
+ * Mary, 2026-09-22: "I cannot locate where to record the crew's attendance. Do
+ * we have that function?" We did not — not for her. Hours could only be
+ * created two ways, and both are the crew logging THEMSELVES: the PIN kiosk in
+ * the shop, and `/commercial/crew/log`, which is inside the crew-only
+ * allowlist. The Hours page was read-only and Approvals can only approve,
+ * question or override an entry that already exists. So an office user had no
+ * way to record a day at all.
+ *
+ * The comment on `selfLogDateError` above says "anything older than yesterday
+ * goes through a scheduler, which is what approvals are for" — describing a
+ * route that was never built. This is that route.
+ *
+ * DIFFERENT DATE RULE, ON PURPOSE. The self-log window is today-or-yesterday
+ * because a painter filling in their own timesheet a week later is a guess.
+ * The office is doing the opposite job — writing up days that have already
+ * happened, from a foreman's sheet — so the past is open to them. The FUTURE
+ * is not: attendance is a record of what happened, and a row dated tomorrow
+ * would sail through the zero-variance bulk-approve before anybody worked it.
+ *
+ * Everything else is deliberately shared with the self-log path: the same
+ * 24-hour clamp, the same refusal to silently rewrite settled hours, the same
+ * one-row-per-(employee, job, day) upsert, the same audit trail.
+ */
+export async function recordHoursForEmployee(input: {
+  employeeId: string;
+  jobId: string;
+  workDate: string;
+  hours: number;
+  actorUserId: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) {
+    return { ok: false, error: "Pick a work date." };
+  }
+  const offset = daysFromTodayEt(input.workDate);
+  if (offset > 0) {
+    return { ok: false, error: "That date is in the future — attendance records a day that has happened." };
+  }
+  if (offset < -370) {
+    return { ok: false, error: "That date is more than a year ago — check the year." };
+  }
+  return writeTimeEntry(input);
+}
+
 export async function submitDailyHours(input: {
   employeeId: string;
   jobId: string;
@@ -205,6 +251,17 @@ export async function submitDailyHours(input: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const dateErr = selfLogDateError(input.workDate);
   if (dateErr) return { ok: false, error: dateErr };
+  return writeTimeEntry(input);
+}
+
+/** The write both paths share — clamp, settled guard, upsert, audit. */
+async function writeTimeEntry(input: {
+  employeeId: string;
+  jobId: string;
+  workDate: string;
+  hours: number;
+  actorUserId: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
   const hours = Number(input.hours);
   if (!Number.isFinite(hours) || hours < 0) return { ok: false, error: "Hours must be a number." };
   // A 24-hour day is a typo, not a shift. Capped rather than rejected — the
