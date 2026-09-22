@@ -24,6 +24,16 @@ export async function resolve(specifier, context, nextResolve) {
     return nextResolve(pathToFileURL(resolvePath(REPO_ROOT, "__tests__/__stubs__/server-only.ts")).href, context);
   }
 
+  // Next ships `next/server` as `next/server.js` and relies on the bundler's
+  // resolution, which plain node does not do — so any import chain that
+  // reaches a module using `after()` or NextResponse died here, and that is
+  // most of the app: change-orders → notifications → after-response. Node's
+  // own error suggests the fix ("Did you mean next/server.js?"), so apply it.
+  if (/^next\/[a-z-]+$/.test(specifier)) {
+    const file = resolvePath(REPO_ROOT, "node_modules", `${specifier}.js`);
+    if (existsSync(file)) return nextResolve(pathToFileURL(file).href, context);
+  }
+
   // `@/…` is the tsconfig path alias. Without this a script can only import
   // modules that happen to use relative imports all the way down.
   let base = null;

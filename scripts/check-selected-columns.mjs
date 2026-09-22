@@ -50,7 +50,15 @@ if (!url || !key) {
 const sb = createClient(url, key, { auth: { persistSession: false } });
 
 // ── 1. Walk the source ─────────────────────────────────────────────────────
-const ROOTS = ["lib", "app", "components"];
+// `scripts` is in here because the check missed the one place it mattered
+// most. A sync script wrote `.select("id, name, …")` against
+// commercial_accounts, whose column is `company_name` — PostgREST rejects the
+// WHOLE select on one unknown column and returns null, which reads as "this GC
+// has no record". In the app that shows up as an empty panel somebody
+// complains about; in a script that writes to Salesforce it would have created
+// a duplicate account in PPP's production org on every run, silently. The
+// unattended writers need this check more than the screens do, not less.
+const ROOTS = ["lib", "app", "components", "scripts"];
 const files = [];
 for (const root of ROOTS) {
   (function walk(dir) {
@@ -58,7 +66,10 @@ for (const root of ROOTS) {
       if (e === "node_modules" || e === ".next" || e.startsWith(".")) continue;
       const full = join(dir, e);
       if (statSync(full).isDirectory()) walk(full);
-      else if (/\.(ts|tsx)$/.test(full)) files.push(full);
+      // .mjs too — every script in scripts/ is one, so adding the directory
+      // without adding the extension extended the scan by exactly nothing. It
+      // reported a pass over the file I had just broken on purpose.
+      else if (/\.(ts|tsx|mjs)$/.test(full)) files.push(full);
     }
   })(root);
 }
