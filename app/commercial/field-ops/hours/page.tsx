@@ -6,7 +6,12 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { todayEtIso, mondayOf, monthStartOf, addDaysIso } from "@/lib/commercial/field-ops/schedule";
 import { getHoursLog } from "@/lib/commercial/field-ops/hours-log";
+import { listEmployees } from "@/lib/commercial/field-ops/employees";
+import { listJobs } from "@/lib/commercial/field-ops/jobs";
+import { recordHoursForEmployee } from "@/lib/commercial/field-ops/daily-log";
+import { revalidatePath } from "next/cache";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/hours";
@@ -20,6 +25,30 @@ async function requireAdmin(): Promise<string> {
   const profile = await getProfileByUserId(user.id);
   if (!(profile?.is_admin ?? isAdminEmail(user.email))) redirect("/commercial");
   return user.id;
+}
+
+/**
+ * Record a day for somebody else.
+ *
+ * Mary, 2026-09-22: "I cannot locate where to record the crew's attendance. Do
+ * we have that function?" There was no office-side route — hours could only be
+ * created by the crew logging themselves, at the shop tablet or on their own
+ * login. This is that route, on the page where the hours already live.
+ */
+async function recordHoursAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const back = (q: string) => `${BASE}?${q}`;
+  const res = await recordHoursForEmployee({
+    employeeId: String(formData.get("employee_id") ?? ""),
+    jobId: String(formData.get("job_id") ?? ""),
+    workDate: String(formData.get("work_date") ?? ""),
+    hours: Number(formData.get("hours") ?? 0),
+    actorUserId: userId,
+  });
+  if (!res.ok) redirect(back("rec_error=" + encodeURIComponent(res.error)));
+  revalidatePath(BASE);
+  redirect(back("recorded=1"));
 }
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,10 +85,17 @@ const fmtH = (h: number) => `${h % 1 === 0 ? h : h.toFixed(2).replace(/0$/, "")}
 export default async function FieldOpsHoursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; recorded?: string; rec_error?: string }>;
 }) {
   await requireAdmin();
   const sp = await searchParams;
+  // Crew and jobs for the record-a-day form. Active crew only — a day cannot
+  // be filed against someone who has left. Jobs include closed ones, because
+  // writing up last week's sheet often lands on a job that has since finished.
+  const [employees, jobs] = await Promise.all([
+    listEmployees(),
+    listJobs({ includeClosed: true }),
+  ]);
   const range: Range = sp.range === "today" || sp.range === "month" || sp.range === "custom" ? sp.range : "week";
   const { from, to, label } = resolveRange(range, sp.from, sp.to);
   const { rows, totalScheduled, totalWorked } = await getHoursLog(from, to);
@@ -76,6 +112,86 @@ export default async function FieldOpsHoursPage({
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Hours Log</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Hours each crew member worked, broken down by work order. Pulled from the same clocked/approved actuals as Payroll.</p>
       </div>
+
+      {/* RECORD A DAY — the thing that did not exist until 2026-09-22.
+          Placed above the log because Mary came here to WRITE, not to read,
+          and found only a read-only table. */}
+      <details
+        id="record-hours"
+        {...(sp.rec_error ? { open: true } : {})}
+        className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 mb-4"
+      >
+        <summary className="cursor-pointer list-none flex items-center justify-between gap-3 min-h-[44px] select-none">
+          <div>
+            <h2 className="text-sm font-bold text-ppp-charcoal">Record a day</h2>
+            <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+              Enter hours for a crew member on a job — for a day that has already happened.
+            </p>
+          </div>
+          <span className="text-[12px] font-semibold text-cc-brand-700 shrink-0">Open →</span>
+        </summary>
+
+        {sp.rec_error ? (
+          <p className="mt-3 text-[12.5px] rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900">
+            {sp.rec_error}
+          </p>
+        ) : null}
+        {sp.recorded ? (
+          <p className="mt-3 text-[12.5px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+            Recorded. It shows in the log below and goes to Approvals like any other entry.
+          </p>
+        ) : null}
+
+        <form action={recordHoursAction} className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block">
+            <span className={LABEL_CLS}>Crew member</span>
+            <select name="employee_id" required className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="">Choose…</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>{e.display_name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className={LABEL_CLS}>Job</span>
+            <select name="job_id" required className={SELECT_CLS} style={SELECT_BG_STYLE}>
+              <option value="">Choose…</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  {j.name}{j.customer_name ? ` — ${j.customer_name}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className={LABEL_CLS}>Work date</span>
+            <input
+              type="date" name="work_date" required defaultValue={todayEtIso()} max={todayEtIso()}
+              className={INPUT_CLS}
+            />
+            <span className="block text-[11px] text-ppp-charcoal-400 mt-1">Attendance records a day that has happened, so future dates aren&rsquo;t accepted.</span>
+          </label>
+
+          <label className="block">
+            <span className={LABEL_CLS}>Hours worked</span>
+            <input
+              type="number" name="hours" required min="0" max="24" step="0.5" inputMode="decimal" placeholder="8"
+              className={INPUT_CLS}
+            />
+          </label>
+
+          <div className="sm:col-span-2">
+            <SubmitButton className="px-4 min-h-[44px] inline-flex items-center rounded-lg text-[13px] font-semibold bg-cc-brand-600 text-white hover:bg-cc-brand-700">
+              Record hours
+            </SubmitButton>
+            <span className="ml-3 text-[11.5px] text-ppp-charcoal-400">
+              One entry per person, per job, per day — recording the same day again updates it.
+            </span>
+          </div>
+        </form>
+      </details>
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
