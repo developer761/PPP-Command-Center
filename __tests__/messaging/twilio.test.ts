@@ -375,3 +375,34 @@ describe("Twilio's payload, read into the shape the system already speaks", () =
       .toEqual({ A: "1", B: "two", C: "+15163448418" });
   });
 });
+
+describe("telling Twilio where to report delivery", () => {
+  const t = () => new TwilioTransport({ accountSid: "AC123", apiKeySid: "SK456", apiKeySecret: "secret" });
+  const okResponse = () => new Response(JSON.stringify({ sid: "SM9", status: "queued" }), { status: 201 });
+
+  afterEach(() => { delete process.env.TWILIO_STATUS_WEBHOOK_URL; });
+
+  it("asks for a status callback when one is configured", async () => {
+    process.env.TWILIO_STATUS_WEBHOOK_URL = "https://cc.example.com/api/webhooks/twilio-status";
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+
+    const body = new URLSearchParams(fetchMock.mock.calls[0][1].body as string);
+    // Without this, delivery_status stays "sent" forever and a message a
+    // carrier filtered is indistinguishable from one that arrived.
+    expect(body.get("StatusCallback")).toBe("https://cc.example.com/api/webhooks/twilio-status");
+  });
+
+  it("still sends when none is configured, rather than failing", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+
+    expect(res.providerId).toBe("SM9");
+    const body = new URLSearchParams(fetchMock.mock.calls[0][1].body as string);
+    // No receipts is what the system did before this existed. A send that
+    // fails because a reporting URL is unset would be a worse trade.
+    expect(body.get("StatusCallback")).toBeNull();
+  });
+})

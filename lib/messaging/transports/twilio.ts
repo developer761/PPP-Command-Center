@@ -55,6 +55,19 @@ export class TwilioTransport implements MessageTransport {
     // number, not of how the send is addressed.
     const form = new URLSearchParams({ To: to, From: from, Body: body });
 
+    // WHERE TWILIO SHOULD REPORT BACK TO.
+    //
+    // Without this, delivery_status stays "sent" forever and a message a
+    // carrier filtered looks exactly like one that arrived. On a fresh 10DLC
+    // campaign, filtering (error 30007) is the likeliest failure there is and
+    // has no other signal — delivery just quietly falls off.
+    //
+    // Optional, because it is a URL that only exists once the app is deployed
+    // somewhere Twilio can reach. Unset means no receipts, which is what the
+    // system did before this existed, rather than a send that fails.
+    const callback = process.env.TWILIO_STATUS_WEBHOOK_URL?.trim();
+    if (callback) form.set("StatusCallback", callback);
+
     const res = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(this.cfg.accountSid)}/Messages.json`,
       {
