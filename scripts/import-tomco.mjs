@@ -547,8 +547,37 @@ async function stageContacts() {
  * the sort of thing a future reader trusts. One definition now.
  */
 function originalContractCents(wo, opp) {
-  const withCo = cents(wo?.Quoted_Subtotal_with_Change_Order__c ?? opp?.QuotedSubtotalWithChangeOrder__c);
-  return withCo - cents(wo?.TotalChangeOrder__c ?? 0);
+  /**
+   * PREFER THE FIELD THAT ALREADY IS THE BASE.
+   *
+   * Salesforce's own formula is
+   *   Quoted_Subtotal_with_Change_Order__c = QuotedSubtotal__c + TotalChangeOrder__c
+   * so `Quoted_Subtotal__c` on the work order IS the original contract, with no
+   * arithmetic to get wrong. Verified: the subtraction equals it on 93 of 93
+   * work orders. Read it directly.
+   */
+  if (wo?.Quoted_Subtotal__c != null) return cents(wo.Quoted_Subtotal__c);
+  if (wo) return cents(wo.Quoted_Subtotal_with_Change_Order__c) - cents(wo.TotalChangeOrder__c ?? 0);
+
+  /**
+   * NO WORK ORDER — WE CANNOT KNOW THE BASE, SO DO NOT GUESS.
+   *
+   * This is the third appearance of the same defect and the first two were
+   * mine. `TotalChangeOrder__c` exists only on WorkOrder; Opportunity has no
+   * equivalent. So the earlier `cents(wo?.TotalChangeOrder__c ?? 0)` quietly
+   * subtracted ZERO here and wrote Salesforce's WITH-change-order figure
+   * straight into a column the platform treats as the base — then adds change
+   * orders on top of it. Exactly the double-count Stephanie reported, armed on
+   * 32 won opportunities carrying $203,280.76 of change-order value, one
+   * cancelled work order away from firing.
+   *
+   * There is no field on Opportunity that gives the base, so returning null is
+   * the honest answer. The caller leaves the contract unset, which is VISIBLE —
+   * the deal page says "Contract value isn't set" and the per-job reconcile
+   * reports it. An inflated contract is not visible, and that is the whole
+   * lesson of the last two.
+   */
+  return null;
 }
 
 function contractCentsFor(wo, opp) {
@@ -576,6 +605,8 @@ function contractCentsFor(wo, opp) {
    * raised here, and comes out right either way.
    */
   const base = originalContractCents(wo, opp);
+  // No work order → no knowable base. Leave it unset rather than inflate it.
+  if (base === null) return null;
   if (!wo) return base;
   const plan = planInvoice({
     quotedSubtotalWithCo: wo.Quoted_Subtotal_with_Change_Order__c,
@@ -1396,7 +1427,7 @@ async function stageProjects() {
       opportunity_id: dealId,
       project_number: deal?.project_number ?? null,
       name: (w.Name__c || deal?.title || w.WorkOrderNumber || "Project").slice(0, 200),
-      contract_base_cents: originalContractCents(w, null),
+      contract_base_cents: originalContractCents(w, null) ?? 0,
       contract_source: "accepted_snapshot",
       status: PROJECT_STATUS[st.status] ?? "awarded",
       started_at: ymd(w.StartDate),

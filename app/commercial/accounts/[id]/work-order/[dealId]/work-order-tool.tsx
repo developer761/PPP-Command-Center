@@ -678,9 +678,29 @@ export async function WorkOrderTool({
             </AutosaveForm>
           ) : (
             <div className="bg-ppp-charcoal-50 border border-ppp-charcoal-200 rounded-lg px-4 py-2.5 text-[12px] text-ppp-charcoal-600 space-y-1.5">
+              {/* SAY WHAT IS ACTUALLY TRUE ABOUT DELIVERY.
+                  This read "the crew has this copy on file" for ANY non-draft
+                  work order, gated on nothing. Measured 2026-09-22: 92 of the
+                  93 live work orders have no filed PDF and were never emailed
+                  — they were imported from Salesforce already marked sent — so
+                  the sentence was false on all but one, and it is the only
+                  thing the panel says when no crew email is on file.
+
+                  Same shape as the invoice that said "Sent" without being
+                  sent, which Brendan reported the same day. A status is not
+                  evidence of delivery; a filed copy and a send timestamp are. */}
               <div>
-                This work order is <strong>{WORK_ORDER_STATUS_META[wo.status].label.toLowerCase()}</strong> — the crew has this copy on file. <em>Re-open to edit</em> to change it (that files a fresh copy on the next send).
+                This work order is <strong>{WORK_ORDER_STATUS_META[wo.status].label.toLowerCase()}</strong>
+                {wo.snapshot_document_id ? " — a copy is filed against this job." : " — no copy has been filed."}{" "}
+                <em>Re-open to edit</em> to change it (that files a fresh copy on the next send).
               </div>
+              {!wo.crew_emailed_at && (
+                <div className="text-[11.5px] font-semibold text-amber-800">
+                  {wo.crew_email
+                    ? `Not emailed yet — ${wo.crew_email} has not been sent this work order.`
+                    : "Not emailed — there is no crew address on this work order, so nobody has been sent it."}
+                </div>
+              )}
               {(wo.assigned_to || wo.scheduled_start_date || wo.scheduled_end_date || wo.crew_email) && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-ppp-charcoal-500 pt-0.5">
                   {wo.assigned_to && <span><span className="font-semibold text-ppp-charcoal-600">Crew:</span> {wo.assigned_to}</span>}

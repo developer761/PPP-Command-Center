@@ -792,6 +792,9 @@ export async function addLineItem(
   const sb = commercialDb();
   if (!input.description.trim())
     return { ok: false, error: "description_required" };
+  // See preserveUnbackedSubtotal — must run BEFORE the new line is inserted.
+  const preserve = await preserveUnbackedSubtotal(invoice_id, actorUserId ?? null);
+  if (!preserve.ok) return preserve;
   if (input.quantity <= 0)
     return { ok: false, error: "quantity_must_be_positive" };
   // A negative price is only valid for a change-order line (deduct CO); a normal
@@ -913,6 +916,72 @@ export async function removeLineItem(
  *   - paid_cents > 0 → partial
  *   - paid_cents = 0 AND status IN (paid,partial) → sent
  *   - else unchanged */
+/**
+ * KEEP AN AMOUNT THAT NO LINE ITEM IS BACKING.
+ *
+ * `recomputeSubtotal` sets `subtotal_cents = Σ line items`, and `total_cents` /
+ * `balance_cents` are generated from it. That is correct for an invoice built
+ * here — every dollar on it came from a line.
+ *
+ * It is catastrophic for a MIGRATED one. Salesforce sent invoice HEADERS and no
+ * lines: measured 2026-09-22, 89 of the 93 live invoices carry a real subtotal
+ * and zero line items — $2,656,124.11 of billing, of which 34 invoices are
+ * still owed $1,347,715.97. Adding a single $100 line to SF-00268849 would have
+ * recomputed its $76,125.00 subtotal down to $100, driven `balance_cents` to
+ * −$43,362.50, and `reconcileInvoiceStatusToTotal` would then have marked a
+ * $32,662.50 receivable PAID. One click, one vanished debt, no warning.
+ *
+ * Nothing stopped it: `verifyEditable` allows line edits on any non-void
+ * invoice, and the form is on the page.
+ *
+ * So the first line added to an unbacked invoice carries the existing amount
+ * across as a real line FIRST. The invoice keeps its value, the new line adds
+ * to it as the user intends, and from then on the sum is honest. Refusing the
+ * edit instead would leave 89 invoices permanently un-itemisable, and the PDF
+ * already prints "No line items on this invoice." above their totals.
+ */
+async function preserveUnbackedSubtotal(
+  invoice_id: string,
+  actorUserId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = commercialDb();
+  const { data: inv, error: invErr } = await sb
+    .from("commercial_invoices")
+    .select("subtotal_cents")
+    .eq("id", invoice_id)
+    .maybeSingle();
+  if (invErr) return { ok: false, error: invErr.message };
+  const existing = Number((inv as { subtotal_cents?: number } | null)?.subtotal_cents ?? 0);
+  if (existing <= 0) return { ok: true };
+
+  const { count, error: cErr } = await sb
+    .from("commercial_invoice_line_items")
+    .select("id", { count: "exact", head: true })
+    .eq("invoice_id", invoice_id);
+  if (cErr) return { ok: false, error: cErr.message };
+  if ((count ?? 0) > 0) return { ok: true }; // already backed — normal recompute is right
+
+  const row = {
+    invoice_id,
+    position: 0,
+    description: "Contract work (imported from Salesforce)",
+    quantity: 1,
+    unit_price_cents: existing,
+  };
+  const { data: created, error } = await sb
+    .from("commercial_invoice_line_items")
+    .insert(row)
+    .select("id")
+    .single();
+  if (error) {
+    // Refuse the edit rather than let the caller proceed into a recompute that
+    // would discard the amount. A blocked edit is recoverable; this is not.
+    return { ok: false, error: `Could not preserve this invoice's existing amount: ${error.message}` };
+  }
+  await logInsert("commercial_invoice_line_items", (created as { id: string }).id, row, actorUserId).catch(() => undefined);
+  return { ok: true };
+}
+
 export async function recomputeSubtotal(invoice_id: string): Promise<void> {
   const sb = commercialDb();
   const { data: items } = await sb

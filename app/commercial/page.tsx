@@ -235,6 +235,31 @@ export default async function CommercialDashboardPage() {
   const overdueAia = projectRows.filter(
     (r) => (r.aiaDueNowCents ?? 0) > 0 && r.aiaDueAt && daysPastDue(r.aiaDueAt, nowMs) > 0
   );
+  /**
+   * MONEY THAT CANNOT BE LATE BECAUSE NOBODY GAVE IT A DUE DATE.
+   *
+   * `isInvoiceOverdue` returns false when `due_at` is null, and ALL 18 open
+   * issued invoices are exactly that — the Salesforce migration brought no due
+   * dates across. So `arOverdueCount` is structurally 0, and this tile read
+   * "billed and unpaid, none overdue" in calm blue over $876,693.04, the
+   * oldest line 386 days old ($232,705.30 open since February).
+   *
+   * Every other AR surface already discloses it — receivables.ts computes
+   * `noDueDateCount` for precisely this and the AR-aging page, the Receivables
+   * report and Accounting's Receivables tab all render a caveat. This tile,
+   * the one Alex actually reads each morning, was the only one asserting the
+   * opposite.
+   *
+   * Not counted as overdue — a missing due date is not evidence of lateness —
+   * but it is no longer reported as its absence.
+   */
+  const arNoDueDateCents = billableInvoices
+    .filter((i) => !i.due_at && Math.max(0, i.balance_cents ?? 0) > 0)
+    .reduce((n, i) => n + Math.max(0, i.balance_cents ?? 0), 0);
+  const arNoDueDateCount = billableInvoices.filter(
+    (i) => !i.due_at && Math.max(0, i.balance_cents ?? 0) > 0
+  ).length;
+
   const arOverdueCount = overdueInvoices.length + overdueAia.length;
   // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
   // shown on the tile instead of a bare count (2026-08 CEO/AR UX walk).
@@ -668,13 +693,17 @@ export default async function CommercialDashboardPage() {
               ? "nothing outstanding"
               : arOverdueCount > 0
               ? `${formatCentsCompact(arOverdueCents)} overdue`
+              : arNoDueDateCount > 0
+              ? // Cannot be "none overdue" when nothing has a date to be late
+                // against — see arNoDueDateCents.
+                `${formatCentsCompact(arNoDueDateCents)} with no due date set`
               : arArchivedCents > 0
               ? // Why this can exceed Gross: archived deals keep their debt but
                 // leave the performance numbers.
                 `incl. ${formatCentsCompact(arArchivedCents)} on archived deals`
               : "billed and unpaid, none overdue"
           }
-          tone={arOverdueCount > 0 ? "rose" : "blue"}
+          tone={arOverdueCount > 0 ? "rose" : arNoDueDateCount > 0 ? "amber" : "blue"}
           href={canOpenArAging ? "/commercial/reports/ar-aging" : undefined}
         />
       </section>

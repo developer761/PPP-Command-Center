@@ -223,6 +223,32 @@ export async function getReceivablesReport(
 
   const rows: ReceivableRow[] = [];
 
+  /**
+   * DEALS THAT BILL THROUGH AIA, so a draft invoice on one is not chased too.
+   *
+   * A job billed on G702/G703 still carries its original invoice row, sitting
+   * at `draft` because it was never issued — the certificates are the billing.
+   * `receivableVerdict` put that draft on the list as "Won, not invoiced" for
+   * its FULL balance, and the AIA rollup added the certificate and its
+   * retainage underneath. The same work, counted twice.
+   *
+   * Measured 2026-09-22 on The Bannett Group — Home Goods, Shirley NY: a
+   * $37,500 contract showing $37,500 uninvoiced + $33,750 AIA + $3,750
+   * retention = $75,000 owed on a $37,500 job. It overstated the headline
+   * "Total outstanding" on every tab of Accounting, the Reports card and the
+   * emailed receivables sheet by $37,500.
+   *
+   * AR aging and the account statement were never wrong — they read
+   * `aiaBillingRollupBulk` and exclude drafts — which is why the two figures
+   * on screen disagreed by exactly this amount.
+   */
+  const aiaRollupsForSkip = await aiaBillingRollupBulk(opps.map((o) => o.id));
+  const billsViaAia = new Set(
+    [...aiaRollupsForSkip.entries()]
+      .filter(([, roll]) => roll.hasAia)
+      .map(([oppId]) => oppId)
+  );
+
   // ── Invoices ────────────────────────────────────────────────────────────
   for (const inv of invoices) {
     const verdict = receivableVerdict(deriveInvoiceStatus(inv));
@@ -230,6 +256,9 @@ export async function getReceivablesReport(
     const uninvoiced = verdict === "uninvoiced";
     const open = Math.max(0, inv.balance_cents);
     if (open <= 0) continue;
+    // See `billsViaAia`: on an AIA job the certificates ARE the billing, so an
+    // unissued invoice beside them is the same money a second time.
+    if (uninvoiced && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
     // An invoice on a deal that was deleted (or whose account was) is gone from
     // the app and must be gone from the chase list too.
     if (inv.opportunity_id && !oppById.has(inv.opportunity_id)) continue;
@@ -261,7 +290,7 @@ export async function getReceivablesReport(
   // ── AIA applications ────────────────────────────────────────────────────
   // These write no invoice row, so without this the biggest receivables in the
   // book are simply absent — which is exactly what Mary's sheet is full of.
-  const rollups = await aiaBillingRollupBulk(opps.map((o) => o.id));
+  const rollups = aiaRollupsForSkip;
   for (const [oppId, roll] of rollups) {
     const { job, accountId, account } = jobNameFor(oppId);
     // ONE ladder, shared with the AR-aging report and the dashboard.
