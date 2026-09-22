@@ -21,6 +21,8 @@ import { gateDeps } from "./gate-deps";
 import { gatedSend } from "./gate";
 import { wasEdited, orderQueue, type DraftForReview } from "./drafts";
 import { toE164 } from "./phone";
+import { bumpStage } from "./stage";
+import { recordOutbound } from "./outbound";
 
 /**
  * How long somebody may hold a draft before it goes back in the queue.
@@ -126,7 +128,7 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     .update({ reviewed_by: userId, reviewed_at: new Date().toISOString() })
     .eq("id", input.draftId).eq("state", "pending")
     .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
-    .select("id, body, state, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
+    .select("id, body, state, intent, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends))");
 
   const d = claimedRows?.[0];
   if (!d) return { ok: false, error: "Somebody else is already dealing with this one." };
@@ -194,13 +196,18 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
 
   const edited = wasEdited(d.body, body);
 
-  await sb.from("sms_messages").insert({
+  await recordOutbound(sb, {
     conversation_id: d.conversation_id,
     // What the gate actually sent, disclosure included.
-    direction: "outbound", channel: "sms", body: res.body,
-    provider_id: res.providerId, delivery_status: "sent",
+    body: res.body,
+    provider_id: res.providerId,
     sent_by_user_id: userId,
+    // The intent the agent chose, kept on the message a person approved. The
+    // funnel and the next turn both derive the stage from these, and
+    // sms_drafts alone was complete only while every reply was reviewed.
+    agent_intent: d.intent,
   });
+  await bumpStage(sb, d.conversation_id, d.intent);
 
   await sb.from("sms_drafts").update({
     state: "sent",

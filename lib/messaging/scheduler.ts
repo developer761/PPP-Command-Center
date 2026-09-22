@@ -61,7 +61,7 @@ export type SchedulerDeps = {
     subject?: string | null;
   } | null>;
   send(req: SendRequest): Promise<GateResult>;
-  markSent(a: DueAction, providerId: string, body: string, channel?: "sms" | "email"): Promise<void>;
+  markSent(a: DueAction, providerId: string, body: string, channel?: "sms" | "email", intent?: string | null): Promise<void>;
   /**
    * Close the row without recording a message. A turn that filed a draft or
    * held a reply sent nothing, and used to be closed with markSent(a,
@@ -101,7 +101,7 @@ export type SchedulerDeps = {
   draftReply?(a: DueAction): Promise<
     | { kind: "drafted" }
     | { kind: "held"; at: Date }
-    | { kind: "sent"; providerId: string; body: string }
+    | { kind: "sent"; providerId: string; body: string; intent?: string | null }
     | { kind: "skipped"; reason: string }
   >;
   /**
@@ -253,7 +253,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       // A workspace that has earned autosend replies on its own — but only
       // through the gate, and never when the agent asked for a person.
       if (out.kind === "sent") {
-        await deps.markSent(a, out.providerId, out.body);
+        await deps.markSent(a, out.providerId, out.body, "sms", out.intent);
         return { kind: "sent", providerId: out.providerId };
       }
       await deps.cancel(a, out.reason);

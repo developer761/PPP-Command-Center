@@ -27,6 +27,7 @@ import { gatedSend } from "./gate";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
 import { queueTurnIfUnanswered } from "./turn-queue";
+import { recordOutbound } from "./outbound";
 
 export type HumanReplyResult =
   | { ok: true; body: string }
@@ -82,13 +83,16 @@ export async function sendHumanReply(input: {
   const profile = user ? await getProfileByUserId(user.id) : null;
   const who = profile?.full_name?.trim() || profile?.email?.trim() || null;
 
-  await sb.from("sms_messages").insert({
+  await recordOutbound(sb, {
     conversation_id: conv.id,
     // What the gate actually sent, disclosure included — not what was typed.
-    direction: "outbound", channel: "sms", body: res.body,
-    provider_id: res.providerId, delivery_status: "sent",
+    body: res.body,
+    provider_id: res.providerId,
     sent_by_user_id: userId,
     sent_by_agent: who,
+    // No intent: these are a person's own words, not one of the agent's
+    // flow steps, and counting them as a stage would be a lie about who
+    // qualified the customer.
   });
 
   await sb.from("sms_conversations")

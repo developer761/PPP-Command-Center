@@ -12,6 +12,8 @@ import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
+import { bumpStage, priorIntentsFor } from "./stage";
+import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
 import { takeoverReasonFor, latestInboundIsAnswered } from "./handoff";
@@ -193,18 +195,25 @@ export function schedulerDeps(): SchedulerDeps {
       ]);
       if (!cfg) return { kind: "skipped" as const, reason: "no agent configuration" };
 
-      const priorIntents = (await sb.from("sms_drafts")
-        .select("intent").eq("conversation_id", conv.id).order("created_at")).data ?? [];
+      // SENT MESSAGES AS WELL AS DRAFTS. This read sms_drafts alone, which is
+      // complete only while a person reviews every reply — the autosend and
+      // held-reply paths send without writing one. On an autosending workspace
+      // the list was therefore always empty, the agent believed it was
+      // permanently at stage 0, and its own validator refused ask_address,
+      // ask_contact and ask_availability as out of order for the rest of the
+      // conversation. Invisible in testing, because testing has autosend off.
+      const priorIntents = await priorIntentsFor(sb, conv.id);
+      const stage = stageFromIntents(priorIntents);
 
       const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
         hardNos: cfg.hardNos,
-        stage: stageFromIntents(priorIntents.map((p) => p.intent)),
-        lastIntent: priorIntents[priorIntents.length - 1]?.intent ?? undefined,
+        stage,
+        lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
         },
         services: resolveServices(svc.services, svc.exceptions),
-        examples: selectExamples(corpus, { stage: stageFromIntents(priorIntents.map((p) => p.intent)) }),
+        examples: selectExamples(corpus, { stage }),
       });
 
       if (!res.ok) {
@@ -268,7 +277,7 @@ export function schedulerDeps(): SchedulerDeps {
           gateDeps(sb)
         );
         if (sent.ok) {
-          return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
+          return { kind: "sent" as const, providerId: sent.providerId, body: sent.body, intent: res.action.intent };
         }
         // Refused. It becomes a draft rather than vanishing, so a person sees
         // the reply the gate would not let out and decides what to do.
@@ -354,17 +363,18 @@ export function schedulerDeps(): SchedulerDeps {
       await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
     },
 
-    async markSent(a, providerId, body, channel = "sms") {
-      await sb.from("sms_messages").insert({
-        conversation_id: a.conversation_id, direction: "outbound",
-        // Recorded on the channel it actually went out on. Every email step
-        // was filed as an SMS, so a thread showed an email as a text and any
-        // count of what was emailed was wrong.
-        channel,
-        body, provider_id: providerId, delivery_status: "sent",
+    async markSent(a, providerId, body, channel = "sms", intent) {
+      // THE INTENT, on the message. A held reply carries it on the action
+      // row; an immediate autosend passes it in. A campaign step has none,
+      // and a person's own words have none — both correctly null.
+      const agentIntent = intent ?? a.reply_intent ?? null;
+      await recordOutbound(sb, {
+        conversation_id: a.conversation_id, body, provider_id: providerId,
+        channel, agent_intent: agentIntent,
       });
       await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
       await sb.from("sms_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", a.conversation_id);
+      await bumpStage(sb, a.conversation_id, agentIntent);
     },
 
     async reschedule(a, at, reason, why) {
