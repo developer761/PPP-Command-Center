@@ -5,6 +5,7 @@ import { reportError, reportWarn, reportInfo } from "@/lib/observability";
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
 import { pollSalesforceLeads, type PollSummary } from "@/lib/messaging/lead-poll";
 import { sweepExitsFor, type SweepSummary } from "@/lib/messaging/exit-sweep";
+import { runOptOutWriteback, writebackEnabled, type WritebackSummary } from "@/lib/messaging/optout-writeback-run";
 import { messagingDb } from "@/lib/messaging/db";
 
 /**
@@ -50,6 +51,7 @@ export async function GET(request: Request) {
   // switches it off without a deploy of code.
   let leads: PollSummary | { error: string } | null = null;
   let exits: SweepSummary | { error: string } | null = null;
+  let writeback: WritebackSummary | { error: string } | null = null;
   if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
     try {
       const conn = await getSalesforceClient();
@@ -95,6 +97,39 @@ export async function GET(request: Request) {
       exits = { error: err instanceof Error ? err.message : String(err) };
       reportWarn({ key: "exit_sweep_failed", platform: "ppp_cc", message: `Exit sweep failed: ${exits.error}` });
     }
+
+    // TELLING SALESFORCE SOMEBODY OPTED OUT.
+    //
+    // The only thing in this system that WRITES to Salesforce, which is why it
+    // has its own switch and is off until SF_OPTOUT_WRITEBACK=true. Off, this
+    // is exactly today's behaviour: the suppression list holds, nobody is
+    // texted, and Salesforce is simply not told.
+    //
+    // On, it removes the hand-transcription step behind Kate's numbers — 213
+    // opt-outs Salesforce could not match, 55 of them with the record sitting
+    // right there. Its own try, like the other two: a write that fails must
+    // not stop replies going out.
+    if (writebackEnabled()) {
+      try {
+        const conn = await getSalesforceClient();
+        writeback = await runOptOutWriteback(
+          messagingDb(),
+          (soql) => conn.query(soql) as never,
+          async (sObject, id, fields) => { await conn.sobject(sObject).update({ Id: id, ...fields }); }
+        );
+        if (writeback.failed > 0) {
+          reportWarn({
+            key: "optout_writeback_failed_rows",
+            platform: "ppp_cc",
+            message: `${writeback.failed} opt-out(s) could not be written back to Salesforce`,
+            context: writeback,
+          });
+        }
+      } catch (err) {
+        writeback = { error: err instanceof Error ? err.message : String(err) };
+        reportWarn({ key: "optout_writeback_failed", platform: "ppp_cc", message: `Opt-out writeback failed: ${writeback.error}` });
+      }
+    }
   }
 
   try {
@@ -108,7 +143,7 @@ export async function GET(request: Request) {
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
-    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });
