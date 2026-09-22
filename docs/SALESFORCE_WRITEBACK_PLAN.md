@@ -12,24 +12,61 @@
 
 ---
 
-## 1. The question that decides everything
+## 1. Settled: the target is PPP's org, and it is production
 
-**Salesforce is currently scheduled to be switched off for Tomco around 2026-10-01** —
-about nine days away. That is why the delta sync is being run by hand every night, and
-the standing instruction on this project has been *"we don't have to write anything back
-to Salesforce, we're gonna get rid of it soon."*
+**Karan, 2026-09-22: "we want to write back to PPP salesforce not Tomcos, and don't worry
+about when we get rid of salesforce for Tomco."**
 
-Katie's request is the opposite. Both can be true, but only one of these is the actual
-situation, and they lead to very different amounts of work:
+Worth stating plainly, because it is easy to picture this wrong: **there is only one
+Salesforce org.** "Tomco's Salesforce" is not a separate system — it is Tomco's records
+living inside PPP's org, told apart by *record type*.
 
-| If… | Then |
+| | |
 |---|---|
-| **A. Salesforce stays** as PPP corporate's system of record, and Tomco simply stops working in it day-to-day | Write-back is **permanent infrastructure**. Build it properly: ongoing, monitored, reconciled. This is the most likely reading — Tomco is the acquisition, PPP's Salesforce is where corporate reporting lives. |
-| **B. Salesforce is genuinely being retired** in ~9 days | Don't build a sync. Do **one final export** of CCC-native sales into Salesforce and stop. Weeks of integration work for a system with days left is money lit on fire. |
-| **C. Salesforce is retired for operations but kept read-only for history** | Same as B — a one-time backfill, not a sync. |
+| Org | **Precision+** (`00D6g000001XvD9EAK`) at `precisionplus.my.salesforce.com` |
+| Sandbox? | **No — this is production** |
+| Accounts | 92,559 |
+| Opportunities | 95,434 — of which **188** carry the Tomco record type |
+| Work Orders | 95,896 |
+| Connected as | `malhotrak038@gmail.com` |
 
-**Nothing below should start until this is answered.** Everything else in this document
-is the same either way; only whether it runs *once* or *forever* changes.
+So the earlier worry — "don't build a permanent integration for a system being switched
+off in nine days" — **does not apply.** Tomco stopping work in Salesforce does not retire
+the org; PPP's org is the corporate system of record and it stays. This is permanent
+infrastructure, and the phases below are the long-lived version.
+
+Two consequences fall straight out of that, and both are new:
+
+### 1.1 ⚠️ We would be writing into a live org with ~95,000 opportunities
+
+Every earlier assumption about blast radius was too generous. This is not a Tomco
+sandbox with 132 deals in it; it is PPP's production Salesforce, and a bad create loop
+writes junk into the org the whole company reports on.
+
+Non-negotiables that follow:
+
+- **Default to dry-run, always.** Writing requires an explicit flag, every time.
+- **Cap every run.** A first pass refuses to write more than N records without
+  `--yes-really`. A runaway loop against 95k records is the worst outcome available here.
+- **Test in the sandbox first if one exists.** A `dev` sandbox has been referenced on this
+  project before; if it is still usable, Phase 3 belongs there, not in production.
+- **Every write is logged with its Salesforce id**, so anything wrong can be found and
+  undone. An untraceable write into a 95k-record org is effectively permanent.
+
+### 1.2 ⚠️ The record-type question is now the central mapping decision
+
+There are two plausible readings of "write to PPP's Salesforce, not Tomco's", and they
+produce different records:
+
+| Reading | Account RT | Opportunity RT | Effect |
+|---|---|---|---|
+| **Keep Tomco's identity** — new sales look like the 188 already there | Tomco `012Kf000000L8Q5IAK` | Tomco `012Kf000000L8Q6IAK` | Consistent with existing Tomco data; keeps Tomco separable in reporting |
+| **Land as standard PPP records** | Customer `0126g000000Oic8AAC` | New `0126g0000004CX5AAM` | Tomco sales blend into PPP's main pipeline; no longer separable by record type |
+
+**This needs Katie, and it is not reversible cheaply** — record type drives page layouts,
+picklists, validation rules, automation and reporting. My read is that the *first* is
+what's wanted (Tomco sales staying identifiable inside PPP's org, which is what the
+record types exist for), but I am not guessing on something this structural.
 
 ---
 
@@ -62,7 +99,12 @@ So the work splits cleanly, and the second half is the one with something in it 
 
 ## 3. What gets written, concretely
 
-These are the real record shapes, read out of Tomco's own Salesforce rather than assumed.
+These are the real record shapes, read live out of PPP's production org rather than
+assumed — taken from an existing Tomco work order and its parents.
+
+> The record-type rows below assume the **first** reading in §1.2 (keep Tomco's
+> identity). If Katie wants standard PPP record types instead, swap the two ids; nothing
+> else in this section changes.
 
 ### 3.1 Account — only if it doesn't already exist
 
@@ -190,14 +232,18 @@ A deal un-won in Command Center would need its Salesforce opportunity moved *out
 Closed Won, which may trip org automation. Worth deciding whether write-back handles
 un-winning at all, or refuses and flags it.
 
-**⑥ Record ownership.** Every record created by an integration needs an `OwnerId`. If
-everything lands on one service user, Tomco's rep-level reporting will be wrong.
+**⑥ Record ownership, and whose name is on it.** The integration is currently connected
+as **`malhotrak038@gmail.com`** — Karan's own login. Left alone, every account,
+opportunity and work order the sync creates in PPP's production org is created and owned
+by Karan, which is wrong for rep-level reporting and wrong for the audit trail. This
+wants a dedicated integration user, and an explicit `OwnerId` per record.
 
 ---
 
 ## 7. What we need from Katie / Tomco
 
-1. **Is Salesforce staying?** (§1 — blocks everything.)
+1. **Which record types?** Tomco, or standard PPP? (§1.2 — the structural decision,
+   expensive to reverse.)
 2. **Can our integration user write the Tomco Work Order record type?** (§6①)
 3. **What should `Amount` hold** on the Opportunity, given the contract value belongs in
    `QuotedSubtotalWithChangeOrder__c`? (§3.2)
@@ -209,14 +255,13 @@ everything lands on one service user, Tomco's rep-level reporting will be wrong.
 
 ## 8. Honest estimate
 
-Assuming answer **A** (Salesforce stays):
-
 - Phases 1–3 — writer, dry run, one real deal: **the bulk of the work**, and where the
   unknowns live.
-- Phase 4 — the 132 back-updates: small *if* ④ is settled, open-ended if not.
+- Phase 4 — the 132 back-updates: small *if* the conflict rule (§6④) is settled,
+  open-ended if not.
 - Phase 5 — nightly + reconcile coverage: small, and the part that keeps it honest.
 
-Assuming **B or C**, this collapses to a one-time export and is a fraction of the work.
-
-The single largest risk is not technical. It is building a permanent two-way integration
-for a system that may be switched off in nine days.
+The largest risk is no longer the timeline — it is the **blast radius**. We would be
+writing into PPP's live Salesforce alongside ~95,000 existing opportunities. Everything
+in §1.1 exists so that a mistake is small, visible and reversible, rather than 132 bad
+records scattered through the org the whole company reports on.
