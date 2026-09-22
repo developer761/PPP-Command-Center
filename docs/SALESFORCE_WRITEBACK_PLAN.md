@@ -258,16 +258,22 @@ wants a dedicated integration user, and an explicit `OwnerId` per record.
 
 ## 7. What we need from Katie / Tomco
 
-1. **Which record types?** Tomco, or standard PPP? (§1.2 — the structural decision,
-   expensive to reverse.)
-2. **Can our integration user write the Tomco Work Order record type?** (§6①)
-3. **What should `Amount` hold** on the Opportunity, given the contract value belongs in
-   `QuotedSubtotalWithChangeOrder__c`? (§3.2)
-4. **What `Status` should a new Work Order start in?**
-5. **Who owns records the sync creates** — one service user, or the Tomco rep? (§6⑦)
-6. **When Command Center and Salesforce disagree, which wins?** (§6⑤)
+The sendable version lives in
+[`SALESFORCE_WRITEBACK_QUESTIONS_FOR_KATIE.md`](./SALESFORCE_WRITEBACK_QUESTIONS_FOR_KATIE.md).
+Six blockers, in short:
 
----
+1. **Close date is locked after Closed Won** — exempt the integration user, or accept
+   create-only? (§6②)
+2. **Add `CCC_Id__c`** (Text 36, External ID, Unique) on Account / Opportunity / Work
+   Order, so the sync can upsert and duplicates become impossible. (§6③)
+3. **Create an integration user** — decided 2026-09-22 that the sync runs as a separate
+   email, not Karan's. Needs Create/Edit on the three objects, API enabled, and an owner
+   decision for the records it creates. Plus: is there a sandbox? (§6⑦, §1.1)
+4. **Confirm that user can use the Tomco Work Order record type** — Salesforce currently
+   reports none available. (§6①)
+5. **What automation fires on creating a Closed Won opportunity?** Invisible to the API,
+   and we would be doing it up to 94 times. (§1.1)
+6. **Tomco record types, or standard PPP?** (§1.2)
 
 ## 8. Honest estimate
 

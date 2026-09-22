@@ -1,13 +1,124 @@
-# Salesforce write-back — everything we need from Katie
+# Salesforce write-back — questions for Katie
 
-Katie — I've read the org rather than guessed, so most of these are "confirm this" rather
-than open questions. Three of them are genuine blockers and I've put those first.
+Katie — six things we need from you before we can build this. I've read the org rather
+than guessed, so each one is specific. Answer inline and we're unblocked.
 
-**What we're building:** a CCC sale creates/updates an Account, a Closed Won Opportunity,
-and an Interior Painting Work Order in **PPP's production Salesforce** (`Precision+` —
-there's only one org; Tomco's records live inside it as a record type).
+**What we're building:** a sale entered in Command Center creates/updates an Account, a
+Closed Won Opportunity, and an Interior Painting Work Order in PPP's production
+Salesforce. (There's only one org — Tomco's records live inside PPP's, as a record type.)
 
 ---
+
+## The six questions
+
+### Q1 — Close date is locked once a deal is Closed Won. How do you want to handle it?
+
+You asked for the Close Date to sync from Command Center. The org has an active rule,
+`Close_Date_Uneditable_after_Closed_Won_L`, which stops the close date being changed once
+an Opportunity is Closed Won. **All 132 deals we'd be updating are already Closed Won**,
+so every close-date update would be rejected.
+
+> **Can you exempt the integration user from that rule — or should we set the close date
+> only when we first create a deal, and never update it afterwards?**
+
+### Q2 — Can you add a field so we can never create duplicates?
+
+Each Salesforce record needs to carry its Command Center id, so the sync can update the
+right record instead of creating a second one. `LegacyId__c` would have been perfect but
+it's already in use on 50,592 Accounts / 47,794 Opportunities / 39,225 Work Orders.
+
+> **Can you add this to Account, Opportunity and Work Order, visible to the integration
+> user?**
+>
+> | | |
+> |---|---|
+> | Label | `Command Center ID` |
+> | API name | `CCC_Id__c` |
+> | Type | Text (36) |
+> | External ID | ✅ |
+> | Unique | ✅ |
+>
+> *(Not to be confused with `WorkOrder.Command_Center__c`, which already exists — that's
+> a read-only formula that renders a link back to the hub. Different thing, leave it be.)*
+
+### Q3 — Can you create a separate user for the sync to run as?
+
+Right now the connection uses Karan's personal login, so every record it created would
+show him as owner. **We want to use a different email instead.**
+
+> **Can you create an integration user — say `commandcenter@precisionpaintingplus.com` —
+> with Create + Edit on Account, Opportunity and Work Order, API enabled, and read/write
+> on `CCC_Id__c`?**
+>
+> **And who should own the records it creates — that user, or a specific Tomco rep?**
+>
+> **Also: is there a sandbox we can test against first?** The first real write shouldn't
+> land in an org with 95,434 live opportunities if it can land somewhere else.
+
+### Q4 — Can that user actually create Work Orders?
+
+When we asked Salesforce which Work Order record types our current login can use, it
+returned **none** — yet real Tomco work orders carry `012Kf000000L8Q8IAK`. If the
+integration user can't reach that record type, every work order we create either fails or
+lands on the wrong one.
+
+> **Can you confirm the integration user has access to the Tomco Work Order record type?**
+
+### Q5 — What happens when a Closed Won opportunity is created?
+
+We'd be creating up to 94 of them. Closed Won usually sets things off — commissions,
+quota credit, emails to reps. We can't see flows or triggers through the API.
+
+> **Does creating an Opportunity directly in Closed Won fire any automation we should
+> know about before we do it 94 times?**
+
+### Q6 — Should these look like Tomco records, or regular PPP records?
+
+This drives page layouts, picklists, validation, automation and reporting, and it's
+expensive to change later.
+
+> **Which do you want?**
+>
+> - **(a) Tomco record types** — consistent with the 188 Tomco opportunities already
+>   there, and keeps Tomco separable in reporting. *(our assumption)*
+> - **(b) Standard PPP** — Account `Customer`, Opportunity `New`. Tomco sales blend into
+>   PPP's main pipeline.
+
+---
+
+## Smaller confirmations
+
+These all have a sensible default — just tell us where you disagree.
+
+| # | Question | Our default |
+|---|---|---|
+| 7 | `Amount` vs `QuotedSubtotalWithChangeOrder__c`? On the deal we sampled, `Amount` was **$500** and the quoted subtotal **$21,328.40**. Reports read the latter. | Contract into `QuotedSubtotalWithChangeOrder__c`; leave `Amount` alone |
+| 8 | What `Status` should a new Work Order start in? Seven active rules gate *completion*. | Something well short of Complete — you pick |
+| 9 | Is Work Type always `Interior Painting`? Tomco does exterior too, and CCC doesn't record a type today. | Always Interior Painting until CCC captures it |
+| 10 | Do `LeadSource` / `LeadGroup__c` / `Type` need values? All were empty on the Tomco deal we read. | Leave empty |
+| 11 | Which deals sync, and when? | Any deal won or beyond (94 today), on the nightly run |
+| 12 | If a deal is un-won in Command Center? | Refuse and flag for a human — never auto-reverse a won deal in production |
+| 13 | If the two systems disagree? | Command Center wins for deals it owns; anything else is reported, not silently resolved |
+| 14 | If a CCC deal is deleted? | Never auto-delete in Salesforce — flag it |
+| 15 | Matching new accounts? *Above All Services* vs *Above All Services Inc.* would create a duplicate GC. | Exact name match → use it; close but not exact → stop and ask |
+| 16 | Only Account / Opportunity / Work Order, or do invoices, payments and change orders go back too? | Only the sale, for now |
+| 17 | Who gets told when a write fails? | You — say if it should be Brendan or a shared inbox |
+
+---
+
+## For your awareness
+
+- **Nobody has entered a sale in Command Center yet** — all 132 deals came out of
+  Salesforce. So this is for what's coming, plus the 132 back-updates you asked for.
+- Our contract total ties to Salesforce **to the cent** ($2,676,983.67) — a clean
+  baseline to sync from.
+- We'll run dry-run first, capped, and log every write with its Salesforce id, so
+  anything wrong can be found and undone.
+
+---
+
+<details>
+<summary>Technical detail behind the above</summary>
 
 ## 🚩 Three blockers
 
@@ -176,3 +287,5 @@ three objects, ③ an integration user with record-type access (+ a sandbox if t
 **Then:** record type (Q4), `Amount` (Q5), Work Order status (Q6), owner (Q8).
 
 Everything else has a sensible default we've proposed — tell us where you disagree.
+
+</details>
