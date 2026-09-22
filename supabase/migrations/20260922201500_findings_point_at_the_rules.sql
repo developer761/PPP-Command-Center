@@ -55,3 +55,22 @@ ALTER TABLE public.sms_example_findings
 CREATE INDEX IF NOT EXISTS sms_example_findings_code_kind_idx
   ON public.sms_example_findings (code, kind, created_at DESC)
   WHERE code IS NOT NULL;
+
+-- ── An imported conversation can be recognised again ─────────────────────
+--
+-- sms_training_examples has no key back to the thing it came from, so
+-- re-running an import duplicates the corpus silently — and Kate re-exports
+-- as she re-grades, so a second run is the expected case, not the exception.
+-- Her Conversation ID is stable across exports and is the natural key.
+--
+-- Nullable, because rows authored in the hub have no external source.
+ALTER TABLE public.sms_training_examples
+  ADD COLUMN IF NOT EXISTS source_ref TEXT;
+
+COMMENT ON COLUMN public.sms_training_examples.source_ref IS
+  'Where this came from, when it came from somewhere: Kate''s Hatch Conversation ID. Makes a re-import an update rather than a duplicate.';
+
+-- Partial, so the many rows with no external source do not collide on NULL.
+CREATE UNIQUE INDEX IF NOT EXISTS sms_training_examples_source_ref_idx
+  ON public.sms_training_examples (source_ref)
+  WHERE source_ref IS NOT NULL;
