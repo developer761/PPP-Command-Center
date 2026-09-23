@@ -263,9 +263,56 @@ function longestSharedRun(a: string, b: string): number {
  *  fire on "for the estimate". */
 export const ECHO_WORDS = 5;
 
+/**
+ * A justification bolted onto an ask. A32.
+ *
+ * Every pattern comes from a line the bot actually sent in Kate's corpus, not
+ * from imagining what a reason looks like:
+ *
+ *   "so we can get your free quote moving"     "since it's already Thursday"
+ *   "so we can get you on the calendar"        "since it's a small shed"
+ *   "so we can get your estimate set up"       "to save you a visit"
+ *   "for faster turnaround"                    "since it's one room"
+ *
+ * "so" needs a following verb phrase, so "so glad to hear it" and "so that
+ * works" stay allowed — those are rapport, which is what this field is for.
+ *
+ * ── FIRST PERSON ONLY, AND THE CORPUS IS WHY ────────────────────────────
+ *
+ * "so WE can" and "so I can" are padding: they explain OUR process, which is
+ * the thing Kate says makes the message longer without making it clearer.
+ * "so YOU can" is the customer's benefit and reads as a courtesy rather than
+ * a justification. Run over the 2,861 non-question bot sentences in her
+ * corpus, this pattern flagged 18, and the only two that were arguable were
+ * both second person:
+ *
+ *   "we'll give you a heads up before anyone arrives so you can get the
+ *    dog settled"
+ *   "we can keep everything clear by going over it in person so you can
+ *    ask questions"
+ *
+ * The second is Kate's own redirect carve-out — the bot proposing a visit
+ * when the customer asked for something else IS a departure and owes an
+ * explanation. Excluding the second person keeps both and loses nothing that
+ * she marked.
+ */
+const REASON_CLAUSE =
+  /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*/i;
+
 export type RapportCheck = { ok: true } | { ok: false; why: string };
 
-export function checkRapport(text: string, customerText?: string): RapportCheck {
+/**
+ * TONE ONLY: the rules that bind every word we send, template or not.
+ *
+ * Split out from checkRapport because A32 is the one rule that binds rapport
+ * and NOT templates. Kate's exception is explicit: "THE ONE EXCEPTION is A7's
+ * off-site offer, where the bot is explaining a DEPARTURE from the normal
+ * route... A reason is MANDATED there." That reason lives in a template, by
+ * design, because the system decides when a departure is happening and the
+ * model does not. Running the reason check over templates would forbid the
+ * exact sentence the rule requires.
+ */
+export function checkTone(text: string, customerText?: string): RapportCheck {
   // One question at a time. The template asks the question; rapport that also
   // asks one makes two, which is the rule Kate states first.
   if (text.includes("?")) return { ok: false, why: "it asks a second question" };
@@ -277,6 +324,35 @@ export function checkRapport(text: string, customerText?: string): RapportCheck 
   if (customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
     return { ok: false, why: "it repeats the customer's own words back" };
   }
+  return { ok: true };
+}
+
+export function checkRapport(text: string, customerText?: string): RapportCheck {
+  const tone = checkTone(text, customerText);
+  if (!tone.ok) return tone;
+
+  // A32: CUT THE REASON. The ask stands alone.
+  //
+  // "No 'since you're moving', no 'before we schedule anything', no 'so we can
+  // get you taken care of'. A reason padded onto a routine ask makes the
+  // message longer without making it clearer." 199 breaches in Kate's
+  // grading, all of this shape:
+  //
+  //   "Just checking back SO WE CAN GET YOUR FREE QUOTE MOVING. What day…"
+  //   "SINCE IT'S ALREADY THURSDAY, we have a few openings next week…"
+  //
+  // Checked HERE and not on the templates, because the templates are clean
+  // and this is the only channel through which the model can add prose to a
+  // message. The rule's exceptions all live in templates and so cannot reach
+  // this check: A7's off-site offer explains a genuine departure from the
+  // normal route and its reason is MANDATED, but it is template text, chosen
+  // by intent rather than improvised here.
+  //
+  // Rapport exists for "Got it" and "Happy to help". A justification is not
+  // rapport, and the template it would be bolted onto already says the thing.
+  const reason = REASON_CLAUSE.exec(text);
+  if (reason) return { ok: false, why: `it pads the ask with a reason ("${reason[0].trim()}")` };
+
   return { ok: true };
 }
 

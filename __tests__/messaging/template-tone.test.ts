@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderMessage } from "@/lib/messaging/render";
 import {
   END_INTENTS, CONTINUE_INTENTS, NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS,
-  checkRapport, type Intent,
+  checkTone, type Intent,
 } from "@/lib/messaging/agent-output";
 
 /**
@@ -47,7 +47,12 @@ describe("the templates obey the tone rules they enforce", () => {
         if (!out) continue;
         // The template is allowed the one question it exists to ask; the rule
         // being checked is that it does not ask a SECOND one.
-        const r = checkRapport(out.replace(/\?/g, ""));
+        // checkTone, NOT checkRapport. A32's reason rule binds rapport and not
+        // templates: Kate's one exception is A7's off-site offer, which
+        // explains a real departure from the normal route and whose reason is
+        // MANDATED. Checking it here would forbid the sentence the rule
+        // requires. See checkTone in agent-output.ts.
+        const r = checkTone(out.replace(/\?/g, ""));
         if (!r.ok) bad.push(`${intent}/${turn}: ${r.why} :: ${out}`);
       }
     }
