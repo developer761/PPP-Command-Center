@@ -1010,9 +1010,28 @@ async function stageEmployees() {
     const who = attendanceWho(a);
     if (who) people.set(who.key, who);
   }
+  /**
+   * THE ROSTER SHOWS THE TOMCO NAME.
+   *
+   * Mary, 2026-09-23, having been shown the merged list: "Lets stick with
+   * Tomco-name option please."
+   *
+   * So a painter who works through a crew company is listed the way Tomco
+   * refers to him — "Tomco Labor - Greg" — rather than "Greg Stankewicz". This
+   * is a LABEL, not an identity: he is still one employee holding one history,
+   * which was the point of the fold, and his real name stays on the record in
+   * first_name / last_name so nothing is lost. A man with no crew company
+   * keeps his own name, because there is no other name to use.
+   */
+  const companyForWorker = new Map();
+  for (const [company, m] of crewCompanyWorker()) companyForWorker.set(m.worker, company);
+
   for (const [, who] of people) {
+    const base = employeeFromCrewWorker(who.name);
+    const tomcoName = companyForWorker.get(who.name);
     await put("employee", who.key, "commercial_employees", {
-      ...employeeFromCrewWorker(who.name),
+      ...base,
+      display_name: tomcoName ?? base.display_name,
       external_ref: `sf-${who.key}`,
       active: true,
     }, r);
