@@ -79,6 +79,15 @@ try {
     grade: at("Class A Grade"),
     defects: at("Class A Defects"),
     good: at("Class A Good Turns"),
+    // OPTIONAL, and nullable when present. Kate, 2026-09-23: "Hatch labels
+    // weren't consistent -- you'll see conversations graded as bad that Hatch
+    // dispo'd as 'success', so I wouldn't rely on those." In her own file 465
+    // conversations she graded BAD are dispo'd success, which is more than
+    // half of everything Hatch called one.
+    //
+    // Nothing trains on it. Retrieval selects on HER grade and nothing else,
+    // so the label never reaches a model. It is kept only as a reference
+    // column beside the conversation, and a file without it imports fine.
     status: at("Hatch Status"),
     // NOT stored. Read only so the scrubber can be TOLD the customer's name —
     // which is the whole reason scrub() takes knownNames. Detecting names in
@@ -87,9 +96,12 @@ try {
     // this column must fail loudly rather than import 1,234 unscrubbed names.
     name: at("Contact Name"),
   };
+  // Everything except the Hatch status, which the import does not depend on.
   for (const [k, v] of Object.entries(I)) {
+    if (k === "status") continue;
     if (v < 0) throw new Error(`no column found for ${k}`);
   }
+  if (I.status < 0) console.log("  note: no Hatch Status column, so outcome is left empty. Nothing uses it.");
 
   console.log(`\nRATED CONVERSATIONS — ${APPLY ? "APPLYING" : "DRY RUN (pass --apply to write)"}\n`);
   console.log(`  rows in file: ${body.length}`);
@@ -136,7 +148,7 @@ try {
       sourceRef,
       transcript,
       conduct,
-      outcome: OUTCOME[(r[I.status] ?? "").trim().toLowerCase()] ?? null,
+      outcome: I.status < 0 ? null : OUTCOME[(r[I.status] ?? "").trim().toLowerCase()] ?? null,
       findings: [
         ...parseFindings(r[I.defects] ?? "", "fell_short"),
         ...parseFindings(r[I.good] ?? "", "did_well"),
