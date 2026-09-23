@@ -155,18 +155,19 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
   /**
    * WHO IT COMES FROM — finance@, per Katie.
    *
-   * Env-driven with the verified sender as the fallback, and that fallback is
-   * the important half: Resend will only send from a domain verified in the
-   * PPP account. Today that is the precisionpaintingplus.net sending domain,
-   * NOT tomcopainting.com. Hard-coding finance@tomcopainting.com here would
-   * make every invoice fail to send the moment it shipped.
+   * That caveat — "Resend will only send from a domain verified in the PPP
+   * account, today precisionpaintingplus.net and NOT tomcopainting.com" —
+   * expired on 2026-09-17 when tomcopainting.com was verified. So finance@ is
+   * the default in code rather than a Vercel setting somebody has to remember.
    *
-   * So the address is a setting. Point COMMERCIAL_INVOICE_FROM_ADDRESS at
-   * finance@tomcopainting.com once that domain is verified in Resend, and this
-   * starts sending from it with no code change.
+   * This one already resolved correctly by accident: with the env var unset it
+   * fell through to the channel default, which is finance@tomcopainting.com.
+   * Stating it here anyway, because "right because of a fallback two files
+   * away" is not the same as right, and the day that default changes for
+   * field-ops mail this would follow it silently.
    */
   const fromAddr =
-    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS;
+    process.env.COMMERCIAL_INVOICE_FROM_ADDRESS || "finance@tomcopainting.com";
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   const replyTo = INVOICE_COPY_EMAILS.length > 0 ? INVOICE_COPY_EMAILS : oc.email || undefined;
   const bcc = withArchiveBcc(

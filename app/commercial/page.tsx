@@ -161,6 +161,11 @@ export default async function CommercialDashboardPage() {
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
   );
+
+  /** Bids sitting in the approval queue — see the "Awaiting approval" tile. */
+  const awaitingApprovalCount = Array.from(currentProposalByOpp.values()).filter(
+    (p) => p.status === "pending_approval",
+  ).length;
   const oppWeighted = (o: CommercialOpportunity) =>
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
@@ -682,6 +687,19 @@ export default async function CommercialDashboardPage() {
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
         <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        {/* Brendan 2026-09-23: "dashboard add pending bids for approval."
+            A bid sitting in the approval queue is the one thing on this page
+            nobody else will chase — the estimator has done their part and is
+            waiting, and the GC is waiting on both of them. Counted from the
+            CURRENT proposal per deal, so a superseded revision left in that
+            state cannot inflate it. */}
+        <DashStat
+          label="Awaiting approval"
+          value={awaitingApprovalCount.toLocaleString()}
+          sub={awaitingApprovalCount === 0 ? "nothing waiting" : awaitingApprovalCount === 1 ? "bid to approve" : "bids to approve"}
+          tone={awaitingApprovalCount > 0 ? "amber" : "navy"}
+          href="/commercial/proposals?status=pending_approval"
+        />
         <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat
           label="Owed to us"

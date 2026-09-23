@@ -529,6 +529,47 @@ export async function updateCommercialOpportunity(
     }
   }
 
+  /**
+   * TELL THE ESTIMATOR THEY ARE ON THE JOB.
+   *
+   * Brendan 2026-09-23: "Estimator and teams are assigning so they should get
+   * emailed that they are on the job and stuff."
+   *
+   * Picking a team already emailed everyone on it — that goes through
+   * addOpportunityAssignment, which notifies. Naming an ESTIMATOR did not: it
+   * wrote a column on the deal and nothing else, so the one person now
+   * expected to price the job was the only one not told.
+   *
+   * Fixed by making it a real assignment rather than bolting a second email
+   * onto a field write. The estimator lands on the deal's Team tab like
+   * everybody else, the existing notification does the telling, and there is
+   * no second mail path to keep in step with the first.
+   *
+   * Only on a CHANGE, and addOpportunityAssignment treats an existing row as
+   * "already assigned" — so re-saving a deal does not re-notify. Best-effort:
+   * naming an estimator must not fail because the email did.
+   */
+  const estimatorChanged =
+    input.estimator_user_id !== undefined &&
+    !!opp.estimator_user_id &&
+    before.estimator_user_id !== opp.estimator_user_id;
+  if (estimatorChanged) {
+    try {
+      const { addOpportunityAssignment } = await import("./assignments");
+      await addOpportunityAssignment({
+        opportunity_id: opp.id,
+        user_id: opp.estimator_user_id as string,
+        role: "estimator",
+        assigned_by_user_id: input.updated_by_user_id ?? null,
+      });
+    } catch (err) {
+      console.warn(
+        "[opportunities] estimator assignment/notify failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   return { ok: true, opportunity: opp };
 }
 

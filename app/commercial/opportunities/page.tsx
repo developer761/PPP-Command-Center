@@ -2731,10 +2731,17 @@ function NewDealSlideOut({
             <label htmlFor="new-deal-team" className={LABEL_CLS}>
               Team
             </label>
+            {/* Brendan 2026-09-23: "Team suffolk should be default."
+                Defaulted from the team LIST rather than by name: Tomco has one
+                team today, and a hardcoded "Tomco Suffolk" would quietly stop
+                defaulting the day somebody renames it, and quietly pick the
+                wrong one the day a second is added. With exactly one team the
+                answer is obvious; with more than one it stays blank, because
+                then it is a real choice. */}
             <select
               id="new-deal-team"
               name="team_id"
-              defaultValue=""
+              defaultValue={allTeams.length === 1 ? allTeams[0].id : ""}
               className={SELECT_CLS}
               style={SELECT_BG_STYLE}
             >
