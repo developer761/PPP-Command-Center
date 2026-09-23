@@ -214,12 +214,63 @@ export type RejectReason =
  * to commit to. Deliberately blunt: a false positive costs one regenerated
  * draft, a false negative sends a customer a price PPP never agreed.
  */
-const PRICE = /\$\s?\d|(?:\d+\s?(?:dollars|bucks))|\b(?:costs?|price|quote|charge|estimate)\s+(?:is|will be|would be|starts? at|around|about)\b/i;
+const PRICE = new RegExp(
+  [
+    String.raw`\$\s?\d`,                                   // $2500, $ 2500
+    String.raw`\b\d[\d,]*\s?(?:dollars?|bucks|usd|k\b|grand)`, // 2500 dollars, 4k, 3 grand
+    String.raw`\busd\s?\d`,
+    // A money word followed by ANY amount, however it is introduced. The old
+    // version listed the introducers — is, will be, starts at, around, about —
+    // so "costs run about 1800" and "price: 2500" both went straight through.
+    String.raw`\b(?:costs?|pric\w*|quotes?|charges?|estimates?|rates?|fee)\b[^.!?]{0,24}\d`,
+    // …and an amount followed by a money word, which is the other order.
+    String.raw`\d[^.!?]{0,16}\b(?:per hour|an hour|per room|a room|per square|per sq)\b`,
+    // Written amounts. "roughly fifteen hundred" carries no digit at all.
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty)\s+(?:hundred|thousand|grand|k)\b`,
+  ].join("|"),
+  "i"
+);
+
+/**
+ * A NUMBER IN RAPPORT IS A COMMITMENT UNTIL PROVEN OTHERWISE.
+ *
+ * The two filters above list the shapes a price or a time takes, and a list
+ * of shapes is a list of the ones somebody thought of. Probed against eleven
+ * plausible prices and twelve plausible times, the originals let EVERY ONE
+ * through: "it will be around 2500", "ballpark 2200", "we charge 95 per
+ * hour", "Mon at 2", "we can come at noon", "the 15th".
+ *
+ * So this is the backstop, and it runs the other way round. Rapport exists
+ * for "Got it" and "Happy to help with that" — sentences that do not contain
+ * numbers. Every value a customer should see comes from a template slot the
+ * system filled, never from here.
+ *
+ * Dropping rapport costs a slightly warmer message and nothing else, because
+ * the template still carries the turn. Letting "around 2500" through is a
+ * promise PPP has to keep or explain.
+ */
+const NUMBER_IN_RAPPORT = /\d/;
 
 /** A specific time or date. The model may never offer one — Emily's prompt is
  *  explicit: "Never offer, confirm, or suggest appointment times yourself." */
-const TIME_COMMITMENT =
-  /\b(?:\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|(?:mon|tues|wednes|thurs|fri|satur|sun)day\b|tomorrow\b|next week\b|this (?:afternoon|morning|evening)\b)/i;
+const TIME_COMMITMENT = new RegExp(
+  [
+    String.raw`\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b`,
+    String.raw`\b\d{1,2}\s?o'?clock\b`,
+    // ABBREVIATIONS TOO. The old pattern demanded the full word, so "Tues at
+    // 3" and "first thing Mon" were not times as far as it was concerned.
+    String.raw`\b(?:mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)\b\.?`,
+    String.raw`\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b`,
+    String.raw`\b(?:today|tomorrow|tmrw|tonight)\b`,
+    String.raw`\b(?:this|next|following)\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening)\b`,
+    String.raw`\bin the (?:morning|afternoon|evening)\b`,
+    String.raw`\b(?:noon|midday|first thing|end of the (?:day|week))\b`,
+    String.raw`\bthe \d{1,2}(?:st|nd|rd|th)\b`,
+    String.raw`\b\d{1,2}\s*/\s*\d{1,2}\b`,
+    String.raw`\ba week from\b`,
+  ].join("|"),
+  "i"
+);
 
 /**
  * Work PPP does not do.
@@ -661,6 +712,25 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     if (TIME_COMMITMENT.test(text) && !hasVerifiedSlot(ctx, "times")) {
       const m = TIME_COMMITMENT.exec(text);
       return { ok: false, reason: "invented_availability", detail: `free text names "${m?.[0]}" with no verified availability behind it` };
+    }
+    // THE BACKSTOP. Anything numeric the two lists above did not recognise.
+    // Rapport is "Got it" and "Happy to help"; every value the customer
+    // should see is filled into a template by the system.
+    //
+    // A VERIFIED TIME EXCUSES ITSELF AND NOTHING ELSE. Where the system has
+    // handed the model a real appointment time, "Does 2pm work?" is the model
+    // using what it was given. So the time-shaped tokens are removed and the
+    // rest of the sentence is still checked — "around 2500 at 2pm" keeps its
+    // 2500 and is still refused. Exempting the whole sentence would have made
+    // a verified time a licence to say any number at all.
+    const unexplained = hasVerifiedSlot(ctx, "times")
+      ? text.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")
+      : text;
+    if (NUMBER_IN_RAPPORT.test(unexplained)) {
+      return {
+        ok: false, reason: "commitment_in_free_text",
+        detail: "free text contains a number, and every number a customer sees comes from a template rather than from the model",
+      };
     }
     for (const phrase of ctx.hardNoPhrases ?? []) {
       if (!phrase.trim()) continue;
