@@ -19,6 +19,7 @@ import {
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
 import { addressGap } from "./address";
+import { jobRoute } from "./offsite";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, type ResolvedService } from "./services";
 import { renderMessage, SILENT_INTENTS } from "./render";
@@ -134,8 +135,15 @@ ${services?.length && cfg.services_included ? `MORE DETAIL ON WHAT THAT COVERS:\
 WHAT WE DO NOT DO:
 ${cfg.services_excluded ?? "Anything that is not painting."}
 
-OFF-SITE QUOTES:
-${cfg.offsite_rules ?? "Offer one when a visit to the property does not suit."}
+OFFSITE QUOTES. There are two of these and they are not the same move:
+present_offsite_quote  the JOB is small and clearly defined, so a quick quote
+                       IS the plan. State it and ask text or email. Give no
+                       reason: nothing is being departed from.
+offer_offsite_quote    the job would normally be seen in person, but this
+                       customer cannot make that work. Offer it as a choice.
+The system decides which of the two is allowed from what the job is, and will
+refuse the other, so choose on the work rather than on how the customer sounds.
+${cfg.offsite_rules ?? "A job is quotable remotely when its scope is legible without a visit."}
 
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
@@ -299,6 +307,12 @@ Choose the next action.`;
       // A11: which HALF of the address is missing, not whether one exists.
       // Undefined when we hold nothing, so the ordinary ask applies.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
+      // A6 vs A7: the JOB decides which off-site sentence is allowed. Read
+      // from the scope we hold plus this workspace's area, for the one
+      // geographic row in Kate's lookup (cabinets in Queens).
+      // The area comes from the workspace's own config, for the one
+      // geographic row in the lookup: cabinets are ONSITE except in Queens.
+      jobRoute: jobRoute(kf.inquiryScope, cfg.office_location ?? cfg.service_area_note)?.route ?? null,
       ...opts.ctx,
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };

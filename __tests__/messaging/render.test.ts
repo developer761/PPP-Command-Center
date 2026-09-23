@@ -79,7 +79,12 @@ describe("rendering an intent into words", () => {
     for (const intent of ALL) {
       if (SILENT_INTENTS.has(intent)) continue;
       if (intent === "answer_question") continue; // the rapport IS the answer
-      expect(renderMessage({ intent, known }).length, intent).toBeGreaterThan(0);
+      // A7 reads its reason back the way confirm_* reads an address, and for
+      // the same reason: the rule MANDATES the justification, so a render
+      // without one is deliberately empty rather than a sentence with the
+      // explanation missing.
+      const offsiteReason = "you're not able to be at the property";
+      expect(renderMessage({ intent, known, offsiteReason }).length, intent).toBeGreaterThan(0);
     }
   });
 

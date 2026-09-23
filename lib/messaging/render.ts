@@ -96,9 +96,40 @@ export const SAYS: Record<Intent, string[]> = {
     "Apologies, I did not mean to make this harder. How would you rather do this?",
     "Understood, let me not push on that. What would you prefer?",
   ],
+  // — A6: OFFSITE REQUIRED. The job routes off-site, so this is the PLAN. —
+  //
+  // NO REASON. Kate's findings say it outright: "reason clause on an off-site
+  // presentation - A6 mandates none." Her goal for the turn: "tell them we can
+  // provide a quick quote for this project and ask if they prefer text or
+  // email." It states, it does not ask permission, and it never explains
+  // itself, because nothing is being departed from — this IS the normal route
+  // for a job whose scope is legible without a visit.
+  //
+  // "REQUIRED DOES NOT MEAN FORCED": if they ask for a visit afterwards they
+  // get one. They are simply owed the offer first.
+  present_offsite_quote: [
+    "We can provide a quick quote for this project. Do you prefer text or email?",
+    "Good news, we can put a quick quote together for this one. Would you like it by text or email?",
+  ],
+
+  // — A7: OFFSITE OFFERED. The job routes ONSITE, the customer qualifies. —
+  //
+  // A REASON IS MANDATORY HERE, and this is the only place in the system where
+  // that is true. Kate, 2026-09-17: "BECAUSE THE JOB WOULD NORMALLY BE SEEN IN
+  // PERSON, SAY SO... 'for projects like this we like to visit in person, but
+  // since [reason they qualify], we can provide a quick quote.' This is the
+  // ONE place a reason belongs in the ask."
+  //
+  // The departure is the point. A32 forbids padding a routine ask with a
+  // justification; declining what somebody asked for without saying why is a
+  // different failure, and the reason is what separates them.
+  //
+  // {reason} is filled from the qualifier the SYSTEM detected, never from the
+  // model: a reason the bot invented for departing from the normal route is
+  // worse than no reason at all.
   offer_offsite_quote: [
-    "Since you're not able to be at the property, we can put together a quote from photos and measurements instead. Would that work?",
-    "No problem, we can do this from photos rather than a visit. Want to go that route?",
+    "For projects like this we normally like to visit in person, but since {reason}, we can put a quick quote together instead. Would you prefer that or an appointment?",
+    "We usually see a project like this in person, though since {reason}, we can get you a quick quote without the visit. Which would you rather do?",
   ],
   escalate: [
     "Let me get one of our team on this. Someone will follow up with you shortly.",
@@ -236,6 +267,13 @@ export type RenderInput = {
   /** What is missing from a partial address. Narrows ask_address to the gap,
    *  which is what A11 requires. See ASK_ADDRESS_GAP below. */
   addressGap?: AddressGap;
+  /**
+   * WHY this customer qualifies for a remote quote on a job that would
+   * normally be seen in person. A7 mandates it, and it is the only reason
+   * allowed in an ask anywhere in the system. Phrased to follow "but since",
+   * e.g. "you're not able to be at the property".
+   */
+  offsiteReason?: string | null;
 };
 
 /**
@@ -287,6 +325,12 @@ export function renderMessage(input: RenderInput): string {
       phone: input.known?.phone,
       email: input.known?.email,
       scope: clip(input.known?.scope),
+      // A7's mandated reason, from the qualifier the SYSTEM matched. Never
+      // model text: a reason the bot invented for departing from the normal
+      // route is worse than no reason at all. A missing one makes the whole
+      // template refuse to render, which is correct — A7 without its reason
+      // is just A6 said in the wrong situation.
+      reason: input.offsiteReason ?? null,
     };
     let missing = false;
     pick = pick.replace(/\{(\w+)\}/g, (_m, key: string) => {

@@ -17,6 +17,7 @@
  * Pure: validation and rendering only. Nothing here calls a model or a network.
  */
 import type { AddressGap } from "./address";
+import type { JobRoute } from "./offsite";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -27,7 +28,13 @@ export const END_INTENTS = [
 
 export const CONTINUE_INTENTS = [
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
-  "acknowledge", "answer_question", "offer_offsite_quote", "escalate",
+  // TWO off-site intents, not one. A6 PRESENTS the quick quote when the JOB
+  // routes off-site and forbids a reason; A7 OFFERS it when the job routes
+  // onsite but the customer qualifies, and mandates one. "A6 is REQUIRED and
+  // states the quick quote as the plan; A7 is OPTIONAL and asks. Different
+  // sentences, different situations." One intent could only ever say one of
+  // them, so every turn of the other kind was a breach.
+  "acknowledge", "answer_question", "present_offsite_quote", "offer_offsite_quote", "escalate",
   // Something landed badly. Without this the only outlets for a customer who
   // reacted negatively were re-asking the same question or escalating, so it
   // re-asked — and the renderer's variant rotation made a repeat look like a
@@ -173,7 +180,8 @@ export type RejectReason =
   | "out_of_scope_work"
   | "quoted_a_price"
   | "invented_availability"
-  | "banned_by_hard_no";
+  | "banned_by_hard_no"
+  | "wrong_offsite_rule";    // presented what should be offered, or the reverse
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -379,6 +387,13 @@ export type ValidateContext = {
    * parts, and the plain held/not-held rule applies.
    */
   addressGap?: AddressGap;
+  /**
+   * Where the JOB routes, from the lookup in offsite.ts. Decides whether the
+   * quick quote is PRESENTED (A6, no reason) or OFFERED (A7, reason
+   * mandatory). Undefined when the scope is not known well enough to say,
+   * which refuses neither — both rules are gated on knowing what the job is.
+   */
+  jobRoute?: JobRoute | null;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
   /** The customer reacted negatively to the previous message. */
@@ -434,6 +449,33 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // Asking for something we already hold. Kate: "asked customer for phone
   // number + to type out phone number" — the reason that reached her was a
   // prompt instruction, which the model ignored. This is not an instruction.
+  // A6 vs A7: THE JOB DECIDES WHICH SENTENCE, NOT THE MODEL.
+  //
+  // "THE TEST IS THE JOB, NOT THE CUSTOMER. Read the JOB ROUTING LOOKUP: does
+  // the job allow phone pricing? It is a LOOKUP, not a judgement."
+  //
+  // So the model may pick either off-site intent and this refuses the one the
+  // route contradicts. Presenting a quick quote as the plan for a job that
+  // needs a visit promises something PPP will not do; offering one as an
+  // option for a job that routes off-site runs the in-person booking flow A6
+  // exists to replace, and carries A7's mandatory reason into a turn where
+  // A32 forbids it — which is how one template breached two rules at once.
+  //
+  // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
+  // job is, and a caller that does not track scope should behave as it always
+  // has.
+  if (ctx.jobRoute && (a.intent === "present_offsite_quote" || a.intent === "offer_offsite_quote")) {
+    const wanted = ctx.jobRoute === "offsite" ? "present_offsite_quote" : "offer_offsite_quote";
+    if (a.intent !== wanted) {
+      return {
+        ok: false, reason: "wrong_offsite_rule",
+        detail: ctx.jobRoute === "offsite"
+          ? "the job routes off-site, so the quick quote is PRESENTED as the plan with no reason attached (A6), not offered as an option"
+          : "the job routes on-site, so the quick quote is OFFERED as an option with the reason the customer qualifies (A7), not presented as the plan",
+      };
+    }
+  }
+
   const supersededBy = ASK_SUPERSEDED_BY[a.intent];
   if (supersededBy && ctx.knownFields && supersededBy.every((f) => ctx.knownFields?.[f])) {
     // A PARTIAL ADDRESS IS NOT AN ADDRESS ON FILE.
