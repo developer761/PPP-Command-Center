@@ -143,7 +143,12 @@ const navSections: NavSection[] = [
       // together. It was only ever readable one record at a time before.
       { label: "Reports", href: "/commercial/reports", icon: <IconChart /> },
       { label: "Email", href: "/commercial/email", icon: <IconEnvelope /> },
-      { label: "Settings", href: "/commercial/settings", icon: <IconGear /> },
+      // adminOnly: the Settings INDEX already redirects a non-admin back to
+      // /commercial, so without this the link was visible, clickable, and did
+      // nothing — a dead control, which is the shape of complaint this platform
+      // keeps getting. Harmless while every login was an admin; not once Kim
+      // (estimating) exists.
+      { label: "Settings", href: "/commercial/settings", icon: <IconGear />, adminOnly: true },
     ],
   },
 ];
