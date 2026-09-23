@@ -55,7 +55,9 @@ export default function CommercialAddressFields({
   const [stateVal, setStateVal] = useState(defaults?.state ?? "");
   const [zip, setZip] = useState(defaults?.zip ?? "");
   const streetRef = useRef<HTMLInputElement | null>(null);
-  const [scriptStatus, setScriptStatus] = useState<"unloaded" | "loading" | "ready" | "no-key">(
+  // "key-rejected" is its own state because it is the one failure the user has
+  // to be told about. See gm_authFailure below.
+  const [scriptStatus, setScriptStatus] = useState<"unloaded" | "loading" | "ready" | "no-key" | "key-rejected">(
     "unloaded"
   );
 
@@ -91,6 +93,30 @@ export default function CommercialAddressFields({
         }
         return;
       }
+      /**
+       * AN EXPIRED KEY IS WORSE THAN A MISSING ONE, and this is where it was
+       * invisible.
+       *
+       * A key that has expired, lost its billing, or been restricted still
+       * serves the script: the request is a 200, `onload` fires, and the state
+       * below becomes "ready". The failure only happens later, inside Google's
+       * code — so the field puts up "Start typing an address…", the user types,
+       * no suggestions ever come, and nothing anywhere says why. Karan,
+       * 2026-09-23: "Google maps api expired it seems like."
+       *
+       * `gm_authFailure` is Google's documented hook for exactly this and is
+       * the ONLY way to catch it: it is a global the API calls when it rejects
+       * the key. Installed before the script so it cannot be missed, and it
+       * drops the field back to plain typing with a message that names the
+       * cause rather than leaving somebody to wonder whether they typed wrong.
+       */
+      (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
+        console.error(
+          "[commercial/address-fields] Google rejected NEXT_PUBLIC_GOOGLE_MAPS_API_KEY — expired, over quota, billing disabled, or restricted to other referrers. Address lookup is off; typing still works."
+        );
+        setScriptStatus("key-rejected");
+      };
+
       const script = document.createElement("script");
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
         apiKey
@@ -219,9 +245,18 @@ export default function CommercialAddressFields({
           value={street}
           onChange={(e) => setStreet(e.target.value)}
           placeholder={scriptStatus === "ready" ? "Start typing an address…" : ""}
+          aria-describedby={scriptStatus === "key-rejected" ? "addr-lookup-off" : undefined}
           autoComplete="off"
           className={INPUT_CLS}
         />
+        {/* Said once, quietly, and only when the lookup is actually dead. The
+            address still saves — the only thing lost is the suggestions, and a
+            person who is not told that will sit waiting for them. */}
+        {scriptStatus === "key-rejected" && (
+          <p id="addr-lookup-off" className="mt-1 text-[11px] text-amber-700">
+            Address lookup is unavailable right now — type the address and it saves normally. (Tell Karan: the Google Maps key needs renewing.)
+          </p>
+        )}
       </div>
       {/* Stephanie 2026-08-13: "add 2nd line for floor/ unit/ ste."
           Commercial GCs sit in office buildings, so a suite or floor is the
