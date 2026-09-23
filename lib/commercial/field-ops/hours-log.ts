@@ -4,12 +4,28 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { absenceLabel } from "./absence-constants";
 
+/**
+ * One logged DAY. Mary, 2026-09-23: "For logged hours, can the date appear? It
+ * is easier to verify if you missed something or made an error."
+ *
+ * The log showed a person, their work orders and a total, and no dates at all
+ * — so a missing Tuesday and a Tuesday entered twice looked identical from
+ * the screen. The id rides along because the same row she is checking is the
+ * one she needs to be able to remove.
+ */
+export type HoursLogDay = {
+  entry_id: string;
+  work_date: string;
+  hours: number;
+  status: string;
+};
 export type HoursLogJob = {
   job_id: string;
   job_name: string;
   job_code: string;
   scheduled_hours: number;
   worked_hours: number;
+  days: HoursLogDay[];
 };
 export type HoursLogAbsence = { work_date: string; reason: string; hours: number | null };
 export type HoursLogRow = {
@@ -42,10 +58,10 @@ export async function getHoursLog(
   // All three sources paginated — a wide range across a full crew can exceed
   // Supabase's silent 1000-row cap, which would undercount + drop crew.
   const [entries, assigns, absences] = await Promise.all([
-    paginateAll<{ employee_id: string; job_id: string; actual_hours: number }>(() =>
+    paginateAll<{ id: string; employee_id: string; job_id: string; actual_hours: number; work_date: string; status: string }>(() =>
       sb
         .from("commercial_time_entries")
-        .select("employee_id, job_id, actual_hours")
+        .select("id, employee_id, job_id, actual_hours, work_date, status")
         .gte("work_date", startIso)
         .lte("work_date", endIso)
         .order("work_date")
@@ -84,10 +100,22 @@ export async function getHoursLog(
     if (!jm.has(job)) jm.set(job, { sched: 0, worked: 0 });
     return jm.get(job)!;
   };
+  // The individual days behind each (person, work order) total.
+  const daysByEmpJob = new Map<string, HoursLogDay[]>();
   for (const e of entries) {
     const h = Number(e.actual_hours ?? 0);
+    // Collected BEFORE the `h <= 0` skip below: a day logged as 0h is exactly
+    // the mistake she is looking for, and hiding it is why it went unnoticed.
+    const key = `${e.employee_id}|${e.job_id}`;
+    const list = daysByEmpJob.get(key) ?? [];
+    list.push({ entry_id: e.id, work_date: String(e.work_date).slice(0, 10), hours: h, status: e.status });
+    daysByEmpJob.set(key, list);
+    // Open the slot even at 0h, or a work order whose only entries are zeros
+    // never appears and the day she is looking for stays invisible — the same
+    // omission one level up.
+    const s = slot(e.employee_id, e.job_id);
     if (h <= 0) continue;
-    slot(e.employee_id, e.job_id).worked += h;
+    s.worked += h;
     empWorked.set(e.employee_id, (empWorked.get(e.employee_id) ?? 0) + h);
     grandWorked += h;
   }
@@ -136,6 +164,7 @@ export async function getHoursLog(
           job_code: jobMeta.get(jid)?.job_code ?? "",
           scheduled_hours: round2(v.sched),
           worked_hours: round2(v.worked),
+          days: (daysByEmpJob.get(`${id}|${jid}`) ?? []).sort((a, b) => a.work_date.localeCompare(b.work_date)),
         }))
         .sort((a, b) => b.worked_hours - a.worked_hours || b.scheduled_hours - a.scheduled_hours || a.job_name.localeCompare(b.job_name));
       return {

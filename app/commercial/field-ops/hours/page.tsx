@@ -7,6 +7,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { todayEtIso, mondayOf, monthStartOf, addDaysIso } from "@/lib/commercial/field-ops/schedule";
 import { getHoursLog } from "@/lib/commercial/field-ops/hours-log";
 import { listEmployees, employeePickerLabel, isLaborCompanyRow } from "@/lib/commercial/field-ops/employees";
+import { deleteTimeEntry } from "@/lib/commercial/field-ops/daily-log";
 import { listJobs } from "@/lib/commercial/field-ops/jobs";
 import { recordHoursForEmployee } from "@/lib/commercial/field-ops/daily-log";
 import { revalidatePath } from "next/cache";
@@ -51,6 +52,25 @@ async function recordHoursAction(formData: FormData) {
   redirect(back("recorded=1"));
 }
 
+/**
+ * Remove one logged day.
+ *
+ * Mary, 2026-09-23: "Please delete JJ himself. and anyone else… I erroneously
+ * entered under both selections. Can I delete or edit entries in the future?"
+ *
+ * Editing already worked — recording the same person, job and day again
+ * overwrites the hours — but a day put against the WRONG person could not be
+ * taken back from any screen. That made every mis-click a message to me.
+ */
+async function deleteEntryAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const res = await deleteTimeEntry(String(formData.get("entry_id") ?? ""), userId);
+  if (!res.ok) redirect(`${BASE}?${new URLSearchParams({ rec_error: res.error })}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}?deleted=1`);
+}
+
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 type Range = "today" | "week" | "month" | "custom";
 
@@ -85,7 +105,7 @@ const fmtH = (h: number) => `${h % 1 === 0 ? h : h.toFixed(2).replace(/0$/, "")}
 export default async function FieldOpsHoursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; from?: string; to?: string; recorded?: string; rec_error?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; recorded?: string; rec_error?: string; deleted?: string }>;
 }) {
   await requireAdmin();
   const sp = await searchParams;
@@ -139,6 +159,11 @@ export default async function FieldOpsHoursPage({
         {sp.recorded ? (
           <p className="mt-3 text-[12.5px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
             Recorded. It shows in the log below and goes to Approvals like any other entry.
+          </p>
+        ) : null}
+        {sp.deleted ? (
+          <p className="mt-3 text-[12.5px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+            Day deleted. To correct hours instead of removing them, record the same person, work order and date again — it overwrites.
           </p>
         ) : null}
 
@@ -264,12 +289,39 @@ export default async function FieldOpsHoursPage({
                     <span className="shrink-0 tabular-nums">sched · worked</span>
                   </li>
                   {r.jobs.map((j) => (
-                    <li key={j.job_id} className="flex items-center justify-between gap-3 text-[12.5px]">
-                      <span className="text-ppp-charcoal-600 truncate min-w-0">
-                        {j.job_name}
-                        {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
-                      </span>
-                      <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.scheduled_hours)} · <span className="font-semibold text-ppp-charcoal-700">{fmtH(j.worked_hours)}</span></span>
+                    <li key={j.job_id} className="text-[12.5px]">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-ppp-charcoal-600 truncate min-w-0">
+                          {j.job_name}
+                          {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
+                        </span>
+                        <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.scheduled_hours)} · <span className="font-semibold text-ppp-charcoal-700">{fmtH(j.worked_hours)}</span></span>
+                      </div>
+                      {/* THE DAYS THEMSELVES. Without these the log showed a
+                          total and no dates, so a missing Tuesday and a Tuesday
+                          entered twice looked exactly alike (Mary 2026-09-23).
+                          A 0h day is shown too — it is the likeliest mistake. */}
+                      {j.days.length > 0 && (
+                        <ul className="mt-1 ml-1 space-y-0.5">
+                          {j.days.map((d) => (
+                            <li key={d.entry_id} className="flex items-center justify-between gap-2 text-[11.5px] text-ppp-charcoal-500">
+                              <span className="tabular-nums">
+                                {fmtDay(d.work_date)}
+                                {d.hours <= 0 && <span className="ml-1.5 text-amber-700 font-semibold">0h — nothing recorded</span>}
+                              </span>
+                              <span className="flex items-center gap-2 shrink-0">
+                                <span className="tabular-nums font-semibold text-ppp-charcoal-700">{fmtH(d.hours)}</span>
+                                <form action={deleteEntryAction}>
+                                  <input type="hidden" name="entry_id" value={d.entry_id} />
+                                  <SubmitButton className="text-[11px] font-semibold text-ppp-charcoal-400 hover:text-rose-700 px-1.5 min-h-[32px]">
+                                    Delete
+                                  </SubmitButton>
+                                </form>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   ))}
                 </ul>
