@@ -11,7 +11,7 @@ import {
 } from "@/lib/commercial/proposals/db";
 import { listExclusions } from "@/lib/commercial/exclusions/db";
 import type { DocumentCategory } from "@/lib/commercial/documents/categories";
-import { isAppendablePdf, MAX_APPEND_BYTES } from "@/lib/commercial/proposals/append-attachments";
+import { isAppendablePdf, isAppendableImage, MAX_APPEND_BYTES } from "@/lib/commercial/proposals/append-attachments";
 
 /**
  * What Brendan means by "the plans" — the drawing set and anything marked up on
@@ -30,7 +30,13 @@ import { isAppendablePdf, MAX_APPEND_BYTES } from "@/lib/commercial/proposals/ap
  * that appends cleanly) prints no list at all.
  */
 function willAppend(d: { mime_type: string; file_name: string; size_bytes: number }): boolean {
-  return isAppendablePdf(d.mime_type, d.file_name) && d.size_bytes <= MAX_APPEND_BYTES;
+  // Images count now — a bid set that arrived as a screenshot is still the bid
+  // set, and it used to be listed as "also on file, not attached" while a PDF
+  // of the same drawings was carried (Brendan 2026-09-23).
+  return (
+    (isAppendablePdf(d.mime_type, d.file_name) || isAppendableImage(d.mime_type, d.file_name)) &&
+    d.size_bytes <= MAX_APPEND_BYTES
+  );
 }
 
 const PLAN_CATEGORIES: ReadonlySet<string> = new Set<DocumentCategory>([

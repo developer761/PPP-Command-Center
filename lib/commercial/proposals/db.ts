@@ -45,6 +45,23 @@ export type ProposalHeaderJson = {
   project_address?: string;
   date_iso?: string;
   show_capital_improvement_notice?: boolean;
+  /**
+   * Break the scope into phases on the proposal.
+   *
+   * Brendan 2026-09-23: "Phasing is not showing up… make it a checkbox
+   * instead, it's not that important, so if I check the phasing then it gives
+   * me an option to put it in."
+   *
+   * Phase grouping already worked — the PDF groups whenever any line carries a
+   * phase — but the only way in was a small "Phase" box on each line, which is
+   * easy to miss on a proposal that never needs one. The checkbox makes it a
+   * decision you take once, and hides the per-line boxes until you do.
+   *
+   * UNDEFINED means "decide from the data", which is how every proposal
+   * written before this behaved — so existing documents keep grouping exactly
+   * as they do today rather than losing their phases to a new default.
+   */
+  use_phasing?: boolean;
   // Karan 2026-07-17 (Tomco 1:1 reference match): optional proposal
   // number rendered right-aligned below the date, e.g. "No. ALT0125".
   // Free-text so Alex can use whatever numbering scheme the GC wants.

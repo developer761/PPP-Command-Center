@@ -829,6 +829,33 @@ function ProjectBlock({ h, revisionLabel }: { h: ProposalHeaderJson; revisionLab
  *  with the description below/next to it (Product + Description are now
  *  distinct). Legacy rows (product_name null) fall back to parsing a
  *  bold-lead out of the description, preserving how they were authored. */
+/**
+ * How a scope line reads on the page: `Name: description.`
+ *
+ * Brendan, 2026-09-23, with the approved Tesla CC proposal as the reference:
+ *
+ *   was   Prime & Paint Gypsum Walls 2 Coats — Primer + 2 finish coats.
+ *   wants New Gypsum Walls: primer and 2 finish coats.
+ *
+ * Every line on the proposal Tomco actually sent reads that way — "GWB Wall:
+ * Standard preparation, apply 2 finish coats." — so the em-dash was ours, not
+ * theirs. A colon also survives a line wrap: an em-dash at a break looks like
+ * a stray hyphen, while a colon has already done its job by then.
+ *
+ * The full stop is added when the description hasn't got one. It is the only
+ * punctuation this touches — the WORDING stays exactly as it was typed,
+ * because that belongs to whoever wrote the product.
+ */
+export function scopeSeparator(): string {
+  return ": ";
+}
+
+export function withFullStop(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  return /[.!?:;]$/.test(t) ? t : `${t}.`;
+}
+
 function ItemLine({ item }: { item: CommercialProposalLineItem }) {
   const productName = item.product_name?.trim();
   // Brendan 2026-08-17: "when you click show line item price on the product it
@@ -862,7 +889,7 @@ function ItemLine({ item }: { item: CommercialProposalLineItem }) {
           <View style={styles.bulletDot} />
           <Text style={styles.bulletBody}>
             <Text style={styles.bulletLead}>{productName}</Text>
-            {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
+            {bodyLines.length === 1 ? <Text>{scopeSeparator() + withFullStop(bodyLines[0])}</Text> : null}
           </Text>
           {priceText && <Text style={styles.inlinePrice}>{priceText}</Text>}
         </View>
@@ -1009,6 +1036,7 @@ function InclusionsCustomer({
   items,
   laborItems = [],
   hideLaborPrices = false,
+  usePhasing,
 }: {
   items: CommercialProposalLineItem[];
   /** Karan 2026-08: "Move the Labor into Inclusions." Labor used to print as
@@ -1022,6 +1050,15 @@ function InclusionsCustomer({
   /** A final-price override is active, so per-line labor money would
    *  contradict the reconciled TOTAL — drop the rate tail. */
   hideLaborPrices?: boolean;
+  /**
+   * The proposal's phasing decision (header_json.use_phasing).
+   *
+   * `undefined` means the proposal predates the checkbox: fall back to the old
+   * rule — group if any line happens to carry a phase. `false` means somebody
+   * deliberately turned phasing off, and then a stray phase left on a line
+   * must NOT quietly re-group the document behind them.
+   */
+  usePhasing?: boolean;
 }) {
   if (items.length === 0 && laborItems.length === 0) return null;
   const laborLines = laborItems.map((it) => {
@@ -1052,7 +1089,7 @@ function InclusionsCustomer({
   // compat with every existing proposal). Phase-null items when some
   // items DO have phases collect under a "General" section at the top.
   const { anyHasPhase, groups } = groupItemsByPhase(items);
-  if (!anyHasPhase) {
+  if (!anyHasPhase || usePhasing === false) {
     return (
       <View style={{ marginTop: 14 }}>
         {/* Stephanie 2026-08-20: "Inclusions, scope of work, change all PDF's
@@ -1127,7 +1164,7 @@ function LiRow({
         {it.product_name ? (
           <Text style={{ fontFamily: "Times-Bold" }}>
             {it.product_name}
-            {it.description ? " — " : ""}
+            {it.description ? scopeSeparator() : ""}
           </Text>
         ) : null}
         {it.description}
@@ -1898,6 +1935,7 @@ export function ProposalPdfDocument({
             items={inclusions}
             laborItems={laborRows}
             hideLaborPrices={overrideActive}
+            usePhasing={proposal.header_json.use_phasing}
           />
         )}
 

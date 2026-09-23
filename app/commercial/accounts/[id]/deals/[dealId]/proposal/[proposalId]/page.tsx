@@ -253,6 +253,9 @@ async function saveProposalAction(formData: FormData) {
   if (carries("show_cip_notice")) {
     header.show_capital_improvement_notice = formData.get("show_cip_notice") === "on";
   }
+  if (carries("use_phasing")) {
+    header.use_phasing = formData.get("use_phasing") === "on";
+  }
   if (carries("gc_address_lines")) {
     const gcAddrRaw = text("gc_address_lines");
     header.gc_address_lines = gcAddrRaw
@@ -1471,6 +1474,17 @@ export default async function ProposalEditorPage({
   // labor (included in TOTAL, own PDF section). Migration 063 (2026-07-19,
   // Katie's ask): labor rows are inclusion-like (roll into TOTAL) but
   // render separately on the customer PDF so Alex can call out hourly work.
+  /**
+   * Is this proposal phased?
+   *
+   * Explicit answer wins. When it has never been answered (every proposal
+   * written before the checkbox), fall back to the data — if lines already
+   * carry phases, the boxes stay visible and the PDF keeps grouping exactly as
+   * it does today. A new default must not quietly un-phase a live proposal.
+   */
+  const phasingOn =
+    proposal.header_json.use_phasing ?? lineItems.some((i) => (i.phase ?? "").trim() !== "");
+
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
@@ -2299,11 +2313,27 @@ export default async function ProposalEditorPage({
               </div>
             </div>
 
-            {/* Capital-improvement banner toggle. Defaults from the job's tax
-                treatment now — picking "Capital improvement" below ticks it. */}
+            {/* Capital-improvement banner. ON by default for every proposal
+                (Brendan 2026-09-23) — untick it for the rare job that should
+                go out without it. It used to default from the job's tax
+                treatment, so it printed only on capital-improvement jobs. */}
             <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
-              <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-amber-600" />
+              <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? true} className="w-4 h-4 accent-amber-600" />
               <span className="text-[12.5px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on the PDF</span>
+            </label>
+
+            {/* Brendan 2026-09-23: "make it a checkbox instead, it's not that
+                important, so if I check the phasing then it gives me an option
+                to put it in." Phase grouping always worked, but the only way in
+                was a small Phase box on every line — easy to miss on the
+                proposals that never need one. This decides it once, and the
+                per-line boxes appear only when it is on. */}
+            <label className="flex items-center gap-2.5 rounded-lg border border-ppp-charcoal-200 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
+              <input type="checkbox" name="use_phasing" defaultChecked={phasingOn} className="w-4 h-4 accent-cc-brand-600" />
+              <span className="text-[12.5px] text-ppp-charcoal-700">
+                Break the scope into phases
+                <span className="block text-[11px] text-ppp-charcoal-500">Adds a Phase box to each line, and groups them under headings on the PDF.</span>
+              </span>
             </label>
           </div>
         </EditorSection>
@@ -2450,6 +2480,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No inclusions yet — add the first one below." : "No inclusions."}</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={inclusions}
               accountId={accountId}
               dealId={dealId}
@@ -2474,6 +2505,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2505,6 +2537,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={alternates}
               accountId={accountId}
               dealId={dealId}
@@ -2571,6 +2604,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2632,6 +2666,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No labor rows — add hours + rate below if you're billing labor separately." : "No labor rows."}</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={laborRows}
               accountId={accountId}
               dealId={dealId}
@@ -2649,6 +2684,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2937,7 +2973,12 @@ function LineItemsTable({
   deleteAction,
   products,
   backHref,
+  phasing = false,
 }: {
+  /** Show the per-line Phase box — the proposal's phasing decision. A row that
+   *  already HAS a phase keeps its box regardless, or the only way to clear a
+   *  stray one would be to turn phasing back on to find it. */
+  phasing?: boolean;
   rows: CommercialProposalLineItem[];
   accountId: string;
   dealId: string;
@@ -3045,10 +3086,12 @@ function LineItemsTable({
             </label>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <label className="block" title="Groups this item under a section header on the PDF. Leave blank for ungrouped.">
-                <span className={LABEL_CLS}>Phase</span>
-                <input type="text" name="phase" defaultValue={r.phase ?? ""} maxLength={60} placeholder="—" className={INPUT_CLS} />
-              </label>
+              {(phasing || (r.phase ?? "").trim() !== "") && (
+                <label className="block" title="Groups this item under a section header on the PDF. Leave blank for ungrouped.">
+                  <span className={LABEL_CLS}>Phase</span>
+                  <input type="text" name="phase" defaultValue={r.phase ?? ""} maxLength={60} placeholder="—" className={INPUT_CLS} />
+                </label>
+              )}
               <label className="block">
                 <span className={LABEL_CLS}>Qty</span>
                 <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
@@ -3235,7 +3278,10 @@ function AddLineItemForm({
   isAlternate,
   isLabor = false,
   backHref,
+  phasing = false,
 }: {
+  /** Show the per-line Phase box (the proposal's "Break the scope into phases"). */
+  phasing?: boolean;
   accountId: string;
   dealId: string;
   proposalId: string;
@@ -3323,11 +3369,15 @@ function AddLineItemForm({
       </label>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* F.6: phase groups items under section headers on the PDF. */}
-        <label className="block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped.">
-          <span className={LABEL_CLS}>Phase</span>
-          <input type="text" name="phase" maxLength={60} placeholder="e.g. Phase 1" className={INPUT_CLS} />
-        </label>
+        {/* Phase box only when the proposal is phased — see the "Break the
+            scope into phases" checkbox. Hidden, not removed: a proposal that
+            already has phases still shows it. */}
+        {phasing && (
+          <label className="block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped.">
+            <span className={LABEL_CLS}>Phase</span>
+            <input type="text" name="phase" maxLength={60} placeholder="e.g. Phase 1" className={INPUT_CLS} />
+          </label>
+        )}
         <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "Hours" : "Qty"}</span>
           <input type="text" inputMode="decimal" name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />

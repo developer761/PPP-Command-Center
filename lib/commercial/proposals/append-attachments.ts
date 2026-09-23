@@ -46,11 +46,38 @@ export type AppendOutcome = {
   skipped: Array<{ fileName: string; reason: string }>;
 };
 
-/** Is this something pdf-lib can splice in? Only PDFs — an xlsx or a photo has
- *  no pages to copy. */
+/** Is this something pdf-lib can splice in as PAGES? */
 export function isAppendablePdf(mimeType: string, fileName: string): boolean {
   return (
     mimeType === "application/pdf" || fileName.trim().toLowerCase().endsWith(".pdf")
+  );
+}
+
+/**
+ * Is this an image we can put on a page of its own?
+ *
+ * Brendan, 2026-09-23, looking at a proposal whose bid set was a screenshot:
+ * "Why is the file not attached here it should be."
+ *
+ * It was not attached because the splicer only ever copied PDF pages, so a
+ * photo or a screenshot fell through to the "also on file — not attached here"
+ * list. That list exists for things that genuinely cannot be carried (a
+ * spreadsheet has no pages), but a PNG is not one of them: it is a picture, and
+ * a picture goes on a page. The GC was being told the plans existed somewhere
+ * else instead of being handed them.
+ *
+ * PNG and JPEG only — what pdf-lib can embed. HEIC cannot be embedded and still
+ * falls through to the list, correctly, because the alternative is a blank page.
+ */
+export function isAppendableImage(mimeType: string, fileName: string): boolean {
+  const n = fileName.trim().toLowerCase();
+  return (
+    mimeType === "image/png" ||
+    mimeType === "image/jpeg" ||
+    mimeType === "image/jpg" ||
+    n.endsWith(".png") ||
+    n.endsWith(".jpg") ||
+    n.endsWith(".jpeg")
   );
 }
 
@@ -61,15 +88,28 @@ export async function appendPdfAttachments(
   const appended: string[] = [];
   const skipped: Array<{ fileName: string; reason: string }> = [];
 
+  // A TOTAL budget, not just a per-file one. The cap below was per attachment,
+  // so ten 24 MB plan sets passed the check individually and were then all held
+  // in heap at once while the document was assembled. An out-of-memory is not
+  // catchable, so the graceful "could not attach" below could never fire for
+  // the case the guard was written for.
+  let budget = MAX_APPEND_BYTES;
   const candidates = sources.filter((s) => {
-    if (!isAppendablePdf(s.mimeType, s.fileName)) {
-      skipped.push({ fileName: s.fileName, reason: "not a PDF — open it from the job's Files tab" });
+    const appendable =
+      isAppendablePdf(s.mimeType, s.fileName) || isAppendableImage(s.mimeType, s.fileName);
+    if (!appendable) {
+      skipped.push({ fileName: s.fileName, reason: "can't be attached — open it from the job's Files tab" });
       return false;
     }
     if (s.sizeBytes > MAX_APPEND_BYTES) {
       skipped.push({ fileName: s.fileName, reason: "too large to attach — open it from the job's Files tab" });
       return false;
     }
+    if (s.sizeBytes > budget) {
+      skipped.push({ fileName: s.fileName, reason: "the attachments together are too large — open it from the job's Files tab" });
+      return false;
+    }
+    budget -= s.sizeBytes;
     return true;
   });
 
@@ -98,6 +138,31 @@ export async function appendPdfAttachments(
       // ignoreEncryption: a plan set exported from Bluebeam or Acrobat is very
       // often flagged read-only. That is not a reason to refuse it — we are
       // reading pages, not defeating a password.
+      if (isAppendableImage(s.mimeType, s.fileName)) {
+        // One page per image, sized to the picture and fitted inside a Letter
+        // page with a margin, so a wide screenshot is not cropped and a tall
+        // one is not blown up past the paper.
+        const isPng =
+          s.mimeType === "image/png" || s.fileName.trim().toLowerCase().endsWith(".png");
+        const img = isPng ? await out.embedPng(raw) : await out.embedJpg(raw);
+        const PAGE_W = 612;
+        const PAGE_H = 792;
+        const MARGIN = 36;
+        const maxW = PAGE_W - MARGIN * 2;
+        const maxH = PAGE_H - MARGIN * 2;
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        const page = out.addPage([PAGE_W, PAGE_H]);
+        page.drawImage(img, {
+          x: (PAGE_W - w) / 2,
+          y: (PAGE_H - h) / 2,
+          width: w,
+          height: h,
+        });
+        appended.push(s.fileName);
+        continue;
+      }
       const src = await PDFDocument.load(raw, { ignoreEncryption: true });
       const pages = await out.copyPages(src, src.getPageIndices());
       for (const p of pages) out.addPage(p);

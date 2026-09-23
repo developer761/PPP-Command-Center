@@ -77,7 +77,17 @@ export async function hydrateProposalContext(
     // never set the other, so a capital-improvement job either billed tax or
     // went out without the line the State expects. The job now answers it, and
     // the checkbox stays editable for the proposal that needs to differ.
-    show_capital_improvement_notice: opp.tax_exempt_reason === "capital_improvement",
+    // ON BY DEFAULT. Brendan 2026-09-23: "This one in yellow right above please
+    // sign and return should be default, we dont want a check mark to turn it
+    // on and off. It should always be on and we can check and mark it off."
+    //
+    // It used to follow the job's tax treatment, so it printed only on a
+    // capital-improvement job. But the line reads "Subject to Certificate of
+    // Capital Improvement OR New York State Sales Tax" — it is an either/or
+    // statement that is true of every job, which is why Tomco wants it on
+    // every proposal. The tick now REMOVES it for the rare one that shouldn't
+    // carry it, rather than being the thing that puts it there.
+    show_capital_improvement_notice: true,
     // Migration 065 (Phase G Q1): snapshot the deal number ("ALT-0125")
     // into header_json.proposal_number so the PDF LogoBlock renders
     // "No. ALT-0125" under the date — matches Tomco's letterhead
