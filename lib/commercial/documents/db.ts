@@ -57,8 +57,12 @@ export type CommercialDocument = {
 
 export const STORAGE_BUCKET = "commercial-documents";
 
-/** 100 MB cap — bid sets get big. Matches the Supabase bucket setting. */
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+// The cap is NOT defined here any more. It read 100 MB — "matches the
+// Supabase bucket setting" — while the project-wide storage limit refused
+// anything over 50, which is what Stephanie kept hitting on bid sets. One
+// definition now, proven against storage by `npm run check:upload-limit`.
+import { MAX_UPLOAD_BYTES, tooLargeMessage } from "@/lib/commercial/uploads/limits";
+export { MAX_UPLOAD_BYTES };
 
 /** Favorites cap per (parent, category). Soft rule — app-layer enforced. */
 export const MAX_FAVORITES_PER_CATEGORY = 5;
@@ -227,7 +231,7 @@ export async function uploadDocument(
   if (input.size_bytes > MAX_UPLOAD_BYTES) {
     return {
       ok: false,
-      error: `File too big (${Math.round(input.size_bytes / 1024 / 1024)} MB). Max 100 MB.`,
+      error: tooLargeMessage(input.size_bytes),
     };
   }
   if (!ALLOWED_MIME_TYPES.has(input.mime_type)) {

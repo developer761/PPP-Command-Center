@@ -12,7 +12,7 @@ import { DateField } from "@/components/commercial/date-field";
  *  Duplicated because importing a server-only lib into a client component
  *  errors at build time. Keep these two in sync — if either changes,
  *  audit the bucket policy in Supabase too. Last verified: 50 MB. */
-const CLIENT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+import { MAX_UPLOAD_BYTES as CLIENT_MAX_UPLOAD_BYTES } from "@/lib/commercial/uploads/limits";
 
 // AUDIT 2026-08-12: this was a hardcoded copy of the category list, and it is
 // how Brendan's removal failed to reach the screen — the enum dropped four

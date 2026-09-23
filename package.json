@@ -29,6 +29,7 @@
     "verify:workflow": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-workflow-e2e.mjs",
     "verify:campaign-edit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-campaign-edit-e2e.mjs",
     "check:columns": "node --env-file=.env.local scripts/check-selected-columns.mjs",
+    "check:upload-limit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/check-upload-limit.mjs",
     "import:rules": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-class-a-rules.mjs",
     "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs"
   },
