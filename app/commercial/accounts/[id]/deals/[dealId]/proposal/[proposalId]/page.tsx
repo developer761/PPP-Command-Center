@@ -21,6 +21,7 @@
 import { flashMessage } from "@/lib/commercial/flash";
 import { columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
 import { GroupedNumberInput } from "@/components/commercial/grouped-number-input";
+import { listProposalActivity, type ProposalActivityEvent } from "@/lib/commercial/proposals/activity";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
@@ -1519,15 +1520,31 @@ export default async function ProposalEditorPage({
    * carry phases, the boxes stay visible and the PDF keeps grouping exactly as
    * it does today. A new default must not quietly un-phase a live proposal.
    */
+  const activity = await listProposalActivity(proposalId);
+
   const phasingOn =
     proposal.header_json.use_phasing ?? lineItems.some((i) => (i.phase ?? "").trim() !== "");
 
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
-  // Line-item mutations are server-guarded draft-only; the editor renders them
-  // read-only past draft so a locked proposal isn't an edit→error dead-end (#2).
-  const canEditLines = proposal.status === "draft";
+  /**
+   * Line-item mutations are server-guarded; the editor mirrors the same rule so
+   * a locked proposal is not an edit→error dead-end (#2).
+   *
+   * Brendan 2026-09-23: "For the approver make it so they can edit it and make
+   * changes even if it's sent out for approval." So the approver — and only
+   * the approver — keeps the controls while it is pending_approval. The
+   * estimator is locked out the moment they send it, which is the point of
+   * sending it.
+   *
+   * This MIRRORS assertProposalEditable; it does not implement it. The server
+   * decides. If these two ever disagree the failure is a visible error, not a
+   * silent write.
+   */
+  const canEditLines =
+    proposal.status === "draft" ||
+    (proposal.status === "pending_approval" && viewerIsApprover);
   // R1b: raw non-alternate line-item sum — what the total is when there's no
   // final-price override (shown as the "leave blank to use" hint).
   const lineItemSumCents = lineItems
@@ -1874,7 +1891,14 @@ export default async function ProposalEditorPage({
                     Send back for changes
                   </SubmitButton>
                   <p className="text-[10.5px] text-ppp-charcoal-400 leading-snug">
-                    Returns R{proposal.revision_number} to draft and notifies whoever requested approval.
+                    {/* Brendan 2026-09-23: "it shouldn't be R1 — implies
+                        there's a revision to an original." It read "Returns R1
+                        to draft" on a proposal that had never been revised,
+                        because it printed the raw revision_number instead of
+                        the label helper, which counts the original as
+                        unnumbered. No number is needed here at all: there is
+                        only one proposal on this screen. */}
+                    Returns this proposal to draft and notifies whoever asked for approval.
                   </p>
                 </form>
               </details>
@@ -1898,6 +1922,11 @@ export default async function ProposalEditorPage({
                 markSentAction={sendProposalAction}
                 signatureAvailable={signatureAvailable}
               />
+              {/* Only an approver may unlock (Brendan 2026-09-23). Hidden
+                  rather than shown-and-refused: the server enforces it either
+                  way, and a button that exists only to tell you off is the
+                  dead click this platform keeps being told about. */}
+              {viewerIsApprover && (
               <form action={unlockAction} className="inline-flex">
                 {hiddenIds}
                 <ConfirmSubmitButton
@@ -1912,6 +1941,7 @@ export default async function ProposalEditorPage({
                   Unlock to edit
                 </ConfirmSubmitButton>
               </form>
+              )}
             </>
           )}
           {/* Karan 2026-07-15: Reopen button on Won/Lost proposals.
@@ -2941,6 +2971,15 @@ export default async function ProposalEditorPage({
         Changes save automatically. Line items save independently below.
       </p>
 
+      {/* Brendan 2026-09-23: "Add an activity section for the proposal… if he
+          puts it to get approved, he adds a note when he requests changes etc,
+          makes changes as well etc."
+
+          Read from the audit log the platform has kept all along, so it covers
+          everything that happened before this section existed — not a new
+          history starting today. */}
+      <ProposalActivity events={activity} />
+
       {/* Danger zone — drafts only. softDeleteProposal rejects anything else,
           so on a sent/won/lost proposal this button was a guaranteed trip to
           "?error=Only draft proposals can be deleted": every other control on
@@ -3025,6 +3064,57 @@ export default async function ProposalEditorPage({
 }
 
 // ─────────────── sub-components ───────────────
+
+/**
+ * What has happened to this proposal, newest first.
+ *
+ * Deliberately plain: who, what, when, and the note if there was one. An
+ * approver sending it back types a reason, and that reason is the single most
+ * useful line on this screen — so it is shown in full rather than truncated
+ * into a tooltip.
+ */
+function ProposalActivity({ events }: { events: ProposalActivityEvent[] }) {
+  if (events.length === 0) return null;
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  return (
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Activity</h2>
+      </div>
+      <ol className="divide-y divide-ppp-charcoal-50">
+        {events.map((e, i) => (
+          <li key={`${e.at}-${i}`} className="px-4 py-2.5 flex items-start gap-3">
+            <span
+              aria-hidden
+              className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${
+                e.kind === "status" ? "bg-cc-brand-600" : "bg-ppp-charcoal-200"
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] text-ppp-charcoal">
+                {e.summary}
+                {e.actor && <span className="text-ppp-charcoal-500"> · {e.actor}</span>}
+              </div>
+              {e.note && (
+                <div className="mt-1 text-[12.5px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  {e.note}
+                </div>
+              )}
+            </div>
+            <span className="text-[11.5px] text-ppp-charcoal-400 tabular-nums shrink-0">{when(e.at)}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 function LineItemsTable({
   rows,

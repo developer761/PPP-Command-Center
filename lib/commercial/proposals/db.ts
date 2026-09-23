@@ -1791,10 +1791,23 @@ export async function requestProposalChanges(input: {
   return { ok: true, proposal: flip.proposal };
 }
 
-/** Unlock an already-approved proposal back to draft so it can be edited.
- *  approved → draft. Any editor may do this (it's not an approval action —
- *  it INVALIDATES the approval and forces a fresh approval before send).
- *  No approver check; the re-approval is the gate. */
+/**
+ * Unlock an already-approved proposal back to draft so it can be edited.
+ * approved → draft, and the approval is cleared so it must be re-approved
+ * before it can go out.
+ *
+ * APPROVERS ONLY. Brendan 2026-09-23: "Only approvers unlock to edit."
+ *
+ * This used to be open to any editor, reasoning that the re-approval was the
+ * real gate. True as far as it goes — nothing unapproved can be sent — but it
+ * let an estimator quietly pull an approved proposal back to draft, so the
+ * approver's decision could be undone without them ever knowing it had been.
+ * The re-approval catches the DOCUMENT; it does not tell you the approval you
+ * gave was thrown away.
+ *
+ * An estimator who spots a problem in an approved proposal now asks for it
+ * back, which is a conversation rather than a silent revert.
+ */
 export async function unlockApprovedProposal(input: {
   proposal_id: string;
   actor_user_id: string;
@@ -1807,6 +1820,13 @@ export async function unlockApprovedProposal(input: {
     return {
       ok: false,
       error: `Only an approved proposal can be unlocked (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+  if (!(await isProposalApprover(input.actor_user_id))) {
+    return {
+      ok: false,
+      error:
+        "Only an approver can unlock an approved proposal. Ask one to unlock it, or start a new revision if it has already gone to the customer.",
     };
   }
 
@@ -2148,8 +2168,29 @@ function isMissingProductNameColumn(
  * POST could silently re-price a sent proposal. Every line-item mutation gates
  * on this now.
  */
-async function assertProposalDraft(
+/**
+ * May this person change this proposal's lines right now?
+ *
+ * Draft: anyone with access, as before.
+ *
+ * Pending approval: the APPROVER, and only the approver. Brendan 2026-09-23:
+ * "For the approver make it so they can edit it and make changes even if it's
+ * sent out for approval."
+ *
+ * The lock exists so a proposal cannot move under someone who is relying on
+ * it. The approver is the person it was sent TO — they are not being
+ * surprised by their own edit, and the alternative is what they do today:
+ * reject it, wait for the estimator to change one number, and review the whole
+ * thing again. What stays locked is everything AFTER approval: once it is
+ * approved or with the GC, the document is a promise and changing it silently
+ * is what revisions exist to prevent.
+ *
+ * The estimator is still locked out at pending_approval. That is the point of
+ * sending it: it stops being yours while somebody reviews it.
+ */
+async function assertProposalEditable(
   proposalId: string,
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data } = await sb
@@ -2160,13 +2201,23 @@ async function assertProposalDraft(
   const row = data as { status?: string; deleted_at?: string | null } | null;
   if (!row || row.deleted_at)
     return { ok: false, error: "Proposal not found." };
-  if (row.status !== "draft") {
+  if (row.status === "draft") return { ok: true };
+
+  if (row.status === "pending_approval") {
+    // Read the flag rather than trusting the caller: this is the only thing
+    // standing between "out for approval" and anyone with a login editing it.
+    if (actorUserId && (await isProposalApprover(actorUserId))) return { ok: true };
     return {
       ok: false,
-      error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+      error:
+        "This proposal is out for approval, so it is locked. An approver can still make changes; anyone else should ask for it to be sent back.",
     };
   }
-  return { ok: true };
+
+  return {
+    ok: false,
+    error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+  };
 }
 
 export async function createLineItem(
@@ -2175,7 +2226,7 @@ export async function createLineItem(
 ): Promise<
   { ok: true; item: CommercialProposalLineItem } | { ok: false; error: string }
 > {
-  const draftGate = await assertProposalDraft(input.proposal_id);
+  const draftGate = await assertProposalEditable(input.proposal_id, actorUserId);
   if (!draftGate.ok) return draftGate;
   // Migration 071: a row needs EITHER a picked product (product_name) OR
   // a typed description — a catalog product with a blank description is a
@@ -2428,9 +2479,10 @@ export async function updateLineItem(
     .eq("id", input.id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
-  // Only editable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft(
+  // Draft, or an approver on a proposal that is out for approval.
+  const draftGate = await assertProposalEditable(
     (before as CommercialProposalLineItem).proposal_id,
+    actorUserId,
   );
   if (!draftGate.ok) return draftGate;
   let { data: after, error } = await sb
@@ -2585,9 +2637,10 @@ export async function deleteLineItem(
     .eq("id", id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
-  // Only deletable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft(
+  // Draft, or an approver on a proposal that is out for approval.
+  const draftGate = await assertProposalEditable(
     (before as CommercialProposalLineItem).proposal_id,
+    actorUserId,
   );
   if (!draftGate.ok) return draftGate;
   const { error } = await sb
