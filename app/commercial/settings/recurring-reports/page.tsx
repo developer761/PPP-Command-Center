@@ -41,14 +41,37 @@ const CADENCES: { key: DigestCadence; label: string; when: string }[] = [
   { key: "monthly", label: "Monthly", when: "The 1st" },
 ];
 
-async function toggleDigestAction(formData: FormData) {
-  "use server";
+
+/**
+ * Admin only — this decides what lands in the CEO's inbox and how often.
+ *
+ * The page carried the same `assertCommercialAccess` as a read-only screen, so
+ * anyone with Commercial access could flip the digest on or change its
+ * cadence. The Settings index is admin-gated, so nobody would find it by
+ * clicking — but "you can only get there if you know the URL" is not a
+ * permission, and this is the first non-admin login (Kim, estimating) where
+ * that distinction stops being theoretical.
+ *
+ * Deliberately NOT applied to Settings › Operating company, which is open on
+ * purpose (Karan 2026-07-31, so Brendan can set his own signature).
+ */
+async function requireSettingsAdmin() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  const { getProfileByUserId } = await import("@/lib/auth/profile");
+  const { isAdminEmail } = await import("@/lib/auth/admin");
+  const profile = await getProfileByUserId(user.id);
+  if (!(profile?.is_admin ?? isAdminEmail(user.email))) redirect("/commercial");
+  return user;
+}
+
+async function toggleDigestAction(formData: FormData) {
+  "use server";
+  const user = await requireSettingsAdmin();
   const cadence = String(formData.get("cadence") ?? "") as DigestCadence;
   if (!["daily", "weekly", "monthly"].includes(cadence)) return;
   await setDigestSettings({ [cadence]: String(formData.get("on")) === "1" }, user.id);
@@ -64,12 +87,8 @@ async function toggleDigestAction(formData: FormData) {
  */
 async function previewDigestAction(formData: FormData) {
   "use server";
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email) redirect("/");
-  await assertCommercialAccess(user.id);
+  const user = await requireSettingsAdmin();
+  if (!user.email) redirect("/");
   const raw = String(formData.get("cadence") ?? "daily");
   const cadence = (["daily", "weekly", "monthly"].includes(raw) ? raw : "daily") as DigestCadence;
   const res = await sendDigest(cadence, [user.email]);
@@ -84,12 +103,7 @@ export default async function RecurringReportsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  const user = await requireSettingsAdmin();
 
   const sp = await searchParams;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
