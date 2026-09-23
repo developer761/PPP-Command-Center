@@ -20,6 +20,7 @@
 
 import { flashMessage } from "@/lib/commercial/flash";
 import { columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
+import { GroupedNumberInput } from "@/components/commercial/grouped-number-input";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
@@ -107,6 +108,25 @@ export const dynamic = "force-dynamic";
 function centsToDollarInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
+/**
+ * A typed quantity → a number, commas and all.
+ *
+ * Brendan 2026-09-23: "when adding the quantity if it's like 1000
+ * automatically add a comma, and same goes for everywhere else as well."
+ *
+ * The money inputs already stripped separators; quantity went through a bare
+ * `Number()`, and `Number("1,000")` is NaN — which the caller then turned into
+ * a silent fallback of 1. So formatting the field without this would have
+ * quietly repriced a 1,000-unit line as one unit. The parser is widened FIRST,
+ * before anything puts a comma in the box.
+ */
+function quantityInputToNumber(s: string, fallback = 1): number {
+  const cleaned = s.replace(/[,\s]/g, "").trim();
+  if (!cleaned) return fallback;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 function dollarsInputToCents(s: string): number {
   const cleaned = s.replace(/[$,\s]/g, "").trim();
   if (!cleaned) return 0;
@@ -597,9 +617,20 @@ async function fileEstimateReportAction(formData: FormData) {
     uploaded_by_user_id: userId,
   });
   revalidatePath(`/commercial/opportunities/${dealId}`);
+  /**
+   * Land on FILES, which is where the report actually goes.
+   *
+   * Brendan 2026-09-23: "The file to documents does [not] work either."
+   *
+   * It did work. It redirected to `?tab=docs`, which opens on its default
+   * sub-tab — Plans & Specs — while an estimating report files under Files.
+   * So the document was created, the page moved, and the file was one tab
+   * over from where you were looking, with nothing on screen saying it had
+   * been filed at all. Twice invisible.
+   */
   redirect(
     uploaded.ok
-      ? `/commercial/opportunities/${dealId}?tab=docs&estimate_filed=1`
+      ? `/commercial/opportunities/${dealId}?tab=files&estimate_filed=1`
       : `${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(uploaded.error)}`
   );
 }
@@ -740,7 +771,7 @@ async function addLineItemAction(formData: FormData) {
   // distinct from the free-text description. Capped defensively.
   const productNameRaw = String(formData.get("product_name") ?? "").trim();
   const product_name = productNameRaw ? productNameRaw.slice(0, 200) : null;
-  const quantity = Number(String(formData.get("quantity") ?? "1"));
+  const quantity = quantityInputToNumber(String(formData.get("quantity") ?? "1"));
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
   // Blank override = compute qty x unit price. Any unparseable or non-positive
@@ -855,7 +886,7 @@ async function updateLineItemAction(formData: FormData) {
   // Sanitize quantity the same way the add path does — a NaN (blank/"abc")
   // otherwise slips past updateLineItem's `< 0`/`=== 0` checks and writes null,
   // dropping the row from the TOTAL (Karan 2026-07-27 audit).
-  const rawQty = Number(String(formData.get("quantity") ?? "1"));
+  const rawQty = quantityInputToNumber(String(formData.get("quantity") ?? "1"));
   // Same tolerant parse as the add path: blank or unparseable → no override.
   const overrideRawU = String(formData.get("line_total_override") ?? "").trim();
   const line_total_override_cents = overrideRawU
@@ -1747,7 +1778,15 @@ export default async function ProposalEditorPage({
             className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
             title={`Start ${proposalRef({ revision_number: proposal.revision_number + 1 })} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
-            + New revision (R{proposal.revision_number + 1})
+            {/* Brendan 2026-09-23: "We sent the original but it says + New
+                revision R2, it should be R1 no?" — right, and the platform
+                already agreed with him everywhere else. `proposalRevisionLabel`
+                has counted the ORIGINAL as un-numbered since his 2026-09-03
+                note ("the original should have no R1"), so the original is
+                revision_number 1 with no label and the first revision is R1.
+                This button was the one place doing raw arithmetic on the
+                column instead of asking the helper, so it alone said R2. */}
+            + New revision ({proposalRevisionLabel({ revision_number: proposal.revision_number + 1 })})
           </Link>
           )}
           {/* R1d HARD GATE: draft → request approval (not direct send). */}
@@ -2421,7 +2460,24 @@ export default async function ProposalEditorPage({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <label className="block">
                   <span className={LABEL_CLS}>Treatment</span>
-                  <select name="tax_exempt" defaultValue={columnsToTaxChoice(opp)} className={INPUT_CLS}>
+                  {/* Brendan 2026-09-23: "Sales tax to capital improvement
+                      default when building proposal." Tomco's commercial work
+                      is nearly all new construction, which is ST-124 — so an
+                      unanswered job should arrive here already saying so
+                      rather than "follow the customer", which is the one
+                      choice that leaves the question open.
+
+                      Only the UNANSWERED case is defaulted. A job somebody has
+                      explicitly marked taxable, or exempt-by-certificate,
+                      shows back exactly what was saved — the default must
+                      never quietly overwrite an answer. */}
+                  <select
+                    name="tax_exempt"
+                    defaultValue={
+                      columnsToTaxChoice(opp) === "inherit" ? "capital_improvement" : columnsToTaxChoice(opp)
+                    }
+                    className={INPUT_CLS}
+                  >
                     <option value="inherit">Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}</option>
                     <option value="exempt">Exempt — certificate on file</option>
                     <option value="capital_improvement">Capital improvement — no tax (ST-124)</option>
@@ -3094,7 +3150,7 @@ function LineItemsTable({
               )}
               <label className="block">
                 <span className={LABEL_CLS}>Qty</span>
-                <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
+                <GroupedNumberInput name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit</span>
@@ -3380,7 +3436,7 @@ function AddLineItemForm({
         )}
         <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "Hours" : "Qty"}</span>
-          <input type="text" inputMode="decimal" name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
+          <GroupedNumberInput name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
         </label>
         <label className="block">
           <span className={LABEL_CLS}>Unit</span>

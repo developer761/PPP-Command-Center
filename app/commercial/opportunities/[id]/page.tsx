@@ -292,6 +292,8 @@ type SP = Promise<{
    *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
   to_sub?: string;
   status_ok?: string;
+  /** Set by 'File to Documents' on the proposal — confirms the report landed. */
+  estimate_filed?: string;
   /** What picking a team just did, e.g. "Added 3 team members to this job". */
   team_applied?: string;
   /** `status` when a next-step button sent the user here to change it. */
@@ -3827,6 +3829,7 @@ export default async function OpportunityDetailPage({
           oppId={opp.id}
           errorMessage={pickFirst(sp.error)}
           categoryFilter={pickFirst(sp.category) ?? null}
+          estimateFiled={pickFirst(sp.estimate_filed) === "1"}
         />
       )}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
@@ -7775,10 +7778,13 @@ async function FilesTab({
   oppId,
   errorMessage,
   categoryFilter,
+  estimateFiled = false,
 }: {
   oppId: string;
   errorMessage?: string;
   categoryFilter: string | null;
+  /** The estimating report was just filed here from the proposal builder. */
+  estimateFiled?: boolean;
 }) {
   const allDocs = await listDocumentsForParent("opportunity", oppId);
   // Apply category filter if set. Kept case-sensitive because our own
@@ -7819,6 +7825,20 @@ async function FilesTab({
             ⚠
           </span>
           <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {estimateFiled && (
+        /* "File to Documents" on the proposal used to redirect here and say
+           nothing, on a tab that wasn't even the one holding the file. Say
+           plainly that it landed, and where. */
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800"
+        >
+          Estimating report filed here, under <strong>Estimating Report (internal)</strong>. It is the
+          internal copy — per-line prices and bid notes — not the customer proposal.
         </div>
       )}
 

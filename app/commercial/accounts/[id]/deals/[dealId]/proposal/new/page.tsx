@@ -149,7 +149,21 @@ export default async function CreateProposalRoute({
     // hydrates. Merged over the hydrated values rather than replacing them, so
     // a field the parent never set (a phone added to the profile since) still
     // fills in, while anything the estimator actually typed wins.
-    header_json: parentHeader ? { ...ctx.header, ...parentHeader } : ctx.header,
+    /**
+     * A revision inherits what the previous one said — EXCEPT its date.
+     *
+     * Brendan 2026-09-23: "Make sure the new revision updates the date as well
+     * if needed on the proposal."
+     *
+     * The parent's header was spread last, so it won on every field including
+     * `date_iso` — and a revision raised in November went out dated the day
+     * the original was written. The date is the one thing on a revision that
+     * must NOT be inherited: it is the whole point that this is the newer
+     * document. Everything the estimator typed still wins, as before.
+     */
+    header_json: parentHeader
+      ? { ...ctx.header, ...parentHeader, date_iso: ctx.header.date_iso }
+      : ctx.header,
     estimator_snapshot_json: parentEstimator
       ? { ...ctx.estimator, ...parentEstimator }
       : ctx.estimator,
