@@ -20,6 +20,7 @@ import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
 import { addressGap } from "./address";
 import { jobRoute } from "./offsite";
+import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, type ResolvedService } from "./services";
 import { renderMessage, SILENT_INTENTS } from "./render";
@@ -334,6 +335,10 @@ Choose the next action.`;
       known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
       // Narrows ask_address to the part we are actually missing.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
+      // A4: and the same for availability. Read from what the customer just
+      // said, because that is where an answer to an availability question
+      // lands. Only narrows an ask the model has already chosen to make.
+      availabilityGap: availabilityGap(inbound.description),
     });
 
     // An intent that renders to nothing, and is not one of the intents that

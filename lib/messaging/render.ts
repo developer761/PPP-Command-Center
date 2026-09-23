@@ -21,6 +21,7 @@
  */
 import type { Intent } from "./agent-output";
 import type { AddressGap } from "./address";
+import type { AvailabilityGap } from "./availability";
 
 /** Intents that END the conversation without sending anything. Sending a
  *  cheerful sign-off to somebody who asked to be left alone is how a
@@ -292,6 +293,9 @@ export type RenderInput = {
   /** What is missing from a partial address. Narrows ask_address to the gap,
    *  which is what A11 requires. See ASK_ADDRESS_GAP below. */
   addressGap?: AddressGap;
+  /** What is missing from a partial availability. Narrows ask_availability,
+   *  which is A4's own remedy. See ASK_AVAILABILITY_GAP below. */
+  availabilityGap?: AvailabilityGap;
   /**
    * WHY this customer qualifies for a remote quote on a job that would
    * normally be seen in person. A7 mandates it, and it is the only reason
@@ -330,13 +334,54 @@ const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   ],
 };
 
+/**
+ * Asking for the half of the availability we are missing.
+ *
+ * A4, Kate, 2026-09-21: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed &
+ * Friday this week works best' is NOT availability collected — the estimator
+ * cannot be booked against it. THE TEST: could a person reply 'you're booked
+ * for X' without asking anything further?" And the remedy, in her words:
+ * "Where only a day is given, ask for the window and collection is then
+ * complete."
+ *
+ * Same shape as the address gap, and for the same reason: re-asking the whole
+ * question makes somebody repeat the half they already gave.
+ *
+ * ONLY EVER NARROWS AN ASK THE MODEL HAS ALREADY CHOSEN. It never decides
+ * that an ask should happen. That matters because a customer who says "Not
+ * today, I will call if I need you" parses as a day with no window, and
+ * chasing them for a time window would be the deferral failure A40 describes.
+ * The model picks the intent for a deferral; this only changes the wording
+ * once ask_availability is the decided move.
+ */
+const ASK_AVAILABILITY_GAP: Record<"window" | "day", string[]> = {
+  window: [
+    "What sort of time window works on those days?",
+    "And roughly what time of day suits you then?",
+  ],
+  day: [
+    "Which day works best for you?",
+    "And what day were you thinking?",
+  ],
+};
+
 export function renderMessage(input: RenderInput): string {
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
     ? input.addressGap
     : null;
-  const variants = gap ? ASK_ADDRESS_GAP[gap] : SAYS[input.intent] ?? [""];
+  // Same idea for availability: they named days but no window, or a time but
+  // no day, so ask for the missing half rather than the whole question.
+  const availGap = input.intent === "ask_availability"
+    && (input.availabilityGap === "window" || input.availabilityGap === "day")
+    ? input.availabilityGap
+    : null;
+  const variants = gap
+    ? ASK_ADDRESS_GAP[gap]
+    : availGap
+      ? ASK_AVAILABILITY_GAP[availGap]
+      : SAYS[input.intent] ?? [""];
   let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
 
   // Substitute verified values. A template whose value is missing must not go
