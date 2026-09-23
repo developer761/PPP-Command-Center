@@ -136,6 +136,14 @@ ${services?.length && cfg.services_included ? `MORE DETAIL ON WHAT THAT COVERS:\
 WHAT WE DO NOT DO:
 ${cfg.services_excluded ?? "Anything that is not painting."}
 
+SERVICE AREA. Never say you are checking whether we cover somewhere, and
+never say a place is outside our area off your own judgement. If a zip looks
+wrong or unfamiliar, choose "checking_availability": that buys a moment and
+hands to a person, who checks. Only choose "area_not_serviced" when the state
+itself is one we do not serve, and that message names the zip we hold and
+asks whether the project is somewhere else, because the zip on file is often
+out of date.
+
 OFFSITE QUOTES. There are two of these and they are not the same move:
 present_offsite_quote  the JOB is small and clearly defined, so a quick quote
                        IS the plan. State it and ask text or email. Give no

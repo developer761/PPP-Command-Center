@@ -23,6 +23,8 @@ import type { JobRoute } from "./offsite";
 export const END_INTENTS = [
   "success", "discard", "schedule_follow_up", "lost", "bailout",
   "phone_pricing", "transferred", "bot_suspected", "msg_liked_loved",
+  // A2's SECOND script, and the only one that ends anything. It is reached
+  // only when the project really is in a state PPP does not cover.
   "area_not_serviced",
 ] as const;
 
@@ -46,6 +48,14 @@ export const CONTINUE_INTENTS = [
   // has no calendar and never books, so it cannot answer and must not invent
   // one, and the only two moves available were to end or to ignore.
   "defer_to_estimator",
+  // A2's FIRST script. "If the zip does NOT resolve to a Zip_Code__c row, OR
+  // its Service Territory is INACTIVE or named 'Out of Area', SAY SOMETHING
+  // LIKE: 'Just a moment, I'm checking availability.', then hand off — a
+  // human must check with the estimator before any coverage is promised."
+  //
+  // Not an ending. The conversation stays open and a person picks it up,
+  // which is the difference between this and area_not_serviced.
+  "checking_availability",
   // Something landed badly. Without this the only outlets for a customer who
   // reacted negatively were re-asking the same question or escalating, so it
   // re-asked — and the renderer's variant rotation made a repeat look like a
@@ -743,6 +753,10 @@ export const LOW_STAKES_FLOOR = 0.5;
  */
 export function shouldEscalate(action: AgentAction, ctx: ValidateContext = {}): boolean {
   if (action.intent === "escalate") return true;
+  // A2: "a human must check with the estimator before any coverage is
+  // promised." The message buys a moment; the hand-off is the point of it,
+  // so this escalates whatever the model's confidence was.
+  if (action.intent === "checking_availability") return true;
   const strict = ctx.confidenceThreshold ?? 0.95;
   const threshold = LOW_STAKES.has(action.intent) ? Math.min(strict, LOW_STAKES_FLOOR) : strict;
   return action.confidence < threshold;

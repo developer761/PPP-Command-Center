@@ -207,8 +207,38 @@ export const SAYS: Record<Intent, string[]> = {
   transferred: [
     "I'm passing you over to our office now. They'll take it from here.",
   ],
+  // — A2, script 1: we cannot tell yet, so buy a moment and hand off —
+  //
+  // "If the zip does NOT resolve to a Zip_Code__c row, OR its Service
+  // Territory is INACTIVE or named 'Out of Area', SAY SOMETHING LIKE: 'Just a
+  // moment, I'm checking availability.', then hand off — a human must check
+  // with the estimator before any coverage is promised."
+  //
+  // NEVER NAMES THE CHECK. Kate, 2026-09-10: "Saying anything like 'let me
+  // check that zip against our service area' signals we are not local, which
+  // costs us the lead even when the answer is yes." Checking availability is
+  // what any office does; checking whether you are in our area is not.
+  checking_availability: [
+    "Just a moment, I'm checking availability.",
+    "One moment while I check availability for you.",
+  ],
+
+  // — A2, script 2: the project really is in a state we do not cover —
+  //
+  // "I have [ZIP] on file as the zip code, and unfortunately, we don't
+  // currently service the state of [STATE]. Is the project outside of
+  // [STATE]?"
+  //
+  // IT ASKS. The zip on file is often stale, and Kate's own findings include
+  // a customer who gave a New Jersey address while FL 33308 sat on the
+  // record. Closing on the record's word loses a lead we do cover, so this
+  // names what we hold and gives them the chance to correct it.
+  //
+  // Both values are slots, so the message cannot render without them: naming
+  // the wrong state is worse than the old blanket sentence it replaces.
   area_not_serviced: [
-    "Unfortunately that's outside the area we cover, so we won't be able to help on this one. Sorry about that!",
+    "I have {zip} on file as the zip code, and unfortunately we don't currently service the state of {state}. Is the project outside of {state}?",
+    "The zip I have on file is {zip}, and unfortunately we do not currently service {state}. Is the project somewhere other than {state}?",
   ],
 
   // — Silent —
@@ -289,7 +319,12 @@ export type RenderInput = {
   /** Values the system holds, for the confirm_* intents to read back. These
    *  are system data, not model output — interpolating them keeps the
    *  guarantee that nothing the model wrote reaches the customer unfiltered. */
-  known?: { address?: string | null; phone?: string | null; email?: string | null; scope?: string | null };
+  known?: {
+    address?: string | null; phone?: string | null; email?: string | null; scope?: string | null;
+    /** The zip we hold and the state it resolves to, for A2's out-of-state
+     *  message. Both are looked up, never inferred by the model. */
+    zip?: string | null; state?: string | null;
+  };
   /** What is missing from a partial address. Narrows ask_address to the gap,
    *  which is what A11 requires. See ASK_ADDRESS_GAP below. */
   addressGap?: AddressGap;
@@ -401,6 +436,10 @@ export function renderMessage(input: RenderInput): string {
       // template refuse to render, which is correct — A7 without its reason
       // is just A6 said in the wrong situation.
       reason: input.offsiteReason ?? null,
+      // A2 names the zip we hold and the state it is in. Both are system
+      // values; a state the model guessed would be worse than saying nothing.
+      zip: input.known?.zip ?? null,
+      state: input.known?.state ?? null,
     };
     let missing = false;
     pick = pick.replace(/\{(\w+)\}/g, (_m, key: string) => {

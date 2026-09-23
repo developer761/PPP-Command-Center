@@ -75,6 +75,10 @@ describe("rendering an intent into words", () => {
     const known = {
       address: "1 Test St, Garden City, NY 11530",
       phone: "(516) 555-0100", email: "test@example.com", scope: "interior painting",
+      // A2 names the zip we hold and the state it resolves to. Without them
+      // the message correctly renders nothing, because naming the wrong state
+      // is worse than the blanket sentence it replaced.
+      zip: "11530", state: "New York",
     };
     for (const intent of ALL) {
       if (SILENT_INTENTS.has(intent)) continue;
