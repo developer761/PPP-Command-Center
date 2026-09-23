@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 import { join } from "node:path";
 import {
   DOCUMENT_CATEGORIES,
@@ -90,7 +91,9 @@ describe("upload size limits", () => {
     "lib/commercial/documents/db.ts",
     "lib/commercial/accounts/documents.ts",
     "components/commercial-files-upload-form.tsx",
-    "components/commercial-document-upload-form.tsx",
+    // NOT components/commercial-document-upload-form.tsx — see below. It is
+    // bound by a different limit, and asserting the wrong one here is how a
+    // test ends up arguing for a bug.
   ];
 
   for (const file of SOURCES) {
@@ -103,6 +106,18 @@ describe("upload size limits", () => {
       expect(ownLiteral, `${file} declares its own upload cap again`).toBeNull();
     });
   }
+
+  it("the ACCOUNT documents form is bound by the multipart cap, not the platform one", () => {
+    // This form POSTs multipart and has no sign/finalize route, so Vercel's
+    // ~4.5 MB request body is its real ceiling. It previously guarded against
+    // the platform limit — first 50 MB, then 500 MB once that constant moved —
+    // and every file in between was accepted here and killed at the edge with
+    // a bare "Upload failed." The right constant for it is the smaller one.
+    // Comments stripped: the note explaining this names the other constant.
+    const src = stripComments(read("components/commercial-document-upload-form.tsx"));
+    expect(src).toContain("SAFE_MULTIPART_BYTES");
+    expect(src).not.toContain("MAX_UPLOAD_BYTES");
+  });
 
   it("the shared limit is a real number of bytes", () => {
     const src = read("lib/commercial/uploads/limits.ts");

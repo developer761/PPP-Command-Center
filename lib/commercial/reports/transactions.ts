@@ -3,7 +3,7 @@ import "server-only";
 import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 
 import { commercialDb } from "@/lib/commercial/db";
-import { paginateAll } from "@/lib/commercial/paginate";
+import { paginateAll, selectByIds } from "@/lib/commercial/paginate";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
 import { etDateOf } from "@/lib/date-et";
@@ -254,13 +254,30 @@ export async function getTransactionsReport(
   );
 
   if (payments.length > 0) {
-    const invIds = [...new Set(payments.map((p) => p.invoice_id))];
-    const { data: invRows } = await sb
-      .from("commercial_invoices")
-      .select("id, invoice_number, opportunity_id, account_id, deleted_at")
-      .in("id", invIds);
+    // CHUNKED, and errors thrown. `payments` above is fully paginated, so this
+    // lookup grows with it — and a single `.in()` is capped at 1000 rows and
+    // 414s on the URL before that. Any invoice it missed made its payment hit
+    // the `continue` below and vanish from Payment In, silently. The old `??
+    // []` was worse still: one transient error emptied the map and dropped
+    // EVERY payment, rendering $0 in on a month with real money in it.
+    const invIds = payments.map((p) => p.invoice_id);
+    const invRows = await selectByIds<{
+      id: string;
+      invoice_number: string;
+      opportunity_id: string;
+      account_id: string;
+      deleted_at: string | null;
+    }>(
+      invIds,
+      (chunk) =>
+        sb
+          .from("commercial_invoices")
+          .select("id, invoice_number, opportunity_id, account_id, deleted_at")
+          .in("id", chunk),
+      "transactions: invoices for payments"
+    );
     const invById = new Map(
-      ((invRows ?? []) as {
+      (invRows as {
         id: string;
         invoice_number: string;
         opportunity_id: string;

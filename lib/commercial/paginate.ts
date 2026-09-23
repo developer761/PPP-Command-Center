@@ -36,3 +36,51 @@ export async function paginateAll<T>(
   }
   return out;
 }
+
+/**
+ * Look up rows BY ID, in chunks, without silently losing any.
+ *
+ * The companion mistake to the one above, and the more dangerous of the two
+ * because `paginateAll` working perfectly is what triggers it:
+ *
+ *     const payments = await paginateAll(...);            // every payment
+ *     const ids = [...new Set(payments.map(p => p.invoice_id))];
+ *     const { data } = await sb.from("invoices").in("id", ids);   // ← capped
+ *     for (const p of payments) {
+ *       const inv = byId.get(p.invoice_id);
+ *       if (!inv) continue;                               // ← money vanishes
+ *     }
+ *
+ * That `.in()` is subject to the same 1000-row cap, and the URL it builds
+ * (~37 bytes per UUID) hits a 414 well before that. Either way the lookup comes
+ * back short, the `continue` drops those rows, and the total is quietly wrong.
+ * The better the pagination above it works, the more certainly the lookup
+ * below it fails — so the two must be fixed together or not at all.
+ *
+ * Errors THROW, for the reason `paginateAll` gives: a `?? []` here turns a
+ * failed lookup into an empty map, and an empty map turns every payment into a
+ * skipped one. That renders "$0.00 in" on a month with real money in it, and
+ * nothing on the screen looks wrong.
+ *
+ * 200 per chunk matches the batch size already used for Salesforce IN() and
+ * the vendor/e-sign lookups.
+ */
+export async function selectByIds<T>(
+  ids: readonly string[],
+  make: (chunk: string[]) => PromiseLike<{ data: unknown; error: unknown }>,
+  label = "selectByIds"
+): Promise<T[]> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return [];
+  const CHUNK = 200;
+  const out: T[] = [];
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const { data, error } = await make(unique.slice(i, i + CHUNK));
+    if (error) {
+      const msg = (error as { message?: string })?.message ?? String(error);
+      throw new Error(`${label} failed on ids ${i}-${i + CHUNK}: ${msg}`);
+    }
+    out.push(...(((data as T[] | null) ?? [])));
+  }
+  return out;
+}
