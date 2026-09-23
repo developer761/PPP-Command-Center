@@ -275,6 +275,9 @@ export function schedulerDeps(): SchedulerDeps {
         track,
         stage,
         lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,
+        // A3 is satisfied by events, so the check needs the whole list
+        // rather than just the last one.
+        priorIntents,
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
         },

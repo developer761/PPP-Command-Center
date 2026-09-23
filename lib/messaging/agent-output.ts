@@ -196,7 +196,8 @@ export type RejectReason =
   | "invented_availability"
   | "banned_by_hard_no"
   | "wrong_offsite_rule"      // presented what should be offered, or the reverse
-  | "question_left_unanswered";    // presented what should be offered, or the reverse
+  | "question_left_unanswered"
+  | "details_never_collected";    // presented what should be offered, or the reverse
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -416,6 +417,54 @@ export function asksSomething(text: string | null | undefined): boolean {
   return QUESTION_WORD.test(t) || BARE_QUESTION.test(t);
 }
 
+/**
+ * A3: the three things that must be collected or confirmed before the bot can
+ * call a conversation finished.
+ *
+ * "collect/confirm the project details, full address, and contact information
+ * (email and phone)... this rule is strictly about ensuring that this
+ * information is collected."
+ *
+ * Each leg is satisfied by an EVENT, not by the state of the record, and that
+ * is Kate's own emphasis: "HOLDING IS NOT CONFIRMING. Where the record already
+ * holds the address and contact IN FULL, the obligation is NOT satisfied by
+ * holding them — confirm them once with the customer before the conversation
+ * ends. The confirmation is an EVENT IN THE CONVERSATION, not a state of the
+ * record." So asking counts and reading it back counts; quietly having it
+ * does not.
+ *
+ * Asking also covers the refusal carve-out without needing to detect one.
+ * Where a customer refuses to give a street and that refusal is honoured
+ * (A41), ask_address still happened, so this stays satisfied and the refusal
+ * is governed by its own rule rather than by this one.
+ */
+const A3_LEGS: { label: string; satisfiedBy: readonly string[] }[] = [
+  { label: "project details", satisfiedBy: ["ask_project_details", "confirm_scope"] },
+  { label: "the full address", satisfiedBy: ["ask_address", "confirm_address"] },
+  { label: "contact details", satisfiedBy: ["ask_contact", "confirm_contact"] },
+];
+
+/**
+ * Endings that CLAIM the flow finished, and so owe all three.
+ *
+ * Deliberately short. "WHERE THIS DOES NOT FIRE: a customer who DECLINES
+ * (A17) or DEFERS (A40) ends the collection obligation at that turn. A bot
+ * that stops collecting after 'no thanks', 'I'm not interested', 'I hired
+ * someone' or 'I'll reach out later' is CORRECT and carries no A3 defect."
+ *
+ * Every one of those outcomes has its own intent — bailout, lost, discard,
+ * schedule_follow_up — so the carve-out is structural here rather than
+ * something this has to detect. Kate measured what happens without it: 8 of
+ * 49 rows are exactly that shape, and the rule would have fired a critical on
+ * every one, flipping 6 rows from good to bad.
+ *
+ * phone_pricing IS included, on her instruction: "A Phone Pricing is NOT that
+ * [a deferral]: the quote going out by text or phone still requires all three
+ * here." transferred is not, because a person has taken the conversation and
+ * finishes the collection themselves.
+ */
+const CLAIMS_THE_FLOW_FINISHED = new Set<string>(["success", "phone_pricing"]);
+
 export type ValidateContext = {
   /** Slots the system verified. An intent may only reference these. */
   verifiedSlots?: Record<string, unknown>;
@@ -452,6 +501,15 @@ export type ValidateContext = {
   negativeReaction?: boolean;
   /** What we said last, so the same thing is not said straight back. */
   lastIntent?: string;
+  /**
+   * Every intent this conversation has already used, oldest first.
+   *
+   * A3 is satisfied by events rather than by the state of the record, so the
+   * only way to answer it is to know what has actually been asked and
+   * confirmed. Undefined disables the check, which is what a caller that does
+   * not track a conversation wants.
+   */
+  priorIntents?: readonly string[];
   /** How much of the required flow is already done: 0 means nothing collected,
    *  4 means all of it. Undefined disables the ordering check, which is what
    *  every caller that does not track a conversation wants. */
@@ -501,6 +559,33 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // Asking for something we already hold. Kate: "asked customer for phone
   // number + to type out phone number" — the reason that reached her was a
   // prompt instruction, which the model ignored. This is not an instruction.
+  // A3: THE HANDOFF TURN CARRIES THE COLLECTION FAILURE.
+  //
+  // "Where details were never collected or confirmed, the defect sits on the
+  // turn where the bot handed off or closed — the sign-off, whichever came
+  // last. That is the last moment it could have happened."
+  //
+  // So this is checked exactly there, on the turn that claims the flow
+  // finished. Escalating rather than refusing outright, because the model may
+  // be right that the conversation is over and a person can see in seconds
+  // which leg was skipped; refusing would send it round to choose again with
+  // the same information.
+  //
+  // THE OFF-SITE PATH DOES NOT RELEASE THIS. "Even when an off-site quote is
+  // suggested or required, you must still collect Project Details, Full
+  // Address and Contact Information."
+  if (ctx.priorIntents && CLAIMS_THE_FLOW_FINISHED.has(a.intent)) {
+    const seen = new Set([...ctx.priorIntents, a.intent]);
+    const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
+    if (missing.length) {
+      return {
+        ok: false, reason: "details_never_collected",
+        detail: `this closes the conversation but ${missing.map((m) => m.label).join(" and ")} ` +
+          `${missing.length === 1 ? "was" : "were"} never asked for or confirmed`,
+      };
+    }
+  }
+
   // A6 vs A7: THE JOB DECIDES WHICH SENTENCE, NOT THE MODEL.
   //
   // "THE TEST IS THE JOB, NOT THE CUSTOMER. Read the JOB ROUTING LOOKUP: does

@@ -237,6 +237,10 @@ export async function runAgentTurn(
     /** How much of the required flow is done. Omit and the ordering check is
      *  skipped, which is right for a caller with no conversation to track. */
     stage?: number;
+    /** Every intent this conversation has used, oldest first. A3 is satisfied
+     *  by events rather than by the state of the record, so closing the
+     *  conversation needs to know what was actually asked and confirmed. */
+    priorIntents?: readonly string[];
     /** The intent behind our previous message, so a negative reaction cannot
      *  be answered by saying the same thing again. */
     lastIntent?: string;
@@ -314,6 +318,9 @@ Choose the next action.`;
         name: !!kf.name, phone: !!kf.phone, email: !!kf.email,
         address: !!kf.address, inquiryScope: !!kf.inquiryScope,
       },
+      // A3: what has actually been asked and confirmed, so a turn that closes
+      // the conversation can be refused when a leg was skipped.
+      priorIntents: opts.priorIntents,
       // A11: which HALF of the address is missing, not whether one exists.
       // Undefined when we hold nothing, so the ordinary ask applies.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
