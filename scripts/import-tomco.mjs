@@ -1234,6 +1234,40 @@ async function stageAttendance() {
     // hours that the reconciliation would then report as missing.
     const hours = storedHours(day.hours);
     if (hours !== rounded) r.skipped.push(`${key}: ${rounded}h is more than the column holds; stored ${hours}`);
+
+    /**
+     * ADOPT A DAY THE PLATFORM ALREADY RECORDED, rather than inserting a
+     * second one. Same shape as the job adoption above, and it took the sync
+     * down the same way.
+     *
+     * `commercial_time_entries` is UNIQUE on (employee, job, work_date). Mary
+     * records attendance in the office, and since the crew-company fold her
+     * rows sit on exactly the person+job+day that Salesforce also owns — so an
+     * unmapped key whose slot is already occupied used to throw
+     * "duplicate key value violates unique constraint", killing the run with
+     * costs and payments already committed and attendance half-written. Seen
+     * 2026-09-23 on Joseph Lucatorto, 2026-09-16.
+     *
+     * Writing the mapping first turns the insert into an UPDATE of the row
+     * that is already there. The hours then come from Salesforce, which is
+     * right for the dual run — and if a person has edited that row since,
+     * `editedHere` still protects it, exactly as it would for any other row.
+     */
+    if (!mapped("attendance", key)) {
+      const { data: sameDay } = await sb
+        .from("commercial_time_entries")
+        .select("id")
+        .eq("employee_id", employeeId)
+        .eq("job_id", jobId)
+        .eq("work_date", day.workDate)
+        .limit(1)
+        .maybeSingle();
+      if (sameDay?.id) {
+        await remember("attendance", key, sameDay.id);
+        r.notes.push(`adopted the day already on the platform: ${key}`);
+      }
+    }
+
     await put("attendance", key, "commercial_time_entries", {
       job_id: jobId,
       employee_id: employeeId,
