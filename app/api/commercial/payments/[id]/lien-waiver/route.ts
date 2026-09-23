@@ -5,11 +5,19 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { attachPaymentLienWaiver, removePaymentLienWaiver } from "@/lib/commercial/invoices/payment-lien-waiver";
 import { verifyFileMagicBytes } from "@/lib/commercial/accounts/documents";
+import { SAFE_MULTIPART_BYTES } from "@/lib/commercial/uploads/size-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX = 50 * 1024 * 1024; // 50 MB — a scanned/emailed waiver PDF
+// The body arrives as multipart through a Vercel serverless function, which
+// rejects anything over ~4.5 MB at the EDGE — before this handler runs. Proved
+// against production 2026-09-23: a 100 KB POST here returns 401 (our auth), a
+// 6 MB POST returns 413 (the platform). So the cap below is the PLATFORM's,
+// not a policy choice, and a larger number here would be fiction: the check
+// could never execute. The browser-side guard in lib/commercial/uploads/
+// size-limit.ts refuses oversized files first, with an explanation.
+const MAX = SAFE_MULTIPART_BYTES;
 const ALLOWED = new Set(["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp", "image/heic", "image/heif"]);
 
 /** Upload (or remove) the PARTIAL lien waiver for one progress payment. Mirrors
@@ -39,7 +47,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: "Pick a lien-waiver file (PDF or image)." }, { status: 400 });
   }
-  if (file.size > MAX) return NextResponse.json({ error: "File too big (max 50 MB)." }, { status: 400 });
+  if (file.size > MAX) return NextResponse.json({ error: `File too big (${(file.size / 1024 / 1024).toFixed(1)} MB). This slot posts through the server, which caps at ${(MAX / 1024 / 1024).toFixed(0)} MB — put the file on the deal's Documents / Files tab and attach it from there.` }, { status: 400 });
   if (!ALLOWED.has(file.type)) return NextResponse.json({ error: "Upload a PDF or image." }, { status: 400 });
 
   const data = new Uint8Array(await file.arrayBuffer());
