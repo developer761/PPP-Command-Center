@@ -84,6 +84,34 @@ try {
     .select("*", { count: "exact", head: true }).eq("conversation_id", first.conversationId);
   ok("…and the thread holds exactly two messages", msgCount === 2, `got ${msgCount}`);
 
+  // 3b. A44: the customer says when they cannot be reached, and it is kept.
+  //
+  // Against the real schema on purpose. The CHECK demands both hours or
+  // neither, so a write that got the shape wrong is rejected here and nowhere
+  // in the unit tests, which have no constraint to violate.
+  const { data: beforeReach } = await sb.from("sms_conversations")
+    .select("unreachable_start_hour").eq("id", first.conversationId).maybeSingle();
+  ok("no constraint is recorded before the customer states one",
+     (beforeReach?.unreachable_start_hour ?? null) === null);
+
+  await ingest(msg("I'm at work until 5, can you text after that", "e2e-reach"));
+  const { data: reach } = await sb.from("sms_conversations")
+    .select("unreachable_start_hour, unreachable_end_hour, unreachable_stated_at, unreachable_message_id")
+    .eq("id", first.conversationId).maybeSingle();
+  ok("a stated constraint is recorded",
+     reach?.unreachable_start_hour === 0 && reach?.unreachable_end_hour === 17,
+     `${reach?.unreachable_start_hour}-${reach?.unreachable_end_hour}`);
+  ok("…with when they said it", !!reach?.unreachable_stated_at);
+  ok("…and which message said it, so a screen can quote them back",
+     typeof reach?.unreachable_message_id === "string");
+
+  // "It does not expire." Silence about it is not a retraction.
+  await ingest(msg("The fence is about 40 feet", "e2e-reach-2"));
+  const { data: stillReach } = await sb.from("sms_conversations")
+    .select("unreachable_start_hour").eq("id", first.conversationId).maybeSingle();
+  ok("…and a later message saying nothing about it does not clear it",
+     stillReach?.unreachable_start_hour === 0, String(stillReach?.unreachable_start_hour));
+
   // 4. STOP suppresses the handset and ends the conversation.
   const stop = await ingest(msg("STOP", "e2e-3"));
   ok("STOP is recognised as an opt-out", stop.keyword === "opt_out");
