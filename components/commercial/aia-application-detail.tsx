@@ -281,6 +281,7 @@ export function AiaApplicationDetail({
         <div className="mt-3">
           <LienWaiverUpload
             aiaApplicationId={application.id}
+            opportunityId={dealId}
             hasWaiver={!!lienWaiver}
             downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
             fileName={lienWaiver?.file_name ?? null}

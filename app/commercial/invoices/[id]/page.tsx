@@ -1763,6 +1763,7 @@ export async function InvoiceDetailView({
                     <div className="mt-1.5 max-w-md">
                       <LienWaiverUpload
                         paymentId={p.id}
+                        opportunityId={invoice.opportunity_id ?? undefined}
                         hasWaiver={!!pw}
                         downloadHref={pw ? `/api/commercial/documents/${pw.id}/download` : null}
                         fileName={pw?.file_name ?? null}
@@ -1976,6 +1977,7 @@ export async function InvoiceDetailView({
 
                     <LienWaiverUpload
                       milestoneId={m.id}
+                      opportunityId={invoice.opportunity_id ?? undefined}
                       hasWaiver={!!w}
                       downloadHref={w ? `/api/commercial/documents/${w.id}/download` : null}
                       fileName={w?.file_name ?? null}
@@ -2034,6 +2036,7 @@ export async function InvoiceDetailView({
             <p className="text-[12px] text-ppp-charcoal-500 mb-3">The <strong>final</strong> unconditional waiver — upload it once the invoice is paid in full. Partial waivers for each progress payment attach under <a href="#payments" className="text-ppp-blue-700 underline underline-offset-2">Payments</a> above. It also lands in this opportunity&rsquo;s Documents.</p>
             <LienWaiverUpload
               invoiceId={invoice.id}
+              opportunityId={invoice.opportunity_id ?? undefined}
               hasWaiver={!!lienWaiver}
               downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
               fileName={lienWaiver?.file_name ?? null}
