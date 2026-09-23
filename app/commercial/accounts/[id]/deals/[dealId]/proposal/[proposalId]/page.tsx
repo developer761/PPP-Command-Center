@@ -787,6 +787,10 @@ async function addLineItemAction(formData: FormData) {
 
   const is_alternate = formData.get("is_alternate") === "on";
   const is_labor = formData.get("is_labor") === "on";
+  // Brendan 2026-09-23: a line the GC does not see. Priced into the TOTAL,
+  // kept off the customer's itemised list, shown on the plan report as
+  // [INTERNAL].
+  const is_internal = formData.get("is_internal") === "on";
   const phaseRaw = String(formData.get("phase") ?? "").trim();
   const phase = phaseRaw || null;
   const result = await createLineItem(
@@ -798,6 +802,7 @@ async function addLineItemAction(formData: FormData) {
       quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
       unit,
       unit_price_cents,
+      is_internal,
       is_alternate,
       phase,
       is_labor: is_labor && !is_alternate,
@@ -906,6 +911,7 @@ async function updateLineItemAction(formData: FormData) {
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",
       show_price: formData.get("show_price") === "on",
+      is_internal: formData.get("is_internal") === "on",
       line_total_override_cents,
       phase,
     },
@@ -3211,6 +3217,16 @@ function LineItemsTable({
                 Show this line&rsquo;s price on the customer proposal
               </label>
             )}
+            {/* Toggle on an existing line, so a line added to the wrong side
+                can be moved without deleting and retyping it. Alternates are
+                excluded for the same reason as the add form: an alternate the
+                GC cannot see is a contradiction. */}
+            {!r.is_alternate && !r.is_labor && (
+              <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
+                <input type="checkbox" name="is_internal" defaultChecked={r.is_internal === true} className="w-4 h-4 accent-ppp-navy-600" />
+                Internal line — not shown to the customer
+              </label>
+            )}
 
             <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-ppp-charcoal-100">
               <span className="text-[12.5px] text-ppp-charcoal-600 tabular-nums pt-2">
@@ -3459,6 +3475,26 @@ function AddLineItemForm({
         <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
           <input type="checkbox" name="show_price" defaultChecked className="w-4 h-4 accent-cc-brand-600" />
           Show this line&rsquo;s price on the client PDF
+        </label>
+      )}
+
+      {/* Brendan 2026-09-23: "Add an internal line item button on the proposal
+          when making the inclusions."
+
+          A checkbox rather than a second Add button: the form is identical
+          either way, and two buttons that differ by one boolean is how the
+          wrong one gets pressed. Not offered on alternates or labor — an
+          alternate the GC cannot see is a contradiction, and labor already
+          prints as its own section. */}
+      {!isAlternate && !isLabor && (
+        <label className="inline-flex items-start gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none rounded-lg border border-ppp-charcoal-200 px-3 py-2">
+          <input type="checkbox" name="is_internal" className="w-4 h-4 mt-0.5 accent-ppp-navy-600" />
+          <span>
+            Internal line — not shown to the customer
+            <span className="block text-[11px] text-ppp-charcoal-500">
+              Still priced into the TOTAL. Appears on the Plan report only, marked INTERNAL.
+            </span>
+          </span>
         </label>
       )}
 

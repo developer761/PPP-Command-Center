@@ -1161,6 +1161,10 @@ function LiRow({
     <View style={styles.liRow}>
       <Text style={[styles.liCell, styles.liCellDesc]}>
         {showAlternateBadge && it.is_alternate ? "[ALT] " : ""}
+        {/* The internal report is the only document this line appears on, so
+            say why it is here — otherwise an approver reading the scope has no
+            way to tell it from something the GC was quoted line by line. */}
+        {it.is_internal ? "[INTERNAL] " : ""}
         {it.product_name ? (
           <Text style={{ fontFamily: "Times-Bold" }}>
             {it.product_name}
@@ -1805,7 +1809,21 @@ export function ProposalPdfDocument({
   // section between Inclusions and Alternates. Rolls into TOTAL like
   // inclusions (which is why we filter them out of the inclusions
   // bucket here — they'd double-count the TOTAL otherwise).
-  const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  const allInclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  /**
+   * INTERNAL LINES NEVER REACH THE CUSTOMER COPY.
+   *
+   * Brendan 2026-09-23 asked for a line the GC does not see — lifts, night
+   * access, a dumpster. It is real priced work, so it stays in the TOTAL
+   * (which is computed from the line items, not from this list); it just is
+   * not itemised to them.
+   *
+   * Filtered HERE, once, on the way into the renderer — rather than inside
+   * each of the three places that print a line — so a new print path cannot
+   * forget the rule and leak one onto the page a GC reads.
+   */
+  const inclusions =
+    mode === "customer" ? allInclusions.filter((i) => i.is_internal !== true) : allInclusions;
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const totalLabel = proposalTotalLabel(exclusions);

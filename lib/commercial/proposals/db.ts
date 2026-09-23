@@ -206,6 +206,20 @@ export type CommercialProposalLineItem = {
   /** R1a: print this line's price on the client PDF (default true). Hidden lines
    *  still count toward the proposal total. */
   show_price: boolean;
+  /**
+   * Internal-only scope. Brendan 2026-09-23: "Add an internal line item button
+   * on the proposal when making the inclusions."
+   *
+   * Real, priced work Tomco is doing and paying for — lifts, night access, a
+   * dumpster — that they do not itemise to the GC. It counts toward the TOTAL
+   * (leaving it out would under-charge the job) but never prints in the
+   * customer's Inclusions list. The internal plan report shows it, marked.
+   *
+   * Optional on the type: the column arrives in migration
+   * 20260923190000_proposal_internal_line_items, and this repo has no
+   * migration runner, so the code must read correctly before it is applied.
+   */
+  is_internal?: boolean;
   /** Brendan 2026-08-17: overrides qty x unit_price for this line only, so a
    *  line can be discounted or uplifted while the quantity stays honest on the
    *  page. NULL = computed normally. */
@@ -2096,6 +2110,8 @@ export type CreateLineItemInput = {
    *  renders in the "Labor:" PDF section. Cannot be true + is_alternate
    *  simultaneously (rejected at the action layer). */
   is_labor?: boolean;
+  /** Hidden from the customer copy, still in the TOTAL. See is_internal. */
+  is_internal?: boolean;
   /** R1a (migration 100): print this line's price on the client PDF. Default
    *  true. Hidden lines still count toward the total. */
   show_price?: boolean;
@@ -2231,6 +2247,7 @@ export async function createLineItem(
           // R1a (migration 100): default true. On an un-migrated DB the generic
           // missing-column retry below drops it (defaults to true server-side).
           show_price: input.show_price ?? false,
+          is_internal: input.is_internal ?? false,
           line_total_override_cents: input.line_total_override_cents ?? null,
         },
         input.product_name,
@@ -2241,6 +2258,36 @@ export async function createLineItem(
   // Migration 071 deploy-safety: if product_name isn't in the schema yet
   // (migration not applied / PostgREST cache lag), retry once without it
   // so line-item creation never breaks on the ordering window.
+  // Deploy-safety for the internal-line column, same shape as the one below:
+  // until the migration is pasted in, drop the field and insert without it
+  // rather than refusing to create the line at all.
+  if (error && /is_internal/i.test(error.message)) {
+    const retry = await sb
+      .from("commercial_proposal_line_items")
+      .insert(
+        withProductName(
+          {
+            proposal_id: input.proposal_id,
+            product_id: input.product_id ?? null,
+            description: input.description.trim(),
+            quantity: input.quantity,
+            unit: input.unit,
+            unit_price_cents: input.unit_price_cents,
+            is_alternate: input.is_alternate ?? false,
+            position,
+            phase: phaseNormalized,
+            is_labor: input.is_labor ?? false,
+            show_price: input.show_price ?? false,
+            line_total_override_cents: input.line_total_override_cents ?? null,
+          },
+          input.product_name,
+        ),
+      )
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error && isMissingProductNameColumn(error)) {
     const retry = await sb
       .from("commercial_proposal_line_items")
@@ -2291,6 +2338,8 @@ export type UpdateLineItemInput = {
   phase?: string | null;
   /** R1a: toggle per-line price visibility on the client PDF. */
   show_price?: boolean;
+  /** Hidden from the customer copy, still in the TOTAL. See is_internal. */
+  is_internal?: boolean;
   line_total_override_cents?: number | null;
 };
 
@@ -2360,6 +2409,7 @@ export async function updateLineItem(
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.show_price !== undefined) patch.show_price = input.show_price;
+  if (input.is_internal !== undefined) patch.is_internal = input.is_internal;
   if (input.line_total_override_cents !== undefined)
     patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;
