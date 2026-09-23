@@ -17,6 +17,7 @@ import {
   WORKER_TYPES,
   PAY_TYPES,
   type CommercialEmployee,
+  isLaborCompanyRow,
 } from "@/lib/commercial/field-ops/employees";
 import { currentCostRatesForEmployees, currentCostRate, setCostRate } from "@/lib/commercial/field-ops/rates";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -230,7 +231,7 @@ export default async function FieldOpsEmployeesPage({
                   <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-cc-brand-50 text-cc-brand-700 text-[12px] font-bold shrink-0">{e.display_name.slice(0, 2).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{e.display_name}{!e.active && <span className="ml-2 text-[10.5px] font-bold uppercase text-ppp-charcoal-400">inactive</span>}</div>
-                    <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{employeeRoleLabel(e.role)} · {workerTypeLabel(e.worker_type)}{e.email ? ` · ${e.email}` : " · no email"}</div>
+                    <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{isLaborCompanyRow(e) ? "Labor company" : employeeRoleLabel(e.role)} · {workerTypeLabel(e.worker_type)}{e.email ? ` · ${e.email}` : " · no email"}</div>
                   </div>
                   {e.active && (
                     costRates.has(e.id) ? (

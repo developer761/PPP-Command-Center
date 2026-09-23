@@ -6,7 +6,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { todayEtIso, mondayOf, monthStartOf, addDaysIso } from "@/lib/commercial/field-ops/schedule";
 import { getHoursLog } from "@/lib/commercial/field-ops/hours-log";
-import { listEmployees } from "@/lib/commercial/field-ops/employees";
+import { listEmployees, employeePickerLabel, isLaborCompanyRow } from "@/lib/commercial/field-ops/employees";
 import { listJobs } from "@/lib/commercial/field-ops/jobs";
 import { recordHoursForEmployee } from "@/lib/commercial/field-ops/daily-log";
 import { revalidatePath } from "next/cache";
@@ -147,8 +147,11 @@ export default async function FieldOpsHoursPage({
             <span className={LABEL_CLS}>Crew member</span>
             <select name="employee_id" required className={SELECT_CLS} style={SELECT_BG_STYLE}>
               <option value="">Choose…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.display_name}</option>
+              {/* People first, then the labor-company rows the import could not
+                  safely fold into a person — marked, so the same man does not
+                  read as two employees (Mary 2026-09-23). */}
+              {[...employees].sort((a, b) => Number(isLaborCompanyRow(a)) - Number(isLaborCompanyRow(b))).map((e) => (
+                <option key={e.id} value={e.id}>{employeePickerLabel(e)}</option>
               ))}
             </select>
           </label>
