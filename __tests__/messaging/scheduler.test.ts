@@ -58,6 +58,42 @@ describe("classifyRefusal — a refusal is not one thing", () => {
   });
 });
 
+describe("a resolved row that should no longer send", () => {
+  /**
+   * Kate, 2026-09-23: "There's a campaign before a customer replies, then
+   * there's a campaign if they don't reply." The outreach sequence is the
+   * first one, and nothing stopped it: the exit rules watch Salesforce only,
+   * so somebody mid-conversation still got "just following up on your
+   * estimate request" on day 1 and again on day 3.
+   */
+  it("is cancelled, with its own reason rather than a borrowed one", async () => {
+    const because = "the customer replied, so the outreach sequence stops here";
+    const d = deps({ resolve: async () => ({ cancelBecause: because }) });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("cancelled");
+    expect(d.calls.cancel).toBe(1);
+    // A cancelled row nobody can explain is how a sequence gets switched back
+    // on by the next person to look at it.
+    expect(d.last.reason).toBe(because);
+    expect(d.calls.markSent).toBe(0);
+  });
+
+  it("still says 'no longer exists' when resolve genuinely finds nothing", async () => {
+    const d = deps({ resolve: async () => null });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("cancelled");
+    expect(d.last.reason).toContain("no longer exists");
+  });
+
+  it("sends normally when resolve returns a real context", async () => {
+    // Proves the branch above is a branch, not the only path.
+    const d = deps();
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("sent");
+    expect(d.calls.cancel).toBe(0);
+  });
+});
+
 describe("runAction — dispositions", () => {
   it("sends and records on success", async () => {
     const d = deps();

@@ -28,6 +28,7 @@ import { assertMessagingAccess } from "./auth";
 import { scheduleSteps, parseTimeOfDay, type CampaignStep } from "./campaign-schedule";
 import { unresolvedFields, isKnownMergeField } from "./merge-fields";
 import { firstMessageProblem, openerStepId } from "./first-message";
+import { silenceOpenerProblem } from "./into-silence";
 
 export type StepEdit = {
   body?: string;
@@ -82,6 +83,17 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
       .select("id, ordinal, channel").eq("version_id", step.version_id);
     if (openerStepId(siblings ?? []) === step.id) {
       const problem = firstMessageProblem(next.body);
+      if (problem) return { ok: false, error: problem };
+    } else {
+      // A28, and the only body in the system with no check on it until now.
+      //
+      // A follow-up step fires on a schedule rather than in response to
+      // anything, so it can land when the customer has said nothing since our
+      // last message. "A message sent into SILENCE must read as a close, not
+      // as a reply." The agent cannot breach this — scheduler-db refuses a
+      // turn whenever the most recent message is outbound — so a campaign
+      // body is the one way it can still happen.
+      const problem = silenceOpenerProblem(next.body);
       if (problem) return { ok: false, error: problem };
     }
   }

@@ -58,6 +58,28 @@ export function schedulerDeps(): SchedulerDeps {
       let channel: "sms" | "email" = "sms";
       const agent = "campaign";
       if (a.campaign_step_id) {
+        // THE OUTREACH CAMPAIGN IS FOR BEFORE THEY REPLY.
+        //
+        // Kate, 2026-09-23: "There's a campaign before a customer replies,
+        // then there's a campaign if they don't reply." This is the first
+        // one. Once somebody has answered, the conversation takes over, and
+        // what happens if they later go quiet is the stalled-conversation
+        // cadence rather than the rest of this sequence.
+        //
+        // Nothing stopped it. The exit rules watch Salesforce only —
+        // IsConverted, Status, SMS_Opt_In__c and two Opportunity fields — so
+        // a customer mid-conversation with the bot still got "just following
+        // up on your estimate request. Are you still looking to get this
+        // done?" on day 1 and again on day 3. A44 states the principle
+        // plainly for its own cadence: "A follow-up sent after the customer
+        // has answered is not a follow-up, it is a redundant ask."
+        const { count: replies } = await sb.from("sms_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", a.conversation_id).eq("direction", "inbound");
+        if ((replies ?? 0) > 0) {
+          return { cancelBecause: "the customer replied, so the outreach sequence stops here" };
+        }
+
         const { data: step } = await sb
           .from("sms_campaign_steps").select("body, channel, subject").eq("id", a.campaign_step_id).maybeSingle();
         body = step?.body ?? "";
