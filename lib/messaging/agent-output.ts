@@ -35,6 +35,17 @@ export const CONTINUE_INTENTS = [
   // sentences, different situations." One intent could only ever say one of
   // them, so every turn of the other kind was a breach.
   "acknowledge", "answer_question", "present_offsite_quote", "offer_offsite_quote", "escalate",
+  // A33: DEFER, AND KEEP GOING. "Defer a question you genuinely cannot answer
+  // to the estimator — and keep the conversation going. Deflecting is
+  // correct; ENDING the conversation in order to deflect is not."
+  //
+  // There was no way to say this. escalate hands the whole conversation to a
+  // person and reads as a close, and every other outlet either answers or
+  // asks. The commonest case by far is the calendar: "you suggest a time and
+  // date", "what is available", "are you available tomorrow morning". The bot
+  // has no calendar and never books, so it cannot answer and must not invent
+  // one, and the only two moves available were to end or to ignore.
+  "defer_to_estimator",
   // Something landed badly. Without this the only outlets for a customer who
   // reacted negatively were re-asking the same question or escalating, so it
   // re-asked — and the renderer's variant rotation made a repeat look like a
@@ -134,7 +145,10 @@ export type KnownField = "name" | "phone" | "email" | "address" | "inquiryScope"
 export const NURTURE_CONTINUE_INTENTS = [
   "nurture_check_in", "ask_for_decision", "ask_check_back",
   "offer_estimator_call", "acknowledge", "acknowledge_negative",
-  "answer_question", "escalate",
+  // A29 and A33 bind here too. Somebody holding a quote asks about prep,
+  // timing and what is included constantly, and "at ANY point" includes a
+  // conversation that started after the estimator had already visited.
+  "answer_question", "defer_to_estimator", "escalate",
 ] as const;
 
 export const NURTURE_END_INTENTS = [
@@ -181,7 +195,8 @@ export type RejectReason =
   | "quoted_a_price"
   | "invented_availability"
   | "banned_by_hard_no"
-  | "wrong_offsite_rule";    // presented what should be offered, or the reverse
+  | "wrong_offsite_rule"      // presented what should be offered, or the reverse
+  | "question_left_unanswered";    // presented what should be offered, or the reverse
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -364,6 +379,43 @@ export function checkRapport(text: string, customerText?: string): RapportCheck 
   return { ok: true };
 }
 
+/**
+ * Intents that ANSWER something by their nature, so they need no rapport to
+ * satisfy A29.
+ *
+ * answer_question is the answer. The two off-site turns respond to what the
+ * customer asked about getting quoted. defer_to_estimator is A33's reply to a
+ * question we cannot answer, which is still an answer. The confirm_* turns
+ * read a value back, which answers "do you have my details". escalate hands
+ * the question to a person, which is the honest answer when there is none.
+ */
+const ANSWERS_A_QUESTION = new Set<string>([
+  "answer_question", "defer_to_estimator", "escalate",
+  "present_offsite_quote", "offer_offsite_quote",
+  "confirm_scope", "confirm_address", "confirm_contact",
+  "phone_pricing", "offer_estimator_call", "acknowledge_negative",
+  "area_not_serviced", "transferred", "accepted", "success",
+]);
+
+/**
+ * Did the customer actually ask something?
+ *
+ * A question mark is the reliable signal and nearly everyone uses one. The
+ * bare-word forms are here for the ones who do not: "what time" and "how much"
+ * are questions with or without the punctuation. Deliberately NOT matching a
+ * lone "can you" or "do you", which open plenty of statements.
+ */
+const QUESTION_WORD =
+  /\b(?:what|when|where|which|who|why|how)\b[^.!?]{0,40}\?|\?/;
+const BARE_QUESTION =
+  /\b(?:how much|how many|how long|what time|what days?|when can|when will|when would|are you able|can you tell|do you (?:do|offer|handle|cover))\b/i;
+
+export function asksSomething(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return QUESTION_WORD.test(t) || BARE_QUESTION.test(t);
+}
+
 export type ValidateContext = {
   /** Slots the system verified. An intent may only reference these. */
   verifiedSlots?: Record<string, unknown>;
@@ -535,6 +587,35 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (rapport) {
     const style = checkRapport(rapport, ctx.customerText);
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
+  }
+
+  // A29: A DIRECT QUESTION IS NEVER LEFT UNANSWERED.
+  //
+  // "Answer a direct question the customer asks — at ANY point, not only
+  // before closing." 31 breaches, critical, and the correction on 28 of them
+  // is the same sentence: "answered the direct question, at whatever point in
+  // the conversation it was asked."
+  //
+  // The architecture already has the right shape. Kate's model answer is
+  // "Absolutely. What time works best for you?" — an answer, then the next
+  // step. Here the answer is the RAPPORT and the next step is the TEMPLATE.
+  // So a turn that asks the next question while carrying no answer at all,
+  // with a question outstanding, is that defect exactly.
+  //
+  // Escalating rather than refusing: the model has judged what to do next and
+  // may well be right about it, and refusing would loop it into choosing
+  // again from the same information. A person reading the thread can see the
+  // question and answer it in seconds. This also catches the case where an
+  // answer WAS written and the style filter dropped it, which leaves the
+  // question just as unanswered as never writing one.
+  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || !!rapport;
+  if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
+    return {
+      ok: false, reason: "question_left_unanswered",
+      detail: droppedRapport
+        ? `the customer asked something and the answer was dropped because ${droppedRapport}`
+        : "the customer asked something and this turn only asks the next question back",
+    };
   }
 
   return {

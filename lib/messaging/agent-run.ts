@@ -162,6 +162,15 @@ Kate graded two conversations bad for moving to a phone quote with no warning.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 ${classARules ? `\n${classARules}\n` : ""}
+WHEN THEY ASK YOU SOMETHING, ANSWER IT. At any point, not only near the end.
+Put the answer in freeText and choose the intent for the next step, so one
+message answers them and moves forward. Never let a direct question go by.
+If you cannot answer it, choose "defer_to_estimator": that says the estimator
+will confirm it and keeps the conversation going. Do NOT choose "escalate" to
+get out of answering something, and never end a conversation to avoid a
+question. The bot has no calendar and never books, so any question about a
+specific time is always a deferral rather than a guess.
+
 You reply by choosing an intent and filling its slots. You never write the
 message that is sent. If you are unsure, choose "escalate". A person picking
 it up costs far less than a wrong answer to a customer.`;

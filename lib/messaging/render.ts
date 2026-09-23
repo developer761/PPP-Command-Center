@@ -136,6 +136,31 @@ export const SAYS: Record<Intent, string[]> = {
     "I'll pass this to our office so somebody can help properly. They'll be in touch soon.",
   ],
 
+  // — A33: hand the part we cannot answer over, and CARRY ON —
+  //
+  // "Deflecting is correct; ENDING the conversation in order to deflect is
+  // not." Kate's example of what it should sound like: "Possibly, yes. The
+  // estimator will take a look at the finish on the brick and let you know
+  // the best way to match it and what prep is needed."
+  //
+  // Note what that does. It answers the part that CAN be answered, names who
+  // will answer the rest, and leaves the conversation open. escalate does the
+  // opposite: it hands over the whole thing and stops.
+  //
+  // THE COMMONEST CASE IS THE CALENDAR. "You suggest a time and date", "what
+  // is available", "are you available tomorrow morning". The bot has no
+  // calendar and never books, so the honest answer is that a person will
+  // confirm the time, and the conversation keeps moving in the meantime.
+  //
+  // Every variant ends on a question, so the turn cannot read as a sign-off.
+  // The part that CAN be answered is the model's rapport, which is prepended
+  // and post-filtered, so it can never carry a price or a named time.
+  defer_to_estimator: [
+    "The estimator will confirm that with you directly. In the meantime, what days generally work best on your end?",
+    "That's one for the estimator, and they'll go through it with you. What days suit you best?",
+    "Our office confirms the timing, so they'll lock that in with you. What sort of days are easiest for you?",
+  ],
+
   // — Nurture: the quote is out, the job is a decision —
   // Wording adapted from PPP's live Quote Sent campaign rather than invented.
   // No name or estimator is interpolated: those would be slots, and a template
