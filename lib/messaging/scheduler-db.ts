@@ -154,7 +154,7 @@ export function schedulerDeps(): SchedulerDeps {
       if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review" };
 
       const { data: msgs } = await sb.from("sms_messages")
-        .select("id, direction, body, created_at")
+        .select("id, direction, body, created_at, media_count")
         .eq("conversation_id", conv.id).order("created_at");
       const history = (msgs ?? []).map((m) => ({
         role: (m.direction === "inbound" ? "customer" : "assistant") as "customer" | "assistant",
@@ -258,6 +258,10 @@ export function schedulerDeps(): SchedulerDeps {
         },
         services: resolveServices(svc.services, svc.exceptions),
         examples: selectExamples(corpus, { stage }),
+        // A26: acknowledge the photo they just sent. Read from the message
+        // rather than the webhook because the turn runs seconds later, in a
+        // different process, from the row.
+        mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
       });
 
       if (!res.ok) {

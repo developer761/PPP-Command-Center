@@ -136,6 +136,11 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
       channel: "sms",
       body: decision.body,
       provider_id: decision.providerId,
+      // A26: that a photo arrived is the whole fact the rule needs, and it
+      // was being discarded here. The count was computed on the way in, used
+      // to decide the message was not empty, and then dropped, so the
+      // acknowledgement in render.ts could never fire for a real customer.
+      media_count: decision.mediaCount ?? 0,
     });
     // 23505 is the redelivery we expected.
     if (error && error.code !== "23505") throw asError("writing the inbound message", error);

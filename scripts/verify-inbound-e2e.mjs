@@ -12,6 +12,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { decideInbound } from "../lib/messaging/inbound.ts";
 import { recordInbound } from "../lib/messaging/record-inbound.ts";
+import { renderMessage } from "../lib/messaging/render.ts";
 import { helpReplyChecks } from "../lib/messaging/help-reply.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
@@ -59,9 +60,10 @@ try {
   const WORKSPACE_NUMBER = workspace.phone_e164;
   console.log(`\nINBOUND — real schema, real rows  (via ${workspace.name})\n`);
 
-  const msg = (body, id) => ({
+  const msg = (body, id, mediaUrls) => ({
     originationNumber: CUSTOMER, destinationNumber: WORKSPACE_NUMBER,
     messageBody: body, inboundMessageId: id,
+    ...(mediaUrls ? { mediaUrls } : {}),
   });
 
   // 1. A first reply from an unknown number opens a conversation.
@@ -111,6 +113,32 @@ try {
     .select("unreachable_start_hour").eq("id", first.conversationId).maybeSingle();
   ok("…and a later message saying nothing about it does not clear it",
      stillReach?.unreachable_start_hour === 0, String(stillReach?.unreachable_start_hour));
+
+  // 3c. A26: a photo arrived, and the system remembers that it did.
+  //
+  // Kate measured this one: "42 of 45 bot replies after a customer photo
+  // never mentioned it." The acknowledgement has existed in render.ts the
+  // whole time and could never fire, because the count was computed on the
+  // way in and then had nowhere to be written. Asserting on the stored ROW is
+  // the point — the agent turn runs seconds later in another process and can
+  // only know what the row remembers.
+  await ingest(msg("Here is the wall", "e2e-photo", ["https://example.invalid/a.jpg", "https://example.invalid/b.jpg"]));
+  const { data: withMedia } = await sb.from("sms_messages")
+    .select("media_count, body").eq("conversation_id", first.conversationId)
+    .eq("provider_id", "e2e-photo").maybeSingle();
+  ok("a photo that arrived is remembered on the message", withMedia?.media_count === 2,
+     `media_count ${withMedia?.media_count}`);
+
+  const { data: noMedia } = await sb.from("sms_messages")
+    .select("media_count").eq("conversation_id", first.conversationId)
+    .eq("provider_id", "e2e-1").maybeSingle();
+  ok("…and a message with no photo is not claimed to have one", noMedia?.media_count === 0,
+     `media_count ${noMedia?.media_count}`);
+
+  // The acknowledgement the rule actually asks for, rendered from that count.
+  const acked = renderMessage({ intent: "acknowledge", turn: 0, photos: withMedia?.media_count ?? 0 });
+  ok("…so the reply names the photo", /thanks for the photos?/i.test(acked), acked);
+  ok("…and does not describe or price it", !/\$|\blooks?\b|\bsee\b|\bcolou?r\b/i.test(acked), acked);
 
   // 4. STOP suppresses the handset and ends the conversation.
   const stop = await ingest(msg("STOP", "e2e-3"));
