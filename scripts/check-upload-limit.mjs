@@ -3,22 +3,29 @@
  *
  * Run: npm run check:upload-limit
  *
- * Three layers each hold an upload limit, and only one of them decides:
+ * Three layers hold an upload limit and only one of them decides:
  *
  *   1. the app constant (MAX_UPLOAD_BYTES) — what the UI tells the user
- *   2. the bucket's own file_size_limit — visible in the Supabase dashboard
- *   3. the PROJECT-wide storage limit — invisible from the code, and it wins
+ *   2. each bucket's file_size_limit — what the Supabase dashboard shows
+ *   3. the PROJECT-wide limit — invisible from the code, and it wins
  *
  * On 2026-09-23 those read 100 MB, 100 MB and 50 MB. Stephanie picked a 60 MB
- * bid set on a page that advertised 100, watched it fail, and was told "the
- * file is larger than the 100 MB limit". Nothing in the repo mentioned the
- * number that actually rejected her file.
+ * bid set on a page advertising 100, watched it fail, and was told "the file is
+ * larger than the 100 MB limit". Nothing in the repo named the number that
+ * actually refused her file. Reading configuration would not have caught it —
+ * the bucket said 100 the whole time.
  *
- * Reading configuration would not have caught it — the bucket says 100 to this
- * day. So this check UPLOADS: one object just under the advertised limit, which
- * must land, and one just over, which must be refused. Both are deleted
- * immediately. It is slow and it costs a few MB of transfer, and it is the only
- * version of this check that can actually fail.
+ * HOW THE PROJECT CEILING IS MEASURED, without moving 500 MB up the wire:
+ * Supabase refuses to set a BUCKET limit above the project limit, so a binary
+ * search over `updateBucket` on a scratch bucket prices the ceiling exactly and
+ * costs no transfer at all. Then one real upload — comfortably above the old
+ * 50 MB ceiling — proves the path works end to end rather than only on paper.
+ *
+ * WHAT THIS DOES NOT PROVE: that a file at the full advertised limit uploads.
+ * That would mean pushing ~500 MB on every run. The ceiling check covers the
+ * limit itself; the real upload covers the plumbing. Stated rather than left
+ * for a reader to assume — a check whose blind spots aren't written down gets
+ * trusted for things it never tested.
  */
 import { createClient } from "@supabase/supabase-js";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "../lib/commercial/uploads/limits.ts";
@@ -31,80 +38,89 @@ if (!url || !key) {
 }
 const sb = createClient(url, key, { auth: { persistSession: false } });
 
+const MB = 1024 * 1024;
 /** Every bucket a person uploads into from the UI. */
 const BUCKETS = ["commercial-documents", "commercial-opportunity-files", "commercial-account-docs"];
-
-const MB = 1024 * 1024;
-const pdf = (bytes) => {
-  const b = Buffer.alloc(bytes, 0x20);
-  Buffer.from("%PDF-1.4\n").copy(b, 0);
-  return b;
-};
-
-const tryUpload = async (bucket, bytes) => {
-  const path = `zz-limit-check/${Date.now()}-${bytes}.pdf`;
-  const { error } = await sb.storage.from(bucket).upload(path, pdf(bytes), { contentType: "application/pdf" });
-  if (!error) await sb.storage.from(bucket).remove([path]);
-  return error?.message ?? null;
-};
+/** Above the 50 MB ceiling that caused this, small enough to run often. */
+const REAL_UPLOAD_MB = 60;
 
 const problems = [];
-let checked = 0;
 
-console.log(`The app tells people it accepts ${MAX_UPLOAD_LABEL}. Testing that against storage.\n`);
+// ── 1. The project ceiling, priced without transferring anything ───────────
+const PROBE = "zz-upload-limit-probe";
+await sb.storage.deleteBucket(PROBE).catch(() => {});
+const { error: mkErr } = await sb.storage.createBucket(PROBE, { public: false });
+if (mkErr) {
+  console.error(`could not create the probe bucket (${mkErr.message}) — refusing to report a pass`);
+  process.exit(1);
+}
+let lo = 1;
+let hi = 60 * 1024; // 60 GB, well past any plan
+while (lo < hi) {
+  const mid = Math.floor((lo + hi + 1) / 2);
+  const { error } = await sb.storage.updateBucket(PROBE, { fileSizeLimit: mid * MB });
+  if (error) hi = mid - 1;
+  else lo = mid;
+}
+await sb.storage.deleteBucket(PROBE).catch(() => {});
+const ceilingMB = lo;
+console.log(`Project ceiling:  ${ceilingMB} MB (${(ceilingMB / 1024).toFixed(2)} GB)`);
+console.log(`App advertises:   ${MAX_UPLOAD_LABEL}\n`);
 
+if (MAX_UPLOAD_BYTES > ceilingMB * MB) {
+  problems.push(
+    `the app advertises ${MAX_UPLOAD_LABEL} but the project ceiling is ${ceilingMB} MB — ` +
+      `every upload between those two numbers will be accepted by the picker and refused by storage. ` +
+      `This is exactly the shape of the bug this check exists for.`
+  );
+}
+
+// ── 2. No bucket may undercut the promise ──────────────────────────────────
 for (const bucket of BUCKETS) {
   const { data: cfg } = await sb.storage.getBucket(bucket);
   if (!cfg) {
     problems.push(`${bucket}: bucket does not exist`);
     continue;
   }
-  const bucketLimit = cfg.file_size_limit;
-  checked += 1;
-
-  // Just UNDER the advertised limit must land. If it doesn't, the app is
-  // promising capacity the platform will not give — Stephanie's bug exactly.
-  const justUnder = MAX_UPLOAD_BYTES - 5 * MB;
-  const underErr = await tryUpload(bucket, justUnder);
-  if (underErr) {
+  const limit = cfg.file_size_limit;
+  if (limit != null && limit < MAX_UPLOAD_BYTES) {
     problems.push(
-      `${bucket}: the app advertises ${MAX_UPLOAD_LABEL} but a ${(justUnder / MB).toFixed(0)} MB upload was REFUSED (${underErr}). ` +
-        `Bucket setting is ${bucketLimit == null ? "unset" : (bucketLimit / MB).toFixed(0) + " MB"}; the project-wide limit may be lower still.`
+      `${bucket}: configured for ${(limit / MB).toFixed(0)} MB, under the ${MAX_UPLOAD_LABEL} the app advertises.`
     );
   } else {
-    console.log(`  ✓ ${bucket}: accepted ${(justUnder / MB).toFixed(0)} MB`);
-  }
-
-  // A bucket configured ABOVE the real ceiling is the trap that caused this:
-  // the dashboard says one thing, uploads do another. Report it as a lie even
-  // though nothing is broken today, because it is what future readers trust.
-  if (bucketLimit != null && bucketLimit > MAX_UPLOAD_BYTES) {
-    const overErr = await tryUpload(bucket, MAX_UPLOAD_BYTES + 10 * MB);
-    if (overErr) {
-      problems.push(
-        `${bucket}: bucket is configured for ${(bucketLimit / MB).toFixed(0)} MB but storage refused ${(MAX_UPLOAD_BYTES / MB + 10).toFixed(0)} MB (${overErr}). ` +
-          `The bucket setting is not the real limit — anyone reading it in the dashboard will believe a number that does not hold.`
-      );
-    }
+    console.log(`  ✓ ${bucket}: ${limit == null ? "no bucket limit" : (limit / MB).toFixed(0) + " MB"}`);
   }
 }
 
-if (checked === 0) {
-  console.error("\nno buckets were checked — refusing to report a pass");
-  process.exit(1);
+// ── 3. One real upload, so the plumbing is tested and not just the numbers ─
+const body = Buffer.alloc(REAL_UPLOAD_MB * MB, 0x20);
+Buffer.from("%PDF-1.4\n").copy(body, 0);
+const path = `zz-limit-check/${Date.now()}-${REAL_UPLOAD_MB}mb.pdf`;
+const { error: upErr } = await sb.storage
+  .from(BUCKETS[0])
+  .upload(path, body, { contentType: "application/pdf" });
+if (upErr) {
+  problems.push(`${BUCKETS[0]}: a real ${REAL_UPLOAD_MB} MB upload was REFUSED (${upErr.message}).`);
+} else {
+  await sb.storage.from(BUCKETS[0]).remove([path]);
+  console.log(`  ✓ ${BUCKETS[0]}: a real ${REAL_UPLOAD_MB} MB file uploaded and was removed`);
 }
 
 console.log("");
 if (problems.length === 0) {
-  console.log(`✅ storage accepts what the app promises (${MAX_UPLOAD_LABEL}), across ${checked} bucket(s).`);
+  console.log(`✅ storage accepts what the app promises (${MAX_UPLOAD_LABEL}).`);
+  console.log(
+    `   Tested: the ceiling (${ceilingMB} MB), every bucket's limit, and one real ${REAL_UPLOAD_MB} MB upload.\n` +
+      `   NOT tested: an upload at the full ${MAX_UPLOAD_LABEL} — that would move half a gigabyte per run.`
+  );
 } else {
   console.log(`❌ ${problems.length} disagreement(s) between what the app promises and what storage does:`);
   for (const p of problems) console.log(`   • ${p}`);
   console.log(
-    "\n   To raise the real ceiling: Supabase dashboard → Storage → Settings →\n" +
-      "   'Upload file size limit'. That is a PROJECT setting; the bucket limit\n" +
-      "   cannot exceed it. Raise it there first, then MAX_UPLOAD_BYTES in\n" +
-      "   lib/commercial/uploads/limits.ts, then re-run this check."
+    "\n   The project ceiling lives in the Supabase dashboard → Storage → Settings →\n" +
+      "   'Global file size limit'. A bucket cannot exceed it, and a spend cap can\n" +
+      "   hold it below what that field says. Raise it there first, then\n" +
+      "   MAX_UPLOAD_BYTES in lib/commercial/uploads/limits.ts, then re-run this."
   );
   process.exit(1);
 }

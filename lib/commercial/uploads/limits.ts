@@ -20,13 +20,19 @@
  * different number, and the one that wins is the one nothing in the codebase
  * mentions.
  *
- * So this constant is the PROJECT limit, the real ceiling, and everything
- * advertises it. `npm run check:upload-limit` proves it against storage rather
- * than trusting this comment — raise the limit in the Supabase dashboard
- * (Storage → Settings → Upload file size limit) FIRST, then raise this number
- * and let the check confirm the two agree.
+ * Karan raised the project limit to 1 GB on 2026-09-23 (Storage → Settings →
+ * Global file size limit), and the three buckets people upload into were moved
+ * to 500 MB to match this number.
+ *
+ * This sits DELIBERATELY BELOW the platform's 1 GB. The gap is not waste: it
+ * means an oversized file is refused by us, with a message that says how big it
+ * is and what to do, instead of by Supabase with "The object exceeded the
+ * maximum allowed size" after the bytes have already gone up the wire. Raising
+ * this above the project ceiling would recreate exactly the bug it was written
+ * for, so `npm run check:upload-limit` measures the ceiling and fails if this
+ * number ever exceeds it.
  */
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 /** The same number as a human would say it — for labels and error copy. */
 export const MAX_UPLOAD_LABEL = `${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB`;
