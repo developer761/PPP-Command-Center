@@ -179,14 +179,12 @@ export type CreateAiaApplicationInput = {
  * constraint catches an insert race, retried once.
  */
 /**
- * The next free application number on a job.
+ * The next free application number on a job — over LIVE applications only.
  *
- * Counts DELETED applications too, because the unique index does (migration
- * 081 has no deleted_at filter). A suggestion computed from live rows alone
- * can propose a number a deleted draft still reserves — the create then fails,
- * silently retries, and the operator gets a different number from the one the
- * form showed them. That is Stephanie's original complaint ("it numbers them
- * automatically even after a draft is deleted") arriving by a second route.
+ * Stephanie 2026-09-24: *"it numbers them automatically even after a draft is
+ * deleted"*. Both halves of that are fixed now. The number is editable, and
+ * migration 20260924160000 makes a deleted draft release its number, so
+ * deleting No. 1 and starting again offers No. 1 rather than No. 2.
  */
 export async function nextAiaApplicationNumber(opportunityId: string): Promise<number> {
   const sb = commercialDb();
@@ -194,6 +192,7 @@ export async function nextAiaApplicationNumber(opportunityId: string): Promise<n
     .from("commercial_aia_applications")
     .select("application_number")
     .eq("opportunity_id", opportunityId)
+    .is("deleted_at", null)
     .order("application_number", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -242,14 +241,15 @@ export async function createAiaApplication(
       : DEFAULT_RETAINAGE_PCT;
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Deliberately NOT filtered on deleted_at: the unique index isn't either,
-    // so max+1 over live rows alone can return a number a deleted draft still
-    // holds — the insert then fails, retries, and lands somewhere the caller
-    // did not ask for.
+    // LIVE rows only — a deleted draft releases its number (migration
+    // 20260924160000), so max+1 over what actually exists is right, and a
+    // number freed by deleting the last draft gets used again rather than
+    // being skipped for ever.
     const { data: last } = await sb
       .from("commercial_aia_applications")
       .select("application_number")
       .eq("opportunity_id", input.opportunity_id)
+      .is("deleted_at", null)
       .order("application_number", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -841,26 +841,24 @@ export async function updateAiaApplication(
     }
     if (wanted !== before.application_number) {
       const sbCheck = commercialDb();
-      // DELETED ROWS COUNT. The unique index is on (opportunity_id,
-      // application_number) with NO deleted_at filter — migration 081 — so a
-      // soft-deleted draft keeps its number for ever. Checking only live rows
-      // found no clash, let the UPDATE through, and handed Stephanie the raw
-      // `duplicate key value violates unique constraint …` that this check
-      // exists to prevent. AIREF Building #1 is exactly that shape today: a
-      // deleted Application 1 still holding the number, live 2, 3 and 5.
+      // LIVE rows only, matching the partial unique index from migration
+      // 20260924160000. A deleted draft releases its number — Stephanie
+      // deleted draft No. 1 to fix a tax setting and could not create No. 1
+      // again, which is the ordinary way to correct a mistake before anything
+      // has been sent. Before that migration this had to count deleted rows
+      // too, because the constraint did; explaining the wall was not the same
+      // as removing it.
       const { data: clash } = await sbCheck
         .from("commercial_aia_applications")
-        .select("id, deleted_at")
+        .select("id")
         .eq("opportunity_id", before.opportunity_id)
         .eq("application_number", wanted)
+        .is("deleted_at", null)
         .maybeSingle();
       if (clash) {
-        const wasDeleted = !!(clash as { deleted_at: string | null }).deleted_at;
         return {
           ok: false,
-          error: wasDeleted
-            ? `Application No. ${wanted} was used by a draft that has since been deleted, and the number is still reserved to it. Pick a different number.`
-            : `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
+          error: `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
         };
       }
       next.application_number = wanted;

@@ -3,31 +3,30 @@ import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/strip-comments";
 
 /**
- * Stephanie 2026-09-24: *"It looks like the system automatically numbers the
- * AIA, even after a draft is deleted. I need to be able to change the
- * application numbers."*
+ * Stephanie 2026-09-24, twice in one morning.
  *
- * The editable number shipped that morning. It then turned out the clash check
- * could not see the thing it was checking against.
+ * First: *"It looks like the system automatically numbers the AIA, even after
+ * a draft is deleted. I need to be able to change the application numbers."*
+ * The editable number shipped — and the clash check could not see the thing it
+ * was checking against, because `UNIQUE (opportunity_id, application_number)`
+ * (migration 081, line 48) has no `deleted_at` filter while the check did. So
+ * it found no clash, let the UPDATE through, and the raw `duplicate key value
+ * violates unique constraint …` reached the user.
  *
- * `commercial_aia_applications` has `UNIQUE (opportunity_id,
- * application_number)` — migration 081, line 48 — with **no** `deleted_at`
- * filter. A soft-deleted draft therefore keeps its number for ever. Three
- * places read that number and two of them filtered the deleted rows out:
+ * Then, an hour later: *"I deleted the AIA draft #1. Now trying to redraft AIA
+ * #1 and it is telling me I can't use #1 because it is reserved to a deleted
+ * AIA."*
  *
- *   · the renumber clash check found no clash, let the UPDATE through, and the
- *     raw `duplicate key value violates unique constraint …` reached the user —
- *     the exact error the check exists to prevent;
- *   · the create-side max+1 could propose a number a deleted draft held, so the
- *     insert failed, silently retried, and produced a different number from the
- *     one the form had shown.
- *
- * AIREF Building #1 was in exactly that state while she was working in it: a
- * deleted Application 1 still holding the number, live 2, 3 and 5.
+ * Making the refusal honest was not the fix. Deleting a draft and starting it
+ * again is the ordinary way to correct a mistake before anything is sent, and
+ * the number should simply be free. Migration 20260924160000 replaces the
+ * constraint with a PARTIAL unique index (`where deleted_at is null`), so a
+ * deleted application releases its number — and every query that stands in for
+ * that index filters the same way.
  *
  * These are source assertions on the SEAM between a query filter and a database
- * constraint — the unit suite has no database, and this class of bug is
- * invisible to it. Comments are stripped first: tests in this repo have matched
+ * constraint: the two must agree, and the unit suite has no database to catch
+ * them drifting. Comments are stripped first — tests in this repo have matched
  * their own prose five times.
  */
 
@@ -42,33 +41,36 @@ function fn(name: string): string {
 }
 
 describe("application numbers respect deleted drafts", () => {
-  it("the renumber clash check does not filter out deleted rows", () => {
+  it("the index only constrains LIVE applications", () => {
+    const sql = readFileSync(
+      "supabase/migrations/20260924160000_aia_number_released_on_delete.sql",
+      "utf8",
+    );
+    expect(sql).toContain("drop constraint if exists");
+    expect(sql.toLowerCase()).toContain("where deleted_at is null");
+  });
+
+  it("the renumber clash check filters the same way the index does", () => {
     const body = fn("updateAiaApplication");
     const check = body.slice(body.indexOf("application_number", body.indexOf("wanted")));
     const clause = check.slice(0, check.indexOf("if (clash)"));
-    // The whole bug in one assertion: the constraint counts deleted rows, so
-    // the query that stands in for it must not exclude them.
     expect(clause).toContain('.eq("application_number", wanted)');
-    expect(clause).not.toContain('.is("deleted_at", null)');
+    // A deleted draft reserves nothing, so it must not be counted as a clash —
+    // that is the refusal Stephanie hit on a number she had just freed.
+    expect(clause).toContain('.is("deleted_at", null)');
   });
 
-  it("tells the user the number is held by a deleted draft, not just 'taken'", () => {
-    // "Already exists" sends someone looking for an application they cannot
-    // see anywhere on the screen.
-    expect(fn("updateAiaApplication")).toContain("deleted");
-  });
-
-  it("the create-side max does not filter out deleted rows either", () => {
+  it("the create-side max counts live applications only", () => {
     const body = fn("createAiaApplication");
     const query = body.slice(body.indexOf('.select("application_number")'));
-    const upToLimit = query.slice(0, query.indexOf(".limit(1)"));
-    expect(upToLimit).not.toContain('.is("deleted_at", null)');
+    expect(query.slice(0, query.indexOf(".limit(1)"))).toContain('.is("deleted_at", null)');
   });
 
-  it("the suggested next number is computed the same way", () => {
+  it("the suggested next number re-offers a freed number", () => {
+    // Delete No. 1 and the form should propose No. 1 again, not No. 2.
     const body = fn("nextAiaApplicationNumber");
     const query = body.slice(body.indexOf('.select("application_number")'));
-    expect(query.slice(0, query.indexOf(".limit(1)"))).not.toContain('.is("deleted_at", null)');
+    expect(query.slice(0, query.indexOf(".limit(1)"))).toContain('.is("deleted_at", null)');
   });
 
   it("the form asks for that number rather than counting live rows", () => {
