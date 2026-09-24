@@ -231,6 +231,26 @@ async function syncApplicationStatusToPayments(
     // leave the status alone rather than guess from an unknown denominator.
     if (due <= 0) return;
 
+    /**
+     * NEVER DEMOTE ON AN EMPTY LEDGER.
+     *
+     * An application marked paid BEFORE payment records existed carries no
+     * rows, and that flag is the only evidence the money arrived. Removing the
+     * last recorded payment from such an application used to demote it to
+     * `submitted` — which erased that evidence and, because the legacy
+     * inference keys off the paid flag, took the whole amount out of collected.
+     *
+     * Reproduced on AIREF Building #1 while checking whether Stephanie could
+     * back-fill a cheque onto Application 2: adding the payment was safe, and
+     * removing it again left the job reading $0.00 collected against
+     * $189,434.20 billed. The status had to be put back by hand.
+     *
+     * So an empty ledger means "nothing recorded here", not "not paid". The
+     * status only moves DOWN when a payment is removed from a set that still
+     * has payments in it — the case where the ledger genuinely is the record.
+     */
+    if (paid === 0 && status === "paid") return;
+
     const next = paid >= due ? "paid" : "submitted";
     if (next === status) return;
     const { updateAiaApplication } = await import("./db");
