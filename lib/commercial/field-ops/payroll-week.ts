@@ -10,6 +10,7 @@ import {
   allocationSumsTo,
   type JobAllocation,
 } from "./payroll-allocation";
+import { mondayOf } from "./schedule";
 
 /**
  * One payroll week, from hours through to job cost.
@@ -71,6 +72,14 @@ export type PayrollWeek = {
    * Empty means it can.
    */
   blockers: string[];
+  /**
+   * There are hours, and not one Gusto figure has been entered against them.
+   *
+   * Deliberately NOT a blocker: it is the state the week starts in, and every
+   * week begins by being this. It still stops a post — see `postPayrollWeek`,
+   * which refuses it by name rather than by an empty blocker list.
+   */
+  awaitingCosts: boolean;
   /** Hours that are logged but not yet approved — they are NOT costed. */
   unapprovedHours: number;
   /**
@@ -83,7 +92,53 @@ export type PayrollWeek = {
    * untrue. Null when nothing has been posted.
    */
   postedCents: number | null;
+  /**
+   * The most recent day anywhere that has settled W-2 hours.
+   *
+   * An empty week is almost never a mistake Mary made — it is a week whose
+   * hours have not arrived yet, because attendance lands on the nightly
+   * Salesforce sync and the week in progress has nothing in it until the crew
+   * has worked it. The screen used to answer that with "No approved hours for
+   * any W-2 employee in this week yet", which is true, is framed as something
+   * to fix, and tells her neither why nor where the hours got to.
+   *
+   * Null when no W-2 hours exist at all.
+   */
+  lastW2HoursDate: string | null;
 };
+
+/**
+ * The Monday of the most recent week that actually has W-2 hours in it.
+ *
+ * This is the week Mary wants when she opens the tab. Payroll is run for the
+ * week that ENDED, so landing her on the calendar week in progress showed her
+ * an empty screen every time — four empty panels and a warning — on a tab
+ * whose whole job is to be the one place she works.
+ *
+ * Null when there are no W-2 hours at all; the caller then falls back to the
+ * current week, which is the honest answer to "there is no payroll yet".
+ */
+export async function latestPayrollWeekStart(): Promise<string | null> {
+  const day = await latestW2HoursDate();
+  return day ? mondayOf(day) : null;
+}
+
+/** The raw most-recent day with settled W-2 hours. */
+async function latestW2HoursDate(): Promise<string | null> {
+  const { data, error } = await commercialDb()
+    .from("commercial_time_entries")
+    .select("work_date, commercial_employees!inner(worker_type)")
+    .in("status", SETTLED)
+    .eq("commercial_employees.worker_type", "w2")
+    .order("work_date", { ascending: false })
+    .limit(1);
+  // supabase-js RESOLVES on failure, it does not throw — so this has to be
+  // read, not assumed. A null here only ever means "we do not know", and the
+  // screen says that rather than "there are no hours".
+  if (error) return null;
+  const row = (data ?? [])[0] as { work_date: string } | undefined;
+  return row?.work_date ?? null;
+}
 
 /** Settled time only. A submitted or questioned entry is not yet a cost —
  *  the same constant the deal P&L and the labor report use. */
@@ -95,7 +150,7 @@ export async function getPayrollWeek(
 ): Promise<PayrollWeek> {
   const sb = commercialDb();
 
-  const [{ data: periodRow }, entries, { data: empRows }, jobRows] =
+  const [{ data: periodRow }, entries, { data: empRows }, jobRows, lastW2HoursDate] =
     await Promise.all([
       sb
         .from("commercial_payroll_periods")
@@ -135,6 +190,7 @@ export async function getPayrollWeek(
           .select("id, name, opportunity_id")
           .order("id", { ascending: true }),
       ),
+      latestW2HoursDate(),
     ]);
 
   const period = periodRow as { id: string; status: string } | null;
@@ -304,8 +360,11 @@ export async function getPayrollWeek(
     blockers.push(
       "Nobody is set up as a W-2 employee yet, so there is no payroll to split. Everyone on the crew is still a subcontractor, costed by their payout.",
     );
-  else if (employees.length === 0)
-    blockers.push("No approved hours for any W-2 employee in this week yet.");
+  // A week with no hours is NOT a blocker. Nothing is wrong and there is
+  // nothing for Mary to fix — the crew has not worked it yet, or attendance
+  // has not synced. Listing it as "one thing to sort out before posting" made
+  // the screen scold her for opening it on a Thursday. The panel says where
+  // hours come from and when they last arrived instead; see `lastW2HoursDate`.
   if (unapprovedHours > 0)
     blockers.push(
       `${unapprovedHours}h are logged but not approved, so they are not costed. Approve them first or they land on no job.`,
@@ -317,8 +376,18 @@ export async function getPayrollWeek(
     blockers.push(
       `Pick the job to charge non-job hours to for ${needJob.map((e) => `${e.name} (${e.unassignedHours}h)`).join(", ")}.`,
     );
-  const noCost = employees.filter((e) => e.actualCostCents == null && e.jobHours > 0);
-  if (noCost.length > 0)
+  // COSTS NOT ENTERED YET IS NOT A FAULT — it is the screen's whole job.
+  //
+  // Listing all eight names under "things to sort out before posting" greeted
+  // Mary with a warning for having just opened the tab. A missing cost only
+  // becomes something to flag once the week is PART done: some people costed
+  // and some not is the state where one gets forgotten and the week posts
+  // light. Nobody costed at all is simply "not started", reported separately
+  // so the screen can say what to do rather than what is wrong.
+  const withHours = employees.filter((e) => e.jobHours > 0);
+  const noCost = withHours.filter((e) => e.actualCostCents == null);
+  const awaitingCosts = withHours.length > 0 && noCost.length === withHours.length;
+  if (noCost.length > 0 && !awaitingCosts)
     blockers.push(
       `No Gusto cost entered for ${noCost.map((e) => e.name).join(", ")}.`,
     );
@@ -356,7 +425,9 @@ export async function getPayrollWeek(
     totals,
     byJob: [...jobTotals.values()].sort((a, b) => b.hours - a.hours),
     blockers,
+    awaitingCosts,
     unapprovedHours,
+    lastW2HoursDate,
   };
 }
 
@@ -447,6 +518,18 @@ export async function postPayrollWeek(
 > {
   const week = await getPayrollWeek(startDate, endDate);
   if (week.blockers.length > 0) return { ok: false, error: week.blockers[0] };
+  // An empty week carries no blockers by design — nothing is wrong with it,
+  // there is simply nothing in it. That must not read as "clear to post": a
+  // post of nothing would stamp the week `allocated` and the screen would then
+  // say it was done.
+  if (week.employees.length === 0)
+    return { ok: false, error: "There are no W-2 hours in this week to post." };
+  // Same reasoning, opposite direction: "no costs entered yet" was moved OUT
+  // of blockers so the screen stops greeting her with a warning. Moving it out
+  // would have opened the Post button on an uncosted week if it were not
+  // refused here by name.
+  if (week.awaitingCosts)
+    return { ok: false, error: "Enter the Gusto costs for this week before posting it." };
   if (!week.periodId) return { ok: false, error: "This week has not been started yet." };
 
   const sb = commercialDb();

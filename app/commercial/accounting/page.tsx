@@ -652,6 +652,11 @@ const EXPORTABLE_TABS = new Set(["ar", "owed", "purchases", "labor-out", "deposi
 
 const VIEWS = [
   { key: "overview", label: "Overview", primary: true },
+  // Karan 2026-09-24: "put payroll tab before receivables". It is the most
+  // time-critical thing on this page — it runs to a deadline every week —
+  // and the rest of the tabs are things you look up rather than things that
+  // are due.
+  { key: "payroll", label: "Payroll" , primary: true },
   { key: "receivables", label: "Receivables" , primary: true },
   // Alex's ledger. Sits next to Receivables on purpose: one answers "what is
   // owed", the other "what actually moved", and he reads them together.
@@ -679,11 +684,6 @@ const VIEWS = [
   { key: "unbilled", label: "Won, not invoiced" , primary: false },
   { key: "purchases", label: "Purchases" , primary: true },
   { key: "labor-out", label: "Labor payments" , primary: true },
-  // Karan 2026-09-24: "all of Mary's stuff should be in accounting", and this
-  // is the most manual thing she does — Katie: "Right now the calculations are
-  // manual." It sits beside Labor payments because it PRODUCES them: posting a
-  // week writes the same payout rows that view lists.
-  { key: "payroll", label: "Payroll" , primary: true },
   { key: "deposits", label: "Deposits" , primary: true },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
@@ -916,18 +916,27 @@ export default async function AccountingPage({
     // Overview is paying for it.
     view === "payroll"
       ? (async () => {
-          const { getPayrollWeek } = await import("@/lib/commercial/field-ops/payroll-week");
-          const { mondayOf, addDaysIso } = await import("@/lib/commercial/field-ops/schedule");
+          const { getPayrollWeek, latestPayrollWeekStart } = await import(
+            "@/lib/commercial/field-ops/payroll-week"
+          );
+          const { mondayOf, addDaysIso, todayEtIso } = await import(
+            "@/lib/commercial/field-ops/schedule"
+          );
           const asked = pickFirst(sp.week);
+          const thisWeek = mondayOf(todayEtIso());
           // Always a whole Monday–Sunday block. Overtime is a 40h/week idea, so
           // a half-week cannot be costed correctly — and a URL somebody edited
           // by hand must not be able to produce one.
-          const start = mondayOf(
+          //
+          // With no week asked for, land on the most recent week that HAS
+          // hours rather than the calendar week. Payroll is run for the week
+          // that ended: opening the tab midweek used to show four empty panels
+          // and a warning, every time, which read as the feature being broken.
+          const start =
             asked && /^\d{4}-\d{2}-\d{2}$/.test(asked)
-              ? asked
-              : new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
-          );
-          return { week: await getPayrollWeek(start, addDaysIso(start, 6)), start };
+              ? mondayOf(asked)
+              : ((await latestPayrollWeekStart()) ?? thisWeek);
+          return { week: await getPayrollWeek(start, addDaysIso(start, 6)), start, thisWeek };
         })()
       : Promise.resolve(null),
     // Rows whose read is missing OR written from facts that have since moved —
@@ -2498,7 +2507,8 @@ export default async function AccountingPage({
               endDate={payroll.week.endDate}
               prevHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, -7)}`}
               nextHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, 7)}`}
-              todayHref={`${BASE}?view=payroll`}
+              todayHref={`${BASE}?view=payroll&week=${payroll.thisWeek}`}
+              isThisWeek={payroll.start === payroll.thisWeek}
             />
           </div>
           <PayrollWeekPanels
@@ -2507,6 +2517,14 @@ export default async function AccountingPage({
             postAction={postPayrollAction}
             selectedJobId={pickFirst(sp.job) ?? null}
             basePath={`${BASE}?view=payroll&week=${payroll.start}`}
+            lastHoursWeekHref={
+              // The raw day, not its Monday — the page normalises any `week`
+              // to a Monday on the way in, so there is one place that does it.
+              payroll.week.lastW2HoursDate
+                ? `${BASE}?view=payroll&week=${payroll.week.lastW2HoursDate}`
+                : null
+            }
+            approvalsHref="/commercial/field-ops/approvals"
           />
         </section>
       )}

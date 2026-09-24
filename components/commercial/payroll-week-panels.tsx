@@ -3,6 +3,7 @@ import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PasteCostsBox } from "@/components/commercial/paste-costs-box";
+import { CopyHoursButton } from "@/components/commercial/copy-hours-button";
 import type { PayrollWeek } from "@/lib/commercial/field-ops/payroll-week";
 
 /**
@@ -34,6 +35,17 @@ const money = (c: number | null | undefined) =>
 
 const hrs = (h: number) => `${Number(h).toLocaleString("en-US", { maximumFractionDigits: 2 })}h`;
 
+/** "Saturday, Sep 19" — parsed as UTC so a date never slips a day. */
+const longDate = (ymd: string) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+};
+
 const CARD = "rounded-xl border border-ppp-charcoal-100 bg-surface overflow-hidden";
 const HEAD = "px-3.5 py-2.5 border-b border-ppp-charcoal-100";
 const TITLE = "text-[12.5px] font-bold text-ppp-charcoal";
@@ -51,6 +63,8 @@ export function PayrollWeekPanels({
   postAction,
   selectedJobId,
   basePath,
+  lastHoursWeekHref,
+  approvalsHref,
 }: {
   week: PayrollWeek;
   saveCostsAction: (formData: FormData) => void | Promise<void>;
@@ -59,9 +73,18 @@ export function PayrollWeekPanels({
   selectedJobId: string | null;
   /** For the week arrows and the job picker, which are links not forms. */
   basePath: string;
+  /** The week the most recent hours are in, for an empty week to point at. */
+  lastHoursWeekHref: string | null;
+  /** Where unapproved hours get approved. A blocker that says "approve them
+   *  first" without saying where is a dead end. */
+  approvalsHref: string;
 }) {
   const posted = week.status === "allocated";
-  const canPost = week.blockers.length === 0;
+  const empty = week.employees.length === 0;
+  // An empty week is never postable, and it carries no blockers on purpose —
+  // nothing is wrong with it. Both halves have to be said, or the button goes
+  // live over a week with nothing in it.
+  const canPost = week.blockers.length === 0 && !empty && !week.awaitingCosts;
   const detailJob =
     week.byJob.find((j) => j.opportunityId === selectedJobId) ?? week.byJob[0] ?? null;
 
@@ -89,6 +112,47 @@ export function PayrollWeekPanels({
 
   return (
     <div className="space-y-3">
+      {/* ── A WEEK WITH NOTHING IN IT ───────────────────────────────────
+          Not a warning. Hours arrive from the crew's clock-ins and the
+          overnight attendance sync, so the week in progress is empty until it
+          has been worked — and this screen answered that with "No approved
+          hours for any W-2 employee in this week yet", styled amber, which
+          read as a fault and gave her nowhere to go.
+
+          Say where hours come from, when the last ones arrived, and offer the
+          week that has them. */}
+      {empty && (
+        <div className="rounded-xl border border-ppp-charcoal-200 bg-ppp-charcoal-50/60 px-3.5 py-3">
+          <p className="text-[12px] font-bold text-ppp-charcoal">
+            No hours in this week yet
+          </p>
+          <p className="mt-1 text-[12px] text-ppp-charcoal-600 leading-snug">
+            Hours come from the crew&rsquo;s approved time, which lands overnight. A week
+            fills in as it is worked, so the current week is normally empty until it ends.
+            {week.lastW2HoursDate ? (
+              <>
+                {" "}
+                The most recent day with hours is{" "}
+                <span className="font-semibold text-ppp-charcoal">
+                  {longDate(week.lastW2HoursDate)}
+                </span>
+                .
+              </>
+            ) : (
+              " No W-2 hours have been recorded at all yet."
+            )}
+          </p>
+          {lastHoursWeekHref && (
+            <Link
+              href={lastHoursWeekHref}
+              className="mt-2 inline-flex items-center min-h-[44px] text-[12px] font-semibold text-cc-brand-700 hover:underline"
+            >
+              Go to the week with the latest hours →
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* ── What is stopping this week, before anything else ───────────── */}
       {week.blockers.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
@@ -104,6 +168,17 @@ export function PayrollWeekPanels({
               </li>
             ))}
           </ul>
+          {/* "Approve them first" with no way to approve them is a dead end;
+              the approvals queue is on a different section of the platform and
+              Mary has no reason to know that. */}
+          {week.unapprovedHours > 0 && (
+            <Link
+              href={approvalsHref}
+              className="mt-2 inline-flex items-center min-h-[44px] text-[12px] font-semibold text-amber-900 underline hover:no-underline"
+            >
+              Go to hour approvals →
+            </Link>
+          )}
         </div>
       )}
 
@@ -150,7 +225,8 @@ export function PayrollWeekPanels({
           </div>
           {week.employees.length === 0 ? (
             <p className="px-3.5 py-4 text-[12px] text-ppp-charcoal-500">
-              No approved hours in this week yet.
+              Nothing logged against this week. Hours appear here once the crew&rsquo;s time is
+              approved.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -188,6 +264,19 @@ export function PayrollWeekPanels({
               </table>
             </div>
           )}
+          {!empty && (
+            <div className="px-3.5 pb-3 pt-2 border-t border-ppp-charcoal-100">
+              {/* Total paid hours, job and off-job together — Gusto pays both.
+                  The panel splits them because the SPLIT only uses job hours;
+                  Gusto does not care about that distinction. */}
+              <CopyHoursButton
+                rows={week.employees.map((e) => ({
+                  name: e.name,
+                  hours: e.jobHours + e.unassignedHours,
+                }))}
+              />
+            </div>
+          )}
           {week.totals.unassignedHours > 0 && (
             <p className="px-3.5 pb-3 pt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
               Vacation and shop time are paid but sit on no job. Pick the job each
@@ -213,20 +302,31 @@ export function PayrollWeekPanels({
             <form action={saveCostsAction}>
               <input type="hidden" name="start" value={week.startDate} />
               <input type="hidden" name="end" value={week.endDate} />
-              {/* PHONE: a card per person.
-                  As a table this was 420px wide inside a ~376px card, and the
-                  box Mary types into is the LAST column — so on a phone she had
-                  to scroll each row sideways to reach it, for every employee,
-                  every week. The one panel on this screen that is pure data
-                  entry was the one you could not reach. */}
-              <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+              {/* ONE field per person, laid out responsively.
+                  This used to be a phone card list AND a desktop table, both
+                  rendered, one hidden by CSS. Both are still in the DOM and
+                  both still POST, so every employee had two `cost_` inputs
+                  under one name — and the save loop takes the last one it
+                  sees. On a phone that meant Mary typed a figure into the card
+                  she could see, and the hidden desktop input's stale value
+                  overwrote it on save: the cost silently reverted. Pasting a
+                  column had the mirror failure on desktop, filling the hidden
+                  card and appearing to do nothing.
+
+                  A field that exists twice under one name is a money bug
+                  waiting for whichever layout is hidden, so there is now
+                  exactly one of each and the LAYOUT flexes instead. */}
+              <ul className="divide-y divide-ppp-charcoal-100">
                 {week.employees.map((e) => (
-                  <li key={e.employeeId} className="px-3.5 py-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[13px] font-semibold text-ppp-charcoal truncate">
+                  <li
+                    key={e.employeeId}
+                    className="px-3.5 py-3 sm:py-2 sm:flex sm:items-center sm:gap-3"
+                  >
+                    <div className="sm:flex-1 sm:min-w-0 flex items-baseline justify-between gap-2 sm:block">
+                      <span className="text-[13px] sm:text-[12.5px] font-semibold sm:font-normal text-ppp-charcoal truncate">
                         {e.name}
                       </span>
-                      <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums shrink-0">
+                      <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums shrink-0 sm:block">
                         {hrs(e.jobHours)}
                       </span>
                     </div>
@@ -235,10 +335,15 @@ export function PayrollWeekPanels({
                         name={`pto_${e.employeeId}`}
                         defaultValue={e.unassignedOpportunityId ?? ""}
                         aria-label={`Job to charge ${e.name}'s ${e.unassignedHours}h of non-job time to`}
-                        className={`${SELECT_CLS} mt-2 text-[12px] border-amber-300 bg-amber-50`}
+                        className={`${SELECT_CLS} mt-2 sm:mt-0 sm:w-[180px] sm:shrink-0 text-[12px] border-amber-300 bg-amber-50`}
                         style={SELECT_BG_STYLE}
                       >
-                        <option value="">Charge {e.unassignedHours}h off-job to…</option>
+                        {/* Mary 2026-09-24: vacation and shop time are
+                            "included... BD had me put it against a job", and
+                            "he picks a job that can handle the expense". So it
+                            is a choice, offered next to the money, and the week
+                            will not post until it is made. */}
+                        <option value="">Charge {e.unassignedHours}h off-job to&hellip;</option>
                         {e.jobs.map((j) => (
                           <option key={j.opportunityId} value={j.opportunityId}>
                             {j.jobName}
@@ -246,8 +351,8 @@ export function PayrollWeekPanels({
                         ))}
                       </select>
                     )}
-                    <label className="block mt-2">
-                      <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1">
+                    <label className="block mt-2 sm:mt-0 sm:shrink-0">
+                      <span className="block sm:hidden text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1">
                         Company cost from Gusto
                       </span>
                       <input
@@ -258,79 +363,26 @@ export function PayrollWeekPanels({
                         }
                         placeholder="0.00"
                         aria-label={`Actual Gusto cost for ${e.name}`}
-                        className={`${INPUT} max-w-none`}
+                        className={`${INPUT} max-w-none sm:max-w-[130px] sm:w-[130px]`}
                       />
                     </label>
                   </li>
                 ))}
               </ul>
-              <div className="hidden sm:block overflow-x-auto">
-                <table className="w-full min-w-[420px]">
-                  <thead className="bg-ppp-charcoal-50/60">
-                    <tr>
-                      <th className={TH}>Employee</th>
-                      <th className={`${TH} text-right`}>Hours</th>
-                      <th className={`${TH} text-right`}>Company cost</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-ppp-charcoal-100">
-                    {week.employees.map((e) => (
-                      <tr key={e.employeeId}>
-                        <td className={TD}>{e.name}</td>
-                        <td className={`${NUM} text-ppp-charcoal-500`}>{hrs(e.jobHours)}</td>
-                        <td className="px-3.5 py-1.5 text-right">
-                          {/* Mary 2026-09-24: vacation and shop time are
-                              "included... BD had me put it against a job", and
-                              "he picks a job that can handle the expense". So
-                              it is a choice, offered next to the money, and the
-                              week will not post until it is made. */}
-                          {e.unassignedHours > 0 && (
-                            <select
-                              name={`pto_${e.employeeId}`}
-                              defaultValue={e.unassignedOpportunityId ?? ""}
-                              aria-label={`Job to charge ${e.name}'s ${e.unassignedHours}h of non-job time to`}
-                              className={`${SELECT_CLS} max-w-[190px] mb-1.5 text-[11.5px] border-amber-300 bg-amber-50`}
-                              style={SELECT_BG_STYLE}
-                            >
-                              <option value="">
-                                Charge {e.unassignedHours}h off-job to…
-                              </option>
-                              {e.jobs.map((j) => (
-                                <option key={j.opportunityId} value={j.opportunityId}>
-                                  {j.jobName}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          <input
-                            name={`cost_${e.employeeId}`}
-                            inputMode="decimal"
-                            defaultValue={
-                              e.actualCostCents == null ? "" : (e.actualCostCents / 100).toFixed(2)
-                            }
-                            placeholder="0.00"
-                            aria-label={`Actual Gusto cost for ${e.name}`}
-                            className={INPUT}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-ppp-charcoal-50/60 border-t border-ppp-charcoal-200">
-                    <tr>
-                      <td className={`${TD} font-bold`}>Total</td>
-                      <td className={NUM} />
-                      <td className={`${NUM} font-bold`}>{money(week.totals.actualCostCents)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+              <div className="px-3.5 py-2 bg-ppp-charcoal-50/60 border-t border-ppp-charcoal-200 flex items-baseline justify-between">
+                <span className="text-[12px] font-bold text-ppp-charcoal">Total</span>
+                <span className="text-[12.5px] font-bold text-ppp-charcoal tabular-nums">
+                  {money(week.totals.actualCostCents)}
+                </span>
               </div>
               <div className="px-3.5 py-3 border-t border-ppp-charcoal-100 space-y-2.5">
                 {/* Katie asked for an upload; this is the safer half of it.
                     The figures land in the boxes beside the names, and nothing
                     is saved until Save is pressed — so a column that is one row
                     short is visible now rather than in a margin next month. */}
-                <PasteCostsBox employeeNames={week.employees.map((e) => e.name)} />
+                <PasteCostsBox
+                  employees={week.employees.map((e) => ({ id: e.employeeId, name: e.name }))}
+                />
                 <PendingSubmitButton
                   pendingLabel="Saving…"
                   className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
@@ -499,7 +551,11 @@ export function PayrollWeekPanels({
         <span className="text-[11.5px] text-ppp-charcoal-500">
           {canPost
             ? "Writes a labor payout on each job, the same as a crew payment."
-            : "Sort the items above first."}
+            : empty
+              ? "Nothing to post — this week has no hours in it."
+              : week.awaitingCosts
+                ? "Run the hours through Gusto, then enter what each person cost above."
+                : "Sort the items above first."}
         </span>
       </form>
     </div>
@@ -513,12 +569,16 @@ export function PayrollWeekHeader({
   prevHref,
   nextHref,
   todayHref,
+  isThisWeek,
 }: {
   startDate: string;
   endDate: string;
   prevHref: string;
   nextHref: string;
   todayHref: string;
+  /** The tab opens on the latest week WITH hours, not the calendar week, so
+   *  "This week" is only worth offering when you are not already on it. */
+  isThisWeek: boolean;
 }) {
   const label = (d: string) => {
     const [y, m, day] = d.split("-").map(Number);
@@ -547,12 +607,18 @@ export function PayrollWeekHeader({
       >
         ›
       </Link>
-      <Link
-        href={todayHref}
-        className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline px-1 min-h-[44px] inline-flex items-center"
-      >
-        This week
-      </Link>
+      {isThisWeek ? (
+        <span className="text-[11.5px] font-semibold text-ppp-charcoal-400 px-1 min-h-[44px] inline-flex items-center">
+          This week
+        </span>
+      ) : (
+        <Link
+          href={todayHref}
+          className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline px-1 min-h-[44px] inline-flex items-center"
+        >
+          This week
+        </Link>
+      )}
       {/* No free date picker on purpose: a payroll week is a Monday–Sunday
           block, and letting somebody land on a Wednesday would split overtime
           across two half-weeks. The arrows can only produce whole weeks. */}

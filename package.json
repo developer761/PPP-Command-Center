@@ -32,7 +32,8 @@
     "check:upload-limit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/check-upload-limit.mjs",
     "import:rules": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-class-a-rules.mjs",
     "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs",
-    "check:soft-delete-uniques": "node scripts/check-soft-delete-uniques.mjs"
+    "check:soft-delete-uniques": "node scripts/check-soft-delete-uniques.mjs",
+    "check:form-fields": "node scripts/check-duplicate-form-fields.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

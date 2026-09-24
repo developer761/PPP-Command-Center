@@ -19,9 +19,17 @@ import { parsePastedAmounts } from "@/lib/commercial/field-ops/paste-amounts";
  * It fills the boxes in ORDER, which is the one thing she has to know, so the
  * order is printed on the label rather than assumed.
  */
-export function PasteCostsBox({ employeeNames }: { employeeNames: string[] }) {
+export function PasteCostsBox({
+  employees,
+}: {
+  /** In the order the boxes appear. Targeted by `id`, not by name: the roster
+   *  holds two Lucatortos and two Roberts, and a display name is not unique
+   *  enough to write money against. */
+  employees: { id: string; name: string }[];
+}) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const employeeNames = employees.map((e) => e.name);
 
   const { cents, unreadable } = parsePastedAmounts(text);
   const tooMany = cents.length > employeeNames.length;
@@ -31,10 +39,14 @@ export function PasteCostsBox({ employeeNames }: { employeeNames: string[] }) {
     // Write straight into the existing inputs. No new state, no second copy of
     // the figures to fall out of step with what the form will actually post.
     let i = 0;
-    for (const name of employeeNames) {
+    for (const emp of employees) {
       if (i >= cents.length) break;
+      // By form field name. Selecting on the visible label looked tidier and
+      // was wrong twice over: display names repeat on this roster, and the
+      // panel briefly rendered a phone layout and a desktop layout at once, so
+      // the first match was whichever one happened to be hidden.
       const el = document.querySelector<HTMLInputElement>(
-        `input[aria-label="Actual Gusto cost for ${name.replace(/"/g, '\\"')}"]`,
+        `input[name="cost_${CSS.escape(emp.id)}"]`,
       );
       if (el) {
         el.value = (cents[i] / 100).toFixed(2);
