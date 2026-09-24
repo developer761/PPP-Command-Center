@@ -31,13 +31,31 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 let failed = false;
 
 try {
-  const { rules, notes, problems } = parseClassARules(readFileSync(path, "utf8"));
+  const { rules, notes, problems, absent } = parseClassARules(readFileSync(path, "utf8"));
 
   console.log(`\nCLASS A RULES — ${path.split("/").pop()}\n`);
   console.log(`  read:     ${rules.length} rules`);
   console.log(`  live:     ${rules.filter((r) => r.status === "live").length}`);
   console.log(`  retired:  ${rules.filter((r) => r.status === "retired").length}`);
   console.log(`  critical: ${rules.filter((r) => r.status === "live" && r.severity === "critical").length}`);
+
+  // BINDS IS GONE FROM THE SHEET, AND THE FILTER IT FED IS NOW INERT.
+  //
+  // Kate, 23 September: "Your parser defaults it to true when the column is
+  // absent, so nothing changes today... But that filter is now permanently
+  // inert: a rule that is live and rater-only must be marked RETIRED, or it
+  // will reach the prompt."
+  //
+  // Said out loud on every import rather than left as a comment nobody reads,
+  // because the failure is silent: promptable() still names binds in its
+  // filter, so the code reads as though something is being checked.
+  if (rules.length && rules.every((r) => r.binds)) {
+    console.log(
+      "\n  ⚠ no 'binds' column in this file, so every live rule goes in the prompt.\n" +
+      "    STATUS IS THE ONLY GUARD NOW. A live rule that must not reach the bot\n" +
+      "    has to be marked RETIRED in the sheet; there is no other way to hold it back."
+    );
+  }
 
   if (problems.length) {
     // Loudly, and before writing anything. A rule that could not be read is a
@@ -64,7 +82,7 @@ try {
   if (eErr) throw new Error(`could not read the current rules to diff against: ${eErr.message}`);
   const before = new Map(existing.map((r) => [r.code, r]));
 
-  const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r));
+  const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r, absent));
   const edits = changes.filter((c) => c.field !== "added");
   console.log(`\n  changes since the last import: ${edits.length}${changes.length - edits.length ? ` (+${changes.length - edits.length} new rules)` : ""}`);
   for (const c of edits.slice(0, 12)) console.log(`    ${c.code.padEnd(5)} ${describeChange(c)}`);

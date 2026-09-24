@@ -72,13 +72,22 @@ try {
   const H = rows[0].map((h) => h.replace(/^﻿/, "").trim());
   const body = rows.slice(1).filter((r) => r.some((c) => (c ?? "").trim()));
   const at = (frag) => H.findIndex((h) => h.toLowerCase().includes(frag.toLowerCase()));
+  /** Exact header match, for the columns whose short names are substrings of
+   *  other headers. "Defects" is inside "Defect count". */
+  const exact = (name) => H.findIndex((h) => h.toLowerCase() === name.toLowerCase());
 
   const I = {
     convo: at("Conversation ID"),
     transcript: at("Merged Transcript"),
-    grade: at("Class A Grade"),
-    defects: at("Class A Defects"),
-    good: at("Class A Good Turns"),
+    // RENAMED IN THE 23 SEPTEMBER EXPORT. They were "Class A Grade
+    // 2026-09-22" and so on, which was the export date repeated on every row
+    // of a file that is entirely one date's ratings. Matched by exact header
+    // now rather than by substring: "Grade" as a substring also matches
+    // nothing useful, and a lookup that silently finds the wrong column is
+    // worse than one that throws.
+    grade: exact("Grade"),
+    defects: exact("Defects"),
+    good: exact("Good Turns"),
     // OPTIONAL, and nullable when present. Kate, 2026-09-23: "Hatch labels
     // weren't consistent -- you'll see conversations graded as bad that Hatch
     // dispo'd as 'success', so I wouldn't rely on those." In her own file 465

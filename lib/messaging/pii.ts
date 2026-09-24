@@ -169,6 +169,14 @@ const NOT_A_NAME = new Set([
   "Can", "Could", "Would", "Will", "Our", "We", "They", "She", "Her", "His",
   "Please", "Let", "Any", "How", "What", "When", "Where", "Who", "Not",
   "Have", "Had", "Are", "Was", "Its", "Been", "Also", "Then", "Here",
+  // Days, months and ordinary words that follow a greeting and are nobody's
+  // name. Each one cost a real graded conversation: quarantining "Thanks
+  // Friday works" as a name leak loses the example and protects nothing.
+  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+  "January", "February", "March", "April", "May", "June", "July", "August",
+  "September", "October", "November", "December",
+  "One", "Two", "Three", "Did", "Does", "Before", "After", "Both", "Still",
+  "Great", "Perfect", "Awesome", "Understood", "Absolutely", "Ok", "Okay",
 ]);
 
 export function suspectedNames(text: string, allow: string[] = []): string[] {

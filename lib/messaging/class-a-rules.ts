@@ -67,6 +67,9 @@ export type ParsedRules = {
   notes: ClassARuleNotes[];
   /** Rows that could not be read, with why. Never silently dropped. */
   problems: { row: number; why: string }[];
+  /** Field names whose column was not in this sheet, so their values are
+   *  defaults rather than anything Kate chose. The change log skips these. */
+  absent: Set<string>;
 };
 
 /** Kate's headings are long and carry bracketed audience notes; match on the
@@ -133,7 +136,7 @@ function dateOf(v: string | undefined): string | null {
 
 export function parseClassARules(csv: string): ParsedRules {
   const rows = parseCsvRows(csv);
-  if (!rows.length) return { rules: [], notes: [], problems: [{ row: 0, why: "the file is empty" }] };
+  if (!rows.length) return { rules: [], notes: [], problems: [{ row: 0, why: "the file is empty" }], absent: new Set() };
 
   const headers = rows[0];
   const at = Object.fromEntries(
@@ -144,7 +147,7 @@ export function parseClassARules(csv: string): ParsedRules {
   for (const required of ["code", "statement", "status"] as const) {
     if (at[required] < 0) problems.push({ row: 0, why: `no column for ${required}` });
   }
-  if (problems.length) return { rules: [], notes: [], problems };
+  if (problems.length) return { rules: [], notes: [], problems, absent: new Set() };
 
   const rules: ClassARule[] = [];
   const notes: ClassARuleNotes[] = [];
@@ -194,7 +197,21 @@ export function parseClassARules(csv: string): ParsedRules {
     });
   });
 
-  return { rules, notes, problems };
+  /**
+   * Columns this sheet did NOT carry.
+   *
+   * A parser that defaults a missing column is doing the right thing for the
+   * bot and the wrong thing for the change log: the default is not a value
+   * Kate chose, so diffing against it reports an edit nobody made. The 23
+   * September sheet dropped binds and phrasing_only, and without this the
+   * import recorded twelve "Binds the bot: no -> yes" changes that never
+   * happened. See rule-diff.ts, which skips what this names.
+   */
+  const absent = new Set(
+    Object.entries(at).filter(([, i]) => (i as number) < 0).map(([k]) => k)
+  );
+
+  return { rules, notes, problems, absent };
 }
 
 /** Which rules may be shown to the model at all. */

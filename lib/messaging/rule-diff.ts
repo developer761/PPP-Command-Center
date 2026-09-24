@@ -65,7 +65,21 @@ export function sameText(a: unknown, b: unknown): boolean {
 }
 
 /** What the incoming rule changes about the stored one. */
-export function diffRule(before: StoredRule | null, after: ClassARule & { shortName?: string | null }): RuleChange[] {
+export function diffRule(
+  before: StoredRule | null,
+  after: ClassARule & { shortName?: string | null },
+  /**
+   * Fields whose COLUMN was missing from the sheet.
+   *
+   * Their values are parser defaults, not decisions, so comparing them
+   * reports edits nobody made. The 23 September sheet dropped binds and
+   * phrasing_only, and without this the import wrote twelve "Binds the bot:
+   * no -> yes" rows for rules Kate had not touched. A change log carrying
+   * twelve invented entries beside six real ones is a change log nobody
+   * trusts, which is the failure this whole file exists to avoid.
+   */
+  absent: ReadonlySet<string> = new Set()
+): RuleChange[] {
   // A rule appearing for the first time is not 44 changes; it is one fact.
   // Recording every field on a first import would make the very first history
   // page unreadable and say nothing anybody did not already know.
@@ -90,8 +104,16 @@ export function diffRule(before: StoredRule | null, after: ClassARule & { shortN
     short_name: after.shortName ?? null,
   };
 
+  /** camelCase names, as the parser reports them, for the snake_case fields
+   *  this walks. */
+  const PARSER_NAME: Record<string, string> = {
+    rule_card: "ruleCard", corrective_action: "correctiveAction",
+    phrasing_only: "phrasingOnly", short_name: "shortName",
+  };
+
   const out: RuleChange[] = [];
   for (const field of TRACKED) {
+    if (absent.has(field) || absent.has(PARSER_NAME[field] ?? field)) continue;
     const was = (before as Record<string, unknown>)[field];
     const now = incoming[field];
     // short_name is only ever filled in from the older code table, and a
