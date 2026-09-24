@@ -76,17 +76,53 @@ export async function getW2Readiness(): Promise<W2Readiness> {
   // money goes to a labor company. So the overlap is matched on the name the
   // roster shows, which is exactly the name the payment carries for the
   // "Tomco Labor - X" crew.
-  const purchases = await paginateAll<{ vendor: string | null; amount_cents: number | null }>(() =>
-    sb
-      .from("commercial_project_purchases")
-      .select("vendor, amount_cents")
-      // BOTH kinds of labor. A person paid once as a sub and once through
-      // payroll is the overlap this exists to find, and it would miss exactly
-      // that if it only looked at one category.
-      .in("category", ["labor", "employee_labor"])
-      .is("deleted_at", null)
-      .order("id", { ascending: true }),
+  /**
+   * ONLY PAYOUTS INSIDE A WEEK PAYROLL HAS ALSO ALLOCATED.
+   *
+   * The first version flagged any W-2 person with any payout ever. The moment
+   * the nine crew were switched over, that was all of them — $562,743.84 of
+   * perfectly good history from when they WERE subs, reported as a
+   * double-count. A check that fires on nine people who are fine is a check
+   * nobody reads on the tenth who is not.
+   *
+   * The real overlap is narrow: a payout dated inside a week that payroll ALSO
+   * posted. That is the same work costed twice. Anything before the switch is
+   * simply what was paid then.
+   */
+  const { data: allocated } = await sb
+    .from("commercial_payroll_periods")
+    .select("start_date, end_date")
+    .eq("status", "allocated")
+    .is("deleted_at", null);
+  const weeks = ((allocated ?? []) as { start_date: string; end_date: string }[]).map(
+    (w) => [w.start_date, w.end_date] as const,
   );
+
+  const purchases =
+    weeks.length === 0
+      ? []
+      : (
+          await paginateAll<{
+            vendor: string | null;
+            amount_cents: number | null;
+            purchased_at: string | null;
+            payroll_period_id: string | null;
+          }>(() =>
+            sb
+              .from("commercial_project_purchases")
+              .select("vendor, amount_cents, purchased_at, payroll_period_id")
+              // BOTH kinds of labor. A person paid once as a sub and once
+              // through payroll is the overlap this exists to find.
+              .in("category", ["labor", "employee_labor"])
+              .is("deleted_at", null)
+              .order("id", { ascending: true }),
+          )
+        ).filter((p) => {
+          // Payroll's OWN rows are not a double-count — they are the cost.
+          if (p.payroll_period_id) return false;
+          const day = String(p.purchased_at ?? "").slice(0, 10);
+          return weeks.some(([from, to]) => day >= from && day <= to);
+        });
   const paidTo = new Map<string, { cents: number; n: number }>();
   for (const p of purchases) {
     const name = (p.vendor ?? "").trim();
