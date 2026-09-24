@@ -1293,10 +1293,16 @@ async function toggleTaskAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
     redirect("/commercial/opportunities");
   }
-  if (make_complete) {
-    await completeOpportunityTask(opportunity_id, task_id, user.id);
-  } else {
-    await uncompleteOpportunityTask(opportunity_id, task_id, user.id);
+  // Both Results were discarded, while the create and delete actions beside
+  // them branch on `.ok`. A tick that silently does not save is the kind of
+  // thing somebody only notices when the task is still open a week later.
+  const toggled = make_complete
+    ? await completeOpportunityTask(opportunity_id, task_id, user.id)
+    : await uncompleteOpportunityTask(opportunity_id, task_id, user.id);
+  if (!toggled.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=tasks&error=${encodeURIComponent(toggled.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
 }

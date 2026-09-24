@@ -395,6 +395,72 @@ export async function listDebriefsForOpp(opportunityId: string): Promise<
   });
 }
 
+/**
+ * Correct a debrief that has already been written.
+ *
+ * There was no update and no delete for `commercial_win_loss_debrief` anywhere
+ * in the codebase, and `canDebrief` refuses to reopen the form once
+ * `win_loss_debriefed_at` is set — the page flips to read-only. So a typo in
+ * "lessons learned", or a competitor named wrong, was permanent unless the rep
+ * reopened and re-closed the entire deal to clear the flag.
+ *
+ * That is a strange thing for a reflective document to be. The whole point of
+ * lessons learned is that somebody reads them later and they are right.
+ *
+ * Only the narrative fields are editable. The OUTCOME is not: won/lost is
+ * derived from the deal, and letting it be edited here would put the debrief
+ * and the opportunity into disagreement with no way to tell which is true.
+ * Change the deal to change the outcome.
+ */
+export async function updateDebrief(input: {
+  debriefId: string;
+  actorUserId: string;
+  decidingFactor?: string | null;
+  lessonsLearned?: string | null;
+  internalNotes?: string | null;
+  competitorName?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_win_loss_debrief")
+    .select("*")
+    .eq("id", input.debriefId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "That debrief no longer exists." };
+
+  const patch: Record<string, unknown> = {};
+  if (input.decidingFactor !== undefined) patch.deciding_factor = input.decidingFactor?.trim() || null;
+  if (input.lessonsLearned !== undefined) patch.lessons_learned = input.lessonsLearned?.trim() || null;
+  if (input.internalNotes !== undefined) patch.internal_notes = input.internalNotes?.trim() || null;
+
+  if (input.competitorName !== undefined) {
+    const name = input.competitorName?.trim();
+    if (!name) {
+      patch.competitor_id = null;
+    } else {
+      const res = await getOrCreateCompetitor(name, input.actorUserId);
+      if (!res.ok) return res;
+      patch.competitor_id = res.competitor.id;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  const { data: after, error } = await sb
+    .from("commercial_win_loss_debrief")
+    .update(patch)
+    .eq("id", input.debriefId)
+    .select("*")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!after) return { ok: false, error: "That debrief no longer exists." };
+
+  // Audited, because a debrief is a record of a judgement and an unexplained
+  // change to one is worse than the typo it fixed.
+  await logUpdate("commercial_win_loss_debrief", input.debriefId, before, after, input.actorUserId);
+  return { ok: true };
+}
+
 /** Helper for the amber "Debrief needed" banner — checks a single opp. */
 export async function oppNeedsDebrief(opportunityId: string): Promise<boolean> {
   const sb = commercialDb();

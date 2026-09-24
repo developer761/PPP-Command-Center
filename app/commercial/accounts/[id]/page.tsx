@@ -2501,7 +2501,14 @@ async function detachContactAction(formData: FormData) {
   }
   // Security fix 2026-06-24: pass account_id for cross-account scoping
   // — see lib/commercial/accounts/contacts.ts detachContactFromAccount.
-  await detachContactFromAccount(account_id, account_contact_id, user.id);
+  // The tab renders `?error=`; this path simply never set it, so a refused
+  // detach looked exactly like a successful one. Its sibling action ten lines
+  // above already branches on `.ok`.
+  const detached = await detachContactFromAccount(account_id, account_contact_id, user.id);
+  if (!detached.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(detached.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 
