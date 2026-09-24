@@ -131,6 +131,30 @@ export async function getProfileByUserId(userId: string): Promise<Profile | null
 }
 
 /**
+ * Record that somebody just signed in.
+ *
+ * `upsertProfile` does this too, but it only runs in the Google OAuth
+ * callback. Everybody who signs in with an email and password — which is every
+ * Tomco user — never had `last_login_at` written at all, so Settings → Access
+ * showed Brendan and Stephanie last seen 2026-07-31 on a day they both used
+ * the platform. A column that looks authoritative and is months stale is worse
+ * than no column: it answers "is anyone using this?" with a confident no.
+ *
+ * Updates only. It must never CREATE a row — a profile is how access is
+ * granted, and sign-in is not the same thing as being allowed in.
+ */
+export async function touchLastLogin(userId: string): Promise<void> {
+  const { error } = await adminClient()
+    .from("profiles")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  // Never fail a sign-in over a timestamp. supabase-js resolves rather than
+  // throwing, so this has to be read to be logged at all.
+  if (error) console.error("[auth] touchLastLogin failed:", error.message);
+  else invalidateProfileCache(userId);
+}
+
+/**
  * Upsert a profile row. Called by /auth/callback on every login to keep the
  * row in sync with current SF state + current admin-list env var.
  */
