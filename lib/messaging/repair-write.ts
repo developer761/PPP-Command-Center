@@ -10,7 +10,7 @@
  * database triggers that refuse one created already approved and unsign one
  * whose text changes after it was signed.
  */
-import { messagingDb } from "./db";
+import { messagingDb, selectAll } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { applyRepairs, changedTurns, repairNote, turnsOf } from "./repair";
 import { scrub, residualPii } from "./pii";
@@ -377,17 +377,36 @@ export type RatedRow = {
 export async function ratedConversations(): Promise<RatedRow[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const [{ data: examples }, { data: tags }, { data: derived }] = await Promise.all([
-    sb.from("sms_training_examples").select("id, transcript, conduct, graded_at, graded_by")
-      .neq("source", "derived").order("graded_at", { ascending: false, nullsFirst: false }),
-    sb.from("sms_training_example_tags").select("example_id"),
-    sb.from("sms_training_examples").select("derived_from, approved").eq("source", "derived"),
+  // PAGED, all three. This is the screen Kate asked for by name, and an
+  // unbounded read stops at 1,000 of 1,294 — so 294 of her conversations
+  // were not on the page she opened to find them, with nothing saying so.
+  // Same cap as the grading screen, a different page, found by sweeping for
+  // it rather than by somebody noticing a conversation was missing.
+  const [examples, tags, derived] = await Promise.all([
+    selectAll<{ id: string; transcript: string; conduct: string | null; graded_at: string | null; graded_by: string | null }>(
+      (a, b) => sb.from("sms_training_examples")
+        .select("id, transcript, conduct, graded_at, graded_by")
+        .neq("source", "derived")
+        .order("graded_at", { ascending: false, nullsFirst: false })
+        .order("id")
+        .range(a, b),
+      "reading rated conversations"
+    ),
+    selectAll<{ example_id: string }>(
+      (a, b) => sb.from("sms_training_example_tags").select("example_id").order("example_id").range(a, b),
+      "reading tags for the rated list"
+    ),
+    selectAll<{ derived_from: string | null; approved: boolean }>(
+      (a, b) => sb.from("sms_training_examples").select("derived_from, approved")
+        .eq("source", "derived").order("id").range(a, b),
+      "reading repairs for the rated list"
+    ),
   ]);
   const tagCount = new Map<string, number>();
-  for (const t of tags ?? []) tagCount.set(t.example_id, (tagCount.get(t.example_id) ?? 0) + 1);
+  for (const t of tags) tagCount.set(t.example_id, (tagCount.get(t.example_id) ?? 0) + 1);
 
-  return (examples ?? []).map((e) => {
-    const mine = (derived ?? []).filter((d) => d.derived_from === e.id);
+  return examples.map((e) => {
+    const mine = derived.filter((d) => d.derived_from === e.id);
     const all = turnsOf(e.transcript);
     // Counted and previewed the way the screen numbers them: the campaign
     // opener is context, and the customer's first message is what the

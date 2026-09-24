@@ -53,8 +53,30 @@ function firstJson(s) {
 
 const norm = (s) => s.replace(/\s+/g, " ").trim();
 
-const { data: stored } = await sb.from("sms_training_examples")
-  .select("id, transcript, conduct").eq("source", "hatch");
+
+/**
+ * Paged. PostgREST caps an unbounded select at 1,000 and this script MATCHES
+ * against what it reads — so a short read makes existing conversations look
+ * new, and re-running would duplicate every one it could not see. 1,294 rows
+ * today.
+ *
+ * SUPERSEDED by scripts/import-rated-conversations.mjs, which reads Kate's
+ * current export. Kept because it documents how the earlier format was
+ * loaded; paged so that running it cannot quietly make a mess.
+ */
+async function readAll(build) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build(from, from + 999);
+    if (error) throw new Error(error.message);
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < 1000) return out;
+  }
+}
+
+const stored = await readAll((a, b) => sb.from("sms_training_examples")
+  .select("id, transcript, conduct").eq("source", "hatch").order("id").range(a, b));
 const byTranscript = new Map(stored.map((r) => [r.transcript, r]));
 
 console.log(`\nKATE TRANSCRIPTS — ${APPLY ? "APPLYING" : "DRY RUN (pass --apply to write)"}\n`);
