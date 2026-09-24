@@ -130,7 +130,14 @@ async function createApplicationAction(formData: FormData) {
   });
   if (!result.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${backQ(back)}`);
+  // A PARTIAL success still has to say so. The application exists, but if its
+  // schedule of values could not be seeded the G703 is blank and G702 line 1
+  // will not match it — on a document the GC receives. Landing on the
+  // certificate with no word of that is how it gets sent.
+  const warn = result.warning
+    ? `&error=${encodeURIComponent(result.warning)}`
+    : "";
+  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${warn}${backQ(back)}`);
 }
 
 /**

@@ -1623,12 +1623,21 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="item_id" value={li.id} />
-                          <SubmitButton
-                            title="Remove line item — recalculates total + progress"
+                          {/* ASK FIRST. This is a real DELETE that re-totals
+                              the invoice, and it is a 44x44 "×" at the end of
+                              every editable row — the easiest thing on the page
+                              to hit by accident, on the document a customer
+                              pays from. Naming the line and its amount means
+                              the confirmation is worth reading rather than
+                              clicked through. */}
+                          <ConfirmSubmitButton
+                            message={`Remove "${(li.description ?? "this line").slice(0, 60)}" (${formatCentsFull(Number(li.subtotal_cents ?? 0))})? The invoice total is recalculated.`}
+                            pendingLabel="…"
+                            ariaLabel="Remove line item"
                             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
                           >
                             ×
-                          </SubmitButton>
+                          </ConfirmSubmitButton>
                         </form>
                       )}
                     </td>
@@ -2036,10 +2045,17 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
-                          <SubmitButton
+                          {/* The most destructive control on this page. It
+                              re-tags recorded payments to invoice level, frees
+                              the paired change order, HARD-deletes the paired
+                              line item and soft-deletes its lien waiver — and
+                              the invoice can flip to overpaid. It had no
+                              confirmation at all. */}
+                          <ConfirmSubmitButton
+                            message={`Remove the "${(m.name ?? "untitled").slice(0, 50)}" milestone (${formatCentsFull(Number(m.amount_cents ?? 0))})? Its charge comes off the invoice, and any payments recorded against it move to the invoice itself.`}
+                            pendingLabel="Removing…"
                             className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5"
-                            title="Remove this milestone (also removes its charge from the invoice)"
-                          >Remove</SubmitButton>
+                          >Remove</ConfirmSubmitButton>
                         </form>
                       </div>
                     )}

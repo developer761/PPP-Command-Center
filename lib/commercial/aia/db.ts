@@ -82,7 +82,12 @@ export type AiaLineItem = {
   updated_at: string;
 };
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+/** `warning` is for a partial success — the thing was created, but something
+ *  alongside it did not finish and the operator needs to know before they act
+ *  on it. Distinct from `ok: false`, which means nothing was written. */
+type Result<T> =
+  | { ok: true; value: T; warning?: string | null }
+  | { ok: false; error: string };
 const COLS = "*";
 
 export async function listAiaApplications(opportunityId: string): Promise<AiaApplication[]> {
@@ -240,6 +245,7 @@ export async function createAiaApplication(
       ? input.retainage_pct
       : DEFAULT_RETAINAGE_PCT;
 
+  let seedWarning: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     // LIVE rows only — a deleted draft releases its number (migration
     // 20260924160000), so max+1 over what actually exists is right, and a
@@ -285,7 +291,19 @@ export async function createAiaApplication(
       // the prior application forward. Best-effort — a seed failure never blocks
       // the create (the operator can add lines manually).
       try {
-        await seedAiaScheduleOfValues(appRow);
+        // The try/catch around this CANNOT catch a rejected insert —
+        // supabase-js resolves with { error } rather than throwing — so the
+        // Result is what matters. A certificate whose G703 is blank is worse
+        // than no certificate: G702 line 1 disagrees with the schedule beneath
+        // it on a document the GC receives.
+        const seeded = await seedAiaScheduleOfValues(appRow);
+        if (!seeded.ok) {
+          console.error(
+            `[aia] application ${appRow.id} created with an INCOMPLETE schedule of values: ${seeded.error}`,
+          );
+          seedWarning =
+            "The application was created, but its schedule of values could not be filled in. Add the lines by hand, or delete it and try again.";
+        }
         // AIA invariant: G702 line 1 (Original Contract Sum) == Σ G703 BASE
         // scheduled values. When the contract was auto-defaulted (from the bid
         // midpoint) AND a schedule got seeded, snap the contract to the schedule
@@ -313,8 +331,12 @@ export async function createAiaApplication(
         }
       } catch (e) {
         console.warn("[aia] schedule-of-values seed failed:", e instanceof Error ? e.message : String(e));
+        seedWarning =
+          "The application was created, but its schedule of values could not be filled in. Add the lines by hand, or delete it and try again.";
       }
-      return { ok: true, value: appRow };
+      // The application exists either way — refusing it would strand a row the
+      // caller cannot see. The warning rides alongside so the screen can say so.
+      return { ok: true, value: appRow, warning: seedWarning };
     }
     if (error && (error as { code?: string }).code === "23505") continue;
     return { ok: false, error: error?.message ?? "insert_failed" };
@@ -331,7 +353,19 @@ export async function createAiaApplication(
  *    line becomes a schedule-of-values row; scheduled value = qty × unit price).
  * No-op if there's nothing to seed from.
  */
-async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
+/**
+ * ⚠ THE INSERTS MUST BE CHECKED, and the caller's try/catch cannot do it:
+ * supabase-js RESOLVES with `{ error }`, it does not throw, so the `catch`
+ * around this call never fires for a rejected insert. The function used to
+ * return void, so there was nothing for the caller to check either — and the
+ * operator got a certificate with a completely blank schedule of values and a
+ * success redirect. The comment further down records that happening before;
+ * the cause was fixed and the swallow was not. G702 line 1 then disagrees with
+ * the Σ of the G703 on a document the GC receives.
+ */
+async function seedAiaScheduleOfValues(
+  app: AiaApplication,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
 
   if (app.application_number > 1) {
@@ -407,15 +441,21 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
           });
           carryNo += 1;
         }
-        await sb.from("commercial_aia_line_items").insert(rows);
-        return;
+        const { error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows);
+        if (carryErr) {
+          console.error("[aia] carry-forward seed insert failed:", carryErr.message);
+          return { ok: false, error: carryErr.message };
+        }
+        return { ok: true };
       }
     }
     // No prior lines — fall through to the proposal seed.
   }
 
   const proposals = await listProposalsForOpp(app.opportunity_id);
-  if (proposals.length === 0) return;
+  // Nothing to seed from is not a failure: a bid with no proposal yet gets an
+  // empty schedule the estimator fills in by hand.
+  if (proposals.length === 0) return { ok: true };
   // Seed from the WON proposal (the signed contract that drives G702 line 1), so
   // the G703 schedule-of-values total can't diverge from the contract sum. Fall
   // back to the latest revision when nothing is won yet — the same ladder as
@@ -423,7 +463,7 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   const seedProposal = proposals.find((p) => p.status === "won") ?? proposals[0];
   const items = await listLineItemsForProposal(seedProposal.id);
   const sov = items.filter((li) => !li.is_alternate);
-  if (sov.length === 0) return;
+  if (sov.length === 0) return { ok: true };
 
   const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
   const rows: Array<{
@@ -557,7 +597,12 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
     });
     nextNo += 1;
   }
-  await sb.from("commercial_aia_line_items").insert(rows);
+  const { error: seedErr } = await sb.from("commercial_aia_line_items").insert(rows);
+  if (seedErr) {
+    console.error("[aia] schedule-of-values seed insert failed:", seedErr.message);
+    return { ok: false, error: seedErr.message };
+  }
+  return { ok: true };
 }
 
 /**
