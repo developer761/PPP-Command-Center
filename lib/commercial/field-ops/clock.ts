@@ -143,15 +143,25 @@ async function syncTimeEntry(
   dateIso: string,
   actorNote: string,
   opts?: { forceReview?: boolean },
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
-  const { data: punchRows } = await sb
+  // THE READ MUST BE CHECKED. Undestructured, a failed read gave
+  // `punchRows = null`, which filtered to no punches, which rounded to ZERO
+  // hours — and zero hours takes the `else if (rounded > 0)` branch below,
+  // so NO time entry was written at all. The painter's screen still flipped to
+  // "clocked out", the punch row survived, and the row Approvals, the exports
+  // and payroll actually read simply never existed.
+  const { data: punchRows, error: punchErr } = await sb
     .from("commercial_time_punches")
     .select("clock_in_at, clock_out_at, assignment_id, note")
     .eq("employee_id", employeeId)
     .eq("job_id", jobId)
     .gte("clock_in_at", `${addDaysIso(dateIso, -1)}T00:00:00Z`)
     .lte("clock_in_at", `${addDaysIso(dateIso, 1)}T23:59:59Z`);
+  if (punchErr) {
+    console.error("[field-ops/clock] punch read failed:", punchErr.message);
+    return { ok: false, error: "Your hours could not be worked out. Please tell the office." };
+  }
   const punches = ((punchRows ?? []) as { clock_in_at: string; clock_out_at: string | null; assignment_id: string | null; note: string | null }[]).filter(
     (p) => etDate(p.clock_in_at) === dateIso
   );
@@ -243,9 +253,16 @@ async function syncTimeEntry(
         patch.approved_at = null;
       }
     }
-    await sb.from("commercial_time_entries").update(patch).eq("id", cur.id);
+    const { error: updErr } = await sb
+      .from("commercial_time_entries")
+      .update(patch)
+      .eq("id", cur.id);
+    if (updErr) {
+      console.error("[field-ops/clock] time entry update failed:", updErr.message);
+      return { ok: false, error: "Your hours could not be saved. Please tell the office." };
+    }
   } else if (rounded > 0) {
-    await sb.from("commercial_time_entries").insert({
+    const { error: insErr } = await sb.from("commercial_time_entries").insert({
       employee_id: employeeId,
       job_id: jobId,
       work_date: dateIso,
@@ -256,7 +273,12 @@ async function syncTimeEntry(
       submitted_at: new Date().toISOString(),
       ...(withinThreshold ? { approved_at: new Date().toISOString() } : {}),
     });
+    if (insErr) {
+      console.error("[field-ops/clock] time entry insert failed:", insErr.message);
+      return { ok: false, error: "Your hours could not be saved. Please tell the office." };
+    }
   }
+  return { ok: true };
 }
 
 /** Never attribute more than a long shift to a forgotten punch. */
@@ -445,12 +467,17 @@ export async function clockOut(input: {
   // implausibly long (likely a forgotten clock-out), so a ~24h punch can't
   // silently auto-approve but real worked hours are never discarded (audit round 2).
   const workDate = etDate(punch.clock_in_at);
-  await syncTimeEntry(
+  // SAY SO IF THE HOURS DID NOT SAVE. The punch is already closed, so the
+  // clock-out itself succeeded — but the time entry is the row Approvals, the
+  // exports and payroll read, and a painter who is told "clocked out" has no
+  // reason to check it later. This used to return ok regardless.
+  const synced = await syncTimeEntry(
     input.employee_id,
     punch.job_id,
     workDate,
     "clock-out",
     spanHours > STALE_PUNCH_CAP_HOURS ? { forceReview: true } : undefined
   );
+  if (!synced.ok) return { ok: false, error: synced.error };
   return { ok: true, jobId: punch.job_id };
 }

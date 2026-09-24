@@ -832,7 +832,11 @@ export async function addLineItem(
       insertedLi,
       actorUserId,
     );
-  await recomputeSubtotal(invoice_id);
+  // Surface a re-total failure. The line item is already written, so this is
+  // not "the action failed" — it is "the total on screen may be stale", which
+  // the user has to know to reload rather than trust.
+  const retotal = await recomputeSubtotal(invoice_id);
+  if (!retotal.ok) return { ok: false, error: retotal.error };
   return { ok: true };
 }
 
@@ -897,7 +901,11 @@ export async function removeLineItem(
       beforeLi,
       actorUserId,
     );
-  await recomputeSubtotal(invoice_id);
+  // Surface a re-total failure. The line item is already written, so this is
+  // not "the action failed" — it is "the total on screen may be stale", which
+  // the user has to know to reload rather than trust.
+  const retotal = await recomputeSubtotal(invoice_id);
+  if (!retotal.ok) return { ok: false, error: retotal.error };
   return { ok: true };
 }
 
@@ -982,12 +990,38 @@ async function preserveUnbackedSubtotal(
   return { ok: true };
 }
 
-export async function recomputeSubtotal(invoice_id: string): Promise<void> {
+/**
+ * Re-sum an invoice's line items onto the invoice.
+ *
+ * ⚠ THE READ MUST BE CHECKED. This was `const { data: items }` with no `error`
+ * captured at all, so a failed read gave `items = null`, the reduce below
+ * summed to ZERO, and that zero was written straight onto the invoice.
+ * `total_cents` and `balance_cents` are GENERATED from `subtotal_cents`, so
+ * the invoice, the PDF the customer receives and every AR report all went to
+ * $0 — while the caller returned `{ ok: true }` and the user saw a line item
+ * disappear and a success message. One transient read was enough.
+ *
+ * It returns a Result now, and the write is SKIPPED when the read failed:
+ * leaving the previous, correct subtotal in place is always better than
+ * replacing it with a number derived from data that never arrived.
+ */
+export async function recomputeSubtotal(
+  invoice_id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
-  const { data: items } = await sb
+  const { data: items, error: readErr } = await sb
     .from("commercial_invoice_line_items")
     .select("subtotal_cents")
     .eq("invoice_id", invoice_id);
+  if (readErr) {
+    console.error(
+      `[commercial/invoices] recomputeSubtotal: could not read line items for ${invoice_id} — REFUSING to write a subtotal: ${readErr.message}`,
+    );
+    return {
+      ok: false,
+      error: "Couldn't re-total the invoice. Nothing was changed — please try again.",
+    };
+  }
   const subtotal = (items ?? []).reduce(
     (acc, r) => acc + ((r.subtotal_cents as number) ?? 0),
     0,
@@ -998,9 +1032,15 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
   // subtotal) so this must never be negative in practice — surface it loudly if
   // it ever is, rather than corrupting silently.
   if (subtotal < 0) {
+    // The CHECK will reject this write, so stop here rather than issuing one
+    // we know fails and then reporting success.
     console.error(
       `[commercial/invoices] recomputeSubtotal: invoice ${invoice_id} line items summed to ${subtotal} (<0) — a deduct exceeded the invoice; the tick guard should have prevented this.`,
     );
+    return {
+      ok: false,
+      error: "The credits on this invoice exceed its value, so it can't be re-totalled.",
+    };
   }
   const { error: subErr } = await sb
     .from("commercial_invoices")
@@ -1010,8 +1050,13 @@ export async function recomputeSubtotal(invoice_id: string): Promise<void> {
     console.error(
       `[commercial/invoices] recomputeSubtotal: subtotal write failed for ${invoice_id}: ${subErr.message}`,
     );
+    return {
+      ok: false,
+      error: "Couldn't re-total the invoice — its total may be out of date. Please reload.",
+    };
   }
   await reconcileInvoiceStatusToTotal(invoice_id);
+  return { ok: true };
 }
 
 /**
