@@ -315,6 +315,81 @@ export async function getTransactionsReport(
     }
   }
 
+  /**
+   * ── Money in: AIA certificate payments ──────────────────────────────────
+   *
+   * The ledger read commercial_invoice_payments only. From 2026-09-24 money
+   * can arrive against a G702 certificate instead, including through the
+   * Record-a-payment form on THIS screen — so a payment typed in Accounting
+   * did not appear in Money In a few inches below it.
+   *
+   * `depositable: true`, same as an invoice payment: it is cash in the bank
+   * and belongs in the deposit tick-off. The column exists on the table.
+   */
+  {
+    const aiaPayments = await paginateAll<{
+      id: string;
+      application_id: string;
+      amount_cents: number;
+      paid_at: string;
+      method: string | null;
+      reference: string | null;
+      deposited_at: string | null;
+    }>(() =>
+      sb
+        .from("commercial_aia_payments")
+        .select("id, application_id, amount_cents, paid_at, method, reference, deposited_at")
+        .is("deleted_at", null)
+        .order("paid_at", { ascending: true })
+        .order("id", { ascending: true })
+    ).catch(() => []); // table absent until the migration is applied
+
+    if (aiaPayments.length > 0) {
+      const appRows = await selectByIds<{
+        id: string;
+        opportunity_id: string;
+        account_id: string;
+        application_number: number;
+        deleted_at: string | null;
+      }>(
+        aiaPayments.map((p) => p.application_id),
+        (chunk) =>
+          sb
+            .from("commercial_aia_applications")
+            .select("id, opportunity_id, account_id, application_number, deleted_at")
+            .in("id", chunk),
+        "transactions: AIA applications for payments"
+      );
+      const appById = new Map(appRows.map((a) => [a.id, a] as const));
+      for (const p of aiaPayments) {
+        const app = appById.get(p.application_id);
+        // Same rule as invoices: money on a deleted certificate is gone from
+        // the app, so it must be gone from the ledger or the month never ties.
+        if (!app || app.deleted_at) continue;
+        const opp = oppById.get(app.opportunity_id);
+        const accountName = nameById.get(app.account_id) ?? null;
+        const ymd = etDateOf(p.paid_at);
+        if (!ymd) continue;
+        rows.push({
+          id: `aiapay:${p.id}`,
+          direction: "in",
+          dateYmd: ymd,
+          dateIso: p.paid_at,
+          name: opp ? derivedOppName(opp, accountName) : `AIA No. ${app.application_number}`,
+          recordType: "Payment In",
+          amountCents: p.amount_cents,
+          reference: p.reference?.trim() || `AIA No. ${app.application_number}`,
+          depositedAtIso: p.deposited_at,
+          depositable: true,
+          accountId: app.account_id,
+          accountName,
+          opportunityId: app.opportunity_id,
+          href: `/commercial/accounts/${app.account_id}/aia/${app.opportunity_id}?app=${p.application_id}`,
+        });
+      }
+    }
+  }
+
   // ── Money out: project purchases ────────────────────────────────────────
   const purchases = await paginateAll<{
     id: string;
@@ -378,11 +453,38 @@ export async function setPaymentDeposited(
   deposited: boolean
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
-  const { error } = await sb
+  const stamp = deposited ? new Date().toISOString() : null;
+
+  const { data: invRow, error } = await sb
     .from("commercial_invoice_payments")
-    .update({ deposited_at: deposited ? new Date().toISOString() : null })
-    .eq("id", paymentId);
-  return error
-    ? { ok: false, error: "Couldn't update that payment. Please try again." }
-    : { ok: true };
+    .update({ deposited_at: stamp })
+    .eq("id", paymentId)
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: "Couldn't update that payment. Please try again." };
+  if (invRow) return { ok: true };
+
+  /**
+   * NOT AN INVOICE PAYMENT — try the AIA ledger.
+   *
+   * `deposited_at` exists on commercial_aia_payments and, until now, no code
+   * path could set it: the ledger row rendered a deposit tick that silently
+   * did nothing, so certificate cash could never be reconciled against the
+   * bank. The two ledgers share one id space (a uuid is unique across both),
+   * so the update is simply tried in turn rather than the caller being made to
+   * say which kind it is.
+   */
+  const { data: aiaRow, error: aiaErr } = await sb
+    .from("commercial_aia_payments")
+    .update({ deposited_at: stamp })
+    .eq("id", paymentId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (aiaErr) return { ok: false, error: "Couldn't update that payment. Please try again." };
+  if (aiaRow) return { ok: true };
+
+  // Neither ledger has it. Saying "not found" beats reporting success for a
+  // tick that changed nothing — which is the defect this function just had.
+  return { ok: false, error: "That payment no longer exists." };
 }

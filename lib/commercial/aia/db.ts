@@ -799,6 +799,17 @@ export async function updateAiaApplication(
   if (patch.status === "draft" && before.status !== "draft") {
     const later = await laterApplication(before.opportunity_id, before.application_number);
     if (later) return { ok: false, error: blockedByLaterMessage(later) };
+    // MONEY ON IT. The payments panel is hidden on a draft, so reopening a
+    // certificate that has been paid takes the record off the screen while the
+    // rows are still there — and deleting it then strands them where no screen
+    // can reach them. Say what has to happen first rather than swallowing it.
+    const paidCents = await recordedPaymentsCents(id);
+    if (paidCents > 0) {
+      return {
+        ok: false,
+        error: `This certificate has ${formatCentsPlain(paidCents)} recorded against it. Remove the payments first if you really need it back in draft.`,
+      };
+    }
   }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -1012,6 +1023,16 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
       error: later
         ? blockedByLaterMessage(later)
         : "This application has been issued. Mark it Draft first, then delete it.",
+    };
+  }
+  // Belt and braces. A draft cannot normally hold payments — the panel is not
+  // offered on one — but a certificate reopened before this guard existed can,
+  // and deleting it would leave live rows nothing can reach.
+  const strandedCents = await recordedPaymentsCents(id);
+  if (strandedCents > 0) {
+    return {
+      ok: false,
+      error: `This application still has ${formatCentsPlain(strandedCents)} of payments recorded against it. Remove them first.`,
     };
   }
   const sb = commercialDb();
@@ -1687,4 +1708,25 @@ export async function aiaBillingRollupBulk(
     });
   }
   return out;
+}
+
+/** What has been recorded against one certificate. Zero when the payments
+ *  table is not there yet, so an unapplied migration cannot block an edit. */
+async function recordedPaymentsCents(applicationId: string): Promise<number> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_aia_payments")
+    .select("amount_cents")
+    .eq("application_id", applicationId)
+    .is("deleted_at", null);
+  if (error) return 0;
+  return ((data ?? []) as { amount_cents: number }[]).reduce(
+    (n, r) => n + (Number(r.amount_cents) || 0),
+    0,
+  );
+}
+
+/** "$1,234.56" without pulling a formatter module into this file. */
+function formatCentsPlain(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

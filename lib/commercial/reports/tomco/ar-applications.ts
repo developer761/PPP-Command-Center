@@ -107,19 +107,48 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
     ])
   );
 
+  /**
+   * WHAT HAS ALREADY BEEN PAID ON EACH CERTIFICATE.
+   *
+   * This sheet used to set `openCents` straight from the certificate with
+   * nothing subtracted, so every issued application stayed fully open for
+   * ever: recording a payment changed nothing, and the only way to clear a
+   * line was to edit or remove the row by hand. Harmless while AIA payments
+   * could not be recorded at all; wrong from the day they could
+   * (2026-09-24), which is the day Stephanie started recording them.
+   *
+   * One query for every certificate on the sheet, not one per row.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("@/lib/commercial/aia/payments");
+  const allIssued = new Map<string, Awaited<ReturnType<typeof listAiaApplications>>>();
+  for (const oppId of oppIds) {
+    allIssued.set(
+      oppId,
+      (await listAiaApplications(oppId)).filter((a) => a.status !== "draft" && !a.deleted_at),
+    );
+  }
+  const paidByApp = await listAiaPaymentsByApplication(
+    [...allIssued.values()].flat().map((a) => a.id),
+  );
+
   const rows: ArApplicationRow[] = [];
   for (const oppId of oppIds) {
     const job = jobOf.get(oppId);
     if (!job) continue;
     // Issued certificates only: a draft has been sent to nobody, so it is not
     // a receivable.
-    const issued = (await listAiaApplications(oppId)).filter((a) => a.status !== "draft" && !a.deleted_at);
+    const issued = allIssued.get(oppId) ?? [];
     for (const app of issued) {
       const g702 = await resolveG702(app.id);
       if (!g702) continue;
       const label = `AIA#${app.application_number}`;
       const day = app.period_to ?? (app.frozen_at ? String(app.frozen_at).slice(0, 10) : null);
-      if (g702.currentPaymentDueCents > 0) {
+      // Line 8 (current payment due) LESS what has been received against this
+      // certificate. A fully paid one drops off the sheet entirely rather than
+      // sitting there as a receivable nobody owes.
+      const receivedCents = sumAiaPayments(paidByApp.get(app.id) ?? []);
+      const openCents = Math.max(0, g702.currentPaymentDueCents - receivedCents);
+      if (openCents > 0) {
         rows.push({
           id: app.id,
           appId: app.id,
@@ -128,7 +157,7 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
           accountName: job.account,
           label: `${label} · ${fmtDay(day)}`.trim(),
           isRetention: false,
-          openCents: g702.currentPaymentDueCents,
+          openCents,
           notes: app.notes,
           issuedYmd: day,
         });

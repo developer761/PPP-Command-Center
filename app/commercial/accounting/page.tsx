@@ -28,6 +28,7 @@ import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/
 import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
 import { getArSheetRows, AR_APPLICATIONS_SPEC, AR_PERIODS, arPeriodCutoff } from "@/lib/commercial/reports/tomco/ar-applications";
 import { AR_CARRYOVER, AR_CARRYOVER_AS_OF } from "@/lib/commercial/reports/tomco/ar-carryover";
+import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   getSpendRows,
   getMoneyInRows,
@@ -331,6 +332,12 @@ async function recordPaymentAction(formData: FormData) {
   // commercial_invoice_payments would be a silent write to the wrong table.
   if (invoiceId.startsWith("aia:")) {
     const appId = invoiceId.slice(4);
+    // The picker builds this value, but a form field is a form field: check it
+    // before it reaches an insert rather than trusting the shape of our own
+    // option list.
+    if (!UUID_RE.test(appId)) {
+      redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice or AIA certificate.")}`);
+    }
     const { recordAiaPayment } = await import("@/lib/commercial/aia/payments");
     const aiaRes = await recordAiaPayment({
       application_id: appId,
