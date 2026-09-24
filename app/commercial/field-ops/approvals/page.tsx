@@ -130,7 +130,12 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       ) : (
         <div className="space-y-4">
           {[...byEmp.values()].map((grp) => (
-            <div key={grp.name} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            // Keyed on the EMPLOYEE ID, not the display name. This crew has
+            // two Lucatortos and two Roberts behind names like "Tomco Labor -
+            // Joe" — the calendar says so in its own comment — and duplicate
+            // React keys on a money screen let two groups reconcile onto each
+            // other's rows after an approve.
+            <div key={grp.rows[0]?.employee_id ?? grp.name} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
               <div className="px-4 py-2 bg-ppp-charcoal-50 border-b border-ppp-charcoal-100 flex items-center justify-between">
                 <span className="text-[13px] font-bold text-ppp-charcoal">{grp.name}</span>
                 <span className="text-[11px] text-ppp-charcoal-400">{grp.rows.length} entr{grp.rows.length === 1 ? "y" : "ies"}</span>

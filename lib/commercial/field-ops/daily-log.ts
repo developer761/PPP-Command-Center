@@ -314,6 +314,34 @@ async function writeTimeEntry(input: {
   const clamped = Math.min(24, Math.round(hours * 10) / 10);
 
   const sb = commercialDb();
+
+  /**
+   * THE JOB HAS TO BE A REAL, LIVE JOB.
+   *
+   * The employee is taken from the session and never from the form — that was
+   * done deliberately and is correct. `job_id` was not: it came straight off
+   * the posted form and went into the insert unchecked, so a crew member could
+   * file payable hours against any job id they could produce, including a
+   * soft-deleted one.
+   *
+   * Deliberately NOT restricted to jobs they are scheduled on. Working
+   * somewhere you were not scheduled is a real thing that happens, and
+   * `getDailyLog` has an "unscheduled — worked anyway" path for exactly that;
+   * refusing it here would push a genuine day off the books. Existing and live
+   * is the line.
+   */
+  {
+    const { data: job, error } = await sb
+      .from("commercial_jobs")
+      .select("id, deleted_at")
+      .eq("id", input.jobId)
+      .maybeSingle();
+    if (error) return { ok: false, error: "Could not check that job. Try again." };
+    if (!job || (job as { deleted_at: string | null }).deleted_at) {
+      return { ok: false, error: "That job is not available to log hours against." };
+    }
+  }
+
   const { data: existing } = await sb
     .from("commercial_time_entries")
     .select("id, status, actual_hours")

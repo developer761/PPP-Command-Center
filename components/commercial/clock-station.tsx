@@ -7,7 +7,7 @@
  * after each action so the next person can use it.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EmployeeDay } from "@/lib/commercial/field-ops/clock";
 
 type Emp = { id: string; display_name: string; has_pin: boolean };
@@ -26,6 +26,37 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
     setDay(null);
     setError(null);
   };
+
+  /**
+   * SIGN OUT WHEN NOBODY IS THERE.
+   *
+   * This runs on a tablet by the door that the whole crew shares. Once a
+   * painter has entered their PIN the screen stays on them indefinitely — the
+   * verified PIN is held in state and replayed on every later punch — so if
+   * they walk off mid-flow the next person to touch it can clock THEM in or
+   * out with no PIN prompt. It is the only buddy-punch path left: the API
+   * itself binds a crew caller to their own employee id, and a crew session
+   * only ever sees itself in the picker. This screen is the exception because
+   * it is deliberately shared.
+   *
+   * Ninety seconds of no touching and it goes back to the name list. Any
+   * interaction anywhere on the station restarts the clock, so it cannot
+   * close under somebody who is mid-PIN.
+   */
+  useEffect(() => {
+    if (!sel) return;
+    let timer = window.setTimeout(reset, 90_000);
+    const bump = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(reset, 90_000);
+    };
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    for (const e of events) window.addEventListener(e, bump, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      for (const e of events) window.removeEventListener(e, bump);
+    };
+  }, [sel]);
 
   const post = async (payload: Record<string, unknown>) => {
     setBusy(true);

@@ -4,6 +4,8 @@ import { commercialDb } from "@/lib/commercial/db";
 import { apiAccessDenied } from "@/lib/commercial/auth";
 import { exportPayroll, redownloadPayroll } from "@/lib/commercial/field-ops/payroll";
 import { csvResponse } from "@/lib/commercial/reports/export-guard";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,12 +21,26 @@ export async function GET(request: Request) {
   const sb = commercialDb();
   const { data: profile } = await sb
     .from("profiles")
-    .select("has_new_platform_access, is_active, is_admin")
+    .select("has_new_platform_access, is_active, is_admin, role")
     .eq("user_id", data.user.id)
     .maybeSingle();
   if ((await apiAccessDenied(data?.user?.id, profile))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  if (!(profile as { is_admin?: boolean } | null)?.is_admin) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  /**
+   * ADMIN **OR** ACCOUNT MANAGER — the same people predicate every other pay
+   * surface uses.
+   *
+   * This read the raw `is_admin` boolean, so Mary (account_manager) could
+   * enter per-employee payroll cost and post the whole week from Accounting,
+   * and open the labor report and its per-person export — and then got a raw
+   * JSON 403 on the payroll CSV. Same block also caught an env-allowlist admin
+   * whose database row has `is_admin` null.
+   */
+  {
+    const p = profile as { role?: string | null; is_admin?: boolean | null } | null;
+    const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(data.user.email));
+    if (role !== "admin" && role !== "account_manager") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
   }
 
   const { searchParams } = new URL(request.url);
