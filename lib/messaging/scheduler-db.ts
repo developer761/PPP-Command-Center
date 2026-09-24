@@ -19,7 +19,7 @@ import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
-import { takeoverReasonFor, latestInboundIsAnswered } from "./handoff";
+import { takeoverReasonFor, latestInboundIsAnswered, type TakeoverReason } from "./handoff";
 import { trackForWorkspace, asTrack } from "./track";
 import { gatedSend, type GateResult, type SendRequest } from "./gate";
 import { emailAddressesFor } from "./reply-to";
@@ -30,6 +30,40 @@ import type { DueAction, SchedulerDeps } from "./scheduler";
  * Ports for the worker. Deliberately does NOT import the transport: the gate
  * resolves its own, so nothing outside it ever holds an object that could send.
  */
+
+/**
+ * The bot escalating itself: human_active with no owner IS the "Needs a
+ * person" queue — needed by somebody, claimed by nobody.
+ *
+ * ONE WRITER, AND IT IS TYPED, because the four call sites that used to spell
+ * this update out by hand were four chances to get it wrong and I took one of
+ * them. `takeover_reason: "agent_uncertain"` reads perfectly well and is not
+ * a value sms_conversations_takeover_chk allows, so Postgres refused the row
+ * with 23514 — onto an update whose error nobody read, which then returned
+ * "handed to a person" while the conversation stayed exactly where it was,
+ * silent, with the customer still waiting. A TakeoverReason parameter makes
+ * that a type error instead of a runtime lie.
+ *
+ * Guards, both deliberate: an ended conversation is not re-opened by an
+ * escalation, and one a person already claimed is left alone rather than
+ * having its reason overwritten by the bot.
+ */
+async function handToAPerson(
+  sb: ReturnType<typeof messagingDb>,
+  conversationId: string,
+  reason: TakeoverReason,
+): Promise<void> {
+  const { error } = await sb.from("sms_conversations").update({
+    state: "human_active",
+    takeover_reason: reason,
+    takeover_at: new Date().toISOString(),
+  }).eq("id", conversationId).neq("state", "ended").is("owning_user_id", null);
+  // Matching no row is fine and expected — ended, or already somebody's. An
+  // ERROR is not: it means the handover did not happen, and the caller is
+  // about to tell the log that it did.
+  if (error) throw new Error(`could not hand the conversation to a person: ${error.message}`);
+}
+
 export function schedulerDeps(): SchedulerDeps {
   const sb = messagingDb();
 
@@ -243,11 +277,7 @@ export function schedulerDeps(): SchedulerDeps {
           // Handed over with no message. Karan, 2026-09-22: a customer the bot
           // has already failed to help does not need one more text from it.
           // human_active with no owner IS the "Needs a person" queue.
-          await sb.from("sms_conversations").update({
-            state: "human_active",
-            takeover_reason: "repeated_confusion",
-            takeover_at: new Date().toISOString(),
-          }).eq("id", conv.id).neq("state", "ended").is("owning_user_id", null);
+          await handToAPerson(sb, conv.id, "repeated_confusion");
           return {
             kind: "skipped" as const,
             reason: `handed to a person after ${sentSoFar} replies (max_turns is ${cfg.maxTurns})`,
@@ -333,10 +363,36 @@ export function schedulerDeps(): SchedulerDeps {
         //
         // Throwing puts it on runAction's retry path instead, where it gets
         // backoff and, if it really is broken, an honest `failed`.
-        if (!agentFailureIsTransient(res)) return { kind: "skipped" as const, reason: res.rejected! };
+        if (!agentFailureIsTransient(res)) {
+          // A REJECTION HANDS OVER. It does not vanish.
+          //
+          // Retrying is pointless — the validator will refuse the same choice
+          // next minute — but closing the turn quietly means the customer
+          // gets silence and nobody is told. That is worse than the defect
+          // being refused: the bot asking the wrong thing is bad, the bot
+          // saying nothing at all is a conversation that dies unread.
+          //
+          // It matters most for the refusals added on this branch. A29 stops
+          // a turn that ignores a direct question, A3 stops a close with the
+          // details uncollected, A2 stops a promise of coverage for a zip we
+          // cannot confirm. Every one of those is a moment a PERSON can
+          // resolve in seconds by reading the thread, and every one of them
+          // was being cancelled into silence instead.
+          //
+          // human_active with no owner IS the "Needs a person" queue, the
+          // same door the turn leash uses.
+          // "the bot was unsure and escalated itself" — which is exactly what
+          // a refused turn is.
+          await handToAPerson(sb, conv.id, "low_confidence");
+          return { kind: "skipped" as const, reason: `handed to a person: ${res.rejected}` };
+        }
         throw new Error(`the agent could not produce a reply: ${res.error}`);
       }
-      if (!res.rendered.trim()) return { kind: "skipped" as const, reason: "the agent had nothing to say" };
+      if (!res.rendered.trim()) {
+        // Same reasoning: a turn that renders nothing is a customer waiting.
+        await handToAPerson(sb, conv.id, "low_confidence");
+        return { kind: "skipped" as const, reason: "handed to a person: the agent had nothing to say" };
+      }
 
       // AUTOSEND, and what it does and does not mean.
       //
@@ -398,15 +454,11 @@ export function schedulerDeps(): SchedulerDeps {
       // somebody, claimed by nobody. The reason is the little the agent can
       // actually attribute — a person claiming it says what it really was.
       if (res.escalate) {
-        await sb.from("sms_conversations").update({
-          state: "human_active",
-          takeover_reason: takeoverReasonFor({
-            intent: res.action.intent,
-            confidence: res.action.confidence,
-            threshold: cfg.cfg.confidence_threshold,
-          }),
-          takeover_at: new Date().toISOString(),
-        }).eq("id", conv.id).neq("state", "ended").is("owning_user_id", null);
+        await handToAPerson(sb, conv.id, takeoverReasonFor({
+          intent: res.action.intent,
+          confidence: res.action.confidence,
+          threshold: cfg.cfg.confidence_threshold,
+        }));
       }
 
       const { error } = await sb.from("sms_drafts").insert({
