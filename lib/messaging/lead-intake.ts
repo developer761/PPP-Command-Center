@@ -25,6 +25,23 @@ export type IncomingLead = {
   /** The lead's PostalCode. Present on 99.5% of real leads, and the signal
    *  routing actually trusts — see territory.ts. */
   postalCode?: string | null;
+  /** The street line on the lead. Needed to assemble a full address, which
+   *  A11 defines as street plus zip. */
+  street?: string | null;
+  /** Street, city, state and zip as one line, or null when street or zip is
+   *  missing. Half an address is not an address we can read back. */
+  address?: string | null;
+  /**
+   * What the lead said they wanted done, in their own words.
+   *
+   * NOT YET SOURCED. PPP plainly has such a field — the placeholder Kate
+   * quotes, "Customer did not provide additional comments. Please contact the
+   * customer to discuss the details of this project.", is a value sitting in
+   * one — but Description is standard and PPP may use a custom field, and
+   * guessing a Salesforce field name is how the last mistake happened. The
+   * plumbing is here so that naming it is a one-line change in lead-map.ts.
+   */
+  inquiryScope?: string | null;
   sfCreatedAt?: string | null;
 };
 

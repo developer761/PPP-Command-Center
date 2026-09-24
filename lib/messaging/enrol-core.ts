@@ -85,6 +85,17 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
   customerPhone: string;
   customerName?: string | null;
   customerEmail?: string | null;
+  /**
+   * What the lead told us, carried onto the conversation so a reply can read
+   * it without following a chain back to the lead row.
+   *
+   * These existed nowhere until 2026-09-23, which is why the bot asked for an
+   * address the record already held (A13) and never routed a job off-site
+   * (A6/A7): the fields the rules read were always null.
+   */
+  customerAddress?: string | null;
+  customerZip?: string | null;
+  inquiryScope?: string | null;
   sfLeadId?: string | null;
   /** The Salesforce record, for the entry rules to read. */
   record: LeadRecord;
@@ -127,6 +138,9 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     customer_phone: to,
     customer_name: input.customerName ?? null,
     customer_email: input.customerEmail ?? null,
+    customer_address: input.customerAddress ?? null,
+    customer_zip: input.customerZip ?? null,
+    inquiry_scope: input.inquiryScope ?? null,
     sf_lead_id: input.sfLeadId ?? null,
     campaign_version_id: steps.versionId,
     state: "ai_active",

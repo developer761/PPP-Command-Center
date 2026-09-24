@@ -57,7 +57,7 @@ export type PollSummary = {
  * next to the number Salesforce reports, which is the only reason it did not
  * ship looking fine.
  */
-type Query = (soql: string, opts?: { all?: boolean }) => Promise<{ records: SalesforceLead[] }>;
+export type Query = (soql: string, opts?: { all?: boolean }) => Promise<{ records: SalesforceLead[] }>;
 
 export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now = new Date()): Promise<PollSummary> {
   const summary: PollSummary = { polled: false, found: 0, inserted: 0, routed: 0, triaged: 0, ignored: 0, failed: 0 };
@@ -215,6 +215,12 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
         customerPhone: decision.phone,
         customerName: lead.fullName,
         customerEmail: lead.email,
+        // The lead's own words and its address, kept for the conversation.
+        // Routing reads the zip and then threw everything away; the reply
+        // path needs it too.
+        customerAddress: lead.address ?? null,
+        customerZip: normalizeZip(lead.postalCode ?? null),
+        inquiryScope: lead.inquiryScope ?? null,
         sfLeadId: lead.sfRecordId,
         record,
         leadCreatedAt: lead.sfCreatedAt ? new Date(lead.sfCreatedAt) : null,

@@ -5,6 +5,7 @@ import { reportError, reportWarn, reportInfo } from "@/lib/observability";
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
 import { pollSalesforceLeads, type PollSummary } from "@/lib/messaging/lead-poll";
 import { sweepExitsFor, type SweepSummary } from "@/lib/messaging/exit-sweep";
+import { refreshServiceZips, type RefreshResult } from "@/lib/messaging/service-zip-refresh";
 import { runOptOutWriteback, writebackEnabled, type WritebackSummary } from "@/lib/messaging/optout-writeback-run";
 import { messagingDb } from "@/lib/messaging/db";
 
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
   // switches it off without a deploy of code.
   let leads: PollSummary | { error: string } | null = null;
   let exits: SweepSummary | { error: string } | null = null;
+  let zips: RefreshResult | null = null;
   let writeback: WritebackSummary | { error: string } | null = null;
   if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
     try {
@@ -98,6 +100,32 @@ export async function GET(request: Request) {
       reportWarn({ key: "exit_sweep_failed", platform: "ppp_cc", message: `Exit sweep failed: ${exits.error}` });
     }
 
+    // THE SERVICE AREA MAP, WHERE A REPLY CAN READ IT.
+    //
+    // A2 has to be checked when a customer gives us a zip mid-conversation,
+    // not only when a lead arrives. The 2,194 Zip_Code__c rows only existed
+    // in a cache inside this process, and asking Salesforce from the reply
+    // path would put it back in the way of replies — which is the thing the
+    // separate try blocks above exist to avoid.
+    //
+    // Its own try, for the same reason as the others: Salesforce being down
+    // must not stop replies. Throttled to once an hour inside, and it shares
+    // the poll's cache, so on most ticks this is one small read.
+    try {
+      const conn = await getSalesforceClient();
+      zips = await refreshServiceZips(messagingDb(), (soql, opts) =>
+        conn.query(soql, { autoFetch: opts?.all === true, maxFetch: 50_000 }) as never
+      );
+      if (zips.error) {
+        reportWarn({
+          key: "service_zips_not_refreshed", platform: "ppp_cc",
+          message: `The service area map could not be refreshed: ${zips.error}`,
+        });
+      }
+    } catch (err) {
+      zips = { error: err instanceof Error ? err.message : String(err) };
+    }
+
     // TELLING SALESFORCE SOMEBODY OPTED OUT.
     //
     // The only thing in this system that WRITES to Salesforce, which is why it
@@ -143,7 +171,7 @@ export async function GET(request: Request) {
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
-    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback, zips });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });

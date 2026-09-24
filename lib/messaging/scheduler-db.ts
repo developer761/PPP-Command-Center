@@ -148,7 +148,7 @@ export function schedulerDeps(): SchedulerDeps {
     async draftReply(a: DueAction) {
       const { data: conv } = await sb
         .from("sms_conversations")
-        .select("id, state, track, customer_phone, customer_name, customer_email, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("id, state, track, customer_phone, customer_name, customer_email, customer_address, customer_zip, inquiry_scope, workspace_id, sms_sub_accounts(id, name, autosend_enabled, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id).maybeSingle();
       if (!conv) return { kind: "skipped" as const, reason: "conversation no longer exists" };
       if (conv.state === "ended") return { kind: "skipped" as const, reason: "conversation has ended" };
@@ -280,6 +280,18 @@ export function schedulerDeps(): SchedulerDeps {
         priorIntents,
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
+          // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were
+          // never passed, so kf.address and kf.inquiryScope were always null
+          // and every rule built on them was code that could not fire: A11's
+          // address gap, A6 and A7's job routing, A9's placeholder check, and
+          // the confirm_address and confirm_scope turns, which can only
+          // render when there is a value to read back.
+          //
+          // Cast because the columns are newer than the generated types, and
+          // undefined when the migration has not been applied — which is the
+          // old behaviour, not a crash.
+          address: (conv as { customer_address?: string | null }).customer_address ?? null,
+          inquiryScope: (conv as { inquiry_scope?: string | null }).inquiry_scope ?? null,
         },
         services: resolveServices(svc.services, svc.exceptions),
         examples: selectExamples(corpus, { stage }),

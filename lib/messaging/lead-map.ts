@@ -12,6 +12,11 @@ import type { LeadRecord } from "./rules";
 /** Exactly the fields the poll asks for. Adding one means adding it to SOQL. */
 export const LEAD_FIELDS = [
   "Id", "Name", "FirstName", "Phone", "MobilePhone", "Email", "LeadSource",
+  // STREET. City, State and PostalCode were already here and Street was not,
+  // so the lead's address could never be assembled, which meant the bot asked
+  // for an address we were already holding. That is A13, the redundant ask,
+  // and it is the second most broken rule in Kate's grading.
+  "Street",
   "State", "City", "PostalCode", "RecordType.Name", "CreatedDate", "Status",
   "IsConverted", "SMS_Opt_In__c", "LeadGroup__c",
 ] as const;
@@ -24,6 +29,7 @@ export type SalesforceLead = {
   MobilePhone?: string | null;
   Email?: string | null;
   LeadSource?: string | null;
+  Street?: string | null;
   State?: string | null;
   City?: string | null;
   PostalCode?: string | null;
@@ -34,6 +40,23 @@ export type SalesforceLead = {
   SMS_Opt_In__c?: string | null;
   LeadGroup__c?: string | null;
 };
+
+/**
+ * The lead's address as one line, or null when there is not enough of one.
+ *
+ * A11 defines a full address as street plus zip, so anything without both is
+ * NOT an address we can claim to hold: offering it back for confirmation
+ * would be reading half a record to somebody who then has to correct it. City
+ * and state are included when present because they make the read-back sound
+ * like a person, but they are never what makes it complete.
+ */
+export function composeAddress(r: SalesforceLead): string | null {
+  const street = r.Street?.trim();
+  const zip = r.PostalCode?.trim();
+  if (!street || !zip) return null;
+  const middle = [r.City?.trim(), stateCode(r.State)].filter(Boolean).join(", ");
+  return [street, middle, zip].filter(Boolean).join(", ");
+}
 
 const US_STATES: Record<string, string> = {
   "new york": "NY", "new jersey": "NJ", "florida": "FL", "connecticut": "CT",
@@ -62,6 +85,8 @@ export function leadFromSalesforce(r: SalesforceLead): { lead: IncomingLead; rec
     state: stateCode(r.State),
     locality: r.City ?? null,
     postalCode: r.PostalCode ?? null,
+    street: r.Street?.trim() || null,
+    address: composeAddress(r),
     sfCreatedAt: r.CreatedDate ?? null,
   };
   // What the entry and exit rules read. RecordType flattened to its name,
