@@ -58,6 +58,7 @@ DELETE FROM public.commercial_invoice_status_log;
 DELETE FROM public.commercial_invoices;
 
 -- 3. AIA billing.
+DELETE FROM public.commercial_aia_payments;
 DELETE FROM public.commercial_aia_line_items;
 DELETE FROM public.commercial_aia_applications;
 

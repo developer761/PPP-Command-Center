@@ -43,6 +43,7 @@ import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { AiaPaymentsPanel } from "@/components/commercial/aia-payments-panel";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
 type PP = Promise<{ id: string; dealId: string }>;
@@ -89,6 +90,17 @@ function revalidateAia(id: string, dealId: string) {
   revalidatePath(`/commercial/opportunities/${dealId}`);
   revalidatePath(`/commercial/accounts/${id}`);
 }
+/** The Application No. box, when it holds a usable whole number. Blank or
+ *  nonsense leaves the number alone rather than resetting it — the field
+ *  autosaves on every keystroke, and a half-typed "1" on the way to "12" must
+ *  not renumber the certificate. */
+function appNumberFrom(formData: FormData): number | null {
+  const raw = String(formData.get("application_number") ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
 function toEtNoon(dateStr: string): string | null {
   const s = dateStr.trim();
   if (!s) return null;
@@ -112,6 +124,7 @@ async function createApplicationAction(formData: FormData) {
     retainage_pct: Number.isFinite(retainage_pct) ? retainage_pct : DEFAULT_RETAINAGE_PCT,
     period_to: toEtNoon(String(formData.get("period_to") ?? "")),
     period_from: toEtNoon(String(formData.get("period_from") ?? "")),
+    application_number: appNumberFrom(formData),
     created_by_user_id: userId,
   });
   if (!result.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
@@ -176,6 +189,7 @@ async function updateApplicationAction(formData: FormData) {
   const result = await updateAiaApplication(
     appId,
     {
+      ...(appNumberFrom(formData) != null ? { application_number: appNumberFrom(formData) as number } : {}),
       period_from: toEtNoon(String(formData.get("period_from") ?? "")),
       period_to: toEtNoon(String(formData.get("period_to") ?? "")),
       ...(original != null && original >= 0 ? { original_contract_cents: original } : {}),
@@ -208,6 +222,7 @@ async function saveSettingsAutosaveAction(formData: FormData): Promise<{ ok: boo
   const result = await updateAiaApplication(
     appId,
     {
+      ...(appNumberFrom(formData) != null ? { application_number: appNumberFrom(formData) as number } : {}),
       period_from: toEtNoon(String(formData.get("period_from") ?? "")),
       period_to: toEtNoon(String(formData.get("period_to") ?? "")),
       ...(original != null && original >= 0 ? { original_contract_cents: original } : {}),
@@ -244,6 +259,63 @@ async function setStatusAction(formData: FormData) {
   // Auto-file the G702/G703 workbook when the application is submitted to the GC
   // (best-effort — never blocks the status change).
   if (status === "submitted") await autoFileAiaApplication(id, dealId, appId, userId);
+  revalidateAia(id, dealId);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+}
+
+/**
+ * Record money received against an application.
+ *
+ * Stephanie 2026-09-24: "At times we would need to record multiple payments
+ * against 1 AIA." Until this existed, marking an application paid was the only
+ * way to say money had arrived — one flag, no amount, no date, no cheque
+ * number, and no way to record a GC paying half a certificate.
+ */
+async function recordPaymentAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
+  const cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const paidOn = toEtNoon(String(formData.get("paid_at") ?? ""));
+  const { recordAiaPayment } = await import("@/lib/commercial/aia/payments");
+  const result = await recordAiaPayment({
+    application_id: appId,
+    amount_cents: cents ?? 0,
+    paid_at: paidOn ?? new Date().toISOString(),
+    method: String(formData.get("method") ?? "") || null,
+    reference: String(formData.get("reference") ?? "") || null,
+    recorded_by_user_id: userId,
+  });
+  if (!result.ok)
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  revalidateAia(id, dealId);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+}
+
+async function deletePaymentAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  const paymentId = String(formData.get("payment_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(paymentId))
+    redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
+  const { deleteAiaPayment } = await import("@/lib/commercial/aia/payments");
+  const result = await deleteAiaPayment(paymentId, userId);
+  if (!result.ok)
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
@@ -488,12 +560,14 @@ export async function AiaTool({
           if (application.status === "draft") {
             await reconcileDraftChangeOrderRows(selectedAppId);
           }
-          const [lines, g702, lienWaiver] = await Promise.all([
+          const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
+          const [lines, g702, lienWaiver, payments] = await Promise.all([
             listAiaLineItems(selectedAppId),
             resolveG702(selectedAppId),
             // Stephanie 2026-08-20: "Add lien waiver option to AIA billing just
             // as it is under the invoicing."
             getAiaLienWaiver(selectedAppId).catch(() => null),
+            listAiaPayments(selectedAppId),
           ]);
           return (
             <>
@@ -516,6 +590,24 @@ export async function AiaTool({
                 setStatusAction={setStatusAction}
                 errorMessage={sp.error ?? null}
               />
+              {/* Money received. Draft applications are excluded: a certificate
+                  nobody has sent cannot have been paid, and offering the form
+                  invites recording a payment against the wrong one. */}
+              {application.status !== "draft" && (
+                <AiaPaymentsPanel
+                  applicationId={selectedAppId}
+                  applicationNumber={application.application_number}
+                  accountId={id}
+                  dealId={dealId}
+                  back={sp.back ?? ""}
+                  from={sp.from ?? ""}
+                  origin={variant}
+                  payments={payments}
+                  earnedLessRetainageCents={Math.round(g702?.totalEarnedLessRetainageCents ?? 0)}
+                  recordAction={recordPaymentAction}
+                  deleteAction={deletePaymentAction}
+                />
+              )}
               {/* Application settings + delete (compact) — Draft only; an issued
                   certificate's contract/retainage/period are locked. */}
               {application.status === "draft" && (
@@ -544,6 +636,7 @@ export async function AiaTool({
                   dealId={dealId}
                   saveAction={saveSettingsAutosaveAction}
                   initial={{
+                    application_number: String(application.application_number),
                     period_from: application.period_from?.slice(0, 10) ?? "",
                     period_to: application.period_to?.slice(0, 10) ?? "",
                     original_contract: (application.original_contract_cents / 100).toFixed(2),
@@ -621,6 +714,19 @@ async function AiaApplicationList({
   // strip above them can legitimately disagree. Say so rather than letting it
   // read as two numbers for the same thing.
   const frozenCount = applications.filter((a) => a.status !== "draft" && a.frozen_at != null).length;
+  /** Defaults for the New application form. The number carries on from the
+   *  highest one on the job — and is editable, because a job that was already
+   *  running when it arrived here does not start at 1. The period starts the
+   *  day after the last one ended, which is what a progress billing is. */
+  const suggestedAppNumber = (latestApp?.application_number ?? 0) + 1;
+  const suggestedPeriodFrom = (() => {
+    const prevEnd = latestApp?.period_to?.slice(0, 10);
+    if (!prevEnd) return "";
+    const d = new Date(`${prevEnd}T12:00:00Z`);
+    if (Number.isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
   const appsHint = applications.length === 0
     ? "None yet"
     : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
@@ -841,16 +947,45 @@ async function AiaApplicationList({
             </svg>
             New application
           </summary>
-          <form action={createAction} className="mt-2.5 rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-3 gap-3 items-end">
+          <form action={createAction} className="mt-2.5 rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-4 gap-3 items-end">
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />
             <input type="hidden" name="back" value={back} />
             <input type="hidden" name="from" value={from} />
             <input type="hidden" name="origin" value={origin} />
+            {/* PERIOD FROM was missing entirely.
+                Stephanie 2026-09-24: "when drafting a new AIA, the date
+                doesn't stick and I have to add it again after I create the
+                application." The Period to she picked here was always saved —
+                what she had to go back and add was the START of the period,
+                because this form never asked for it. It defaults to the day
+                after the previous application's period ended, which is what a
+                progress billing always is. */}
+            <div>
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
+              <DateField
+                ariaLabel="Period from date"
+                name="period_from"
+                defaultValue={suggestedPeriodFrom}
+                placeholder="Pick a date"
+              />
+            </div>
             <div>
               <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
               <DateField ariaLabel="Period to date" name="period_to" placeholder="Pick a date" />
             </div>
+            <label className="block">
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                Application No.
+              </span>
+              <input
+                name="application_number"
+                inputMode="numeric"
+                defaultValue={String(suggestedAppNumber)}
+                aria-label="Application number"
+                className={INPUT}
+              />
+            </label>
             <label className="block">
               <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
               <input name="retainage_pct" inputMode="decimal" defaultValue={String(DEFAULT_RETAINAGE_PCT)} className={INPUT} />

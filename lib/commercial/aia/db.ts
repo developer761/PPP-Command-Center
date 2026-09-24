@@ -155,6 +155,20 @@ export type CreateAiaApplicationInput = {
   /** Create the retainage-release (final payment) application. Forces
    *  retainage_pct to 0 — that zero IS the release. */
   is_retainage_release?: boolean;
+  /**
+   * Start the numbering somewhere other than 1.
+   *
+   * Stephanie 2026-09-24: "on this job, we didn't start invoicing building 1
+   * until AIA number 3." The auto-number is max+1 over what this platform
+   * holds, which is right for a job billed here from the start and wrong for
+   * every job that was already running when it arrived — the GC has certificates
+   * 1 and 2 on file and ours would call the next one 1.
+   *
+   * Ignored when it collides: the UNIQUE index on (opportunity_id,
+   * application_number) is the authority, and the loop below falls back to
+   * max+1 rather than failing the create.
+   */
+  application_number?: number | null;
   created_by_user_id: string;
 };
 
@@ -212,7 +226,14 @@ export async function createAiaApplication(
       .order("application_number", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const application_number = ((last as { application_number: number } | null)?.application_number ?? 0) + 1;
+    const autoNumber = ((last as { application_number: number } | null)?.application_number ?? 0) + 1;
+    // An explicit number wins on the FIRST attempt only. If it collides, the
+    // retry takes the auto number rather than looping on the same conflict.
+    const requested =
+      attempt === 0 && typeof input.application_number === "number" && Number.isFinite(input.application_number)
+        ? Math.max(1, Math.round(input.application_number))
+        : null;
+    const application_number = requested ?? autoNumber;
     const { data: inserted, error } = await sb
       .from("commercial_aia_applications")
       .insert({
@@ -712,7 +733,7 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
 
 export async function updateAiaApplication(
   id: string,
-  patch: Partial<Pick<AiaApplication, "period_from" | "period_to" | "original_contract_cents" | "retainage_pct" | "status" | "notes">>,
+  patch: Partial<Pick<AiaApplication, "period_from" | "period_to" | "original_contract_cents" | "retainage_pct" | "status" | "notes" | "application_number">>,
   userId: string
 ): Promise<Result<AiaApplication>> {
   const before = await getAiaApplication(id);
@@ -728,6 +749,7 @@ export async function updateAiaApplication(
     patch.period_to === undefined &&
     patch.original_contract_cents === undefined &&
     patch.retainage_pct === undefined &&
+    patch.application_number === undefined &&
     patch.notes === undefined;
   if (!isStatusOnly && before.status !== "draft") {
     return { ok: false, error: "This application has been issued — reopen it to Draft before editing." };
@@ -739,6 +761,51 @@ export async function updateAiaApplication(
     if (later) return { ok: false, error: blockedByLaterMessage(later) };
   }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  /**
+   * RENUMBERING.
+   *
+   * Stephanie 2026-09-24: "we didn't start invoicing building 1 until AIA
+   * number 3. It looks like the system automatically numbers the AIA, even
+   * after a draft is deleted. I need to be able to change the application
+   * numbers."
+   *
+   * Both halves of that are real. The number is max+1 over what WE hold, so a
+   * job that was already running when it arrived starts at 1 while the GC has
+   * certificates 1 and 2 on file; and deleting a draft does not give its
+   * number back, because max+1 reads the highest number ever used, not the
+   * count of live rows.
+   *
+   * The number on a certificate is how the GC files it, so it has to be the
+   * operator's to set. Two things still hold:
+   *  · it must be a positive whole number, and
+   *  · it must not collide with another application on the same deal — the
+   *    UNIQUE index would refuse it anyway, and a raw 23505 in the UI is not
+   *    an answer anybody can act on.
+   */
+  if (patch.application_number !== undefined && patch.application_number !== null) {
+    const wanted = Math.round(Number(patch.application_number));
+    if (!Number.isFinite(wanted) || wanted < 1) {
+      return { ok: false, error: "The application number has to be 1 or higher." };
+    }
+    if (wanted !== before.application_number) {
+      const sbCheck = commercialDb();
+      const { data: clash } = await sbCheck
+        .from("commercial_aia_applications")
+        .select("id")
+        .eq("opportunity_id", before.opportunity_id)
+        .eq("application_number", wanted)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (clash) {
+        return {
+          ok: false,
+          error: `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
+        };
+      }
+      next.application_number = wanted;
+    }
+  }
 
   // ISSUING freezes G702 lines 1 and 2 onto the application.
   //
@@ -1158,10 +1225,32 @@ export async function aiaBillingRollup(
     latestIssued: latestIssuedG702,
     latestPaid: latestPaidResolved,
   });
+  /**
+   * RECORDED PAYMENTS WIN OVER THE INFERENCE.
+   *
+   * `collectedCents` above is derived from the latest PAID application's line
+   * 6 — an inference from a status flag, which is all there was before
+   * 2026-09-24. It is right when a GC pays a certificate in full and wrong the
+   * moment they part-pay one, which Stephanie says happens: "at times we would
+   * need to record multiple payments against 1 AIA."
+   *
+   * So once any payment has actually been recorded on this job, the sum of
+   * those rows IS what was collected, and the inference is dropped. A job with
+   * no recorded payments keeps the old behaviour exactly — nothing restates
+   * itself the day this ships, and a book that was migrated with paid flags and
+   * no payment rows still reads the same.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("./payments");
+  const paymentsByApp = await listAiaPaymentsByApplication(apps.map((a) => a.id));
+  let recorded = 0;
+  for (const list of paymentsByApp.values()) recorded += sumAiaPayments(list);
+  const collectedFinal = paymentsByApp.size > 0 ? recorded : collectedCents;
+  const dueNowFinal = Math.max(0, billedCents - retainageHeldCents - collectedFinal);
+
   return {
     billedCents,
-    collectedCents,
-    dueNowCents,
+    collectedCents: collectedFinal,
+    dueNowCents: paymentsByApp.size > 0 ? dueNowFinal : dueNowCents,
     retainageHeldCents,
     // ONE ladder — the same one the AR-aging report, the receivables list and
     // the dashboard use.
