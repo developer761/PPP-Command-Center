@@ -18,7 +18,7 @@
     "check:receipt": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-receipt-path.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
-    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit",
+    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit && npm run verify:pii",
     "build:aia-template": "node scripts/build-aia-template.mjs",
     "verify:inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-inbound-e2e.mjs",
     "verify:twilio-inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-twilio-inbound-e2e.mjs",
@@ -30,7 +30,8 @@
     "verify:campaign-edit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-campaign-edit-e2e.mjs",
     "check:columns": "node --env-file=.env.local scripts/check-selected-columns.mjs",
     "import:rules": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-class-a-rules.mjs",
-    "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs"
+    "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs",
+    "verify:pii": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-no-pii-e2e.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
