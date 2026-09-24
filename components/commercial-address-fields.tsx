@@ -132,6 +132,62 @@ export default function CommercialAddressFields({
     return () => input.removeEventListener("focus", onFocus);
   }, [scriptStatus]);
 
+  /**
+   * ASK GOOGLE WHETHER IT WILL ACTUALLY ANSWER, rather than assuming.
+   *
+   * `gm_authFailure` is the documented hook for a rejected key and it is
+   * installed above — but Google does NOT fire it for every refusal. Billing
+   * disabled on the Cloud project is one it does not: the script loads, the
+   * widget attaches, `scriptStatus` becomes "ready", the label says "Autofill
+   * on" in green, and the only sign of trouble is Google's own grey box saying
+   * "This page can't load Google Maps correctly" over the field.
+   *
+   * That is the live state of this platform today — `BillingNotEnabledMapError`
+   * in the console, a promise of autofill on screen, and no suggestions ever.
+   *
+   * One throwaway prediction request settles it. `REQUEST_DENIED` is the
+   * documented status for a key the project will not serve, whatever the
+   * underlying reason, so this catches the expired and restricted cases too
+   * without needing to know which one it is.
+   */
+  useEffect(() => {
+    if (scriptStatus !== "ready") return;
+    const svc = (
+      window as unknown as {
+        google?: {
+          maps?: {
+            places?: {
+              AutocompleteService?: new () => {
+                getPlacePredictions: (
+                  req: { input: string },
+                  cb: (r: unknown, status: string) => void,
+                ) => void;
+              };
+            };
+          };
+        };
+      }
+    ).google?.maps?.places?.AutocompleteService;
+    if (!svc) return;
+    let cancelled = false;
+    try {
+      new svc().getPlacePredictions({ input: "1 Main St" }, (_r, status) => {
+        if (cancelled) return;
+        if (status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT") {
+          console.error(
+            `[commercial/address-fields] Google refused a Places request (${status}) — billing disabled, key expired, over quota, or referrer-restricted. Address lookup is off; typing still works.`,
+          );
+          setScriptStatus("key-rejected");
+        }
+      });
+    } catch {
+      /* the probe must never break the field — typing works regardless */
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [scriptStatus]);
+
   // Once the script is ready, attach Autocomplete to the street input.
   useEffect(() => {
     if (scriptStatus !== "ready") return;
@@ -254,7 +310,7 @@ export default function CommercialAddressFields({
             person who is not told that will sit waiting for them. */}
         {scriptStatus === "key-rejected" && (
           <p id="addr-lookup-off" className="mt-1 text-[11px] text-amber-700">
-            Address lookup is unavailable right now — type the address and it saves normally. (Tell Karan: the Google Maps key needs renewing.)
+            Address lookup is unavailable right now — type the address and it saves normally. (Tell Karan: the Google Maps project needs billing enabled or the key renewed.)
           </p>
         )}
       </div>

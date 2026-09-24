@@ -58,7 +58,7 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
   const dates = [...new Set(entries.map((e) => e.work_date))];
 
   const [empRes, jobRes, assigns] = await Promise.all([
-    sb.from("commercial_employees").select("id, display_name").in("id", empIds),
+    sb.from("commercial_employees").select("id, display_name, active").in("id", empIds),
     sb.from("commercial_jobs").select("id, name").in("id", jobIds),
     // Scoped to these employees + paginated so the scheduled-hours baseline is
     // complete (a wide crew × many dates otherwise trips the 1000-row cap and
@@ -75,6 +75,9 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
     ),
   ]);
   const empName = new Map((empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { display_name: string }).display_name]));
+  const empActive = new Map(
+    (empRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { active: boolean }).active !== false]),
+  );
   const jobName = new Map((jobRes.data ?? []).map((r) => [(r as { id: string }).id, (r as { name: string }).name]));
   const schedKey = (e: string, j: string, d: string) => `${e}|${j}|${d}`;
   const sched = new Map<string, number>();
@@ -128,7 +131,24 @@ export async function listPendingApprovals(): Promise<ApprovalRow[]> {
     }
   }
 
-  return entries.map((e) => {
+  return entries
+    /**
+     * A DEACTIVATED PERSON'S EMPTY ENTRY IS NOT WORK TO REVIEW.
+     *
+     * The queue held nine items. Every one was 0 hours and eight belonged to
+     * "(old company entry)" duplicates left deactivated by the Salesforce
+     * migration. Approving them changes nothing, and they cannot age out — so
+     * Field Ops Overview said "Time to review 9 →" permanently, a to-do with
+     * nothing to do behind it. That is how a person stops believing the
+     * counters on a page.
+     *
+     * BOTH conditions, deliberately. An inactive employee with REAL hours
+     * still has to be approved or they do not get paid for their last week —
+     * filtering on `active` alone would quietly strip exactly the entries that
+     * matter most. Only an empty entry from somebody who is gone disappears.
+     */
+    .filter((e) => !(Number(e.actual_hours) === 0 && empActive.get(e.employee_id) === false))
+    .map((e) => {
     const scheduled = sched.get(schedKey(e.employee_id, e.job_id, e.work_date)) ?? null;
     return {
       id: e.id,
