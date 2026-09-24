@@ -13,6 +13,7 @@ import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
+import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
 import { selectExamples } from "./retrieval";
@@ -269,6 +270,17 @@ export function schedulerDeps(): SchedulerDeps {
       // column because it is not in the table this loader reads.
       const classARules = forPrompt(await loadClassARules());
 
+      // A2 MID-CONVERSATION. The zip on the lead goes stale — one of Kate's
+      // findings is a customer giving a New Jersey address while FL 33308 sat
+      // on the record — so the zip we hold NOW is re-checked every turn,
+      // against our own table rather than Salesforce. An unreadable map
+      // answers needs_a_person, never "not serviced", because telling a
+      // customer we do not cover them on a failed lookup is the harm A2
+      // exists to prevent.
+      const service = (conv as { customer_zip?: string | null }).customer_zip
+        ? await serviceZipCheck(sb, (conv as { customer_zip?: string | null }).customer_zip!)
+        : null;
+
       const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
         hardNos: cfg.hardNos,
         classARules,
@@ -278,6 +290,9 @@ export function schedulerDeps(): SchedulerDeps {
         // A3 is satisfied by events, so the check needs the whole list
         // rather than just the last one.
         priorIntents,
+        serviceArea: service?.outcome ?? null,
+        zip: (conv as { customer_zip?: string | null }).customer_zip ?? null,
+        stateName: service?.outcome === "out_of_state" ? service.state : null,
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
           // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were

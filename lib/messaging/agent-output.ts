@@ -206,6 +206,7 @@ export type RejectReason =
   | "invented_availability"
   | "banned_by_hard_no"
   | "wrong_offsite_rule"      // presented what should be offered, or the reverse
+  | "coverage_not_established"
   | "question_left_unanswered"
   | "details_never_collected";    // presented what should be offered, or the reverse
 
@@ -541,6 +542,19 @@ const A3_LEGS: { label: string; satisfiedBy: readonly string[] }[] = [
  */
 const CLAIMS_THE_FLOW_FINISHED = new Set<string>(["success", "phone_pricing"]);
 
+/**
+ * Intents that promise PPP will do the work.
+ *
+ * Booking, quoting and closing all say we cover this address. Asking for
+ * details does not, and is deliberately absent: A2's own out-of-state script
+ * asks whether the project is somewhere else, which cannot happen if the
+ * conversation is not allowed to continue.
+ */
+const PROMISES_COVERAGE = new Set<string>([
+  "ask_availability", "present_offsite_quote", "offer_offsite_quote",
+  "success", "phone_pricing", "accepted", "offer_estimator_call",
+]);
+
 export type ValidateContext = {
   /** Slots the system verified. An intent may only reference these. */
   verifiedSlots?: Record<string, unknown>;
@@ -571,6 +585,20 @@ export type ValidateContext = {
    * which refuses neither — both rules are gated on knowing what the job is.
    */
   jobRoute?: JobRoute | null;
+  /**
+   * What the service-area lookup says about the zip we are holding RIGHT NOW.
+   *
+   * A2: "Validate the zip against the service area BEFORE promising
+   * coverage." Intake already refuses to start a conversation for an
+   * unserviceable lead, so this is for the zip that CHANGES — the customer
+   * who gives a New Jersey address while FL 33308 sits on the record.
+   *
+   * Undefined when the map cannot be read, which is deliberately the same as
+   * "we do not know" rather than "not serviced": telling a customer we do not
+   * cover them because our own lookup failed is the harm the rule exists to
+   * prevent.
+   */
+  serviceArea?: "serviced" | "out_of_state" | "needs_a_person" | null;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
   /** The customer reacted negatively to the previous message. */
@@ -660,6 +688,27 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
           `${missing.length === 1 ? "was" : "were"} never asked for or confirmed`,
       };
     }
+  }
+
+  // A2: NOTHING PROMISES COVERAGE UNTIL THE ZIP SAYS WE HAVE IT.
+  //
+  // "Validate the zip against the service area BEFORE promising coverage."
+  // Booking a visit, presenting a quote or calling the conversation a success
+  // all promise it. Asking for details does not, and must stay allowed — the
+  // whole point of A2's second script is to ASK whether the project is
+  // somewhere else, which needs the conversation to continue.
+  //
+  // needs_a_person covers the zip being unknown AND the map being unreadable,
+  // and both land on checking_availability, which hands to a human. Telling a
+  // customer we do not cover them because our own lookup failed is the harm
+  // the rule exists to prevent.
+  if (ctx.serviceArea && ctx.serviceArea !== "serviced" && PROMISES_COVERAGE.has(a.intent)) {
+    return {
+      ok: false, reason: "coverage_not_established",
+      detail: ctx.serviceArea === "out_of_state"
+        ? "the zip on file is outside the states PPP covers, so nothing may promise a visit or a quote until they confirm the project is elsewhere"
+        : "the service area could not be confirmed for this zip, so a person checks with the estimator before any coverage is promised",
+    };
   }
 
   // A6 vs A7: THE JOB DECIDES WHICH SENTENCE, NOT THE MODEL.

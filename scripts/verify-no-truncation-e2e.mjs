@@ -41,13 +41,25 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
  */
 const AT_RISK = 700;
 
-/** The messaging tables. Others are somebody else's surface. */
-const TABLES = [
-  "sms_training_examples", "sms_example_findings", "sms_messages",
-  "sms_conversations", "sms_class_a_rules", "sms_class_a_rule_notes",
-  "sms_class_a_rule_changes", "sms_training_example_tags", "sms_opt_outs",
-  "sms_scheduled_actions", "sms_drafts", "sms_campaign_steps",
-];
+/**
+ * DISCOVERED, not listed — and this file had the same hand-written list the
+ * PII sweep did, which was the whole flaw that sweep was rewritten to fix.
+ * Fixing one and not its sibling is exactly the pattern these sweeps exist
+ * to catch, so: 12 tables became 31.
+ *
+ * sf_lead_inbound was among the missing, at 639 rows and climbing. It is the
+ * queue the lead poll reads.
+ */
+async function discoverTables() {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL + "/rest/v1/";
+  const res = await fetch(base, {
+    headers: { apikey: process.env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + process.env.SUPABASE_SECRET_KEY },
+  });
+  if (!res.ok) throw new Error(`could not read the schema: ${res.status}`);
+  const spec = await res.json();
+  return Object.keys(spec.definitions ?? spec.components?.schemas ?? {})
+    .filter((t) => /^(sms_|sf_)/.test(t)).sort();
+}
 
 /**
  * A read is bounded when any of these appear near it.
@@ -81,6 +93,7 @@ for (const root of ["lib", "app", "scripts"]) { try { walk(root); } catch {} }
 
 console.log("\nTRUNCATION SWEEP — reads of tables near the 1,000-row cap\n");
 
+const TABLES = await discoverTables();
 const sizes = new Map();
 for (const t of TABLES) {
   const { count, error } = await sb.from(t).select("*", { count: "exact", head: true });

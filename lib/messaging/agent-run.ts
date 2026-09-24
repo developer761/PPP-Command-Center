@@ -252,6 +252,13 @@ export async function runAgentTurn(
      *  by events rather than by the state of the record, so closing the
      *  conversation needs to know what was actually asked and confirmed. */
     priorIntents?: readonly string[];
+    /** A2's verdict on the zip we are holding. The caller runs the lookup
+     *  because it needs a database; this only carries the answer. */
+    serviceArea?: "serviced" | "out_of_state" | "needs_a_person" | null;
+    /** The zip we hold and the state it resolves to, for A2's out-of-state
+     *  message. Both looked up, never inferred by the model. */
+    zip?: string | null;
+    stateName?: string | null;
     /** The intent behind our previous message, so a negative reaction cannot
      *  be answered by saying the same thing again. */
     lastIntent?: string;
@@ -346,6 +353,8 @@ Choose the next action.`;
       // The area comes from the workspace's own config, for the one
       // geographic row in the lookup: cabinets are ONSITE except in Queens.
       jobRoute: jobRoute(kf.inquiryScope, cfg.office_location ?? cfg.service_area_note)?.route ?? null,
+      // A2: nothing may promise coverage until the zip says we have it.
+      serviceArea: opts.serviceArea ?? null,
       ...opts.ctx,
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
@@ -355,7 +364,10 @@ Choose the next action.`;
       freeText: v.action.freeText,
       turn: history.length,
       photos: opts.mediaCount ?? 0,
-      known: { address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope },
+      known: {
+        address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope,
+        zip: opts.zip ?? null, state: opts.stateName ?? null,
+      },
       // Narrows ask_address to the part we are actually missing.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
       // A4: and the same for availability. Read from what the customer just
