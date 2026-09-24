@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { sumPaymentsBeforeStable } from "@/lib/commercial/invoices/db";
 import { logInsert, logDelete } from "@/lib/commercial/audit-log";
 
 /**
@@ -148,7 +149,37 @@ export async function recordAiaPayment(
    * belongs on the next application, and the caller is told.
    */
   const due = await applicationPeriodDueCents(input.application_id);
-  const already = sumAiaPayments(await listAiaPayments(input.application_id));
+  const recorded = sumAiaPayments(await listAiaPayments(input.application_id));
+
+  /**
+   * A CERTIFICATE FLAGGED PAID WITH NO ROWS IS ALREADY FULLY COLLECTED.
+   *
+   * Applications marked paid before payment records existed carry no rows at
+   * all, so `recorded` is 0 and the room calculation below offered the entire
+   * certificate again. Both outcomes were wrong, in opposite directions:
+   *
+   *  - record a PARTIAL and the status sync demoted it paid → submitted,
+   *    which drops the legacy paid-flag the rollup infers collection from.
+   *    AIREF Building #1 Application 2 would have gone from $189,434.20
+   *    collected to $10,000 — money going IN making collected go DOWN.
+   *  - keep it `paid` instead and the rollup counts the legacy amount AND the
+   *    new row, overstating collection by whatever was entered.
+   *
+   * The honest answer is that there is nothing left to record: the flag says
+   * the whole certificate was collected. Treating it as fully paid reaches the
+   * existing refusal below, which already tells Stephanie where the money
+   * goes. Nothing on the live book is in this state today — all five paid
+   * applications have rows — which is exactly when to close it.
+   */
+  const { data: statusRow } = await sb
+    .from("commercial_aia_applications")
+    .select("status")
+    .eq("id", input.application_id)
+    .maybeSingle();
+  const flaggedPaidWithNoRows =
+    (statusRow as { status?: string } | null)?.status === "paid" && recorded === 0;
+  const already = flaggedPaidWithNoRows ? due : recorded;
+
   const room = due > 0 ? Math.max(0, due - already) : null;
   const requested = Math.round(input.amount_cents);
   if (room === 0) {
@@ -181,7 +212,49 @@ export async function recordAiaPayment(
       };
     return { ok: false, error: error?.message ?? "insert_failed" };
   }
-  const row = data as AiaPayment;
+  let row = data as AiaPayment;
+
+  /**
+   * CONCURRENCY, the same way the invoice ledger does it.
+   *
+   * The room check above reads, then inserts. Two people recording the same
+   * cheque at once — Stephanie on the certificate, Mary in Accounting — both
+   * read `already = 0`, both pass, and the certificate ends up holding twice
+   * what it bills. A browser double-click does it on its own if the first POST
+   * is slow. `commercial_aia_payments` has no unique or check constraint that
+   * would stop it.
+   *
+   * So after the insert, recompute what THIS row may keep, over the live rows
+   * in a STABLE order (created_at, then id). That order is identical for every
+   * racer, so the earlier row keeps its share and only the tail that pushes
+   * past the certificate trims — rather than both backing out symmetrically
+   * and losing money that did arrive.
+   */
+  if (room != null) {
+    const live = await listAiaPayments(input.application_id);
+    const allowed = Math.max(0, due - sumPaymentsBeforeStable(live, row.id));
+    if (allowed < Number(row.amount_cents)) {
+      if (allowed <= 0) {
+        await sb
+          .from("commercial_aia_payments")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", row.id);
+        return {
+          ok: false,
+          error:
+            "Somebody recorded a payment against this certificate a moment ago and it is now paid in full. Reload and record the rest on the next application.",
+        };
+      }
+      const { data: trimmed } = await sb
+        .from("commercial_aia_payments")
+        .update({ amount_cents: allowed })
+        .eq("id", row.id)
+        .select("*")
+        .maybeSingle();
+      if (trimmed) row = trimmed as AiaPayment;
+    }
+  }
+
   await logInsert("commercial_aia_payments", row.id, row, input.recorded_by_user_id);
   await syncApplicationStatusToPayments(input.application_id, input.recorded_by_user_id);
   return {
