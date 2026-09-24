@@ -72,6 +72,7 @@ export function PayrollWeekPanels({
           const a = e.allocation.find((x) => x.opportunityId === detailJob.opportunityId);
           if (!j) return null;
           return {
+            id: e.employeeId,
             name: e.name,
             hours: j.hours,
             costCents: a?.amountCents ?? null,
@@ -152,7 +153,7 @@ export function PayrollWeekPanels({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px]">
+              <table className="w-full min-w-[300px]">
                 <thead className="bg-ppp-charcoal-50/60">
                   <tr>
                     <th className={TH}>Employee</th>
@@ -211,7 +212,58 @@ export function PayrollWeekPanels({
             <form action={saveCostsAction}>
               <input type="hidden" name="start" value={week.startDate} />
               <input type="hidden" name="end" value={week.endDate} />
-              <div className="overflow-x-auto">
+              {/* PHONE: a card per person.
+                  As a table this was 420px wide inside a ~376px card, and the
+                  box Mary types into is the LAST column — so on a phone she had
+                  to scroll each row sideways to reach it, for every employee,
+                  every week. The one panel on this screen that is pure data
+                  entry was the one you could not reach. */}
+              <ul className="sm:hidden divide-y divide-ppp-charcoal-100">
+                {week.employees.map((e) => (
+                  <li key={e.employeeId} className="px-3.5 py-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[13px] font-semibold text-ppp-charcoal truncate">
+                        {e.name}
+                      </span>
+                      <span className="text-[11.5px] text-ppp-charcoal-500 tabular-nums shrink-0">
+                        {hrs(e.jobHours)}
+                      </span>
+                    </div>
+                    {e.unassignedHours > 0 && (
+                      <select
+                        name={`pto_${e.employeeId}`}
+                        defaultValue={e.unassignedOpportunityId ?? ""}
+                        aria-label={`Job to charge ${e.name}'s ${e.unassignedHours}h of non-job time to`}
+                        className={`${SELECT_CLS} mt-2 text-[12px] border-amber-300 bg-amber-50`}
+                        style={SELECT_BG_STYLE}
+                      >
+                        <option value="">Charge {e.unassignedHours}h off-job to…</option>
+                        {e.jobs.map((j) => (
+                          <option key={j.opportunityId} value={j.opportunityId}>
+                            {j.jobName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <label className="block mt-2">
+                      <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400 mb-1">
+                        Company cost from Gusto
+                      </span>
+                      <input
+                        name={`cost_${e.employeeId}`}
+                        inputMode="decimal"
+                        defaultValue={
+                          e.actualCostCents == null ? "" : (e.actualCostCents / 100).toFixed(2)
+                        }
+                        placeholder="0.00"
+                        aria-label={`Actual Gusto cost for ${e.name}`}
+                        className={`${INPUT} max-w-none`}
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full min-w-[420px]">
                   <thead className="bg-ppp-charcoal-50/60">
                     <tr>
@@ -298,7 +350,7 @@ export function PayrollWeekPanels({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px]">
+              <table className="w-full min-w-[300px]">
                 <thead className="bg-ppp-charcoal-50/60">
                   <tr>
                     <th className={TH}>Job</th>
@@ -369,7 +421,7 @@ export function PayrollWeekPanels({
                 </p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px]">
+                <table className="w-full min-w-[340px]">
                   <thead className="bg-ppp-charcoal-50/60">
                     <tr>
                       <th className={TH}>Employee</th>
@@ -380,7 +432,7 @@ export function PayrollWeekPanels({
                   </thead>
                   <tbody className="divide-y divide-ppp-charcoal-100">
                     {detailRows.map((r) => (
-                      <tr key={r.name}>
+                      <tr key={r.id}>
                         <td className={TD}>{r.name}</td>
                         <td className={NUM}>{hrs(r.hours)}</td>
                         <td className={NUM}>{money(r.costCents)}</td>

@@ -451,6 +451,52 @@ export async function postPayrollWeek(
 
   const sb = commercialDb();
 
+  /**
+   * CLAIM THE WEEK FIRST.
+   *
+   * This deletes the previous run and then inserts. Two of those overlapping —
+   * two tabs, two people, a retried request — both read the same prior set,
+   * both delete it (harmlessly), and then BOTH insert: every job in the week
+   * carries its labor twice, both halves real, and the total merely large.
+   *
+   * The confirm button guards a double-click and nothing else.
+   *
+   * So the period is claimed with a compare-and-swap on `status`. Only one
+   * writer can move it out of the status it was in, and the loser is told to
+   * look rather than quietly doubling the week. `posting` is not a stored
+   * status — the claim is the row's own status value flipping to 'allocated'
+   * before the write, which is exactly the property CAS needs.
+   */
+  // The token is `allocated_at`, NOT `status`. A CAS only works when the value
+  // it swaps actually changes, and a RE-post goes allocated → allocated — so
+  // two concurrent re-posts would both have won a status CAS and doubled the
+  // week, which is the case this guard exists for. A timestamp is different
+  // every run, so the second writer finds the value moved and loses.
+  const { data: periodNow } = await sb
+    .from("commercial_payroll_periods")
+    .select("allocated_at")
+    .eq("id", week.periodId)
+    .maybeSingle();
+  const priorAllocatedAt = (periodNow as { allocated_at: string | null } | null)?.allocated_at ?? null;
+  const claimStamp = new Date().toISOString();
+  const claimQ = sb
+    .from("commercial_payroll_periods")
+    .update({ status: "allocated", allocated_at: claimStamp, updated_at: claimStamp })
+    .eq("id", week.periodId)
+    .is("deleted_at", null);
+  const { data: claimed } = await (priorAllocatedAt === null
+    ? claimQ.is("allocated_at", null)
+    : claimQ.eq("allocated_at", priorAllocatedAt)
+  )
+    .select("id")
+    .maybeSingle();
+  if (!claimed)
+    return {
+      ok: false,
+      error:
+        "This week was posted by somebody else a moment ago. Reload to see what is on the jobs before posting again.",
+    };
+
   // Everything this week posted last time. Removed, not updated: the set of
   // jobs can change between runs, so a row-by-row patch would leave orphans
   // from the previous shape.
@@ -468,10 +514,13 @@ export async function postPayrollWeek(
       .eq("payroll_period_id", week.periodId)
       .is("deleted_at", null);
     if (delErr)
-      return {
-        ok: false,
-        error: `Could not clear the previous run for this week, so nothing was posted: ${delErr.message}`,
-      };
+      {
+        await releaseClaim(sb, week.periodId, priorAllocatedAt);
+        return {
+          ok: false,
+          error: `Could not clear the previous run for this week, so nothing was posted: ${delErr.message}`,
+        };
+      }
     // LOGGED. This is the operation that removes the most money at once, and
     // it was the only one on the page invisible to the audit log — so if a
     // week posted wrong there was no record of what the previous run held.
@@ -533,15 +582,21 @@ export async function postPayrollWeek(
       });
     }
   }
-  if (skipped.length > 0)
+  if (skipped.length > 0) {
+    await releaseClaim(sb, week.periodId, priorAllocatedAt);
     return {
       ok: false,
       error: `${skipped[0]}. Nothing was posted — fix that and try again, or the week would be short.`,
     };
-  if (rows.length === 0) return { ok: false, error: "Nothing to post for this week." };
+  }
+  if (rows.length === 0) {
+    await releaseClaim(sb, week.periodId, priorAllocatedAt);
+    return { ok: false, error: "Nothing to post for this week." };
+  }
 
   const { error: insErr } = await sb.from("commercial_project_purchases").insert(rows);
   if (insErr) {
+    await releaseClaim(sb, week.periodId, priorAllocatedAt);
     // The previous run is already deleted at this point. Say so plainly rather
     // than leaving her to discover that a failed post also erased what was
     // there — and tell her the one action that fixes it.
@@ -553,24 +608,22 @@ export async function postPayrollWeek(
   for (const r of rows)
     await logInsert("commercial_project_purchases", String(r.id), r, userId);
 
-  const { data: before } = await sb
-    .from("commercial_payroll_periods")
-    .select("*")
-    .eq("id", week.periodId)
-    .maybeSingle();
+  // The claim above already set status + allocated_at; this only records WHO,
+  // and leaves the claim stamp alone so a concurrent writer's CAS still holds.
   const { data: after } = await sb
     .from("commercial_payroll_periods")
-    .update({
-      status: "allocated",
-      allocated_at: new Date().toISOString(),
-      allocated_by_user_id: userId,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ allocated_by_user_id: userId })
     .eq("id", week.periodId)
     .select("*")
     .maybeSingle();
-  if (before && after)
-    await logUpdate("commercial_payroll_periods", week.periodId, before, after, userId);
+  if (after)
+    await logUpdate(
+      "commercial_payroll_periods",
+      week.periodId,
+      { allocated_at: priorAllocatedAt, allocated_by_user_id: null },
+      after,
+      userId,
+    );
 
   return {
     ok: true,
@@ -578,4 +631,21 @@ export async function postPayrollWeek(
     replaced,
     totalCents: rows.reduce((n, r) => n + Number(r.amount_cents), 0),
   };
+}
+
+/** Hand a claimed week back when a post fails, so a retry is possible rather
+ *  than the week being stuck reading `allocated` with nothing on the jobs. */
+async function releaseClaim(
+  sb: ReturnType<typeof commercialDb>,
+  periodId: string,
+  priorAllocatedAt: string | null,
+): Promise<void> {
+  await sb
+    .from("commercial_payroll_periods")
+    .update({
+      status: priorAllocatedAt === null ? "draft" : "allocated",
+      allocated_at: priorAllocatedAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", periodId);
 }
