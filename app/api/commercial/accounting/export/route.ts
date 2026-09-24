@@ -12,6 +12,9 @@ import {
   LABOR_PAYMENTS_SPEC,
   DEPOSIT_HISTORY_SPEC,
 } from "@/lib/commercial/reports/tomco/transactions";
+import {
+  filterToSpendPeriod, isSpendPeriod, spendPeriodLabel,
+} from "@/lib/commercial/reports/tomco/spend-periods";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +79,17 @@ export async function GET(req: NextRequest) {
   let exported = rows;
   let periodLabel = "all time";
   let groupingIndex = 0;
+  // The money-out registers carry the same week window the screen is showing.
+  // Without it the CSV quietly covered all time while Mary was looking at one
+  // week — and she exports it precisely to match that week against SF.
+  const rawPeriod = req.nextUrl.searchParams.get("period");
+  if (isSpendPeriod(rawPeriod) && rawPeriod !== "all") {
+    exported = filterToSpendPeriod(
+      exported as unknown as { ymd: string | null }[],
+      rawPeriod,
+    ) as typeof exported;
+    periodLabel = spendPeriodLabel(rawPeriod);
+  }
   if (view === "ar") {
     const cutoff = arPeriodCutoff(req.nextUrl.searchParams.get("arperiod") ?? "all");
     if (cutoff) exported = rows.filter((r) => !r.issuedYmd || r.issuedYmd >= cutoff);

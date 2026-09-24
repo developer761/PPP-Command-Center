@@ -21,6 +21,10 @@ import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
 import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
+import { SpendPeriodBar } from "@/components/commercial/spend-period-bar";
+import {
+  filterToSpendPeriod, undatedCount, isSpendPeriod, type SpendPeriodKey,
+} from "@/lib/commercial/reports/tomco/spend-periods";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
@@ -771,6 +775,18 @@ export default async function AccountingPage({
   // the company stand", and silently narrowing them to a filter set on another
   // tab would make the money desk quietly wrong.
   const viewQs = (v: View) => (v === "receivables" ? receivableQueryString(q) : "");
+
+  /**
+   * The week window on the money-out registers.
+   *
+   * Mary 2026-09-24: "Can I run a payout report for this week? I want to match
+   * it against SF." These three listed every row ever recorded, with no way to
+   * narrow — so matching one week meant exporting 851 rows into Excel.
+   */
+  const rawPeriod = pickFirst(sp.period);
+  const period: SpendPeriodKey = isSpendPeriod(rawPeriod) ? rawPeriod : "all";
+  const periodHref = (v: View, k: SpendPeriodKey) =>
+    `${BASE}?view=${v}${k === "all" ? "" : `&period=${k}`}`;
   const href = (v: View) => {
     if (v === "overview") return BASE;
     // The ledger carries its own filters back, so leaving it and returning
@@ -1090,7 +1106,11 @@ export default async function AccountingPage({
                             // shows 30 days.
                             view === "ar"
                             ? `/api/commercial/accounting/export?view=ar${arGroup !== 0 ? `&argroup=${arGroup}` : ""}${arPeriod !== "all" ? `&arperiod=${arPeriod}` : ""}`
-                            : `/api/commercial/accounting/export?view=${view}`
+                            : // And the week window rides along for the same
+                              // reason: a CSV covering all time while the
+                              // screen shows one week is the exact trap the AR
+                              // comment above describes.
+                              `/api/commercial/accounting/export?view=${view}${period !== "all" ? `&period=${period}` : ""}`
                           : "/api/commercial/reports/receivables/export"
             }
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
@@ -2495,10 +2515,16 @@ export default async function AccountingPage({
       {view === "purchases" && spendRows && (
         <section className="space-y-3">
           <SectionHead title={PURCHASES_BY_VENDOR_SPEC.title} hint={PURCHASES_BY_VENDOR_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("purchases", k)}
+          rowCount={filterToSpendPeriod(purchaseRows(spendRows), period).length}
+          undated={undatedCount(purchaseRows(spendRows))}
+        />
         <GroupedReport
           spec={PURCHASES_BY_VENDOR_SPEC}
-          rows={purchaseRows(spendRows)}
-          emptyHint="No purchases recorded."
+          rows={filterToSpendPeriod(purchaseRows(spendRows), period)}
+          emptyHint="No purchases in this period."
         />
         </section>
       )}
@@ -2551,10 +2577,16 @@ export default async function AccountingPage({
       {view === "labor-out" && spendRows && (
         <section className="space-y-3">
           <SectionHead title={LABOR_PAYMENTS_SPEC.title} hint={LABOR_PAYMENTS_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("labor-out", k)}
+          rowCount={filterToSpendPeriod(laborPaymentRows(spendRows), period).length}
+          undated={undatedCount(laborPaymentRows(spendRows))}
+        />
         <GroupedReport
           spec={LABOR_PAYMENTS_SPEC}
-          rows={laborPaymentRows(spendRows)}
-          emptyHint="No crew payments recorded."
+          rows={filterToSpendPeriod(laborPaymentRows(spendRows), period)}
+          emptyHint="No crew payments in this period."
         />
         </section>
       )}
@@ -2630,9 +2662,15 @@ export default async function AccountingPage({
       {view === "deposits" && depositRows && (
         <section className="space-y-3">
           <SectionHead title={DEPOSIT_HISTORY_SPEC.title} hint={DEPOSIT_HISTORY_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("deposits", k)}
+          rowCount={filterToSpendPeriod(depositRows, period).length}
+          undated={undatedCount(depositRows)}
+        />
         <GroupedReport
           spec={DEPOSIT_HISTORY_SPEC}
-          rows={depositRows}
+          rows={filterToSpendPeriod(depositRows, period)}
           emptyHint="No payments in yet."
           // Tick it off HERE. This is the tab you open with a bank statement;
           // the Mark button used to live only on Transactions, behind "More".
