@@ -797,7 +797,14 @@ export default async function AccountingPage({
    * many rows, and All time is one click away.
    */
   const period: SpendPeriodKey = isSpendPeriod(rawPeriod) ? rawPeriod : "this_month";
-  const periodHref = (v: View, k: SpendPeriodKey) => `${BASE}?view=${v}&period=${k}`;
+  /**
+   * Note the #register. Changing the week is a full navigation, so without a
+   * fragment the browser lands at the top of the page and Mary has to scroll
+   * back down past the KPI cards, the tab bar and the whole entry form to see
+   * the result of her own click — every time she changes period.
+   */
+  const periodHref = (v: View, k: SpendPeriodKey) =>
+    `${BASE}?view=${v}&period=${k}#register`;
   const href = (v: View) => {
     if (v === "overview") return BASE;
     // The ledger carries its own filters back, so leaving it and returning
@@ -2524,7 +2531,7 @@ export default async function AccountingPage({
       )}
 
       {view === "purchases" && spendRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={PURCHASES_BY_VENDOR_SPEC.title} hint={PURCHASES_BY_VENDOR_SPEC.blurb ?? ""} />
         <SpendPeriodBar
           active={period}
@@ -2541,7 +2548,7 @@ export default async function AccountingPage({
       )}
 
       {view === "payroll" && payroll && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SectionHead
               title="Payroll"
@@ -2550,9 +2557,9 @@ export default async function AccountingPage({
             <PayrollWeekHeader
               startDate={payroll.week.startDate}
               endDate={payroll.week.endDate}
-              prevHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, -7)}`}
-              nextHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, 7)}`}
-              todayHref={`${BASE}?view=payroll&week=${payroll.thisWeek}`}
+              prevHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, -7)}#register`}
+              nextHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, 7)}#register`}
+              todayHref={`${BASE}?view=payroll&week=${payroll.thisWeek}#register`}
               isThisWeek={payroll.start === payroll.thisWeek}
             />
           </div>
@@ -2562,6 +2569,7 @@ export default async function AccountingPage({
             postAction={postPayrollAction}
             selectedJobId={pickFirst(sp.job) ?? null}
             basePath={`${BASE}?view=payroll&week=${payroll.start}`}
+            // Same reason as the period links: the detail panel is below the fold.
             lastHoursWeekHref={
               // The raw day, not its Monday — the page normalises any `week`
               // to a Monday on the way in, so there is one place that does it.
@@ -2586,7 +2594,7 @@ export default async function AccountingPage({
       )}
 
       {view === "labor-out" && spendRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={LABOR_PAYMENTS_SPEC.title} hint={LABOR_PAYMENTS_SPEC.blurb ?? ""} />
         <SpendPeriodBar
           active={period}
@@ -2671,7 +2679,7 @@ export default async function AccountingPage({
       )}
 
       {view === "deposits" && depositRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={DEPOSIT_HISTORY_SPEC.title} hint={DEPOSIT_HISTORY_SPEC.blurb ?? ""} />
         <SpendPeriodBar
           active={period}
