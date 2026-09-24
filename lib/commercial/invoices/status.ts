@@ -159,9 +159,36 @@ export async function releaseTickedChangeOrders(invoiceId: string): Promise<numb
   for (const l of (lines ?? []) as { change_order_id: string | null }[]) if (l.change_order_id) coIds.add(l.change_order_id);
   for (const m of (ms ?? []) as { change_order_id: string | null }[]) if (m.change_order_id) coIds.add(m.change_order_id);
   if (coIds.size === 0) return 0;
-  await sb.from("commercial_invoice_line_items").delete().eq("invoice_id", invoiceId).not("change_order_id", "is", null);
-  await sb.from("commercial_invoice_milestones").update({ deleted_at: new Date().toISOString() }).eq("invoice_id", invoiceId).not("change_order_id", "is", null).is("deleted_at", null);
-  await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() }).in("id", [...coIds]).eq("invoiced_invoice_id", invoiceId);
+  // ALL THREE WRITES CHECKED. This function returned `coIds.size` — what it
+  // INTENDED to free — and the caller reports that to the user as
+  // `freedChangeOrders`. If the third write fails, the mig-093 unique slot
+  // stays held, the change order reads as un-billed, and every attempt to
+  // re-tick it dies on a raw 23505 with no way out of the UI. The docblock
+  // above already describes that outcome; nothing was checking for it.
+  const { error: lineErr } = await sb
+    .from("commercial_invoice_line_items")
+    .delete()
+    .eq("invoice_id", invoiceId)
+    .not("change_order_id", "is", null);
+  const { error: msErr } = await sb
+    .from("commercial_invoice_milestones")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("invoice_id", invoiceId)
+    .not("change_order_id", "is", null)
+    .is("deleted_at", null);
+  const { error: coErr } = await sb
+    .from("commercial_change_orders")
+    .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
+    .in("id", [...coIds])
+    .eq("invoiced_invoice_id", invoiceId);
+  if (lineErr || msErr || coErr) {
+    console.error(
+      `[commercial/invoices] releaseTickedChangeOrders: invoice ${invoiceId} — the change orders may still read as billed and refuse to be re-ticked:`,
+      lineErr?.message ?? msErr?.message ?? coErr?.message,
+    );
+    // Report what was actually freed, not what was attempted.
+    return 0;
+  }
   // Recompute the invoice subtotal off the REMAINING (base) lines so a voided /
   // soft-deleted invoice — and any later restore of it — doesn't carry a phantom
   // CO charge (audit #2). recomputeSubtotal writes subtotal_cents unconditionally.

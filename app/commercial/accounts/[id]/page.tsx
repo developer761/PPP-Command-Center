@@ -1077,6 +1077,9 @@ export async function createDealInvoiceAction(formData: FormData) {
   // way in, nothing should send anyone to it.
   const back = dealTab;
   void rt;
+  // Things that were meant to ride along with the invoice and did not. The
+  // invoice itself is created, so these are partial-success notes, not errors.
+  const waiverProblems: string[] = [];
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
 
   const taxRaw = String(formData.get("tax_pct") ?? "").trim();
@@ -1145,7 +1148,8 @@ export async function createDealInvoiceAction(formData: FormData) {
   });
   if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
   if (milestones.length > 0) {
-    await seedMilestonesFromLineItems(result.invoice.id, milestones);
+    const seeded = await seedMilestonesFromLineItems(result.invoice.id, milestones);
+    if (!seeded.ok) waiverProblems.push("the milestone schedule");
   }
 
   // Optional lien waivers attached right on the create form (best-effort — a
@@ -1157,16 +1161,30 @@ export async function createDealInvoiceAction(formData: FormData) {
     if (!["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(f.type)) return null;
     return { name: f.name || "lien-waiver.pdf", type: f.type, data: new Uint8Array(await f.arrayBuffer()) };
   };
+  // A LIEN WAIVER THROWN AWAY TWICE OVER. These were double-swallowed: the
+  // Result was discarded by a bare `await`, AND a `.catch(() => {})` sat on
+  // top. The GC will not release payment without the waiver, and the person
+  // who attached it on this form has every reason to believe it is filed.
   if (mode === "flat") {
     const w = await readWaiver("flat_waiver");
-    if (w) await attachInvoiceLienWaiver({ invoiceId: result.invoice.id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+    if (w) {
+      const att = await attachInvoiceLienWaiver({ invoiceId: result.invoice.id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(
+        (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+      );
+      if (!att.ok) waiverProblems.push(`the lien waiver (${att.error})`);
+    }
   } else if (milestones.length > 0) {
     // Re-fetch the created milestones (position order == draft order) so each
     // ms_waiver_<row> file pairs to the right milestone.
     const created = await listMilestonesForInvoice(result.invoice.id);
     for (let k = 0; k < created.length && k < milestoneRowIndex.length; k++) {
       const w = await readWaiver(`ms_waiver_${milestoneRowIndex[k]}`);
-      if (w) await attachMilestoneLienWaiver({ milestoneId: created[k].id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+      if (w) {
+        const att = await attachMilestoneLienWaiver({ milestoneId: created[k].id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(
+          (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+        );
+        if (!att.ok) waiverProblems.push(`the lien waiver for "${created[k].name}"`);
+      }
     }
   }
 
@@ -1186,7 +1204,14 @@ export async function createDealInvoiceAction(formData: FormData) {
   // This also gives `invoices_created` its only producer; the counts it renders
   // ("N created / M skipped") had no writer anywhere in the app, so the
   // partial-failure summary could never appear either.
-  redirect(`${back}&invoices_created=1`);
+  // A waiver that did not attach rides back as an error alongside the success
+  // — the invoice IS created, so this is a partial success, not a failure.
+  const waiverNote = waiverProblems.length
+    ? `&error=${encodeURIComponent(
+        `The invoice was created, but ${waiverProblems.join(" and ")} could not be attached. Upload it on the invoice.`,
+      )}`
+    : "";
+  redirect(`${back}&invoices_created=1${waiverNote}`);
 }
 
 /** "New invoice for this opportunity" — flat OR milestone-broken, via the client

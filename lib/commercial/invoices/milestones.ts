@@ -190,8 +190,9 @@ export async function getMilestone(id: string): Promise<InvoiceMilestone | null>
 export async function seedMilestonesFromLineItems(
   invoiceId: string,
   drafts: MilestoneDraft[]
-): Promise<void> {
-  if (drafts.length === 0) return;
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Nothing to seed is a clean success — a flat invoice has no milestones.
+  if (drafts.length === 0) return { ok: true };
   const sb = commercialDb();
   const lineItems = await listInvoiceLineItems(invoiceId); // ordered by position asc
   const rows = drafts.map((d, i) => ({
@@ -204,7 +205,15 @@ export async function seedMilestonesFromLineItems(
     notes: d.notes ?? null,
   }));
   const { error } = await sb.from("commercial_invoice_milestones").insert(rows);
-  if (error) console.warn("[commercial/milestones] seed failed:", error.message);
+  if (error) {
+    // The invoice and its line items exist either way, so the TOTAL looks
+    // right and nothing on screen is obviously wrong — while the billing
+    // schedule the whole invoice was broken into is simply absent, and
+    // per-milestone payments, waivers and dunning have nothing to hang on.
+    console.error("[commercial/milestones] seed failed:", error.message);
+    return { ok: false as const, error: error.message };
+  }
+  return { ok: true as const };
 }
 
 /**

@@ -13,7 +13,12 @@ import {
   type CloseoutTransmittedAs,
 } from "./constants";
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+/** `warning` is a PARTIAL success — the thing was created, but something
+ *  alongside it did not finish and the operator has to know before acting on
+ *  it. Distinct from `ok: false`, which means nothing was written. */
+type Result<T> =
+  | { ok: true; value: T; warning?: string | null }
+  | { ok: false; error: string };
 
 export type CloseoutPackage = {
   id: string;
@@ -132,6 +137,7 @@ export async function createCloseoutPackage(input: {
   await logInsert("commercial_closeout_packages", pkg.id, pkg, input.created_by_user_id);
 
   // Seed the standard close-out checklist (best-effort).
+  let warning: string | null = null;
   try {
     const rows = DEFAULT_CLOSEOUT_ITEMS.map((it, i) => ({
       package_id: pkg.id,
@@ -140,11 +146,21 @@ export async function createCloseoutPackage(input: {
       included: true,
       item_status: "pending" as const,
     }));
-    await sb.from("commercial_closeout_items").insert(rows);
+    const { error: seedErr } = await sb.from("commercial_closeout_items").insert(rows);
+    if (seedErr) {
+      // supabase-js RESOLVES with { error } — the catch below never fires for
+      // a rejected insert. The checklist IS the close-out feature, so a package
+      // created without one looks finished and is empty.
+      console.error("[closeout] checklist seed insert failed:", seedErr.message);
+      warning =
+        "The close-out package was created, but its checklist could not be filled in. Add the items by hand, or delete it and try again.";
+    }
   } catch (e) {
     console.warn("[closeout] item seed failed:", e instanceof Error ? e.message : String(e));
+    warning =
+      "The close-out package was created, but its checklist could not be filled in. Add the items by hand, or delete it and try again.";
   }
-  return { ok: true, value: pkg };
+  return { ok: true, value: pkg, warning };
 }
 
 export async function updateCloseoutPackage(
