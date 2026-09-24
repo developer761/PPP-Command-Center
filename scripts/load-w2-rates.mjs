@@ -72,19 +72,33 @@ const RATES = {
   "Tomco Labor - Carlos": { person: "Carlos Rosconi", hourly: 28.75 },
   "Tomco Labor - Robert P": { person: "Rob. Patterson", hourly: 28.0 },
   "Tomco Labor - Keith": { person: "Keith Obenauer", hourly: 28.0 },
+
+  // ── RESOLVED FROM SALESFORCE, 2026-09-24, not from the names ─────────────
+  //
+  // WorkOrderCrew__c carries the labour company AND, on most rows, the worker
+  // Salesforce named that day. 2,039 Tomco crew-days answer both questions
+  // outright:
+  //
+  //   "Tomco Labor - Rob"     → Robert Caputo on 154 rows, Robert Patterson on
+  //                             ZERO. (One stray row names Miguel Melgar.) So
+  //                             Rob is CAPUTO at $28.13 — and Patterson keeps
+  //                             his own company, "Tomco Labor - Robert P",
+  //                             which names him on its own rows.
+  //   "Tomco Labor - Miguel"  → Miguel Melgar on 167 rows, and Salesforce holds
+  //                             no "Miguel Romero" anywhere in 2,039 rows.
+  //                             Katie's sheet has the surname; the roster has
+  //                             the man. Same person, $33.25.
+  //
+  // This is evidence, not a fuzzy match on spelling — which is the thing the
+  // AR carryover taught us not to do.
+  "Tomco Labor - Rob": { person: "Rob Caputo", hourly: 28.13, viaSalesforce: "Robert Caputo on 154 of 155 named rows" },
+  "Tomco Labor - Miguel": { person: "Miguel Romero / Melgar", hourly: 33.25, viaSalesforce: "Miguel Melgar on 167 rows; no Miguel Romero exists in Salesforce" },
 };
 
-/** Named, not guessed. Printed every run until somebody answers. */
-const UNRESOLVED = [
-  {
-    roster: "Tomco Labor - Miguel",
-    why: 'the sheet says "Miguel Romero", the roster says "Miguel Melgar" — same man? ($33.25)',
-  },
-  {
-    roster: "Tomco Labor - Rob",
-    why: 'two Roberts on the sheet — Rob Caputo ($28.13) or Rob. Patterson ($28.00)? "Robert P" is already mapped to Patterson',
-  },
-];
+/** Nothing is unresolved any more — Salesforce answered both. Kept as an
+ *  empty list rather than deleted, because the next rate sheet will have its
+ *  own ambiguities and this is where they go. */
+const UNRESOLVED = [];
 
 const money = (c) => `$${(c / 100).toFixed(2)}`;
 
@@ -119,10 +133,11 @@ for (const [roster, info] of Object.entries(RATES)) {
   }
   const cents = Math.round(info.hourly * 100 * (BURDEN ?? 1));
   console.log(
-    `${roster.padEnd(24)} ${info.person.padEnd(18)} ${money(Math.round(info.hourly * 100)).padStart(8)}/h` +
+    `${roster.padEnd(24)} ${info.person.padEnd(22)} ${money(Math.round(info.hourly * 100)).padStart(8)}/h` +
       (BURDEN ? ` → ${money(cents)}/h` : "") +
       `   ${emp.worker_type === "w2" ? "(already W-2)" : "sub → W-2"}`,
   );
+  if (info.viaSalesforce) console.log(`${" ".repeat(24)}   ↳ matched via Salesforce: ${info.viaSalesforce}`);
   if (!COMMIT) continue;
 
   if (emp.worker_type !== "w2") {
@@ -159,8 +174,10 @@ if (missing.length) {
   console.log(`\n⚠ not on the roster under that name: ${missing.join(", ")}`);
 }
 
-console.log(`\n── NOT TOUCHED, needs a person to confirm ──`);
-for (const u of UNRESOLVED) console.log(`   ${u.roster}\n      ${u.why}`);
+if (UNRESOLVED.length) {
+  console.log(`\n── NOT TOUCHED, needs a person to confirm ──`);
+  for (const u of UNRESOLVED) console.log(`   ${u.roster}\n      ${u.why}`);
+}
 
 console.log(
   `\n⚠ AND THE OTHER HALF: once these people are W-2, labour payouts must STOP\n` +
