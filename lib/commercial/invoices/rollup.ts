@@ -155,12 +155,19 @@ async function aiaRollupForAccount(account_id: string): Promise<{
   hasAia: boolean;
 }> {
   const sb = commercialDb();
-  const { data: oppRows } = await sb
-    .from("commercial_opportunities")
-    .select("id")
-    .eq("account_id", account_id)
-    .is("deleted_at", null);
-  const ids = ((oppRows ?? []) as { id: string }[]).map((o) => o.id);
+  // PAGINATED. PostgREST caps a select at 1000 rows SILENTLY, so past that
+  // every further opportunity drops out of this rollup and the Account 360
+  // Invoiced / Paid / Balance / Retainage tiles understate with no sign of it.
+  // The invoice read directly below is paginated for exactly this reason.
+  const oppRows = await paginateAll<{ id: string }>(() =>
+    sb
+      .from("commercial_opportunities")
+      .select("id")
+      .eq("account_id", account_id)
+      .is("deleted_at", null)
+      .order("id", { ascending: true }),
+  );
+  const ids = oppRows.map((o) => o.id);
   const zero = {
     billedCents: 0,
     collectedCents: 0,

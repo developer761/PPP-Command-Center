@@ -148,6 +148,9 @@ async function listOpenAiaForPayment(
   nameOf: Map<string, string>,
 ): Promise<SearchableOption[]> {
   const sb = commercialDb();
+  // PAGINATED: past 1000 applications the picker silently stops offering
+  // certificates, and there is no other way to record AIA cash — the missing
+  // option reads as "nothing outstanding" rather than as a truncated list.
   const { data, error } = await sb
     .from("commercial_aia_applications")
     .select("id, opportunity_id, application_number, status")
@@ -161,7 +164,8 @@ async function listOpenAiaForPayment(
     // one click from double-counting it.
     .in("status", ["submitted", "paid"])
     .is("deleted_at", null)
-    .order("application_number", { ascending: true });
+    .order("application_number", { ascending: true })
+    .range(0, 4999);
   if (error || !data) return [];
 
   const issued = data as {
