@@ -165,8 +165,9 @@ export function PayrollWeekPanels({
           )}
           {week.totals.unassignedHours > 0 && (
             <p className="px-3.5 pb-3 pt-1 text-[11px] text-ppp-charcoal-500 leading-snug">
-              Hours not on a job are paid but not charged to anything — they stay out of
-              the split, so no job absorbs time nobody worked on it.
+              Vacation and shop time are paid but sit on no job. Pick the job each
+              person&rsquo;s off-job hours should be charged to in the next panel — they are
+              included in the split once you do, all on that one job.
             </p>
           )}
         </section>
@@ -202,6 +203,28 @@ export function PayrollWeekPanels({
                         <td className={TD}>{e.name}</td>
                         <td className={`${NUM} text-ppp-charcoal-500`}>{hrs(e.jobHours)}</td>
                         <td className="px-3.5 py-1.5 text-right">
+                          {/* Mary 2026-09-24: vacation and shop time are
+                              "included... BD had me put it against a job", and
+                              "he picks a job that can handle the expense". So
+                              it is a choice, offered next to the money, and the
+                              week will not post until it is made. */}
+                          {e.unassignedHours > 0 && (
+                            <select
+                              name={`pto_${e.employeeId}`}
+                              defaultValue={e.unassignedOpportunityId ?? ""}
+                              aria-label={`Job to charge ${e.name}'s ${e.unassignedHours}h of non-job time to`}
+                              className="w-full max-w-[190px] mb-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-[11.5px] text-ppp-charcoal-800 min-h-[44px]"
+                            >
+                              <option value="">
+                                Charge {e.unassignedHours}h off-job to…
+                              </option>
+                              {e.jobs.map((j) => (
+                                <option key={j.opportunityId} value={j.opportunityId}>
+                                  {j.jobName}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                           <input
                             name={`cost_${e.employeeId}`}
                             inputMode="decimal"

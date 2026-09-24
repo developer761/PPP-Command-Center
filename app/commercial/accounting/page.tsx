@@ -404,14 +404,43 @@ async function savePayrollCostsAction(formData: FormData) {
 
   const problems: string[] = [];
   let saved = 0;
+  // Gather BOTH fields per person before writing. Looping over cost_ alone
+  // dropped a PTO job chosen for somebody whose cost had not been typed yet —
+  // the choice vanished on save with no sign it had.
+  const perEmployee = new Map<string, { cost?: string; pto?: string }>();
   for (const [k, v] of formData.entries()) {
-    if (!k.startsWith("cost_")) continue;
-    const employeeId = k.slice(5);
     const raw = String(v ?? "").trim();
+    if (k.startsWith("cost_")) {
+      const e = perEmployee.get(k.slice(5)) ?? {};
+      e.cost = raw;
+      perEmployee.set(k.slice(5), e);
+    } else if (k.startsWith("pto_")) {
+      const e = perEmployee.get(k.slice(4)) ?? {};
+      e.pto = raw;
+      perEmployee.set(k.slice(4), e);
+    }
+  }
+
+  for (const [employeeId, f] of perEmployee) {
+    const ptoJob = UUID_RE.test(f.pto ?? "") ? (f.pto as string) : null;
+    const raw = f.cost ?? "";
     // A BLANK IS NOT A ZERO. Clearing the box means "I have not entered this
     // yet", and writing 0 would let the week post with somebody costed at
-    // nothing — silently putting their jobs in profit.
-    if (raw === "") continue;
+    // nothing — silently putting their jobs in profit. But a PTO job chosen
+    // without a cost still has to save, or the choice is lost.
+    if (raw === "") {
+      if (ptoJob) {
+        const res = await setPayrollCost({
+          periodId: period.id,
+          employeeId,
+          actualCostCents: null,
+          unassignedOpportunityId: ptoJob,
+          userId: user.id,
+        });
+        if (!res.ok) problems.push(res.error);
+      }
+      continue;
+    }
     const cents = dollarsToCents(raw);
     if (!Number.isFinite(cents) || cents < 0) {
       problems.push(raw);
@@ -421,6 +450,7 @@ async function savePayrollCostsAction(formData: FormData) {
       periodId: period.id,
       employeeId,
       actualCostCents: cents,
+      unassignedOpportunityId: ptoJob,
       userId: user.id,
     });
     if (res.ok) saved += 1;

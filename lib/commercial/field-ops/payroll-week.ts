@@ -31,6 +31,14 @@ export type EmployeeWeek = {
   jobHours: number;
   /** Hours with no job behind them — PTO, shop time, an unassigned entry. */
   unassignedHours: number;
+  /**
+   * The job those hours are charged to this week.
+   *
+   * Mary 2026-09-24: "Included. Like if Greg takes a vacation BD had me put it
+   * against a job... he picks a job that can handle the expense." So this is a
+   * person's decision, held per week, and null until it is made.
+   */
+  unassignedOpportunityId: string | null;
   /** What Gusto actually cost, once Mary has entered it. */
   actualCostCents: number | null;
   grossCents: number | null;
@@ -125,19 +133,28 @@ export async function getPayrollWeek(
   const jobs = (jobRows ?? []) as { id: string; name: string; opportunity_id: string | null }[];
   const jobOpp = new Map(jobs.map((j) => [j.id, j.opportunity_id]));
   const jobName = new Map(jobs.map((j) => [j.id, j.name]));
+  /** Opportunity id → a job name, for the job PTO is charged to. */
+  const jobNameByOpp = new Map(
+    jobs.filter((j) => j.opportunity_id).map((j) => [j.opportunity_id as string, j.name]),
+  );
 
   const costs = period
     ? ((
         await sb
           .from("commercial_payroll_costs")
-          .select("employee_id, actual_cost_cents, gross_cents")
+          .select("employee_id, actual_cost_cents, gross_cents, unassigned_opportunity_id")
           .eq("period_id", period.id)
       ).data ?? [])
     : [];
   const costByEmp = new Map(
-    (costs as { employee_id: string; actual_cost_cents: number; gross_cents: number | null }[]).map(
-      (c) => [c.employee_id, c],
-    ),
+    (
+      costs as {
+        employee_id: string;
+        actual_cost_cents: number | null;
+        gross_cents: number | null;
+        unassigned_opportunity_id: string | null;
+      }[]
+    ).map((c) => [c.employee_id, c]),
   );
 
   // Build each person's week. Hours with no job behind them are counted
@@ -161,6 +178,7 @@ export async function getPayrollWeek(
         name: empName.get(t.employee_id) ?? "(unknown)",
         jobHours: 0,
         unassignedHours: 0,
+        unassignedOpportunityId: null,
         actualCostCents: null,
         grossCents: null,
         jobs: [],
@@ -187,9 +205,37 @@ export async function getPayrollWeek(
   const employees = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const e of employees) {
     const c = costByEmp.get(e.employeeId);
-    e.actualCostCents = c ? Number(c.actual_cost_cents) : null;
+    // NULL means not entered yet. 0 means genuinely nothing, which is a real
+    // answer and must not be confused with the absence of one.
+    e.actualCostCents = c && c.actual_cost_cents != null ? Number(c.actual_cost_cents) : null;
     e.grossCents = c?.gross_cents == null ? null : Number(c.gross_cents);
+    e.unassignedOpportunityId = c?.unassigned_opportunity_id ?? null;
     e.jobs.sort((a, b) => b.hours - a.hours);
+
+    /**
+     * NON-JOB HOURS GO ON ONE JOB, NOT ACROSS ALL OF THEM.
+     *
+     * Folded into that job's hours before the split, so the money follows the
+     * hours exactly as it does for worked time — and the job's hours column
+     * shows what it is actually carrying.
+     *
+     * Until the job is chosen those hours are left out, and the week is
+     * BLOCKED below rather than posting a split that quietly spread them.
+     */
+    const jobsForSplit = e.jobs.map((j) => ({ ...j }));
+    if (e.unassignedHours > 0 && e.unassignedOpportunityId) {
+      const target = jobsForSplit.find((j) => j.opportunityId === e.unassignedOpportunityId);
+      if (target) target.hours += e.unassignedHours;
+      else
+        jobsForSplit.push({
+          opportunityId: e.unassignedOpportunityId,
+          jobName: jobNameByOpp.get(e.unassignedOpportunityId) ?? "Job",
+          hours: e.unassignedHours,
+        });
+    }
+    e.jobs = jobsForSplit.sort((a, b) => b.hours - a.hours);
+    e.jobHours = jobsForSplit.reduce((n, j) => n + j.hours, 0);
+
     if (e.actualCostCents != null && e.jobHours > 0) {
       e.allocation = allocatePayrollToJobs(e.actualCostCents, e.jobs);
       e.loadedHourlyCents = Math.round(e.actualCostCents / e.jobHours);
@@ -234,6 +280,13 @@ export async function getPayrollWeek(
   if (unapprovedHours > 0)
     blockers.push(
       `${unapprovedHours}h are logged but not approved, so they are not costed. Approve them first or they land on no job.`,
+    );
+  // Non-job hours with nowhere to go. Named per person, because Mary chooses
+  // per person — and left unsaid, that money would silently spread.
+  const needJob = employees.filter((e) => e.unassignedHours > 0 && !e.unassignedOpportunityId);
+  if (needJob.length > 0)
+    blockers.push(
+      `Pick the job to charge non-job hours to for ${needJob.map((e) => `${e.name} (${e.unassignedHours}h)`).join(", ")}.`,
     );
   const noCost = employees.filter((e) => e.actualCostCents == null && e.jobHours > 0);
   if (noCost.length > 0)
@@ -294,19 +347,30 @@ export async function ensurePayrollPeriod(
 export async function setPayrollCost(input: {
   periodId: string;
   employeeId: string;
-  actualCostCents: number;
+  actualCostCents: number | null;
   grossCents?: number | null;
+  /** The job this person's non-job hours are charged to. `undefined` leaves
+   *  whatever is stored; `null` clears it. */
+  unassignedOpportunityId?: string | null;
   userId: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!Number.isFinite(input.actualCostCents) || input.actualCostCents < 0)
+  // `null` is legitimate — the row may exist only to hold the PTO job choice.
+  if (
+    input.actualCostCents != null &&
+    (!Number.isFinite(input.actualCostCents) || input.actualCostCents < 0)
+  )
     return { ok: false, error: "Enter the actual cost from Gusto." };
   const sb = commercialDb();
   const { error } = await sb.from("commercial_payroll_costs").upsert(
     {
       period_id: input.periodId,
       employee_id: input.employeeId,
-      actual_cost_cents: Math.round(input.actualCostCents),
+      actual_cost_cents:
+        input.actualCostCents == null ? null : Math.round(input.actualCostCents),
       gross_cents: input.grossCents == null ? null : Math.round(input.grossCents),
+      ...(input.unassignedOpportunityId !== undefined
+        ? { unassigned_opportunity_id: input.unassignedOpportunityId }
+        : {}),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "period_id,employee_id" },
