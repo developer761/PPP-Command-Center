@@ -88,13 +88,33 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
       group: o.status === "post_sale_closed" ? "Closed" : "Live jobs",
     }));
 
+  /**
+   * AIA CERTIFICATES BELONG IN THIS LIST TOO.
+   *
+   * Stephanie 2026-09-23: *"when I went into record the payment, it didn't
+   * show up on the list because it was billed as AIA. Even on the open AIA's."*
+   *
+   * The picker read `commercial_invoices` and nothing else, so a job billed by
+   * progress certificate — which is how Tomco bills most commercial work — had
+   * nothing to select. The money had been received and there was no way to say
+   * so from the screen whose entire job is saying so.
+   *
+   * Grouped rather than merged: an invoice and a G702 are different documents
+   * and the person picking one knows which they are looking for. The value is
+   * prefixed `aia:` so the action can tell the two ledgers apart — an id alone
+   * cannot, and guessing wrong would post a payment into the wrong table.
+   */
   const openInvoices: SearchableOption[] = invoices
     .sort((a, b) => Number(b.balance_cents) - Number(a.balance_cents))
     .map((i) => ({
       value: i.id,
       label: `${i.invoice_number} · ${i.opportunity_id ? nameOf.get(i.opportunity_id) ?? "Job" : "Job"}`,
       hint: `${formatCentsFull(Number(i.balance_cents))} outstanding`,
+      group: "Invoices",
     }));
+
+  const openAia = await listOpenAiaForPayment(nameOf);
+  openInvoices.push(...openAia);
 
   const vendors: SearchableOption[] = (vendorRows ?? [])
     .filter((v) => (v.name ?? "").trim())
@@ -111,4 +131,83 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
     .map(([name, n]) => ({ value: name, label: name, hint: `${n} payment${n === 1 ? "" : "s"}` }));
 
   return { openInvoices, jobs, vendors, payees };
+}
+
+/**
+ * Issued AIA applications with money still outstanding on them.
+ *
+ * "Outstanding" is G702 line 6 (Total Earned Less Retainage) minus what has
+ * been recorded against that certificate — the same definition the application
+ * screen shows, so the two never disagree about what is owed.
+ *
+ * Tolerates the payments table not existing yet: before migration
+ * 20260924090000 is applied every certificate simply reads as fully
+ * outstanding, which is what it was before payments could be recorded at all.
+ */
+async function listOpenAiaForPayment(
+  nameOf: Map<string, string>,
+): Promise<SearchableOption[]> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_aia_applications")
+    .select("id, opportunity_id, application_number, status")
+    // SUBMITTED ONLY.
+    //
+    // A 'paid' certificate has nothing outstanding by definition, and the ones
+    // marked paid before payment records existed carry NO payment rows — so
+    // "billed minus recorded" reads as fully outstanding and invites recording
+    // the money a second time. On AIREF Building #1 that offered Application 2
+    // at $66,833.31 outstanding when the job already counts it as collected:
+    // one click from double-counting it.
+    .in("status", ["submitted", "paid"])
+    .is("deleted_at", null)
+    .order("application_number", { ascending: true });
+  if (error || !data) return [];
+
+  const issued = data as {
+    id: string;
+    opportunity_id: string;
+    application_number: number;
+    status: string;
+  }[];
+  // Every ISSUED application is needed for the cumulative maths below — line 6
+  // carries every prior period, so a certificate's own amount is the step up
+  // from the one before it whatever ITS status is. Filtering the paid ones out
+  // of this list made Application 3 on AIREF read $141,962.49 instead of
+  // $75,129.18: the whole job instead of the period.
+  const rows = issued.filter((r) => r.status === "submitted");
+  if (rows.length === 0) return [];
+
+  const [{ resolveG702 }, { listAiaPaymentsByApplication, sumAiaPayments }] = await Promise.all([
+    import("@/lib/commercial/aia/db"),
+    import("@/lib/commercial/aia/payments"),
+  ]);
+  const paymentsByApp = await listAiaPaymentsByApplication(rows.map((r) => r.id));
+
+  const out: SearchableOption[] = [];
+  for (const r of rows) {
+    const g702 = await resolveG702(r.id);
+    const billed = Math.round(g702?.totalEarnedLessRetainageCents ?? 0);
+    if (billed <= 0) continue;
+    // Line 6 is CUMULATIVE — it carries every prior period — so what THIS
+    // certificate added is the step up from the one before it. Using line 6
+    // raw would ask for the whole job on every application.
+    const prior = issued
+      .filter((x) => x.opportunity_id === r.opportunity_id && x.application_number < r.application_number)
+      .pop();
+    const priorBilled = prior
+      ? Math.round((await resolveG702(prior.id))?.totalEarnedLessRetainageCents ?? 0)
+      : 0;
+    const thisPeriod = Math.max(0, billed - priorBilled);
+    const paid = sumAiaPayments(paymentsByApp.get(r.id) ?? []);
+    const outstanding = thisPeriod - paid;
+    if (outstanding <= 0) continue;
+    out.push({
+      value: `aia:${r.id}`,
+      label: `AIA No. ${r.application_number} · ${nameOf.get(r.opportunity_id) ?? "Job"}`,
+      hint: `${formatCentsFull(outstanding)} outstanding`,
+      group: "AIA certificates",
+    });
+  }
+  return out;
 }

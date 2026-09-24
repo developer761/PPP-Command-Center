@@ -75,18 +75,21 @@ export function RecordPaymentForm({
   return (
     <FormCard
       title="Record a payment"
-      hint="Money in, against an open invoice. It lands on the invoice, the job and the deposit list at once."
+      hint="Money in, against an open invoice or AIA certificate. It lands on the document, the job and the deposit list at once."
       action={action}
       submitLabel="Record payment"
       pendingLabel="Recording…"
     >
       {invoices.length === 0 ? (
-        <p className="text-[12.5px] text-ppp-charcoal-500">Nothing is open — every invoice is paid.</p>
+        <p className="text-[12.5px] text-ppp-charcoal-500">Nothing is open — every invoice and AIA certificate is paid.</p>
       ) : (
         <>
           <label data-tour="pay:invoice_id" className="block">
-            <span className={LABEL_CLS}>Invoice *</span>
-            <SearchableSelect name="invoice_id" options={invoices} required placeholder="Search by job or invoice number…" ariaLabel="Invoice" />
+            {/* Invoices AND AIA certificates. Stephanie 2026-09-23: a job
+                billed by progress certificate had nothing to pick here, which
+                is where she first hit it. */}
+            <span className={LABEL_CLS}>Invoice or AIA certificate *</span>
+            <SearchableSelect name="invoice_id" options={invoices} required placeholder="Search by job, invoice number or AIA no.…" ariaLabel="Invoice or AIA certificate" />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label data-tour="pay:amount" className="block">

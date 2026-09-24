@@ -319,8 +319,33 @@ async function recordPaymentAction(formData: FormData) {
   const invoiceId = String(formData.get("invoice_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
   if (!invoiceId || cents <= 0) {
-    redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice and enter an amount.")}`);
+    redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice or AIA certificate and enter an amount.")}`);
   }
+
+  // AN AIA CERTIFICATE, NOT AN INVOICE.
+  //
+  // Stephanie 2026-09-23: "when I went into record the payment, it didn't show
+  // up on the list because it was billed as AIA." The picker now offers them,
+  // and they carry an `aia:` prefix because a bare uuid cannot say which of
+  // the two ledgers it belongs to — and posting an AIA payment into
+  // commercial_invoice_payments would be a silent write to the wrong table.
+  if (invoiceId.startsWith("aia:")) {
+    const appId = invoiceId.slice(4);
+    const { recordAiaPayment } = await import("@/lib/commercial/aia/payments");
+    const aiaRes = await recordAiaPayment({
+      application_id: appId,
+      amount_cents: cents,
+      paid_at: pickedDate(formData.get("paid_at")),
+      method: String(formData.get("method") ?? "other"),
+      reference: joinOtherDetail(str(formData.get("method_other")), str(formData.get("reference"))),
+      recorded_by_user_id: user.id,
+    });
+    revalidatePath(BASE);
+    if (!aiaRes.ok)
+      redirect(`${BASE}?view=receivables&error=${encodeURIComponent(aiaRes.error)}`);
+    redirect(`${BASE}?view=receivables&ok=${encodeURIComponent("Payment recorded against the AIA certificate.")}`);
+  }
+
   const { addPayment } = await import("@/lib/commercial/invoices/db");
   const res = await addPayment(invoiceId, {
     amount_cents: cents,
