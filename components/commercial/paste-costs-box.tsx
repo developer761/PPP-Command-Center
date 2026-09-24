@@ -62,10 +62,14 @@ export function PasteCostsBox({
 
   if (!open)
     return (
+      // `flex`, not `inline-flex`. As an inline-level box forced to 44px tall
+      // it did not reserve its own line height, so the Save button below rode
+      // up over it — two overlapping controls on the one panel that takes
+      // money in.
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center"
+        className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] flex items-center w-fit"
       >
         Paste a column from Gusto
       </button>

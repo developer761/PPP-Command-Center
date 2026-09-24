@@ -47,7 +47,7 @@ export function CopyHoursButton({
       <button
         type="button"
         onClick={copy}
-        className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center"
+        className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] flex items-center w-fit"
       >
         {state === "done" ? "Copied ✓" : "Copy hours for Gusto"}
       </button>

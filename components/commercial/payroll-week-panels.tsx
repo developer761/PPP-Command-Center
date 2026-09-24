@@ -65,6 +65,7 @@ export function PayrollWeekPanels({
   basePath,
   lastHoursWeekHref,
   approvalsHref,
+  laborPaymentsHref,
 }: {
   week: PayrollWeek;
   saveCostsAction: (formData: FormData) => void | Promise<void>;
@@ -78,6 +79,8 @@ export function PayrollWeekPanels({
   /** Where unapproved hours get approved. A blocker that says "approve them
    *  first" without saying where is a dead end. */
   approvalsHref: string;
+  /** The Labor payments tab, where a posted week's payouts show up. */
+  laborPaymentsHref: string;
 }) {
   const posted = week.status === "allocated";
   const empty = week.employees.length === 0;
@@ -210,6 +213,18 @@ export function PayrollWeekPanels({
                 " Change a Gusto figure and post again — it replaces what it wrote last time rather than adding to it."
               )}
             </p>
+            {/* What it wrote is a set of labor payouts, and those live on
+                another tab. Saying "it is on the jobs" without a way to look
+                is the same dead end as telling her to pick a job from a panel
+                that is empty. */}
+            <Link
+              href={laborPaymentsHref}
+              className={`mt-1.5 inline-flex items-center min-h-[44px] text-[12px] font-semibold hover:underline ${
+                drifted ? "text-amber-900" : "text-emerald-900"
+              }`}
+            >
+              See the payouts it wrote →
+            </Link>
           </div>
         );
       })()}
@@ -468,8 +483,15 @@ export function PayrollWeekPanels({
             </div>
           </div>
           {!detailJob ? (
-            <p className="px-3.5 py-4 text-[12px] text-ppp-charcoal-500">
-              Pick a job from the allocation panel.
+            // "Pick a job from the allocation panel" was never true: a job is
+            // auto-selected whenever there IS one, so this only ever showed
+            // when the allocation panel was empty too — telling her to go and
+            // click something that was not there. Say what is actually true
+            // for the case that reaches this branch.
+            <p className="px-3.5 py-4 text-[12px] text-ppp-charcoal-500 leading-snug">
+              {empty
+                ? "Nothing to show until this week has hours in it."
+                : "This appears once the hours are split across jobs."}
             </p>
           ) : (
             <>

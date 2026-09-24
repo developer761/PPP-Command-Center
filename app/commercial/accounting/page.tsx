@@ -2524,7 +2524,12 @@ export default async function AccountingPage({
                 ? `${BASE}?view=payroll&week=${payroll.week.lastW2HoursDate}`
                 : null
             }
-            approvalsHref="/commercial/field-ops/approvals"
+            // Carries the exact week back, so approving an hour does not cost
+            // her the trip through Accounting → Payroll → find the week again.
+            approvalsHref={`/commercial/field-ops/approvals?return=${encodeURIComponent(
+              `${BASE}?view=payroll&week=${payroll.start}`,
+            )}`}
+            laborPaymentsHref={`${BASE}?view=labor-out`}
           />
         </section>
       )}
