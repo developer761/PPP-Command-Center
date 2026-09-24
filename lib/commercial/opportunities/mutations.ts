@@ -301,12 +301,18 @@ export async function createCommercialOpportunity(
   if (opp.estimator_user_id) {
     try {
       const { addOpportunityAssignment } = await import("./assignments");
-      await addOpportunityAssignment({
+      // Same swallowed-result trap as the update path — see the comment there.
+      const res = await addOpportunityAssignment({
         opportunity_id: opp.id,
         user_id: opp.estimator_user_id,
         role: "estimator",
         assigned_by_user_id: input.created_by_user_id ?? null,
       });
+      if (!res.ok) {
+        console.warn(
+          `[opportunities] estimator ${opp.estimator_user_id} was set on ${opp.id} but not notified: ${res.error}`,
+        );
+      }
     } catch (err) {
       console.warn(
         "[opportunities] estimator assignment/notify on create failed:",
@@ -587,12 +593,22 @@ export async function updateCommercialOpportunity(
   if (estimatorChanged) {
     try {
       const { addOpportunityAssignment } = await import("./assignments");
-      await addOpportunityAssignment({
+      // READ THE RESULT. This returns {ok:false} on refusal — it does not
+      // throw — so the catch below could never see a failed assignment. An
+      // inactive or unknown assignee produced a silent no-notification: the
+      // estimator's name went on the deal and nobody told them, which is the
+      // half of "assign an estimator" that the request was actually about.
+      const res = await addOpportunityAssignment({
         opportunity_id: opp.id,
         user_id: opp.estimator_user_id as string,
         role: "estimator",
         assigned_by_user_id: input.updated_by_user_id ?? null,
       });
+      if (!res.ok) {
+        console.warn(
+          `[opportunities] estimator ${opp.estimator_user_id} was set on ${opp.id} but not notified: ${res.error}`,
+        );
+      }
     } catch (err) {
       console.warn(
         "[opportunities] estimator assignment/notify failed:",
