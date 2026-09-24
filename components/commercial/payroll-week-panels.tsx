@@ -2,6 +2,7 @@ import Link from "next/link";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
+import { PasteCostsBox } from "@/components/commercial/paste-costs-box";
 import type { PayrollWeek } from "@/lib/commercial/field-ops/payroll-week";
 
 /**
@@ -324,7 +325,12 @@ export function PayrollWeekPanels({
                   </tfoot>
                 </table>
               </div>
-              <div className="px-3.5 py-3 border-t border-ppp-charcoal-100">
+              <div className="px-3.5 py-3 border-t border-ppp-charcoal-100 space-y-2.5">
+                {/* Katie asked for an upload; this is the safer half of it.
+                    The figures land in the boxes beside the names, and nothing
+                    is saved until Save is pressed — so a column that is one row
+                    short is visible now rather than in a margin next month. */}
+                <PasteCostsBox employeeNames={week.employees.map((e) => e.name)} />
                 <PendingSubmitButton
                   pendingLabel="Saving…"
                   className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
