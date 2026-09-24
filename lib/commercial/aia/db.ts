@@ -178,6 +178,28 @@ export type CreateAiaApplicationInput = {
  * (never trusted from the caller). application_number is max+1; the UNIQUE
  * constraint catches an insert race, retried once.
  */
+/**
+ * The next free application number on a job.
+ *
+ * Counts DELETED applications too, because the unique index does (migration
+ * 081 has no deleted_at filter). A suggestion computed from live rows alone
+ * can propose a number a deleted draft still reserves — the create then fails,
+ * silently retries, and the operator gets a different number from the one the
+ * form showed them. That is Stephanie's original complaint ("it numbers them
+ * automatically even after a draft is deleted") arriving by a second route.
+ */
+export async function nextAiaApplicationNumber(opportunityId: string): Promise<number> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_aia_applications")
+    .select("application_number")
+    .eq("opportunity_id", opportunityId)
+    .order("application_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return ((data as { application_number: number } | null)?.application_number ?? 0) + 1;
+}
+
 export async function createAiaApplication(
   input: CreateAiaApplicationInput
 ): Promise<Result<AiaApplication>> {
@@ -220,6 +242,10 @@ export async function createAiaApplication(
       : DEFAULT_RETAINAGE_PCT;
 
   for (let attempt = 0; attempt < 2; attempt++) {
+    // Deliberately NOT filtered on deleted_at: the unique index isn't either,
+    // so max+1 over live rows alone can return a number a deleted draft still
+    // holds — the insert then fails, retries, and lands somewhere the caller
+    // did not ask for.
     const { data: last } = await sb
       .from("commercial_aia_applications")
       .select("application_number")
@@ -804,17 +830,26 @@ export async function updateAiaApplication(
     }
     if (wanted !== before.application_number) {
       const sbCheck = commercialDb();
+      // DELETED ROWS COUNT. The unique index is on (opportunity_id,
+      // application_number) with NO deleted_at filter — migration 081 — so a
+      // soft-deleted draft keeps its number for ever. Checking only live rows
+      // found no clash, let the UPDATE through, and handed Stephanie the raw
+      // `duplicate key value violates unique constraint …` that this check
+      // exists to prevent. AIREF Building #1 is exactly that shape today: a
+      // deleted Application 1 still holding the number, live 2, 3 and 5.
       const { data: clash } = await sbCheck
         .from("commercial_aia_applications")
-        .select("id")
+        .select("id, deleted_at")
         .eq("opportunity_id", before.opportunity_id)
         .eq("application_number", wanted)
-        .is("deleted_at", null)
         .maybeSingle();
       if (clash) {
+        const wasDeleted = !!(clash as { deleted_at: string | null }).deleted_at;
         return {
           ok: false,
-          error: `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
+          error: wasDeleted
+            ? `Application No. ${wanted} was used by a draft that has since been deleted, and the number is still reserved to it. Pick a different number.`
+            : `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
         };
       }
       next.application_number = wanted;

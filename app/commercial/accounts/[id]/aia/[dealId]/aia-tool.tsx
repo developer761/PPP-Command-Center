@@ -28,6 +28,7 @@ import {
   upsertAiaLineItem,
   deleteAiaLineItem,
   resolveG702,
+  nextAiaApplicationNumber,
   reconcileDraftChangeOrderRows,
   getEffectiveContractBaseCents,
   aiaBillingRollupBulk,
@@ -736,7 +737,9 @@ async function AiaApplicationList({
    *  highest one on the job — and is editable, because a job that was already
    *  running when it arrived here does not start at 1. The period starts the
    *  day after the last one ended, which is what a progress billing is. */
-  const suggestedAppNumber = (latestApp?.application_number ?? 0) + 1;
+  // Not `latestApp + 1` — that reads live rows only, and a deleted draft still
+  // reserves its number. See nextAiaApplicationNumber.
+  const suggestedAppNumber = await nextAiaApplicationNumber(dealId);
   const suggestedPeriodFrom = (() => {
     const prevEnd = latestApp?.period_to?.slice(0, 10);
     if (!prevEnd) return "";
