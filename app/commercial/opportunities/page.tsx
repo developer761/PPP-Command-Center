@@ -2095,9 +2095,17 @@ export default async function CommercialOpportunitiesPage({
         statusSnapshot.length > 0 && (
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3">
             <div className="text-[12px] font-semibold text-ppp-charcoal-700 mb-2 flex items-center justify-between">
-              <span>Open by stage</span>
+              {/* NOT "Open by stage".
+                  The KPI above reads "Open opportunities 40" and counts
+                  PRE-SALE only — Estimating + Sent. These chips cover every
+                  live stage, so they sum to 76. Two numbers on one screen,
+                  both labelled open, differing by 36, with nothing saying why.
+                  The word is the whole problem; dropping it fixes it. */}
+              <span>By stage</span>
               <span className="font-normal text-ppp-charcoal-400 normal-case tracking-normal text-[10px]">
-                {validColumn ? "Tap active pill to clear" : "Tap to filter"}
+                {validColumn
+                  ? "Tap active pill to clear"
+                  : "Estimating + Sent are the open ones · tap to filter"}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[12px]">
