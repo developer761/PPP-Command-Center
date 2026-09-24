@@ -166,7 +166,7 @@ export default async function JobCostsReportPage() {
             )}
             {t.laborUnratedHours > 0 && (
               <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-                <span className="font-semibold">{t.laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so crew labor (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+                <span className="font-semibold">{t.laborUnratedHours.toLocaleString()} crew hours</span> have no cost against them yet, so crew labor (and profit) reads high. They get their cost when the week is posted in <Link href="/commercial/accounting?view=payroll" className="font-semibold underline">Payroll</Link>.
               </p>
             )}
           </section>

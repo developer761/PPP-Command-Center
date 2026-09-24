@@ -52,6 +52,7 @@ import { JobsInFlight } from "@/components/commercial/jobs-in-flight";
 import { buildWorklist, worklistTotals } from "@/lib/commercial/worklist";
 import { companyPnl } from "@/lib/commercial/reports/company-pnl";
 import { Worklist, WorklistClear } from "@/components/commercial/worklist";
+import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -649,7 +650,7 @@ export default async function CommercialDashboardPage() {
               )}
               {laborUnratedHours > 0 && (
                 <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-                  <span className="font-semibold">{laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so labor cost (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+                  <span className="font-semibold">{laborUnratedHours.toLocaleString()} crew hours</span> have no cost against them yet, so labor cost (and profit) reads high. They get their cost when the week is posted in <Link href={PAYROLL_HREF} className="font-semibold underline">Payroll</Link>.
                 </p>
               )}
             </div>

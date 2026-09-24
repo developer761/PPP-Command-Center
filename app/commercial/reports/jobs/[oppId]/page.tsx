@@ -248,7 +248,7 @@ export default async function JobReportPage({
               )}
               {fin.laborUnratedHours > 0 && (
                 <p className="mt-1.5 text-[11.5px] text-amber-800">
-                  Margin is understated: {fin.laborUnratedHours}h of crew time has no cost rate on file, so it costs $0 here.
+                  Margin reads high: {fin.laborUnratedHours}h of crew time is not costed yet, so it counts as $0 here until that week is posted in Payroll.
                 </p>
               )}
             </>

@@ -911,13 +911,14 @@ export async function ProjectCostsTool({
           </ul>
           {crewLabor.some((w) => w.unratedHours > 0) && (
             <p className="mt-2.5 text-[11.5px] text-amber-700 leading-snug">
-              Some crew hours have no cost rate set, so labor cost and margin
-              are understated. Set rates on the{" "}
+              Some crew hours have no cost against them yet, so labor cost and
+              margin read high. They get their cost when the week is posted
+              in{" "}
               <Link
-                href="/commercial/field-ops/employees"
+                href="/commercial/accounting?view=payroll"
                 className="font-semibold underline"
               >
-                Crew
+                Payroll
               </Link>{" "}
               page.
             </p>

@@ -1547,7 +1547,7 @@ export default async function AccountingPage({
               tone={jobCosts.totals.laborUnratedHours > 0 ? "amber" : "neutral"}
               // Unpriced hours understate cost, which overstates margin. Naming
               // that is the difference between a caveat and a wrong number.
-              sub={jobCosts.totals.laborUnratedHours > 0 ? "no cost rate — margin reads high" : "every hour has a rate"}
+              sub={jobCosts.totals.laborUnratedHours > 0 ? "not costed yet — margin reads high" : "every hour has a rate"}
             />
           </div>
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">

@@ -78,6 +78,7 @@ import { SubmitButton } from "@/components/commercial/submit-button";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { NicknameModeToggle } from "@/components/commercial/nickname-mode-toggle";
+import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -5626,7 +5627,7 @@ async function AccountKpisTab({
         </div>
         {acctLaborUnratedHours > 0 && (
           <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-            <span className="font-semibold">{acctLaborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+            <span className="font-semibold">{acctLaborUnratedHours.toLocaleString()} approved crew hours</span> have no cost against them yet, so labor cost and margin read high. They get their cost when the week is posted in <Link href={PAYROLL_HREF} className="font-semibold underline">Payroll</Link>.
           </p>
         )}
       </section>

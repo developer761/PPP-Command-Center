@@ -261,7 +261,7 @@ export default async function JobsReportPage({ searchParams }: { searchParams: P
             <Tile
               label="Labor hours"
               value={totals.laborHours > 0 ? `${fmtHours(totals.laborHours)}h` : "None logged"}
-              sub={totals.unratedHours > 0 ? `${fmtHours(totals.unratedHours)}h with no cost rate` : undefined}
+              sub={totals.unratedHours > 0 ? `${fmtHours(totals.unratedHours)}h not costed yet` : undefined}
               tone={totals.unratedHours > 0 ? "amber" : "navy"}
             />
             <Tile label="In delivery" value={String(totals.byGroup.delivery)} sub={`${totals.byGroup.open} open · ${totals.byGroup.closed} closed`} tone="navy" />
@@ -270,7 +270,7 @@ export default async function JobsReportPage({ searchParams }: { searchParams: P
           <p className="text-[11px] leading-snug text-ppp-charcoal-500">
             Totals are each job&rsquo;s figures for its whole life, added up{range ? " over the jobs in this period" : ""} — not money that moved{range ? " during it" : ""}.
             For money in a window, use <Link href="/commercial/reports/cash-flow" className="font-semibold text-cc-brand-700 hover:underline">Cash flow</Link>.
-            {totals.unratedHours > 0 && " Margin is understated while crew hours have no cost rate."}
+            {totals.unratedHours > 0 && " Margin reads high while crew hours are waiting on payroll."}
           </p>
         </section>
       )}
@@ -376,7 +376,7 @@ export default async function JobsReportPage({ searchParams }: { searchParams: P
                       <Num
                         value={r.laborHours > 0 ? `${fmtHours(r.laborHours)}h` : "—"}
                         muted={r.laborHours === 0}
-                        title={r.unratedHours > 0 ? `${fmtHours(r.unratedHours)}h have no cost rate on file` : undefined}
+                        title={r.unratedHours > 0 ? `${fmtHours(r.unratedHours)}h not costed yet — waiting on payroll` : undefined}
                         className={r.unratedHours > 0 ? "text-amber-800" : undefined}
                       />
                     </tr>

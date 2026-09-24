@@ -201,8 +201,8 @@ export default async function LaborReportPage({
           {report.unratedHours > 0 && (
             <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
               <p className="text-[12.5px] font-semibold text-amber-900">
-                {hrs(report.unratedHours)} worked with no cost rate on file — the labor cost above is short by
-                whatever those hours were worth.
+                {hrs(report.unratedHours)} worked are not costed yet — the labor cost above is short by
+                whatever those hours were worth until the week is posted in Payroll.
               </p>
               <p className="text-[11.5px] text-amber-800 mt-0.5">
                 {canSeePeople ? report.unratedPeople.join(", ") : `${report.unratedPeople.length} ${report.unratedPeople.length === 1 ? "person" : "people"}`}
