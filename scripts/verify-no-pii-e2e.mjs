@@ -31,16 +31,28 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
  * Listed because a table is a deliberate thing to add; columns are not, and
  * columns are where the misses happened.
  */
-const TABLES = [
-  "sms_training_examples",
-  "sms_example_findings",
-  "sms_class_a_rules",
-  "sms_class_a_rule_notes",
-  "sms_campaign_steps",
-  "sms_drafts",
-  "sms_messages",
-  "sms_conversations",
-];
+/**
+ * DISCOVERED, not listed.
+ *
+ * The first version of this file named eight tables. There are thirty-one.
+ * It was blind to twenty-three of them, which is the same blind spot as a
+ * hand-written column list one level up — and I only found it by sweeping
+ * for write paths that store prose and noticing sms_training_example_tags
+ * has a `note` column that was never being read.
+ *
+ * PostgREST publishes its schema at the root, so the list comes from the
+ * database. A table added next month is covered the day it appears.
+ */
+async function discoverTables() {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL + "/rest/v1/";
+  const res = await fetch(base, {
+    headers: { apikey: process.env.SUPABASE_SECRET_KEY, Authorization: "Bearer " + process.env.SUPABASE_SECRET_KEY },
+  });
+  if (!res.ok) throw new Error(`could not read the schema: ${res.status}`);
+  const spec = await res.json();
+  const all = Object.keys(spec.definitions ?? spec.components?.schemas ?? {});
+  return all.filter((t) => /^(sms_|sf_)/.test(t)).sort();
+}
 
 /**
  * Columns that legitimately hold a real phone number or address, because that
@@ -50,16 +62,34 @@ const TABLES = [
  * a leak in a column that happened to be named well.
  */
 const BY_DESIGN = new Set([
+  // The live conversation. These columns exist to hold contact details.
   "sms_conversations.customer_phone",
   "sms_conversations.customer_email",
   "sms_conversations.customer_address",
   "sms_conversations.customer_zip",
+  "sms_conversations.customer_name",
   "sms_opt_outs.phone_e164",
+  "sms_opt_outs.email",
+  "sms_opt_outs.inbound_body",  // the words they opted out with, kept as evidence
   "sms_messages.body",          // the live thread, not the training corpus
   "sms_messages.subject",
   "sms_drafts.body",            // a reply about to be sent to that customer
   "sms_campaign_steps.body",    // merge fields resolve at send time
   "sms_campaign_steps.subject",
+  // The raw Salesforce lead queue. It IS the contact record, and routing
+  // reads it. Nothing here reaches a model.
+  "sf_lead_inbound.payload",
+  "sf_lead_inbound.phone_e164",
+  "sf_lead_inbound.email",
+  // PPP's own numbers, in operator notes about which Hatch line is which.
+  "sms_sub_accounts.notes",
+  "sms_sub_accounts.phone_e164",
+  "sms_sub_accounts.reply_to_email",
+  "sms_sub_accounts.origination_identity",
+  // PPP staff, not customers. Linking a Salesforce user to a login is the
+  // entire purpose of this table.
+  "sf_user_links.login_email",
+  "sf_user_links.sf_user_email",
 ]);
 
 /**
@@ -112,6 +142,9 @@ let findings = 0, scanned = 0, columns = 0;
 
 console.log("\nPII SWEEP — every text column, discovered not listed\n");
 
+const TABLES = await discoverTables();
+console.log(`  ${TABLES.length} tables in the schema\n`);
+
 for (const table of TABLES) {
   // One row, to learn the shape. A table with no rows has nothing to leak.
   const { data: probe, error: probeErr } = await sb.from(table).select("*").limit(1);
@@ -124,7 +157,7 @@ for (const table of TABLES) {
     .filter((k) => !BY_DESIGN.has(`${table}.${k}`));
   if (!textCols.length) { console.log(`  ${table.padEnd(26)} no text columns`); continue; }
 
-  const key = "code" in probe[0] ? "code" : "id";
+  const key = "code" in probe[0] ? "code" : "id" in probe[0] ? "id" : Object.keys(probe[0])[0];
   // pii_scrubbed=false means the row was DELIBERATELY held back: the importer
   // could not clear it and withdrew it, and retrieval filters on that flag in
   // the query. Such a row still contains what it contains, and that is the
