@@ -20,6 +20,7 @@ import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type 
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
@@ -121,8 +122,8 @@ const BASE = "/commercial/accounting";
  */
 
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
-  materials: "brand", crewLabor: "emerald", subLabor: "blue", subcontractor: "navy",
-  equipment: "amber", permit: "neutral", other: "neutral",
+  materials: "brand", crewLabor: "emerald", employeeLabor: "navy", subLabor: "blue",
+  subcontractor: "neutral", equipment: "amber", permit: "neutral", other: "neutral",
 };
 
 type Tone = "brand" | "navy" | "amber" | "emerald" | "rose" | "neutral";
@@ -532,7 +533,14 @@ async function recordSpendAction(formData: FormData) {
   const { addPurchase } = await import("@/lib/commercial/purchases/db");
   const res = await addPurchase({
     opportunity_id: oppId,
-    category: isLabor ? "labor" : String(formData.get("category") ?? "materials"),
+    // A labor payment now says WHOSE labor it was. Validated against the
+    // shared list rather than trusted: this writes a category straight into
+    // the row, and an unknown value would render as "Other" on every report.
+    category: isLabor
+      ? (isLaborPaymentCategory(String(formData.get("labor_category") ?? ""))
+          ? String(formData.get("labor_category"))
+          : "employee_labor")
+      : String(formData.get("category") ?? "materials"),
     vendor: String(formData.get("vendor") ?? "") || null,
     amount_cents: cents,
     hours: isLabor && hoursRaw ? Number(hoursRaw) : null,

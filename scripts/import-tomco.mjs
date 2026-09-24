@@ -1910,7 +1910,16 @@ async function reconcile() {
   const fromSf = (p) => importedPurchaseRowIds.has(p.id);
   const authoredHere = purch.filter((p) => !fromSf(p));
   const ourMaterials = purch.filter((p) => p.category === "materials" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
-  const ourLabor = purch.filter((p) => p.category === "labor" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
+  // BOTH labor categories.
+  //
+  // Salesforce has one idea of a labor payment; we now have two — `labor` for
+  // outside help and `employee_labor` for Tomco's own crew, split out when the
+  // crew went W-2. This compares OUR total against SF's, so counting only
+  // `labor` would have reported a ~$500k discrepancy that does not exist and
+  // hard-exited the nightly sync. The money is identical; only the heading
+  // this side changed.
+  const LABOR_CATS = new Set(["labor", "employee_labor"]);
+  const ourLabor = purch.filter((p) => LABOR_CATS.has(p.category) && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
   if (authoredHere.length > 0) {
     const byCat = {};
     for (const p of authoredHere) byCat[p.category] = (byCat[p.category] ?? 0) + Number(p.amount_cents);

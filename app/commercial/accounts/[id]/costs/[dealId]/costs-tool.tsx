@@ -42,6 +42,7 @@ import {
   OFFERED_PURCHASE_CATEGORIES,
   PURCHASE_CATEGORY_META,
   purchaseCategoryLabel,
+  isLaborPaymentCategory,
 } from "@/lib/commercial/purchases/constants";
 import { getDocumentsByIds } from "@/lib/commercial/documents/db";
 import {
@@ -263,7 +264,7 @@ async function addPurchaseAction(formData: FormData) {
     reimburse_to: reimburseTo || null,
     amount_cents: cents!,
     // Hours only stored for labor (db enforces the same rule).
-    hours: category === "labor" ? parseHours(rawHours) : null,
+    hours: isLaborPaymentCategory(category) ? parseHours(rawHours) : null,
     purchased_at,
     description: description || null,
     created_by_user_id: userId,
@@ -373,7 +374,7 @@ async function updatePurchaseAction(formData: FormData) {
       reimburse_to: reimburseTo || null,
       amount_cents: cents!,
       // Always send hours so the db can null it on a category flip away from labor.
-      hours: category === "labor" ? parseHours(rawHours) : null,
+      hours: isLaborPaymentCategory(category) ? parseHours(rawHours) : null,
       purchased_at: rawDate
         ? new Date(`${rawDate}T16:00:00Z`).toISOString()
         : undefined,
@@ -543,7 +544,9 @@ export async function ProjectCostsTool({
       { vendor: string; cents: number; count: number }
     >();
     for (const p of purchases) {
-      if (p.category === "labor") continue;
+      // Skip every labor payment, not just `labor`: a crew member is not a
+      // vendor, and listing them under vendor spend reads as a supplier.
+      if (isLaborPaymentCategory(p.category)) continue;
       const name = (p.vendor ?? "").trim();
       if (!name) continue;
       const key = name.toLowerCase();
@@ -975,15 +978,20 @@ export async function ProjectCostsTool({
         </section>
       )}
 
-      {/* ── Subcontract labor by worker (manual "labor" purchases) ── */}
+      {/* ── Labor by worker ──
+          Covers BOTH labor categories, because `laborByWorkerForProject` does.
+          The heading said "Subcontract labor" and the total read
+          `fin.costs.labor` alone, so the moment Tomco's own crew got their own
+          category the list grew while the figure beside it did not — a panel
+          disagreeing with itself in front of the person reconciling it. */}
       {laborByWorker.length > 0 && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2 mb-2.5">
             <h3 className="text-[13px] font-bold text-ppp-charcoal">
-              Subcontract labor by worker
+              Labor by worker
             </h3>
             <span className="text-[11px] text-ppp-charcoal-500 tabular-nums">
-              {formatCentsFull(fin.costs.labor)} total
+              {formatCentsFull(fin.costs.labor + fin.costs.employee_labor)} total
               {laborTotalHours > 0
                 ? ` · ${laborTotalHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} hrs`
                 : ""}
@@ -1159,7 +1167,7 @@ export async function ProjectCostsTool({
                         )}
                         <div className="text-[11px] text-ppp-charcoal-400 mt-1 flex items-center gap-2 flex-wrap">
                           <span>{fmtEtDate(pu.purchased_at)}</span>
-                          {pu.category === "labor" &&
+                          {isLaborPaymentCategory(pu.category) &&
                             pu.hours != null &&
                             pu.hours > 0 && (
                               <span className="tabular-nums">

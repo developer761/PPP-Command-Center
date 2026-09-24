@@ -19,8 +19,12 @@ export const dynamic = "force-dynamic";
 const BUCKET_COLOR: Record<keyof CostBuckets, string> = {
   materials: "bg-cc-brand-500",
   crewLabor: "bg-emerald-500",
+  // Tomco's own crew. Takes the navy that `subcontractor` held: that
+  // category has zero rows and is no longer offered, so this trades a color
+  // nobody sees for one that is now a large slice.
+  employeeLabor: "bg-ppp-navy-500",
   subLabor: "bg-ppp-blue-500",
-  subcontractor: "bg-ppp-navy-500",
+  subcontractor: "bg-ppp-charcoal-300",
   equipment: "bg-amber-500",
   permit: "bg-ppp-charcoal-400",
   other: "bg-ppp-charcoal-300",
@@ -29,8 +33,9 @@ const BUCKET_COLOR: Record<keyof CostBuckets, string> = {
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
   materials: "brand",
   crewLabor: "emerald",
+  employeeLabor: "navy",
   subLabor: "blue",
-  subcontractor: "navy",
+  subcontractor: "neutral",
   equipment: "amber",
   permit: "neutral",
   other: "neutral",

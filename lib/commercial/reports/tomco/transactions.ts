@@ -7,7 +7,7 @@ import {
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
-import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
+import { purchaseCategoryLabel, isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -500,15 +500,22 @@ export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
 // ─── Row filters ────────────────────────────────────────────────────────────
 
 /** Materials and everything that is not crew labor or a reimbursement. */
+/**
+ * WAS a bare `=== "labor"` check — the hardcoded-string trap. When
+ * `employee_labor` arrived it fell straight through, so Mary's own entries
+ * were listed under PURCHASES beside the paint. Sixteen rows today, and it
+ * would have been 798 the moment her Tomco payouts moved across, taking half
+ * a million dollars off the screen she actually reads.
+ */
 export const purchaseRows = (rows: SpendRow[], vendor?: string) =>
   rows
-    .filter((r) => r.category !== "labor" && !r.reimburseTo)
+    .filter((r) => !isLaborPaymentCategory(r.category) && !r.reimburseTo)
     .filter((r) => !vendor || r.vendor === vendor)
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const laborPaymentRows = (rows: SpendRow[]) =>
   rows
-    .filter((r) => r.category === "labor")
+    .filter((r) => isLaborPaymentCategory(r.category))
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const reimbursementRows = (rows: SpendRow[]) =>

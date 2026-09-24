@@ -52,6 +52,25 @@ export function isPurchaseCategory(v: string): v is PurchaseCategory {
   return (PURCHASE_CATEGORIES as readonly string[]).includes(v);
 }
 
+/**
+ * The categories that are a PAYMENT FOR SOMEBODY'S TIME.
+ *
+ * `labor` is outside help — a labor company, an individual on a 1099.
+ * `employee_labor` is Tomco's own crew. Both are payouts: both carry hours,
+ * both want the labor vendor picker, both belong on the Labor payments screen,
+ * and neither is a "purchase" in the sense the Purchases screen means.
+ *
+ * It exists because `=== "labor"` was written out by hand in nine places, and
+ * when `employee_labor` arrived every one of them silently excluded it — so
+ * Mary's own entries were listed under Purchases beside the paint, and lost
+ * their hours and their $/hr. Use this rather than adding a tenth.
+ */
+export const LABOR_PAYMENT_CATEGORIES = ["labor", "employee_labor"] as const;
+
+export function isLaborPaymentCategory(v: string | null | undefined): boolean {
+  return (LABOR_PAYMENT_CATEGORIES as readonly string[]).includes(String(v ?? ""));
+}
+
 export const PURCHASE_CATEGORY_META: Record<
   PurchaseCategory,
   { label: string; plural: string; tone: "cc-brand" | "ppp-blue" | "amber" | "emerald" | "charcoal" }

@@ -52,7 +52,7 @@ export const dynamic = "force-dynamic";
  */
 
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
-  materials: "brand", crewLabor: "emerald", subLabor: "blue", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
+  materials: "brand", crewLabor: "emerald", employeeLabor: "navy", subLabor: "blue", subcontractor: "neutral", equipment: "amber", permit: "neutral", other: "neutral",
 };
 
 const toneText: Record<MetricTone, string> = {

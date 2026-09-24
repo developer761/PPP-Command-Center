@@ -29,6 +29,7 @@ import {
   type VendorStatus,
 } from "@/lib/commercial/vendors/constants";
 import { VENDOR_PICK_FIELDS } from "@/lib/commercial/vendors/purchase-pick";
+import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 import { DateField } from "@/components/commercial/date-field";
 import { shrinkImageUnder } from "@/lib/commercial/uploads/downscale-image";
 import { SAFE_MULTIPART_BYTES, multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
@@ -127,7 +128,9 @@ export default function PurchaseForm({
   const [category, setCategory] = useState(initCat);
   const [amount, setAmount] = useState(initAmt);
   const [hours, setHours] = useState(initHours);
-  const isLabor = category === "labor";
+  // Employee labor is a labor payment too: it has hours and a person, and
+  // wants the labor vendor picker rather than the store one.
+  const isLabor = isLaborPaymentCategory(category);
   const vendorKind = vendorKindForCategory(category);
 
   // The vendor box. Its text decides the link: a name that IS a directory
