@@ -472,6 +472,21 @@ const QUESTION_WORD =
 const BARE_QUESTION =
   /\b(?:how much|how many|how long|what time|what days?|when can|when will|when would|are you able|can you tell|do you (?:do|offer|handle|cover))\b/i;
 
+/**
+ * Rapport that acknowledges and says nothing else.
+ *
+ * "Got it", "Perfect, thanks", "Sorry about that". A29 asks whether a direct
+ * question was answered, and the first version of that check accepted ANY
+ * rapport — so "Do you do cabinets as well?" answered with "Got it. Where's
+ * the property located?" passed, which is the defect the rule describes,
+ * wearing a politeness.
+ *
+ * Found by walking conversations through the pipeline and reading them, not
+ * by a test. Every test asserted the right words were present, and they were.
+ */
+export const BARE_ACKNOWLEDGEMENT =
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
+
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
@@ -773,7 +788,11 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // question and answer it in seconds. This also catches the case where an
   // answer WAS written and the style filter dropped it, which leaves the
   // question just as unanswered as never writing one.
-  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || !!rapport;
+  // A BARE ACKNOWLEDGEMENT IS NOT AN ANSWER. "Got it." in front of the next
+  // question is the shape A29 exists to catch, and accepting any rapport at
+  // all let it straight through.
+  const saysSomething = !!rapport && !BARE_ACKNOWLEDGEMENT.test(rapport.trim());
+  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || saysSomething;
   if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
     return {
       ok: false, reason: "question_left_unanswered",

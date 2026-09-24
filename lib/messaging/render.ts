@@ -19,7 +19,7 @@
  * better." Selection is deterministic on the turn number rather than random —
  * same conversation, same words, so a regression test can assert output.
  */
-import type { Intent } from "./agent-output";
+import { BARE_ACKNOWLEDGEMENT, type Intent } from "./agent-output";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 
@@ -284,6 +284,44 @@ export function clip(v: string | null | undefined, max = MAX_QUOTED): string | n
 const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]*$/i;
 
 /**
+ * Rapport that acknowledges and says nothing else.
+ *
+ * "Got it", "Perfect, thanks", "Sorry about that". Fine on their own, and the
+ * problem is that half the templates open the same way, so the two stack and
+ * the customer gets it twice:
+ *
+ *     "Got it. Got it. And what's the zip code there?"
+ *     "Great, thank you. Perfect, you're all set."
+ *     "Sorry about that. Apologies, I did not mean to make this harder."
+ *
+ * All three came out of walking real conversations through the pipeline and
+ * reading them. No test caught any of it, because every assertion was about
+ * whether the right WORDS were present and all of them were, twice.
+ *
+ * Deliberately matches the whole string. "Got it, cabinets are no problem" is
+ * an acknowledgement that goes on to say something, and that is worth
+ * sending.
+ */
+
+/** Does this template already open by acknowledging something? */
+const OPENS_WITH_ACKNOWLEDGEMENT =
+  /^(?:got it|perfect|great|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help)\b/i;
+
+/**
+ * True when the rapport adds nothing the template is not already saying.
+ *
+ * Exported because A29 needs the same question answered from the other side:
+ * a bare acknowledgement is not an answer to "do you do cabinets?", and
+ * treating it as one let the bot ignore a direct question while appearing to
+ * respond.
+ */
+export function rapportIsRedundant(rapport: string, template: string): boolean {
+  if (!rapport.trim()) return true;
+  if (!BARE_ACKNOWLEDGEMENT.test(rapport.trim())) return false;
+  return OPENS_WITH_ACKNOWLEDGEMENT.test(template.trim());
+}
+
+/**
  * The opt-out disclosure.
  *
  * PPP's own campaign message carries "Reply END to stop texts." and ours
@@ -462,7 +500,15 @@ export function renderMessage(input: RenderInput): string {
   // answer_question has no template of its own — the model's filtered rapport
   // IS the answer there, which is why it is the one intent allowed to carry
   // the whole message.
-  if (rapport && !BARE_GREETING.test(rapport) && !(parts.length && /^thanks/i.test(rapport))) {
+  if (
+    rapport
+    && !BARE_GREETING.test(rapport)
+    && !(parts.length && /^thanks/i.test(rapport))
+    // Two acknowledgements in a row is how "Got it. Got it." reaches a
+    // customer. The template's own opener wins, because it is the one that
+    // goes on to say something.
+    && !rapportIsRedundant(rapport, pick)
+  ) {
     parts.push(rapport);
   }
   if (pick) parts.push(pick);
