@@ -1189,7 +1189,19 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             tone="blue"
             label="Paid this month"
             value={formatCentsCompact(paidThisMonthCents)}
-            sub={paidThisMonthCents === 0 ? "no payments yet" : "collected in the current month"}
+            /* SAY "excludes AIA", like the Outstanding tile three columns left.
+               That one is qualified deliberately — "an unqualified 'across the
+               book' here would be a second, smaller number wearing the same
+               words". This reads from commercial_invoice_payments only, so it
+               is exactly that second number, and the argument was never
+               applied to it. On a book where most commercial work bills by
+               certificate, Stephanie records a $75k cheque and this tile does
+               not move. */
+            sub={
+              paidThisMonthCents === 0
+                ? "no invoice payments yet (excludes AIA)"
+                : "collected in the current month (excludes AIA)"
+            }
           />
           <KpiCard
             tone="neutral"
