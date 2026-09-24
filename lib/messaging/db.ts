@@ -557,10 +557,17 @@ export const END_STATES: { key: string; label: string; when: string }[] = [
 
 export async function trainingStats() {
   const sb = messagingDb();
-  const { data } = await sb
-    .from("sms_training_examples")
-    .select("conduct, outcome, approved, pii_scrubbed, source");
-  const rows = data ?? [];
+  // PAGED. 1,294 examples and PostgREST caps an unbounded select at 1,000,
+  // so every number on this panel was short by the 294 it never saw — and
+  // silently, because a capped read looks exactly like a complete one.
+  const rows = await selectAll<{
+    conduct: string | null; outcome: string | null;
+    approved: boolean; pii_scrubbed: boolean; source: string;
+  }>(
+    (a, b) => sb.from("sms_training_examples")
+      .select("conduct, outcome, approved, pii_scrubbed, source").order("id").range(a, b),
+    "reading the training corpus summary"
+  );
   const usable = rows.filter((r) => r.approved && r.pii_scrubbed);
   const count = (pred: (r: (typeof rows)[number]) => boolean) => rows.filter(pred).length;
   return {
@@ -912,8 +919,19 @@ export async function loadTrainingCoverage() {
   const sb = messagingDb();
   const [{ data: tags }, { data: examples }, { data: links }] = await Promise.all([
     sb.from("sms_training_tags").select("*").eq("is_active", true).order("sort_order"),
-    sb.from("sms_training_examples").select("id, conduct, approved, pii_scrubbed"),
-    sb.from("sms_training_example_tags").select("example_id, tag_key"),
+    // Paged for the same reason as the panel above: the coverage report
+    // counts examples, and counting 1,000 of 1,294 makes every tag look
+    // thinner than it is.
+    selectAll<{ id: string; conduct: string | null; approved: boolean; pii_scrubbed: boolean }>(
+      (a, b) => sb.from("sms_training_examples")
+        .select("id, conduct, approved, pii_scrubbed").order("id").range(a, b),
+      "reading examples for coverage"
+    ).then((data) => ({ data })),
+    selectAll<{ example_id: string; tag_key: string }>(
+      (a, b) => sb.from("sms_training_example_tags")
+        .select("example_id, tag_key").order("example_id").range(a, b),
+      "reading example tags for coverage"
+    ).then((data) => ({ data })),
   ]);
 
   const byExample = new Map<string, string[]>();

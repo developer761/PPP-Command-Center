@@ -10,7 +10,7 @@
  * conversations is a different job that happens to be reached from the same
  * tab. Two responsibilities in one file is how a guarantee quietly widens.
  */
-import { messagingDb } from "./db";
+import { messagingDb, selectAll } from "./db";
 import { assertMessagingAccess } from "./auth";
 
 
@@ -37,10 +37,19 @@ export async function nextToGrade(skipIds: string[] = []): Promise<{
 }> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const { data: rows } = await sb
-    .from("sms_training_examples")
-    .select("id, transcript, conduct, outcome, pii_scrubbed, approved")
-    .order("created_at");
+  // PAGED, and this is the one that shows. The grading screen lists every
+  // conversation there is to grade, and an unbounded select stops at 1,000 of
+  // 1,294 — so 294 conversations were simply not on the page, with nothing
+  // saying so and no way to reach them.
+  const rows = await selectAll<{
+    id: string; transcript: unknown; conduct: string | null;
+    outcome: string | null; pii_scrubbed: boolean; approved: boolean;
+  }>(
+    (a, b) => sb.from("sms_training_examples")
+      .select("id, transcript, conduct, outcome, pii_scrubbed, approved")
+      .order("created_at").range(a, b),
+    "reading conversations to grade"
+  );
   const { data: links } = await sb.from("sms_training_example_tags").select("example_id, tag_key");
 
   const tagsOf = new Map<string, string[]>();

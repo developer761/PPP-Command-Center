@@ -247,7 +247,26 @@ try {
         // matches, not the ordinal: T2.2 and T2.5 are both message 2, so an
         // ordinal join would put one finding's text on the other.
         const d = perTurn.get([sourceRef, f.turnLabel.toUpperCase(), f.code.toUpperCase()].join("|"));
-        return { ...f, turnText: d?.turnText ?? null, basis: d?.basis ?? null };
+        // THE FINDING TEXT IS SCRUBBED TOO.
+        //
+        // Kate quotes the bot's own sentence when she explains a defect, so
+        // her prose carries whatever the bot said — and the bot reads
+        // addresses back. 113 of these held real customer data before this:
+        // 73 addresses, 37 emails, 39 phone numbers, including "Is 10565
+        // Parkdale Avenue…" and "the lead is 6 Teak Rd, Wayne NJ 07470".
+        //
+        // should_have was already clean, because a corrective describes what
+        // the bot SHOULD have done and has no reason to quote anybody. It is
+        // scrubbed anyway: relying on a column staying generic is how the
+        // next export surprises you.
+        const clean = (t) => (t ? scrub(t, contactName ? [contactName] : []).text : t);
+        return {
+          ...f,
+          what: clean(f.what),
+          shouldHave: clean(f.shouldHave),
+          turnText: d?.turnText ?? null,
+          basis: d?.basis ?? null,
+        };
       }),
     });
   }
