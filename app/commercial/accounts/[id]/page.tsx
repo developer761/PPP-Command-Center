@@ -62,7 +62,7 @@ import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
+import { listEstimatorChoices, type EstimatorChoice } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
 import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase, probabilityFor } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
@@ -3364,7 +3364,7 @@ async function NewDealForm({
   keptValues,
 }: {
   accountId: string;
-  estimators: EligibleEstimator[];
+  estimators: EstimatorChoice[];
   /** Katie gap #1 — this GC's contacts, for the Attention-contact picker. */
   contactOptions: Array<{ value: string; label: string; hint?: string }>;
   duplicateWarning: { id: string; label: string } | null;
@@ -3625,7 +3625,7 @@ async function NewDealForm({
         <span className={labelCls}>Estimator</span>
         <SearchableSelect
           name="estimator_user_id"
-          options={estimators.map((e) => ({ value: e.user_id, label: e.name }))}
+          options={estimators.map((e) => ({ value: e.user_id, label: e.name, group: e.group }))}
           defaultValue={
             lastDeal?.estimator_user_id &&
             estimators.some((e) => e.user_id === lastDeal.estimator_user_id)
@@ -3775,7 +3775,7 @@ async function OpportunitiesTab({
     listAttachmentCountByOpp(ids),
     listSubmittalCountByOpp(ids),
     listFinishCountByOpp(ids),
-    listEligibleEstimators(accountId),
+    listEstimatorChoices(accountId),
     listAccountContacts(accountId),
   ]);
   // Katie gap #1 — Attention-contact options for the New-deal form (choose the
@@ -5849,7 +5849,7 @@ async function DealEditSheet({
   /** True when the sheet was opened from the DEAL page (?deal_back=1), so
    *  saving returns to the deal rather than the account's Deals tab. */
   dealBack?: boolean;
-  estimators: EligibleEstimator[];
+  estimators: EstimatorChoice[];
   /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
    *  redirects back with ?edit=<opp>&error=..., the tab-level
    *  errorMessage banner was rendered BEHIND this sheet's z-40
@@ -6341,6 +6341,7 @@ async function DealEditSheet({
                     ...estimators.map((e) => ({
                       value: e.user_id,
                       label: e.name,
+                      group: e.group,
                     })),
                     ...(deal.estimator_user_id &&
                     !estimators.find((e) => e.user_id === deal.estimator_user_id)

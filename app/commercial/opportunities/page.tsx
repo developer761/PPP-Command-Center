@@ -164,6 +164,7 @@ import NewDealAccountPicker from "@/components/commercial/new-deal-account-picke
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams } from "@/lib/commercial/teams/db";
+import { listPlatformEstimators } from "@/lib/commercial/opportunities/estimator";
 import { IconBulb } from "@/components/commercial/inline-icons";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
@@ -432,6 +433,12 @@ async function createDealFromPipelineAction(formData: FormData) {
       .slice(0, 200) || null;
   // Brendan 2026-08-26 — the nickname adds to the name by default now.
   const title_override_mode = String(formData.get("title_override_mode") ?? "");
+  // The picker posts a user id; the text box beneath it posts a bare name for
+  // somebody off the roster. A real id is what ties the estimator to the job
+  // and gets them notified, so it wins — and createOpportunity clears the
+  // free-text field when one is present, so a leftover typo can't linger.
+  const estimatorUserRaw = String(formData.get("estimator_user_id") ?? "").trim();
+  const estimator_user_id = UUID_RE.test(estimatorUserRaw) ? estimatorUserRaw : null;
   const estimator_name =
     String(formData.get("estimator_name") ?? "")
       .trim()
@@ -522,6 +529,7 @@ async function createDealFromPipelineAction(formData: FormData) {
     client_name,
     title_override,
     title_override_mode,
+    estimator_user_id,
     estimator_name,
     property_street,
     property_city,
@@ -804,7 +812,7 @@ export default async function CommercialOpportunitiesPage({
   // step is the one that's actually correct — Qualifying and Request for
   // Proposal share the real status `qualifying`, and Proposal spans two
   // statuses, so no single .eq() expresses either column on its own.
-  const [oppsUnfiltered, accounts, allTeams] = await Promise.all([
+  const [oppsUnfiltered, accounts, allTeams, estimators] = await Promise.all([
     listCommercialOpportunities({
       search,
       // Only narrowed in the DB when exactly ONE GC is picked — with several,
@@ -824,6 +832,10 @@ export default async function CommercialOpportunitiesPage({
     // For the New-opportunity sheet (audit #14 — it had drifted behind the
     // account's form). Takes no arguments, so it never needed its own wave.
     listTeams(),
+    // The estimator picker. Platform-wide rather than account-scoped, because
+    // the account is chosen inside this same form — there is no team to scope
+    // to yet. See listPlatformEstimators.
+    listPlatformEstimators(),
   ]);
   const oppsRaw =
     stageSet.size > 0
@@ -2438,6 +2450,7 @@ export default async function CommercialOpportunitiesPage({
         <NewDealSlideOut
           accounts={accounts.filter((a) => !a.deleted_at)}
           allTeams={allTeams}
+          estimators={estimators}
           todayIso={todayEtIso}
           closeHref={newDealSheetCloseHref}
           sheetError={sheetError}
@@ -2464,6 +2477,7 @@ export default async function CommercialOpportunitiesPage({
 function NewDealSlideOut({
   accounts,
   allTeams,
+  estimators,
   todayIso,
   closeHref,
   sheetError,
@@ -2473,6 +2487,8 @@ function NewDealSlideOut({
   accounts: CommercialAccount[];
   /** Teams for the Team select — parity with the account's new-deal form. */
   allTeams: { id: string; name: string }[];
+  /** Roster for the Estimator picker — parity with the account's form. */
+  estimators: { user_id: string; name: string }[];
   /** Today in ET, for the RFP-received default. Computed on the server so the
    *  default doesn't depend on the viewer's machine clock. */
   todayIso: string;
@@ -2695,15 +2711,34 @@ function NewDealSlideOut({
             <label htmlFor="new-deal-estimator" className={LABEL_CLS}>
               Estimator
             </label>
-            <input
+            {/* Karan 2026-09-23: "when I click like estimator or add team then
+                a dropdown should pop up with the respective estimator or
+                teams." Team had one; this was a bare text box, so the name
+                typed here was only ever text — nobody was assigned to the
+                job and nobody was told. Picking a person now creates the
+                assignment and sends the notification, same as the account
+                form. The text box stays underneath for somebody off the
+                roster. */}
+            <SearchableSelect
               id="new-deal-estimator"
+              name="estimator_user_id"
+              options={estimators.map((e) => ({ value: e.user_id, label: e.name }))}
+              placeholder={
+                estimators.length === 0 ? "Nobody on the roster yet" : "Search the roster…"
+              }
+              ariaLabel="Estimator"
+              disabled={estimators.length === 0}
+              emptyMessage="Nobody matches. Try a different search, or type a name below."
+            />
+            <input
               name="estimator_name"
               maxLength={120}
-              placeholder="Who's pricing it"
-              className={INPUT_CLS}
+              placeholder="…or type a name manually"
+              className={`${INPUT_CLS} mt-1`}
             />
             <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
-              Assigning one moves this opportunity to Estimating.
+              Assigning one moves this opportunity to Estimating. Picking from the
+              roster also emails them and puts them on the job&rsquo;s Team tab.
             </p>
           </div>
 

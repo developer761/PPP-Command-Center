@@ -284,6 +284,37 @@ export async function createCommercialOpportunity(
     }
   }
 
+  // TELL THE ESTIMATOR NAMED AT CREATION, TOO.
+  //
+  // Karan 2026-09-23: "just to make sure that when we add someone in teams or
+  // estimator for an account or opp then it notifies them and they're
+  // technically tied to the job."
+  //
+  // updateOpportunity does this on a change; creating the deal with the
+  // estimator already filled in — which is how the New Opportunity form is
+  // actually used — did not. The column was written and that was all: no
+  // notification, and the person pricing the job did not appear on its Team
+  // tab, so "who is on this?" answered wrong from the first minute.
+  //
+  // Same call as the update path, deliberately: one way an estimator becomes
+  // an assignment, one notification, nothing to keep in step.
+  if (opp.estimator_user_id) {
+    try {
+      const { addOpportunityAssignment } = await import("./assignments");
+      await addOpportunityAssignment({
+        opportunity_id: opp.id,
+        user_id: opp.estimator_user_id,
+        role: "estimator",
+        assigned_by_user_id: input.created_by_user_id ?? null,
+      });
+    } catch (err) {
+      console.warn(
+        "[opportunities] estimator assignment/notify on create failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // Log the initial status as the first row in the opp's status_log
   // (from_status=NULL) so the Timeline tab in later batches has a
   // complete history with no gap at creation.
