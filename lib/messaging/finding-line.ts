@@ -34,6 +34,8 @@ export type FindingSeverity = "mild" | "medium" | "critical";
 export type ParsedFinding = {
   /** Her "T4" — which turn of the transcript this is about. */
   turnOrdinal: number;
+  /** Kate's own label, "T2.2". Survives the integer turnOrdinal. */
+  turnLabel: string;
   /** Her rule code: A1 … A44. */
   code: string;
   severity: FindingSeverity | null;
@@ -100,7 +102,20 @@ export function kindOf(shouldHave: string | null, hint?: FindingKind | null): Fi
   return shouldHave ? "fell_short" : null;
 }
 
-const LINE = /T(\d+)\s*\[([^\]]*)\]\s*([\s\S]*?)(?=T\d+\s*\[\s*A\d+|$)/g;
+/**
+ * A TURN IS NOT ALWAYS A WHOLE NUMBER.
+ *
+ * This read T followed by digits and then a bracket, so "T2.2 [A11 |
+ * critical]" did not match and the WHOLE FINDING WAS DROPPED — not the turn
+ * number, the finding. Eight of them across Kate's 23 September export, seven
+ * defects and one good turn, missing from every count this repo produced and
+ * silent about it.
+ *
+ * Fractional turns are how she rates a merged message in parts. The lookahead
+ * has to allow them too, or a decimal turn following an integer one swallows
+ * the boundary between them.
+ */
+const LINE = /T(\d+(?:\.\d+)?)\s*\[([^\]]*)\]\s*([\s\S]*?)(?=T\d+(?:\.\d+)?\s*\[\s*A\d+|$)/g;
 
 /**
  * Every finding in a block of her text.
@@ -122,7 +137,12 @@ export function parseFindings(segment: string, hint?: FindingKind | null): Parse
     const shouldHave = shouldHaveRaw?.trim() || null;
 
     out.push({
-      turnOrdinal: Number(m[1]),
+      // The MESSAGE the turn belongs to. T2.2 is part of message 2, and
+      // turn_ordinal is an integer column, so the fraction lives in
+      // turnLabel beside it rather than being lost or forcing a type change
+      // on a column a dozen places already read as a whole number.
+      turnOrdinal: Math.trunc(Number(m[1])),
+      turnLabel: `T${m[1]}`,
       code: bracket.code,
       severity: bracket.severity,
       name: bracket.name,

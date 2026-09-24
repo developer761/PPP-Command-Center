@@ -36,10 +36,35 @@ import { scrub, residualPii, suspectedNames } from "../lib/messaging/pii.ts";
  *  the assistant, not a customer, and it is not PII. */
 const PERSONAS = ["Emily", "Emma", "Sarah"];
 
-const path = process.argv.find((a) => a.endsWith(".csv"));
+const csvArgs = process.argv.filter((a) => a.endsWith(".csv"));
+const path = csvArgs[0];
+
+/**
+ * The per-finding files, if they were handed to us.
+ *
+ * Kate's handover calls them optional and it is right: almost everything in
+ * them is already in the conversations file. They add exactly two things, and
+ * both only matter once somebody opens a rule and wants to see what the bot
+ * actually said.
+ *
+ *   Turn Text  the sentence the finding is anchored to
+ *   Basis      read · detector · read + detector · lookup · carve · day lookup
+ *
+ * Basis is the more useful of the two. It separates a finding a person read
+ * and judged from one a mechanical check found, which is the distinction to
+ * draw when deciding whether a rule can be enforced in code at all.
+ *
+ * Matched by name rather than position so the order of the arguments does not
+ * matter, and absent files simply mean the two columns stay null.
+ */
+const notesPath = csvArgs.find((a) => /DEFECT NOTES/i.test(a)) ?? null;
+const goodPath  = csvArgs.find((a) => /GOOD TURNS/i.test(a)) ?? null;
 const APPLY = process.argv.includes("--apply");
 if (!path) {
-  console.error('\n  npm run import:rated -- "/path/to/RATED CONVERSATIONS.csv" [--apply]\n');
+  console.error(
+    '\n  npm run import:rated -- "/path/to/RATED CONVERSATIONS.csv" [--apply]\n' +
+    '    optionally add "…DEFECT NOTES.csv" and "…GOOD TURNS.csv" for turn text and basis\n'
+  );
   process.exit(1);
 }
 
@@ -115,6 +140,62 @@ try {
   console.log(`\nRATED CONVERSATIONS — ${APPLY ? "APPLYING" : "DRY RUN (pass --apply to write)"}\n`);
   console.log(`  rows in file: ${body.length}`);
 
+  /**
+   * turn text and basis, keyed by conversation + turn + rule.
+   *
+   * Checked before it is trusted: the key is unique in both files as shipped,
+   * 2,159 and 651 rows with no duplicates, so a collision here means the
+   * export changed shape and is worth failing on rather than silently keeping
+   * whichever row came last.
+   */
+  const perTurn = new Map();
+  let perTurnRows = 0, perTurnClashes = 0;
+  for (const [file, kind] of [[notesPath, "fell_short"], [goodPath, "did_well"]]) {
+    if (!file) continue;
+    const rs = parseCsvRows(readFileSync(file, "utf8"));
+    const h = rs[0].map((x) => x.replace(/^\ufeff/, "").trim());
+    const col = (n) => h.findIndex((x) => x.toLowerCase() === n.toLowerCase());
+    const iC = col("Conversation ID"), iT = col("Turn"), iR = col("Rule ID");
+    const iX = col("Turn Text"), iB = col("Basis"), iN = col("Contact Name");
+    if (iC < 0 || iT < 0 || iR < 0) {
+      console.log(`  ⚠ ${file.split("/").pop()} is missing a join column, so it was ignored`);
+      continue;
+    }
+    for (const r of rs.slice(1)) {
+      const key = [(r[iC] ?? "").trim(), (r[iT] ?? "").trim().toUpperCase(), (r[iR] ?? "").trim().toUpperCase()].join("|");
+      if (!key.replace(/\|/g, "")) continue;
+      if (perTurn.has(key)) { perTurnClashes++; continue; }
+      // SCRUBBED, LIKE EVERYTHING ELSE FROM THESE FILES.
+      //
+      // The transcripts go through scrub() and this did not, so the first
+      // load of the per-finding files put 256 rows of real customer data into
+      // the database: 143 addresses, 104 emails, 118 phone numbers. One read
+      // "Is 646-361-3637 and rsap462@gmail.com the best contact".
+      //
+      // These never reach a model — retrieval reads transcripts, not findings
+      // — so it was not a prompt leak. It was worse in a quieter way: the
+      // transcript sitting beside it was scrubbed, so the table claimed a
+      // guarantee it was not keeping.
+      //
+      // The finding still reads perfectly with placeholders. "Is [PHONE] and
+      // [EMAIL] the best contact" demonstrates the read-back it is evidence
+      // for just as well.
+      const rawText = iX >= 0 ? (r[iX] ?? "").trim() : "";
+      const who = iN >= 0 ? (r[iN] ?? "").trim() : "";
+      const cleanText = rawText ? scrub(rawText, who ? [who] : []).text : "";
+
+      perTurn.set(key, {
+        turnText: cleanText || null,
+        basis: iB >= 0 ? (r[iB] ?? "").trim() || null : null,
+        kind,
+      });
+      perTurnRows++;
+    }
+  }
+  if (perTurnRows) {
+    console.log(`  per-finding detail: ${perTurnRows} rows loaded${perTurnClashes ? `, ${perTurnClashes} duplicate keys ignored` : ""}`);
+  }
+
   const prepared = [];
   /** Rows that failed the PII check and may ALREADY be in the database from an
    *  earlier import. Skipping them is not enough on its own. */
@@ -161,7 +242,13 @@ try {
       findings: [
         ...parseFindings(r[I.defects] ?? "", "fell_short"),
         ...parseFindings(r[I.good] ?? "", "did_well"),
-      ],
+      ].map((f) => {
+        // Joined on conversation, turn label and rule. The label is what
+        // matches, not the ordinal: T2.2 and T2.5 are both message 2, so an
+        // ordinal join would put one finding's text on the other.
+        const d = perTurn.get([sourceRef, f.turnLabel.toUpperCase(), f.code.toUpperCase()].join("|"));
+        return { ...f, turnText: d?.turnText ?? null, basis: d?.basis ?? null };
+      }),
     });
   }
 
@@ -267,6 +354,9 @@ try {
       filed.map((f) => ({
         example_id: ex.id,
         turn_ordinal: f.turnOrdinal,
+        turn_label: f.turnLabel,
+        turn_text: f.turnText,
+        basis: f.basis,
         code: f.code,
         kind: f.kind,
         severity: f.severity,

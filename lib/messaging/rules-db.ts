@@ -127,6 +127,13 @@ export type RuleFinding = {
   id: string;
   exampleId: string;
   turnOrdinal: number | null;
+  /** Kate's own label, "T2.2". A fractional turn cannot live in turn_ordinal. */
+  turnLabel: string | null;
+  /** The bot's own words, as rated. The thing a reader actually wants. */
+  turnText: string | null;
+  /** How the finding was reached: read, detector, lookup, carve. Separates a
+   *  judgement from a measurement. */
+  basis: string | null;
   kind: "fell_short" | "did_well";
   severity: "mild" | "medium" | "critical" | null;
   what: string;
@@ -181,12 +188,12 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
     // did not render. Asking each question separately means each answer is
     // about the thing it is displayed next to.
     sb.from("sms_example_findings")
-      .select("id, example_id, turn_ordinal, kind, severity, what, should_have, created_at")
+      .select("id, example_id, turn_ordinal, turn_label, turn_text, basis, kind, severity, what, should_have, created_at")
       .eq("code", row.code).neq("kind", "did_well")
       .order("created_at", { ascending: false }).order("id", { ascending: false })
       .limit(EXAMPLES_PER_KIND),
     sb.from("sms_example_findings")
-      .select("id, example_id, turn_ordinal, kind, severity, what, should_have, created_at")
+      .select("id, example_id, turn_ordinal, turn_label, turn_text, basis, kind, severity, what, should_have, created_at")
       .eq("code", row.code).eq("kind", "did_well")
       .order("created_at", { ascending: false }).order("id", { ascending: false })
       .limit(EXAMPLES_PER_KIND),
@@ -211,6 +218,9 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
     id: f.id as string,
     exampleId: f.example_id as string,
     turnOrdinal: (f.turn_ordinal as number | null) ?? null,
+    turnLabel: (f.turn_label as string | null) ?? null,
+    turnText: (f.turn_text as string | null) ?? null,
+    basis: (f.basis as string | null) ?? null,
     kind: f.kind === "did_well" ? "did_well" : "fell_short",
     severity: (f.severity as RuleFinding["severity"]) ?? null,
     what: (f.what as string) ?? "",
