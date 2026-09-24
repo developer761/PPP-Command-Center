@@ -30,7 +30,7 @@
  * description when it is added (migration 071), so only lines added from here
  * on pick up the new wording. Karan confirmed this is wanted.
  *
- * Separately, it repairs a seeding artefact: 38 of the 58 descriptions carry a
+ * Separately, it repairs a seeding artifact: 38 of the 58 descriptions carry a
  * stray line break mid-sentence. The PDF reads a newline as "this is a list"
  * and splits the line into sub-bullets — so "Prep only — skim\n coat for
  * level-4 finish." printed as two bullets broken mid-sentence. The renderer is
@@ -52,7 +52,7 @@ const sb = createClient(url, key, { auth: { persistSession: false } });
  * old name → [new name, new description]
  *
  * Where a line is left out, only the stray line breaks are repaired — the
- * equipment, labour and sundry rows are not scope lines on a GC's proposal and
+ * equipment, labor and sundry rows are not scope lines on a GC's proposal and
  * read fine as they are.
  */
 const RENAMES = {
@@ -167,6 +167,6 @@ console.log(
   `\n${renamed} renamed, ${repairedOnly} had line breaks repaired only, ${unchanged} already correct.`
 );
 const unmapped = products.filter((p) => !RENAMES[p.name]).map((p) => p.name);
-console.log(`\nNOT renamed (equipment, labour, wallcovering units — not GC scope lines):`);
+console.log(`\nNOT renamed (equipment, labor, wallcovering units — not GC scope lines):`);
 for (const n of unmapped.sort()) console.log(`   ${n}`);
 if (!COMMIT) console.log("\nDry run. Re-run with --commit to write.");

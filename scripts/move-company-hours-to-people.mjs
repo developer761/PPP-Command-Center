@@ -9,7 +9,7 @@
  * so historical attendance already sits under the painter's own name. But
  * between go-live and that change, hours were entered ON THE PLATFORM against
  * the company names — because those were the names in the dropdown. Those rows
- * are real work somebody typed, not import artefacts, so they are moved rather
+ * are real work somebody typed, not import artifacts, so they are moved rather
  * than removed.
  *
  * UPDATES ONLY. Nothing is deleted here:
