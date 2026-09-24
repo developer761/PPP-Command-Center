@@ -215,22 +215,82 @@ async function syncApplicationStatusToPayments(
     const payments = await listAiaPayments(applicationId);
     const paid = sumAiaPayments(payments);
 
-    const { resolveG702 } = await import("./db");
-    const g702 = await resolveG702(applicationId);
-    const earnedLessRetainage = g702 ? Math.round(g702.totalEarnedLessRetainageCents) : 0;
+    // WHAT THIS CERTIFICATE ASKED FOR — its own period, not the whole job.
+    //
+    // G702 line 6 is CUMULATIVE: it carries every prior period. Comparing
+    // payments against it meant a certificate could be paid in full and still
+    // read as outstanding, because the payments covered THIS period while the
+    // denominator was the entire job to date. On AIREF Application 3 that was
+    // $75,129.18 of payments measured against $141,962.49.
+    //
+    // The amount due on a certificate is the step up from the one before it —
+    // the same quantity G702 line 7 prints as CURRENT PAYMENT DUE.
+    const due = await applicationPeriodDueCents(applicationId);
 
     // A zero or unresolvable certificate cannot tell us "paid in full", so
     // leave the status alone rather than guess from an unknown denominator.
-    if (earnedLessRetainage <= 0) return;
+    if (due <= 0) return;
 
-    const next = paid >= earnedLessRetainage ? "paid" : "submitted";
+    const next = paid >= due ? "paid" : "submitted";
     if (next === status) return;
     const { updateAiaApplication } = await import("./db");
-    await updateAiaApplication(applicationId, { status: next as never }, actorUserId);
+    const res = await updateAiaApplication(applicationId, { status: next as never }, actorUserId);
+    // SAY SO WHEN IT IS REFUSED. This threw the Result away, so when
+    // updateAiaApplication blocked the paid → submitted move the status simply
+    // stayed `paid` with no money behind it, silently, and every report went on
+    // counting it as collected. A status that cannot follow the payments is the
+    // exact failure this function exists to prevent, so it must never be
+    // invisible.
+    if (!res.ok) {
+      console.error(
+        `[aia/payments] application ${applicationId} could not move to ${next}: ${res.error}`,
+      );
+    }
   } catch (e) {
     console.warn(
       "[aia/payments] status sync failed:",
       e instanceof Error ? e.message : String(e),
     );
   }
+}
+
+/**
+ * What ONE certificate asks for — G702 line 6 minus the prior application's
+ * line 6, which is the "CURRENT PAYMENT DUE" figure printed on the document.
+ *
+ * Exported because two places need it and they must not drift: the status
+ * sync above, and the Accounting payment picker's "outstanding" figure. A
+ * certificate that reads $75,129.18 outstanding in the picker and needs
+ * $141,962.49 to mark itself paid is a platform arguing with itself.
+ */
+export async function applicationPeriodDueCents(applicationId: string): Promise<number> {
+  const sb = commercialDb();
+  const { data: app } = await sb
+    .from("commercial_aia_applications")
+    .select("id, opportunity_id, application_number")
+    .eq("id", applicationId)
+    .maybeSingle();
+  if (!app) return 0;
+  const row = app as { opportunity_id: string; application_number: number };
+
+  const { resolveG702 } = await import("./db");
+  const mine = Math.round((await resolveG702(applicationId))?.totalEarnedLessRetainageCents ?? 0);
+  if (mine <= 0) return 0;
+
+  // The nearest ISSUED application below this one. A draft has certified
+  // nothing, so it cannot be what the GC already paid against.
+  const { data: priorRows } = await sb
+    .from("commercial_aia_applications")
+    .select("id, application_number")
+    .eq("opportunity_id", row.opportunity_id)
+    .lt("application_number", row.application_number)
+    .in("status", ["submitted", "paid"])
+    .is("deleted_at", null)
+    .order("application_number", { ascending: false })
+    .limit(1);
+  const prior = (priorRows ?? [])[0] as { id: string } | undefined;
+  const priorCents = prior
+    ? Math.round((await resolveG702(prior.id))?.totalEarnedLessRetainageCents ?? 0)
+    : 0;
+  return Math.max(0, mine - priorCents);
 }

@@ -541,7 +541,7 @@ export async function AiaTool({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
         </span>
         <span className="min-w-0 text-[12px] text-ppp-charcoal-600 flex-1">
-          <span className="font-semibold text-ppp-charcoal">This certifies completed work.</span> The actual money requests are Invoices — record payments there.
+          <span className="font-semibold text-ppp-charcoal">This certifies completed work.</span> Payments are recorded on the certificate itself, or under Accounting.
         </span>
         <span className="shrink-0 text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-0.5">Invoices<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
       </Link>
@@ -603,7 +603,18 @@ export async function AiaTool({
                   from={sp.from ?? ""}
                   origin={variant}
                   payments={payments}
-                  earnedLessRetainageCents={Math.round(g702?.totalEarnedLessRetainageCents ?? 0)}
+                  earnedLessRetainageCents={await (async () => {
+                    // What THIS certificate asks for, not the job to date.
+                    // G702 line 6 is cumulative, so using it raw made
+                    // Application 3 on AIREF read "$0.00 of $141,962.49" when
+                    // the GC owes $75,129.18 on it — and paying it in full
+                    // could never mark it paid. One definition, shared with
+                    // the Accounting picker and the status rule.
+                    const { applicationPeriodDueCents } = await import(
+                      "@/lib/commercial/aia/payments"
+                    );
+                    return applicationPeriodDueCents(selectedAppId);
+                  })()}
                   recordAction={recordPaymentAction}
                   deleteAction={deletePaymentAction}
                 />

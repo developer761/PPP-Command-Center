@@ -251,8 +251,13 @@ export function AiaApplicationDetail({
 
         <div className="mt-2.5 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-3 py-2">
           <p className="text-[11.5px] text-ppp-charcoal-700">
-            <strong>Paid</strong> here means this certificate has been settled — it records no
-            money. Payments are recorded on Invoices.
+            {/* This read "Payments are recorded on Invoices" until 2026-09-24,
+                which stopped being true the moment the certificate grew its own
+                payment list directly underneath this box. Two places telling a
+                user the feature is somewhere else is how Stephanie went looking
+                on the Accounting screen in the first place. */}
+            <strong>Paid</strong> is set by the payments below, not by hand — record what the GC
+            sends and the status follows.
           </p>
           <p className="text-[11.5px] text-ppp-charcoal-700 mt-1">
             This application asks for{" "}

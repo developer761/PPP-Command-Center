@@ -178,27 +178,18 @@ async function listOpenAiaForPayment(
   const rows = issued.filter((r) => r.status === "submitted");
   if (rows.length === 0) return [];
 
-  const [{ resolveG702 }, { listAiaPaymentsByApplication, sumAiaPayments }] = await Promise.all([
-    import("@/lib/commercial/aia/db"),
-    import("@/lib/commercial/aia/payments"),
-  ]);
+  const { listAiaPaymentsByApplication, sumAiaPayments, applicationPeriodDueCents } =
+    await import("@/lib/commercial/aia/payments");
   const paymentsByApp = await listAiaPaymentsByApplication(rows.map((r) => r.id));
 
   const out: SearchableOption[] = [];
   for (const r of rows) {
-    const g702 = await resolveG702(r.id);
-    const billed = Math.round(g702?.totalEarnedLessRetainageCents ?? 0);
-    if (billed <= 0) continue;
-    // Line 6 is CUMULATIVE — it carries every prior period — so what THIS
-    // certificate added is the step up from the one before it. Using line 6
-    // raw would ask for the whole job on every application.
-    const prior = issued
-      .filter((x) => x.opportunity_id === r.opportunity_id && x.application_number < r.application_number)
-      .pop();
-    const priorBilled = prior
-      ? Math.round((await resolveG702(prior.id))?.totalEarnedLessRetainageCents ?? 0)
-      : 0;
-    const thisPeriod = Math.max(0, billed - priorBilled);
+    // ONE definition of "what this certificate asks for", shared with the
+    // status sync. Two copies of this arithmetic drifting apart would show a
+    // certificate as $75,129.18 outstanding here while needing $141,962.49 to
+    // mark itself paid — the platform arguing with itself about one number.
+    const thisPeriod = await applicationPeriodDueCents(r.id);
+    if (thisPeriod <= 0) continue;
     const paid = sumAiaPayments(paymentsByApp.get(r.id) ?? []);
     const outstanding = thisPeriod - paid;
     if (outstanding <= 0) continue;

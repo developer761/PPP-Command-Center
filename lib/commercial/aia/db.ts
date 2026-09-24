@@ -757,7 +757,20 @@ export async function updateAiaApplication(
   }
   // Block a status DOWNGRADE when a later application carries this one forward:
   // reopening a certified period would over-bill the next application.
-  if (patch.status !== undefined && STATUS_RANK[patch.status] < STATUS_RANK[before.status]) {
+  //
+  // TO DRAFT ONLY. The danger is RE-CERTIFYING: a draft unfreezes lines 1 and 2
+  // and lets the period's numbers move under an application that already
+  // carried them forward. paid → submitted moves no numbers at all — the
+  // certificate stays issued and frozen, and the only thing that changes is
+  // whether the money has arrived.
+  //
+  // Blocking it broke the payment sync: removing a payment from Application 3
+  // could not put it back to submitted while Application 4 existed, so the
+  // status stayed `paid` with no money behind it and every report kept
+  // counting it as collected. Caught on live data — the cleanup at the end of
+  // a verification run failed to restore AIREF, which is the only reason
+  // anybody noticed.
+  if (patch.status === "draft" && before.status !== "draft") {
     const later = await laterApplication(before.opportunity_id, before.application_number);
     if (later) return { ok: false, error: blockedByLaterMessage(later) };
   }
@@ -1502,14 +1515,65 @@ export async function aiaBillingRollupBulk(
   }
   if (latestIssued.size === 0) return out;
 
+  /**
+   * RECORDED PAYMENTS — the same fold the single-deal rollup does.
+   *
+   * This bulk twin is what almost every REPORT uses: AR aging, the statement
+   * emailed to the GC, receivables, Account 360, the deal page, and the AIA
+   * screen's own header tiles. When payments landed only in the single-deal
+   * path (2026-09-24), recording a cheque changed the one deal page that reads
+   * it and nothing else — including "Owed now" on the very screen you typed it
+   * into, and a statement that would have gone to the GC showing $0 paid on a
+   * certificate they had part-paid. Found by an audit, not by a test: both
+   * paths were green and the numbers only disagreed with each other.
+   *
+   * ONE query for every application on every deal asked about, so this stays a
+   * bulk call and does not become N round-trips.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("./payments");
+  const paymentsByApp = await listAiaPaymentsByApplication(apps.map((a) => a.id));
+  const recordedByOpp = new Map<string, { baselineAppNumber: number | null; recorded: number }>();
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id) ?? { baselineAppNumber: null, recorded: 0 };
+    const hasRows = (paymentsByApp.get(a.id)?.length ?? 0) > 0;
+    // The latest PAID application carrying no recorded payments is the legacy
+    // baseline — its cumulative line 6 already contains everything before it.
+    if (a.status === "paid" && !hasRows) {
+      if (cur.baselineAppNumber == null || a.application_number > cur.baselineAppNumber) {
+        cur.baselineAppNumber = a.application_number;
+      }
+    }
+    recordedByOpp.set(a.opportunity_id, cur);
+  }
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id);
+    if (!cur) continue;
+    if (cur.baselineAppNumber != null && a.application_number <= cur.baselineAppNumber) continue;
+    cur.recorded += sumAiaPayments(paymentsByApp.get(a.id) ?? []);
+  }
+  const baselineAppByOpp = new Map<string, App>();
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id);
+    if (cur?.baselineAppNumber === a.application_number && a.status === "paid") {
+      baselineAppByOpp.set(a.opportunity_id, a);
+    }
+  }
+
   const wantedAppIds = [
     ...new Set([
       ...[...latestIssued.values()].map((a) => a.id),
       ...[...latestPaid.values()].map((a) => a.id),
+      // The legacy baseline too. It is usually the latest paid application and
+      // already in this list — but once a LATER application is paid through
+      // recorded rows, the baseline is an earlier one, and without it here its
+      // schedule lines are never fetched, baselineCents reads 0, and the whole
+      // legacy amount silently drops out of collected. That is exactly the
+      // shape AIREF Building #1 takes the moment Application 3 is paid.
+      ...[...baselineAppByOpp.values()].map((a) => a.id),
     ]),
   ];
   const pctByApp = new Map<string, number>();
-  for (const a of [...latestIssued.values(), ...latestPaid.values()]) {
+  for (const a of [...latestIssued.values(), ...latestPaid.values(), ...baselineAppByOpp.values()]) {
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
 
@@ -1548,16 +1612,32 @@ export async function aiaBillingRollupBulk(
     const paidCompleted = paid ? completedByApp.get(paid.id) ?? 0 : 0;
     const paidRetainage = paid ? retainageByApp.get(paid.id) ?? 0 : 0;
 
-    const { billedCents, collectedCents, dueNowCents, retainageHeldCents } =
-      aiaBilledCollectedFrom({
-        latestIssued: {
-          totalCompletedStoredCents: issuedCompleted,
-          totalEarnedLessRetainageCents: issuedCompleted - issuedRetainage,
-        },
-        latestPaid: paid
-          ? { totalEarnedLessRetainageCents: paidCompleted - paidRetainage }
-          : null,
+    const base = aiaBilledCollectedFrom({
+      latestIssued: {
+        totalCompletedStoredCents: issuedCompleted,
+        totalEarnedLessRetainageCents: issuedCompleted - issuedRetainage,
+      },
+      latestPaid: paid
+        ? { totalEarnedLessRetainageCents: paidCompleted - paidRetainage }
+        : null,
+    });
+    const { billedCents, retainageHeldCents } = base;
+
+    const rec = recordedByOpp.get(oppId);
+    const hasRecorded = (rec?.recorded ?? 0) > 0;
+    let collectedCents = base.collectedCents;
+    let dueNowCents = base.dueNowCents;
+    if (hasRecorded) {
+      const baselineApp = baselineAppByOpp.get(oppId);
+      const baselineCents = baselineApp
+        ? (completedByApp.get(baselineApp.id) ?? 0) - (retainageByApp.get(baselineApp.id) ?? 0)
+        : 0;
+      collectedCents = aiaCollectedWithPayments({
+        baselineCents,
+        recordedAfterBaselineCents: rec?.recorded ?? 0,
       });
+      dueNowCents = Math.max(0, billedCents - retainageHeldCents - collectedCents);
+    }
 
     out.set(oppId, {
       billedCents,
