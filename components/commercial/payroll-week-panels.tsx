@@ -104,15 +104,37 @@ export function PayrollWeekPanels({
         </div>
       )}
 
-      {posted && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5">
-          <p className="text-[12px] text-emerald-900">
-            <span className="font-bold">This week is posted.</span> {money(week.totals.allocatedCents)}{" "}
-            is on the jobs below as labor cost. Change a Gusto figure and post again — it
-            replaces what it wrote last time rather than adding to it.
-          </p>
-        </div>
-      )}
+      {posted && (() => {
+        // READ BACK, NOT RECOMPUTED. This used to print the live total and say
+        // it was on the jobs — but the live total moves the moment a late
+        // entry is approved or a Gusto figure is corrected without re-posting,
+        // and the sentence became untrue with nothing indicating it.
+        const onJobs = week.postedCents ?? 0;
+        const drifted = onJobs !== week.totals.allocatedCents;
+        return (
+          <div
+            className={`rounded-xl border px-3.5 py-2.5 ${
+              drifted ? "border-amber-300 bg-amber-50" : "border-emerald-200 bg-emerald-50"
+            }`}
+          >
+            <p className={`text-[12px] ${drifted ? "text-amber-900" : "text-emerald-900"}`}>
+              <span className="font-bold">This week is posted.</span> {money(onJobs)} is on the
+              jobs as labor cost.
+              {drifted ? (
+                <>
+                  {" "}
+                  Something has changed since — the split now comes to{" "}
+                  <span className="font-bold">{money(week.totals.allocatedCents)}</span>. Post again
+                  to put that on the jobs; it replaces what it wrote last time rather than adding
+                  to it.
+                </>
+              ) : (
+                " Change a Gusto figure and post again — it replaces what it wrote last time rather than adding to it."
+              )}
+            </p>
+          </div>
+        );
+      })()}
 
       <div className="grid gap-3 lg:grid-cols-2">
         {/* ── 1. HOURS — what goes to Gusto ───────────────────────────── */}

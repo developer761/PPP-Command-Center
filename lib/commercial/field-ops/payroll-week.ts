@@ -1,8 +1,10 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
-import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import {
   allocatePayrollToJobs,
   allocationSumsTo,
@@ -71,6 +73,16 @@ export type PayrollWeek = {
   blockers: string[];
   /** Hours that are logged but not yet approved — they are NOT costed. */
   unapprovedHours: number;
+  /**
+   * What is ACTUALLY on the jobs from the last post, read back from the
+   * payouts — not recomputed from today's hours and costs.
+   *
+   * The two drift the moment anything changes after a post: a late time entry
+   * approved, a Gusto figure corrected and saved but not re-posted. The banner
+   * used to print the live total and say it was on the jobs, which was simply
+   * untrue. Null when nothing has been posted.
+   */
+  postedCents: number | null;
 };
 
 /** Settled time only. A submitted or questioned entry is not yet a cost —
@@ -83,7 +95,7 @@ export async function getPayrollWeek(
 ): Promise<PayrollWeek> {
   const sb = commercialDb();
 
-  const [{ data: periodRow }, entries, { data: empRows }, { data: jobRows }] =
+  const [{ data: periodRow }, entries, { data: empRows }, jobRows] =
     await Promise.all([
       sb
         .from("commercial_payroll_periods")
@@ -105,7 +117,24 @@ export async function getPayrollWeek(
           .order("id", { ascending: true }),
       ),
       sb.from("commercial_employees").select("id, display_name, worker_type, active"),
-      sb.from("commercial_jobs").select("id, name, opportunity_id").is("deleted_at", null),
+      // PAGINATED, and NOT filtered on deleted_at.
+      //
+      // The cap first: PostgREST silently returns 1000 rows. Past that, the
+      // missing jobs drop out of the lookup, their hours become "unassigned",
+      // the denominator shrinks and money quietly redistributes onto the jobs
+      // that made the cut. The reconcile's own history records this exact bug
+      // reporting materials at 61% of the true figure.
+      //
+      // And the filter: a SETTLED hour on a job somebody later deleted was
+      // still worked and still paid. Dropping it here would move that money
+      // onto the other jobs. labor-cost.ts includes deleted jobs for the same
+      // reason, in a comment written after an audit found it.
+      paginateAll<{ id: string; name: string; opportunity_id: string | null }>(() =>
+        sb
+          .from("commercial_jobs")
+          .select("id, name, opportunity_id")
+          .order("id", { ascending: true }),
+      ),
     ]);
 
   const period = periodRow as { id: string; status: string } | null;
@@ -130,7 +159,7 @@ export async function getPayrollWeek(
    */
   const isW2 = new Set(allEmps.filter((e) => e.worker_type === "w2").map((e) => e.id));
   const anyW2 = isW2.size > 0;
-  const jobs = (jobRows ?? []) as { id: string; name: string; opportunity_id: string | null }[];
+  const jobs = jobRows;
   const jobOpp = new Map(jobs.map((j) => [j.id, j.opportunity_id]));
   const jobName = new Map(jobs.map((j) => [j.id, j.name]));
   /** Opportunity id → a job name, for the job PTO is charged to. */
@@ -305,8 +334,21 @@ export async function getPayrollWeek(
       blockers.push(`${e.name}'s split does not add up to their Gusto cost — do not post this week.`);
   }
 
+  const postedCents = period
+    ? (
+        (
+          await sb
+            .from("commercial_project_purchases")
+            .select("amount_cents")
+            .eq("payroll_period_id", period.id)
+            .is("deleted_at", null)
+        ).data ?? []
+      ).reduce((n, r) => n + Number((r as { amount_cents: number }).amount_cents ?? 0), 0)
+    : 0;
+
   return {
     periodId: period?.id ?? null,
+    postedCents: period && postedCents > 0 ? postedCents : null,
     startDate,
     endDate,
     status: (period?.status as "draft" | "allocated") ?? "draft",
@@ -414,10 +456,11 @@ export async function postPayrollWeek(
   // from the previous shape.
   const { data: prior } = await sb
     .from("commercial_project_purchases")
-    .select("id")
+    .select("*")
     .eq("payroll_period_id", week.periodId)
     .is("deleted_at", null);
-  const replaced = ((prior ?? []) as { id: string }[]).length;
+  const priorRows = (prior ?? []) as Record<string, unknown>[];
+  const replaced = priorRows.length;
   if (replaced > 0) {
     const { error: delErr } = await sb
       .from("commercial_project_purchases")
@@ -429,24 +472,49 @@ export async function postPayrollWeek(
         ok: false,
         error: `Could not clear the previous run for this week, so nothing was posted: ${delErr.message}`,
       };
+    // LOGGED. This is the operation that removes the most money at once, and
+    // it was the only one on the page invisible to the audit log — so if a
+    // week posted wrong there was no record of what the previous run held.
+    for (const r of priorRows)
+      await logDelete("commercial_project_purchases", String(r.id), r, userId);
   }
 
   // The account each job belongs to — a payout is filed against both.
   const oppIds = [...new Set(week.byJob.map((j) => j.opportunityId))];
+  // Live deals only. Every other purchase writer refuses a deleted one
+  // ("This deal has been deleted — purchases can't be modified"), and money
+  // landing on a deal nobody can open is money nobody will find.
   const { data: oppRows } = await sb
     .from("commercial_opportunities")
     .select("id, account_id")
-    .in("id", oppIds);
+    .in("id", oppIds)
+    .is("deleted_at", null);
   const accountOf = new Map(
     ((oppRows ?? []) as { id: string; account_id: string }[]).map((o) => [o.id, o.account_id]),
   );
 
   const rows: Record<string, unknown>[] = [];
+  const skipped: string[] = [];
+  const money = (c: number) => `$${(c / 100).toFixed(2)}`;
   for (const e of week.employees) {
     for (const a of e.allocation) {
       const accountId = accountOf.get(a.opportunityId);
-      if (!accountId) continue;
+      if (!accountId) {
+        // Deleted or unreadable deal. Dropping it silently would post a week
+        // whose total is less than the liability it came from.
+        skipped.push(`${e.name}: ${money(a.amountCents)} could not be posted — its deal is gone`);
+        continue;
+      }
+      const nowIso = new Date().toISOString();
       rows.push({
+        // The table has no DB default for these three — addPurchase sets them
+        // explicitly and says why. Left out, created_at is NULL, and NULLs sort
+        // first on DESC, which floats payroll names to the top of the
+        // payee suggestions on Mary's manual Labor-payment form — inviting a
+        // second, hand-typed payout for somebody payroll already costed.
+        id: randomUUID(),
+        created_at: nowIso,
+        updated_at: nowIso,
         opportunity_id: a.opportunityId,
         account_id: accountId,
         category: "labor",
@@ -462,10 +530,25 @@ export async function postPayrollWeek(
       });
     }
   }
+  if (skipped.length > 0)
+    return {
+      ok: false,
+      error: `${skipped[0]}. Nothing was posted — fix that and try again, or the week would be short.`,
+    };
   if (rows.length === 0) return { ok: false, error: "Nothing to post for this week." };
 
   const { error: insErr } = await sb.from("commercial_project_purchases").insert(rows);
-  if (insErr) return { ok: false, error: insErr.message };
+  if (insErr) {
+    // The previous run is already deleted at this point. Say so plainly rather
+    // than leaving her to discover that a failed post also erased what was
+    // there — and tell her the one action that fixes it.
+    return {
+      ok: false,
+      error: `Nothing was written and the previous run for this week was cleared: ${insErr.message}. Press Post again once that is resolved.`,
+    };
+  }
+  for (const r of rows)
+    await logInsert("commercial_project_purchases", String(r.id), r, userId);
 
   const { data: before } = await sb
     .from("commercial_payroll_periods")

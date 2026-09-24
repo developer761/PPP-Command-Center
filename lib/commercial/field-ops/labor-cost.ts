@@ -131,8 +131,36 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
 
   const rates = await loadRates(entries.map((e) => e.employee_id));
 
+  /**
+   * WEEKS ALREADY COSTED BY PAYROLL ARE NOT PRICED AGAIN.
+   *
+   * Job cost is `purchases + fieldOpsLabor` (projects/db.ts). Posting a
+   * payroll week writes a `labor` PURCHASE per job from the real Gusto
+   * liability — so if this also prices those same hours from the rate card,
+   * the same person's week is charged twice, both halves real, and the only
+   * symptom is a margin that quietly drops.
+   *
+   * The payout is the better figure: it is what left the bank, taxes included,
+   * rather than a rate somebody has to remember to keep current. So an
+   * allocated week wins and this stands down for it.
+   *
+   * Keyed on the WEEK, not the employee, because an employee can be costed by
+   * payroll for one week and have no payroll at all for another.
+   */
+  const { data: allocatedWeeks } = await sb
+    .from("commercial_payroll_periods")
+    .select("start_date, end_date")
+    .eq("status", "allocated")
+    .is("deleted_at", null);
+  const costedByPayroll = ((allocatedWeeks ?? []) as { start_date: string; end_date: string }[]).map(
+    (w) => [w.start_date, w.end_date] as const,
+  );
+  const inAllocatedWeek = (ymd: string) =>
+    costedByPayroll.some(([from, to]) => ymd >= from && ymd <= to);
+
   for (const e of entries) {
     if (!w2.has(e.employee_id)) continue;
+    if (inAllocatedWeek(String(e.work_date).slice(0, 10))) continue;
     const oppId = oppByJob.get(e.job_id);
     if (!oppId) continue;
     const hours = Number(e.actual_hours ?? 0);

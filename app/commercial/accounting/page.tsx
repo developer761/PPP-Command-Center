@@ -257,10 +257,37 @@ async function settleReimbursementAction(formData: FormData) {
  *
  * Amounts arrive as typed dollars ("1,250.50"), so they are parsed once, here.
  */
-function dollarsToCents(raw: unknown): number {
-  const n = Number(String(raw ?? "").replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
+/**
+ * Money a person typed → cents, or NULL when it is not money.
+ *
+ * It used to return 0 for anything unparseable. For three of its callers that
+ * was harmless — they reject `cents <= 0` — but it is the wrong shape, and it
+ * made "abc" and "nothing" the same value. Payroll is where that becomes
+ * expensive: a Gusto cost of `N/A` pasted from a spreadsheet saved as $0.00,
+ * cleared every blocker, and let the week post with that person's entire
+ * payroll on no job while the screen certified the split tied to the cent.
+ *
+ * Returning null makes "not a number" distinguishable from "zero", which is
+ * the distinction every caller actually needed.
+ *
+ * Accounting parentheses are read as negative — `(500)` means −500 on every
+ * statement Mary handles, and silently reading it as 500 would be worse than
+ * rejecting it.
+ */
+function dollarsToCents(raw: unknown): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const negative = /^\(.*\)$/.test(text);
+  const bare = text.replace(/^\(|\)$/g, "").replace(/[$,\s]/g, "");
+  // Number("") is 0 and Number("1e5") is 100000 — neither is money somebody
+  // typed, so the shape is checked before the value.
+  if (!/^-?\d*\.?\d+$/.test(bare)) return null;
+  const n = Number(bare);
+  if (!Number.isFinite(n)) return null;
+  const cents = Math.round(n * 100) * (negative ? -1 : 1);
+  // Beyond this a bigint overflows Postgres and the raw error reaches the user.
+  if (Math.abs(cents) > 1_000_000_000_00) return null;
+  return cents;
 }
 
 /** A bare YYYY-MM-DD anchored at noon ET, so it lands on the day picked. */
@@ -295,7 +322,7 @@ async function editArRowAction(formData: FormData) {
   if (intent === "add") {
     const cents = dollarsToCents(formData.get("amount"));
     const job = String(formData.get("job") ?? "").trim();
-    if (!job || cents <= 0) redirect(`${BASE}?view=ar&error=${encodeURIComponent("Give the line a job and an amount.")}`);
+    if (!job || cents == null || cents <= 0) redirect(`${BASE}?view=ar&error=${encodeURIComponent("Give the line a job and an amount.")}`);
     await addArRow({ job, openCents: cents, note: String(formData.get("note") ?? "").trim() });
     revalidatePath(BASE);
     redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line added.")}`);
@@ -305,7 +332,9 @@ async function editArRowAction(formData: FormData) {
     await editArRow(id, {
       job: String(formData.get("job") ?? "").trim() || undefined,
       note: String(formData.get("note") ?? "").trim() || undefined,
-      openCents: raw ? dollarsToCents(raw) : undefined,
+      // `null` here means they typed something that is not money. Leaving the
+      // field alone beats writing $0.00 over a real figure.
+      openCents: raw ? dollarsToCents(raw) ?? undefined : undefined,
     });
   }
   revalidatePath(BASE);
@@ -320,7 +349,7 @@ async function recordPaymentAction(formData: FormData) {
   await assertCommercialAccess(user.id);
   const invoiceId = String(formData.get("invoice_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
-  if (!invoiceId || cents <= 0) {
+  if (!invoiceId || cents == null || cents <= 0) {
     redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice or AIA certificate and enter an amount.")}`);
   }
 
@@ -442,7 +471,9 @@ async function savePayrollCostsAction(formData: FormData) {
       continue;
     }
     const cents = dollarsToCents(raw);
-    if (!Number.isFinite(cents) || cents < 0) {
+    if (cents == null || cents < 0) {
+      // Named back to her, so a pasted "N/A" is visible rather than silently
+      // becoming zero.
       problems.push(raw);
       continue;
     }
@@ -494,7 +525,7 @@ async function recordSpendAction(formData: FormData) {
   const cents = dollarsToCents(formData.get("amount"));
   const isLabor = String(formData.get("kind") ?? "") === "labor";
   const view = isLabor ? "labor-out" : "purchases";
-  if (!oppId || cents <= 0) {
+  if (!oppId || cents == null || cents <= 0) {
     redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount.")}`);
   }
   const hoursRaw = String(formData.get("hours") ?? "").trim();
