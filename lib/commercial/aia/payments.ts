@@ -51,7 +51,9 @@ export type AiaPayment = {
   created_at: string;
 };
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+export type Result<T> =
+  | { ok: true; value: T; capped?: boolean; requested_cents?: number }
+  | { ok: false; error: string };
 
 /** The table is missing — migration 20260924090000 has not been pasted in. */
 function isMissingTable(error: { message?: string; code?: string } | null): boolean {
@@ -131,11 +133,37 @@ export async function recordAiaPayment(
     return { ok: false, error: "Enter an amount greater than zero." };
   }
   const sb = commercialDb();
+
+  /**
+   * CAP AT WHAT THE CERTIFICATE ASKS FOR.
+   *
+   * The invoice ledger this is modelled on caps a payment to the balance and
+   * reports `capped` so the UI can say so. Without the same rule here, one
+   * extra zero makes collected exceed billed on the deal P&L with no credit
+   * shown anywhere — and on a G702 that number is what a GC statement asserts.
+   *
+   * Capping rather than refusing, for the same reason the invoice path does:
+   * the money HAS arrived, and rejecting the entry leaves the books further
+   * from the truth than recording what the certificate can hold. The overage
+   * belongs on the next application, and the caller is told.
+   */
+  const due = await applicationPeriodDueCents(input.application_id);
+  const already = sumAiaPayments(await listAiaPayments(input.application_id));
+  const room = due > 0 ? Math.max(0, due - already) : null;
+  const requested = Math.round(input.amount_cents);
+  if (room === 0) {
+    return {
+      ok: false,
+      error: "This certificate is already paid in full. Record the payment on the next application.",
+    };
+  }
+  const amount = room == null ? requested : Math.min(requested, room);
+
   const { data, error } = await sb
     .from("commercial_aia_payments")
     .insert({
       application_id: input.application_id,
-      amount_cents: Math.round(input.amount_cents),
+      amount_cents: amount,
       paid_at: input.paid_at ?? new Date().toISOString(),
       method: input.method?.trim() || null,
       reference: input.reference?.trim() || null,
@@ -156,7 +184,12 @@ export async function recordAiaPayment(
   const row = data as AiaPayment;
   await logInsert("commercial_aia_payments", row.id, row, input.recorded_by_user_id);
   await syncApplicationStatusToPayments(input.application_id, input.recorded_by_user_id);
-  return { ok: true, value: row };
+  return {
+    ok: true,
+    value: row,
+    capped: amount !== requested,
+    requested_cents: requested,
+  };
 }
 
 export async function deleteAiaPayment(
@@ -249,7 +282,7 @@ async function syncApplicationStatusToPayments(
      * status only moves DOWN when a payment is removed from a set that still
      * has payments in it — the case where the ledger genuinely is the record.
      */
-    if (paid === 0 && status === "paid") return;
+    if (paid === 0 && status === "paid" && !(await everHadPayments(applicationId))) return;
 
     const next = paid >= due ? "paid" : "submitted";
     if (next === status) return;
@@ -272,6 +305,32 @@ async function syncApplicationStatusToPayments(
       e instanceof Error ? e.message : String(e),
     );
   }
+}
+
+/**
+ * Has a payment EVER been recorded here, including ones since removed?
+ *
+ * This is what separates the two reasons an application can sit at `paid`
+ * with an empty ledger. A certificate flagged paid before payment records
+ * existed has never had a row, and that flag is the only evidence the money
+ * arrived — demoting it erases the evidence and takes the amount out of
+ * collected. A certificate that was paid by rows which have since been
+ * removed HAS had rows, so the ledger is the record and it must go back to
+ * outstanding.
+ *
+ * Without the distinction the guard over-applied: removing the payment from a
+ * certificate that had just been paid left it reading `paid` with no money
+ * behind it, which is the original bug wearing the fix's clothes.
+ */
+async function everHadPayments(applicationId: string): Promise<boolean> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_aia_payments")
+    .select("id")
+    .eq("application_id", applicationId)
+    .limit(1);
+  if (error) return false;
+  return (data ?? []).length > 0;
 }
 
 /**

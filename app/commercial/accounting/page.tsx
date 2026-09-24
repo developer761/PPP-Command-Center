@@ -343,7 +343,16 @@ async function recordPaymentAction(formData: FormData) {
     revalidatePath(BASE);
     if (!aiaRes.ok)
       redirect(`${BASE}?view=receivables&error=${encodeURIComponent(aiaRes.error)}`);
-    redirect(`${BASE}?view=receivables&ok=${encodeURIComponent("Payment recorded against the AIA certificate.")}`);
+    // Capping is not a failure — it is the certificate refusing to be overpaid
+    // — but it must not be silent, or the bank and the platform quietly
+    // disagree. Same rule and same wording as the invoice path below.
+    redirect(
+      `${BASE}?view=receivables&ok=${encodeURIComponent(
+        aiaRes.capped
+          ? `Recorded ${formatCentsFull(Number(aiaRes.value.amount_cents))} — capped at what this certificate bills. Put the rest on the next application.`
+          : "Payment recorded against the AIA certificate.",
+      )}`,
+    );
   }
 
   const { addPayment } = await import("@/lib/commercial/invoices/db");

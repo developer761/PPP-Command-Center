@@ -6,7 +6,7 @@
  * latest AIA application's status + % complete. Service-role only.
  */
 import { commercialDb } from "@/lib/commercial/db";
-import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
+import { lineCompletedStoredCents, aiaCollectedWithPayments } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, aiaDueAtFrom, type ContractProposalRow } from "@/lib/commercial/aia/constants";
@@ -342,6 +342,43 @@ export async function listProjects(opts: {
     }
   }
 
+  /**
+   * RECORDED PAYMENTS — the THIRD place this had to be folded in.
+   *
+   * There were three independent computations of "collected on an AIA job":
+   * the single-deal rollup, the bulk rollup, and this one, which feeds the
+   * commercial dashboard tiles, the Projects list, and the geography /
+   * all-projects / job-costs / company-P&L reports. Payments landed in the
+   * first two; this one still inferred from the paid flag, so the dashboard
+   * would have gone on showing a certificate as uncollected after the cheque
+   * was recorded. Found by an audit — all three agreed with themselves.
+   *
+   * The baseline rule is the same as the other two: the latest PAID
+   * application carrying no recorded rows is a cumulative figure that already
+   * contains everything before it, and only payments on LATER applications are
+   * added on top.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("@/lib/commercial/aia/payments");
+  const paymentsByApp = await listAiaPaymentsByApplication(appData.map((a) => a.id));
+  const baselineAppByOpp = new Map<string, AppRow>();
+  for (const a of appData) {
+    if (a.status !== "paid") continue;
+    if ((paymentsByApp.get(a.id)?.length ?? 0) > 0) continue;
+    const cur = baselineAppByOpp.get(a.opportunity_id);
+    if (!cur || a.application_number > cur.application_number) baselineAppByOpp.set(a.opportunity_id, a);
+  }
+  const recordedAfterBaselineByOpp = new Map<string, number>();
+  for (const a of appData) {
+    const baseline = baselineAppByOpp.get(a.opportunity_id);
+    if (baseline && a.application_number <= baseline.application_number) continue;
+    const sum = sumAiaPayments(paymentsByApp.get(a.id) ?? []);
+    if (sum === 0) continue;
+    recordedAfterBaselineByOpp.set(
+      a.opportunity_id,
+      (recordedAfterBaselineByOpp.get(a.opportunity_id) ?? 0) + sum,
+    );
+  }
+
   // ── Batch: completed-to-date + scheduled-value total. Fetch lines for the
   // latest app (contract base) PLUS the latest-issued + latest-paid apps (AIA
   // billed/collected), deduped — usually the same one or two apps. ──
@@ -350,6 +387,10 @@ export async function listProjects(opts: {
       ...[...latestAppByOpp.values()].map((a) => a.id),
       ...[...latestIssuedByOpp.values()].map((a) => a.id),
       ...[...latestPaidByOpp.values()].map((a) => a.id),
+      // The baseline's lines too — once a LATER application is paid through
+      // recorded rows the baseline is an earlier one, and without its lines
+      // here the legacy amount silently drops out of collected.
+      ...[...baselineAppByOpp.values()].map((a) => a.id),
     ]),
   ];
   const completedByApp = new Map<string, number>();
@@ -359,7 +400,7 @@ export async function listProjects(opts: {
   // same way computeG702 / the G703 sheet does), keeping the portfolio total
   // penny-consistent with each project's AIA page.
   const pctByApp = new Map<string, number>();
-  for (const a of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values()]) {
+  for (const a of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values(), ...baselineAppByOpp.values()]) {
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
   if (latestAppIds.length > 0) {
@@ -435,10 +476,23 @@ export async function listProjects(opts: {
     const issuedApp = latestIssuedByOpp.get(o.id);
     const paidApp = latestPaidByOpp.get(o.id);
     const aiaBilled = issuedApp ? completedByApp.get(issuedApp.id) ?? 0 : 0;
-    const aiaCollected = Math.min(
-      aiaBilled,
-      paidApp ? Math.max(0, (completedByApp.get(paidApp.id) ?? 0) - (retainageByApp.get(paidApp.id) ?? 0)) : 0
-    );
+    const recordedAfterBaseline = recordedAfterBaselineByOpp.get(o.id) ?? 0;
+    const baselineApp = baselineAppByOpp.get(o.id);
+    const aiaCollected =
+      recordedAfterBaseline > 0
+        ? aiaCollectedWithPayments({
+            baselineCents: baselineApp
+              ? Math.max(
+                  0,
+                  (completedByApp.get(baselineApp.id) ?? 0) - (retainageByApp.get(baselineApp.id) ?? 0),
+                )
+              : 0,
+            recordedAfterBaselineCents: recordedAfterBaseline,
+          })
+        : Math.min(
+            aiaBilled,
+            paidApp ? Math.max(0, (completedByApp.get(paidApp.id) ?? 0) - (retainageByApp.get(paidApp.id) ?? 0)) : 0
+          );
     const billedPreTaxTotal = inv.billedPreTax + aiaBilled;
     const invoicedTotal = inv.invoiced + aiaBilled;
     const paidTotal = inv.paid + aiaCollected;

@@ -296,7 +296,14 @@ async function recordPaymentAction(formData: FormData) {
   if (!result.ok)
     redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+  // A capped amount is recorded, not rejected — say so, or the figure on the
+  // screen quietly differs from the cheque that was typed in.
+  const capNote = result.capped
+    ? `&error=${encodeURIComponent(
+        `Recorded ${(Number(result.value.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })} — capped at what this certificate bills. Put the rest on the next application.`,
+      )}`
+    : "";
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${capNote}${backQ(back)}`);
 }
 
 async function deletePaymentAction(formData: FormData) {
