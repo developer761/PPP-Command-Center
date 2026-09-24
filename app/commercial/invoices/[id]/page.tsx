@@ -39,7 +39,7 @@ import {
 } from "@/lib/commercial/invoices/status";
 import { getInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { getPaymentLienWaivers } from "@/lib/commercial/invoices/payment-lien-waiver";
-import { listInvoiceAttachments } from "@/lib/commercial/invoices/attachments";
+import { listInvoiceSendableDocuments } from "@/lib/commercial/invoices/attachments";
 import {
   listMilestonesForInvoice,
   addMilestone,
@@ -741,7 +741,7 @@ export async function InvoiceDetailView({
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
     getInvoiceLienWaiver(invoice.id),
     listMilestonesForInvoice(invoice.id),
-    listInvoiceAttachments(invoice.id),
+    listInvoiceSendableDocuments(invoice.id),
     listAccountContacts(invoice.account_id).catch(() => []),
   ]);
   // Prefill the invoice-email recipient with the account's primary contact
@@ -1511,10 +1511,16 @@ export async function InvoiceDetailView({
               {attachments.length > 0 && (
                 // NAME them. This said "the 3 files on this invoice" and left
                 // the sender to guess which three — on the one control that
-                // puts a document in a GC's inbox, where the files on an
-                // invoice are typically signed lien waivers. §4.6 of the
-                // restructure asks for "attachments as named links you can see
-                // before sending", and this was the surface it meant.
+                // puts a document in a GC's inbox. §4.6 of the restructure
+                // asks for "attachments as named links you can see before
+                // sending", and this was the surface it meant.
+                //
+                // The list is now what the email will ACTUALLY send, from the
+                // same function the send path calls. It used to read the
+                // attachments table only, while the signed lien waiver lives
+                // in its own column — so the one file Katie named ("final bill
+                // sent WITH a final lien waiver") was the one file that could
+                // never go, and this comment claimed the opposite.
                 <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 px-3 py-2.5">
                   <label className="flex items-center gap-2 text-[12.5px] font-medium text-ppp-charcoal-700 select-none">
                     <input type="checkbox" name="include_attachments" value="1" className="h-4 w-4 rounded border-ppp-charcoal-300 accent-ppp-blue-600" />

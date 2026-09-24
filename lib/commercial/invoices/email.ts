@@ -3,7 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { getCommercialInvoice } from "./db";
 import { changeInvoiceStatus } from "./status";
-import { listInvoiceAttachments } from "./attachments";
+import { listInvoiceSendableDocuments } from "./attachments";
 import { buildInvoicePdfInput } from "./invoice-pdf-data";
 import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
@@ -131,7 +131,7 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
   // set can't bounce the send — anything over budget is dropped with a note.
   if (input.include_attachments) {
     const sb = commercialDb();
-    const docs = await listInvoiceAttachments(input.invoice_id).catch(() => []);
+    const docs = await listInvoiceSendableDocuments(input.invoice_id).catch(() => []);
     let total = pdf.byteLength;
     let skipped = 0;
     for (const d of docs) {

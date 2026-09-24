@@ -79,6 +79,35 @@ export async function attachInvoiceFile(input: {
   return { ok: true, value: uploaded.document };
 }
 
+/**
+ * Every file that can go out WITH this invoice — its attachments and its
+ * signed lien waiver.
+ *
+ * Katie: "Final bill sent WITH a final lien waiver." It could not be. The
+ * waiver is stored on `commercial_invoices.lien_waiver_document_id`, the send
+ * path read `commercial_invoice_attachments`, and the two never met — so the
+ * one document Katie named by name was the one document the email could not
+ * carry, whatever the sender ticked. The invoice page even described the
+ * attachment list as "typically signed lien waivers", which it provably was
+ * not.
+ *
+ * Unioned here rather than at each call site so the list the sender SEES and
+ * the list the email ACTUALLY sends come from one function. They disagreed
+ * once already; that is the whole defect.
+ */
+export async function listInvoiceSendableDocuments(
+  invoiceId: string,
+): Promise<CommercialDocument[]> {
+  const { getInvoiceLienWaiver } = await import("./lien-waiver");
+  const [attached, waiver] = await Promise.all([
+    listInvoiceAttachments(invoiceId),
+    getInvoiceLienWaiver(invoiceId).catch(() => null),
+  ]);
+  if (!waiver) return attached;
+  // A waiver that is also a plain attachment must appear once, not twice.
+  return attached.some((d) => d.id === waiver.id) ? attached : [waiver, ...attached];
+}
+
 /** Live attachment docs for an invoice, newest first. */
 export async function listInvoiceAttachments(invoiceId: string): Promise<CommercialDocument[]> {
   const sb = commercialDb();
