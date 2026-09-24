@@ -715,9 +715,13 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 function LogoBlock({
   dateLabel,
   dealNumber,
+  logo: uploadedLogo,
 }: {
   dateLabel: string;
   dealNumber: string | null;
+  /** The operating company's logo. Null → the bundled file, then the
+   *  text wordmark. */
+  logo?: Buffer | null;
 }) {
   // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
   // load. If the file is missing (dev without asset, deploy hiccup),
@@ -729,7 +733,16 @@ function LogoBlock({
   // sequential, matches Tomco's JD Sports reference "No. ALT0125"
   // convention). Only renders when the header carries a real deal
   // number — legacy proposals with no deal_number show only the date.
-  const logo = getLogoBuffer();
+  // THE OPERATING COMPANY'S LOGO, not a file path.
+  //
+  // Karan 2026-07-31: "ONE configurable operating company (name/address/phone/
+  // logo/letterhead/signature) that flows into EVERY generated doc." Every
+  // other document does that through getBrandLogoBuffer(). This one read
+  // public/brand/tomco-logo.jpg straight off disk and cached it at module
+  // load — so uploading a new logo in Settings changed the invoice, the AIA,
+  // the warranty and the work order, and left the proposal, which is the
+  // document a GC actually looks at, on the old one.
+  const logo = uploadedLogo ?? getLogoBuffer();
   return (
     <>
       <View style={styles.headerRow}>
@@ -1695,6 +1708,16 @@ export type RenderProposalArgs = {
    */
   company?: OperatingCompany | null;
   /**
+   * The operating company's uploaded logo.
+   *
+   * Same story as `company`, one document later: the footer was fixed to read
+   * Settings, and the LOGO was still read straight off disk at module load. So
+   * uploading a new one updated the invoice, AIA, warranty and work order and
+   * left the proposal on the bundled file. Read by the caller because this
+   * module renders synchronously and cannot await.
+   */
+  logo?: Buffer | null;
+  /**
    * Sales tax for this job, or null when no line should print.
    *
    * Stephanie 2026-08-20: "Sales Tax isn't carrying over to proposal." It had
@@ -1772,6 +1795,7 @@ export function ProposalPdfDocument({
   proposal,
   lineItems,
   exclusions,
+  logo,
   mode = "customer",
   /**
    * Print the sign-and-return block on the CUSTOMER copy.
@@ -1887,6 +1911,7 @@ export function ProposalPdfDocument({
 
         <LogoBlock
           dateLabel={dateLabel}
+          logo={logo}
           dealNumber={
             proposal.header_json.proposal_number?.trim() ||
             proposalRevisionLabel(proposal)

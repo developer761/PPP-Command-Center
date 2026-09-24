@@ -582,6 +582,9 @@ async function fileEstimateReportAction(formData: FormData) {
   try {
     const { renderProposalPdf } = await import("@/lib/commercial/proposals/pdf");
     const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const brandLogo = await (
+      await import("@/lib/commercial/operating-company/assets")
+    ).getBrandLogoBuffer().catch(() => null);
     // Same fit as the download route and the send path. This was the third of
     // three render sites and, like the send path, it skipped the fit — so a
     // report FILED to the job could be a different shape from the one an
@@ -595,6 +598,7 @@ async function fileEstimateReportAction(formData: FormData) {
         // The estimator view — quantities, unit prices, bid notes, watermark.
         mode: "internal",
         company,
+        logo: brandLogo,
         pageHeightScale,
       })
     );

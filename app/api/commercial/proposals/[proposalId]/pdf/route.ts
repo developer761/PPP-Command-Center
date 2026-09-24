@@ -192,6 +192,11 @@ export async function GET(
       mode,
       showSignatureBlock,
       company: await getOperatingCompany(),
+      // Resolved here for the same reason as the company: the module renders
+      // synchronously and the fit loop may lay the document out several times.
+      logo: await (
+        await import("@/lib/commercial/operating-company/assets")
+      ).getBrandLogoBuffer().catch(() => null),
       // ONLY the ones that can't be spliced onto the end — see the PDF's
       // "Also on file" block. Decided from type and size alone, which is why it
       // can be known before the render.

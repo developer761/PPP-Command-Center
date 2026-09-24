@@ -3010,6 +3010,14 @@ export async function sendProposal(input: {
           await import("@/lib/commercial/operating-company/db");
         return getOperatingCompany();
       })(),
+      // And the logo with it. This is the copy the GC receives, so it is the
+      // worst one to leave on a stale image.
+      logo: await (async () => {
+        const { getBrandLogoBuffer } = await import(
+          "@/lib/commercial/operating-company/assets"
+        );
+        return getBrandLogoBuffer().catch(() => null);
+      })(),
     };
     const fit = await renderFitToOnePage((pageHeightScale) =>
       renderProposalPdf({ ...fitArgs, pageHeightScale }),
