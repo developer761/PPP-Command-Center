@@ -784,9 +784,20 @@ export default async function AccountingPage({
    * narrow — so matching one week meant exporting 851 rows into Excel.
    */
   const rawPeriod = pickFirst(sp.period);
-  const period: SpendPeriodKey = isSpendPeriod(rawPeriod) ? rawPeriod : "all";
-  const periodHref = (v: View, k: SpendPeriodKey) =>
-    `${BASE}?view=${v}${k === "all" ? "" : `&period=${k}`}`;
+  /**
+   * DEFAULTS TO THIS MONTH, not all time.
+   *
+   * Unfiltered, these registers render every row ever recorded: Purchases
+   * measured 2,519kb of HTML and Labor payments 1,929kb, and both grow every
+   * week. A month brings them to 413kb and 240kb. Mary reconciles a week or a
+   * month at a time, so all-time was never the view she wanted — it was just
+   * the only one there was.
+   *
+   * Nothing is hidden: the bar names the exact dates it is showing, says how
+   * many rows, and All time is one click away.
+   */
+  const period: SpendPeriodKey = isSpendPeriod(rawPeriod) ? rawPeriod : "this_month";
+  const periodHref = (v: View, k: SpendPeriodKey) => `${BASE}?view=${v}&period=${k}`;
   const href = (v: View) => {
     if (v === "overview") return BASE;
     // The ledger carries its own filters back, so leaving it and returning
