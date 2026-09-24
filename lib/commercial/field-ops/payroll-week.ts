@@ -101,6 +101,15 @@ export type PayrollWeek = {
    */
   postedCents: number | null;
   /**
+   * What is on the jobs no longer matches what this week now works out to —
+   * compared PER JOB, not by total.
+   *
+   * A total cannot see a redistribution. An hour moved from one building to
+   * another after posting leaves the week summing identically while two jobs
+   * carry the wrong labor cost, and the banner went on calling it correct.
+   */
+  postedDrift: boolean;
+  /**
    * The most recent day anywhere that has settled W-2 hours.
    *
    * An empty week is almost never a mistake Mary made — it is a week whose
@@ -430,21 +439,46 @@ export async function getPayrollWeek(
       blockers.push(`${e.name}'s split does not add up to their Gusto cost — do not post this week.`);
   }
 
-  const postedCents = period
+  // PER JOB, not just the total.
+  //
+  // The banner compared sums, and a sum cannot see a redistribution. Move an
+  // hour from Building #2 to Building #3 after posting and the week still
+  // totals the same to the cent, while two jobs now carry the wrong labor
+  // cost — and the screen went on saying the posted figure was correct. That
+  // is the same shape as every margin bug in this codebase: right in total,
+  // wrong on the job somebody is actually reading.
+  const postedRows = period
     ? (
         (
           await sb
             .from("commercial_project_purchases")
-            .select("amount_cents")
+            .select("amount_cents, opportunity_id")
             .eq("payroll_period_id", period.id)
             .is("deleted_at", null)
         ).data ?? []
-      ).reduce((n, r) => n + Number((r as { amount_cents: number }).amount_cents ?? 0), 0)
-    : 0;
+      ) as { amount_cents: number; opportunity_id: string | null }[]
+    : [];
+  const postedCents = postedRows.reduce((n, r) => n + Number(r.amount_cents ?? 0), 0);
+
+  const postedByOpp = new Map<string, number>();
+  for (const r of postedRows) {
+    const k = r.opportunity_id ?? "";
+    postedByOpp.set(k, (postedByOpp.get(k) ?? 0) + Number(r.amount_cents ?? 0));
+  }
+  const liveByOpp = new Map<string, number>();
+  for (const j of jobTotals.values()) {
+    if (j.costCents > 0) liveByOpp.set(j.opportunityId, j.costCents);
+  }
+  /** True when what is ON the jobs no longer matches what the week now says. */
+  const postedDrift =
+    postedRows.length > 0 &&
+    (postedByOpp.size !== liveByOpp.size ||
+      [...liveByOpp].some(([opp, cents]) => postedByOpp.get(opp) !== cents));
 
   return {
     periodId: period?.id ?? null,
     postedCents: period && postedCents > 0 ? postedCents : null,
+    postedDrift,
     startDate,
     endDate,
     status: (period?.status as "draft" | "allocated") ?? "draft",
