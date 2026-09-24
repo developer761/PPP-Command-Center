@@ -15,11 +15,13 @@ export const dynamic = "force-dynamic";
  * page and not in the spreadsheet is invisible until somebody's reconciliation
  * fails, which is the worst possible place to find it.
  *
- * Gated with `people: false` — this is company money, not per-person pay, so it
- * follows the same rule as the receivables and AR exports.
+ * Gated to the Accounting roles. It used to say it followed "the same rule as
+ * the receivables and AR exports" while passing no options at all — which
+ * admits any signed-in non-crew user, so a rep could fetch the entire
+ * money-in/money-out ledger straight from the URL.
  */
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ accounting: true });
   if (!guard.ok) return guard.response;
 
   const sp = req.nextUrl.searchParams;

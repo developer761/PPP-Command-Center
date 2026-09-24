@@ -184,9 +184,16 @@ function safeBack(raw: unknown): string {
 async function saveNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const rowKey = String(formData.get("row_key") ?? "");
   // Carry the filters back, so saving a note doesn't drop you out of the view
   // you were working through row by row.
@@ -215,9 +222,16 @@ async function saveNoteAction(formData: FormData) {
 async function depositAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const paymentId = String(formData.get("payment_id") ?? "");
   if (!paymentId) return;
   const res = await setPaymentDeposited(paymentId, String(formData.get("deposited")) === "1");
@@ -243,9 +257,16 @@ async function depositAction(formData: FormData) {
 async function settleReimbursementAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const purchaseId = String(formData.get("purchase_id") ?? "");
   if (!purchaseId) return;
   const res = await setReimbursementSettled(purchaseId, String(formData.get("settled")) === "1");
@@ -309,9 +330,16 @@ function pickedDate(raw: unknown): string | undefined {
 async function editArRowAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const id = String(formData.get("id") ?? "");
   const intent = String(formData.get("intent") ?? "save");
   const { editArRow, setCarryoverCleared, addArRow, removeAddedArRow } = await import(
@@ -349,9 +377,16 @@ async function editArRowAction(formData: FormData) {
 async function recordPaymentAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const invoiceId = String(formData.get("invoice_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
   if (!invoiceId || cents == null || cents <= 0) {
@@ -424,9 +459,16 @@ async function recordPaymentAction(formData: FormData) {
 async function savePayrollCostsAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
@@ -503,9 +545,16 @@ async function savePayrollCostsAction(formData: FormData) {
 async function postPayrollAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
   const { postPayrollWeek } = await import("@/lib/commercial/field-ops/payroll-week");
@@ -523,9 +572,16 @@ async function postPayrollAction(formData: FormData) {
 async function recordSpendAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const oppId = String(formData.get("opportunity_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
   const isLabor = String(formData.get("kind") ?? "") === "labor";
@@ -609,9 +665,16 @@ async function recordSpendAction(formData: FormData) {
 async function draftNotesAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const { generateRowNotes } = await import("@/lib/commercial/reports/receivables-row-notes");
   const res = await generateRowNotes(await getReceivablesReport());
   revalidatePath(BASE);
@@ -629,9 +692,16 @@ async function draftNotesAction(formData: FormData) {
 async function sendToAlexAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const res = await sendReceivablesToAlex();
   revalidatePath(BASE);
   const back = safeBack(formData.get("back"));
