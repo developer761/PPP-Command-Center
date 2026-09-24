@@ -13,6 +13,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import {
   computeG702,
   aiaBilledCollectedFrom,
+  aiaCollectedWithPayments,
   lineCompletedStoredCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
@@ -1242,15 +1243,55 @@ export async function aiaBillingRollup(
    */
   const { listAiaPaymentsByApplication, sumAiaPayments } = await import("./payments");
   const paymentsByApp = await listAiaPaymentsByApplication(apps.map((a) => a.id));
-  let recorded = 0;
-  for (const list of paymentsByApp.values()) recorded += sumAiaPayments(list);
-  const collectedFinal = paymentsByApp.size > 0 ? recorded : collectedCents;
+
+  /**
+   * The two sources have to ADD UP, not replace one another.
+   *
+   * First attempt at this took "any payment recorded on the job" to mean
+   * "drop the inference" — and on AIREF Building #1, where Application 2 is
+   * marked paid from before payments existed, recording $35,000 against
+   * Application 3 made the $66,833.31 already collected VANISH. Collected went
+   * DOWN when money came in. Caught by running it against the live job rather
+   * than reasoning about it.
+   *
+   * G702 line 6 is CUMULATIVE — it carries every prior period — so the right
+   * split is by application number:
+   *
+   *   baseline = line 6 of the latest PAID application that carries no
+   *              recorded payments. That one number already contains
+   *              everything collected up to and including it.
+   *   plus     = payments recorded on applications AFTER that one.
+   *
+   * With no legacy paid-but-unrecorded application, the baseline is zero and
+   * collected is simply the sum of what was recorded. With no recorded
+   * payments at all, `plus` is zero and this returns exactly the old
+   * inference — so no existing job restates itself.
+   */
+  const legacyPaid = apps
+    .filter((a) => a.status === "paid" && (paymentsByApp.get(a.id)?.length ?? 0) === 0)
+    .sort((a, b) => a.application_number - b.application_number)
+    .pop() ?? null;
+
+  const baselineCents = legacyPaid
+    ? Math.round((await resolveG702(legacyPaid.id))?.totalEarnedLessRetainageCents ?? 0)
+    : 0;
+
+  let recordedAfterBaseline = 0;
+  for (const a of apps) {
+    if (legacyPaid && a.application_number <= legacyPaid.application_number) continue;
+    recordedAfterBaseline += sumAiaPayments(paymentsByApp.get(a.id) ?? []);
+  }
+
+  const hasRecorded = [...paymentsByApp.values()].some((l) => l.length > 0);
+  const collectedFinal = hasRecorded
+    ? aiaCollectedWithPayments({ baselineCents, recordedAfterBaselineCents: recordedAfterBaseline })
+    : collectedCents;
   const dueNowFinal = Math.max(0, billedCents - retainageHeldCents - collectedFinal);
 
   return {
     billedCents,
     collectedCents: collectedFinal,
-    dueNowCents: paymentsByApp.size > 0 ? dueNowFinal : dueNowCents,
+    dueNowCents: hasRecorded ? dueNowFinal : dueNowCents,
     retainageHeldCents,
     // ONE ladder — the same one the AR-aging report, the receivables list and
     // the dashboard use.
