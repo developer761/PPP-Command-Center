@@ -101,12 +101,27 @@ export async function getPayrollWeek(
     ]);
 
   const period = periodRow as { id: string; status: string } | null;
-  const empName = new Map(
-    ((empRows ?? []) as { id: string; display_name: string }[]).map((e) => [
-      e.id,
-      e.display_name,
-    ]),
-  );
+  const allEmps = (empRows ?? []) as {
+    id: string;
+    display_name: string;
+    worker_type: string | null;
+    active: boolean;
+  }[];
+  const empName = new Map(allEmps.map((e) => [e.id, e.display_name]));
+  /**
+   * W-2 ONLY, AND THIS IS THE DOUBLE-COUNT GUARD.
+   *
+   * Gusto runs payroll for employees. A subcontractor is already costed by the
+   * payout to their labour company — that is the whole sub model. Allocating a
+   * payroll figure to one as well would put the same work on a job twice, and
+   * both halves would look entirely real.
+   *
+   * With nobody flagged W-2 yet this list is empty, which is correct and is
+   * said plainly rather than silently showing a blank week: the crew are all
+   * `worker_type = 'sub'` until somebody switches them.
+   */
+  const isW2 = new Set(allEmps.filter((e) => e.worker_type === "w2").map((e) => e.id));
+  const anyW2 = isW2.size > 0;
   const jobs = (jobRows ?? []) as { id: string; name: string; opportunity_id: string | null }[];
   const jobOpp = new Map(jobs.map((j) => [j.id, j.opportunity_id]));
   const jobName = new Map(jobs.map((j) => [j.id, j.name]));
@@ -134,6 +149,7 @@ export async function getPayrollWeek(
   for (const t of entries) {
     const hours = Number(t.actual_hours ?? 0);
     if (hours <= 0) continue;
+    if (!isW2.has(t.employee_id)) continue; // a sub is costed by their payout
     if (!SETTLED.includes(t.status)) {
       unapprovedHours += hours;
       continue;
@@ -209,7 +225,12 @@ export async function getPayrollWeek(
 
   // What still has to happen before this can be posted, in Mary's order.
   const blockers: string[] = [];
-  if (employees.length === 0) blockers.push("No approved hours in this week yet.");
+  if (!anyW2)
+    blockers.push(
+      "Nobody is set up as a W-2 employee yet, so there is no payroll to split. Everyone on the crew is still a subcontractor, costed by their payout.",
+    );
+  else if (employees.length === 0)
+    blockers.push("No approved hours for any W-2 employee in this week yet.");
   if (unapprovedHours > 0)
     blockers.push(
       `${unapprovedHours}h are logged but not approved, so they are not costed. Approve them first or they land on no job.`,

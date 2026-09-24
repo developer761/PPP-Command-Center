@@ -23,6 +23,7 @@ import { ReceivablesTable } from "@/components/commercial/receivables-table";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
+import { PayrollWeekPanels, PayrollWeekHeader } from "@/components/commercial/payroll-week-panels";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
 import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
@@ -379,6 +380,80 @@ async function recordPaymentAction(formData: FormData) {
   redirect(`${BASE}?view=receivables&ok=${encodeURIComponent(res.capped ? `Recorded ${formatCentsFull(res.applied_cents ?? 0)} — capped at the invoice balance.` : "Payment recorded.")}`);
 }
 
+/**
+ * Save the actual Gusto cost for every person in one week, in one submit.
+ *
+ * One form for the whole table rather than a save per row: Mary is reading a
+ * Gusto report and typing down a column, and fifteen separate saves is fifteen
+ * chances to leave one behind.
+ */
+async function savePayrollCostsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    redirect(`${BASE}?view=payroll&error=${encodeURIComponent("Bad week.")}`);
+  }
+  const { ensurePayrollPeriod, setPayrollCost } = await import("@/lib/commercial/field-ops/payroll-week");
+  const period = await ensurePayrollPeriod(start, end, user.id);
+  if (!period.ok) redirect(`${BASE}?view=payroll&week=${start}&error=${encodeURIComponent(period.error)}`);
+
+  const problems: string[] = [];
+  let saved = 0;
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("cost_")) continue;
+    const employeeId = k.slice(5);
+    const raw = String(v ?? "").trim();
+    // A BLANK IS NOT A ZERO. Clearing the box means "I have not entered this
+    // yet", and writing 0 would let the week post with somebody costed at
+    // nothing — silently putting their jobs in profit.
+    if (raw === "") continue;
+    const cents = dollarsToCents(raw);
+    if (!Number.isFinite(cents) || cents < 0) {
+      problems.push(raw);
+      continue;
+    }
+    const res = await setPayrollCost({
+      periodId: period.id,
+      employeeId,
+      actualCostCents: cents,
+      userId: user.id,
+    });
+    if (res.ok) saved += 1;
+    else problems.push(res.error);
+  }
+  revalidatePath(BASE);
+  const note = problems.length
+    ? `&error=${encodeURIComponent(`Saved ${saved}. Could not read: ${problems.slice(0, 3).join(", ")}`)}`
+    : `&ok=${encodeURIComponent(`Saved ${saved} cost${saved === 1 ? "" : "s"}.`)}`;
+  redirect(`${BASE}?view=payroll&week=${start}${note}`);
+}
+
+/** Turn the week's split into labor payouts on each job. */
+async function postPayrollAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  const { postPayrollWeek } = await import("@/lib/commercial/field-ops/payroll-week");
+  const res = await postPayrollWeek(start, end, user.id);
+  revalidatePath(BASE);
+  revalidatePath("/commercial");
+  if (!res.ok) redirect(`${BASE}?view=payroll&week=${start}&error=${encodeURIComponent(res.error)}`);
+  redirect(
+    `${BASE}?view=payroll&week=${start}&ok=${encodeURIComponent(
+      `Posted ${formatCentsFull(res.totalCents)} across ${res.created} job line${res.created === 1 ? "" : "s"}${res.replaced ? ` — replaced ${res.replaced} from the previous run` : ""}.`,
+    )}`,
+  );
+}
+
 async function recordSpendAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -543,6 +618,11 @@ const VIEWS = [
   { key: "unbilled", label: "Won, not invoiced" , primary: false },
   { key: "purchases", label: "Purchases" , primary: true },
   { key: "labor-out", label: "Labor payments" , primary: true },
+  // Karan 2026-09-24: "all of Mary's stuff should be in accounting", and this
+  // is the most manual thing she does — Katie: "Right now the calculations are
+  // manual." It sits beside Labor payments because it PRODUCES them: posting a
+  // week writes the same payout rows that view lists.
+  { key: "payroll", label: "Payroll" , primary: true },
   { key: "deposits", label: "Deposits" , primary: true },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
@@ -741,6 +821,7 @@ export default async function AccountingPage({
     entry,
     spendRows,
     depositRows,
+    payroll,
     rowNotes,
   ] = await Promise.all([
     // Only fetched for the view that renders it — the money band above doesn't
@@ -770,6 +851,24 @@ export default async function AccountingPage({
     entryOn ? getAccountingEntryOptions() : Promise.resolve(null),
     spendOn ? getSpendRows() : Promise.resolve(null),
     view === "deposits" ? getMoneyInRows() : Promise.resolve(null),
+    // The payroll week. Gated like the rest — it is four joins and nobody on
+    // Overview is paying for it.
+    view === "payroll"
+      ? (async () => {
+          const { getPayrollWeek } = await import("@/lib/commercial/field-ops/payroll-week");
+          const { mondayOf, addDaysIso } = await import("@/lib/commercial/field-ops/schedule");
+          const asked = pickFirst(sp.week);
+          // Always a whole Monday–Sunday block. Overtime is a 40h/week idea, so
+          // a half-week cannot be costed correctly — and a URL somebody edited
+          // by hand must not be able to produce one.
+          const start = mondayOf(
+            asked && /^\d{4}-\d{2}-\d{2}$/.test(asked)
+              ? asked
+              : new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
+          );
+          return { week: await getPayrollWeek(start, addDaysIso(start, 6)), start };
+        })()
+      : Promise.resolve(null),
     // Rows whose read is missing OR written from facts that have since moved —
     // including a note somebody typed after the last draft.
     getCachedRowNotes(receivables),
@@ -2326,6 +2425,31 @@ export default async function AccountingPage({
         </section>
       )}
 
+      {view === "payroll" && payroll && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHead
+              title="Payroll"
+              hint="Hours to Gusto, the real cost back, split across jobs by hours."
+            />
+            <PayrollWeekHeader
+              startDate={payroll.week.startDate}
+              endDate={payroll.week.endDate}
+              prevHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, -7)}`}
+              nextHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, 7)}`}
+              todayHref={`${BASE}?view=payroll`}
+            />
+          </div>
+          <PayrollWeekPanels
+            week={payroll.week}
+            saveCostsAction={savePayrollCostsAction}
+            postAction={postPayrollAction}
+            selectedJobId={pickFirst(sp.job) ?? null}
+            basePath={`${BASE}?view=payroll&week=${payroll.start}`}
+          />
+        </section>
+      )}
+
       {view === "labor-out" && entry && (
         <div data-print-hide data-tour="accounting:record-labor">
           <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
@@ -2574,6 +2698,15 @@ function MiniTable({
 /** `href` is optional: on a view that already shows everything there is
  *  nothing to link to, and a "Full report →" that leaves the page is exactly
  *  what this restructure removed. */
+/** Move a yyyy-mm-dd by whole days without a timezone turning it into the day
+ *  before. Payroll weeks are calendar blocks, not instants. */
+function shiftWeek(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 function SectionHead({
   title, hint, href, linkLabel = "See all",
 }: { title: string; hint: string; href?: string; linkLabel?: string }) {
