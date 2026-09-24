@@ -185,6 +185,31 @@ const ACCEPTED = {
     "assigned from the per-year counter table commercial_project_number_counters (migration 046), which only increments. Monotonic by design.",
 };
 
+/**
+ * POSTGRES TRUNCATES IDENTIFIERS AT 63 CHARACTERS.
+ *
+ * An inline `UNIQUE (a, b)` is auto-named `{table}_{a}_{b}_key`, and if that
+ * comes to more than 63 characters the name in the database is the TRUNCATED
+ * one. A later migration written from the convention then says:
+ *
+ *   drop constraint if exists commercial_aia_applications_..._application_number_key
+ *
+ * — 65 characters, matching nothing. `IF EXISTS` swallows it, the migration
+ * reports success, and the constraint goes on enforcing. That happened on
+ * 2026-09-24: Stephanie stayed blocked after a migration that looked applied,
+ * and the error she saw named `..._application_numb_key`.
+ *
+ * `IF EXISTS` on a name you GUESSED is not a safe no-op, it is a silent one.
+ * The repair is to find the constraint by its COLUMNS in pg_constraint and
+ * drop whatever it is actually called.
+ */
+const LONG_NAMES = [];
+for (const u of uniques) {
+  if (u.kind !== "table UNIQUE" || !u.name) continue;
+  if (u.name.length <= 63) continue;
+  LONG_NAMES.push({ ...u });
+}
+
 // ── Report ────────────────────────────────────────────────────────────────
 const problems = [];
 const accepted = [];
@@ -208,6 +233,25 @@ console.log(
   `\n⚠ Reads migration SQL, not the live database. A constraint changed by hand in\n` +
     `  the Supabase editor and never written down is invisible here.`,
 );
+
+if (LONG_NAMES.length > 0) {
+  console.log(
+    `\n⚠ ${LONG_NAMES.length} constraint name(s) exceed Postgres's 63-character limit and are`,
+  );
+  console.log(`  TRUNCATED in the database. Never drop these by the name the convention`);
+  console.log(`  implies — \`if exists\` will match nothing and silently do nothing:`);
+  for (const l of LONG_NAMES) {
+    console.log(`     ${l.table} (${l.cols.join(", ")})  —  ${l.file}`);
+    console.log(`        the convention implies ${l.name.length} characters, so the real name differs`);
+  }
+  console.log(
+    `  The real name is NOT this string cut to 63 — Postgres shortens the middle\n` +
+      `  and keeps the _key suffix, so it cannot be predicted reliably. Do not try.\n` +
+      `  Find it by its COLUMNS in pg_constraint and drop whatever it is called:\n` +
+      `     select con.conname from pg_constraint con join pg_class rel on rel.oid = con.conrelid\n` +
+      `      where rel.relname = '<table>' and con.contype = 'u';`,
+  );
+}
 
 if (accepted.length > 0) {
   console.log(`\n${accepted.length} judged correct to outlive their rows:`);
