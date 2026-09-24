@@ -21,41 +21,11 @@ export function messagingDb() {
   );
 }
 
-/**
- * Read every row, not the first thousand.
- *
- * PostgREST caps an unbounded select at 1,000 rows and says nothing about it —
- * no error, no flag, just a short array. A query that counts things then
- * quietly counts the first thousand of them, and the number on the screen is
- * wrong in a direction nobody can see.
- *
- * loadOptOutRates was doing exactly that: reading the whole conversations
- * table to build the DENOMINATOR of the opt-out rate. Truncate the denominator
- * while the numerator stays whole and the rate over-reports — which on that
- * screen means telling somebody to pause a number that is fine. Harmless at
- * ten conversations; wrong within about a week at 171 leads a day.
- *
- * Pages explicitly. The last page is the one shorter than the page size, which
- * is also how it stops on an exact multiple.
- */
-const PAGE = 1000;
 
-export async function selectAll<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-  label: string
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw new Error(`${label}: ${error.message}`);
-    const rows = data ?? [];
-    out.push(...rows);
-    if (rows.length < PAGE) return out;
-    // A runaway guard. Nothing here should ever reach this, and looping
-    // forever against a paging bug is worse than a short answer that throws.
-    if (out.length > 200_000) throw new Error(`${label}: refusing to read more than 200,000 rows`);
-  }
-}
+
+import { selectAll, selectAllIn } from "./paging";
+// Re-exported so the many existing callers keep their import.
+export { selectAll, selectAllIn } from "./paging";
 
 export type InboxBucket = "needs_human" | "active" | "waiting" | "ended";
 
@@ -115,16 +85,35 @@ export async function loadInbox(bucket: InboxBucket, workspaceId?: string, searc
   return { rows, error: null as string | null };
 }
 
-/** Counts per bucket, for the filter chips. One query, not four. */
+/**
+ * Counts per bucket, for the filter chips.
+ *
+ * This used to be one query that read every conversation and counted the
+ * states in JavaScript — "one query, not four", which was true and was the
+ * wrong trade. PostgREST caps that read at 1,000 rows, so at 1,001
+ * conversations the chips would begin under-reporting with nothing to show
+ * for it, and the chip that would undercount is "Needs human": the one whose
+ * whole reason for sitting first is that an escalation nobody sees is an
+ * escalation that failed.
+ *
+ * Four head requests instead. The database does the counting, the count is
+ * exact at any table size, and no rows cross the wire at all — cheaper than
+ * the single query it replaces, not dearer.
+ */
 export async function bucketCounts(workspaceId?: string) {
   const sb = messagingDb();
-  let q = sb.from("sms_conversations").select("state");
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  const { data } = await q;
+  const pairs = await Promise.all(
+    BUCKETS.map(async (b) => {
+      let q = sb.from("sms_conversations")
+        .select("id", { count: "exact", head: true })
+        .in("state", STATE_FOR[b.key]);
+      if (workspaceId) q = q.eq("workspace_id", workspaceId);
+      const { count } = await q;
+      return [b.key, count ?? 0] as const;
+    })
+  );
   const counts: Record<InboxBucket, number> = { needs_human: 0, active: 0, waiting: 0, ended: 0 };
-  for (const r of data ?? []) {
-    for (const b of BUCKETS) if (STATE_FOR[b.key].includes(r.state)) counts[b.key]++;
-  }
+  for (const [k, n] of pairs) counts[k] = n;
   return counts;
 }
 
@@ -269,7 +258,14 @@ export async function sidebarWorkspaces() {
   const sb = messagingDb();
   const [{ data: ws }, { data: convs }] = await Promise.all([
     sb.from("sms_sub_accounts").select("id, name").eq("is_active", true).order("name"),
-    sb.from("sms_conversations").select("workspace_id").eq("state", "human_active"),
+    // Paged. This is the per-workspace "needs you" badge, and a backed-up
+    // queue is exactly when it passes a thousand and exactly when the number
+    // has to be right.
+    selectAll<{ workspace_id: string }>(
+      (from, to) => sb.from("sms_conversations").select("workspace_id")
+        .eq("state", "human_active").order("id").range(from, to),
+      "the needs-a-person badge"
+    ).then((data) => ({ data })),
   ]);
   const unread = new Map<string, number>();
   for (const c of convs ?? []) unread.set(c.workspace_id, (unread.get(c.workspace_id) ?? 0) + 1);
@@ -640,12 +636,15 @@ export async function loadBoard(workspaceId?: string) {
 
   // One query for the newest message per conversation, rather than N.
   const ids = rows.map((r) => r.id);
-  const { data: msgs } = ids.length
-    ? await sb.from("sms_messages").select("conversation_id, body, direction, created_at")
-        .in("conversation_id", ids).order("created_at", { ascending: false })
-    : { data: [] };
+  const msgs = await selectAllIn<{ conversation_id: string; body: string; direction: string; created_at: string }>(
+    ids,
+    (chunk, from, to) => sb.from("sms_messages").select("conversation_id, body, direction, created_at")
+      .in("conversation_id", chunk)
+      .order("created_at", { ascending: false }).order("id").range(from, to),
+    "the inbox message previews"
+  );
   const newest = new Map<string, { body: string; direction: string }>();
-  for (const m of msgs ?? []) {
+  for (const m of msgs) {
     if (!newest.has(m.conversation_id)) newest.set(m.conversation_id, { body: m.body, direction: m.direction });
   }
 
@@ -750,9 +749,23 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   const select =
     "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, campaign_version_id, sms_sub_accounts(name), sms_campaign_versions(sms_campaigns(name))";
 
-  let q = sb.from("sms_conversations").select(select).gte("created_at", prevFrom.toISOString());
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  const { data, error } = await q;
+  // Paged: this is two reporting windows' worth of conversations, and at real
+  // lead volume sixty days is well past a thousand. A truncated numerator and
+  // a truncated denominator do not truncate by the same amount, so every rate
+  // on the page would be wrong by an unknowable margin.
+  const readErrors: string[] = [];
+  const data = await selectAll<Record<string, unknown>>(
+    (from, to) => {
+      let q = sb.from("sms_conversations").select(select)
+        .gte("created_at", prevFrom.toISOString()).order("id").range(from, to);
+      if (workspaceId) q = q.eq("workspace_id", workspaceId);
+      return q;
+    },
+    "the reporting window"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const all = (data ?? []).map((r) => {
     const ws = r.sms_sub_accounts as unknown as { name: string } | null;
@@ -774,12 +787,16 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   // conversation: a thread can pass through more than one person, and crediting
   // all of it to whoever it was last assigned to would flatter them.
   const currentIds = all.filter((r) => new Date(r.created_at) >= from).map((r) => r.id);
-  const { data: humanMsgs } = currentIds.length
-    ? await sb.from("sms_messages")
-        .select("conversation_id, direction, sent_by_agent, created_at")
-        .in("conversation_id", currentIds)
-        .order("created_at")
-    : { data: [] as { conversation_id: string; direction: string; sent_by_agent: string | null; created_at: string }[] };
+  const humanMsgs = await selectAllIn<{ conversation_id: string; direction: string; sent_by_agent: string | null; created_at: string }>(
+    currentIds,
+    (chunk, from, to) => sb.from("sms_messages")
+      .select("conversation_id, direction, sent_by_agent, created_at")
+      .in("conversation_id", chunk).order("created_at").order("id").range(from, to),
+    "who replied, for the reporting window"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const humanRowsRaw: {
     name: string; outcome: string | null; state: string;
@@ -787,7 +804,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   }[] = [];
   {
     const byConv = new Map<string, typeof humanMsgs>();
-    for (const m of humanMsgs ?? []) {
+    for (const m of humanMsgs) {
       const list = byConv.get(m.conversation_id) ?? [];
       list.push(m);
       byConv.set(m.conversation_id, list);
@@ -826,27 +843,47 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
 
   // Aging needs the live set regardless of the reporting window — a
   // conversation from six weeks ago that is still waiting is still waiting.
-  let liveQ = sb
-    .from("sms_conversations")
-    .select("id, state, last_message_at, sms_sub_accounts(name)")
-    .neq("state", "ended");
-  if (workspaceId) liveQ = liveQ.eq("workspace_id", workspaceId);
-  const { data: live } = await liveQ;
+  const live = await selectAll<{ id: string; state: string; last_message_at: string | null; sms_sub_accounts: unknown }>(
+    (from, to) => {
+      let q = sb.from("sms_conversations")
+        .select("id, state, last_message_at, sms_sub_accounts(name)")
+        .neq("state", "ended").order("id").range(from, to);
+      if (workspaceId) q = q.eq("workspace_id", workspaceId);
+      return q;
+    },
+    "the live conversation set"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
-  const liveIds = (live ?? []).map((r) => r.id);
-  const { data: lastMsgs } = liveIds.length
-    ? await sb.from("sms_messages").select("conversation_id, direction, created_at")
-        .in("conversation_id", liveIds).order("created_at", { ascending: false })
-    : { data: [] };
+  const liveIds = live.map((r) => r.id);
+  // CHUNKED AS WELL AS PAGED, and both for different reasons.
+  //
+  // .in() bounds the FILTER, never the RESULT: one row per id is the least
+  // this can return and every message in every one of those threads is the
+  // most, so it truncates long before the id list does. And a .in() carrying
+  // thousands of UUIDs is a URL tens of kilobytes long, which fails outright
+  // rather than quietly. Neither problem is visible at ten conversations.
+  const lastMsgs = await selectAllIn<{ conversation_id: string; direction: string; created_at: string }>(
+    liveIds,
+    (chunk, from, to) => sb.from("sms_messages").select("conversation_id, direction, created_at")
+      .in("conversation_id", chunk)
+      .order("created_at", { ascending: false }).order("id").range(from, to),
+    "messages for the aging report"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const lastIn = new Map<string, string>(), lastOut = new Map<string, string>();
-  for (const m of lastMsgs ?? []) {
+  for (const m of lastMsgs) {
     const map = m.direction === "inbound" ? lastIn : lastOut;
     if (!map.has(m.conversation_id)) map.set(m.conversation_id, m.created_at);
   }
 
   const aging = agingConversations(
-    (live ?? []).map((r) => ({
+    live.map((r) => ({
       id: r.id,
       workspace: (r.sms_sub_accounts as unknown as { name: string } | null)?.name ?? "—",
       state: r.state as string,
@@ -857,7 +894,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   );
 
   return {
-    error: error?.message ?? null,
+    error: readErrors[0] ?? null,
     range, days,
     total: current.length,
     previousTotal: previous.length,

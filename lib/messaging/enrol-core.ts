@@ -21,6 +21,7 @@ import { TICK_SECONDS } from "./reply-delay";
 import type { LeadRecord, Rule } from "./rules";
 import { toE164 } from "./phone";
 import { trackForWorkspace } from "./track";
+import { selectAllIn } from "./paging";
 
 export type EnrolResult =
   | { ok: true; conversationId: string; workflow: string; stepsScheduled: number; alreadyLive?: boolean; firstMessageAt?: string }
@@ -206,8 +207,16 @@ export async function sweepExitsWith(sb: SupabaseClient, input: {
   const ids = Object.keys(input.records);
   if (!ids.length) return { ended: 0, reasons: {} };
 
-  const { data: convs } = await sb.from("sms_conversations")
-    .select("id, workspace_id, state").in("id", ids).neq("state", "ended");
+  // Paged: a truncated read here does not misreport anything, it simply
+  // leaves every conversation past the thousandth un-ended, which is a live
+  // sequence still texting somebody the records say is done.
+  const convs = await selectAllIn<{ id: string; workspace_id: string; state: string }>(
+    ids,
+    (chunk, from, to) => sb.from("sms_conversations")
+      .select("id, workspace_id, state").in("id", chunk).neq("state", "ended")
+      .order("id").range(from, to),
+    "conversations to end"
+  );
 
   const reasons: Record<string, string> = {};
   let ended = 0;

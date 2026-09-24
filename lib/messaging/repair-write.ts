@@ -10,10 +10,11 @@
  * database triggers that refuse one created already approved and unsign one
  * whose text changes after it was signed.
  */
-import { messagingDb, selectAll } from "./db";
+import { messagingDb } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { applyRepairs, changedTurns, repairNote, turnsOf } from "./repair";
 import { scrub, residualPii } from "./pii";
+import { selectAll, selectAllIn } from "./paging";
 
 /** A rule a fix can be filed under: one of Kate's A-codes, or one of ours. */
 export type RuleOption = {
@@ -116,22 +117,39 @@ async function repairsFor(sb: Db, originals: { id: string; transcript: string }[
   const out = new Map<string, RepairRecord[]>();
   if (!ids.length) return out;
 
-  const { data: derived } = await sb.from("sms_training_examples")
-    .select("id, derived_from, approved, transcript, conduct_note, created_at")
-    .eq("source", "derived").in("derived_from", ids).order("created_at");
-  const repairIds = (derived ?? []).map((d) => d.id);
-  const [{ data: rows }, { data: tagRows }, { data: codeRows }] = repairIds.length
-    ? await Promise.all([
-        sb.from("sms_example_findings").select("repair_id, turn_ordinal, code, what, should_have").in("repair_id", repairIds),
-        sb.from("sms_training_example_tags").select("example_id, tag_key").in("example_id", repairIds),
-        sb.from("sms_audit_codes").select("code, tag_key"),
-      ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+  const derived = await selectAllIn<{ id: string; derived_from: string; approved: boolean; transcript: string; conduct_note: string | null; created_at: string }>(
+    ids,
+    (chunk, from, to) => sb.from("sms_training_examples")
+      .select("id, derived_from, approved, transcript, conduct_note, created_at")
+      .eq("source", "derived").in("derived_from", chunk)
+      .order("created_at").order("id").range(from, to),
+    "repairs derived from these examples"
+  );
+  const repairIds = derived.map((d) => d.id);
+  // sms_example_findings is past three thousand rows and there are several
+  // findings per repair, so this .in() reached the cap long before the id
+  // list did.
+  const [rows, tagRows, { data: codeRows }] = await Promise.all([
+    selectAllIn<{ repair_id: string; turn_ordinal: number; code: string; what: string; should_have: string }>(
+      repairIds,
+      (chunk, from, to) => sb.from("sms_example_findings")
+        .select("repair_id, turn_ordinal, code, what, should_have")
+        .in("repair_id", chunk).order("id").range(from, to),
+      "findings per repair"
+    ),
+    selectAllIn<{ example_id: string; tag_key: string }>(
+      repairIds,
+      (chunk, from, to) => sb.from("sms_training_example_tags")
+        .select("example_id, tag_key").in("example_id", chunk).order("example_id").range(from, to),
+      "tags per repair"
+    ),
+    sb.from("sms_audit_codes").select("code, tag_key"),
+  ]);
   const tagOfCode = new Map((codeRows ?? []).map((c) => [c.code as string, c.tag_key as string | null]));
 
   const originalText = new Map(originals.map((o) => [o.id, o.transcript]));
-  for (const d of derived ?? []) {
-    const mine = (rows ?? []).filter((r) => r.repair_id === d.id);
+  for (const d of derived) {
+    const mine = rows.filter((r) => r.repair_id === d.id);
     let fixes: StoredFix[];
     if (mine.length) {
       const byTurn = new Map<number, StoredFix>();
@@ -146,14 +164,14 @@ async function repairsFor(sb: Db, originals: { id: string; transcript: string }[
       // the repair. Put those back on the first fix so reopening it does not
       // drop them; tags that a code already explains are left out.
       const codeTags = new Set(mine.map((r) => (r.code ? tagOfCode.get(r.code) : null)).filter(Boolean));
-      const direct = (tagRows ?? []).filter((t) => t.example_id === d.id).map((t) => t.tag_key);
+      const direct = tagRows.filter((t) => t.example_id === d.id).map((t) => t.tag_key);
       if (fixes[0]) for (const k of direct) if (!codeTags.has(k)) fixes[0].ruleIds.push(`tag:${k}`);
     } else {
       // Saved before fixes were stored per turn. The transcript is the record.
       const legacyReason = /^Repaired: ([\s\S]*?) Was: "/.exec(d.conduct_note ?? "")?.[1]?.trim() ?? "";
       fixes = changedTurns(originalText.get(d.derived_from!) ?? "", d.transcript)
         .map((c) => ({ turn: c.turn, replacement: c.to, reason: legacyReason, ruleIds:
-          (tagRows ?? []).filter((t) => t.example_id === d.id).map((t) => `tag:${t.tag_key}`) }));
+          tagRows.filter((t) => t.example_id === d.id).map((t) => `tag:${t.tag_key}`) }));
     }
     const list = out.get(d.derived_from!) ?? [];
     list.push({ id: d.id, approved: d.approved, transcript: d.transcript, fixes });
@@ -165,15 +183,19 @@ async function repairsFor(sb: Db, originals: { id: string; transcript: string }[
 async function candidatesFor(sb: Db, examples: { id: string; transcript: string; conduct: string | null }[]): Promise<RepairCandidate[]> {
   const ids = examples.map((e) => e.id);
   if (!ids.length) return [];
-  const [{ data: findings }, repairs] = await Promise.all([
-    sb.from("sms_example_findings")
-      .select("id, example_id, turn_ordinal, code, severity, what, should_have")
-      .in("example_id", ids).is("repair_id", null),
+  const [findings, repairs] = await Promise.all([
+    selectAllIn<{ id: string; example_id: string; turn_ordinal: number; code: string; severity: string; what: string; should_have: string }>(
+      ids,
+      (chunk, from, to) => sb.from("sms_example_findings")
+        .select("id, example_id, turn_ordinal, code, severity, what, should_have")
+        .in("example_id", chunk).is("repair_id", null).order("id").range(from, to),
+      "unrepaired findings"
+    ),
     repairsFor(sb, examples),
   ]);
   return examples.map((e) => ({
     exampleId: e.id, transcript: e.transcript, conduct: e.conduct,
-    findings: (findings ?? []).filter((f) => f.example_id === e.id).map((f) => ({
+    findings: findings.filter((f) => f.example_id === e.id).map((f) => ({
       id: f.id, turnOrdinal: f.turn_ordinal, code: f.code,
       severity: f.severity, what: f.what, shouldHave: f.should_have,
     })),
@@ -191,12 +213,15 @@ async function candidatesFor(sb: Db, examples: { id: string; transcript: string;
 export async function repairQueue(limit = 25): Promise<RepairCandidate[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const { data: examples } = await sb.from("sms_training_examples")
-    .select("id, transcript, conduct")
-    .in("conduct", ["mixed", "bad"])
-    .neq("source", "derived")
-    .order("created_at");
-  const all = await candidatesFor(sb, examples ?? []);
+  const examples = await selectAll<{ id: string; transcript: string; conduct: string | null }>(
+    (from, to) => sb.from("sms_training_examples")
+      .select("id, transcript, conduct")
+      .in("conduct", ["mixed", "bad"])
+      .neq("source", "derived")
+      .order("created_at").order("id").range(from, to),
+    "the repair queue"
+  );
+  const all = await candidatesFor(sb, examples);
   return all
     .sort((a, b) =>
       a.repairs.length - b.repairs.length

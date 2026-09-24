@@ -21,7 +21,7 @@
  * does not know that table exists, and this module reads both on purpose.
  * Two loaders, two audiences, no field anybody has to remember to omit.
  */
-import { messagingDb, selectAll } from "./db";
+import { messagingDb, selectAll, selectAllIn } from "./db";
 import type { ClassARule } from "./class-a-rules";
 
 export type RuleCounts = { fellShort: number; didWell: number; conversations: number };
@@ -210,8 +210,13 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
   const ids = [...new Set(findings.map((f) => f.example_id as string))];
   const conductOf = new Map<string, "good" | "mixed" | "bad" | null>();
   if (ids.length) {
-    const { data: exs } = await sb.from("sms_training_examples").select("id, conduct").in("id", ids);
-    for (const e of exs ?? []) conductOf.set(e.id as string, (e.conduct as "good" | "mixed" | "bad" | null) ?? null);
+    const exs = await selectAllIn<{ id: string; conduct: string | null }>(
+      ids,
+      (chunk, from, to) => sb.from("sms_training_examples").select("id, conduct")
+        .in("id", chunk).order("id").range(from, to),
+      "conduct per example"
+    );
+    for (const e of exs) conductOf.set(e.id as string, (e.conduct as "good" | "mixed" | "bad" | null) ?? null);
   }
 
   const shape = (f: Record<string, unknown>): RuleFinding => ({

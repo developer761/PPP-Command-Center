@@ -42,6 +42,24 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 const AT_RISK = 700;
 
 /**
+ * Tables that are at risk at ANY size, because they grow with the business.
+ *
+ * The row-count threshold above is reactive, and that is a real hole. Every
+ * conversation adds a row to sms_conversations and every text adds one to
+ * sms_messages, so both cross a thousand the same week the system carries
+ * real volume — while a check that only looks at tables already over 700 says
+ * ALL CLEAR the entire time somebody is writing the read that will break.
+ *
+ * bucketCounts was exactly that: an unbounded read of every conversation to
+ * count the inbox chips, written and shipped while the table held ten rows.
+ * It would have started under-reporting "Needs human" at conversation 1,001
+ * and this sweep would not have mentioned it once beforehand.
+ *
+ * Correctness here cannot wait for the table to get big enough to notice.
+ */
+const ALWAYS_AT_RISK = ["sms_conversations", "sms_messages"];
+
+/**
  * DISCOVERED, not listed — and this file had the same hand-written list the
  * PII sweep did, which was the whole flaw that sweep was rewritten to fix.
  * Fixing one and not its sibling is exactly the pattern these sweeps exist
@@ -71,8 +89,27 @@ async function discoverTables() {
  */
 const BOUNDED = [
   "selectAll", ".limit(", ".range(", ".maybeSingle()", ".single()",
-  "count:", "head: true", ".in(",
+  "count:", "head: true",
+  // One conversation's own thread. A lead thread does not reach a thousand
+  // messages, and max_turns stops the bot long before anything close to it.
+  '.eq("conversation_id"',
 ];
+
+/**
+ * .in() IS NOT ON THAT LIST, and it used to be, described as "bounded by the
+ * list the caller already holds".
+ *
+ * That is true of the filter and false of the result. Reading messages for
+ * 1,500 live conversations returns every message in all of them — tens of
+ * thousands of rows through a cap of one thousand — and the id list being
+ * finite has nothing to do with it. The aging report did this: it paged the
+ * conversations correctly and then truncated their messages, so the oldest
+ * threads silently lost their last-reply times and aged wrongly.
+ *
+ * A second reason, unrelated and just as fatal: a .in() carrying thousands of
+ * UUIDs is a request URL tens of kilobytes long. Chunk the ids, page each
+ * chunk.
+ */
 
 /** Reads that are bounded for a reason a pattern cannot see. */
 const EXEMPT = [
@@ -100,13 +137,18 @@ for (const t of TABLES) {
   if (!error) sizes.set(t, count ?? 0);
 }
 
-const big = [...sizes.entries()].filter(([, n]) => n >= AT_RISK);
+const big = [...sizes.entries()].filter(
+  ([t, n]) => n >= AT_RISK || ALWAYS_AT_RISK.includes(t)
+);
 if (!big.length) {
   console.log(`  no table is within reach of the cap yet (largest is ${Math.max(...sizes.values())})`);
   console.log("\nALL CLEAR\n");
   process.exit(0);
 }
-for (const [t, n] of big) console.log(`  at risk: ${t} — ${n} rows`);
+for (const [t, n] of big) {
+  const why = n >= AT_RISK ? `${n} rows` : `${n} rows, but grows one per customer`;
+  console.log(`  at risk: ${t} — ${why}`);
+}
 console.log();
 
 let flagged = 0;

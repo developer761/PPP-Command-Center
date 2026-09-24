@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import { scrub, residualPii } from "../lib/messaging/pii.ts";
 import { parseKateTranscript, storedTranscript } from "../lib/messaging/kate-transcript.ts";
 import { turnsOf, changedTurns, applyRepairs } from "../lib/messaging/repair.ts";
+import { selectAllIn } from "../lib/messaging/paging.ts";
 
 const PDF = process.argv.find((a) => a.endsWith(".pdf"))
   ?? "/Users/karanmalhotra/Downloads/Karan Connect Hub Training Sheet - Batch 1 + 2.pdf";
@@ -205,11 +206,18 @@ if (sample) {
 }
 
 // Repairs built on an old transcript.
-const { data: repairs } = await sb.from("sms_training_examples")
-  .select("id, derived_from, transcript, approved").eq("source", "derived")
-  .in("derived_from", plan.map((p) => p.id));
+// Paged: this rewrites what each repair is built on, so a repair that falls
+// off the end of a truncated read keeps pointing at the old transcript and
+// its changed turns stop lining up with anything.
+const repairs = await selectAllIn(
+  plan.map((p) => p.id),
+  (chunk, from, to) => sb.from("sms_training_examples")
+    .select("id, derived_from, transcript, approved").eq("source", "derived")
+    .in("derived_from", chunk).order("id").range(from, to),
+  "repairs built on these transcripts"
+);
 const repairPlan = [];
-for (const r of repairs ?? []) {
+for (const r of repairs) {
   const p = plan.find((x) => x.id === r.derived_from);
   const changes = changedTurns(p.old, r.transcript);
   const newTurns = turnsOf(p.rebuilt);

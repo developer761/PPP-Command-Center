@@ -27,8 +27,14 @@ const strays = [];
 
 try {
   // A real conversation with at least two of Emily's lines to fix.
+  // Bounded, not paged: this wants ONE example to exercise the repair path,
+  // so reading more than a couple of hundred candidates to pick the first
+  // usable one is wasted work rather than a correctness problem. Saying the
+  // limit out loud is the difference between a bounded read and a read that
+  // happens not to have grown yet.
   const { data: originals } = await sb.from("sms_training_examples")
-    .select("id, transcript").neq("source", "derived").in("conduct", ["mixed", "bad"]);
+    .select("id, transcript").neq("source", "derived").in("conduct", ["mixed", "bad"])
+    .order("id").limit(200);
   const original = originals.find((o) => turnsOf(o.transcript).filter((t) => t.speaker === "Emily").length >= 2);
   const emily = turnsOf(original.transcript).filter((t) => t.speaker === "Emily");
   const [a, b] = [emily[0].turn, emily[1].turn];
