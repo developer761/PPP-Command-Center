@@ -44,9 +44,64 @@ describe("jobDisplayName", () => {
     expect(name).not.toContain("Inc - DuCon Construction Co. Inc");
   });
 
-  it("an explicit display name still wins", () => {
+  /**
+   * THE BUG KARAN REPORTED, 2026-09-23: *"it was a button either in new opp or
+   * accounts and when we pressed it it was supposed to do something with the
+   * title and it never did."*
+   *
+   * The button is "Add it to the end of the full name". It saved correctly, and
+   * the pipeline list obeyed it — but `jobDisplayName` returned the nickname
+   * unconditionally, so the opportunity header and every project card, which is
+   * where you look immediately after saving, showed the nickname on its own.
+   * The toggle did work. The screen never asked.
+   */
+  it("appends the nickname when the toggle says to — the header bug", () => {
     expect(
-      jobDisplayName({ title_override: "The Big One", title: "Motor Mindz, Babylon" }, GC)
+      jobDisplayName(
+        { title_override: "The Big One", title: "Motor Mindz, Babylon", title_override_mode: "append" },
+        GC
+      )
+    ).toBe("Motor Mindz, Babylon - The Big One");
+  });
+
+  it("replaces outright when the toggle is off", () => {
+    expect(
+      jobDisplayName(
+        { title_override: "The Big One", title: "Motor Mindz, Babylon", title_override_mode: "replace" },
+        GC
+      )
+    ).toBe("The Big One");
+  });
+
+  it("appends onto the derived name when the title is auto-composed", () => {
+    // Nothing hand-typed to append to, so the GC and street survive instead of
+    // being thrown away.
+    expect(
+      jobDisplayName(
+        {
+          title: "08-13-2026 DuCon Construction Co. Inc - DuCon Construction Co. Inc - 4 Henry Street",
+          client_name: "DuCon Construction Co. Inc",
+          property_street: "4 Henry Street",
+          title_override: "Phase 2",
+          title_override_mode: "append",
+        },
+        "DuCon Construction Co. Inc"
+      )
+    ).toBe("DuCon Construction Co. Inc - 4 Henry Street - Phase 2");
+  });
+
+  it("does not repeat a nickname the title already ends with", () => {
+    expect(
+      jobDisplayName(
+        { title: "Motor Mindz - The Big One", title_override: "The Big One", title_override_mode: "append" },
+        GC
+      )
+    ).toBe("Motor Mindz - The Big One");
+  });
+
+  it("stands alone when there is no name to append to", () => {
+    expect(
+      jobDisplayName({ title: "08-13-2026", title_override: "The Big One", title_override_mode: "append" }, null)
     ).toBe("The Big One");
   });
 

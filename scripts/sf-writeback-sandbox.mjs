@@ -58,7 +58,7 @@ async function main() {
   });
   const { data: deal } = await sb
     .from("commercial_opportunities")
-    .select("id, title, title_override, status, sub_status, decided_at, account_id, accepted_contract_cents")
+    .select("id, title, title_override, title_override_mode, status, sub_status, decided_at, account_id, accepted_contract_cents")
     .eq("id", dealArg)
     .is("deleted_at", null)
     .maybeSingle();
@@ -79,7 +79,17 @@ async function main() {
 
   // Stephanie's rule: the platform's own number, not this script's idea of it.
   const contractCents = await contractValueCents(deal.id);
-  const dealName = (deal.title_override ?? "").trim() || (deal.title ?? "").trim() || "Untitled";
+  // The nickname goes on the END of the name unless the deal says replace.
+  // `title_override || title` is a hard-coded replace, and this one writes to
+  // SALESFORCE — a name shortened here is a name PPP reads back as the truth.
+  const nickname = (deal.title_override ?? "").trim();
+  const typed = (deal.title ?? "").trim();
+  const dealName =
+    (nickname && (deal.title_override_mode ?? "append") !== "append"
+      ? nickname
+      : nickname
+        ? `${typed} - ${nickname}`.replace(/^ - /, "")
+        : typed) || "Untitled";
 
   console.log("Command Center says:");
   console.log(`  deal      ${dealName}`);

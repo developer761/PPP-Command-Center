@@ -468,7 +468,7 @@ export async function getWinsAwaitingDebrief(limit = 50): Promise<AwaitingDebrie
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_opportunities")
-    .select("id, account_id, title, title_override, client_name, property_street, decided_at, account:commercial_accounts!inner(company_name, deleted_at)")
+    .select("id, account_id, title, title_override, title_override_mode, client_name, property_street, decided_at, account:commercial_accounts!inner(company_name, deleted_at)")
     .eq("status", "pre_sale_closed")
     .eq("sub_status", "won")
     .is("win_loss_debriefed_at", null)
@@ -482,18 +482,24 @@ export async function getWinsAwaitingDebrief(limit = 50): Promise<AwaitingDebrie
     account_id: string;
     title: string | null;
     title_override: string | null;
+    title_override_mode: string | null;
     client_name: string | null;
     property_street: string | null;
     decided_at: string | null;
     account: { company_name: string | null } | Array<{ company_name: string | null }> | null;
   };
+  const { derivedOppName } = await import("@/lib/commercial/opportunities/db");
   return ((data as unknown as Row[] | null) ?? []).map((o) => {
     const acct = Array.isArray(o.account) ? o.account[0] ?? null : o.account;
     return {
       id: o.id,
       account_id: o.account_id,
+      // Not `title_override || title` — that ignores the nickname toggle and
+      // names the deal after the shorthand alone. derivedOppName is the one
+      // definition of what a deal is called.
       label:
-        (o.title_override || o.title || o.client_name || o.property_street || acct?.company_name || "Untitled deal").trim(),
+        derivedOppName({ ...o, title: o.title ?? "" }, acct?.company_name ?? null).trim() ||
+        (o.client_name || o.property_street || acct?.company_name || "Untitled deal").trim(),
       decided_at: o.decided_at,
     };
   });

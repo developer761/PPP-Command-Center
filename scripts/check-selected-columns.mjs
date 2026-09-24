@@ -84,6 +84,35 @@ const TABLE_NAMES = new Set();
 let skipped = 0;
 const skippedWhere = [];
 
+/**
+ * COMPANION COLUMNS — a column that is a lie when read without its partner.
+ *
+ * The check above catches a column that does not exist. This catches the
+ * quieter one: a column that exists, is selected, and is then interpreted with
+ * a DEFAULT standing in for the field that says how to interpret it.
+ *
+ * `title_override` is the nickname; `title_override_mode` says whether it goes
+ * on the end of the job name or replaces it outright. Fifty call sites read
+ * the first without the second, so `derivedOppName` fell back to a default and
+ * printed the nickname alone — the work-order PDF, the closeout transmittal,
+ * the warranty and the nightly notification emails all dropped the GC and the
+ * address. Nothing errored. The toggle simply appeared not to work, which is
+ * what got reported.
+ *
+ * Each entry is [lead, companion, why]. Add one whenever a column's meaning
+ * lives in another column.
+ */
+const COMPANIONS = {
+  commercial_opportunities: [
+    [
+      "title_override",
+      "title_override_mode",
+      "without the mode, derivedOppName guesses, and the nickname replaces the GC + address instead of appending",
+    ],
+  ],
+};
+const companionMisses = [];
+
 for (const file of files) {
   const src = readFileSync(file, "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -113,6 +142,27 @@ for (const file of files) {
     const line = src.slice(0, m.index).split("\n").length;
     if (!usages.has(table)) usages.set(table, new Map());
     for (const c of cols) if (!usages.get(table).has(c)) usages.get(table).set(c, `${file}:${line}`);
+
+    // COMPANION COLUMNS — see COMPANIONS below. Checked on THIS select, not on
+    // the table's union of columns, because the defect is per-query.
+    for (const [lead, companion, why] of COMPANIONS[table] ?? []) {
+      if (cols.includes(lead) && !cols.includes(companion)) {
+        companionMisses.push({ table, lead, companion, why, where: `${file}:${line}` });
+      }
+    }
+    // An embedded resource — `opportunity:commercial_opportunities!fk(a, b)` —
+    // is a select on ANOTHER table and parseSelect drops it on purpose. It
+    // goes wrong the same way, so read the inside of the parens too. This is
+    // where the work-order PDF's sibling defect was hiding.
+    for (const emb of lit[1].matchAll(/([a-z0-9_]+)(?:![a-z0-9_]+)*(?:!inner|!left)?\(([^()]*)\)/g)) {
+      const embTable = emb[1];
+      const embCols = parseSelect(emb[2]);
+      for (const [lead, companion, why] of COMPANIONS[embTable] ?? []) {
+        if (embCols.includes(lead) && !embCols.includes(companion)) {
+          companionMisses.push({ table: embTable, lead, companion, why, where: `${file}:${line}` });
+        }
+      }
+    }
 
     // FILTER AND ORDER COLUMNS TOO.
     //
@@ -194,10 +244,24 @@ if (skipped > 0) {
   if (skipped > skippedWhere.length) console.log(`    …and ${skipped - skippedWhere.length} more`);
   console.log(`  (stated rather than hidden — a check that quietly skips is a fake pass)`);
 }
-if (problems.length === 0) {
+if (companionMisses.length > 0) {
+  console.log(`\n❌ ${companionMisses.length} select(s) read a column without the column that gives it meaning:\n`);
+  for (const c of companionMisses) {
+    console.log(`   ${c.table}.${c.lead} selected without ${c.companion}`);
+    console.log(`      at ${c.where}`);
+    console.log(`      ${c.why}`);
+  }
+  console.log(`\nThese do not error. They read a real column and then fall back to a`);
+  console.log(`default for the one that says how to read it, so the page renders and`);
+  console.log(`the answer is wrong.`);
+}
+
+if (problems.length === 0 && companionMisses.length === 0) {
   console.log("\n✅ every literal column the code selects exists in the database");
+  console.log("✅ every companion column is selected alongside its lead");
   process.exit(0);
 }
+if (problems.length === 0) process.exit(1);
 console.log(`\n❌ ${problems.length} column(s) the code selects do NOT exist:\n`);
 for (const p of problems) {
   console.log(`   ${p.table}.${p.column}`);

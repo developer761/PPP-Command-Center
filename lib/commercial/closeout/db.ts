@@ -362,7 +362,7 @@ export async function listAllCloseoutPackages(
   const acctIds = [...new Set(rows.map((r) => r.account_id))];
   const pkgIds = rows.map((r) => r.id);
   const [{ data: oppsData }, { data: acctsData }, { data: itemsData }] = await Promise.all([
-    sb.from("commercial_opportunities").select("id, title, title_override, client_name, property_street, deleted_at").in("id", oppIds),
+    sb.from("commercial_opportunities").select("id, title, title_override, title_override_mode, client_name, property_street, deleted_at").in("id", oppIds),
     sb.from("commercial_accounts").select("id, company_name, deleted_at").in("id", acctIds),
     sb.from("commercial_closeout_items").select("package_id, included, item_status").in("package_id", pkgIds),
   ]);

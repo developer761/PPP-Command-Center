@@ -72,13 +72,13 @@ describe("derivedOppName", () => {
     ).toBe("Tomco Painting - Airef - 120 Jericho Turnpike");
   });
 
-  it("the nickname still beats everything", () => {
+  it("the nickname goes on the end of a hand-typed title", () => {
     expect(
       derivedOppName(
         { ...base, title: "Airef Lobby Repaint", title_override: "Jericho lobby" },
         GC
       )
-    ).toBe("Jericho lobby");
+    ).toBe("Airef Lobby Repaint - Jericho lobby");
   });
 
   it("drops a blank client from the computed name", () => {
@@ -134,9 +134,24 @@ describe("nickname: append vs replace", () => {
     ).toBe("Building C");
   });
 
-  it("an unmigrated row (mode undefined) keeps the name it has today", () => {
-    // The regression that would rename every existing job on one deploy.
-    expect(derivedOppName({ ...withNick, title_override: "Building C" }, GC)).toBe("Building C");
+  it("an undefined mode appends — because it now means the caller forgot the column", () => {
+    // This assertion was the exact opposite until 2026-09-23, and the reason
+    // is worth keeping: when migration 170 was written, undefined meant "a row
+    // read before the column existed", and reading those as 'replace' kept
+    // every already-named job looking the way it looked.
+    //
+    // The migration is applied. The column is NOT NULL DEFAULT 'append', so no
+    // row can be null, and a count of live data says 137 opportunities read
+    // 'append' and zero read 'replace'. Undefined therefore cannot mean an
+    // unmigrated row any more — it means a caller selected `title_override`
+    // and not `title_override_mode`, and about fifty of them did. Every one
+    // silently replaced the name with the nickname, which is why the toggle
+    // looked broken. Defaulting to the column's own default makes a forgotten
+    // select merely un-configurable instead of wrong, and
+    // `npm run check:columns` now fails on the omission itself.
+    expect(derivedOppName({ ...withNick, title_override: "Building C" }, GC)).toBe(
+      "Tomco Painting - Airef - 120 Jericho Turnpike - Building C"
+    );
   });
 
   it("does not repeat a nickname the title already ends with", () => {
