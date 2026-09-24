@@ -73,6 +73,14 @@ export type PayrollWeek = {
    */
   blockers: string[];
   /**
+   * Active W-2 people with no hours in this week, so no row on the screen.
+   *
+   * Not an error — most weeks somebody is off. But an absence is invisible,
+   * and Gusto pays from the roster rather than from this list, so it is named
+   * rather than left for her to notice by counting.
+   */
+  w2WithoutHours: { employeeId: string; name: string }[];
+  /**
    * There are hours, and not one Gusto figure has been entered against them.
    *
    * Deliberately NOT a blocker: it is the state the week starts in, and every
@@ -288,6 +296,25 @@ export async function getPayrollWeek(
   }
 
   const employees = [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+  /**
+   * ACTIVE W-2 PEOPLE WHO ARE NOT ON THIS SCREEN.
+   *
+   * The panel lists whoever has hours. Somebody with none simply is not there
+   * — no row, no gap, nothing to notice. But Mary's Gusto run is built from
+   * the whole roster, so if that person WAS paid, their cost has nowhere to go
+   * and nothing on this page says so. She would tie the week out to the cent
+   * and be short one person.
+   *
+   * Naming them costs a line and turns a silent absence into a question she
+   * can answer: either they genuinely did not work, or their hours never got
+   * approved.
+   */
+  const presentIds = new Set(employees.map((e) => e.employeeId));
+  const w2WithoutHours = allEmps
+    .filter((e) => e.worker_type === "w2" && e.active && !presentIds.has(e.id))
+    .map((e) => ({ employeeId: e.id, name: e.display_name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   for (const e of employees) {
     const c = costByEmp.get(e.employeeId);
     // NULL means not entered yet. 0 means genuinely nothing, which is a real
@@ -425,6 +452,7 @@ export async function getPayrollWeek(
     totals,
     byJob: [...jobTotals.values()].sort((a, b) => b.hours - a.hours),
     blockers,
+    w2WithoutHours,
     awaitingCosts,
     unapprovedHours,
     lastW2HoursDate,

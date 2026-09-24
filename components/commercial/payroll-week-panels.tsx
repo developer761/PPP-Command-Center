@@ -279,6 +279,22 @@ export function PayrollWeekPanels({
               </table>
             </div>
           )}
+          {/* Who is NOT here. An absence has no row, so it cannot be spotted —
+              and Gusto pays from the roster, not from this list. */}
+          {!empty && week.w2WithoutHours.length > 0 && (
+            <p className="px-3.5 pb-2.5 pt-1 text-[11px] text-ppp-charcoal-500 leading-snug border-t border-ppp-charcoal-100 mt-1 pt-2">
+              No hours this week for{" "}
+              <span className="font-semibold text-ppp-charcoal-700">
+                {week.w2WithoutHours.map((e) => e.name).join(", ")}
+              </span>
+              . If Gusto paid {week.w2WithoutHours.length === 1 ? "them" : "any of them"}, the
+              hours never got approved —{" "}
+              <Link href={approvalsHref} className="font-semibold text-cc-brand-700 hover:underline">
+                check approvals
+              </Link>
+              .
+            </p>
+          )}
           {!empty && (
             <div className="px-3.5 pb-3 pt-2 border-t border-ppp-charcoal-100">
               {/* Total paid hours, job and off-job together — Gusto pays both.

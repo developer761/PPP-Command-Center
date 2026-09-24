@@ -44,8 +44,26 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
   return (
     <div className="pb-8 max-w-4xl">
       <div className="mb-4">
-        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Payroll</h1>
+        {/* NAMED APART FROM ACCOUNTING → PAYROLL, deliberately.
+            Since the crew went W-2 there are two screens a person could call
+            "payroll": this one, which is HOURS (overtime split, CSV export),
+            and Accounting → Payroll, which is MONEY (the Gusto cost back, the
+            split across jobs, posting it). They cover different halves and,
+            because this one takes an arbitrary date range and that one is
+            strictly Mon–Sun, their totals can legitimately differ — which
+            looks like a contradiction if both are just called "Payroll". */}
+        <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Payroll hours</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1">Approved hours for the period, W-2 only, overtime split at 40h/week. Export the CSV for your payroll run.</p>
+        <p className="text-[12.5px] text-ppp-charcoal-500 mt-1.5">
+          Costing a week and putting it on the jobs happens in{" "}
+          <Link
+            href="/commercial/accounting?view=payroll"
+            className="font-semibold text-cc-brand-700 hover:underline"
+          >
+            Accounting → Payroll
+          </Link>
+          .
+        </p>
         {snapped && (
           <p className="text-[12px] text-ppp-charcoal-400 mt-1">Overtime is figured per full week, so this covers whole Mon–Sun weeks: <span className="font-semibold text-ppp-charcoal-600">{fmtEtDate(periodStart)} – {fmtEtDate(periodEnd)}</span>.</p>
         )}
