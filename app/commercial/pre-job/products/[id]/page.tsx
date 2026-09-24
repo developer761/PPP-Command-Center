@@ -29,6 +29,7 @@ import { DateField } from "@/components/commercial/date-field";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { MoneyInput } from "@/components/commercial/money-input";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 /**
  * Product detail — edit basic fields + per-account price overrides.
@@ -691,12 +692,16 @@ export default async function ProductDetailPage({
                     <form action={removePriceAction}>
                       <input type="hidden" name="product_id" value={product.id} />
                       <input type="hidden" name="price_id" value={row.id} />
-                      <PendingSubmitButton
+                      {/* Negotiated pricing for one customer, hard deleted.
+                          Re-deriving it means going back to whoever agreed
+                          it. */}
+                      <ConfirmSubmitButton
+                        message="Remove this customer's negotiated price? The product falls back to its standard price."
                         className="inline-flex items-center px-3 py-2 rounded-md border border-rose-200 text-rose-800 text-xs font-medium hover:bg-rose-50 min-h-[44px]"
                         pendingLabel="Removing…"
                       >
                         Remove
-                      </PendingSubmitButton>
+                      </ConfirmSubmitButton>
                     </form>
                   )}
                 </li>

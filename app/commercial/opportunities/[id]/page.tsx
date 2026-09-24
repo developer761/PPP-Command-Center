@@ -270,6 +270,7 @@ import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { MoneyInput } from "@/components/commercial/money-input";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -6891,13 +6892,17 @@ function TaskList({
                 <form action={deleteTaskAction} className="shrink-0">
                   <input type="hidden" name="opportunity_id" value={oppId} />
                   <input type="hidden" name="task_id" value={t.id} />
-                  <SubmitButton
-                    aria-label={`Delete ${t.title}`}
-                    title="Delete task"
+                  {/* Anyone can delete anyone's task — there is no author
+                      gate on the action — so the least this can do is name the
+                      task being removed. */}
+                  <ConfirmSubmitButton
+                    ariaLabel={`Delete ${t.title}`}
+                    message={`Delete the task "${(t.title ?? "").slice(0, 60)}"? It can't be undone.`}
+                    pendingLabel="…"
                     className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] inline-flex items-center touch-manipulation"
                   >
                     Delete
-                  </SubmitButton>
+                  </ConfirmSubmitButton>
                 </form>
               </li>
             );
@@ -7110,9 +7115,13 @@ function NoteCard({
             <form action={deleteNoteAction}>
               <input type="hidden" name="opportunity_id" value={oppId} />
               <input type="hidden" name="note_id" value={note.id} />
-              <SubmitButton className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1">
+              <ConfirmSubmitButton
+                message="Delete this note? It can't be undone."
+                pendingLabel="Deleting…"
+                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
+              >
                 Delete note
-              </SubmitButton>
+              </ConfirmSubmitButton>
             </form>
           </div>
         </div>

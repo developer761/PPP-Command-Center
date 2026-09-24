@@ -1426,15 +1426,31 @@ export async function InvoiceDetailView({
                     Void
                   </ConfirmSubmitButton>
                 ) : (
+                // VOID ALWAYS ASKS. The ConfirmSubmitButton above only fires
+                // when the invoice carries change-order lines, so a plain PAID
+                // invoice voided on a single click — the case where voiding is
+                // most consequential, because the money is already in.
+                // Everything else on this row is a status label change and
+                // stays one click.
+                s === "void" ? (
+                  <ConfirmSubmitButton
+                    message={
+                      Number(invoice.paid_cents ?? 0) > 0
+                        ? `Void this invoice? ${formatCentsFull(Number(invoice.paid_cents))} has been collected against it, and voiding does not remove the payments.`
+                        : "Void this invoice? It stops being billable and drops out of what is owed."
+                    }
+                    pendingLabel="Voiding…"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
+                  >
+                    Void
+                  </ConfirmSubmitButton>
+                ) : (
                 <SubmitButton
-                  className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
-                    s === "void"
-                      ? "border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
-                      : "bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
-                  }`}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
                 >
-                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
+                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
                 </SubmitButton>
+                )
                 )}
               </form>
             ))}

@@ -417,7 +417,13 @@ export async function deleteMilestone(
     }
   }
   if (existing.lien_waiver_document_id) {
-    await softDeleteDocument(existing.lien_waiver_document_id, actorUserId).catch(() => {});
+    await softDeleteDocument(existing.lien_waiver_document_id, actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   }
   return {
     ok: true,
@@ -491,11 +497,23 @@ export async function attachMilestoneLienWaiver(input: {
     .update({ lien_waiver_document_id: uploaded.document.id, updated_at: new Date().toISOString() })
     .eq("id", input.milestoneId);
   if (error) {
-    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
     return { ok: false, error: error.message };
   }
   if (scope.lien_waiver_document_id && scope.lien_waiver_document_id !== uploaded.document.id) {
-    await softDeleteDocument(scope.lien_waiver_document_id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(scope.lien_waiver_document_id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   }
   return { ok: true, value: uploaded.document };
 }
@@ -513,7 +531,13 @@ export async function removeMilestoneLienWaiver(
     .eq("id", milestoneId);
   if (error) return { ok: false, error: error.message };
   if (scope.lien_waiver_document_id) {
-    await softDeleteDocument(scope.lien_waiver_document_id, actorUserId).catch(() => {});
+    await softDeleteDocument(scope.lien_waiver_document_id, actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   }
   return { ok: true, value: null };
 }

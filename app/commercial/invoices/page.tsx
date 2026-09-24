@@ -52,6 +52,7 @@ import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classn
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { MoneyInput } from "@/components/commercial/money-input";
 import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
+import { logDelete } from "@/lib/commercial/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,15 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
     // who or what the balances were. Batch-log a status-change row per
     // invoice (actor, prior status, payment amount) into the same log the
     // single-record path writes.
+    // AND the platform audit log. These two bulk paths never called logDelete
+    // — the exact gap closed for the single-invoice path yesterday, where a
+    // $286,695 invoice vanished with no entry anyone could reach. The status
+    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
+    // it cannot answer "who removed these".
+    for (const r of rows) {
+      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
+      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
+    }
     await sb.from("commercial_invoice_status_log").insert(
       rows.map((r) => ({
         invoice_id: r.id,
@@ -314,6 +324,15 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
     }
     // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
     // trail survives orphan cleanup (see per-opp variant above).
+    // AND the platform audit log. These two bulk paths never called logDelete
+    // — the exact gap closed for the single-invoice path yesterday, where a
+    // $286,695 invoice vanished with no entry anyone could reach. The status
+    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
+    // it cannot answer "who removed these".
+    for (const r of rows) {
+      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
+      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
+    }
     await sb.from("commercial_invoice_status_log").insert(
       rows.map((r) => ({
         invoice_id: r.id,

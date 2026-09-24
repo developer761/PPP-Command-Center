@@ -67,7 +67,13 @@ export async function attachInvoiceFile(input: {
   });
   if (error) {
     // Link failed → retire the just-uploaded doc so it doesn't float unattached.
-    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
     return { ok: false, error: error.message };
   }
   return { ok: true, value: uploaded.document };
@@ -124,6 +130,12 @@ export async function removeInvoiceAttachment(
     // never touch the document.
     return { ok: false, error: "Attachment not found on this invoice." };
   }
-  await softDeleteDocument(documentId, actorUserId).catch(() => {});
+  await softDeleteDocument(documentId, actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   return { ok: true, value: null };
 }

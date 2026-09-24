@@ -14,6 +14,7 @@ import { recordHoursForEmployee } from "@/lib/commercial/field-ops/daily-log";
 import { revalidatePath } from "next/cache";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/hours";
@@ -379,9 +380,16 @@ export default async function FieldOpsHoursPage({
                                 </details>
                                 <form action={deleteEntryAction}>
                                   <input type="hidden" name="entry_id" value={d.entry_id} />
-                                  <SubmitButton className="text-[11px] font-semibold text-ppp-charcoal-400 hover:text-rose-700 px-1.5 min-h-[32px]">
+                                  {/* Somebody else's payroll hours, hard
+                                      deleted, styled smaller and greyer than
+                                      the Save button beside it. */}
+                                  <ConfirmSubmitButton
+                                    message={`Delete ${d.hours}h logged on ${d.work_date}? This removes the hours payroll reads.`}
+                                    pendingLabel="Deleting…"
+                                    className="text-[11px] font-semibold text-ppp-charcoal-400 hover:text-rose-700 px-1.5 min-h-[32px]"
+                                  >
                                     Delete
-                                  </SubmitButton>
+                                  </ConfirmSubmitButton>
                                 </form>
                               </span>
                             </li>

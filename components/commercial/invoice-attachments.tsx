@@ -63,6 +63,16 @@ export function InvoiceAttachments({
                   type="button"
                   disabled={busy}
                   onClick={() => {
+                    // ASK FIRST. The link row is HARD-deleted and the document
+                    // itself soft-deleted, with no restore screen anywhere —
+                    // so this is the end of that file as far as anyone using
+                    // the platform is concerned.
+                    if (
+                      !window.confirm(
+                        `Remove "${a.file_name || "this attachment"}" from this invoice? It can't be undone from here.`,
+                      )
+                    )
+                      return;
                     const fd = new FormData();
                     fd.append("remove_document_id", a.id);
                     void send(fd);

@@ -195,6 +195,16 @@ export function LienWaiverUpload({
                 type="button"
                 disabled={busy}
                 onClick={() => {
+                  // A signed lien waiver is a legal document — the GC will not
+                  // release payment without it, and there is no restore screen
+                  // for commercial_documents. Of everything on this page this
+                  // is the one worth a sentence before it goes.
+                  if (
+                    !window.confirm(
+                      "Remove the signed lien waiver? It is a legal document and this can't be undone from here.",
+                    )
+                  )
+                    return;
                   const fd = new FormData();
                   fd.append("remove", "1");
                   void send(fd);

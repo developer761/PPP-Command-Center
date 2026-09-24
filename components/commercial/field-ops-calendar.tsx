@@ -829,7 +829,16 @@ function DayPanel({
               {offOnly.map((o) => (
                 <li key={o.employee_id} className="flex items-center justify-between gap-2 text-[12.5px]">
                   <span className="text-ppp-charcoal-800 truncate min-w-0"><span className="font-semibold">{o.name}</span> <span className="text-amber-700">· {o.type.replace("_", " ").toLowerCase()}</span></span>
-                  <button onClick={() => onRemoveAbsence(o.id)} disabled={saving} className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 disabled:opacity-50">Clear</button>
+                  {/* A hard delete, sixteen lines from a shift-remove that
+                      DOES confirm. Same page, same size, one asks. */}
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Clear ${o.name}'s ${o.type.replace("_", " ").toLowerCase()} for this day?`)) return;
+                      onRemoveAbsence(o.id);
+                    }}
+                    disabled={saving}
+                    className="text-[11px] font-semibold text-ppp-charcoal-500 hover:text-rose-700 shrink-0 min-h-[44px] sm:min-h-[32px] px-1.5 disabled:opacity-50"
+                  >Clear</button>
                 </li>
               ))}
             </ul>

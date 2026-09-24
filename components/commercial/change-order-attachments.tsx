@@ -62,6 +62,12 @@ export function ChangeOrderAttachments({
                   type="button"
                   disabled={busy}
                   onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Remove "${a.file_name || "this attachment"}" from this change order? It can't be undone from here.`,
+                      )
+                    )
+                      return;
                     const fd = new FormData();
                     fd.append("remove_document_id", a.id);
                     void send(fd);
