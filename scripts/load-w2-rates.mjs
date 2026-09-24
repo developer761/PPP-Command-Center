@@ -39,12 +39,30 @@
 import { createClient } from "@supabase/supabase-js";
 
 const COMMIT = process.argv.includes("--commit");
+/**
+ * Flip people to W-2 WITHOUT loading a cost rate.
+ *
+ * This is the right mode for the Gusto flow, and the default would be wrong.
+ *
+ * Job cost is `purchasesCents + fieldOpsLaborCents` (projects/db.ts) — the
+ * payouts PLUS W-2 hours priced from the rate card. Under the Gusto process
+ * the cost already arrives as payouts, because splitting the weekly liability
+ * WRITES payouts. Loading a rate as well prices the same hours a second time
+ * and every job is charged twice, with both halves looking entirely real.
+ *
+ * With no rate on file, `fieldOpsLaborByOpp` contributes nothing for that
+ * person and the payout is the only cost — which is exactly right.
+ *
+ * Katie's rate sheet is still worth having for estimating. It is just not what
+ * costs a job any more.
+ */
+const NO_RATES = process.argv.includes("--no-rates");
 const burdenArg = process.argv.find((a) => a.startsWith("--burden="));
 const BURDEN = burdenArg ? Number(burdenArg.split("=")[1]) : null;
 const fromArg = process.argv.find((a) => a.startsWith("--effective-from="));
 const EFFECTIVE_FROM = fromArg ? fromArg.split("=")[1] : null;
 
-if (!EFFECTIVE_FROM || !/^\d{4}-\d{2}-\d{2}$/.test(EFFECTIVE_FROM)) {
+if (!NO_RATES && (!EFFECTIVE_FROM || !/^\d{4}-\d{2}-\d{2}$/.test(EFFECTIVE_FROM))) {
   console.error(
     "Pass --effective-from=YYYY-MM-DD.\n\n" +
       "Rates are effective-dated on purpose: a raise must not restate a job that\n" +
@@ -111,15 +129,25 @@ if (error) {
 }
 const byName = new Map(emps.map((e) => [e.display_name.trim(), e]));
 
+if (NO_RATES) {
+  console.log(
+    "NO RATES — worker type only.\n" +
+      "  Job cost will come from the payroll split (Accounting → Payroll), which\n" +
+      "  writes a payout per job. Loading a rate as well would price the same\n" +
+      "  hours twice: job cost is purchases + W-2 hours x rate.\n",
+  );
+}
 console.log(
-  BURDEN
+  NO_RATES
+    ? ""
+    : BURDEN
     ? `Cost rate = base wage × ${BURDEN} (what Tomco actually spends)\n`
     : `Cost rate = BASE WAGE as Katie sent it.\n` +
         `  ⚠ Real payouts run ~1.11× this. Job labour will read about 10% cheaper\n` +
         `    than it actually was. Pass --burden=1.11 if the job cost should be\n` +
         `    what Tomco spends rather than what the worker earns.\n`,
 );
-console.log(`Rates effective from ${EFFECTIVE_FROM}.\n`);
+if (!NO_RATES) console.log(`Rates effective from ${EFFECTIVE_FROM}.\n`);
 
 let flipped = 0;
 let rated = 0;
@@ -133,8 +161,12 @@ for (const [roster, info] of Object.entries(RATES)) {
   }
   const cents = Math.round(info.hourly * 100 * (BURDEN ?? 1));
   console.log(
-    `${roster.padEnd(24)} ${info.person.padEnd(22)} ${money(Math.round(info.hourly * 100)).padStart(8)}/h` +
-      (BURDEN ? ` → ${money(cents)}/h` : "") +
+    `${roster.padEnd(24)} ${info.person.padEnd(22)}` +
+      // In --no-rates mode the sheet's figure is NOT being written, so printing
+      // it beside each name reads as though it were.
+      (NO_RATES
+        ? "          "
+        : `${money(Math.round(info.hourly * 100)).padStart(8)}/h` + (BURDEN ? ` → ${money(cents)}/h` : "")) +
       `   ${emp.worker_type === "w2" ? "(already W-2)" : "sub → W-2"}`,
   );
   if (info.viaSalesforce) console.log(`${" ".repeat(24)}   ↳ matched via Salesforce: ${info.viaSalesforce}`);
@@ -151,6 +183,8 @@ for (const [roster, info] of Object.entries(RATES)) {
     }
     flipped += 1;
   }
+
+  if (NO_RATES) continue;
 
   // Close any open rate first, so the ladder reads as a history rather than two
   // overlapping truths.
@@ -187,4 +221,7 @@ console.log(
 );
 
 if (!COMMIT) console.log("\nDry run. Re-run with --commit to write.");
-else console.log(`\n${flipped} flipped to W-2, ${rated} rate(s) written.`);
+else
+  console.log(
+    `\n${flipped} flipped to W-2` + (NO_RATES ? ", no rates written." : `, ${rated} rate(s) written.`),
+  );
