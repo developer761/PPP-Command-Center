@@ -240,14 +240,32 @@ export async function getPayrollWeek(
     jobs.filter((j) => j.opportunity_id).map((j) => [j.opportunity_id as string, j.name]),
   );
 
-  const costs = period
-    ? ((
-        await sb
-          .from("commercial_payroll_costs")
-          .select("employee_id, actual_cost_cents, gross_cents, unassigned_opportunity_id")
-          .eq("period_id", period.id)
-      ).data ?? [])
-    : [];
+  /**
+   * READ THE ERROR. supabase-js resolves on failure, so `.data ?? []` turns a
+   * rejected select into "no costs entered" — and a rejected select is exactly
+   * what happens if `unassigned_opportunity_id` is missing, because PostgREST
+   * refuses the WHOLE query over one unknown column. That column arrives in a
+   * migration applied by hand; if it ever lags a deploy, every figure Mary has
+   * typed reads as null, `awaitingCosts` goes true, and posting refuses with
+   * "Enter the Gusto costs for this week before posting it" — forever, after
+   * she has entered them, with nothing saying why.
+   *
+   * `latestW2HoursDate` in this same file checks its error for this reason.
+   * This one did not.
+   */
+  const costsRes = period
+    ? await sb
+        .from("commercial_payroll_costs")
+        .select("employee_id, actual_cost_cents, gross_cents, unassigned_opportunity_id")
+        .eq("period_id", period.id)
+    : null;
+  if (costsRes?.error) {
+    throw new Error(
+      `Payroll costs could not be read (${costsRes.error.message}). ` +
+        `If this mentions a missing column, the payroll migration has not been applied yet.`,
+    );
+  }
+  const costs = costsRes?.data ?? [];
   const costByEmp = new Map(
     (
       costs as {
