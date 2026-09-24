@@ -57,6 +57,28 @@ export async function GET(request: Request) {
   // single status. The one-shot lock stays exactly as it was; this only stops
   // an interrupted download from losing the file for good.
   const redownload = searchParams.get("mode") === "redownload";
+
+  /**
+   * THE LOCK NEEDS TO BE ASKED FOR.
+   *
+   * This GET does not only build a CSV — it flips every approved hour in the
+   * range to `exported`, which is terminal: approve, question, override and
+   * delete all refuse an exported row afterwards, so undoing it needs database
+   * access. And the default range on the page is today-13 → today, which
+   * `exportPayroll` snaps outward to THREE whole Mon–Sun weeks.
+   *
+   * A GET does that on a prefetch, a middle-click, a back-forward restore, a
+   * pasted link or one mis-aimed tap. Requiring an explicit `confirm=1` means
+   * only a deliberate press can lock anything; everything else gets told what
+   * it was about to do. The re-download path is read-only and unaffected.
+   */
+  if (!redownload && searchParams.get("confirm") !== "1") {
+    const back = new URL("/commercial/field-ops/payroll", request.url);
+    back.searchParams.set("from", from);
+    back.searchParams.set("to", to);
+    back.searchParams.set("needsconfirm", "1");
+    return NextResponse.redirect(back);
+  }
   const csv = redownload
     ? await redownloadPayroll(from, to)
     : await exportPayroll(from, to, data.user.id);
