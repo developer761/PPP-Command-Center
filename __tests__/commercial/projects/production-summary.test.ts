@@ -44,7 +44,7 @@ describe("summarizeProduction", () => {
       submittalAwaiting: 0,
       costsCents: 0,
       purchasesCents: 0,
-      costs: { materials: 0, labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 },
+      costs: { materials: 0, labor: 0, employee_labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 },
       fieldOpsLaborCents: 0,
       laborUnratedHours: 0,
       laborHours: 0,

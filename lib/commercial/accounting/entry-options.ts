@@ -59,7 +59,7 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
       sb
         .from("commercial_project_purchases")
         .select("vendor, category")
-        .eq("category", "labor")
+        .in("category", ["labor", "employee_labor"])
         .is("deleted_at", null)
         .order("id", { ascending: true })
     ),

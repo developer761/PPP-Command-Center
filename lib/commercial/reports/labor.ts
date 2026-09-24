@@ -210,7 +210,7 @@ export async function getLaborReport(range: {
     sb
       .from("commercial_project_purchases")
       .select("vendor, amount_cents, opportunity_id, id")
-      .eq("category", "labor")
+      .in("category", ["labor", "employee_labor"])
       .is("deleted_at", null)
       .gte("purchased_at", range.fromYmd)
       .lte("purchased_at", range.toYmd)

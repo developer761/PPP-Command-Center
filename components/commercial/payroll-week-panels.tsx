@@ -1,6 +1,7 @@
 import Link from "next/link";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import type { PayrollWeek } from "@/lib/commercial/field-ops/payroll-week";
 
 /**
@@ -235,7 +236,8 @@ export function PayrollWeekPanels({
                               name={`pto_${e.employeeId}`}
                               defaultValue={e.unassignedOpportunityId ?? ""}
                               aria-label={`Job to charge ${e.name}'s ${e.unassignedHours}h of non-job time to`}
-                              className="w-full max-w-[190px] mb-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-[11.5px] text-ppp-charcoal-800 min-h-[44px]"
+                              className={`${SELECT_CLS} max-w-[190px] mb-1.5 text-[11.5px] border-amber-300 bg-amber-50`}
+                              style={SELECT_BG_STYLE}
                             >
                               <option value="">
                                 Charge {e.unassignedHours}h off-job to…

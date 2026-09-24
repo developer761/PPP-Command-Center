@@ -14,13 +14,13 @@
  *
  * ── THE RATE IS THE WAGE, NOT THE COST ──────────────────────────────────────
  *
- * Verified 2026-09-17 against real payouts: what Tomco actually pays the labour
+ * Verified 2026-09-17 against real payouts: what Tomco actually pays the labor
  * company runs consistently 1.11× (rate × hours) — 1.06 to 1.14 across all
  * nine, no outliers. The gap is burden, overtime and the company's margin.
  *
  * So these two are the SAME MONEY counted differently, and must never be added.
  * Loading the base wage as the job-cost rate makes every job read about 10%
- * cheaper in labour than it actually was. `--burden` multiplies by a factor so
+ * cheaper in labor than it actually was. `--burden` multiplies by a factor so
  * the cost rate reflects what Tomco really spends; 1.11 is the measured one.
  * Which to use is a business decision, so neither is the default and the script
  * refuses to guess.
@@ -93,7 +93,7 @@ const RATES = {
 
   // ── RESOLVED FROM SALESFORCE, 2026-09-24, not from the names ─────────────
   //
-  // WorkOrderCrew__c carries the labour company AND, on most rows, the worker
+  // WorkOrderCrew__c carries the labor company AND, on most rows, the worker
   // Salesforce named that day. 2,039 Tomco crew-days answer both questions
   // outright:
   //
@@ -143,7 +143,7 @@ console.log(
     : BURDEN
     ? `Cost rate = base wage × ${BURDEN} (what Tomco actually spends)\n`
     : `Cost rate = BASE WAGE as Katie sent it.\n` +
-        `  ⚠ Real payouts run ~1.11× this. Job labour will read about 10% cheaper\n` +
+        `  ⚠ Real payouts run ~1.11× this. Job labor will read about 10% cheaper\n` +
         `    than it actually was. Pass --burden=1.11 if the job cost should be\n` +
         `    what Tomco spends rather than what the worker earns.\n`,
 );
@@ -214,9 +214,9 @@ if (UNRESOLVED.length) {
 }
 
 console.log(
-  `\n⚠ AND THE OTHER HALF: once these people are W-2, labour payouts must STOP\n` +
+  `\n⚠ AND THE OTHER HALF: once these people are W-2, labor payouts must STOP\n` +
     `  being recorded against them, or every job they touch is costed twice —\n` +
-    `  once from hours × rate and once from the payment to the labour company.\n` +
+    `  once from hours × rate and once from the payment to the labor company.\n` +
     `  getW2Readiness() reports that overlap; check it after this runs.`,
 );
 

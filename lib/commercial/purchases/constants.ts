@@ -9,6 +9,18 @@
 export const PURCHASE_CATEGORIES = [
   "materials",
   "labor",
+  // Mary, 2026-09-24: "Can you add in the drop down a Labor option or similar?
+  // I am logging payouts under Sub which is not accurate for our employees."
+  //
+  // She is right, and the old assumption is what made it wrong. `labor` was
+  // labelled "Subcontract labor" because in-house W-2 crew cost was supposed to
+  // arrive as a separate auto line priced from a rate card. Tomco now pay
+  // employees through Gusto and the cost is broken out per job as a real payout,
+  // so filing that under a subcontract heading misstates the one distinction an
+  // accountant cares about — 1099 versus W-2.
+  //
+  // No migration: `category` is plain text and the app enforces the list.
+  "employee_labor",
   "subcontractor",
   "equipment",
   "permit",
@@ -49,6 +61,10 @@ export const PURCHASE_CATEGORY_META: Record<
   // W-2 crew cost is the separate auto "Crew labor" line (Option A, from time
   // entries), so this is disambiguated as "Subcontract labor".
   labor: { label: "Subcontract labor", plural: "Subcontract labor", tone: "ppp-blue" },
+  // What Tomco's own employees cost a job: their share of the week's Gusto
+  // liability, wages and payroll taxes together. Posting a payroll week writes
+  // these, and Mary can enter one by hand for anything payroll did not cover.
+  employee_labor: { label: "Employee labor", plural: "Employee labor", tone: "ppp-blue" },
   subcontractor: { label: "Subcontractor", plural: "Subcontractors", tone: "amber" },
   equipment: { label: "Equipment", plural: "Equipment", tone: "emerald" },
   permit: { label: "Permit", plural: "Permits", tone: "charcoal" },

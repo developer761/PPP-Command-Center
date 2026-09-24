@@ -149,7 +149,7 @@ export async function getPayrollWeek(
    * W-2 ONLY, AND THIS IS THE DOUBLE-COUNT GUARD.
    *
    * Gusto runs payroll for employees. A subcontractor is already costed by the
-   * payout to their labour company — that is the whole sub model. Allocating a
+   * payout to their labor company — that is the whole sub model. Allocating a
    * payroll figure to one as well would put the same work on a job twice, and
    * both halves would look entirely real.
    *
@@ -517,7 +517,10 @@ export async function postPayrollWeek(
         updated_at: nowIso,
         opportunity_id: a.opportunityId,
         account_id: accountId,
-        category: "labor",
+        // Mary 2026-09-24: "I am logging payouts under Sub which is not
+        // accurate for our employees." These are Tomco's own W-2 people, so
+        // they file as employee labor, not subcontract.
+        category: "employee_labor",
         vendor: e.name,
         amount_cents: a.amountCents,
         hours: a.hours,

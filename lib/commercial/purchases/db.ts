@@ -58,6 +58,9 @@ export type LaborByWorker = {
 export type CostBreakdown = {
   materials: number;
   labor: number;
+  /** Tomco's own W-2 employees — their share of the week's Gusto liability.
+   *  Separate from `labor`, which is what goes to a labor company. */
+  employee_labor: number;
   subcontractor: number;
   equipment: number;
   permit: number;
@@ -67,7 +70,7 @@ export type CostBreakdown = {
 };
 
 export function emptyCostBreakdown(): CostBreakdown {
-  return { materials: 0, labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 };
+  return { materials: 0, labor: 0, employee_labor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0, total: 0, count: 0 };
 }
 
 type Result<T> = { ok: true; value: T; warning?: string } | { ok: false; error: string };
@@ -239,7 +242,7 @@ export async function recentWorkersForAccount(accountId: string, limit = 200): P
     .from("commercial_project_purchases")
     .select("vendor")
     .eq("account_id", accountId)
-    .eq("category", "labor")
+    .in("category", ["labor", "employee_labor"])
     .is("deleted_at", null)
     .not("vendor", "is", null)
     .order("created_at", { ascending: false })
@@ -264,7 +267,7 @@ export async function laborByWorkerForProject(oppId: string): Promise<LaborByWor
     .from("commercial_project_purchases")
     .select("vendor, amount_cents, hours")
     .eq("opportunity_id", oppId)
-    .eq("category", "labor")
+    .in("category", ["labor", "employee_labor"])
     .is("deleted_at", null);
   if (error) return [];
   const map = new Map<string, LaborByWorker>();
@@ -367,7 +370,9 @@ export async function addPurchase(input: AddPurchaseInput): Promise<Result<Comme
       amount_cents: amount,
       // Hours only make sense for labor; drop them on any other category so an
       // edited category can't strand stale hours.
-      hours: category === "labor" ? sanitizeHours(input.hours) : null,
+      // Hours belong to any purchase that pays for somebody's TIME, which is
+      // both kinds of labor — a payroll split carries them too.
+      hours: category === "labor" || category === "employee_labor" ? sanitizeHours(input.hours) : null,
       purchased_at: input.purchased_at ?? nowIso,
       description: input.description?.trim().slice(0, 2000) || null,
       receipt_document_id: input.receipt_document_id ?? null,
@@ -422,7 +427,7 @@ export async function updatePurchase(
   // labor category loses its hours; edited onto labor can gain them. This
   // prevents stale hours surviving a category flip.
   const effectiveCategory = (next.category as string | undefined) ?? before.category;
-  if (effectiveCategory !== "labor") {
+  if (effectiveCategory !== "labor" && effectiveCategory !== "employee_labor") {
     // Only overwrite when it would actually change — keeps the audit diff clean.
     if (before.hours !== null) next.hours = null;
   } else if (patch.hours !== undefined) {

@@ -80,7 +80,10 @@ export async function getW2Readiness(): Promise<W2Readiness> {
     sb
       .from("commercial_project_purchases")
       .select("vendor, amount_cents")
-      .eq("category", "labor")
+      // BOTH kinds of labor. A person paid once as a sub and once through
+      // payroll is the overlap this exists to find, and it would miss exactly
+      // that if it only looked at one category.
+      .in("category", ["labor", "employee_labor"])
       .is("deleted_at", null)
       .order("id", { ascending: true }),
   );
