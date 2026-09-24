@@ -1257,12 +1257,29 @@ export async function InvoiceDetailView({
                   opened from an account or opp Invoices tab lands the
                   undo toast on THAT tab, not the global invoices list. */}
               {fromRaw && <input type="hidden" name="from" value={fromRaw} />}
-              <SubmitButton
+              {/* ASK FIRST — especially when money has been collected.
+                  2026-09-23: this was a bare SubmitButton, the only destructive
+                  control on the page without a confirm, while Void right next
+                  to it has one. One click removed SF-00287819 — $286,695 with
+                  $66,833.31 already collected against it — and the job then
+                  read $0 billed and $0 owed everywhere on the platform. The
+                  nightly Salesforce reconcile caught it; nothing in the app
+                  did, and the person clicking got no warning at all.
+                  The delete stays possible (Karan 2026-07-07 opened it to any
+                  state on purpose) — it just says what is at stake first, and
+                  names the amount, because "delete this invoice" and "detach
+                  $66,833.31 of collected payments" are not the same sentence. */}
+              <ConfirmSubmitButton
+                message={
+                  (invoice.paid_cents ?? 0) > 0
+                    ? `This invoice has $${((invoice.paid_cents ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} collected against it. Deleting it takes that money off the job — it will read $0 billed and $0 collected until you raise a replacement invoice. The payment record is kept and Undo restores it. Delete anyway?`
+                    : "Delete this invoice? It is hidden everywhere but kept in the database, and Undo restores it."
+                }
+                pendingLabel="Deleting…"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
-                title="Remove this invoice from the list. The row stays in the DB for audit but is hidden everywhere."
               >
                 Delete invoice
-              </SubmitButton>
+              </ConfirmSubmitButton>
             </form>
             {/* Karan 2026-07-08: bulk-delete siblings when the parent
                 (deal or account) is soft-deleted. Same guards as the

@@ -21,6 +21,7 @@ import {
   type InvoiceStatus,
 } from "./constants";
 import { logStatusChange, recomputeSubtotal } from "./db";
+import { logDelete, logUpdate } from "@/lib/commercial/audit-log";
 
 export function isTransitionAllowed(
   from_status: InvoiceStatus,
@@ -177,13 +178,19 @@ export async function softDeleteInvoice(
   actor_user_id: string
 ): Promise<{ ok: boolean; error?: string; freedChangeOrders?: number }> {
   const sb = commercialDb();
+  // The WHOLE row, not just the status. `commercial_audit_log` records a
+  // delete as `before_json` and nothing else, so whatever is not captured here
+  // is gone from the trail for good — including the amount and what had been
+  // collected, which are the two things anyone asking "where did this invoice
+  // go" actually needs.
   const { data: before } = await sb
     .from("commercial_invoices")
-    .select("status, deleted_at")
+    .select("*")
     .eq("id", invoice_id)
     .maybeSingle();
-  if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
-  const from_status = before.status as InvoiceStatus;
+  if (!before || (before as { deleted_at: string | null }).deleted_at)
+    return { ok: false, error: "invoice_not_found" };
+  const from_status = (before as { status: string }).status as InvoiceStatus;
   // CAS on deleted_at IS NULL so two concurrent deletes don't both log.
   const { data: deleted, error } = await sb
     .from("commercial_invoices")
@@ -202,6 +209,15 @@ export async function softDeleteInvoice(
   // back (audit #1/#2). softDeleteInvoice reports the freed count so the caller
   // can tell the user the undo won't restore change-order charges.
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
+  // AND the platform-wide audit log, which had never recorded an invoice
+  // deletion — zero rows, all time, while 28 other invoice events were there.
+  // The status log above is per-invoice: you can only read it by opening the
+  // invoice, and a deleted invoice is hidden everywhere, so the one event you
+  // would go looking for was the one you could not reach. Found 2026-09-23
+  // tracing a $66,833.31 gap the Salesforce reconcile reported; answering "who
+  // removed this and when" took a database query, and outside this repo
+  // nobody could have answered it at all.
+  await logDelete("commercial_invoices", invoice_id, before, actor_user_id);
   return { ok: true, freedChangeOrders };
 }
 
@@ -239,6 +255,16 @@ export async function restoreInvoice(
     before.status as InvoiceStatus,
     actor_user_id,
     "Invoice restored (undo)"
+  );
+  // Pair for the logDelete above. An audit log showing the delete and not the
+  // undo is worse than one showing neither: it reports money as removed that
+  // is back on the books.
+  await logUpdate(
+    "commercial_invoices",
+    invoice_id,
+    before,
+    { ...before, deleted_at: null },
+    actor_user_id,
   );
   return { ok: true };
 }
