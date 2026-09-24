@@ -363,7 +363,37 @@ function InvoiceDoc(input: InvoicePdfInput) {
           <Text style={[styles.th, styles.cAmt]}>Amount</Text>
         </View>
         {input.rows.length === 0 ? (
-          <Text style={{ marginTop: 10, color: "#6b7280" }}>No line items on this invoice.</Text>
+          /**
+           * A LUMP-SUM INVOICE IS NOT A BROKEN ONE.
+           *
+           * This printed "No line items on this invoice." on the copy the
+           * customer receives, directly above BALANCE DUE. Mary sent one in on
+           * 2026-09-24: SF-00315403 to J & L Property Investors, $3,208.13, and
+           * the document apologises for itself.
+           *
+           * The data is not missing. 88 of the 95 live invoices — $1.98M —
+           * came from Salesforce, where a work order carries ONE agreed figure
+           * and no line detail; the importer deliberately stores the subtotal
+           * rather than inventing lines for it (see import-tomco.mjs). So
+           * there is nothing to fix in the data, and an empty state explaining
+           * a defect IS the defect.
+           *
+           * A lump-sum invoice bills the contract. That is what it says now,
+           * named by the job where we have it, at the subtotal — a line a GC's
+           * AP department can read and pay.
+           */
+          <View style={styles.tr} wrap={false}>
+            <View style={styles.cDesc}>
+              <Text>
+                {input.dealName
+                  ? `Painting services — ${input.dealName}`
+                  : "Painting services per contract"}
+              </Text>
+            </View>
+            <Text style={styles.cQty}>1</Text>
+            <Text style={styles.cUnit}>{fmt(input.subtotalCents)}</Text>
+            <Text style={styles.cAmt}>{fmt(input.subtotalCents)}</Text>
+          </View>
         ) : (
           input.rows.map((r, i) => (
             <View key={i} style={styles.tr} wrap={false}>
