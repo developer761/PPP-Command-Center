@@ -278,8 +278,17 @@ export async function ChangeOrdersPanel({
             value={contractToDateCents != null ? formatCentsFull(contractToDateCents) : "—"}
             emphasize
           />
+          {/* "Billed on COs", not "Billed".
+              This tile sums APPROVED CHANGE ORDERS only, and it sits in a row
+              where Original contract and Contract to date are whole-job
+              figures. On AIREF Building #1 — $189,434.20 certified through AIA
+              — the row read "Contract to date $283,082.00 … Billed $0.00",
+              which invites exactly the wrong reading.
+              Same shape as "Crew hours" next to a different crew-hours figure,
+              and "GC owes" next to "Owed now": a label that does not say which
+              scope it is in, beside figures in another. */}
           <SummaryTile
-            label="Billed"
+            label="Billed on COs"
             value={formatCentsFull(billedCents)}
             tone={billedCents > 0 ? "emerald" : "neutral"}
             hint={
