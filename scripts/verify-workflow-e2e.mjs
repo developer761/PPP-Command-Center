@@ -88,8 +88,25 @@ try {
   ok("the opener goes immediately", planned[0].runAt.getTime() === NOW.getTime());
   ok("every later step is after the one before it",
      planned.every((p, i) => i === 0 || p.runAt >= planned[i - 1].runAt));
-  const daysOut = (planned[3].runAt.getTime() - NOW.getTime()) / 86_400_000;
-  ok("the last chase is about three days out", daysOut > 2.5 && daysOut < 4.5, daysOut.toFixed(1) + "d");
+  // NOT elapsed days. "Day 3 at 10am" is between 2.42 and 3.42 days away
+  // depending on the hour you run this, so a band around three fails every
+  // evening — this check went red at 22:41 with 2.47, and the sequence was
+  // perfectly correct. A test that depends on what time somebody runs it is
+  // not a test of the scheduler.
+  //
+  // So it asserts what the step actually says: the configured day offset, at
+  // the configured time, in the workspace's own zone.
+  const last = steps[3];
+  const et = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const partsOf = (d) => Object.fromEntries(et.formatToParts(d).map((p) => [p.type, p.value]));
+  const got = partsOf(planned[3].runAt);
+  const wantDay = partsOf(new Date(NOW.getTime() + last.dayOffset * 86_400_000)).day;
+  ok("the last chase lands on its configured day, at its configured time",
+     got.hour + ":" + got.minute === last.timeOfDay.slice(0, 5) && got.day === wantDay,
+     `day ${got.day} at ${got.hour}:${got.minute}, wanted day ${wantDay} at ${last.timeOfDay.slice(0, 5)}`);
 
   // The opener, filled for a real workspace.
   const { data: nassau } = await sb.from("sms_sub_accounts")
