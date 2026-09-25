@@ -401,6 +401,36 @@ async function updatePurchaseAction(formData: FormData) {
       actorUserId: userId,
     }).catch(() => ({ ok: false as const }));
     receiptFailed = !r.ok;
+  } else if (String(formData.get("remove_receipt") ?? "") === "1") {
+    /**
+     * TAKING A RECEIPT OFF, not just swapping it.
+     *
+     * The edit form's only receipt affordance was "uploading a new one
+     * replaces it", so the sole way to detach a receipt filed against the
+     * wrong purchase was to attach a different wrong one. `removePurchaseReceipt`
+     * was written for this and had no caller anywhere in the codebase.
+     *
+     * Second branch, not first: a save that both picks a file and ticks remove
+     * is a person changing their mind mid-form, and honouring the upload keeps
+     * the receipt. Deleting what they just chose is the one outcome with no
+     * way back — the underlying document is soft-deleted.
+     */
+    const { removePurchaseReceipt } = await import("@/lib/commercial/purchases/db");
+    const r = await removePurchaseReceipt(purchase_id, userId).catch(() => ({
+      ok: false as const,
+      error: "Could not remove the receipt.",
+    }));
+    if (!r.ok) {
+      revalidateCostSurfaces(account_id, opp_id);
+      costsRedirect(
+        account_id,
+        opp_id,
+        { cost_ok: "saved", heads_up: "Purchase saved, but the receipt could not be removed." },
+        back,
+        origin,
+        from,
+      );
+    }
   }
   revalidateCostSurfaces(account_id, opp_id);
   costsRedirect(

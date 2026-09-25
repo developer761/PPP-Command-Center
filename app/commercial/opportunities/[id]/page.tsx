@@ -411,6 +411,64 @@ async function submitDebriefOnlyAction(formData: FormData) {
   redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
 }
 
+/**
+ * Correct a debrief that is already on file.
+ *
+ * `updateDebrief` was written for exactly this, with an audit trail, and had
+ * no caller anywhere in the codebase — so the defect its own docblock
+ * describes was still live: `canDebrief` flips this tab read-only once
+ * `win_loss_debriefed_at` is set, which meant a typo in "lessons learned", or
+ * a competitor named wrong, was permanent unless somebody reopened and
+ * re-closed the whole deal to clear the flag. For a document whose entire
+ * purpose is that somebody reads it later and it is right, that is the wrong
+ * way round.
+ *
+ * The OUTCOME stays underivable from here — won/lost comes from the deal, and
+ * editing it here would put the debrief and the opportunity into disagreement
+ * with no way to tell which is true. Change the deal to change the outcome.
+ */
+async function editDebriefAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const debrief_id = String(formData.get("debrief_id") ?? "");
+  if (!UUID_RE.test(debrief_id)) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief`);
+  }
+  const decidingFactor = String(
+    formData.get("debrief_deciding_factor") ?? "",
+  ).trim();
+  const { updateDebrief } = await import("@/lib/commercial/win-loss/debrief");
+  const result = await updateDebrief({
+    debriefId: debrief_id,
+    actorUserId: user.id,
+    competitorName: String(formData.get("debrief_competitor") ?? "").trim() || null,
+    // Same allowlist the create path uses — an unknown value becomes null
+    // rather than being written through, so the report can't grow a category
+    // nobody defined.
+    decidingFactor:
+      decidingFactor &&
+      (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)
+        ? decidingFactor
+        : null,
+    lessonsLearned: String(formData.get("debrief_lessons") ?? "").trim() || null,
+    internalNotes: String(formData.get("debrief_internal_notes") ?? "").trim() || null,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=debrief&error=` +
+        encodeURIComponent(result.error),
+    );
+  }
+  redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
+}
+
 async function changeStatusAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -6342,6 +6400,7 @@ function DebriefReadOnlyView({
 }: {
   opp: CommercialOpportunity;
   debrief: {
+    id: string;
     competitor_name: string | null;
     deciding_factor: string | null;
     lessons_learned: string | null;
@@ -6426,6 +6485,93 @@ function DebriefReadOnlyView({
           </p>
         </details>
       )}
+
+      {/* CORRECTING WHAT IS ON FILE.
+          This panel was terminal: once a debrief was saved the tab went
+          read-only forever, so a competitor named wrong or a typo in the
+          lessons stayed wrong unless somebody reopened and re-closed the
+          entire deal. `updateDebrief` was written for this in August and
+          never wired to anything.
+
+          Collapsed by default — the common act here is reading, and a form
+          sitting open would bury the thing people came for. The outcome
+          (won/lost) is deliberately absent: it belongs to the deal, and an
+          editable copy here could disagree with it. */}
+      <details className="mt-5 border-t border-ppp-charcoal-100 pt-4">
+        <summary className="cursor-pointer text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 select-none min-h-[44px] sm:min-h-0 flex items-center">
+          Correct this debrief
+        </summary>
+        <p className="mt-2 text-[12px] text-ppp-charcoal-500">
+          Fixes the write-up only. The outcome comes from the deal&rsquo;s status —
+          change that on the Info tab. Every edit is logged.
+        </p>
+        <form action={editDebriefAction} className="mt-3 space-y-3">
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <input type="hidden" name="debrief_id" value={debrief.id} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="edit_debrief_competitor" className={LABEL_CLS}>
+                {isWon(opp) ? "Beat" : isLost(opp) ? "Lost to" : "Competitor"}
+              </label>
+              <input
+                id="edit_debrief_competitor"
+                name="debrief_competitor"
+                type="text"
+                defaultValue={debrief.competitor_name ?? ""}
+                placeholder="Leave blank if none"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label htmlFor="edit_debrief_deciding_factor" className={LABEL_CLS}>
+                {isWon(opp) ? "What sealed it" : "Deciding factor"}
+              </label>
+              <select
+                id="edit_debrief_deciding_factor"
+                name="debrief_deciding_factor"
+                defaultValue={debrief.deciding_factor ?? ""}
+                className={SELECT_CLS}
+              >
+                <option value="">—</option>
+                {OPPORTUNITY_LOSS_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {opportunityLossReasonLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="edit_debrief_lessons" className={LABEL_CLS}>
+              {isWon(opp) ? "What worked" : "What we'd do differently"}
+            </label>
+            <textarea
+              id="edit_debrief_lessons"
+              name="debrief_lessons"
+              rows={3}
+              defaultValue={debrief.lessons_learned ?? ""}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label htmlFor="edit_debrief_internal_notes" className={LABEL_CLS}>
+              Internal notes
+            </label>
+            <textarea
+              id="edit_debrief_internal_notes"
+              name="debrief_internal_notes"
+              rows={2}
+              defaultValue={debrief.internal_notes ?? ""}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
+              Save changes
+            </SubmitButton>
+          </div>
+        </form>
+      </details>
     </section>
   );
 }

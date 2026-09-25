@@ -350,7 +350,31 @@ async function editArRowAction(formData: FormData) {
     if (id.startsWith("added:")) await removeAddedArRow(id);
     else await setCarryoverCleared(id, true);
     revalidatePath(BASE);
-    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line removed.")}`);
+    redirect(
+      `${BASE}?view=ar&ok=${encodeURIComponent(
+        // A carryover line can be put back; a hand-added one is gone. Say
+        // which, so nobody has to find out by looking for it.
+        id.startsWith("added:")
+          ? "Line removed."
+          : "Line removed — it's under “Removed lines” if you need it back.",
+      )}`,
+    );
+  }
+  /**
+   * PUT A CLEARED CARRYOVER LINE BACK.
+   *
+   * `setCarryoverCleared` has always taken a boolean and `clearedCarryoverRows`
+   * was written — its docblock says — as "the copied lines that have been
+   * ticked off, shown so they can be put back". Nothing ever called it, and
+   * nothing ever passed `false`. So a mis-click on Remove deleted an open
+   * receivable from Mary's sheet with no undo and no list of what had gone:
+   * the AR total quietly dropped and the only way to notice was remembering
+   * the line existed.
+   */
+  if (intent === "restore" && id) {
+    await setCarryoverCleared(id, false);
+    revalidatePath(BASE);
+    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line put back.")}`);
   }
   if (intent === "add") {
     const cents = dollarsToCents(formData.get("amount"));
@@ -1069,6 +1093,15 @@ export default async function AccountingPage({
   const arRowsFiltered =
     arRows && arCutoff ? arRows.filter((r) => !r.issuedYmd || r.issuedYmd >= arCutoff) : arRows;
   const arUndatedKept = (arRowsFiltered ?? []).filter((r) => !r.issuedYmd).length;
+  // The carryover lines somebody has ticked off — so a mis-click on Remove is
+  // recoverable instead of silently shrinking the book. AR view only; no other
+  // view pays for the read.
+  const arClearedRows =
+    view === "ar"
+      ? await (
+          await import("@/lib/commercial/reports/tomco/ar-applications")
+        ).clearedCarryoverRows()
+      : [];
   // `entry`, `spendRows` and `depositRows` are fetched in the wave above.
   const production = summarizeProduction(projects);
   // Work that is won and carries a DRAFT invoice — raised but never sent. A
@@ -2577,6 +2610,53 @@ export default async function AccountingPage({
                     </li>
                   ))}
               </ul>
+            )}
+
+            {/* REMOVED LINES — the undo that never existed.
+                Remove used to be one-way: the line vanished from the sheet,
+                the AR total dropped, and the only way to notice was
+                remembering it had been there. `clearedCarryoverRows` was
+                written for exactly this list and had no caller.
+                Hand-added lines are not here — `removeAddedArRow` deletes
+                them outright, so promising them back would be a lie. */}
+            {arClearedRows.length > 0 && (
+              <details className="mt-4 border-t border-ppp-charcoal-100 pt-3">
+                <summary className="cursor-pointer text-[12.5px] font-semibold text-ppp-charcoal-600 hover:text-ppp-charcoal select-none min-h-[44px] sm:min-h-0 flex items-center">
+                  Removed lines · {arClearedRows.length}
+                </summary>
+                <p className="mt-1.5 text-[12px] text-ppp-charcoal-500">
+                  Ticked off the sheet. Put one back if it was removed by mistake
+                  or the certificate hasn&rsquo;t actually been raised yet.
+                </p>
+                <ul className="mt-2 divide-y divide-ppp-charcoal-100">
+                  {arClearedRows.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-ppp-charcoal truncate">{r.jobName}</div>
+                        <div className="text-[11.5px] text-ppp-charcoal-500 truncate">
+                          {/* Exact, not fmtMoneyK: this is a receivable being
+                              put back on a sheet Mary reconciles to the cent. */}
+                          {(r.openCents / 100).toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                          })}
+                          {r.notes ? ` · ${r.notes}` : ""}
+                        </div>
+                      </div>
+                      <form action={editArRowAction}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <input type="hidden" name="intent" value="restore" />
+                        <PendingSubmitButton
+                          pendingLabel="Putting back…"
+                          className="inline-flex items-center justify-center px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[38px]"
+                        >
+                          Put back
+                        </PendingSubmitButton>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
         </details>

@@ -415,7 +415,19 @@ export default function PurchaseForm({
             {receiptNote.text}
           </p>
         )}
-        {purchase?.receipt_document_id && <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>}
+        {purchase?.receipt_document_id && (
+          <>
+            <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>
+            {/* Replacing was the only way to correct a receipt filed against
+                the wrong purchase: you had to attach a different wrong one.
+                A checkbox rather than its own button because this sits inside
+                the edit form and a nested form would swallow the click. */}
+            <label className="flex items-center gap-2 mt-1.5 text-[11px] text-ppp-charcoal-600 min-h-[44px] sm:min-h-0 cursor-pointer">
+              <input type="checkbox" name="remove_receipt" value="1" className="rounded border-ppp-charcoal-300" />
+              Remove the receipt on file (leaves the purchase in place)
+            </label>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <PendingSubmitButton pendingLabel="Saving…" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation shadow-sm shadow-cc-brand-600/30">{submitLabel}</PendingSubmitButton>
