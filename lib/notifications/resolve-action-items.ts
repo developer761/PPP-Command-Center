@@ -65,3 +65,31 @@ export const PROPOSAL_ACTION_KINDS = [
   "commercial_proposal_changes_requested",
   "commercial_proposal_approved",
 ] as const;
+
+/**
+ * Everything on the Action Needed bar that a proposal can raise — for when the
+ * DEAL ITSELF is gone.
+ *
+ * `PROPOSAL_ACTION_KINDS` above is "superseded by sending", and it excludes
+ * `signed` on purpose: sending a proposal does not discharge a countersignature
+ * duty, so that to-do must survive a send.
+ *
+ * Deleting the deal is a different question with a different answer. There is
+ * nothing left to countersign. Excluding `signed` there left
+ * "A GC signed — waiting on our signature" sitting on the bar pointing at a
+ * proposal on a deleted deal — which is precisely the bug this whole module
+ * exists to prevent, reintroduced by reusing one list for two situations.
+ *
+ * It is not caught by `retireNotificationsFor` either: that anchors on the
+ * FINAL path segment, and a proposal deep-link ends with the PROPOSAL id, not
+ * the deal's. That anchoring is itself deliberate — without it, deleting an
+ * ACCOUNT marked read every live approval request underneath it.
+ *
+ * No `commercial_proposal_signed` rows exist yet (nobody has e-signed), so
+ * this is latent. The kind is emitted, so it stops being latent the first time
+ * a GC signs.
+ */
+export const PROPOSAL_ACTION_KINDS_ON_DELETE = [
+  ...PROPOSAL_ACTION_KINDS,
+  "commercial_proposal_signed",
+] as const;

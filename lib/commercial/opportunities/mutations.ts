@@ -699,13 +699,16 @@ export async function softDeleteCommercialOpportunity(
       );
     } else if ((props ?? []).length > 0) {
       const accountId = (after as { account_id?: string | null } | null)?.account_id ?? null;
-      const { resolveActionItems, PROPOSAL_ACTION_KINDS } = await import(
+      // ON DELETE, not the send-path list: the deal is gone, so even a
+      // signed proposal awaiting our countersignature has nothing left to
+      // countersign. See PROPOSAL_ACTION_KINDS_ON_DELETE.
+      const { resolveActionItems, PROPOSAL_ACTION_KINDS_ON_DELETE } = await import(
         "@/lib/notifications/resolve-action-items"
       );
       for (const pr of props as { id: string }[]) {
         await resolveActionItems({
           link: `/commercial/accounts/${accountId}/deals/${id}/proposal/${pr.id}`,
-          kinds: PROPOSAL_ACTION_KINDS,
+          kinds: PROPOSAL_ACTION_KINDS_ON_DELETE,
         });
       }
     }
