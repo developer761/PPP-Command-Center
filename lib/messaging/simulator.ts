@@ -147,7 +147,7 @@ export async function runSimTurn(input: {
    * `Liked "<our message>"` and would otherwise resolve our sentence as their
    * project.
    */
-  const { stage } = scopeAndStage({
+  const { stage, scope: resolvedScope } = scopeAndStage({
     stage: input.stage ?? 0,
     onFile: input.known?.inquiryScope ?? null,
     rawInbound: input.customerText,
@@ -163,7 +163,13 @@ export async function runSimTurn(input: {
     lastAskedForInfo: input.lastAskedForInfo,
     mediaCount: input.mediaCount,
     track,
-    known: input.known,
+    // THE RESOLVED SCOPE, NOT JUST THE PANEL, which is what the live path
+    // passes (scheduler-db: `inquiryScope: resolved.scope`). Without it the
+    // simulator renders as though nothing is known about the job even when
+    // the customer just described it, and the turns that can only speak when
+    // there IS a scope — confirm_scope, and the discard that turns work down
+    // in words — came out silent here and talk in production.
+    known: { ...input.known, inquiryScope: input.known?.inquiryScope || resolvedScope || undefined },
     services: resolveServices(svc.services, svc.exceptions),
     stage,
     lastIntent: input.lastIntent,
