@@ -92,7 +92,18 @@ export default function Simulator({
 
   const send = async (override?: string, media = 0) => {
     const text = override ?? draft.trim();
-    if ((!text && media === 0) || busy) return;
+    // THE GUARD HAS TO AGREE WITH THE BUTTON'S OWN disabled CHECK.
+    //
+    // The send button is enabled when there is a draft OR an attached photo
+    // (`!draft.trim() && photos === 0`), but this read only `media`, the
+    // PARAMETER, which is 0 for a plain send. So a photo with no caption gave
+    // an enabled blue button that did nothing at all when clicked: no turn,
+    // no error, nothing. The photos STATE is not read until further down.
+    //
+    // A photo with no message is not an edge case — it is how a customer asks
+    // for a quote on a wall they are looking at. And this screen is the one
+    // place a photo can be tested at all.
+    if ((!text && media === 0 && photos === 0) || busy) return;
     setBusy(true);
     try {
       const history = turns.flatMap((t) => [
