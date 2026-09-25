@@ -56,6 +56,45 @@ describe("validateAction — never quote a price", () => {
     const r = validateAction(ok({ freeText: "We can text or email you a quote. Which would you prefer?" }));
     expect(r.ok).toBe(true);
   });
+
+  /**
+   * A WRITTEN NUMBER IS STILL A PRICE.
+   *
+   * The pattern only looked for a written number in front of a MAGNITUDE —
+   * "five hundred", "two grand" — so it caught those and let "fifty dollars"
+   * straight through. Probed with twenty-one plausible prices, that was the
+   * one shape that escaped, and it is not an exotic one: cabinet work is
+   * quoted per door and lands on exactly this phrasing.
+   */
+  it("catches a price written out in words", () => {
+    for (const t of [
+      "fifty dollars", "fifty bucks", "twenty bucks", "a hundred bucks",
+      "a couple hundred bucks", "about fifty bucks a door", "fifty quid",
+      "about a grand", "a few grand", "fifty per door",
+    ]) {
+      const r = validateAction(ok({ freeText: t }));
+      expect(r.ok, t).toBe(false);
+      if (!r.ok) expect(r.reason, t).toBe("quoted_a_price");
+    }
+  });
+
+  /**
+   * The other half of the same trade. This filter is deliberately blunt, so
+   * widening it costs ordinary sentences — the first version of the fix above
+   * refused "a hundred percent" and "we cover a few hundred zip codes", which
+   * is a worse failure than the hole it closed.
+   */
+  it("does not refuse ordinary sentences that happen to carry a number word", () => {
+    for (const t of [
+      "Absolutely, a hundred percent.",
+      "We cover a few hundred zip codes.",
+      "Got it, twenty doors is no problem.",
+      "One of our estimators will come out.",
+      "Give us a couple of days and we will be in touch.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
 });
 
 describe("validateAction — never offer a time we do not have", () => {

@@ -227,7 +227,25 @@ const PRICE = new RegExp(
     // …and an amount followed by a money word, which is the other order.
     String.raw`\d[^.!?]{0,16}\b(?:per hour|an hour|per room|a room|per square|per sq)\b`,
     // Written amounts. "roughly fifteen hundred" carries no digit at all.
-    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty)\s+(?:hundred|thousand|grand|k)\b`,
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|grand|k)\b`,
+    // A WRITTEN NUMBER MEETING A CURRENCY WORD, which the line above misses
+    // because it only looks for a MAGNITUDE after the number. "fifty dollars"
+    // is as much a quote as "$50", and it went straight through: probed with
+    // twenty-one plausible prices this was the one that got out, and
+    // "fifty dollars", "twenty bucks" and "a hundred bucks" with it.
+    String.raw`\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|couple|few)\s+(?:hundred\s+|thousand\s+)?(?:dollars?|bucks|usd|quid)\b`,
+    // "a grand", "a few grand", "a couple hundred" — no digit, no currency
+    // word, still a number the estimator never agreed to.
+    //
+    // Only at the end of the clause. Without that it ate "a hundred percent"
+    // and "we cover a few hundred zip codes", which is the failure mode this
+    // whole filter is supposed to be careful about: over-blocking costs a
+    // regenerated draft, but it costs it on ordinary sentences, every time.
+    // Anything followed by a currency word is already caught above.
+    String.raw`\b(?:a|an|another)\s+(?:couple|few)?\s*(?:hundred|thousand|grand)(?=\s*(?:[.,!?;]|$))`,
+    // Per-unit rates written out. Cabinet work is quoted per door, so this is
+    // the shape a cabinet price actually takes.
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:a|per|each)\b`,
   ].join("|"),
   "i"
 );
