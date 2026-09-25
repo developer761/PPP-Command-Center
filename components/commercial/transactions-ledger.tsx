@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatCentsFull } from "@/lib/commercial/invoices/format";
-import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
+import { DepositCheckbox } from "@/components/commercial/deposit-checkbox";
 import type { TransactionsReport, TxnRow } from "@/lib/commercial/reports/transactions";
 
 /**
@@ -23,15 +23,10 @@ const KIND_CLS: Record<string, string> = {
 
 export function TransactionsLedger({
   report,
-  depositAction,
-  queryString = "",
   emptyMessage,
   backHref,
 }: {
   report: TransactionsReport;
-  /** Tick/untick deposited. Passed in so each host revalidates its own path. */
-  depositAction: (formData: FormData) => Promise<void>;
-  queryString?: string;
   emptyMessage?: string;
   /** Where the invoice page's Back button should return to — see the same
    *  prop on ReceivablesTable. `/commercial/invoices` has no sidebar entry. */
@@ -90,7 +85,7 @@ export function TransactionsLedger({
                 </div>
                 {r.depositable && (
                   <div className="mt-1.5">
-                    <DepositToggle r={r} action={depositAction} queryString={queryString} />
+                    <DepositToggle r={r} />
                   </div>
                 )}
               </li>
@@ -121,7 +116,7 @@ export function TransactionsLedger({
                     </td>
                     <td className="px-3 py-2.5">
                       {r.depositable ? (
-                        <DepositToggle r={r} action={depositAction} queryString={queryString} />
+                        <DepositToggle r={r} />
                       ) : (
                         // A purchase has nothing to clear. An empty box would
                         // read as "not deposited yet", which is a different and
@@ -188,39 +183,29 @@ function TypePill({ r }: { r: TxnRow }) {
 }
 
 /**
- * The Deposited control.
+ * The Deposited control — the SAME control the Deposits tab uses.
  *
- * A one-click form rather than a checkbox in a big save form: ticking off a
- * bank statement is thirty of these in a row, and anything heavier doesn't get
- * done. Untickable too — a deposit that bounced has to be reversible, and an
+ * It used to be a form posting a server action, which is the thing Karan
+ * called out on 2026-09-17: "just make it simple checkboxes that are quick —
+ * this Deposited button takes so long to load." Every tick called
+ * `revalidatePath`, so it re-ran the whole Accounting page — receivables, the
+ * cost breakdown, the project rollups and 112 ledger rows — before the tick
+ * appeared.
+ *
+ * That was fixed on Deposits and left standing here, so the one page had two
+ * controls for one action: a tick that is instant on one tab and a button that
+ * rebuilds the page on the other, under two different names. Mary reconciles
+ * from whichever tab the money is easiest to find in, and her handbook had to
+ * teach both. One control, one name, one speed.
+ *
+ * Still untickable — a deposit that bounced has to be reversible, and an
  * irreversible tick is one nobody dares use.
  */
-function DepositToggle({
-  r,
-  action,
-  queryString,
-}: {
-  r: TxnRow;
-  action: (formData: FormData) => Promise<void>;
-  queryString: string;
-}) {
-  const on = !!r.depositedAtIso;
+function DepositToggle({ r }: { r: TxnRow }) {
   return (
-    <form action={action} className="inline-flex">
-      <input type="hidden" name="payment_id" value={r.id.replace(/^pay:/, "")} />
-      <input type="hidden" name="deposited" value={on ? "0" : "1"} />
-      <input type="hidden" name="qs" value={queryString} />
-      <PendingSubmitButton
-        pendingLabel="…"
-        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-semibold min-h-[44px] sm:min-h-[30px] transition-colors ${
-          on
-            ? "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100"
-            : "bg-surface border-ppp-charcoal-200 text-ppp-charcoal-500 hover:border-cc-brand-300 hover:text-cc-brand-700"
-        }`}
-      >
-        <span aria-hidden className={`inline-block w-3 h-3 rounded-[3px] border ${on ? "bg-emerald-600 border-emerald-700" : "border-ppp-charcoal-300"}`} />
-        {on ? "Deposited" : "Mark"}
-      </PendingSubmitButton>
-    </form>
+    <DepositCheckbox
+      paymentId={r.id.replace(/^pay:/, "")}
+      initial={!!r.depositedAtIso}
+    />
   );
 }

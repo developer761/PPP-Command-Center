@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { apiAccessDenied } from "@/lib/commercial/auth";
+import { apiAccessDenied, financeApiDenied } from "@/lib/commercial/auth";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { setPaymentDeposited } from "@/lib/commercial/reports/transactions";
@@ -33,12 +33,23 @@ export async function POST(req: Request) {
   const sb = commercialDb();
   const { data: prof } = await sb
     .from("profiles")
-    .select("has_new_platform_access, is_active")
+    .select("has_new_platform_access, is_active, is_admin, role")
     .eq("user_id", auth.user.id)
     .maybeSingle();
   if (await apiAccessDenied(auth.user.id, prof)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  /**
+   * FINANCE-GATED, like the server action this route replaced.
+   *
+   * The action it was carved out of calls `requireFinanceViewer` — admin or
+   * account manager — and explains at the top of accounting/page.tsx exactly
+   * what a merely-signed-in rep could otherwise do by replaying an action id.
+   * Moving the write here for speed dropped the gate to "has commercial
+   * access", which every rep has. See financeApiDenied.
+   */
+  const denied = await financeApiDenied(auth.user.email, prof);
+  if (denied) return denied;
 
   let body: { paymentId?: unknown; deposited?: unknown };
   try {
