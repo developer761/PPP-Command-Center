@@ -139,10 +139,39 @@ describe("validateAction — never promise work PPP does not do", () => {
       "bathtub refinishing is no problem",
       "we can paint your appliances",
       "we do murals too",
+      // THE TRADES LIST HAD THE SAME ORDER BUG THE SURFACES LIST FIXED.
+      // It carried "window replacement", so this went out unrefused — along
+      // with seven more of fourteen plausible out-of-scope promises.
+      "we can replace the windows",
+      "Yes, we can reroof that for you.",
+      "we can fix the roof leak",
+      "our electricians can rewire it",
+      "we install flooring",
+      "we do concrete driveways",
+      "we can pour a new foundation",
     ]) {
       const r = validateAction(ok({ freeText: t }));
       expect(r.ok, t).toBe(false);
       if (!r.ok) expect(r.reason).toBe("out_of_scope_work");
+    }
+  });
+
+  /**
+   * The nouns above cannot be matched bare. PPP paints window trim, door
+   * frames and the boards under a roof line, so "window" and "roof" on their
+   * own would refuse the work it actually sells. The verb is what makes it
+   * somebody else's trade.
+   */
+  it("still allows painting work that touches those same nouns", () => {
+    for (const t of [
+      "We can paint the window trim.",
+      "We'll paint the window frames and sills.",
+      "We can paint the floor of the porch.",
+      "We paint the boards under the roof line.",
+      "We can prep and paint the siding.",
+      "We'll paint the garage floor.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
     }
   });
 

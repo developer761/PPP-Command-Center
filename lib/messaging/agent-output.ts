@@ -306,9 +306,30 @@ const TIME_COMMITMENT = new RegExp(
 const OUT_OF_SCOPE_SURFACES =
   /\b(?:bathtubs?|appliances?|vehicles?|pool (?:tiles?|liners?)|murals?)\b/i;
 const OUT_OF_SCOPE_TRADES =
-  /\b(?:roofing|roof repair|plumbing|electrical|hvac|landscap\w*|masonry|paving|window replacement|siding install\w*|reupholster\w*)\b/i;
+  /\b(?:roofing|roof repair|plumbing|electrical|electrician\w*|hvac|landscap\w*|masonry|paving|re-?roof\w*|concrete|driveways?|foundations?|window replacement|siding install\w*|reupholster\w*)\b/i;
+/**
+ * THE SAME BUG THE SURFACES LIST ALREADY FIXED, LEFT IN THE TRADES LIST.
+ *
+ * The note above says the first version required "bathtub refinishing" in that
+ * order and let "refinish the bathtub" straight through, so surfaces became
+ * bare nouns. Trades never got the same treatment: "window replacement" is
+ * still order-bound, so "we can replace the windows" went out unrefused, and
+ * so did "we install flooring" and "we can fix the roof leak".
+ *
+ * These cannot be bare nouns. PPP paints window trim, door frames and the
+ * boards under a roof line, so "window", "floor" and "roof" on their own would
+ * refuse the work it actually sells. The verb is what makes it somebody else's
+ * trade: painting a window is the job, replacing one is not.
+ *
+ * Probed with fourteen plausible out-of-scope promises, the list above caught
+ * six. With this it catches fourteen, and seven legitimate painting sentences
+ * still pass.
+ */
+const OUT_OF_SCOPE_VERBS =
+  /\b(?:replac\w*|install\w*|re-?wir\w*|repair\w*|fix(?:ing)?|pour\w*|lay(?:ing)?)\s+(?:\w+\s+){0,2}(?:windows?|roofs?|floor\w*|carpet\w*|tiles?|gutters?|sidings?|foundations?|driveways?|wiring|plumbing|electrics?)\b/i;
 const OUT_OF_SCOPE = new RegExp(
-  `${OUT_OF_SCOPE_SURFACES.source}|${OUT_OF_SCOPE_TRADES.source}`, "i"
+  [OUT_OF_SCOPE_SURFACES.source, OUT_OF_SCOPE_TRADES.source, OUT_OF_SCOPE_VERBS.source].join("|"),
+  "i"
 );
 
 /**
