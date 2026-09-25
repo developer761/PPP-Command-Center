@@ -54,9 +54,14 @@ export default async function TrainingCoverage() {
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">What the corpus actually covers</h1>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
-          Emily follows about twenty rules. A conversation marked good with
-          nothing else attached cannot teach any of them, so each example says
-          which rules it demonstrates — and this is what is still missing.
+          {/* Not "about twenty rules": two different things are called rules
+              here, and saying so made the counts look contradictory. */}
+          These are the {summary.total}{" "}
+          behaviours a graded conversation can demonstrate. They are not the
+          Class A rules on the Rules screen: those are what Emily is written
+          against, these are what the corpus can teach. A conversation marked
+          good with nothing else attached demonstrates none of them, so each
+          example says which ones it shows, and this is what is still missing.
         </p>
         <p className="mt-2 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
           Three ways to fill a gap: <strong>write one</strong> if you already
