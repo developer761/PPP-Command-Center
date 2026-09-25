@@ -171,27 +171,74 @@ export async function moneyOverview(): Promise<string> {
       )
     ).map((o) => o.id),
   );
+  /**
+   * PAST DUE HAS TO COUNT AIA TOO.
+   *
+   * The first cut of this added AIA to the outstanding TOTAL and left the
+   * past-due line reading invoices only — so "$799,323.63 outstanding, of
+   * which $171,067.92 is past due" was two figures on different books, in one
+   * sentence. Exactly the partial guard this file was fixed for.
+   *
+   * `aiaDueAtFrom` is the same ladder AR aging uses, so an application is
+   * late here on the same day it is late there.
+   */
+  const { aiaDueAtFrom } = await import("@/lib/commercial/aia/constants");
+  const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
+  const todayIso = new Date().toISOString().slice(0, 10);
   let aiaOwed = 0;
   let aiaCollected = 0;
   let aiaOpenCount = 0;
+  let aiaLateCents = 0;
+  let aiaLateCount = 0;
   for (const [, r] of aiaRolls) {
     aiaCollected += r.collectedCents;
     if (r.dueNowCents > 0) {
       aiaOwed += r.dueNowCents;
       aiaOpenCount += 1;
+      const dueAt = aiaDueAtFrom(r.latestIssuedFrozenAt, r.latestIssuedPeriodTo, DEFAULT_DUE_DAYS);
+      if (dueAt && String(dueAt).slice(0, 10) < todayIso) {
+        aiaLateCents += r.dueNowCents;
+        aiaLateCount += 1;
+      }
     }
   }
-  const open = invoices.filter((i) => Number(i.balance_cents) > 0);
+  /**
+   * THE ONE VERDICT, not a second copy of it.
+   *
+   * `receivableVerdict` is the platform's written rule and says why:
+   *   void  — money nobody owes. Not on the list.
+   *   draft — money somebody owes that has not been billed. On the list,
+   *           flagged, and NEVER aged: there is nothing to be late against.
+   *
+   * This filtered on `balance_cents > 0` alone, which meant a void invoice
+   * with a balance would have counted as owed, and a draft with a due date
+   * would have counted as LATE. Neither is true in the database today — no
+   * void carries a balance and none of the 15 drafts has a due_at — so both
+   * were latent rather than live. One row either way and they would not be.
+   *
+   * Reading the verdict instead of re-deriving it is the whole point: the
+   * comment above it records that this exact rule was once two words inline
+   * and was wrong, invisibly, because the tests could not reach the decision.
+   */
+  const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
+  const scored = invoices
+    .map((i) => ({ i, verdict: receivableVerdict(i.status as never) }))
+    .filter((x) => x.verdict !== "skip" && Number(x.i.balance_cents) > 0);
+  const open = scored.map((x) => x.i);
   const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaOwed;
   const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
   const today = new Date().toISOString().slice(0, 10);
-  const late = open.filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
+  // Drafts are never aged — see the verdict above.
+  const late = scored
+    .filter((x) => x.verdict === "invoice")
+    .map((x) => x.i)
+    .filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
 
   return [
     `Outstanding: ${money(owed)} across ${open.length + aiaOpenCount} open items (invoices + AIA applications).`,
-    `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0))} across ${late.length}.`,
+    `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaLateCents)} across ${late.length + aiaLateCount}.`,
     `Collected all time: ${money(collected)} over ${payments.length} payments.`,
     `Costs: ${[...byCat.entries()].map(([c, v]) => `${c} ${money(v)}`).join(", ")}.`,
     `Pages: /commercial/accounting?view=receivables and /commercial/accounting?view=aging`,
