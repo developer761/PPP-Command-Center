@@ -156,8 +156,35 @@ describe("rendering an intent into words", () => {
   });
 
   it("still says nothing to somebody who has disengaged", () => {
-    for (const intent of ["discard", "lost", "msg_liked_loved"] as const) {
+    // LOST IS NOT IN THIS LIST ANY MORE. A17: "Acknowledge it warmly in one
+    // line and close", and the card names the sentence — "Understood! We'll
+    // be here if things change." Silence was right for exactly one of the
+    // two endings, and lost had it.
+    for (const intent of ["discard", "msg_liked_loved"] as const) {
       expect(renderMessage({ intent }), intent).toBe("");
+    }
+  });
+
+  /**
+   * A17, WHICH HAD THE OPPOSITE PROBLEM TO A24.
+   *
+   * "A DECLINE IS NOT AN OPT-OUT. 'Understood! We'll be here if things
+   * change.' is the RIGHT close here — and is a DEFECT on an opt-out (A24),
+   * where any re-engagement line breaches it. The same sentence, opposite
+   * verdicts, decided entirely by what the customer said."
+   *
+   * Found in the simulator playing "No thanks, we already hired someone
+   * else": the bot chose lost, correctly, and then said nothing. bailout,
+   * which is the same shape of ending, already spoke.
+   */
+  it("closes warmly on a decline, which is not an opt-out", () => {
+    for (const turn of [0, 1, 2, 3]) {
+      const out = renderMessage({ intent: "lost", turn });
+      expect(out.length, `turn ${turn}`).toBeGreaterThan(0);
+      // The re-engagement line is the point here, and the breach on A24.
+      expect(out).toMatch(/things change|be here/i);
+      // And it must not start collecting again.
+      expect(out).not.toMatch(/\?/);
     }
   });
 
@@ -299,6 +326,40 @@ describe("rendering an intent into words", () => {
     });
     expect(out).toMatch(/thanks for the photos/i);
     expect(out).not.toMatch(/last name/i);
+  });
+
+  /**
+   * "THEY ASKED TO BE CALLED, OR TO BE CONTACTED LATER" — TWO SITUATIONS,
+   * ONE INTENT, AND THE TEMPLATE ONLY ANSWERED THE SECOND.
+   *
+   * Playing "please have someone call me" in the simulator: the bot chose
+   * schedule_follow_up correctly, then replied "I'll check back in with you
+   * later on", which is another text. The one thing they asked for was the
+   * one thing it did not say.
+   */
+  it("promises a call when a call is what they asked for", () => {
+    for (const t of [
+      "please have someone call me",
+      "can someone just call me instead? I'd rather talk than text",
+      "could I speak to someone on the phone",
+      "call me back please",
+    ]) {
+      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+      expect(out, t).toMatch(/call you|give you a call/i);
+      // Still no time named: nothing here knows the schedule.
+      expect(out, t).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b|tomorrow|monday/i);
+    }
+  });
+
+  it("does not invent a call for somebody who only wants time to think", () => {
+    for (const t of [
+      "I'll get back to you next week",
+      "let me check with my wife first",
+      "I'm not sure yet, can I come back to you later",
+    ]) {
+      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+      expect(out, t).not.toMatch(/call/i);
+    }
   });
 
   /** Every template, on its own, must already satisfy the rule. */

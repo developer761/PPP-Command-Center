@@ -153,7 +153,10 @@ export const SAYS_ES: Record<Intent, string[]> = {
   ],
 
   // Callados por diseño, igual que en inglés.
-  lost: [""],
+  lost: [
+    "¡Entendido! Aquí estaremos si algo cambia.",
+    "Entendido, gracias por avisarme. Aquí estamos si cambia de parecer.",
+  ],
   msg_liked_loved: [""],
 };
 
