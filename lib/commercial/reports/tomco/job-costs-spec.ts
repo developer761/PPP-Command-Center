@@ -49,6 +49,28 @@ export const JOB_COSTS_SPEC: ReportSpec<JobCostRow> = {
      */
     { key: "employee_labor", label: "Employee labor", kind: "money", amount: (r) => r.buckets.employeeLabor, secondary: true },
     { key: "labor", label: "Sub labor", kind: "money", amount: (r) => r.buckets.subLabor, secondary: true },
+    /**
+     * EVERYTHING ELSE, so the row adds up.
+     *
+     * This table names a chosen few buckets, which meant the columns still
+     * did not reach Total cost even after Employee labor was added — AIREF
+     * Building #2 was left $2,593.96 short by an Equipment row with nowhere
+     * to sit. Three more near-empty columns would be clutter; one catch-all
+     * means the line always foots, and it keeps footing when a bucket is
+     * added later without anyone remembering this file.
+     *
+     * Derived by subtraction rather than by listing buckets, for the same
+     * reason: a list here would go stale the same way.
+     */
+    {
+      key: "other_costs",
+      label: "Other",
+      kind: "money",
+      amount: (r) =>
+        r.totalCostCents -
+        (r.buckets.materials + r.buckets.employeeLabor + r.buckets.subLabor),
+      secondary: true,
+    },
     { key: "cost", label: "Total cost", kind: "money", amount: (r) => r.totalCostCents },
     { key: "margin", label: "Margin", kind: "money", amount: (r) => r.marginCents },
   ],
