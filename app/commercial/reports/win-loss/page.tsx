@@ -16,6 +16,8 @@ import {
   getLessonsLearnedFeed,
   getWinsAwaitingDebrief,
   etMidnightToUTC,
+  hadHeadToHead as headToHead,
+  wonValueRatioPct,
 } from "@/lib/commercial/win-loss/reports";
 import { parseRange, WIN_LOSS_PRESETS as PRESETS, type WinLossPreset as Preset } from "@/lib/commercial/win-loss/range";
 import { opportunityLossReasonLabel } from "@/lib/commercial/opportunities/db";
@@ -127,7 +129,10 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
   // arithmetic says 100%, which is not a measurement — it is the absence of one.
   // Tomco's migration imported the 92 won jobs and no lost bids, so every
   // win-rate surface read a confident emerald 100%.
-  const hadHeadToHead = summary.wonCount > 0 && summary.lostCount > 0;
+  // Shared with the $ ratio tile, from lib, so the two tiles cannot disagree
+  // about whether there is anything to compare against.
+  const hadHeadToHead = headToHead(summary);
+  const wonRatio = wonValueRatioPct(summary);
   const prevHadHeadToHead = prevSummary.wonCount + prevSummary.lostCount > 0;
   const winRateDelta = hadHeadToHead && prevHadHeadToHead ? summary.winRatePct - prevSummary.winRatePct : null;
 
@@ -299,15 +304,26 @@ export default async function WinLossReportsPage({ searchParams }: { searchParam
                 : "no head-to-heads yet"
           }
         />
+        {/* THE SAME GUARD AS WIN RATE, for the same reason.
+            This tile only refused to answer when BOTH sides were zero. With
+            wins on record and no losses — which is the live state of this
+            report today, 12 won and none lost — it printed a confident 100%
+            "of every $ we bid on" while the tile immediately to its left
+            printed "—  ·  none lost on record" off the very same data.
+            One of them was wrong, and it was this one: 100% is not what we
+            know, it is what we have no record of losing. A clean sweep is
+            exactly the kind of number that gets quoted out of the room. */}
         <KpiTile
           tone="navy"
           label="$ won ratio"
-          value={(() => {
-            const totalValue = summary.wonValueCents + summary.lostValueCents;
-            if (totalValue === 0) return "—";
-            return `${Math.round((summary.wonValueCents / totalValue) * 100)}%`;
-          })()}
-          sub="of every $ we bid on"
+          value={wonRatio === null ? "—" : `${wonRatio}%`}
+          sub={
+            wonRatio !== null
+              ? "of every $ we bid on"
+              : summary.wonCount > 0
+                ? "none lost on record"
+                : "no head-to-heads yet"
+          }
         />
         <KpiTile
           tone="emerald"

@@ -292,13 +292,54 @@ export function isAutoFilledTitle(
   return false;
 }
 
+/**
+ * Put the nickname on the end of a name, once.
+ *
+ * Exported because THREE other places compose this name — the opportunity
+ * header (`jobDisplayName`), the project record (`ensureProject`) and the
+ * lessons-learned feed — and each had written its own `title_override || title`
+ * instead, which is a silent `replace` no matter what the toggle says. That is
+ * why "Add it to the end of the full name" looked like it did nothing: the
+ * screen Karan was looking at never asked.
+ *
+ * The guard is against "Riverhead Job - Building C - Building C" — somebody who
+ * typed the nickname into the title too, or a deal whose name already ends
+ * with it.
+ */
+export function appendNickname(base: string, override: string): string {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (!base.trim()) return override;
+  return norm(base).endsWith(norm(override)) ? base : `${base} - ${override}`;
+}
+
+/** Does this row's nickname go on the END of the name, or replace it outright?
+ *  One reading of the column, so a caller cannot accidentally pick the other
+ *  default. See the note on `title_override_mode` below for why undefined is
+ *  'append'. */
+export function nicknameAppends(mode: string | null | undefined): boolean {
+  return (mode ?? "append") === "append";
+}
+
 export function derivedOppName(
   opp: Pick<CommercialOpportunity, "title" | "client_name"> & {
     property_street?: string | null;
     title_override?: string | null;
-    /** 'append' (default) or 'replace' — migration 170. Undefined on a row read
-     *  before that migration lands, which reads as 'replace': the behaviour
-     *  those rows already had. */
+    /** 'append' or 'replace' — migration 170, `NOT NULL DEFAULT 'append'`.
+     *
+     *  Undefined USED to mean "a row read before the migration lands", and was
+     *  therefore read as 'replace'. Migration 170 is applied and the column
+     *  cannot be null: today every one of the 137 opportunities reads 'append'
+     *  and not one reads 'replace'. So undefined no longer means an unmigrated
+     *  row — it means THE CALLER DID NOT SELECT THE COLUMN, and ~50 of them
+     *  didn't. Every one of those surfaces threw away the GC and the address
+     *  and printed the nickname on its own, which is why the toggle looked
+     *  like it did nothing: the work-order PDF, the transmittal, the warranty
+     *  and the notification emails all ignored it.
+     *
+     *  The fallback now matches the column default, so a caller that forgets
+     *  the field is merely un-configurable rather than wrong. The selects are
+     *  fixed too, and `npm run check:columns` fails the build if a new one
+     *  reads `title_override` without it. */
     title_override_mode?: string | null;
   },
   accountName: string | null | undefined,
@@ -311,8 +352,7 @@ export function derivedOppName(
   // job appeared in — the three things a pipeline is scanned by. Appending
   // keeps all of it and adds his shorthand on the end.
   const override = opp.title_override?.trim();
-  const appends = (opp.title_override_mode ?? "replace") === "append";
-  if (override && !appends) return override;
+  if (override && !nicknameAppends(opp.title_override_mode)) return override;
 
   // (2) A name the person actually typed into "Opportunity name".
   const title = (opp.title ?? "").trim();
@@ -321,14 +361,7 @@ export function derivedOppName(
       ? title
       : computedOppName(opp, accountName);
 
-  if (override) {
-    // Guard against "…- Building C - Building C": somebody who typed the
-    // nickname into the title too, or an older deal whose name already ends
-    // with it.
-    const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, "");
-    if (!base) return override;
-    return norm(base).endsWith(norm(override)) ? base : `${base} - ${override}`;
-  }
+  if (override) return appendNickname(base, override);
 
   if (base) return base;
 

@@ -70,6 +70,12 @@ step("unit", "npx vitest run", {
   blind: "the database, the network, the rendered page",
 });
 
+step("form fields", "node scripts/check-duplicate-form-fields.mjs", {
+  catches:
+    "one form field rendered twice across a phone/desktop layout swap — the hidden copy overwrote a Gusto cost Mary typed on her phone",
+  blind: "a field that is simply missing, and anything about what the action does with it",
+});
+
 step("db enums", "node scripts/check-db-enums.mjs", {
   catches: "a picker offering a value Postgres rejects — this once left a table with zero rows for months",
   blind: "everything else about the database",

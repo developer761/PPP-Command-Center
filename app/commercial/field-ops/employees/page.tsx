@@ -17,6 +17,7 @@ import {
   WORKER_TYPES,
   PAY_TYPES,
   type CommercialEmployee,
+  isLaborCompanyRow,
 } from "@/lib/commercial/field-ops/employees";
 import { currentCostRatesForEmployees, currentCostRate, setCostRate } from "@/lib/commercial/field-ops/rates";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
@@ -169,9 +170,22 @@ export default async function FieldOpsEmployeesPage({
           <span className="font-semibold">{subCount} of these crew are subcontractors.</span> They have no cost rate on purpose &mdash; what they cost is what their labor company invoices, and that is already booked against the job as a Subcontract cost. Their hours are a record of who was on site, not a second charge.
         </div>
       )}
+      {/* NOT A WARNING ANY MORE, FOR TOMCO.
+          This said "their hours cost $0 in job P&L, so margins look better
+          than they are", and told you to set a rate. Under the Gusto process
+          that advice would CAUSE the problem it describes: job cost is
+          purchases + hours×rate, payroll already writes the cost as a payout,
+          and adding a rate charges the same week twice. No rate is the
+          correct state, so the box says what is actually happening instead of
+          sending somebody to fix a number that is right. */}
       {missingRateCount > 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[12.5px] text-amber-800">
-          <span className="font-semibold">{missingRateCount} active {missingRateCount === 1 ? "crew member has" : "crew members have"} no cost rate.</span> Their approved hours cost $0 in job P&amp;L, so margins look better than they are. Set a burdened $/hr below (open a crew member → Cost rate).
+        <div className="mb-4 rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-3 py-2 text-[12.5px] text-ppp-charcoal-600">
+          <span className="font-semibold">
+            {missingRateCount} employee{missingRateCount === 1 ? "" : "s"} {missingRateCount === 1 ? "has" : "have"} no cost rate, which is correct.
+          </span>{" "}
+          What they cost a job comes from payroll — Accounting → Payroll splits each
+          week&rsquo;s actual Gusto figure, taxes included, across the jobs they worked. Adding
+          an hourly rate here would charge that week a second time.
         </div>
       )}
 
@@ -230,7 +244,7 @@ export default async function FieldOpsEmployeesPage({
                   <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-cc-brand-50 text-cc-brand-700 text-[12px] font-bold shrink-0">{e.display_name.slice(0, 2).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">{e.display_name}{!e.active && <span className="ml-2 text-[10.5px] font-bold uppercase text-ppp-charcoal-400">inactive</span>}</div>
-                    <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{employeeRoleLabel(e.role)} · {workerTypeLabel(e.worker_type)}{e.email ? ` · ${e.email}` : " · no email"}</div>
+                    <div className="text-[11.5px] text-ppp-charcoal-500 truncate">{isLaborCompanyRow(e) ? "Labor company" : employeeRoleLabel(e.role)} · {workerTypeLabel(e.worker_type)}{e.email ? ` · ${e.email}` : " · no email"}</div>
                   </div>
                   {e.active && (
                     costRates.has(e.id) ? (

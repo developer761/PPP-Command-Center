@@ -149,7 +149,8 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
       );
       return;
     }
-    await sb.from("commercial_aia_line_items").delete().eq("id", existing.id);
+    const { error: delErr } = await sb.from("commercial_aia_line_items").delete().eq("id", existing.id);
+    if (delErr) console.error("[aia-tax] could not remove the tax row:", delErr.message);
     return;
   }
 
@@ -159,10 +160,16 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     // one live application has $437.50 billed against its tax row, which is
     // history on a certificate the GC may be holding.
     if (Math.round(existing.scheduled_value_cents) === want.cents) return;
-    await sb
+    // CHECKED. This is the mechanism behind "the tax setting isn't sticking":
+    // a rejected update left the certificate carrying the OLD tax-inclusive
+    // value, silently, and the function returns void so nothing upstream could
+    // tell. Stephanie deleted an AIA draft over exactly this on 2026-09-24.
+    const { error: updErr } = await sb
       .from("commercial_aia_line_items")
       .update({ scheduled_value_cents: want.cents, description: want.label })
       .eq("id", existing.id);
+    if (updErr)
+      console.error(`[aia-tax] ${applicationId} tax row update FAILED — the certificate still carries the old figure:`, updErr.message);
     return;
   }
 
@@ -187,7 +194,7 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     // Last row on the sheet: tax comes after the contract and its change
     // orders, which is where a GC's AP department expects to find it.
     const maxPos = lines.reduce((m, _l, i) => Math.max(m, (i + 1) * 1000), 0);
-    await sb.from("commercial_aia_line_items").insert({
+    const { error: insErr } = await sb.from("commercial_aia_line_items").insert({
       application_id: applicationId,
       position: maxPos + 1000,
       item_no: AIA_TAX_ITEM_NO,
@@ -198,6 +205,8 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
       materials_stored_cents: 0,
       change_order_id: null,
     });
+    if (insErr)
+      console.error(`[aia-tax] ${applicationId} tax row insert FAILED — the certificate has no tax line:`, insErr.message);
     return;
   }
 

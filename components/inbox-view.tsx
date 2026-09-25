@@ -362,13 +362,18 @@ export default function InboxView() {
   };
 
   const archive = async (id: string) => {
+    // The row is removed optimistically, and only a THROWN error put it back —
+    // a 4xx/5xx resolves normally, so a refused archive left the message gone
+    // from the screen and still in the inbox. markRead, twenty lines above,
+    // already checks `res.ok`.
     setMessages((prev) => prev.filter((m) => m.id !== id));
     try {
-      await fetch("/api/admin/inbox", {
+      const res = await fetch("/api/admin/inbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageId: id, action: "archive" }),
       });
+      if (!res.ok) void load();
     } catch {
       void load();
     }

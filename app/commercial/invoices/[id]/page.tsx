@@ -39,7 +39,7 @@ import {
 } from "@/lib/commercial/invoices/status";
 import { getInvoiceLienWaiver } from "@/lib/commercial/invoices/lien-waiver";
 import { getPaymentLienWaivers } from "@/lib/commercial/invoices/payment-lien-waiver";
-import { listInvoiceAttachments } from "@/lib/commercial/invoices/attachments";
+import { listInvoiceSendableDocuments } from "@/lib/commercial/invoices/attachments";
 import {
   listMilestonesForInvoice,
   addMilestone,
@@ -741,7 +741,7 @@ export async function InvoiceDetailView({
     listCommercialInvoices({ opportunityId: invoice.opportunity_id }),
     getInvoiceLienWaiver(invoice.id),
     listMilestonesForInvoice(invoice.id),
-    listInvoiceAttachments(invoice.id),
+    listInvoiceSendableDocuments(invoice.id),
     listAccountContacts(invoice.account_id).catch(() => []),
   ]);
   // Prefill the invoice-email recipient with the account's primary contact
@@ -1257,12 +1257,29 @@ export async function InvoiceDetailView({
                   opened from an account or opp Invoices tab lands the
                   undo toast on THAT tab, not the global invoices list. */}
               {fromRaw && <input type="hidden" name="from" value={fromRaw} />}
-              <SubmitButton
+              {/* ASK FIRST — especially when money has been collected.
+                  2026-09-23: this was a bare SubmitButton, the only destructive
+                  control on the page without a confirm, while Void right next
+                  to it has one. One click removed SF-00287819 — $286,695 with
+                  $66,833.31 already collected against it — and the job then
+                  read $0 billed and $0 owed everywhere on the platform. The
+                  nightly Salesforce reconcile caught it; nothing in the app
+                  did, and the person clicking got no warning at all.
+                  The delete stays possible (Karan 2026-07-07 opened it to any
+                  state on purpose) — it just says what is at stake first, and
+                  names the amount, because "delete this invoice" and "detach
+                  $66,833.31 of collected payments" are not the same sentence. */}
+              <ConfirmSubmitButton
+                message={
+                  (invoice.paid_cents ?? 0) > 0
+                    ? `This invoice has $${((invoice.paid_cents ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} collected against it. Deleting it takes that money off the job — it will read $0 billed and $0 collected until you raise a replacement invoice. The payment record is kept and Undo restores it. Delete anyway?`
+                    : "Delete this invoice? It is hidden everywhere but kept in the database, and Undo restores it."
+                }
+                pendingLabel="Deleting…"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12px] font-semibold hover:bg-rose-50 min-h-[44px] touch-manipulation"
-                title="Remove this invoice from the list. The row stays in the DB for audit but is hidden everywhere."
               >
                 Delete invoice
-              </SubmitButton>
+              </ConfirmSubmitButton>
             </form>
             {/* Karan 2026-07-08: bulk-delete siblings when the parent
                 (deal or account) is soft-deleted. Same guards as the
@@ -1409,15 +1426,31 @@ export async function InvoiceDetailView({
                     Void
                   </ConfirmSubmitButton>
                 ) : (
+                // VOID ALWAYS ASKS. The ConfirmSubmitButton above only fires
+                // when the invoice carries change-order lines, so a plain PAID
+                // invoice voided on a single click — the case where voiding is
+                // most consequential, because the money is already in.
+                // Everything else on this row is a status label change and
+                // stays one click.
+                s === "void" ? (
+                  <ConfirmSubmitButton
+                    message={
+                      Number(invoice.paid_cents ?? 0) > 0
+                        ? `Void this invoice? ${formatCentsFull(Number(invoice.paid_cents))} has been collected against it, and voiding does not remove the payments.`
+                        : "Void this invoice? It stops being billable and drops out of what is owed."
+                    }
+                    pendingLabel="Voiding…"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
+                  >
+                    Void
+                  </ConfirmSubmitButton>
+                ) : (
                 <SubmitButton
-                  className={`inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors ${
-                    s === "void"
-                      ? "border border-rose-200 text-rose-700 bg-surface hover:bg-rose-50"
-                      : "bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
-                  }`}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold min-h-[44px] touch-manipulation transition-colors bg-ppp-blue-600 text-white hover:bg-ppp-blue-700 active:bg-ppp-blue-800 shadow-sm shadow-ppp-blue-600/30"
                 >
-                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "void" ? "Void" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
+                  {s === "sent" ? "Mark as sent" : s === "viewed" ? "Mark as viewed" : s === "draft" && invoice.status === "void" ? "Reopen as draft" : invoiceStatusLabel(s)}
                 </SubmitButton>
+                )
                 )}
               </form>
             ))}
@@ -1478,10 +1511,16 @@ export async function InvoiceDetailView({
               {attachments.length > 0 && (
                 // NAME them. This said "the 3 files on this invoice" and left
                 // the sender to guess which three — on the one control that
-                // puts a document in a GC's inbox, where the files on an
-                // invoice are typically signed lien waivers. §4.6 of the
-                // restructure asks for "attachments as named links you can see
-                // before sending", and this was the surface it meant.
+                // puts a document in a GC's inbox. §4.6 of the restructure
+                // asks for "attachments as named links you can see before
+                // sending", and this was the surface it meant.
+                //
+                // The list is now what the email will ACTUALLY send, from the
+                // same function the send path calls. It used to read the
+                // attachments table only, while the signed lien waiver lives
+                // in its own column — so the one file Katie named ("final bill
+                // sent WITH a final lien waiver") was the one file that could
+                // never go, and this comment claimed the opposite.
                 <div className="rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50/40 px-3 py-2.5">
                   <label className="flex items-center gap-2 text-[12.5px] font-medium text-ppp-charcoal-700 select-none">
                     <input type="checkbox" name="include_attachments" value="1" className="h-4 w-4 rounded border-ppp-charcoal-300 accent-ppp-blue-600" />
@@ -1606,12 +1645,21 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="item_id" value={li.id} />
-                          <SubmitButton
-                            title="Remove line item — recalculates total + progress"
+                          {/* ASK FIRST. This is a real DELETE that re-totals
+                              the invoice, and it is a 44x44 "×" at the end of
+                              every editable row — the easiest thing on the page
+                              to hit by accident, on the document a customer
+                              pays from. Naming the line and its amount means
+                              the confirmation is worth reading rather than
+                              clicked through. */}
+                          <ConfirmSubmitButton
+                            message={`Remove "${(li.description ?? "this line").slice(0, 60)}" (${formatCentsFull(Number(li.subtotal_cents ?? 0))})? The invoice total is recalculated.`}
+                            pendingLabel="…"
+                            ariaLabel="Remove line item"
                             className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-ppp-charcoal-500 hover:bg-rose-50 hover:text-rose-700 touch-manipulation"
                           >
                             ×
-                          </SubmitButton>
+                          </ConfirmSubmitButton>
                         </form>
                       )}
                     </td>
@@ -1763,6 +1811,7 @@ export async function InvoiceDetailView({
                     <div className="mt-1.5 max-w-md">
                       <LienWaiverUpload
                         paymentId={p.id}
+                        opportunityId={invoice.opportunity_id ?? undefined}
                         hasWaiver={!!pw}
                         downloadHref={pw ? `/api/commercial/documents/${pw.id}/download` : null}
                         fileName={pw?.file_name ?? null}
@@ -1976,6 +2025,7 @@ export async function InvoiceDetailView({
 
                     <LienWaiverUpload
                       milestoneId={m.id}
+                      opportunityId={invoice.opportunity_id ?? undefined}
                       hasWaiver={!!w}
                       downloadHref={w ? `/api/commercial/documents/${w.id}/download` : null}
                       fileName={w?.file_name ?? null}
@@ -2017,10 +2067,17 @@ export async function InvoiceDetailView({
                           <input type="hidden" name="invoice_id" value={invoice.id} />
                           <input type="hidden" name="from" value={fromRaw ?? ""} />
                           <input type="hidden" name="milestone_id" value={m.id} />
-                          <SubmitButton
+                          {/* The most destructive control on this page. It
+                              re-tags recorded payments to invoice level, frees
+                              the paired change order, HARD-deletes the paired
+                              line item and soft-deletes its lien waiver — and
+                              the invoice can flip to overpaid. It had no
+                              confirmation at all. */}
+                          <ConfirmSubmitButton
+                            message={`Remove the "${(m.name ?? "untitled").slice(0, 50)}" milestone (${formatCentsFull(Number(m.amount_cents ?? 0))})? Its charge comes off the invoice, and any payments recorded against it move to the invoice itself.`}
+                            pendingLabel="Removing…"
                             className="text-[11px] font-medium text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] px-1.5"
-                            title="Remove this milestone (also removes its charge from the invoice)"
-                          >Remove</SubmitButton>
+                          >Remove</ConfirmSubmitButton>
                         </form>
                       </div>
                     )}
@@ -2034,6 +2091,7 @@ export async function InvoiceDetailView({
             <p className="text-[12px] text-ppp-charcoal-500 mb-3">The <strong>final</strong> unconditional waiver — upload it once the invoice is paid in full. Partial waivers for each progress payment attach under <a href="#payments" className="text-ppp-blue-700 underline underline-offset-2">Payments</a> above. It also lands in this opportunity&rsquo;s Documents.</p>
             <LienWaiverUpload
               invoiceId={invoice.id}
+              opportunityId={invoice.opportunity_id ?? undefined}
               hasWaiver={!!lienWaiver}
               downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
               fileName={lienWaiver?.file_name ?? null}

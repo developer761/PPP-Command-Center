@@ -94,9 +94,13 @@ export default async function CrewHomePage() {
 
       {!crewOnly && (
         <p className="text-[11.5px] text-ppp-charcoal-400 border-t border-ppp-charcoal-100 pt-3">
+          {/* COUNTED, not written down. It said "these four screens" above
+              five tiles — the fifth was added later and the sentence was not.
+              A number a reader can check in one glance is the worst kind to
+              get wrong. */}
           You&rsquo;re seeing this because you opened it directly — your login
-          isn&rsquo;t restricted to these four screens. This is what a Crew login
-          lands on.
+          isn&rsquo;t restricted to these {tiles.length} screens. This is what a
+          Crew login lands on.
         </p>
       )}
     </div>

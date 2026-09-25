@@ -420,7 +420,7 @@ export async function insertCommercialTaskAssignedNotification(input: {
   recipientUserId: string;
   /** Who created the task. Drives self-skip. */
   actingUserId: string | null;
-  /** Display name of the actor ("Alex Chen"). Defaults to "PPP admin". */
+  /** Display name of the actor ("Alex Chen"). Defaults to "An admin". */
   assignerName: string;
 }): Promise<void> {
   const dueClause = input.dueAt && input.dueAt.length >= 10
@@ -1807,6 +1807,21 @@ export async function insertCommercialProposalSentNotifications(input: {
   <p style="margin:24px 0;"><a href="${emailLink}" style="display:inline-block;padding:10px 18px;background:#b91c1c;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open the proposal →</a></p>
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
+
+  /**
+   * SENDING IT RESOLVES "ready to send".
+   *
+   * The Action Needed bar reads unread actionable notifications and never
+   * re-checks whether the work is still outstanding, so an "Approved —
+   * ready to send" sat on the bar after the proposal had been sent AND
+   * superseded. Marked read, never deleted: the bell is a history.
+   */
+  {
+    const { resolveActionItems, PROPOSAL_ACTION_KINDS } = await import(
+      "./resolve-action-items"
+    );
+    await resolveActionItems({ link: relativeLink, kinds: PROPOSAL_ACTION_KINDS });
+  }
 
   let fanout = 0;
   await Promise.allSettled(

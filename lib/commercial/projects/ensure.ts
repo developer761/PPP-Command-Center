@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { appendNickname, nicknameAppends } from "@/lib/commercial/opportunities/db";
 
 /**
  * Create the PROJECT half of a job when it is won.
@@ -148,7 +149,7 @@ export async function ensureProjectForOpportunity(
     .from("commercial_opportunities")
     // One literal, not a concatenation — PostgREST's types are inferred from
     // the select string, and a `+` defeats that inference silently.
-    .select("id, title, title_override, status, sub_status, project_number, estimator_user_id, created_by_user_id, accepted_contract_cents, closed_out_at, archived_at, deleted_at")
+    .select("id, title, title_override, title_override_mode, status, sub_status, project_number, estimator_user_id, created_by_user_id, accepted_contract_cents, closed_out_at, archived_at, deleted_at")
     .eq("id", oppId)
     .maybeSingle();
   if (readErr) return { ok: false, error: readErr.message };
@@ -158,6 +159,7 @@ export async function ensureProjectForOpportunity(
     id: string;
     title: string | null;
     title_override: string | null;
+    title_override_mode: string | null;
     status: string;
     sub_status: string | null;
     project_number: string | null;
@@ -219,8 +221,19 @@ export async function ensureProjectForOpportunity(
     return { ok: true, project: null };
   }
 
+  // The project record's name. This used to be `title_override || title`,
+  // which is a hard-coded "replace" — so a job whose nickname was set to go on
+  // the END of the name still became a project called just the nickname, and
+  // the GC and address were gone from every project surface. Same defect
+  // Stephanie reported in August, in a place the fix never reached.
+  const nickname = (opp.title_override ?? "").trim();
+  const typed = (opp.title ?? "").trim();
   const name =
-    (opp.title_override ?? "").trim() || (opp.title ?? "").trim() || "Untitled project";
+    (nickname && !nicknameAppends(opp.title_override_mode)
+      ? nickname
+      : nickname
+        ? appendNickname(typed, nickname)
+        : typed) || "Untitled project";
 
   // ── Already exists: reconcile only what the deal still owns ──────────────
   if (existing) {

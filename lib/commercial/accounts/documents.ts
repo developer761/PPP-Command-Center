@@ -55,8 +55,10 @@ export type CommercialAccountDocument = {
 
 export const STORAGE_BUCKET = "commercial-account-docs";
 
-/** 50 MB cap. Anything bigger and we make them split / chat with IT. */
-export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+// One definition, shared with every other upload surface — see
+// lib/commercial/uploads/limits.ts for why a per-file literal was the bug.
+import { MAX_UPLOAD_BYTES, tooLargeMessage } from "@/lib/commercial/uploads/limits";
+export { MAX_UPLOAD_BYTES };
 
 /** Allowed MIME types — keep in sync with the bucket settings in Supabase. */
 export const ALLOWED_MIME_TYPES = new Set([
@@ -272,7 +274,7 @@ export async function uploadDocument(
   if (!input.file_name?.trim()) return { ok: false, error: "Missing filename." };
   if (input.size_bytes <= 0) return { ok: false, error: "Empty file." };
   if (input.size_bytes > MAX_UPLOAD_BYTES) {
-    return { ok: false, error: `File too big (${Math.round(input.size_bytes / 1024 / 1024)} MB). Max 50 MB.` };
+    return { ok: false, error: tooLargeMessage(input.size_bytes) };
   }
   if (!ALLOWED_MIME_TYPES.has(input.mime_type)) {
     return { ok: false, error: `File type not allowed: ${input.mime_type}.` };

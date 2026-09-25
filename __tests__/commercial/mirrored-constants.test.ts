@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 import { join } from "node:path";
 import {
   DOCUMENT_CATEGORIES,
@@ -72,26 +73,57 @@ describe("document category list is not mirrored", () => {
   });
 });
 
-describe("upload size limits stay in sync with their servers", () => {
-  it("the deal form's client limit matches lib/commercial/documents/db.ts", () => {
-    // Drift here is silent in the worst way: a client cap ABOVE the server's
-    // lets someone upload for two minutes and then be refused at the end.
-    const server = byteConstant(read("lib/commercial/documents/db.ts"), "MAX_UPLOAD_BYTES");
-    const client = byteConstant(
-      read("components/commercial-files-upload-form.tsx"),
-      "CLIENT_MAX_UPLOAD_BYTES"
-    );
-    expect(server).not.toBeNull();
-    expect(client).toBe(server);
+describe("upload size limits", () => {
+  /**
+   * These used to be two literals that had to match, and the test compared
+   * them. That was the right test for the wrong arrangement: on 2026-09-23 the
+   * client said 100 MB, the server said 100 MB, they agreed perfectly, and
+   * Supabase refused everything over 50 MB because a PROJECT-wide storage limit
+   * sits under both. Stephanie picked a 60 MB bid set on a page advertising
+   * 100 and was told "the file is larger than the 100 MB limit".
+   *
+   * So there is one definition now, and the thing worth asserting is that
+   * nobody has started a second one. Whether that number is TRUE is not
+   * knowable from source at all — `npm run check:upload-limit` uploads a file
+   * above and below it and reports what storage actually does.
+   */
+  const SOURCES = [
+    "lib/commercial/documents/db.ts",
+    "lib/commercial/accounts/documents.ts",
+    "components/commercial-files-upload-form.tsx",
+    // NOT components/commercial-document-upload-form.tsx — see below. It is
+    // bound by a different limit, and asserting the wrong one here is how a
+    // test ends up arguing for a bug.
+  ];
+
+  for (const file of SOURCES) {
+    it(`${file} takes the limit from the shared module`, () => {
+      const src = read(file);
+      expect(src).toContain("@/lib/commercial/uploads/limits");
+      // No local `= N * 1024 * 1024` upload cap. The megabyte literal is the
+      // tell: it is how both previous copies were written.
+      const ownLiteral = src.match(/MAX_UPLOAD_BYTES\s*=\s*\d+\s*\*\s*1024\s*\*\s*1024/);
+      expect(ownLiteral, `${file} declares its own upload cap again`).toBeNull();
+    });
+  }
+
+  it("the ACCOUNT documents form is bound by the multipart cap, not the platform one", () => {
+    // This form POSTs multipart and has no sign/finalize route, so Vercel's
+    // ~4.5 MB request body is its real ceiling. It previously guarded against
+    // the platform limit — first 50 MB, then 500 MB once that constant moved —
+    // and every file in between was accepted here and killed at the edge with
+    // a bare "Upload failed." The right constant for it is the smaller one.
+    // Comments stripped: the note explaining this names the other constant.
+    const src = stripComments(read("components/commercial-document-upload-form.tsx"));
+    expect(src).toContain("SAFE_MULTIPART_BYTES");
+    expect(src).not.toContain("MAX_UPLOAD_BYTES");
   });
 
-  it("the account form's client limit matches lib/commercial/accounts/documents.ts", () => {
-    const server = byteConstant(read("lib/commercial/accounts/documents.ts"), "MAX_UPLOAD_BYTES");
-    const src = read("components/commercial-document-upload-form.tsx");
-    const client =
-      byteConstant(src, "CLIENT_MAX_UPLOAD_BYTES") ?? byteConstant(src, "MAX_UPLOAD_BYTES");
-    expect(server).not.toBeNull();
-    expect(client).toBe(server);
+  it("the shared limit is a real number of bytes", () => {
+    const src = read("lib/commercial/uploads/limits.ts");
+    const m = src.match(/export const MAX_UPLOAD_BYTES = (\d+) \* 1024 \* 1024;/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThan(0);
   });
 });
 

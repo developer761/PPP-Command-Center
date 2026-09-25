@@ -30,8 +30,21 @@ describe("a revision inherits its parent's context", () => {
   it("passes them to createProposal, merged over the hydrated values", () => {
     // Merged, not replaced: a field the parent never set (a phone added to the
     // profile since) should still fill in, while anything typed by hand wins.
-    expect(src).toMatch(/header_json:\s*parentHeader\s*\?\s*\{\s*\.\.\.ctx\.header,\s*\.\.\.parentHeader\s*\}/);
+    expect(src).toMatch(/header_json:\s*parentHeader\s*\?\s*\{\s*\.\.\.ctx\.header,\s*\.\.\.parentHeader,/);
     expect(src).toMatch(/\.\.\.ctx\.estimator,\s*\.\.\.parentEstimator/);
+  });
+
+  it("but NOT its parent's date — a revision is dated the day it is raised", () => {
+    /**
+     * Brendan 2026-09-23: "Make sure the new revision updates the date as well
+     * if needed on the proposal."
+     *
+     * The parent spread last, so it won every field including `date_iso` — and
+     * a revision raised in November went out dated the day the original was
+     * written. The date is the one thing that must not be inherited: being the
+     * newer document is the entire point of it.
+     */
+    expect(src).toMatch(/\.\.\.parentHeader,\s*date_iso:\s*ctx\.header\.date_iso/);
   });
 
   it("still hydrates a FIRST proposal", () => {

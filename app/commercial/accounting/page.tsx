@@ -16,18 +16,25 @@ import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDi
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
-import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
+import { ACTIVITY_PRESETS, LEDGER_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
+import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
+import { SpendPeriodBar } from "@/components/commercial/spend-period-bar";
+import {
+  filterToSpendPeriod, undatedCount, isSpendPeriod, type SpendPeriodKey,
+} from "@/lib/commercial/reports/tomco/spend-periods";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { RecordPaymentForm, RecordLaborPaymentForm, RecordPurchaseForm } from "@/components/commercial/accounting-entry-forms";
+import { PayrollWeekPanels, PayrollWeekHeader } from "@/components/commercial/payroll-week-panels";
 import { getAccountingEntryOptions } from "@/lib/commercial/accounting/entry-options";
 import { getBalanceOwedRows, BALANCE_OWED_SPEC } from "@/lib/commercial/reports/tomco/balance-owed";
 import { costToolHref } from "@/lib/commercial/reports/tomco/accounting-links";
 import { getArSheetRows, AR_APPLICATIONS_SPEC, AR_PERIODS, arPeriodCutoff } from "@/lib/commercial/reports/tomco/ar-applications";
 import { AR_CARRYOVER, AR_CARRYOVER_AS_OF } from "@/lib/commercial/reports/tomco/ar-carryover";
+import { UUID_RE } from "@/lib/commercial/uuid";
 import {
   getSpendRows,
   getMoneyInRows,
@@ -59,6 +66,7 @@ import {
   cashFlowRange, CASH_FLOW_DEFAULT, changeOrderRange, CHANGE_ORDER_DEFAULT,
 } from "@/lib/commercial/reports/presets";
 import TrendChart from "@/components/trend-chart";
+import { ACCOUNTING_VIEWS, type AccountingView } from "@/lib/commercial/accounting/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -119,8 +127,8 @@ const BASE = "/commercial/accounting";
  */
 
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
-  materials: "brand", crewLabor: "emerald", subLabor: "blue", subcontractor: "navy",
-  equipment: "amber", permit: "neutral", other: "neutral",
+  materials: "brand", crewLabor: "emerald", employeeLabor: "navy", subLabor: "blue",
+  subcontractor: "neutral", equipment: "amber", permit: "neutral", other: "neutral",
 };
 
 type Tone = "brand" | "navy" | "amber" | "emerald" | "rose" | "neutral";
@@ -177,9 +185,16 @@ function safeBack(raw: unknown): string {
 async function saveNoteAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const rowKey = String(formData.get("row_key") ?? "");
   // Carry the filters back, so saving a note doesn't drop you out of the view
   // you were working through row by row.
@@ -208,9 +223,16 @@ async function saveNoteAction(formData: FormData) {
 async function depositAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const paymentId = String(formData.get("payment_id") ?? "");
   if (!paymentId) return;
   const res = await setPaymentDeposited(paymentId, String(formData.get("deposited")) === "1");
@@ -236,9 +258,16 @@ async function depositAction(formData: FormData) {
 async function settleReimbursementAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const purchaseId = String(formData.get("purchase_id") ?? "");
   if (!purchaseId) return;
   const res = await setReimbursementSettled(purchaseId, String(formData.get("settled")) === "1");
@@ -255,10 +284,37 @@ async function settleReimbursementAction(formData: FormData) {
  *
  * Amounts arrive as typed dollars ("1,250.50"), so they are parsed once, here.
  */
-function dollarsToCents(raw: unknown): number {
-  const n = Number(String(raw ?? "").replace(/[$,\s]/g, ""));
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100);
+/**
+ * Money a person typed → cents, or NULL when it is not money.
+ *
+ * It used to return 0 for anything unparseable. For three of its callers that
+ * was harmless — they reject `cents <= 0` — but it is the wrong shape, and it
+ * made "abc" and "nothing" the same value. Payroll is where that becomes
+ * expensive: a Gusto cost of `N/A` pasted from a spreadsheet saved as $0.00,
+ * cleared every blocker, and let the week post with that person's entire
+ * payroll on no job while the screen certified the split tied to the cent.
+ *
+ * Returning null makes "not a number" distinguishable from "zero", which is
+ * the distinction every caller actually needed.
+ *
+ * Accounting parentheses are read as negative — `(500)` means −500 on every
+ * statement Mary handles, and silently reading it as 500 would be worse than
+ * rejecting it.
+ */
+function dollarsToCents(raw: unknown): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const negative = /^\(.*\)$/.test(text);
+  const bare = text.replace(/^\(|\)$/g, "").replace(/[$,\s]/g, "");
+  // Number("") is 0 and Number("1e5") is 100000 — neither is money somebody
+  // typed, so the shape is checked before the value.
+  if (!/^-?\d*\.?\d+$/.test(bare)) return null;
+  const n = Number(bare);
+  if (!Number.isFinite(n)) return null;
+  const cents = Math.round(n * 100) * (negative ? -1 : 1);
+  // Beyond this a bigint overflows Postgres and the raw error reaches the user.
+  if (Math.abs(cents) > 1_000_000_000_00) return null;
+  return cents;
 }
 
 /** A bare YYYY-MM-DD anchored at noon ET, so it lands on the day picked. */
@@ -275,9 +331,16 @@ function pickedDate(raw: unknown): string | undefined {
 async function editArRowAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const id = String(formData.get("id") ?? "");
   const intent = String(formData.get("intent") ?? "save");
   const { editArRow, setCarryoverCleared, addArRow, removeAddedArRow } = await import(
@@ -288,12 +351,36 @@ async function editArRowAction(formData: FormData) {
     if (id.startsWith("added:")) await removeAddedArRow(id);
     else await setCarryoverCleared(id, true);
     revalidatePath(BASE);
-    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line removed.")}`);
+    redirect(
+      `${BASE}?view=ar&ok=${encodeURIComponent(
+        // A carryover line can be put back; a hand-added one is gone. Say
+        // which, so nobody has to find out by looking for it.
+        id.startsWith("added:")
+          ? "Line removed."
+          : "Line removed — it's under “Removed lines” if you need it back.",
+      )}`,
+    );
+  }
+  /**
+   * PUT A CLEARED CARRYOVER LINE BACK.
+   *
+   * `setCarryoverCleared` has always taken a boolean and `clearedCarryoverRows`
+   * was written — its docblock says — as "the copied lines that have been
+   * ticked off, shown so they can be put back". Nothing ever called it, and
+   * nothing ever passed `false`. So a mis-click on Remove deleted an open
+   * receivable from Mary's sheet with no undo and no list of what had gone:
+   * the AR total quietly dropped and the only way to notice was remembering
+   * the line existed.
+   */
+  if (intent === "restore" && id) {
+    await setCarryoverCleared(id, false);
+    revalidatePath(BASE);
+    redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line put back.")}`);
   }
   if (intent === "add") {
     const cents = dollarsToCents(formData.get("amount"));
     const job = String(formData.get("job") ?? "").trim();
-    if (!job || cents <= 0) redirect(`${BASE}?view=ar&error=${encodeURIComponent("Give the line a job and an amount.")}`);
+    if (!job || cents == null || cents <= 0) redirect(`${BASE}?view=ar&error=${encodeURIComponent("Give the line a job and an amount.")}`);
     await addArRow({ job, openCents: cents, note: String(formData.get("note") ?? "").trim() });
     revalidatePath(BASE);
     redirect(`${BASE}?view=ar&ok=${encodeURIComponent("Line added.")}`);
@@ -303,7 +390,9 @@ async function editArRowAction(formData: FormData) {
     await editArRow(id, {
       job: String(formData.get("job") ?? "").trim() || undefined,
       note: String(formData.get("note") ?? "").trim() || undefined,
-      openCents: raw ? dollarsToCents(raw) : undefined,
+      // `null` here means they typed something that is not money. Leaving the
+      // field alone beats writing $0.00 over a real figure.
+      openCents: raw ? dollarsToCents(raw) ?? undefined : undefined,
     });
   }
   revalidatePath(BASE);
@@ -313,14 +402,61 @@ async function editArRowAction(formData: FormData) {
 async function recordPaymentAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const invoiceId = String(formData.get("invoice_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
-  if (!invoiceId || cents <= 0) {
-    redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice and enter an amount.")}`);
+  if (!invoiceId || cents == null || cents <= 0) {
+    redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice or AIA certificate and enter an amount.")}`);
   }
+
+  // AN AIA CERTIFICATE, NOT AN INVOICE.
+  //
+  // Stephanie 2026-09-23: "when I went into record the payment, it didn't show
+  // up on the list because it was billed as AIA." The picker now offers them,
+  // and they carry an `aia:` prefix because a bare uuid cannot say which of
+  // the two ledgers it belongs to — and posting an AIA payment into
+  // commercial_invoice_payments would be a silent write to the wrong table.
+  if (invoiceId.startsWith("aia:")) {
+    const appId = invoiceId.slice(4);
+    // The picker builds this value, but a form field is a form field: check it
+    // before it reaches an insert rather than trusting the shape of our own
+    // option list.
+    if (!UUID_RE.test(appId)) {
+      redirect(`${BASE}?view=receivables&error=${encodeURIComponent("Pick an invoice or AIA certificate.")}`);
+    }
+    const { recordAiaPayment } = await import("@/lib/commercial/aia/payments");
+    const aiaRes = await recordAiaPayment({
+      application_id: appId,
+      amount_cents: cents,
+      paid_at: pickedDate(formData.get("paid_at")),
+      method: String(formData.get("method") ?? "other"),
+      reference: joinOtherDetail(str(formData.get("method_other")), str(formData.get("reference"))),
+      recorded_by_user_id: user.id,
+    });
+    revalidatePath(BASE);
+    if (!aiaRes.ok)
+      redirect(`${BASE}?view=receivables&error=${encodeURIComponent(aiaRes.error)}`);
+    // Capping is not a failure — it is the certificate refusing to be overpaid
+    // — but it must not be silent, or the bank and the platform quietly
+    // disagree. Same rule and same wording as the invoice path below.
+    redirect(
+      `${BASE}?view=receivables&ok=${encodeURIComponent(
+        aiaRes.capped
+          ? `Recorded ${formatCentsFull(Number(aiaRes.value.amount_cents))} — capped at what this certificate bills. Put the rest on the next application.`
+          : "Payment recorded against the AIA certificate.",
+      )}`,
+    );
+  }
+
   const { addPayment } = await import("@/lib/commercial/invoices/db");
   const res = await addPayment(invoiceId, {
     amount_cents: cents,
@@ -338,24 +474,158 @@ async function recordPaymentAction(formData: FormData) {
   redirect(`${BASE}?view=receivables&ok=${encodeURIComponent(res.capped ? `Recorded ${formatCentsFull(res.applied_cents ?? 0)} — capped at the invoice balance.` : "Payment recorded.")}`);
 }
 
+/**
+ * Save the actual Gusto cost for every person in one week, in one submit.
+ *
+ * One form for the whole table rather than a save per row: Mary is reading a
+ * Gusto report and typing down a column, and fifteen separate saves is fifteen
+ * chances to leave one behind.
+ */
+async function savePayrollCostsAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    redirect(`${BASE}?view=payroll&error=${encodeURIComponent("Bad week.")}`);
+  }
+  const { ensurePayrollPeriod, setPayrollCost } = await import("@/lib/commercial/field-ops/payroll-week");
+  const period = await ensurePayrollPeriod(start, end, user.id);
+  if (!period.ok) redirect(`${BASE}?view=payroll&week=${start}&error=${encodeURIComponent(period.error)}`);
+
+  const problems: string[] = [];
+  let saved = 0;
+  // Gather BOTH fields per person before writing. Looping over cost_ alone
+  // dropped a PTO job chosen for somebody whose cost had not been typed yet —
+  // the choice vanished on save with no sign it had.
+  const perEmployee = new Map<string, { cost?: string; pto?: string }>();
+  for (const [k, v] of formData.entries()) {
+    const raw = String(v ?? "").trim();
+    if (k.startsWith("cost_")) {
+      const e = perEmployee.get(k.slice(5)) ?? {};
+      e.cost = raw;
+      perEmployee.set(k.slice(5), e);
+    } else if (k.startsWith("pto_")) {
+      const e = perEmployee.get(k.slice(4)) ?? {};
+      e.pto = raw;
+      perEmployee.set(k.slice(4), e);
+    }
+  }
+
+  for (const [employeeId, f] of perEmployee) {
+    const ptoJob = UUID_RE.test(f.pto ?? "") ? (f.pto as string) : null;
+    const raw = f.cost ?? "";
+    // A BLANK IS NOT A ZERO. Clearing the box means "I have not entered this
+    // yet", and writing 0 would let the week post with somebody costed at
+    // nothing — silently putting their jobs in profit. But a PTO job chosen
+    // without a cost still has to save, or the choice is lost.
+    if (raw === "") {
+      if (ptoJob) {
+        const res = await setPayrollCost({
+          periodId: period.id,
+          employeeId,
+          actualCostCents: null,
+          unassignedOpportunityId: ptoJob,
+          userId: user.id,
+        });
+        if (!res.ok) problems.push(res.error);
+      }
+      continue;
+    }
+    const cents = dollarsToCents(raw);
+    if (cents == null || cents < 0) {
+      // Named back to her, so a pasted "N/A" is visible rather than silently
+      // becoming zero.
+      problems.push(raw);
+      continue;
+    }
+    const res = await setPayrollCost({
+      periodId: period.id,
+      employeeId,
+      actualCostCents: cents,
+      unassignedOpportunityId: ptoJob,
+      userId: user.id,
+    });
+    if (res.ok) saved += 1;
+    else problems.push(res.error);
+  }
+  revalidatePath(BASE);
+  const note = problems.length
+    ? `&error=${encodeURIComponent(`Saved ${saved}. Could not read: ${problems.slice(0, 3).join(", ")}`)}`
+    : `&ok=${encodeURIComponent(`Saved ${saved} cost${saved === 1 ? "" : "s"}.`)}`;
+  redirect(`${BASE}?view=payroll&week=${start}${note}`);
+}
+
+/** Turn the week's split into labor payouts on each job. */
+async function postPayrollAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
+  const start = String(formData.get("start") ?? "");
+  const end = String(formData.get("end") ?? "");
+  const { postPayrollWeek } = await import("@/lib/commercial/field-ops/payroll-week");
+  const res = await postPayrollWeek(start, end, user.id);
+  revalidatePath(BASE);
+  revalidatePath("/commercial");
+  if (!res.ok) redirect(`${BASE}?view=payroll&week=${start}&error=${encodeURIComponent(res.error)}`);
+  redirect(
+    `${BASE}?view=payroll&week=${start}&ok=${encodeURIComponent(
+      `Posted ${formatCentsFull(res.totalCents)} across ${res.created} job line${res.created === 1 ? "" : "s"}${res.replaced ? ` — replaced ${res.replaced} from the previous run` : ""}.`,
+    )}`,
+  );
+}
+
 async function recordSpendAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const oppId = String(formData.get("opportunity_id") ?? "");
   const cents = dollarsToCents(formData.get("amount"));
   const isLabor = String(formData.get("kind") ?? "") === "labor";
   const view = isLabor ? "labor-out" : "purchases";
-  if (!oppId || cents <= 0) {
+  if (!oppId || cents == null || cents <= 0) {
     redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount.")}`);
   }
   const hoursRaw = String(formData.get("hours") ?? "").trim();
   const { addPurchase } = await import("@/lib/commercial/purchases/db");
   const res = await addPurchase({
     opportunity_id: oppId,
-    category: isLabor ? "labor" : String(formData.get("category") ?? "materials"),
+    // A labor payment now says WHOSE labor it was. Validated against the
+    // shared list rather than trusted: this writes a category straight into
+    // the row, and an unknown value would render as "Other" on every report.
+    category: isLabor
+      ? (isLaborPaymentCategory(String(formData.get("labor_category") ?? ""))
+          ? String(formData.get("labor_category"))
+          : "employee_labor")
+      : String(formData.get("category") ?? "materials"),
     vendor: String(formData.get("vendor") ?? "") || null,
     amount_cents: cents,
     hours: isLabor && hoursRaw ? Number(hoursRaw) : null,
@@ -420,9 +690,16 @@ async function recordSpendAction(formData: FormData) {
 async function draftNotesAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const { generateRowNotes } = await import("@/lib/commercial/reports/receivables-row-notes");
   const res = await generateRowNotes(await getReceivablesReport());
   revalidatePath(BASE);
@@ -440,9 +717,16 @@ async function draftNotesAction(formData: FormData) {
 async function sendToAlexAction(formData: FormData) {
   "use server";
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/");
-  await assertCommercialAccess(user.id);
+  // FINANCE-GATED, not merely signed-in.
+  //
+  // These actions post to the page path, and a server action executes even
+  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
+  // says so in as many words. The page requires admin/account_manager; every
+  // one of these ten actions required only "has commercial access", so a rep
+  // replaying the action id could record payments, edit AR rows, and cost and
+  // POST a whole payroll week onto every job — while being unable to approve
+  // a single hour.
+  const user = await requireFinanceViewer();
   const res = await sendReceivablesToAlex();
   revalidatePath(BASE);
   const back = safeBack(formData.get("back"));
@@ -454,57 +738,14 @@ async function sendToAlexAction(formData: FormData) {
   );
 }
 
-/**
- * The in-page views.
- *
- * Karan, 2026-08-19: *"I don't want it to bring me to the reports page but just
- * keep me on the same page."* The old bottom "Go deeper" row navigated away, so
- * the money desk was really a launcher — you left it to do anything. These
- * render inline instead: the URL stays /commercial/accounting, the headline
- * figures stay on screen above the switcher, and nothing is lost on a switch.
- *
- * Receivables is deliberately FIRST after Overview and carries the actions
- * (export, send) — it's the one Alex asked for by name.
- *
- * Invoices is the one thing still a real link: it is a workspace where records
- * get created and edited, not a read-only view, and embedding it would mean two
- * places that can create an invoice.
- */
 /** Tabs whose CSV comes from the shared grouped-report export. */
 const EXPORTABLE_TABS = new Set(["ar", "owed", "purchases", "labor-out", "deposits"]);
 
-const VIEWS = [
-  { key: "overview", label: "Overview", primary: true },
-  { key: "receivables", label: "Receivables" , primary: true },
-  // Alex's ledger. Sits next to Receivables on purpose: one answers "what is
-  // owed", the other "what actually moved", and he reads them together.
-  { key: "transactions", label: "Transactions" , primary: false },
-  { key: "aging", label: "AR aging" , primary: false },
-  { key: "cash", label: "Cash flow" , primary: false },
-  { key: "costs", label: "Job costs" , primary: false },
-  // The last two of Alex's reports the platform didn't carry.
-  { key: "tax", label: "Sales tax" , primary: false },
-  { key: "reimbursements", label: "Reimbursements" , primary: false },
-  // Karan 2026-09-16: "all of Mary's stuff should be in accounting." These four
-  // are Tomco's own Salesforce reports, rebuilt in the shape she reads them —
-  // records grouped and subtotalled, not a chart of them. They were briefly
-  // separate pages under Reports, which meant her work was in two places.
-  // Mary's own AR sheet, generated from the AIA certificates she raises.
-  { key: "ar", label: "AR sheet" , primary: true },
-  // Katie: "Balance Owed Report — only the projects which are completed but
-  // there is still a balance due from the customer." It is one of the reports
-  // she and Alex actually run, so it sits on the bar beside the AR sheet
-  // rather than behind More.
-  { key: "owed", label: "Balance owed" , primary: true },
-  // Won work with no invoice raised against it. Reached from the line on the
-  // Overview, which used to send you to the dashboard and leave you to find
-  // the jobs yourself.
-  { key: "unbilled", label: "Won, not invoiced" , primary: false },
-  { key: "purchases", label: "Purchases" , primary: true },
-  { key: "labor-out", label: "Labor payments" , primary: true },
-  { key: "deposits", label: "Deposits" , primary: true },
-] as const;
-type View = (typeof VIEWS)[number]["key"];
+// The tab list moved to lib/commercial/accounting/tabs.ts so the How-it-works
+// handbook can draw the SAME bar instead of a hand-typed copy that went stale.
+const VIEWS = ACCOUNTING_VIEWS;
+
+type View = AccountingView;
 
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v ?? undefined;
@@ -550,7 +791,7 @@ export default async function AccountingPage({
   // Its own query keys (`tp`/`td`/`tparty`/`tundep`) so switching between the
   // Receivables view and this one never carries a filter across and quietly
   // narrows a different list.
-  const txPeriod = resolvePreset(pickFirst(sp.tp), ACTIVITY_PRESETS, ACTIVITY_DEFAULT);
+  const txPeriod = resolvePreset(pickFirst(sp.tp), ACTIVITY_PRESETS, LEDGER_DEFAULT);
   const rawDir = pickFirst(sp.td);
   const txDirection: TxnDirection | "all" = rawDir === "in" || rawDir === "out" ? rawDir : "all";
   const txParty = pickFirst(sp.tparty)?.trim() || null;
@@ -569,7 +810,7 @@ export default async function AccountingPage({
       if (v) p.set(k, v);
       else p.delete(k);
     };
-    set("tp", txPeriod === ACTIVITY_DEFAULT ? null : txPeriod);
+    set("tp", txPeriod === LEDGER_DEFAULT ? null : txPeriod);
     set("td", txDirection === "all" ? null : txDirection);
     set("tparty", txParty);
     set("tundep", txUndeposited ? "1" : null);
@@ -581,6 +822,36 @@ export default async function AccountingPage({
   // the company stand", and silently narrowing them to a filter set on another
   // tab would make the money desk quietly wrong.
   const viewQs = (v: View) => (v === "receivables" ? receivableQueryString(q) : "");
+
+  /**
+   * The week window on the money-out registers.
+   *
+   * Mary 2026-09-24: "Can I run a payout report for this week? I want to match
+   * it against SF." These three listed every row ever recorded, with no way to
+   * narrow — so matching one week meant exporting 851 rows into Excel.
+   */
+  const rawPeriod = pickFirst(sp.period);
+  /**
+   * DEFAULTS TO THIS MONTH, not all time.
+   *
+   * Unfiltered, these registers render every row ever recorded: Purchases
+   * measured 2,519kb of HTML and Labor payments 1,929kb, and both grow every
+   * week. A month brings them to 413kb and 240kb. Mary reconciles a week or a
+   * month at a time, so all-time was never the view she wanted — it was just
+   * the only one there was.
+   *
+   * Nothing is hidden: the bar names the exact dates it is showing, says how
+   * many rows, and All time is one click away.
+   */
+  const period: SpendPeriodKey = isSpendPeriod(rawPeriod) ? rawPeriod : "this_month";
+  /**
+   * Note the #register. Changing the week is a full navigation, so without a
+   * fragment the browser lands at the top of the page and Mary has to scroll
+   * back down past the KPI cards, the tab bar and the whole entry form to see
+   * the result of her own click — every time she changes period.
+   */
+  const periodHref = (v: View, k: SpendPeriodKey) =>
+    `${BASE}?view=${v}&period=${k}#register`;
   const href = (v: View) => {
     if (v === "overview") return BASE;
     // The ledger carries its own filters back, so leaving it and returning
@@ -590,7 +861,7 @@ export default async function AccountingPage({
     // it on a tab switch means re-picking the month every time.
     if (v === "tax" || v === "reimbursements") {
       const p = new URLSearchParams({ view: v });
-      if (txPeriod !== ACTIVITY_DEFAULT) p.set("tp", txPeriod);
+      if (txPeriod !== LEDGER_DEFAULT) p.set("tp", txPeriod);
       return `${BASE}?${p.toString()}`;
     }
     const qs = viewQs(v);
@@ -700,6 +971,7 @@ export default async function AccountingPage({
     entry,
     spendRows,
     depositRows,
+    payroll,
     rowNotes,
   ] = await Promise.all([
     // Only fetched for the view that renders it — the money band above doesn't
@@ -729,6 +1001,33 @@ export default async function AccountingPage({
     entryOn ? getAccountingEntryOptions() : Promise.resolve(null),
     spendOn ? getSpendRows() : Promise.resolve(null),
     view === "deposits" ? getMoneyInRows() : Promise.resolve(null),
+    // The payroll week. Gated like the rest — it is four joins and nobody on
+    // Overview is paying for it.
+    view === "payroll"
+      ? (async () => {
+          const { getPayrollWeek, latestPayrollWeekStart } = await import(
+            "@/lib/commercial/field-ops/payroll-week"
+          );
+          const { mondayOf, addDaysIso, todayEtIso } = await import(
+            "@/lib/commercial/field-ops/schedule"
+          );
+          const asked = pickFirst(sp.week);
+          const thisWeek = mondayOf(todayEtIso());
+          // Always a whole Monday–Sunday block. Overtime is a 40h/week idea, so
+          // a half-week cannot be costed correctly — and a URL somebody edited
+          // by hand must not be able to produce one.
+          //
+          // With no week asked for, land on the most recent week that HAS
+          // hours rather than the calendar week. Payroll is run for the week
+          // that ended: opening the tab midweek used to show four empty panels
+          // and a warning, every time, which read as the feature being broken.
+          const start =
+            asked && /^\d{4}-\d{2}-\d{2}$/.test(asked)
+              ? mondayOf(asked)
+              : ((await latestPayrollWeekStart()) ?? thisWeek);
+          return { week: await getPayrollWeek(start, addDaysIso(start, 6)), start, thisWeek };
+        })()
+      : Promise.resolve(null),
     // Rows whose read is missing OR written from facts that have since moved —
     // including a note somebody typed after the last draft.
     getCachedRowNotes(receivables),
@@ -747,6 +1046,15 @@ export default async function AccountingPage({
   const arRowsFiltered =
     arRows && arCutoff ? arRows.filter((r) => !r.issuedYmd || r.issuedYmd >= arCutoff) : arRows;
   const arUndatedKept = (arRowsFiltered ?? []).filter((r) => !r.issuedYmd).length;
+  // The carryover lines somebody has ticked off — so a mis-click on Remove is
+  // recoverable instead of silently shrinking the book. AR view only; no other
+  // view pays for the read.
+  const arClearedRows =
+    view === "ar"
+      ? await (
+          await import("@/lib/commercial/reports/tomco/ar-applications")
+        ).clearedCarryoverRows()
+      : [];
   // `entry`, `spendRows` and `depositRows` are fetched in the wave above.
   const production = summarizeProduction(projects);
   // Work that is won and carries a DRAFT invoice — raised but never sent. A
@@ -872,7 +1180,11 @@ export default async function AccountingPage({
                             // shows 30 days.
                             view === "ar"
                             ? `/api/commercial/accounting/export?view=ar${arGroup !== 0 ? `&argroup=${arGroup}` : ""}${arPeriod !== "all" ? `&arperiod=${arPeriod}` : ""}`
-                            : `/api/commercial/accounting/export?view=${view}`
+                            : // And the week window rides along for the same
+                              // reason: a CSV covering all time while the
+                              // screen shows one week is the exact trap the AR
+                              // comment above describes.
+                              `/api/commercial/accounting/export?view=${view}${period !== "all" ? `&period=${period}` : ""}`
                           : "/api/commercial/reports/receivables/export"
             }
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
@@ -1291,7 +1603,7 @@ export default async function AccountingPage({
               tone={jobCosts.totals.laborUnratedHours > 0 ? "amber" : "neutral"}
               // Unpriced hours understate cost, which overstates margin. Naming
               // that is the difference between a caveat and a wrong number.
-              sub={jobCosts.totals.laborUnratedHours > 0 ? "no cost rate — margin reads high" : "every hour has a rate"}
+              sub={jobCosts.totals.laborUnratedHours > 0 ? "not costed yet — margin reads high" : "every hour has a rate"}
             />
           </div>
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
@@ -1474,7 +1786,7 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}${txQuery({ tp: p.key === ACTIVITY_DEFAULT ? null : p.key })}`,
+                href: `${BASE}${txQuery({ tp: p.key === LEDGER_DEFAULT ? null : p.key })}`,
               }))}
             />
             <NavSelect
@@ -1521,7 +1833,7 @@ export default async function AccountingPage({
             <ExportCsvLink
               href="/api/commercial/reports/transactions/export"
               params={{
-                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(txPeriod !== LEDGER_DEFAULT ? { tp: txPeriod } : {}),
                 ...(txDirection !== "all" ? { td: txDirection } : {}),
                 ...(txParty ? { tparty: txParty } : {}),
                 ...(txUndeposited ? { tundep: "1" } : {}),
@@ -1903,7 +2215,7 @@ export default async function AccountingPage({
               {salesTax.noCertCount === 1 ? " is" : "s are"} marked exempt with no certificate on file —{" "}
               {formatCentsFull(salesTax.noCertBaseCents)} of work. NY capital-improvement exemptions are
               per-project, so the certificate belongs on the job that claimed it.{" "}
-              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
+              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
                 Show just those
               </Link>
             </p>
@@ -1917,18 +2229,18 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}?view=tax${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
+                href: `${BASE}?view=tax${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
               }))}
             />
             {pickFirst(sp.nocert) === "1" && (
-              <Link href={`${BASE}?view=tax${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
+              <Link href={`${BASE}?view=tax${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
                 Show all invoices
               </Link>
             )}
             <ExportCsvLink
               href="/api/commercial/reports/sales-tax/export"
               params={{
-                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(txPeriod !== LEDGER_DEFAULT ? { tp: txPeriod } : {}),
                 ...(pickFirst(sp.nocert) === "1" ? { nocert: "1" } : {}),
               }}
               label="Export for filing"
@@ -2060,7 +2372,7 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}?view=reimbursements${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}`,
+                href: `${BASE}?view=reimbursements${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}`,
               }))}
             />
             <span className="text-[11px] text-ppp-charcoal-400">
@@ -2252,6 +2564,53 @@ export default async function AccountingPage({
                   ))}
               </ul>
             )}
+
+            {/* REMOVED LINES — the undo that never existed.
+                Remove used to be one-way: the line vanished from the sheet,
+                the AR total dropped, and the only way to notice was
+                remembering it had been there. `clearedCarryoverRows` was
+                written for exactly this list and had no caller.
+                Hand-added lines are not here — `removeAddedArRow` deletes
+                them outright, so promising them back would be a lie. */}
+            {arClearedRows.length > 0 && (
+              <details className="mt-4 border-t border-ppp-charcoal-100 pt-3">
+                <summary className="cursor-pointer text-[12.5px] font-semibold text-ppp-charcoal-600 hover:text-ppp-charcoal select-none min-h-[44px] sm:min-h-0 flex items-center">
+                  Removed lines · {arClearedRows.length}
+                </summary>
+                <p className="mt-1.5 text-[12px] text-ppp-charcoal-500">
+                  Ticked off the sheet. Put one back if it was removed by mistake
+                  or the certificate hasn&rsquo;t actually been raised yet.
+                </p>
+                <ul className="mt-2 divide-y divide-ppp-charcoal-100">
+                  {arClearedRows.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-ppp-charcoal truncate">{r.jobName}</div>
+                        <div className="text-[11.5px] text-ppp-charcoal-500 truncate">
+                          {/* Exact, not fmtMoneyK: this is a receivable being
+                              put back on a sheet Mary reconciles to the cent. */}
+                          {(r.openCents / 100).toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                          })}
+                          {r.notes ? ` · ${r.notes}` : ""}
+                        </div>
+                      </div>
+                      <form action={editArRowAction}>
+                        <input type="hidden" name="id" value={r.id} />
+                        <input type="hidden" name="intent" value="restore" />
+                        <PendingSubmitButton
+                          pendingLabel="Putting back…"
+                          className="inline-flex items-center justify-center px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 min-h-[38px]"
+                        >
+                          Put back
+                        </PendingSubmitButton>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
           </div>
         </details>
         </section>
@@ -2275,13 +2634,59 @@ export default async function AccountingPage({
       )}
 
       {view === "purchases" && spendRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={PURCHASES_BY_VENDOR_SPEC.title} hint={PURCHASES_BY_VENDOR_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("purchases", k)}
+          rowCount={filterToSpendPeriod(purchaseRows(spendRows), period).length}
+          undated={undatedCount(purchaseRows(spendRows))}
+        />
         <GroupedReport
           spec={PURCHASES_BY_VENDOR_SPEC}
-          rows={purchaseRows(spendRows)}
-          emptyHint="No purchases recorded."
+          rows={filterToSpendPeriod(purchaseRows(spendRows), period)}
+          emptyHint="No purchases in this period."
         />
+        </section>
+      )}
+
+      {view === "payroll" && payroll && (
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHead
+              title="Payroll"
+              hint="Hours to Gusto, the real cost back, split across jobs by hours."
+            />
+            <PayrollWeekHeader
+              startDate={payroll.week.startDate}
+              endDate={payroll.week.endDate}
+              prevHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, -7)}#register`}
+              nextHref={`${BASE}?view=payroll&week=${shiftWeek(payroll.start, 7)}#register`}
+              todayHref={`${BASE}?view=payroll&week=${payroll.thisWeek}#register`}
+              isThisWeek={payroll.start === payroll.thisWeek}
+            />
+          </div>
+          <PayrollWeekPanels
+            week={payroll.week}
+            saveCostsAction={savePayrollCostsAction}
+            postAction={postPayrollAction}
+            selectedJobId={pickFirst(sp.job) ?? null}
+            basePath={`${BASE}?view=payroll&week=${payroll.start}`}
+            // Same reason as the period links: the detail panel is below the fold.
+            lastHoursWeekHref={
+              // The raw day, not its Monday — the page normalises any `week`
+              // to a Monday on the way in, so there is one place that does it.
+              payroll.week.lastW2HoursDate
+                ? `${BASE}?view=payroll&week=${payroll.week.lastW2HoursDate}`
+                : null
+            }
+            // Carries the exact week back, so approving an hour does not cost
+            // her the trip through Accounting → Payroll → find the week again.
+            approvalsHref={`/commercial/field-ops/approvals?return=${encodeURIComponent(
+              `${BASE}?view=payroll&week=${payroll.start}`,
+            )}`}
+            laborPaymentsHref={`${BASE}?view=labor-out`}
+          />
         </section>
       )}
 
@@ -2292,12 +2697,18 @@ export default async function AccountingPage({
       )}
 
       {view === "labor-out" && spendRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={LABOR_PAYMENTS_SPEC.title} hint={LABOR_PAYMENTS_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("labor-out", k)}
+          rowCount={filterToSpendPeriod(laborPaymentRows(spendRows), period).length}
+          undated={undatedCount(laborPaymentRows(spendRows))}
+        />
         <GroupedReport
           spec={LABOR_PAYMENTS_SPEC}
-          rows={laborPaymentRows(spendRows)}
-          emptyHint="No crew payments recorded."
+          rows={filterToSpendPeriod(laborPaymentRows(spendRows), period)}
+          emptyHint="No crew payments in this period."
         />
         </section>
       )}
@@ -2371,11 +2782,17 @@ export default async function AccountingPage({
       )}
 
       {view === "deposits" && depositRows && (
-        <section className="space-y-3">
+        <section className="space-y-3" id="register" style={{ scrollMarginTop: "1rem" }}>
           <SectionHead title={DEPOSIT_HISTORY_SPEC.title} hint={DEPOSIT_HISTORY_SPEC.blurb ?? ""} />
+        <SpendPeriodBar
+          active={period}
+          hrefFor={(k) => periodHref("deposits", k)}
+          rowCount={filterToSpendPeriod(depositRows, period).length}
+          undated={undatedCount(depositRows)}
+        />
         <GroupedReport
           spec={DEPOSIT_HISTORY_SPEC}
-          rows={depositRows}
+          rows={filterToSpendPeriod(depositRows, period)}
           emptyHint="No payments in yet."
           // Tick it off HERE. This is the tab you open with a bank statement;
           // the Mark button used to live only on Transactions, behind "More".
@@ -2533,6 +2950,15 @@ function MiniTable({
 /** `href` is optional: on a view that already shows everything there is
  *  nothing to link to, and a "Full report →" that leaves the page is exactly
  *  what this restructure removed. */
+/** Move a yyyy-mm-dd by whole days without a timezone turning it into the day
+ *  before. Payroll weeks are calendar blocks, not instants. */
+function shiftWeek(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 function SectionHead({
   title, hint, href, linkLabel = "See all",
 }: { title: string; hint: string; href?: string; linkLabel?: string }) {

@@ -234,6 +234,9 @@ describe("which vendors a purchase category lists first", () => {
     const expected: Record<string, string> = {
       materials: "retail",
       labor: "labor",
+      // Tomco's own crew. A payout to them is somebody's time, so the payee
+      // list should offer people rather than paint suppliers.
+      employee_labor: "labor",
       subcontractor: "labor",
       equipment: "retail",
       permit: "retail",

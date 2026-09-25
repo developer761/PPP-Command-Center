@@ -45,6 +45,23 @@ export type ProposalHeaderJson = {
   project_address?: string;
   date_iso?: string;
   show_capital_improvement_notice?: boolean;
+  /**
+   * Break the scope into phases on the proposal.
+   *
+   * Brendan 2026-09-23: "Phasing is not showing up… make it a checkbox
+   * instead, it's not that important, so if I check the phasing then it gives
+   * me an option to put it in."
+   *
+   * Phase grouping already worked — the PDF groups whenever any line carries a
+   * phase — but the only way in was a small "Phase" box on each line, which is
+   * easy to miss on a proposal that never needs one. The checkbox makes it a
+   * decision you take once, and hides the per-line boxes until you do.
+   *
+   * UNDEFINED means "decide from the data", which is how every proposal
+   * written before this behaved — so existing documents keep grouping exactly
+   * as they do today rather than losing their phases to a new default.
+   */
+  use_phasing?: boolean;
   // Karan 2026-07-17 (Tomco 1:1 reference match): optional proposal
   // number rendered right-aligned below the date, e.g. "No. ALT0125".
   // Free-text so Alex can use whatever numbering scheme the GC wants.
@@ -189,6 +206,20 @@ export type CommercialProposalLineItem = {
   /** R1a: print this line's price on the client PDF (default true). Hidden lines
    *  still count toward the proposal total. */
   show_price: boolean;
+  /**
+   * Internal-only scope. Brendan 2026-09-23: "Add an internal line item button
+   * on the proposal when making the inclusions."
+   *
+   * Real, priced work Tomco is doing and paying for — lifts, night access, a
+   * dumpster — that they do not itemise to the GC. It counts toward the TOTAL
+   * (leaving it out would under-charge the job) but never prints in the
+   * customer's Inclusions list. The internal plan report shows it, marked.
+   *
+   * Optional on the type: the column arrives in migration
+   * 20260923190000_proposal_internal_line_items, and this repo has no
+   * migration runner, so the code must read correctly before it is applied.
+   */
+  is_internal?: boolean;
   /** Brendan 2026-08-17: overrides qty x unit_price for this line only, so a
    *  line can be discounted or uplifted while the quantity stays honest on the
    *  page. NULL = computed normally. */
@@ -1760,10 +1791,23 @@ export async function requestProposalChanges(input: {
   return { ok: true, proposal: flip.proposal };
 }
 
-/** Unlock an already-approved proposal back to draft so it can be edited.
- *  approved → draft. Any editor may do this (it's not an approval action —
- *  it INVALIDATES the approval and forces a fresh approval before send).
- *  No approver check; the re-approval is the gate. */
+/**
+ * Unlock an already-approved proposal back to draft so it can be edited.
+ * approved → draft, and the approval is cleared so it must be re-approved
+ * before it can go out.
+ *
+ * APPROVERS ONLY. Brendan 2026-09-23: "Only approvers unlock to edit."
+ *
+ * This used to be open to any editor, reasoning that the re-approval was the
+ * real gate. True as far as it goes — nothing unapproved can be sent — but it
+ * let an estimator quietly pull an approved proposal back to draft, so the
+ * approver's decision could be undone without them ever knowing it had been.
+ * The re-approval catches the DOCUMENT; it does not tell you the approval you
+ * gave was thrown away.
+ *
+ * An estimator who spots a problem in an approved proposal now asks for it
+ * back, which is a conversation rather than a silent revert.
+ */
 export async function unlockApprovedProposal(input: {
   proposal_id: string;
   actor_user_id: string;
@@ -1776,6 +1820,13 @@ export async function unlockApprovedProposal(input: {
     return {
       ok: false,
       error: `Only an approved proposal can be unlocked (this one is ${proposalReadableStatus(proposal.status)}).`,
+    };
+  }
+  if (!(await isProposalApprover(input.actor_user_id))) {
+    return {
+      ok: false,
+      error:
+        "Only an approver can unlock an approved proposal. Ask one to unlock it, or start a new revision if it has already gone to the customer.",
     };
   }
 
@@ -2079,6 +2130,8 @@ export type CreateLineItemInput = {
    *  renders in the "Labor:" PDF section. Cannot be true + is_alternate
    *  simultaneously (rejected at the action layer). */
   is_labor?: boolean;
+  /** Hidden from the customer copy, still in the TOTAL. See is_internal. */
+  is_internal?: boolean;
   /** R1a (migration 100): print this line's price on the client PDF. Default
    *  true. Hidden lines still count toward the total. */
   show_price?: boolean;
@@ -2115,8 +2168,29 @@ function isMissingProductNameColumn(
  * POST could silently re-price a sent proposal. Every line-item mutation gates
  * on this now.
  */
-async function assertProposalDraft(
+/**
+ * May this person change this proposal's lines right now?
+ *
+ * Draft: anyone with access, as before.
+ *
+ * Pending approval: the APPROVER, and only the approver. Brendan 2026-09-23:
+ * "For the approver make it so they can edit it and make changes even if it's
+ * sent out for approval."
+ *
+ * The lock exists so a proposal cannot move under someone who is relying on
+ * it. The approver is the person it was sent TO — they are not being
+ * surprised by their own edit, and the alternative is what they do today:
+ * reject it, wait for the estimator to change one number, and review the whole
+ * thing again. What stays locked is everything AFTER approval: once it is
+ * approved or with the GC, the document is a promise and changing it silently
+ * is what revisions exist to prevent.
+ *
+ * The estimator is still locked out at pending_approval. That is the point of
+ * sending it: it stops being yours while somebody reviews it.
+ */
+async function assertProposalEditable(
   proposalId: string,
+  actorUserId: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
   const { data } = await sb
@@ -2127,13 +2201,23 @@ async function assertProposalDraft(
   const row = data as { status?: string; deleted_at?: string | null } | null;
   if (!row || row.deleted_at)
     return { ok: false, error: "Proposal not found." };
-  if (row.status !== "draft") {
+  if (row.status === "draft") return { ok: true };
+
+  if (row.status === "pending_approval") {
+    // Read the flag rather than trusting the caller: this is the only thing
+    // standing between "out for approval" and anyone with a login editing it.
+    if (actorUserId && (await isProposalApprover(actorUserId))) return { ok: true };
     return {
       ok: false,
-      error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+      error:
+        "This proposal is out for approval, so it is locked. An approver can still make changes; anyone else should ask for it to be sent back.",
     };
   }
-  return { ok: true };
+
+  return {
+    ok: false,
+    error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+  };
 }
 
 export async function createLineItem(
@@ -2142,7 +2226,7 @@ export async function createLineItem(
 ): Promise<
   { ok: true; item: CommercialProposalLineItem } | { ok: false; error: string }
 > {
-  const draftGate = await assertProposalDraft(input.proposal_id);
+  const draftGate = await assertProposalEditable(input.proposal_id, actorUserId);
   if (!draftGate.ok) return draftGate;
   // Migration 071: a row needs EITHER a picked product (product_name) OR
   // a typed description — a catalog product with a blank description is a
@@ -2214,6 +2298,7 @@ export async function createLineItem(
           // R1a (migration 100): default true. On an un-migrated DB the generic
           // missing-column retry below drops it (defaults to true server-side).
           show_price: input.show_price ?? false,
+          is_internal: input.is_internal ?? false,
           line_total_override_cents: input.line_total_override_cents ?? null,
         },
         input.product_name,
@@ -2224,6 +2309,36 @@ export async function createLineItem(
   // Migration 071 deploy-safety: if product_name isn't in the schema yet
   // (migration not applied / PostgREST cache lag), retry once without it
   // so line-item creation never breaks on the ordering window.
+  // Deploy-safety for the internal-line column, same shape as the one below:
+  // until the migration is pasted in, drop the field and insert without it
+  // rather than refusing to create the line at all.
+  if (error && /is_internal/i.test(error.message)) {
+    const retry = await sb
+      .from("commercial_proposal_line_items")
+      .insert(
+        withProductName(
+          {
+            proposal_id: input.proposal_id,
+            product_id: input.product_id ?? null,
+            description: input.description.trim(),
+            quantity: input.quantity,
+            unit: input.unit,
+            unit_price_cents: input.unit_price_cents,
+            is_alternate: input.is_alternate ?? false,
+            position,
+            phase: phaseNormalized,
+            is_labor: input.is_labor ?? false,
+            show_price: input.show_price ?? false,
+            line_total_override_cents: input.line_total_override_cents ?? null,
+          },
+          input.product_name,
+        ),
+      )
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error && isMissingProductNameColumn(error)) {
     const retry = await sb
       .from("commercial_proposal_line_items")
@@ -2274,6 +2389,8 @@ export type UpdateLineItemInput = {
   phase?: string | null;
   /** R1a: toggle per-line price visibility on the client PDF. */
   show_price?: boolean;
+  /** Hidden from the customer copy, still in the TOTAL. See is_internal. */
+  is_internal?: boolean;
   line_total_override_cents?: number | null;
 };
 
@@ -2343,6 +2460,7 @@ export async function updateLineItem(
   }
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.show_price !== undefined) patch.show_price = input.show_price;
+  if (input.is_internal !== undefined) patch.is_internal = input.is_internal;
   if (input.line_total_override_cents !== undefined)
     patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;
@@ -2361,9 +2479,10 @@ export async function updateLineItem(
     .eq("id", input.id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
-  // Only editable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft(
+  // Draft, or an approver on a proposal that is out for approval.
+  const draftGate = await assertProposalEditable(
     (before as CommercialProposalLineItem).proposal_id,
+    actorUserId,
   );
   if (!draftGate.ok) return draftGate;
   let { data: after, error } = await sb
@@ -2518,9 +2637,10 @@ export async function deleteLineItem(
     .eq("id", id)
     .maybeSingle();
   if (!before) return { ok: false, error: "Line item not found." };
-  // Only deletable while the parent proposal is a draft.
-  const draftGate = await assertProposalDraft(
+  // Draft, or an approver on a proposal that is out for approval.
+  const draftGate = await assertProposalEditable(
     (before as CommercialProposalLineItem).proposal_id,
+    actorUserId,
   );
   if (!draftGate.ok) return draftGate;
   const { error } = await sb
@@ -2785,7 +2905,7 @@ export async function sendProposal(input: {
       sf_user_name?: string | null;
       email?: string | null;
     } | null;
-    actorName = personName(p?.sf_user_name, p?.email, "PPP admin");
+    actorName = personName(p?.sf_user_name, p?.email, "An admin");
   }
 
   // Freshly re-read the proposal + do all the pre-flight checks here so
@@ -2889,6 +3009,14 @@ export async function sendProposal(input: {
         const { getOperatingCompany } =
           await import("@/lib/commercial/operating-company/db");
         return getOperatingCompany();
+      })(),
+      // And the logo with it. This is the copy the GC receives, so it is the
+      // worst one to leave on a stale image.
+      logo: await (async () => {
+        const { getBrandLogoBuffer } = await import(
+          "@/lib/commercial/operating-company/assets"
+        );
+        return getBrandLogoBuffer().catch(() => null);
       })(),
     };
     const fit = await renderFitToOnePage((pageHeightScale) =>

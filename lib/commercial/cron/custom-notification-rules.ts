@@ -243,7 +243,7 @@ async function evaluateRule(
     case "proposal_idle": {
       const { data, error } = await sb
         .from("commercial_proposals")
-        .select("id, revision_number, sent_at, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, account_id, title, title_override, client_name, property_street, deleted_at, archived_at)")
+        .select("id, revision_number, sent_at, opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, account_id, title, title_override, title_override_mode, client_name, property_street, deleted_at, archived_at)")
         .eq("status", "sent")
         .not("sent_at", "is", null)
         .lt("sent_at", cutoffIso)
@@ -253,7 +253,7 @@ async function evaluateRule(
       warnIfCapped(data, error, "proposal_idle");
       type Row = {
         id: string; revision_number: number; sent_at: string;
-        opportunity: { id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null } | Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null }> | null;
+        opportunity: { id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null } | Array<{ id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; deleted_at: string | null; archived_at: string | null }> | null;
       };
       return ((data ?? []) as unknown as Row[])
         .map((p) => {
@@ -274,7 +274,7 @@ async function evaluateRule(
     case "followup_due": {
       const { data, error } = await sb
         .from("commercial_opportunities")
-        .select("id, account_id, title, title_override, client_name, property_street, follow_up_at")
+        .select("id, account_id, title, title_override, title_override_mode, client_name, property_street, follow_up_at")
         .not("follow_up_at", "is", null)
         .lte("follow_up_at", todayEt)
         .is("deleted_at", null)
@@ -283,7 +283,7 @@ async function evaluateRule(
         .order("follow_up_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "followup_due");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; follow_up_at: string }>)
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; follow_up_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
         // Composite key: rescheduling to a new date re-fires.
@@ -296,7 +296,7 @@ async function evaluateRule(
     case "opp_no_activity": {
       const { data, error } = await sb
         .from("commercial_opportunities")
-        .select("id, account_id, title, title_override, client_name, property_street, updated_at")
+        .select("id, account_id, title, title_override, title_override_mode, client_name, property_street, updated_at")
         .in("status", OPEN_OPP_STATUSES as readonly string[])
         .lt("updated_at", cutoffIso)
         .is("deleted_at", null)
@@ -304,7 +304,7 @@ async function evaluateRule(
         .order("updated_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "opp_no_activity");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; updated_at: string }>)
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; updated_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
         // Composite key with the idle-since date so a deal that goes idle, is
@@ -376,7 +376,7 @@ async function evaluateRule(
     case "deal_won": {
       const { data, error } = await sb
         .from("commercial_opportunities")
-        .select("id, account_id, title, title_override, client_name, property_street, decided_at")
+        .select("id, account_id, title, title_override, title_override_mode, client_name, property_street, decided_at")
         .eq("status", "pre_sale_closed")
         .eq("sub_status", "won")
         .not("decided_at", "is", null)
@@ -386,7 +386,7 @@ async function evaluateRule(
         .order("decided_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "deal_won");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
         entityId: o.id,
@@ -398,7 +398,7 @@ async function evaluateRule(
     case "deal_lost": {
       const { data, error } = await sb
         .from("commercial_opportunities")
-        .select("id, account_id, title, title_override, client_name, property_street, decided_at")
+        .select("id, account_id, title, title_override, title_override_mode, client_name, property_street, decided_at")
         .eq("status", "pre_sale_closed")
         .eq("sub_status", "lost")
         .not("decided_at", "is", null)
@@ -408,7 +408,7 @@ async function evaluateRule(
         .order("decided_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "deal_lost");
-      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
+      return ((data ?? []) as Array<{ id: string; account_id: string; title: string | null; title_override: string | null; title_override_mode: string | null; client_name: string | null; property_street: string | null; decided_at: string }>)
         .filter((o) => !deletedAccountIds.has(o.account_id))
         .map((o) => ({
         entityId: o.id,

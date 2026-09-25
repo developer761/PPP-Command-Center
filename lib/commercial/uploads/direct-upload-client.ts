@@ -16,6 +16,8 @@
  * on the caller side).
  */
 
+import { MAX_UPLOAD_LABEL } from "@/lib/commercial/uploads/limits";
+
 export type DirectUploadResult =
   | { ok: true; document: unknown }
   | { ok: false; error: string; canceled?: boolean };
@@ -137,7 +139,9 @@ export function directUploadDocument(opts: {
           if (/row-level security|Unauthorized|AccessDenied/i.test(detail)) {
             detail = "this account isn't allowed to upload. Sign out and back in; if it persists, tell Karan the storage policy needs checking";
           } else if (/exceeded the maximum allowed size|Payload too large/i.test(detail)) {
-            detail = "the file is larger than the 100 MB limit";
+            // Was "larger than the 100 MB limit" — said about 60 MB files, because
+            // the real ceiling is the project storage limit, not this number.
+            detail = `the file is over the ${MAX_UPLOAD_LABEL} storage limit`;
           } else if (/mime type|not supported/i.test(detail)) {
             detail = "that file type isn't accepted here";
           }

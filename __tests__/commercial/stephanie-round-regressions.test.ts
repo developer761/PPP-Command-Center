@@ -58,11 +58,28 @@ describe("her note: add Capital Improvement to the job's sales-tax options", () 
     }
   });
 
-  it("the proposal's NY notice follows the job, not a separate checkbox", () => {
-    // The two controls used to be unconnected: tick the notice and the invoice
-    // still charged tax; set exempt and the proposal printed no notice.
+  it("the NY notice prints on every proposal, and does not decide what is CHARGED", () => {
+    /**
+     * This used to assert the notice followed the job's tax treatment. That
+     * was the fix for Stephanie's report — the two controls were unconnected,
+     * so you could tick the notice and still be charged tax.
+     *
+     * Brendan, 2026-09-23: "This one in yellow right above please sign and
+     * return should be default… It should always be on and we can check and
+     * mark it off." So it now defaults ON for every proposal.
+     *
+     * That does NOT undo her fix, and the distinction is the point: the line
+     * reads "Subject to Certificate of Capital Improvement OR New York State
+     * Sales Tax", which is an either/or statement true of any job. It is
+     * informational. What is actually CHARGED still comes from the job's tax
+     * treatment, which is what she was reporting — so that is what this
+     * asserts now, rather than the printing rule that has since changed.
+     */
     const hydrate = readFileSync("lib/commercial/proposals/hydrate.ts", "utf8");
-    expect(hydrate).toContain('show_capital_improvement_notice: opp.tax_exempt_reason === "capital_improvement"');
+    expect(hydrate).toContain("show_capital_improvement_notice: true");
+    // The charge still follows the job: taxable stays taxable, exempt exempt.
+    expect(taxChoiceToColumns("capital_improvement").tax_exempt).toBe(true);
+    expect(taxChoiceToColumns("taxable").tax_exempt).toBe(false);
   });
 });
 

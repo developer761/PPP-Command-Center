@@ -23,6 +23,38 @@ export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number];
 export const PAY_TYPES = ["hourly", "daily", "salary"] as const;
 export type PayType = (typeof PAY_TYPES)[number];
 
+/**
+ * Is this roster row a LABOR COMPANY rather than a person?
+ *
+ * Mary, 2026-09-23: "Why do we have Tomco-Greg and Greg Stankewicz listed
+ * under the Attendance drop-down? Each employee is listed twice: once under
+ * their name and again under Tomco-name."
+ *
+ * Because Salesforce records attendance both ways and the import refused to
+ * guess which is which. 919 of 1,919 rows name a worker ("Miguel Melgar"); the
+ * other 1,000 — more than half the hours — name only the crew company the
+ * worker came through ("Tomco Labor - Miguel"). "Rob" could be Robert Caputo
+ * or Robert Patterson, and putting one man's hours on another man is worse
+ * than a duplicate in a list. So both landed, and the roster shows both.
+ *
+ * Until somebody who knows the crews says which company is which person, the
+ * least this can do is stop them looking like two employees. The hours are not
+ * double counted — every Salesforce row was imported exactly once, keyed by
+ * its own id — but one man's hours are split across two names, so the totals
+ * are right while the per-person split is not.
+ */
+export function isLaborCompanyRow(e: { external_ref?: string | null }): boolean {
+  return (e.external_ref ?? "").startsWith("sf-crewco:");
+}
+
+/** How a roster row should read in a picker — companies marked as such. */
+export function employeePickerLabel(e: {
+  display_name: string;
+  external_ref?: string | null;
+}): string {
+  return isLaborCompanyRow(e) ? `${e.display_name} (labor company)` : e.display_name;
+}
+
 export function workerTypeLabel(t: WorkerType): string {
   return { w2: "W-2 employee", sub: "Subcontractor", temp: "Temp" }[t];
 }

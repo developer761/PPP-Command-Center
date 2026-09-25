@@ -15,7 +15,9 @@ const TABS = [
   { label: "Crew", href: "/commercial/field-ops/employees" },
   { label: "Approvals", href: "/commercial/field-ops/approvals" },
   { label: "Hours Log", href: "/commercial/field-ops/hours" },
-  { label: "Payroll", href: "/commercial/field-ops/payroll" },
+  // "Payroll hours", not "Payroll": Accounting → Payroll is the money half,
+  // and two tabs with one name whose totals can differ reads as a bug.
+  { label: "Payroll hours", href: "/commercial/field-ops/payroll" },
   { label: "Clock Station", href: "/commercial/field-ops/clock-station" },
 ];
 

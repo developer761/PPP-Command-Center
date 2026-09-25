@@ -171,7 +171,22 @@ export async function getOpenInvoiceStatementForAccount(
 
     rows.push({
       invoiceId: roll.latestIssuedId,
-      invoiceNumber: `Application No. ${roll.latestIssuedNumber}`,
+      /**
+       * NAMED AS CUMULATIVE, because that is what the figures are.
+       *
+       * This said "Application No. 3" while `totalCents` and `paidCents` carry
+       * the JOB-TO-DATE position across every certificate — so a GC holding
+       * Application 3 for $141,962.49 read a statement line saying
+       * "Application No. 3 … $1,200,000.00". The balance was right; the two
+       * columns next to it described something else entirely, and it is their
+       * own document they would check it against.
+       *
+       * AIA billing IS cumulative — G702 line 6 is a running total — so the
+       * figures are correct and it was only the label that lied. Naming the
+       * latest certificate as the point it runs THROUGH keeps the reference a
+       * GC can match without implying the amount belongs to that one sheet.
+       */
+      invoiceNumber: `AIA through App. No. ${roll.latestIssuedNumber}`,
       kind: "aia",
       dealName: derivedOppName(opp, null),
       issuedAt,

@@ -125,15 +125,21 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
    * WHO IT COMES FROM — estimating@, per Katie (2026-09-17). That is Kim
    * Laude's inbox, and a proposal should come from the person who priced it.
    *
-   * Env-driven, falling back to the verified sender: Resend will only send
-   * from a domain verified in the PPP account, which today is the
-   * precisionpaintingplus.net sending domain and NOT tomcopainting.com.
-   * Hard-coding estimating@tomcopainting.com would break every send on the day
-   * it shipped. Point COMMERCIAL_PROPOSAL_FROM_ADDRESS at it once the domain
-   * is verified.
+   * The caveat this carried — "Resend will only send from a domain verified in
+   * the PPP account, which today is precisionpaintingplus.net and NOT
+   * tomcopainting.com" — expired on 2026-09-17 when tomcopainting.com was
+   * verified. Until now the env var was unset, so proposals quietly fell
+   * through to the channel default and went out from finance@: the invoicing
+   * inbox, on a document Kim wrote.
+   *
+   * So estimating@ is the default in CODE now, the same move resend.ts made
+   * for the channel. An env var that has to be set in Vercel for the right
+   * thing to happen is a setting that is wrong by default, and this one was
+   * wrong for six days without anyone seeing it — the address only shows on
+   * the GC's copy.
    */
   const fromAddr =
-    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
+    process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS || "estimating@tomcopainting.com";
   const from = fromAddr ? `${oc.name} <${fromAddr}>` : undefined;
   // Replies from the GC go to Brendan (approver) + the ops inbox; fall back to
   // the company/actor address only if the copy list is somehow empty.

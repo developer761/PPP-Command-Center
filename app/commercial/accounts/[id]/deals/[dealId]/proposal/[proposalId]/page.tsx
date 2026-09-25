@@ -20,6 +20,8 @@
 
 import { flashMessage } from "@/lib/commercial/flash";
 import { columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
+import { GroupedNumberInput } from "@/components/commercial/grouped-number-input";
+import { listProposalActivity, type ProposalActivityEvent } from "@/lib/commercial/proposals/activity";
 import { makeCarries, FIELDS_INPUT_NAME, fieldsFor } from "@/lib/commercial/proposals/form-fields";
 import { isBackgroundSave } from "@/lib/commercial/autosave-flag";
 import { SelfClearingFlash } from "@/components/commercial/self-clearing-flash";
@@ -107,6 +109,25 @@ export const dynamic = "force-dynamic";
 function centsToDollarInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
+/**
+ * A typed quantity → a number, commas and all.
+ *
+ * Brendan 2026-09-23: "when adding the quantity if it's like 1000
+ * automatically add a comma, and same goes for everywhere else as well."
+ *
+ * The money inputs already stripped separators; quantity went through a bare
+ * `Number()`, and `Number("1,000")` is NaN — which the caller then turned into
+ * a silent fallback of 1. So formatting the field without this would have
+ * quietly repriced a 1,000-unit line as one unit. The parser is widened FIRST,
+ * before anything puts a comma in the box.
+ */
+function quantityInputToNumber(s: string, fallback = 1): number {
+  const cleaned = s.replace(/[,\s]/g, "").trim();
+  if (!cleaned) return fallback;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 function dollarsInputToCents(s: string): number {
   const cleaned = s.replace(/[$,\s]/g, "").trim();
   if (!cleaned) return 0;
@@ -252,6 +273,9 @@ async function saveProposalAction(formData: FormData) {
   if (carries("date_iso")) header.date_iso = text("date_iso") || undefined;
   if (carries("show_cip_notice")) {
     header.show_capital_improvement_notice = formData.get("show_cip_notice") === "on";
+  }
+  if (carries("use_phasing")) {
+    header.use_phasing = formData.get("use_phasing") === "on";
   }
   if (carries("gc_address_lines")) {
     const gcAddrRaw = text("gc_address_lines");
@@ -558,6 +582,9 @@ async function fileEstimateReportAction(formData: FormData) {
   try {
     const { renderProposalPdf } = await import("@/lib/commercial/proposals/pdf");
     const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const brandLogo = await (
+      await import("@/lib/commercial/operating-company/assets")
+    ).getBrandLogoBuffer().catch(() => null);
     // Same fit as the download route and the send path. This was the third of
     // three render sites and, like the send path, it skipped the fit — so a
     // report FILED to the job could be a different shape from the one an
@@ -571,6 +598,7 @@ async function fileEstimateReportAction(formData: FormData) {
         // The estimator view — quantities, unit prices, bid notes, watermark.
         mode: "internal",
         company,
+        logo: brandLogo,
         pageHeightScale,
       })
     );
@@ -594,9 +622,20 @@ async function fileEstimateReportAction(formData: FormData) {
     uploaded_by_user_id: userId,
   });
   revalidatePath(`/commercial/opportunities/${dealId}`);
+  /**
+   * Land on FILES, which is where the report actually goes.
+   *
+   * Brendan 2026-09-23: "The file to documents does [not] work either."
+   *
+   * It did work. It redirected to `?tab=docs`, which opens on its default
+   * sub-tab — Plans & Specs — while an estimating report files under Files.
+   * So the document was created, the page moved, and the file was one tab
+   * over from where you were looking, with nothing on screen saying it had
+   * been filed at all. Twice invisible.
+   */
   redirect(
     uploaded.ok
-      ? `/commercial/opportunities/${dealId}?tab=docs&estimate_filed=1`
+      ? `/commercial/opportunities/${dealId}?tab=files&estimate_filed=1`
       : `${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent(uploaded.error)}`
   );
 }
@@ -737,7 +776,7 @@ async function addLineItemAction(formData: FormData) {
   // distinct from the free-text description. Capped defensively.
   const productNameRaw = String(formData.get("product_name") ?? "").trim();
   const product_name = productNameRaw ? productNameRaw.slice(0, 200) : null;
-  const quantity = Number(String(formData.get("quantity") ?? "1"));
+  const quantity = quantityInputToNumber(String(formData.get("quantity") ?? "1"));
   const unit = String(formData.get("unit") ?? "each").trim() || "each";
   const unit_price_cents = dollarsInputToCents(String(formData.get("unit_price") ?? "0"));
   // Blank override = compute qty x unit price. Any unparseable or non-positive
@@ -753,6 +792,10 @@ async function addLineItemAction(formData: FormData) {
 
   const is_alternate = formData.get("is_alternate") === "on";
   const is_labor = formData.get("is_labor") === "on";
+  // Brendan 2026-09-23: a line the GC does not see. Priced into the TOTAL,
+  // kept off the customer's itemised list, shown on the plan report as
+  // [INTERNAL].
+  const is_internal = formData.get("is_internal") === "on";
   const phaseRaw = String(formData.get("phase") ?? "").trim();
   const phase = phaseRaw || null;
   const result = await createLineItem(
@@ -764,6 +807,7 @@ async function addLineItemAction(formData: FormData) {
       quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
       unit,
       unit_price_cents,
+      is_internal,
       is_alternate,
       phase,
       is_labor: is_labor && !is_alternate,
@@ -852,7 +896,7 @@ async function updateLineItemAction(formData: FormData) {
   // Sanitize quantity the same way the add path does — a NaN (blank/"abc")
   // otherwise slips past updateLineItem's `< 0`/`=== 0` checks and writes null,
   // dropping the row from the TOTAL (Karan 2026-07-27 audit).
-  const rawQty = Number(String(formData.get("quantity") ?? "1"));
+  const rawQty = quantityInputToNumber(String(formData.get("quantity") ?? "1"));
   // Same tolerant parse as the add path: blank or unparseable → no override.
   const overrideRawU = String(formData.get("line_total_override") ?? "").trim();
   const line_total_override_cents = overrideRawU
@@ -872,6 +916,7 @@ async function updateLineItemAction(formData: FormData) {
       unit_price_cents: dollarsInputToCents(String(formData.get("unit_price") ?? "0")),
       is_alternate: formData.get("is_alternate") === "on",
       show_price: formData.get("show_price") === "on",
+      is_internal: formData.get("is_internal") === "on",
       line_total_override_cents,
       phase,
     },
@@ -1471,12 +1516,39 @@ export default async function ProposalEditorPage({
   // labor (included in TOTAL, own PDF section). Migration 063 (2026-07-19,
   // Katie's ask): labor rows are inclusion-like (roll into TOTAL) but
   // render separately on the customer PDF so Alex can call out hourly work.
+  /**
+   * Is this proposal phased?
+   *
+   * Explicit answer wins. When it has never been answered (every proposal
+   * written before the checkbox), fall back to the data — if lines already
+   * carry phases, the boxes stay visible and the PDF keeps grouping exactly as
+   * it does today. A new default must not quietly un-phase a live proposal.
+   */
+  const activity = await listProposalActivity(proposalId);
+
+  const phasingOn =
+    proposal.header_json.use_phasing ?? lineItems.some((i) => (i.phase ?? "").trim() !== "");
+
   const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
-  // Line-item mutations are server-guarded draft-only; the editor renders them
-  // read-only past draft so a locked proposal isn't an edit→error dead-end (#2).
-  const canEditLines = proposal.status === "draft";
+  /**
+   * Line-item mutations are server-guarded; the editor mirrors the same rule so
+   * a locked proposal is not an edit→error dead-end (#2).
+   *
+   * Brendan 2026-09-23: "For the approver make it so they can edit it and make
+   * changes even if it's sent out for approval." So the approver — and only
+   * the approver — keeps the controls while it is pending_approval. The
+   * estimator is locked out the moment they send it, which is the point of
+   * sending it.
+   *
+   * This MIRRORS assertProposalEditable; it does not implement it. The server
+   * decides. If these two ever disagree the failure is a visible error, not a
+   * silent write.
+   */
+  const canEditLines =
+    proposal.status === "draft" ||
+    (proposal.status === "pending_approval" && viewerIsApprover);
   // R1b: raw non-alternate line-item sum — what the total is when there's no
   // final-price override (shown as the "leave blank to use" hint).
   const lineItemSumCents = lineItems
@@ -1733,7 +1805,15 @@ export default async function ProposalEditorPage({
             className="inline-flex items-center px-3 py-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[13px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[36px]"
             title={`Start ${proposalRef({ revision_number: proposal.revision_number + 1 })} as a fresh draft, copying all this revision's fields as a starting point. Use when the customer wants a revised quote.`}
           >
-            + New revision (R{proposal.revision_number + 1})
+            {/* Brendan 2026-09-23: "We sent the original but it says + New
+                revision R2, it should be R1 no?" — right, and the platform
+                already agreed with him everywhere else. `proposalRevisionLabel`
+                has counted the ORIGINAL as un-numbered since his 2026-09-03
+                note ("the original should have no R1"), so the original is
+                revision_number 1 with no label and the first revision is R1.
+                This button was the one place doing raw arithmetic on the
+                column instead of asking the helper, so it alone said R2. */}
+            + New revision ({proposalRevisionLabel({ revision_number: proposal.revision_number + 1 })})
           </Link>
           )}
           {/* R1d HARD GATE: draft → request approval (not direct send). */}
@@ -1815,7 +1895,14 @@ export default async function ProposalEditorPage({
                     Send back for changes
                   </SubmitButton>
                   <p className="text-[10.5px] text-ppp-charcoal-400 leading-snug">
-                    Returns R{proposal.revision_number} to draft and notifies whoever requested approval.
+                    {/* Brendan 2026-09-23: "it shouldn't be R1 — implies
+                        there's a revision to an original." It read "Returns R1
+                        to draft" on a proposal that had never been revised,
+                        because it printed the raw revision_number instead of
+                        the label helper, which counts the original as
+                        unnumbered. No number is needed here at all: there is
+                        only one proposal on this screen. */}
+                    Returns this proposal to draft and notifies whoever asked for approval.
                   </p>
                 </form>
               </details>
@@ -1839,6 +1926,11 @@ export default async function ProposalEditorPage({
                 markSentAction={sendProposalAction}
                 signatureAvailable={signatureAvailable}
               />
+              {/* Only an approver may unlock (Brendan 2026-09-23). Hidden
+                  rather than shown-and-refused: the server enforces it either
+                  way, and a button that exists only to tell you off is the
+                  dead click this platform keeps being told about. */}
+              {viewerIsApprover && (
               <form action={unlockAction} className="inline-flex">
                 {hiddenIds}
                 <ConfirmSubmitButton
@@ -1853,6 +1945,7 @@ export default async function ProposalEditorPage({
                   Unlock to edit
                 </ConfirmSubmitButton>
               </form>
+              )}
             </>
           )}
           {/* Karan 2026-07-15: Reopen button on Won/Lost proposals.
@@ -2299,11 +2392,27 @@ export default async function ProposalEditorPage({
               </div>
             </div>
 
-            {/* Capital-improvement banner toggle. Defaults from the job's tax
-                treatment now — picking "Capital improvement" below ticks it. */}
+            {/* Capital-improvement banner. ON by default for every proposal
+                (Brendan 2026-09-23) — untick it for the rare job that should
+                go out without it. It used to default from the job's tax
+                treatment, so it printed only on capital-improvement jobs. */}
             <label className="flex items-center gap-2.5 rounded-lg border border-amber-200 bg-amber-50/50 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
-              <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? false} className="w-4 h-4 accent-amber-600" />
+              <input type="checkbox" name="show_cip_notice" defaultChecked={proposal.header_json.show_capital_improvement_notice ?? true} className="w-4 h-4 accent-amber-600" />
               <span className="text-[12.5px] text-ppp-charcoal-700">Show yellow &ldquo;Capital Improvement / NY Sales Tax&rdquo; banner on the PDF</span>
+            </label>
+
+            {/* Brendan 2026-09-23: "make it a checkbox instead, it's not that
+                important, so if I check the phasing then it gives me an option
+                to put it in." Phase grouping always worked, but the only way in
+                was a small Phase box on every line — easy to miss on the
+                proposals that never need one. This decides it once, and the
+                per-line boxes appear only when it is on. */}
+            <label className="flex items-center gap-2.5 rounded-lg border border-ppp-charcoal-200 px-3.5 py-2.5 cursor-pointer min-h-[44px] sm:min-h-0">
+              <input type="checkbox" name="use_phasing" defaultChecked={phasingOn} className="w-4 h-4 accent-cc-brand-600" />
+              <span className="text-[12.5px] text-ppp-charcoal-700">
+                Break the scope into phases
+                <span className="block text-[11px] text-ppp-charcoal-500">Adds a Phase box to each line, and groups them under headings on the PDF.</span>
+              </span>
             </label>
           </div>
         </EditorSection>
@@ -2391,7 +2500,24 @@ export default async function ProposalEditorPage({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <label className="block">
                   <span className={LABEL_CLS}>Treatment</span>
-                  <select name="tax_exempt" defaultValue={columnsToTaxChoice(opp)} className={INPUT_CLS}>
+                  {/* Brendan 2026-09-23: "Sales tax to capital improvement
+                      default when building proposal." Tomco's commercial work
+                      is nearly all new construction, which is ST-124 — so an
+                      unanswered job should arrive here already saying so
+                      rather than "follow the customer", which is the one
+                      choice that leaves the question open.
+
+                      Only the UNANSWERED case is defaulted. A job somebody has
+                      explicitly marked taxable, or exempt-by-certificate,
+                      shows back exactly what was saved — the default must
+                      never quietly overwrite an answer. */}
+                  <select
+                    name="tax_exempt"
+                    defaultValue={
+                      columnsToTaxChoice(opp) === "inherit" ? "capital_improvement" : columnsToTaxChoice(opp)
+                    }
+                    className={INPUT_CLS}
+                  >
                     <option value="inherit">Follow the customer{account?.tax_exempt ? " (exempt)" : " (taxable)"}</option>
                     <option value="exempt">Exempt — certificate on file</option>
                     <option value="capital_improvement">Capital improvement — no tax (ST-124)</option>
@@ -2450,6 +2576,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No inclusions yet — add the first one below." : "No inclusions."}</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={inclusions}
               accountId={accountId}
               dealId={dealId}
@@ -2474,6 +2601,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2505,6 +2633,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">No alternates.</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={alternates}
               accountId={accountId}
               dealId={dealId}
@@ -2571,6 +2700,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2632,6 +2762,7 @@ export default async function ProposalEditorPage({
             <p className="text-[13px] text-ppp-charcoal-500 italic">{canEditLines ? "No labor rows — add hours + rate below if you're billing labor separately." : "No labor rows."}</p>
           ) : canEditLines ? (
             <LineItemsTable
+              phasing={phasingOn}
               rows={laborRows}
               accountId={accountId}
               dealId={dealId}
@@ -2649,6 +2780,7 @@ export default async function ProposalEditorPage({
           )}
           {canEditLines && (
             <AddLineItemForm
+              phasing={phasingOn}
               accountId={accountId}
               dealId={dealId}
               proposalId={proposalId}
@@ -2843,6 +2975,15 @@ export default async function ProposalEditorPage({
         Changes save automatically. Line items save independently below.
       </p>
 
+      {/* Brendan 2026-09-23: "Add an activity section for the proposal… if he
+          puts it to get approved, he adds a note when he requests changes etc,
+          makes changes as well etc."
+
+          Read from the audit log the platform has kept all along, so it covers
+          everything that happened before this section existed — not a new
+          history starting today. */}
+      <ProposalActivity events={activity} />
+
       {/* Danger zone — drafts only. softDeleteProposal rejects anything else,
           so on a sent/won/lost proposal this button was a guaranteed trip to
           "?error=Only draft proposals can be deleted": every other control on
@@ -2928,6 +3069,57 @@ export default async function ProposalEditorPage({
 
 // ─────────────── sub-components ───────────────
 
+/**
+ * What has happened to this proposal, newest first.
+ *
+ * Deliberately plain: who, what, when, and the note if there was one. An
+ * approver sending it back types a reason, and that reason is the single most
+ * useful line on this screen — so it is shown in full rather than truncated
+ * into a tooltip.
+ */
+function ProposalActivity({ events }: { events: ProposalActivityEvent[] }) {
+  if (events.length === 0) return null;
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  return (
+    <section className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-ppp-charcoal-50/60">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide text-ppp-charcoal-500">Activity</h2>
+      </div>
+      <ol className="divide-y divide-ppp-charcoal-50">
+        {events.map((e, i) => (
+          <li key={`${e.at}-${i}`} className="px-4 py-2.5 flex items-start gap-3">
+            <span
+              aria-hidden
+              className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${
+                e.kind === "status" ? "bg-cc-brand-600" : "bg-ppp-charcoal-200"
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] text-ppp-charcoal">
+                {e.summary}
+                {e.actor && <span className="text-ppp-charcoal-500"> · {e.actor}</span>}
+              </div>
+              {e.note && (
+                <div className="mt-1 text-[12.5px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  {e.note}
+                </div>
+              )}
+            </div>
+            <span className="text-[11.5px] text-ppp-charcoal-400 tabular-nums shrink-0">{when(e.at)}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function LineItemsTable({
   rows,
   accountId,
@@ -2937,7 +3129,12 @@ function LineItemsTable({
   deleteAction,
   products,
   backHref,
+  phasing = false,
 }: {
+  /** Show the per-line Phase box — the proposal's phasing decision. A row that
+   *  already HAS a phase keeps its box regardless, or the only way to clear a
+   *  stray one would be to turn phasing back on to find it. */
+  phasing?: boolean;
   rows: CommercialProposalLineItem[];
   accountId: string;
   dealId: string;
@@ -3045,13 +3242,15 @@ function LineItemsTable({
             </label>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <label className="block" title="Groups this item under a section header on the PDF. Leave blank for ungrouped.">
-                <span className={LABEL_CLS}>Phase</span>
-                <input type="text" name="phase" defaultValue={r.phase ?? ""} maxLength={60} placeholder="—" className={INPUT_CLS} />
-              </label>
+              {(phasing || (r.phase ?? "").trim() !== "") && (
+                <label className="block" title="Groups this item under a section header on the PDF. Leave blank for ungrouped.">
+                  <span className={LABEL_CLS}>Phase</span>
+                  <input type="text" name="phase" defaultValue={r.phase ?? ""} maxLength={60} placeholder="—" className={INPUT_CLS} />
+                </label>
+              )}
               <label className="block">
                 <span className={LABEL_CLS}>Qty</span>
-                <input type="text" inputMode="decimal" name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
+                <GroupedNumberInput name="quantity" defaultValue={String(r.quantity)} className={`${INPUT_CLS} tabular-nums`} />
               </label>
               <label className="block">
                 <span className={LABEL_CLS}>Unit</span>
@@ -3110,6 +3309,16 @@ function LineItemsTable({
               <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
                 <input type="checkbox" name="show_price" defaultChecked={r.show_price === true} className="w-4 h-4 accent-cc-brand-600" />
                 Show this line&rsquo;s price on the customer proposal
+              </label>
+            )}
+            {/* Toggle on an existing line, so a line added to the wrong side
+                can be moved without deleting and retyping it. Alternates are
+                excluded for the same reason as the add form: an alternate the
+                GC cannot see is a contradiction. */}
+            {!r.is_alternate && !r.is_labor && (
+              <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
+                <input type="checkbox" name="is_internal" defaultChecked={r.is_internal === true} className="w-4 h-4 accent-ppp-navy-600" />
+                Internal line — not shown to the customer
               </label>
             )}
 
@@ -3235,7 +3444,10 @@ function AddLineItemForm({
   isAlternate,
   isLabor = false,
   backHref,
+  phasing = false,
 }: {
+  /** Show the per-line Phase box (the proposal's "Break the scope into phases"). */
+  phasing?: boolean;
   accountId: string;
   dealId: string;
   proposalId: string;
@@ -3323,14 +3535,18 @@ function AddLineItemForm({
       </label>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {/* F.6: phase groups items under section headers on the PDF. */}
-        <label className="block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped.">
-          <span className={LABEL_CLS}>Phase</span>
-          <input type="text" name="phase" maxLength={60} placeholder="e.g. Phase 1" className={INPUT_CLS} />
-        </label>
+        {/* Phase box only when the proposal is phased — see the "Break the
+            scope into phases" checkbox. Hidden, not removed: a proposal that
+            already has phases still shows it. */}
+        {phasing && (
+          <label className="block" title="Groups this item under a section header on the PDF, e.g. 'Phase 1'. Leave blank for ungrouped.">
+            <span className={LABEL_CLS}>Phase</span>
+            <input type="text" name="phase" maxLength={60} placeholder="e.g. Phase 1" className={INPUT_CLS} />
+          </label>
+        )}
         <label className="block">
           <span className={LABEL_CLS}>{isLabor ? "Hours" : "Qty"}</span>
-          <input type="text" inputMode="decimal" name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
+          <GroupedNumberInput name="quantity" defaultValue={isLabor ? "8" : "1"} className={`${INPUT_CLS} tabular-nums`} />
         </label>
         <label className="block">
           <span className={LABEL_CLS}>Unit</span>
@@ -3353,6 +3569,26 @@ function AddLineItemForm({
         <label className="inline-flex items-center gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none">
           <input type="checkbox" name="show_price" defaultChecked className="w-4 h-4 accent-cc-brand-600" />
           Show this line&rsquo;s price on the client PDF
+        </label>
+      )}
+
+      {/* Brendan 2026-09-23: "Add an internal line item button on the proposal
+          when making the inclusions."
+
+          A checkbox rather than a second Add button: the form is identical
+          either way, and two buttons that differ by one boolean is how the
+          wrong one gets pressed. Not offered on alternates or labor — an
+          alternate the GC cannot see is a contradiction, and labor already
+          prints as its own section. */}
+      {!isAlternate && !isLabor && (
+        <label className="inline-flex items-start gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none rounded-lg border border-ppp-charcoal-200 px-3 py-2">
+          <input type="checkbox" name="is_internal" className="w-4 h-4 mt-0.5 accent-ppp-navy-600" />
+          <span>
+            Internal line — not shown to the customer
+            <span className="block text-[11px] text-ppp-charcoal-500">
+              Still priced into the TOTAL. Appears on the Plan report only, marked INTERNAL.
+            </span>
+          </span>
         </label>
       )}
 

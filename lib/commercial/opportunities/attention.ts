@@ -349,7 +349,24 @@ export function nextStep(
   if (i.proposalCount === 0) {
     return {
       label: "Build a proposal",
-      href: `/commercial/opportunities/${oppId}?tab=proposals`,
+      /**
+       * Straight into the BUILDER, not the Proposals tab.
+       *
+       * Brendan 2026-09-23: "Build a proposal brings us to the actual building
+       * the proposal page." Karan, same day: "if a proposal was not built then
+       * make the first one and bring us to that page."
+       *
+       * The button used to land on the deal's Proposals tab, where you then had
+       * to find and press a second button to do the thing the first one named.
+       * `/proposal/new` creates one — reusing an empty draft if there is one,
+       * so pressing it twice does not leave two — and redirects to the editor.
+       *
+       * Falls back to the tab when the account isn't in scope, because a link
+       * to /accounts/undefined/… is worse than one extra click.
+       */
+      href: i.accountId
+        ? `/commercial/accounts/${i.accountId}/deals/${oppId}/proposal/new`
+        : `/commercial/opportunities/${oppId}?tab=proposals`,
       why: "Nothing is priced yet.",
     };
   }

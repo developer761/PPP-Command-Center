@@ -39,6 +39,21 @@ export async function guardExport(
      *  it, an account manager outside the Finance folder would see a working
      *  Export button on Accounting that 403s. */
     orAccounting?: boolean;
+    /**
+     * REQUIRE the Accounting roles (admin / account manager).
+     *
+     * For an export that only exists on the Accounting page and carries the
+     * company's money — the transactions ledger, the sales-tax return. Those
+     * two called `guardExport()` with NO options at all while their docblocks
+     * claimed they were "gated… the same rule as the receivables and AR
+     * exports". They were not: bare `guardExport()` admits any signed-in
+     * non-crew user, so a rep could fetch the whole money-in/money-out ledger
+     * by URL.
+     *
+     * Distinct from `people`, which is about per-person PAY. Same role test,
+     * different reason — and a reader should not have to know they coincide.
+     */
+    accounting?: boolean;
   } = {}
 ): Promise<ExportGuardResult> {
   const supabase = await createClient();
@@ -56,6 +71,13 @@ export async function guardExport(
     return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
   if (opts.people) {
+    const p = prof as { role?: string | null; is_admin?: boolean | null } | null;
+    const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(auth.user.email));
+    if (role !== "admin" && role !== "account_manager") {
+      return { ok: false, response: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
+    }
+  }
+  if (opts.accounting) {
     const p = prof as { role?: string | null; is_admin?: boolean | null } | null;
     const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(auth.user.email));
     if (role !== "admin" && role !== "account_manager") {

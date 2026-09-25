@@ -56,7 +56,16 @@ export default async function FieldOpsCalendarPage({
     <div className="pb-8">
       <div className="mb-4">
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Calendar</h1>
-        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Click any day to put crew on a work order — set their hours and a note, and they&rsquo;re emailed automatically. Click a name to see their shift and clock-in status.</p>
+        <p className="text-[13px] text-ppp-charcoal-500 mt-1">Click any day to put crew on a work order — set their hours and a note, and they&rsquo;re emailed automatically. </p>
+        {/* DESKTOP ONLY, because the behaviour is. On a phone the calendar
+            becomes an agenda and each day is one button, so the crew names
+            inside it are plain text — tapping one opens the day, not the
+            person. Nesting a button inside that button would be invalid
+            markup and swallow the tap, so the honest fix is to stop promising
+            it where it does not happen. */}
+        <p className="text-[13px] text-ppp-charcoal-500">
+          <span className="hidden sm:inline">Click a name to see their shift and clock-in status.</span>
+          <span className="sm:hidden">Open a day to see who is on it and their clock-in status.</span></p>
       </div>
       <FieldOpsCalendar
         monthStart={periodStart}

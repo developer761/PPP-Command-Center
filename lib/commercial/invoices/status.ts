@@ -21,6 +21,7 @@ import {
   type InvoiceStatus,
 } from "./constants";
 import { logStatusChange, recomputeSubtotal } from "./db";
+import { logDelete, logUpdate } from "@/lib/commercial/audit-log";
 
 export function isTransitionAllowed(
   from_status: InvoiceStatus,
@@ -158,9 +159,36 @@ export async function releaseTickedChangeOrders(invoiceId: string): Promise<numb
   for (const l of (lines ?? []) as { change_order_id: string | null }[]) if (l.change_order_id) coIds.add(l.change_order_id);
   for (const m of (ms ?? []) as { change_order_id: string | null }[]) if (m.change_order_id) coIds.add(m.change_order_id);
   if (coIds.size === 0) return 0;
-  await sb.from("commercial_invoice_line_items").delete().eq("invoice_id", invoiceId).not("change_order_id", "is", null);
-  await sb.from("commercial_invoice_milestones").update({ deleted_at: new Date().toISOString() }).eq("invoice_id", invoiceId).not("change_order_id", "is", null).is("deleted_at", null);
-  await sb.from("commercial_change_orders").update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() }).in("id", [...coIds]).eq("invoiced_invoice_id", invoiceId);
+  // ALL THREE WRITES CHECKED. This function returned `coIds.size` — what it
+  // INTENDED to free — and the caller reports that to the user as
+  // `freedChangeOrders`. If the third write fails, the mig-093 unique slot
+  // stays held, the change order reads as un-billed, and every attempt to
+  // re-tick it dies on a raw 23505 with no way out of the UI. The docblock
+  // above already describes that outcome; nothing was checking for it.
+  const { error: lineErr } = await sb
+    .from("commercial_invoice_line_items")
+    .delete()
+    .eq("invoice_id", invoiceId)
+    .not("change_order_id", "is", null);
+  const { error: msErr } = await sb
+    .from("commercial_invoice_milestones")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("invoice_id", invoiceId)
+    .not("change_order_id", "is", null)
+    .is("deleted_at", null);
+  const { error: coErr } = await sb
+    .from("commercial_change_orders")
+    .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
+    .in("id", [...coIds])
+    .eq("invoiced_invoice_id", invoiceId);
+  if (lineErr || msErr || coErr) {
+    console.error(
+      `[commercial/invoices] releaseTickedChangeOrders: invoice ${invoiceId} — the change orders may still read as billed and refuse to be re-ticked:`,
+      lineErr?.message ?? msErr?.message ?? coErr?.message,
+    );
+    // Report what was actually freed, not what was attempted.
+    return 0;
+  }
   // Recompute the invoice subtotal off the REMAINING (base) lines so a voided /
   // soft-deleted invoice — and any later restore of it — doesn't carry a phantom
   // CO charge (audit #2). recomputeSubtotal writes subtotal_cents unconditionally.
@@ -177,13 +205,19 @@ export async function softDeleteInvoice(
   actor_user_id: string
 ): Promise<{ ok: boolean; error?: string; freedChangeOrders?: number }> {
   const sb = commercialDb();
+  // The WHOLE row, not just the status. `commercial_audit_log` records a
+  // delete as `before_json` and nothing else, so whatever is not captured here
+  // is gone from the trail for good — including the amount and what had been
+  // collected, which are the two things anyone asking "where did this invoice
+  // go" actually needs.
   const { data: before } = await sb
     .from("commercial_invoices")
-    .select("status, deleted_at")
+    .select("*")
     .eq("id", invoice_id)
     .maybeSingle();
-  if (!before || before.deleted_at) return { ok: false, error: "invoice_not_found" };
-  const from_status = before.status as InvoiceStatus;
+  if (!before || (before as { deleted_at: string | null }).deleted_at)
+    return { ok: false, error: "invoice_not_found" };
+  const from_status = (before as { status: string }).status as InvoiceStatus;
   // CAS on deleted_at IS NULL so two concurrent deletes don't both log.
   const { data: deleted, error } = await sb
     .from("commercial_invoices")
@@ -202,6 +236,15 @@ export async function softDeleteInvoice(
   // back (audit #1/#2). softDeleteInvoice reports the freed count so the caller
   // can tell the user the undo won't restore change-order charges.
   await logStatusChange(invoice_id, from_status, "void", actor_user_id, "Invoice deleted");
+  // AND the platform-wide audit log, which had never recorded an invoice
+  // deletion — zero rows, all time, while 28 other invoice events were there.
+  // The status log above is per-invoice: you can only read it by opening the
+  // invoice, and a deleted invoice is hidden everywhere, so the one event you
+  // would go looking for was the one you could not reach. Found 2026-09-23
+  // tracing a $66,833.31 gap the Salesforce reconcile reported; answering "who
+  // removed this and when" took a database query, and outside this repo
+  // nobody could have answered it at all.
+  await logDelete("commercial_invoices", invoice_id, before, actor_user_id);
   return { ok: true, freedChangeOrders };
 }
 
@@ -239,6 +282,16 @@ export async function restoreInvoice(
     before.status as InvoiceStatus,
     actor_user_id,
     "Invoice restored (undo)"
+  );
+  // Pair for the logDelete above. An audit log showing the delete and not the
+  // undo is worse than one showing neither: it reports money as removed that
+  // is back on the books.
+  await logUpdate(
+    "commercial_invoices",
+    invoice_id,
+    before,
+    { ...before, deleted_at: null },
+    actor_user_id,
   );
   return { ok: true };
 }

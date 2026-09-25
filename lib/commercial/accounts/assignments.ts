@@ -473,11 +473,29 @@ async function notifyAssignment(
     );
     return;
   }
+  /**
+   * DON'T EMAIL A LINK THAT WILL BOUNCE THEM.
+   *
+   * A crew login carries `has_new_platform_access` by definition — the layout
+   * requires it before the crew branch — so a painter appears in the Assign
+   * dropdown. Assign one and this sends "View the account: …/commercial/
+   * accounts/…", which redirects them to /commercial/crew. The bell row has
+   * been gated; the email had no access check at all.
+   */
+  {
+    const { crewOnlyStatus } = await import("@/lib/commercial/crew-access");
+    if ((await crewOnlyStatus(user_id)) !== "not-crew") {
+      console.info(
+        `[commercial/assignments] ${user_id} is crew-only — assigned, not emailed a link they cannot open`,
+      );
+      return;
+    }
+  }
   const assignerName =
     (byRes.data as { sf_user_name?: string; email?: string } | null)
       ?.sf_user_name ||
     (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
-    "PPP admin";
+    "An admin";
   const roleLabel = assignmentRoleLabel(role);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const accountUrl = `${baseUrl}/commercial/accounts/${account_id}`;

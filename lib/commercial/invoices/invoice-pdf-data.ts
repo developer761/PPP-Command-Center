@@ -113,6 +113,37 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
   const paymentLists = await Promise.all(
     billableJobInvoices.map((i) => listInvoicePayments(i.id).catch(() => []))
   );
+
+  /**
+   * AIA CASH COUNTS TOO, on a job billed both ways.
+   *
+   * `totalChargesCents` below is the WHOLE contract plus approved change
+   * orders, regardless of which ledger billed it — so on a job that has both
+   * an invoice and paid AIA certificates, the Financial Summary subtracted
+   * only the invoice payments and handed the GC a Current Balance overstated
+   * by everything collected through the certificates. That block is, in the
+   * words of its own docblock, "the arithmetic a GC's AP department
+   * reconciles against".
+   *
+   * Mixing the ledgers is permitted on purpose — the double-bill check warns
+   * and never rejects — and there is one such job on the book today.
+   */
+  const aiaPaymentRows = await (async () => {
+    try {
+      const { listAiaApplications } = await import("@/lib/commercial/aia/db");
+      const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
+      const apps = await listAiaApplications(opp.id);
+      const issued = apps.filter((a) => a.status !== "draft");
+      const lists = await Promise.all(
+        issued.map((a) => listAiaPayments(a.id).catch(() => [])),
+      );
+      return lists.flat();
+    } catch {
+      // A job with no AIA at all, or the table absent — the invoice PDF must
+      // still render.
+      return [];
+    }
+  })();
   const contract = buildContractSummary({
     originalContractCents: contractBase,
     changeOrders: jobChangeOrders.map((c) => ({
@@ -125,9 +156,16 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
       subtotalCents: i.subtotal_cents,
       totalCents: i.total_cents,
     })),
-    payments: paymentLists
-      .flat()
-      .map((pm) => ({ dateIso: pm.paid_at ?? null, amountCents: pm.amount_cents })),
+    payments: [
+      ...paymentLists.flat().map((pm) => ({
+        dateIso: pm.paid_at ?? null,
+        amountCents: pm.amount_cents,
+      })),
+      ...aiaPaymentRows.map((pm) => ({
+        dateIso: pm.paid_at ?? null,
+        amountCents: pm.amount_cents,
+      })),
+    ],
   });
 
   const projectAddress =

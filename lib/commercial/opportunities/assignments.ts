@@ -359,8 +359,13 @@ async function notifyAssignment(
       .from("commercial_opportunities")
       // Phase B: pull client_name + property_street so derivedOppName can
       // return the CEO's {account} - {client} - {location} format.
+      // title_override + title_override_mode: the assignment EMAIL names the
+      // job, and without the nickname it names it differently from every
+      // screen the recipient will then open. Selecting the nickname without
+      // its mode is the other half of the trap — `npm run check:columns`
+      // fails the build on that pair now.
       .select(
-        "title, client_name, property_street, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)",
+        "title, title_override, title_override_mode, client_name, property_street, account:commercial_accounts!commercial_opportunities_account_id_fkey(company_name)",
       )
       .eq("id", opportunity_id)
       .maybeSingle(),
@@ -379,6 +384,8 @@ async function notifyAssignment(
   ]);
   type OppRow = {
     title?: string;
+    title_override?: string | null;
+    title_override_mode?: string | null;
     client_name?: string | null;
     property_street?: string | null;
     account?:
@@ -394,6 +401,8 @@ async function notifyAssignment(
     ? derivedOppName(
         {
           title: oppData.title ?? "an opportunity",
+          title_override: oppData.title_override ?? null,
+          title_override_mode: oppData.title_override_mode ?? null,
           client_name: oppData.client_name ?? null,
           property_street: oppData.property_street ?? null,
         },
@@ -407,11 +416,22 @@ async function notifyAssignment(
     );
     return;
   }
+  // Same as the account path: a crew login is assignable but the link in this
+  // email redirects them to /commercial/crew. Assign them, don't email them.
+  {
+    const { crewOnlyStatus } = await import("@/lib/commercial/crew-access");
+    if ((await crewOnlyStatus(user_id)) !== "not-crew") {
+      console.info(
+        `[commercial/opportunities/assignments] ${user_id} is crew-only — assigned, not emailed a link they cannot open`,
+      );
+      return;
+    }
+  }
   const assignerName =
     (byRes.data as { sf_user_name?: string; email?: string } | null)
       ?.sf_user_name ||
     (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
-    "PPP admin";
+    "An admin";
   const roleLabel = opportunityAssignmentRoleLabel(role);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const oppUrl = `${baseUrl}/commercial/opportunities/${opportunity_id}`;

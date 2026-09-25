@@ -198,17 +198,25 @@ async function autoFileCloseoutPackage(accountId: string, dealId: string, pkgId:
       signature_name: oc.signature_name,
       signature_title: oc.signature_title,
     };
-    // The signature buffer and the warranty renderer are deliberately NOT
-    // pulled in here any more — nothing on this path may issue a warranty.
-    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
+    // The WARRANTY RENDERER is deliberately not pulled in here — nothing on
+    // this path may issue a warranty, and that stays true.
+    //
+    // The signature buffer is, though, and only for the transmittal: the
+    // cover letter went out unsigned while a comment elsewhere claimed it was
+    // signed. Signing a transmittal is not issuing anything; it is the
+    // document a close-out clerk files and comes back to.
+    const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import(
+      "@/lib/commercial/operating-company/assets"
+    );
     const logo = await getBrandLogoBuffer();
+    const signature = await getBrandSignatureBuffer().catch(() => null);
     const { renderCloseoutTransmittalPdf } = await import("@/lib/commercial/closeout/pdf");
     // One page — a transmittal that runs to two is a transmittal with a
     // second sheet nobody staples on.
     const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
     const transmittal = (
       await renderFitToOnePage((pageHeightScale) =>
-        renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo, pageHeightScale })
+        renderCloseoutTransmittalPdf({ pkg, items, dealName, company, logo, signature, pageHeightScale })
       )
     ).bytes;
     await autoFileOpportunityDocument({

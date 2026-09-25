@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   billedPct,
   dealStandingLines,
@@ -111,6 +112,38 @@ describe("what else earns a line", () => {
     expect(find(deal({ retainageCents: 242_50 }), "Retainage held")).toMatchObject({
       tone: "plain",
     });
+  });
+
+  /**
+   * AND THE CALLER HAS TO AGREE, which is where this actually broke.
+   *
+   * The assertion above passed the whole time. It tests the LABEL — that
+   * retainage is listed as held rather than owed — and the function was always
+   * right about that. The page then handed it `invoicedCents - collectedCents`
+   * for "GC owes", which INCLUDES the retainage, so the panel counted it once
+   * inside the owed figure and printed it again beneath as though it were
+   * additional.
+   *
+   * Live on AIREF Building #1: "GC owes $123k" beside the same page's mini P&L
+   * reading "Owed now $113k · plus $9.5k retainage at close-out". Two answers
+   * to one question, three inches apart, and $9,471.71 of the difference was
+   * money the GC cannot be chased for yet.
+   *
+   * A pure-function test cannot see a caller. This is the seam, asserted on
+   * the source, because reconciling the real figures needs a database.
+   */
+  it("is fed a retainage-free figure by the deal page", () => {
+    const page = readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    // The dealStanding object must take the folded open balance, not a fresh
+    // billed-minus-collected subtraction.
+    expect(page).toContain("outstandingCents: pathFin");
+    expect(page).toContain("pathFin.openBalanceCents");
+    expect(
+      /outstandingCents:\s*Math\.max\(0,\s*invoicedCents\s*-\s*collectedCents\),/.test(page),
+      "billed minus collected includes retainage, which the panel lists separately",
+    ).toBe(false);
   });
 
   it("flags over-billing instead of printing a negative left-to-bill", () => {

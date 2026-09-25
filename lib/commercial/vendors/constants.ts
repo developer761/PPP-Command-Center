@@ -53,7 +53,11 @@ export function vendorKindLabel(kind: string): string {
  * "other".
  */
 export function vendorKindForCategory(category: string | null | undefined): VendorKind {
-  return category === "labor" || category === "subcontractor" ? "labor" : "retail";
+  // employee_labor too: a payout to Tomco's own crew is somebody's time,
+  // and the payee list for it should offer people, not paint suppliers.
+  return category === "labor" || category === "employee_labor" || category === "subcontractor"
+    ? "labor"
+    : "retail";
 }
 
 /**

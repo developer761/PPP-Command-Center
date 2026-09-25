@@ -29,6 +29,7 @@
     "verify:workflow": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-workflow-e2e.mjs",
     "verify:campaign-edit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-campaign-edit-e2e.mjs",
     "check:columns": "node --env-file=.env.local scripts/check-selected-columns.mjs",
+    "check:upload-limit": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/check-upload-limit.mjs",
     "import:rules": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-class-a-rules.mjs",
     "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs",
     "verify:pii": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-no-pii-e2e.mjs",
@@ -41,7 +42,10 @@
     "verify:port-readiness": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-port-readiness-e2e.mjs",
     "verify:repair": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-repair-e2e.mjs",
     "verify:reply-delay": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-reply-delay-e2e.mjs",
-    "verify:reply-to": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-reply-to-e2e.mjs"
+    "verify:reply-to": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-reply-to-e2e.mjs",
+    "check:soft-delete-uniques": "node scripts/check-soft-delete-uniques.mjs",
+    "check:form-fields": "node scripts/check-duplicate-form-fields.mjs",
+    "check:report-folders": "node --env-file=.env.local scripts/check-report-folders.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -57,7 +61,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-map-gl": "^8.1.1",
-    "react-virtuoso": "^4.18.7"
+    "react-virtuoso": "^4.18.7",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { mondayOf, addDaysIso, todayEtIso } from "./schedule";
+import { listPendingApprovals } from "./approvals";
 
 /**
  * R10.7 Field Ops Overview KPIs. All numbers line up with the rest of the
@@ -95,7 +96,25 @@ export async function getFieldOpsOverview(): Promise<FieldOpsOverview> {
     // would undercount jobsInProgress / readyToSchedule (audit round 14).
     paginateAll<{ id: string; status: string }>(() => sb.from("commercial_jobs").select("id, status").is("deleted_at", null).order("id")),
     sb.from("commercial_employees").select("id, display_name, worker_type"),
-    sb.from("commercial_time_entries").select("id", { count: "exact", head: true }).in("status", ["submitted", "questioned"]),
+    /**
+     * THE SAME QUEUE THE APPROVALS PAGE SHOWS, not a raw status count.
+     *
+     * This counted every submitted/questioned row. The approvals page drops
+     * empty entries belonging to deactivated people — 0h rows on the
+     * "(old company entry)" duplicates the Salesforce migration left behind —
+     * and its docblock explains at length why they are not work to review.
+     *
+     * Only one side of that seam was updated. So Field Ops Overview said
+     * "Time to review 9 →", the page it links to showed ONE, and eight of the
+     * nine could never be cleared by anyone: 0-hour entries against employees
+     * who no longer exist. A permanent amber counter that resolves to nothing
+     * is how people stop believing every other number on the page.
+     *
+     * Counting the list itself rather than re-expressing its rule — the rule
+     * needs a join PostgREST cannot do in one query, and a second copy of it
+     * is what produced this in the first place.
+     */
+    listPendingApprovals().then((rows) => ({ count: rows.length })),
     sb
       .from("commercial_assignments")
       .select("job_id")

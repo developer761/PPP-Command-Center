@@ -461,3 +461,52 @@ describe("the sign-and-return block", () => {
     expect(await pdfPageCount(r.bytes)).toBe(1);
   });
 });
+
+describe("the letterhead logo", () => {
+  /**
+   * Karan 2026-07-31: "ONE configurable operating company (name/address/phone/
+   * logo/letterhead/signature) that flows into EVERY generated doc."
+   *
+   * The proposal did not. It read `public/brand/tomco-logo.jpg` off disk and
+   * cached it at MODULE LOAD, so uploading a new logo in Settings changed the
+   * invoice, the AIA, the warranty and the work order, and left the proposal —
+   * the document a GC actually reads — on the old image. Nothing failed; it
+   * simply kept printing yesterday's brand.
+   *
+   * Asserting on the source would not have caught it: the call looked correct.
+   * So this renders the SAME proposal with two different images and requires
+   * the bytes to differ. An ignored argument makes them identical, which is
+   * exactly the bug.
+   */
+  it("prints the logo it is given, not one baked in at module load", async () => {
+    const bundled = readFileSync("public/brand/tomco-logo.jpg");
+    const other = readFileSync("public/brand/logo-official.png");
+    expect(Buffer.compare(bundled, other)).not.toBe(0); // the fixtures differ
+
+    const [a, b] = await Promise.all([
+      renderProposalPdf({ proposal: proposal(), ...ARGS, logo: bundled }),
+      renderProposalPdf({ proposal: proposal(), ...ARGS, logo: other }),
+    ]);
+    expect(a.toString("latin1").startsWith("%PDF")).toBe(true);
+    expect(b.toString("latin1").startsWith("%PDF")).toBe(true);
+
+    // NOT a byte comparison. Two renders of the same document already differ —
+    // react-pdf stamps something per run — so `bytes differ` passes whatever
+    // the code does, which is a check that cannot fail. It was written that
+    // way first and proved it by passing against the broken version.
+    //
+    // These two can only be true if the image handed in is the one embedded:
+    // a JPEG rides in a DCTDecode stream and a PNG does not, and the overall
+    // size follows the image, stable per logo across runs.
+    expect(a.toString("latin1").includes("DCTDecode"), "the JPEG was not embedded").toBe(true);
+    expect(b.toString("latin1").includes("DCTDecode"), "a PNG render still carries a JPEG stream — the argument was ignored").toBe(false);
+    expect(Math.abs(a.length - b.length), "both renders are the same size — the logo argument is being ignored").toBeGreaterThan(1000);
+  }, 60_000);
+
+  it("still renders when no logo is supplied", async () => {
+    // Falls back to the bundled file, then to the text wordmark. A missing
+    // asset must never fail a customer-facing send.
+    const buf = await renderProposalPdf({ proposal: proposal(), ...ARGS });
+    expect(buf.toString("latin1").startsWith("%PDF")).toBe(true);
+  }, 60_000);
+});

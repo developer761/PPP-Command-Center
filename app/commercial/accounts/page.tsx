@@ -118,7 +118,7 @@ async function bulkAssignAccountsAction(formData: FormData) {
     redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Select at least one account first."));
   }
   if (!UUID_RE.test(user_id)) {
-    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Pick a PPP staff member."));
+    redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Pick a staff member."));
   }
   if (!ASSIGNMENT_ROLES.includes(role)) {
     redirect("/commercial/accounts?bulk_error=" + encodeURIComponent("Pick a role."));
@@ -393,7 +393,7 @@ export default async function CommercialAccountsPage({
               Accounts
             </h1>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              The companies PPP works with. Every commercial project starts on an account.
+              The companies we work with. Every commercial project starts on an account.
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1269,7 +1269,7 @@ function AccountRow({
                       icon="star"
                       tone="amber"
                       label="Repeat business"
-                      title={`PPP has won ${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} with this account.`}
+                      title={`${overview.won_opps_count} bid${overview.won_opps_count === 1 ? "" : "s"} won with this account.`}
                     />
                   )}
                 </div>

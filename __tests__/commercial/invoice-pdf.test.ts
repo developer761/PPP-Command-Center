@@ -123,3 +123,61 @@ describe("invoice page count", () => {
     expect(Math.round(size.height)).toBe(792);
   });
 });
+
+/**
+ * A LUMP-SUM INVOICE MUST NOT APOLOGISE FOR ITSELF.
+ *
+ * Mary sent one in on 2026-09-24: SF-00315403 to J & L Property Investors,
+ * $3,208.13, printing "No line items on this invoice." directly above
+ * BALANCE DUE on the copy the customer receives.
+ *
+ * The data was not missing. 88 of the 95 live invoices — $1.98M — came from
+ * Salesforce, where a work order carries ONE agreed figure and no line detail,
+ * and the importer deliberately stores that subtotal rather than inventing
+ * lines for it. So the document was describing a defect that was not there,
+ * which is its own defect.
+ *
+ * react-pdf compresses its content streams, so asserting the WORDS inside the
+ * buffer proves nothing either way — a text assertion here would pass whatever
+ * the component printed. What a render CAN prove is that the branch produces a
+ * valid document rather than throwing, which is what these check.
+ */
+describe("an invoice with no line items", () => {
+  it("renders from a bare subtotal, with a job name", async () => {
+    const buf = await renderInvoicePdf(
+      baseInput({ rows: [], dealName: "3505 Veterans Memorial Highway-Unit S1" }),
+    );
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    expect(buf.length).toBeGreaterThan(1000);
+  });
+
+  it("renders when there is no job name either", async () => {
+    // The fallback wording has to hold on its own — an imported invoice whose
+    // opportunity never got a name still goes to a GC.
+    const buf = await renderInvoicePdf(baseInput({ rows: [], dealName: null }));
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("still renders a lump sum inside the Financial Summary layout", async () => {
+    // The contract block changes the surrounding markup; the empty-rows branch
+    // sits inside it and must not break the one-page fit.
+    const buf = await renderInvoicePdf(
+      baseInput({
+        rows: [],
+        dealName: "Unit S1",
+        contract: {
+          originalCents: 295000,
+          changeOrders: [],
+          changeOrderTotalCents: 0,
+          totalChargesCents: 295000,
+          taxBilledToDateCents: 25813,
+          payments: [],
+          paymentsTotalCents: 0,
+          currentBalanceCents: 320813,
+          pendingCoTotalCents: 0,
+        },
+      }),
+    );
+    expect(buf.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+});

@@ -19,8 +19,12 @@ export const dynamic = "force-dynamic";
 const BUCKET_COLOR: Record<keyof CostBuckets, string> = {
   materials: "bg-cc-brand-500",
   crewLabor: "bg-emerald-500",
+  // Tomco's own crew. Takes the navy that `subcontractor` held: that
+  // category has zero rows and is no longer offered, so this trades a color
+  // nobody sees for one that is now a large slice.
+  employeeLabor: "bg-ppp-navy-500",
   subLabor: "bg-ppp-blue-500",
-  subcontractor: "bg-ppp-navy-500",
+  subcontractor: "bg-ppp-charcoal-300",
   equipment: "bg-amber-500",
   permit: "bg-ppp-charcoal-400",
   other: "bg-ppp-charcoal-300",
@@ -29,8 +33,9 @@ const BUCKET_COLOR: Record<keyof CostBuckets, string> = {
 const BUCKET_TONE: Record<keyof CostBuckets, ChartTone> = {
   materials: "brand",
   crewLabor: "emerald",
+  employeeLabor: "navy",
   subLabor: "blue",
-  subcontractor: "navy",
+  subcontractor: "neutral",
   equipment: "amber",
   permit: "neutral",
   other: "neutral",
@@ -108,7 +113,7 @@ export default async function JobCostsReportPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="navy" sub={`${t.dealCount} ${t.dealCount === 1 ? "deal" : "deals"} · ${t.accountCount} ${t.accountCount === 1 ? "GC" : "GCs"}`} />
             <Tile label="Billed to date" value={formatCentsCompact(t.billedCents)} tone="brand" sub="pre-tax" />
-            <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · crew · subs" />
+            <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · labor · crew" />
             <Tile label="Margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · billed − cost`} />
           </div>
 
@@ -161,7 +166,7 @@ export default async function JobCostsReportPage() {
             )}
             {t.laborUnratedHours > 0 && (
               <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-                <span className="font-semibold">{t.laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so crew labor (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+                <span className="font-semibold">{t.laborUnratedHours.toLocaleString()} crew hours</span> have no cost against them yet, so crew labor (and profit) reads high. They get their cost when the week is posted in <Link href="/commercial/accounting?view=payroll" className="font-semibold underline">Payroll</Link>.
               </p>
             )}
           </section>
@@ -248,7 +253,9 @@ function DealRow({ d }: { d: JobCostRow }) {
   );
 }
 
-/** Stacked proportion bar of the seven cost buckets. */
+/** Stacked proportion bar of the cost buckets — driven by COST_BUCKET_COLUMNS,
+ *  so adding one reaches this without an edit. It said "seven" and there are
+ *  eight since employee labor arrived. */
 function CompositionBar({ buckets, total }: { buckets: CostBuckets; total: number }) {
   if (total <= 0) return <p className="text-[12px] text-ppp-charcoal-400">No costs logged yet.</p>;
   return (

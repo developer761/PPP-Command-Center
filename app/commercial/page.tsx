@@ -52,6 +52,9 @@ import { JobsInFlight } from "@/components/commercial/jobs-in-flight";
 import { buildWorklist, worklistTotals } from "@/lib/commercial/worklist";
 import { companyPnl } from "@/lib/commercial/reports/company-pnl";
 import { Worklist, WorklistClear } from "@/components/commercial/worklist";
+import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
+import { IN_DELIVERY_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { hadHeadToHead } from "@/lib/commercial/win-loss/reports";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -161,6 +164,11 @@ export default async function CommercialDashboardPage() {
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
   );
+
+  /** Bids sitting in the approval queue — see the "Awaiting approval" tile. */
+  const awaitingApprovalCount = Array.from(currentProposalByOpp.values()).filter(
+    (p) => p.status === "pending_approval",
+  ).length;
   const oppWeighted = (o: CommercialOpportunity) =>
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
@@ -307,10 +315,24 @@ export default async function CommercialDashboardPage() {
       wasWonInPeriod(o, monthStartDate)
   );
   const totalDecidedForMonth = countableThisMonth.length;
-  const monthWinPct =
-    totalDecidedForMonth > 0
-      ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
-      : null;
+  /**
+   * A win rate needs something to have been lost.
+   *
+   * This guarded only the empty month, so a month with wins and no losses on
+   * record printed "100% win" on Alex's dashboard — which is not a measurement,
+   * it is the absence of one. Tomco's migration brought in 92 won jobs and no
+   * lost bids, so that is the live state, not a hypothetical. The Win/Loss
+   * report already refused this case; the tile that links to it did not.
+   *
+   * Same predicate as the report, from the same module, so they cannot drift.
+   */
+  const lostThisMonth = totalDecidedForMonth - wonThisMonth.length;
+  const monthWinPct = hadHeadToHead({
+    wonCount: wonThisMonth.length,
+    lostCount: lostThisMonth,
+  })
+    ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
+    : null;
   // D1: the tile and the report it opens must cover the SAME period. The tile
   // is this month; the report defaults to the quarter, so tapping a "62% win"
   // tile used to land on a different number with nothing explaining the gap.
@@ -489,9 +511,23 @@ export default async function CommercialDashboardPage() {
   }
   const jobsInFlight = rankJobsInFlight(
     allProjectRows
-      // Finished jobs are not "in flight". They still count in the revenue
-      // totals above, which is why those load with includeClosed.
-      .filter((p) => p.opp.status !== "post_sale_closed")
+      /**
+       * WON AND WORKING — not everything that isn't finished.
+       *
+       * This excluded only `post_sale_closed`, so every open BID was a "job
+       * in flight". AVR-Lot C sat at the top of Alex's dashboard at $386k,
+       * 0% billed, flagged "no work order" — it is a proposal nobody has
+       * accepted yet, so of course it has no work order and of course nothing
+       * is billed. And because flagged rows sort FIRST, the panel led with
+       * three un-won bids wearing problems they cannot have.
+       *
+       * IN_DELIVERY_STATUSES is the existing answer to "won and under
+       * contract, not yet closed", and constants.ts says those three sets
+       * partition every status with no overlap and no gap. Finished jobs stay
+       * out, and still count in the revenue totals above, which is why those
+       * load with includeClosed.
+       */
+      .filter((p) => IN_DELIVERY_STATUSES.includes(p.opp.status))
       .map((p) => {
         const wo = woByOpp.get(p.opp.id);
         return {
@@ -609,7 +645,7 @@ export default async function CommercialDashboardPage() {
           <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" />
           <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} />
           <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
+          <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · labor · crew" : "materials · labor"} />
         </div>
         <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
           <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
@@ -644,7 +680,7 @@ export default async function CommercialDashboardPage() {
               )}
               {laborUnratedHours > 0 && (
                 <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-                  <span className="font-semibold">{laborUnratedHours.toLocaleString()} crew hours</span> have no cost rate set, so labor cost (and profit) is understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+                  <span className="font-semibold">{laborUnratedHours.toLocaleString()} crew hours</span> have no cost against them yet, so labor cost (and profit) reads high. They get their cost when the week is posted in <Link href={PAYROLL_HREF} className="font-semibold underline">Payroll</Link>.
                 </p>
               )}
             </div>
@@ -681,7 +717,20 @@ export default async function CommercialDashboardPage() {
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
-        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : wonThisMonth.length > 0 ? "none lost on record" : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        {/* Brendan 2026-09-23: "dashboard add pending bids for approval."
+            A bid sitting in the approval queue is the one thing on this page
+            nobody else will chase — the estimator has done their part and is
+            waiting, and the GC is waiting on both of them. Counted from the
+            CURRENT proposal per deal, so a superseded revision left in that
+            state cannot inflate it. */}
+        <DashStat
+          label="Awaiting approval"
+          value={awaitingApprovalCount.toLocaleString()}
+          sub={awaitingApprovalCount === 0 ? "nothing waiting" : awaitingApprovalCount === 1 ? "bid to approve" : "bids to approve"}
+          tone={awaitingApprovalCount > 0 ? "amber" : "navy"}
+          href="/commercial/proposals?status=pending_approval"
+        />
         <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
         <DashStat
           label="Owed to us"

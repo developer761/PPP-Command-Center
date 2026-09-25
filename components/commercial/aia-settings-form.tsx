@@ -38,6 +38,7 @@ export function AiaSettingsForm({
   accountId: string;
   dealId: string;
   initial: {
+    application_number: string;
     period_from: string;
     period_to: string;
     original_contract: string;
@@ -73,6 +74,10 @@ export function AiaSettingsForm({
   const moneyBad = vals.original_contract.trim() !== "" && !MONEY_RE.test(vals.original_contract.trim());
   const retNum = vals.retainage_pct.trim() === "" ? 0 : Number(vals.retainage_pct);
   const retBad = vals.retainage_pct.trim() !== "" && (!Number.isFinite(retNum) || retNum < 0 || retNum > 100);
+  const numNum = Number(vals.application_number);
+  const numBad =
+    vals.application_number.trim() !== "" &&
+    (!Number.isInteger(numNum) || numNum < 1);
 
   function set<K extends keyof typeof vals>(k: K, v: string) {
     setVals((s) => ({ ...s, [k]: v }));
@@ -88,9 +93,15 @@ export function AiaSettingsForm({
   }
 
   function save() {
-    if (moneyBad || retBad) {
+    if (moneyBad || retBad || numBad) {
       setStatus("error");
-      setErrMsg(moneyBad ? "Contract must be a number with up to 2 decimals." : "Retainage must be 0–100%.");
+      setErrMsg(
+        moneyBad
+          ? "Contract must be a number with up to 2 decimals."
+          : retBad
+            ? "Retainage must be 0–100%."
+            : "Application number must be a whole number, 1 or higher.",
+      );
       return;
     }
     dirty.current = false;
@@ -101,6 +112,7 @@ export function AiaSettingsForm({
     fd.set("account_id", accountId);
     fd.set("opp_id", dealId);
     fd.set("app_id", appId);
+    fd.set("application_number", v.application_number);
     fd.set("period_from", v.period_from);
     fd.set("period_to", v.period_to);
     fd.set("original_contract", v.original_contract);
@@ -157,6 +169,25 @@ export function AiaSettingsForm({
 
   return (
     <div ref={rootRef} onBlur={onBlurCapture} className="px-4 pb-4 pt-1 grid sm:grid-cols-2 gap-3">
+      {/* Stephanie 2026-09-24: "we didn't start invoicing building 1 until AIA
+          number 3 ... I need to be able to change the application numbers."
+          The number on a certificate is how the GC files it, so on a job that
+          was already running when it arrived here, ours has to be able to
+          start at 3. */}
+      <label className="block">
+        <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Application No.</span>
+        <input
+          inputMode="numeric"
+          value={vals.application_number}
+          onChange={(e) => set("application_number", e.target.value)}
+          className={`${INPUT} ${numBad ? bad : ok}`}
+          aria-invalid={numBad}
+          aria-label="Application number"
+        />
+        <span className="block text-[10.5px] text-ppp-charcoal-400 mt-1">
+          How the GC files this certificate. Must be unique on this job.
+        </span>
+      </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
         <DateField ariaLabel="Period from date" value={vals.period_from} onValueChange={(v) => set("period_from", v)} placeholder="Pick a date" />

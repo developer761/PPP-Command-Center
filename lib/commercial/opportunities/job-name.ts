@@ -1,4 +1,8 @@
-import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import {
+  appendNickname,
+  derivedOppName,
+  nicknameAppends,
+} from "@/lib/commercial/opportunities/db";
 
 /**
  * What to call a job on screen.
@@ -44,33 +48,60 @@ export function jobDisplayName(
   opp: {
     title?: string | null;
     title_override?: string | null;
+    title_override_mode?: string | null;
     client_name?: string | null;
     property_street?: string | null;
   },
   accountName: string | null | undefined
 ): string {
-  // Somebody typed an explicit display name. It always wins (Katie 2026-07-20).
   const override = opp.title_override?.trim();
-  if (override) return override;
 
+  // An explicit nickname wins outright ONLY when the toggle says replace
+  // (Katie 2026-07-20). This function used to return it unconditionally, which
+  // meant the opportunity header and every project card ignored Brendan's
+  // "Add it to the end of the full name" switch completely — the setting saved,
+  // the pipeline list obeyed it, and the page you open next still showed the
+  // nickname on its own. Reported as "I pressed the button and it never did
+  // anything", and that is exactly what it looked like.
+  if (override && !nicknameAppends(opp.title_override_mode)) return override;
+
+  // The base name: a hand-typed title, else the derived one. The nickname is
+  // held out of derivedOppName here so the append happens once, in one place,
+  // on whichever base wins.
   const title = opp.title?.trim();
-  if (title && !isAutoComposedTitle(title)) return title;
+  const base =
+    title && !isAutoComposedTitle(title)
+      ? title
+      : (() => {
+          // `title: ""` on purpose. The title we have is auto-composed
+          // boilerplate, and handing it to derivedOppName just hands it back:
+          // "08-13-2026 DuCon - DuCon - 4 Henry Street" is not equal to the
+          // deduped computed name, so it does not read as an untouched
+          // auto-fill and wins as if a person had typed it. Blanking it sends
+          // derivedOppName straight to the computed "{GC} - {client} -
+          // {street}", which is the name this function exists to prefer.
+          const derived = derivedOppName(
+            {
+              title: "",
+              client_name: opp.client_name ?? null,
+              property_street: opp.property_street,
+              title_override: null,
+            },
+            accountName
+          );
+          // With the title blanked, derivedOppName's last resort is its own
+          // "Untitled opportunity" sentinel — which must not be treated as a
+          // name and appended to, or a nameless job reads "Untitled
+          // opportunity - Building C". A bare date stamp is the same kind of
+          // non-name. (Both found by tests against real production rows.)
+          return !derived.trim() ||
+            derived === "Untitled opportunity" ||
+            isAutoComposedTitle(derived)
+            ? ""
+            : derived;
+        })();
 
-  const derived = derivedOppName(
-    {
-      title: opp.title ?? "",
-      client_name: opp.client_name ?? null,
-      property_street: opp.property_street,
-      title_override: opp.title_override,
-    },
-    accountName
-  );
-
-  // derivedOppName's own last resort is `opp.title`, so a job created before
-  // anything else was filled in comes back as the bare date it was stamped
-  // with — "08-13-2026", which reads as a name and isn't one. (Found by a test
-  // against a real production row, not imagined.) Say what is true instead:
-  // this job has no name yet.
-  if (!derived.trim() || isAutoComposedTitle(derived)) return "Untitled job";
-  return derived;
+  if (override) return appendNickname(base, override);
+  // Say what is true: this job has no name yet.
+  return base || "Untitled job";
 }

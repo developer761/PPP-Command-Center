@@ -3,11 +3,11 @@ import "server-only";
 /**
  * Job P&L for ONE project (Phase 2). Contract − Costs = Gross Margin.
  *
- * Consistency (audit C1): the contract base here is computed EXACTLY as
- * listProjects computes `contractToDateCents` — `getEffectiveContractBaseCents`
- * (the shared proposal→AIA→bid ladder) PLUS net-approved change orders. The
- * ladder helper does NOT include COs; every caller adds them, so we do too, or
- * the deal P&L would disagree with the project card on any deal with a CO.
+ * Consistency (audit C1): the contract comes from `contractValueCents` — the
+ * one definition of base-plus-net-approved-change-orders — so the deal P&L
+ * cannot drift from the project card, the G702 or the Salesforce sync on a
+ * deal with a CO. This file used to add the two halves itself, which is the
+ * shape that produced Stephanie's report; see contract-value.ts.
  *
  * Revenue is PRE-TAX vs the contract (the contract is a pre-tax number); AR uses
  * with-tax totals + the clamped per-invoice open balance (matches the account
@@ -16,8 +16,8 @@ import "server-only";
  */
 
 import { commercialDb } from "@/lib/commercial/db";
-import { getEffectiveContractBaseCents, aiaBillingRollup } from "@/lib/commercial/aia/db";
-import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
+import { aiaBillingRollup } from "@/lib/commercial/aia/db";
+import { contractValueCents } from "@/lib/commercial/projects/contract-value";
 import { costBreakdownForProject, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborForOpp } from "@/lib/commercial/field-ops/labor-cost";
 
@@ -74,9 +74,8 @@ type InvRow = {
 
 export async function getProjectFinancials(oppId: string): Promise<ProjectFinancials> {
   const sb = commercialDb();
-  const [base, netCo, costs, labor, invRes, aia] = await Promise.all([
-    getEffectiveContractBaseCents(oppId),
-    netApprovedChangeOrderCents(oppId),
+  const [contractCents, costs, labor, invRes, aia] = await Promise.all([
+    contractValueCents(oppId),
     costBreakdownForProject(oppId),
     fieldOpsLaborForOpp(oppId),
     sb
@@ -91,7 +90,6 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     aiaBillingRollup(oppId),
   ]);
 
-  const contractCents = base + netCo;
   const hasContract = contractCents > 0;
 
   let invoicedCents = 0;
@@ -317,9 +315,22 @@ export function dealMargin(fin: {
     };
   }
 
+  /**
+   * The ninth surface carrying this sentence, and the one on every deal page.
+   *
+   * Eight screens were corrected earlier today; this one builds the string
+   * that feeds the deal's own margin card, so AIREF Building #1 still read
+   * "Margin understated — 326 crew hours have no cost rate" beside a "Crew
+   * hours 91" tile.
+   *
+   * Having no cost rate is CORRECT for a W-2 employee: their cost is the real
+   * Gusto liability, split across jobs when the week is posted. Telling
+   * somebody to fix it invites the double-count the payroll build exists to
+   * prevent. The hours are not misconfigured, they are waiting.
+   */
   const caveat =
     fin.laborUnratedHours > 0
-      ? `Margin understated — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} have no cost rate.`
+      ? `Margin reads high — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} not costed yet, until that week is posted in Payroll.`
       : null;
   return {
     pct,

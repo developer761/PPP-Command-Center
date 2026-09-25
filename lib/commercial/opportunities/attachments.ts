@@ -24,6 +24,8 @@ import {
  * validation stays consistent across Phase 1 docs + Phase 2 attachments.
  */
 
+import { tooLargeMessage } from "@/lib/commercial/uploads/limits";
+
 export const OPPORTUNITY_ATTACHMENT_BUCKET = "commercial-opportunity-files";
 
 export type OpportunityAttachment = {
@@ -151,7 +153,7 @@ export async function uploadOpportunityAttachment(
   if (input.size_bytes > MAX_UPLOAD_BYTES) {
     return {
       ok: false,
-      error: `File too big (${Math.round(input.size_bytes / 1024 / 1024)} MB). Max 50 MB.`,
+      error: tooLargeMessage(input.size_bytes),
     };
   }
   if (!ALLOWED_MIME_TYPES.has(input.mime_type)) {

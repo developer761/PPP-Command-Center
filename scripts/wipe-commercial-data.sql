@@ -57,7 +57,13 @@ DELETE FROM public.commercial_invoice_milestones;
 DELETE FROM public.commercial_invoice_status_log;
 DELETE FROM public.commercial_invoices;
 
--- 3. AIA billing.
+-- 3. Payroll weeks and the costs typed against them. Before purchases, which
+--    carry payroll_period_id.
+DELETE FROM public.commercial_payroll_costs;
+DELETE FROM public.commercial_payroll_periods;
+
+-- 4. AIA billing.
+DELETE FROM public.commercial_aia_payments;
 DELETE FROM public.commercial_aia_line_items;
 DELETE FROM public.commercial_aia_applications;
 

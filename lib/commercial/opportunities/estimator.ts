@@ -73,6 +73,91 @@ export async function listEligibleEstimators(accountId: string): Promise<Eligibl
 }
 
 /**
+ * The account's team first, then everybody else on the platform.
+ *
+ * The account-scoped list above was a deliberate 2026-07-09 narrowing — "if
+ * you need someone outside the team, add them to the team first, one
+ * authoritative surface". The narrowing is still right about ORDER and wrong
+ * about availability: an estimator who belongs to no account team yet cannot
+ * be picked anywhere at all. Kim was created as an estimator on 2026-09-23 and
+ * would have been invisible in every picker on the platform until somebody
+ * thought to add her to an account.
+ *
+ * `addOpportunityAssignment` has never required account-team membership — it
+ * checks active + Commercial access, which is exactly what
+ * listPlatformEstimators checks. So the picker was refusing people the
+ * assignment layer would have accepted.
+ *
+ * Grouped, so the team still reads as the obvious answer.
+ */
+export type EstimatorChoice = EligibleEstimator & { group: string };
+
+export async function listEstimatorChoices(accountId: string): Promise<EstimatorChoice[]> {
+  const [team, everyone] = await Promise.all([
+    listEligibleEstimators(accountId),
+    listPlatformEstimators(),
+  ]);
+  const onTeam = new Set(team.map((t) => t.user_id));
+  return [
+    ...team.map((t) => ({ ...t, group: "On this GC's team" })),
+    ...everyone.filter((p) => !onTeam.has(p.user_id)).map((p) => ({ ...p, group: "Everyone else" })),
+  ];
+}
+
+/**
+ * Everyone on the platform who could be named as estimator.
+ *
+ * Two reasons this exists alongside the account-scoped list above.
+ *
+ * 1. The PIPELINE's New Opportunity form has no account yet — it is chosen in
+ *    the same form — so there is no team to scope to. That form shipped with a
+ *    plain text box instead, which is what Karan reported on 2026-09-23:
+ *    *"when I click like estimator or add team then a dropdown should pop up
+ *    with the respective estimator or teams."* A typed name is also nobody:
+ *    it writes `estimator_name` and no user id, so the person is not assigned,
+ *    not notified, and not on the job's Team tab.
+ *
+ * 2. A brand-new estimator belongs to no account team yet. Kim was created as
+ *    an estimator the same day and would not have appeared in a single picker
+ *    on the platform until somebody added her to an account first.
+ *
+ * Gated on the same two things `addOpportunityAssignment` enforces before it
+ * will accept an assignment — active, and has Commercial access — so the
+ * picker cannot offer a person the assignment would then refuse. Crew are
+ * excluded: they clock in, they do not price work.
+ */
+export async function listPlatformEstimators(): Promise<EligibleEstimator[]> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("user_id, email, sf_user_name, full_name, role, is_active, has_new_platform_access")
+    .eq("is_active", true)
+    .eq("has_new_platform_access", true);
+
+  if (error) {
+    console.warn("[commercial/opportunities/estimator] platform list failed:", error.message);
+    return [];
+  }
+
+  type Row = {
+    user_id: string;
+    email: string | null;
+    sf_user_name: string | null;
+    full_name: string | null;
+    role: string | null;
+  };
+
+  return ((data ?? []) as unknown as Row[])
+    .filter((p) => (p.role ?? "") !== "crew")
+    .map((p) => ({
+      user_id: p.user_id,
+      name: personName(p.sf_user_name ?? p.full_name, p.email ?? "", "(unknown)"),
+      role: p.role,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Look up a single estimator's display name — used on the opp detail
  * page and Timeline entries when we want to show "Assigned to Sarah"
  * without re-fetching the whole team. Falls back to email or a
@@ -92,4 +177,48 @@ export async function getEstimatorDisplayName(
     .maybeSingle();
   const row = data as { sf_user_name: string | null; email: string | null } | null;
   return row ? personName(row.sf_user_name, row.email, "") || null : null;
+}
+
+/**
+ * Estimator names already typed into the free-text box.
+ *
+ * The picker above it only lists people with a LOGIN. Kim, who does most of
+ * the estimating, has none — so every opportunity of hers goes in through
+ * "…or type a name manually", and a free-text box typed once per job drifts.
+ * It already has: the same person is in the database as "Kim" three times and
+ * "Kim Laude" once, and the estimator report duly reports two people, each
+ * with a fraction of her work and her win rate.
+ *
+ * Offering what has been used before turns the second entry into a pick rather
+ * than a retype. It does NOT constrain — a genuinely new name still goes
+ * straight in, which matters because this box exists precisely for people the
+ * roster does not have.
+ *
+ * The real fix is a login for Kim so she is on the roster at all; this stops
+ * the damage accumulating until then.
+ */
+export async function listTypedEstimatorNames(limit = 200): Promise<string[]> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_opportunities")
+    .select("estimator_name")
+    .not("estimator_name", "is", null)
+    .is("deleted_at", null)
+    .limit(limit);
+  // A suggestion list is a convenience: if the read fails the box still works
+  // as it always did. Never throw for this.
+  if (error) {
+    console.warn("[commercial/estimator] could not read typed names:", error.message);
+    return [];
+  }
+  const seen = new Map<string, string>();
+  for (const row of (data ?? []) as { estimator_name: string | null }[]) {
+    const name = (row.estimator_name ?? "").trim();
+    if (!name) continue;
+    // Case-insensitive dedupe, keeping the first spelling seen — offering both
+    // "kim" and "Kim" would be the very problem this is here to stop.
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }

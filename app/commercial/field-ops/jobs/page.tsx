@@ -182,7 +182,7 @@ async function deleteJobAction(formData: FormData) {
 export default async function FieldOpsJobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; ok?: string; closed?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; closed?: string; unscheduled?: string }>;
 }) {
   const userId = await requireAdmin();
   const sp = await searchParams;
@@ -193,10 +193,35 @@ export default async function FieldOpsJobsPage({
     ensureWorkOrdersForConnectedJobs(userId),
     cleanOrphanedJobs(userId),
   ]);
-  const [jobs, dealOptions] = await Promise.all([
+  const [allJobs, dealOptions] = await Promise.all([
     listJobs({ includeClosed: sp.closed === "1" }),
     listDealOptionsForWorkOrder(),
   ]);
+
+  /**
+   * ?unscheduled=1 — the 24 the Overview promises.
+   *
+   * Field Ops Overview shows "Open work orders not yet scheduled · 24 →" and
+   * the arrow landed HERE, on all 93, with no filter. Brendan taps a count and
+   * then has to work out which twenty-four it meant. A number that is a link
+   * should take you to those things.
+   *
+   * Same definition the Overview counts with — an open status and no
+   * assignment on the horizon — so the two cannot disagree about which jobs
+   * they mean.
+   */
+  const jobs = await (async () => {
+    if (sp.unscheduled !== "1") return allJobs;
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const { data, error } = await commercialDb()
+      .from("commercial_assignments")
+      .select("job_id")
+      .neq("status", "cancelled");
+    // A failed read must not silently present every job as unscheduled.
+    if (error) return allJobs;
+    const scheduled = new Set((data ?? []).map((r) => (r as { job_id: string }).job_id));
+    return allJobs.filter((j) => !scheduled.has(j.id));
+  })();
   // Crew scope per job — what the work actually IS. Resolved here so each card
   // can show it; a job with no work order or no priced proposal simply omits
   // the section rather than rendering an empty heading.
@@ -223,7 +248,7 @@ export default async function FieldOpsJobsPage({
           the deal. You can also add one manually below —{" "}
           <strong>connect it to a deal</strong> (it&rsquo;ll show on that
           deal&rsquo;s Work Orders too), or leave the deal blank for a{" "}
-          <strong>PPP, prevailing-wage, or one-off</strong> job.
+          <strong>standard, prevailing-wage, or one-off</strong> job.
         </p>
       </div>
 
@@ -389,6 +414,15 @@ export default async function FieldOpsJobsPage({
         <h2 className="text-sm font-bold text-ppp-charcoal">
           {jobs.length} {sp.closed === "1" ? "work order" : "open work order"}
           {jobs.length === 1 ? "" : "s"}
+          {sp.unscheduled === "1" ? (
+            <>
+              {" "}
+              with nobody scheduled ·{" "}
+              <Link href="/commercial/field-ops/jobs" className="font-semibold text-cc-brand-700 hover:underline">
+                show all {allJobs.length}
+              </Link>
+            </>
+          ) : null}
         </h2>
         <Link
           href={sp.closed === "1" ? BASE : `${BASE}?closed=1`}

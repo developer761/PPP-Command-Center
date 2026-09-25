@@ -13,6 +13,8 @@
  * expose real upload-progress the SDK's fetch path doesn't.
  */
 
+import { MAX_UPLOAD_LABEL } from "@/lib/commercial/uploads/limits";
+
 export type AttachmentUploadResult =
   | { ok: true; attachment: unknown }
   | { ok: false; error: string; canceled?: boolean };
@@ -113,7 +115,7 @@ export function directUploadOppAttachment(opts: {
           if (/row-level security|Unauthorized|AccessDenied/i.test(detail)) {
             detail = "this account isn't allowed to upload. Sign out and back in; if it persists, tell Karan the storage policy needs checking";
           } else if (/exceeded the maximum allowed size|Payload too large/i.test(detail)) {
-            detail = "the file is larger than the 50 MB limit";
+            detail = `the file is over the ${MAX_UPLOAD_LABEL} storage limit`;
           } else if (/mime type|not supported/i.test(detail)) {
             detail = "that file type isn't accepted here";
           }

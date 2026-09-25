@@ -62,7 +62,7 @@ import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-import { listEligibleEstimators, type EligibleEstimator } from "@/lib/commercial/opportunities/estimator";
+import { listEstimatorChoices, listTypedEstimatorNames, type EstimatorChoice } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
 import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase, probabilityFor } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
@@ -78,6 +78,7 @@ import { SubmitButton } from "@/components/commercial/submit-button";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { NicknameModeToggle } from "@/components/commercial/nickname-mode-toggle";
+import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
 // InfoDot import removed 2026-07-08 Batch 2b — labels use native `title`
 // attribute for hover tooltips instead of the visible `?` badge.
 
@@ -1077,6 +1078,9 @@ export async function createDealInvoiceAction(formData: FormData) {
   // way in, nothing should send anyone to it.
   const back = dealTab;
   void rt;
+  // Things that were meant to ride along with the invoice and did not. The
+  // invoice itself is created, so these are partial-success notes, not errors.
+  const waiverProblems: string[] = [];
   const mode = String(formData.get("mode") ?? "flat") === "milestones" ? "milestones" : "flat";
 
   const taxRaw = String(formData.get("tax_pct") ?? "").trim();
@@ -1145,7 +1149,8 @@ export async function createDealInvoiceAction(formData: FormData) {
   });
   if (!result.ok) redirect(`${back}&error=${encodeURIComponent(result.error)}`);
   if (milestones.length > 0) {
-    await seedMilestonesFromLineItems(result.invoice.id, milestones);
+    const seeded = await seedMilestonesFromLineItems(result.invoice.id, milestones);
+    if (!seeded.ok) waiverProblems.push("the milestone schedule");
   }
 
   // Optional lien waivers attached right on the create form (best-effort — a
@@ -1157,16 +1162,30 @@ export async function createDealInvoiceAction(formData: FormData) {
     if (!["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"].includes(f.type)) return null;
     return { name: f.name || "lien-waiver.pdf", type: f.type, data: new Uint8Array(await f.arrayBuffer()) };
   };
+  // A LIEN WAIVER THROWN AWAY TWICE OVER. These were double-swallowed: the
+  // Result was discarded by a bare `await`, AND a `.catch(() => {})` sat on
+  // top. The GC will not release payment without the waiver, and the person
+  // who attached it on this form has every reason to believe it is filed.
   if (mode === "flat") {
     const w = await readWaiver("flat_waiver");
-    if (w) await attachInvoiceLienWaiver({ invoiceId: result.invoice.id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+    if (w) {
+      const att = await attachInvoiceLienWaiver({ invoiceId: result.invoice.id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(
+        (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+      );
+      if (!att.ok) waiverProblems.push(`the lien waiver (${att.error})`);
+    }
   } else if (milestones.length > 0) {
     // Re-fetch the created milestones (position order == draft order) so each
     // ms_waiver_<row> file pairs to the right milestone.
     const created = await listMilestonesForInvoice(result.invoice.id);
     for (let k = 0; k < created.length && k < milestoneRowIndex.length; k++) {
       const w = await readWaiver(`ms_waiver_${milestoneRowIndex[k]}`);
-      if (w) await attachMilestoneLienWaiver({ milestoneId: created[k].id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(() => {});
+      if (w) {
+        const att = await attachMilestoneLienWaiver({ milestoneId: created[k].id, file_name: w.name, mime_type: w.type, data: w.data, actorUserId: user.id }).catch(
+          (e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+        );
+        if (!att.ok) waiverProblems.push(`the lien waiver for "${created[k].name}"`);
+      }
     }
   }
 
@@ -1186,7 +1205,14 @@ export async function createDealInvoiceAction(formData: FormData) {
   // This also gives `invoices_created` its only producer; the counts it renders
   // ("N created / M skipped") had no writer anywhere in the app, so the
   // partial-failure summary could never appear either.
-  redirect(`${back}&invoices_created=1`);
+  // A waiver that did not attach rides back as an error alongside the success
+  // — the invoice IS created, so this is a partial success, not a failure.
+  const waiverNote = waiverProblems.length
+    ? `&error=${encodeURIComponent(
+        `The invoice was created, but ${waiverProblems.join(" and ")} could not be attached. Upload it on the invoice.`,
+      )}`
+    : "";
+  redirect(`${back}&invoices_created=1${waiverNote}`);
 }
 
 /** "New invoice for this opportunity" — flat OR milestone-broken, via the client
@@ -2476,7 +2502,14 @@ async function detachContactAction(formData: FormData) {
   }
   // Security fix 2026-06-24: pass account_id for cross-account scoping
   // — see lib/commercial/accounts/contacts.ts detachContactFromAccount.
-  await detachContactFromAccount(account_id, account_contact_id, user.id);
+  // The tab renders `?error=`; this path simply never set it, so a refused
+  // detach looked exactly like a successful one. Its sibling action ten lines
+  // above already branches on `.ok`.
+  const detached = await detachContactFromAccount(account_id, account_contact_id, user.id);
+  if (!detached.ok) {
+    redirect(`/commercial/accounts/${account_id}?tab=contacts&error=${encodeURIComponent(detached.error)}`);
+  }
+  revalidatePath(`/commercial/accounts/${account_id}`);
   redirect(`/commercial/accounts/${account_id}?tab=contacts`);
 }
 
@@ -3358,13 +3391,15 @@ async function restoreDocumentAction(formData: FormData) {
 async function NewDealForm({
   accountId,
   estimators,
+  typedEstimatorNames,
   contactOptions,
   duplicateWarning,
   account,
   keptValues,
 }: {
   accountId: string;
-  estimators: EligibleEstimator[];
+  estimators: EstimatorChoice[];
+  typedEstimatorNames: string[];
   /** Katie gap #1 — this GC's contacts, for the Attention-contact picker. */
   contactOptions: Array<{ value: string; label: string; hint?: string }>;
   duplicateWarning: { id: string; label: string } | null;
@@ -3625,7 +3660,7 @@ async function NewDealForm({
         <span className={labelCls}>Estimator</span>
         <SearchableSelect
           name="estimator_user_id"
-          options={estimators.map((e) => ({ value: e.user_id, label: e.name }))}
+          options={estimators.map((e) => ({ value: e.user_id, label: e.name, group: e.group }))}
           defaultValue={
             lastDeal?.estimator_user_id &&
             estimators.some((e) => e.user_id === lastDeal.estimator_user_id)
@@ -3637,7 +3672,16 @@ async function NewDealForm({
           disabled={estimators.length === 0}
           emptyMessage="No teammates match. Try a different search or type a name below."
         />
-        <input type="text" name="estimator_name" maxLength={120} placeholder="…or type a name manually" className={`${inputCls} mt-1`} />
+        <input type="text" name="estimator_name" list="estimator-names-newdeal" maxLength={120} placeholder="…or type a name manually" className={`${inputCls} mt-1`} />
+        {/* Suggestions from names already used. The roster picker above only
+            lists people with a LOGIN; Kim, who does most of the estimating,
+            has none, so all her work comes through this box — and typed once
+            per job it drifted into "Kim" and "Kim Laude", two rows on the
+            estimator report with a fraction of her record each. Constrains
+            nothing: a new name still goes straight in. */}
+        <datalist id="estimator-names-newdeal">
+          {typedEstimatorNames.map((n) => (<option key={n} value={n} />))}
+        </datalist>
         <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
           Assigning one moves this opportunity to Estimating.
         </span>
@@ -3767,7 +3811,7 @@ async function OpportunitiesTab({
   // batch query regardless of opp count. Also preload the eligible
   // estimator list for the New + Edit forms (Phase B) so we don't need
   // a client-side fetch per form render.
-  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators, contactRows] = await Promise.all([
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators, contactRows, typedEstimatorNames] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(ids),
     listOpenTaskStatsByOpp(ids),
     listLastNoteByOpp(ids),
@@ -3775,8 +3819,11 @@ async function OpportunitiesTab({
     listAttachmentCountByOpp(ids),
     listSubmittalCountByOpp(ids),
     listFinishCountByOpp(ids),
-    listEligibleEstimators(accountId),
+    listEstimatorChoices(accountId),
     listAccountContacts(accountId),
+    // Names already typed into the manual estimator box, offered back as
+    // suggestions so the same person is picked rather than re-typed.
+    listTypedEstimatorNames(),
   ]);
   // Katie gap #1 — Attention-contact options for the New-deal form (choose the
   // GC contact this job's proposals will address; blank auto-inherits the GC's
@@ -3834,7 +3881,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
+          <NewDealForm accountId={accountId} estimators={estimators} typedEstimatorNames={typedEstimatorNames} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </div>
     );
@@ -3943,6 +3990,7 @@ async function OpportunitiesTab({
             accountName={account.company_name}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             estimators={estimators}
+            typedEstimatorNames={typedEstimatorNames}
             errorMessage={errorMessage}
             lifecycle={editLifecycle}
             dealBack={dealBack}
@@ -4015,7 +4063,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
+          <NewDealForm accountId={accountId} estimators={estimators} typedEstimatorNames={typedEstimatorNames} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </details>
 
@@ -4450,7 +4498,7 @@ async function AccountProposalsTab({
     .from("commercial_proposals")
     .select(
       `id, revision_number, proposal_seq, status, total_cents, sent_at, updated_at, opportunity_id, header_json, snapshot_document_id,
-       opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, title, title_override, client_name, property_street, project_number, account_id, deleted_at, archived_at, status, sub_status)`
+       opportunity:commercial_opportunities!commercial_proposals_opportunity_id_fkey!inner(id, title, title_override, title_override_mode, client_name, property_street, project_number, account_id, deleted_at, archived_at, status, sub_status)`
     )
     .is("deleted_at", null)
     .eq("opportunity.account_id", accountId)
@@ -4478,6 +4526,7 @@ async function AccountProposalsTab({
       id: string;
       title: string | null;
       title_override: string | null;
+      title_override_mode: string | null;
       client_name: string | null;
       property_street: string | null;
       project_number: string | null;
@@ -5562,7 +5611,7 @@ async function AccountKpisTab({
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label="Gross revenue" value={formatCentsCompact(acctGrossCents)} tone="brand" sub="billed to date" spark={acctRevenueMonthly.map((r) => r.value)} sparkLabels={acctRevenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : acctCrewLaborCents > 0 ? "materials · crew · subs" : "materials · subs"} />
+          <StatCard label="Job costs" value={formatCentsCompact(acctCostsCents)} tone="amber" sub={acctCostsCents === 0 ? "none logged" : acctCrewLaborCents > 0 ? "materials · labor · crew" : "materials · labor"} />
           <StatCard label="Net profit" value={`${acctNetCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(acctNetCents))}`} tone={acctMargin.provisional ? "neutral" : acctNetCents < 0 ? "rose" : "emerald"} sub="gross − costs" />
           <StatCard
             label={acctMargin.label}
@@ -5593,7 +5642,7 @@ async function AccountKpisTab({
         </div>
         {acctLaborUnratedHours > 0 && (
           <p className="mt-3 text-[11.5px] text-amber-700 leading-snug">
-            <span className="font-semibold">{acctLaborUnratedHours.toLocaleString()} approved crew hours</span> have no cost rate set, so labor cost and margin are understated. Set rates on the <Link href="/commercial/field-ops/employees" className="font-semibold underline">Crew</Link> page.
+            <span className="font-semibold">{acctLaborUnratedHours.toLocaleString()} approved crew hours</span> have no cost against them yet, so labor cost and margin read high. They get their cost when the week is posted in <Link href={PAYROLL_HREF} className="font-semibold underline">Payroll</Link>.
           </p>
         )}
       </section>
@@ -5836,6 +5885,7 @@ async function DealEditSheet({
   accountName,
   primaryLead,
   estimators,
+  typedEstimatorNames,
   errorMessage,
   lifecycle,
   dealBack,
@@ -5848,7 +5898,8 @@ async function DealEditSheet({
   /** True when the sheet was opened from the DEAL page (?deal_back=1), so
    *  saving returns to the deal rather than the account's Deals tab. */
   dealBack?: boolean;
-  estimators: EligibleEstimator[];
+  estimators: EstimatorChoice[];
+  typedEstimatorNames: string[];
   /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
    *  redirects back with ?edit=<opp>&error=..., the tab-level
    *  errorMessage banner was rendered BEHIND this sheet's z-40
@@ -6340,6 +6391,7 @@ async function DealEditSheet({
                     ...estimators.map((e) => ({
                       value: e.user_id,
                       label: e.name,
+                      group: e.group,
                     })),
                     ...(deal.estimator_user_id &&
                     !estimators.find((e) => e.user_id === deal.estimator_user_id)
@@ -6369,11 +6421,17 @@ async function DealEditSheet({
                 <input
                   name="estimator_name"
                   type="text"
+                  list="estimator-names-editdeal"
                   maxLength={120}
                   defaultValue={deal.estimator_name ?? ""}
                   placeholder="…or type a name"
                   className={`${inputCls} mt-1`}
                 />
+                {/* Same list as the new-deal form, its own id because a
+                    document may not carry two datalists with one id. */}
+                <datalist id="estimator-names-editdeal">
+                  {typedEstimatorNames.map((n) => (<option key={n} value={n} />))}
+                </datalist>
                 <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
                   {estimators.length === 0
                     ? "No teammates yet — type a name above."

@@ -160,6 +160,56 @@ export async function getCashFlowReport(range: {
     }
   }
 
+  /**
+   * AIA PAYMENTS ARE CASH TOO.
+   *
+   * This report reads commercial_invoice_payments and nothing else. From
+   * 2026-09-24 a progress certificate can be paid directly, carrying a real
+   * date and method — exactly what this chart exists to plot — and none of it
+   * landed here. On a contractor who bills most commercial work by G702 that
+   * is not an edge case, it is most of the money.
+   *
+   * They are mapped onto the same shape as an invoice payment so the loop
+   * below does not grow a second branch: `issuedAt` is the certificate's
+   * period end, which is the moment it went to the GC and therefore the right
+   * clock to measure collection lag from.
+   */
+  const aiaCash = await aiaPaymentsAsCash(range);
+  const cashRows: {
+    amount_cents: number;
+    paid_at: string;
+    method: string | null;
+    issuedAt: string | null;
+    accountId: string | null;
+  }[] = [];
+  for (const p of payments) {
+    const inv = invById.get(p.invoice_id);
+    if (!inv) continue; // voided or deleted invoice — not cash
+    cashRows.push({
+      amount_cents: Number(p.amount_cents) || 0,
+      paid_at: p.paid_at,
+      method: p.method,
+      issuedAt: inv.issued_at,
+      accountId: inv.account_id ?? null,
+    });
+  }
+  cashRows.push(...aiaCash);
+  if (aiaCash.length > 0) {
+    const missing = [
+      ...new Set(
+        aiaCash
+          .map((r) => r.accountId)
+          .filter((x): x is string => !!x && !accountName.has(x)),
+      ),
+    ];
+    if (missing.length > 0) {
+      const { data } = await sb.from("commercial_accounts").select("id, company_name").in("id", missing);
+      for (const a of (data ?? []) as { id: string; company_name: string | null }[]) {
+        accountName.set(a.id, a.company_name?.trim() || "Unnamed account");
+      }
+    }
+  }
+
   const months = new Map<string, CashMonth>();
   const methods = new Map<string, CashByMethod>();
   const byAccount = new Map<string, { collected: number; lagWeighted: number; lagAmount: number }>();
@@ -170,9 +220,7 @@ export async function getCashFlowReport(range: {
   let untimedPayments = 0;
   let paidBeforeIssued = 0;
 
-  for (const p of payments) {
-    const inv = invById.get(p.invoice_id);
-    if (!inv) continue; // voided or deleted invoice — not cash
+  for (const p of cashRows) {
     const ymd = etDateOf(p.paid_at);
     if (!ymd || ymd < range.fromYmd || ymd > range.toYmd) continue;
 
@@ -193,7 +241,7 @@ export async function getCashFlowReport(range: {
     mm.count += 1;
     methods.set(methodKey, mm);
 
-    const issued = etDateOf(inv.issued_at);
+    const issued = etDateOf(p.issuedAt);
     if (!issued) {
       untimedPayments += 1;
     } else {
@@ -206,14 +254,14 @@ export async function getCashFlowReport(range: {
       lagAmount += amount;
     }
 
-    if (inv.account_id) {
-      const a = byAccount.get(inv.account_id) ?? { collected: 0, lagWeighted: 0, lagAmount: 0 };
+    if (p.accountId) {
+      const a = byAccount.get(p.accountId) ?? { collected: 0, lagWeighted: 0, lagAmount: 0 };
       a.collected += amount;
       if (issued) {
         a.lagWeighted += Math.max(0, daysBetween(issued, ymd)) * amount;
         a.lagAmount += amount;
       }
-      byAccount.set(inv.account_id, a);
+      byAccount.set(p.accountId, a);
     }
   }
 
@@ -290,4 +338,59 @@ export async function getCashFlowReport(range: {
     untimedPayments,
     paidBeforeIssued,
   };
+}
+
+/**
+ * Recorded AIA payments, shaped like invoice payments so the collections maths
+ * does not need a second branch.
+ *
+ * `issuedAt` is the certificate's period end — the moment it went to the GC —
+ * which is the right clock to measure collection lag from. Tolerates the
+ * payments table being absent (migration not yet applied): the report then
+ * reads exactly as it did before AIA payments existed.
+ */
+async function aiaPaymentsAsCash(range: { fromYmd: string; toYmd: string }): Promise<
+  {
+    amount_cents: number;
+    paid_at: string;
+    method: string | null;
+    issuedAt: string | null;
+    accountId: string | null;
+  }[]
+> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_aia_payments")
+    .select("application_id, amount_cents, paid_at, method")
+    .is("deleted_at", null)
+    .order("paid_at");
+  if (error || !data || data.length === 0) return [];
+  const rows = data as {
+    application_id: string;
+    amount_cents: number;
+    paid_at: string;
+    method: string | null;
+  }[];
+
+  const { data: apps } = await sb
+    .from("commercial_aia_applications")
+    .select("id, account_id, period_to, frozen_at")
+    .in("id", [...new Set(rows.map((r) => r.application_id))]);
+  const appById = new Map(
+    ((apps ?? []) as { id: string; account_id: string | null; period_to: string | null; frozen_at: string | null }[]).map(
+      (a) => [a.id, a],
+    ),
+  );
+
+  void range; // filtered by the shared loop, same as invoice payments
+  return rows.map((r) => {
+    const app = appById.get(r.application_id);
+    return {
+      amount_cents: Number(r.amount_cents) || 0,
+      paid_at: r.paid_at,
+      method: r.method,
+      issuedAt: app?.period_to ?? app?.frozen_at ?? null,
+      accountId: app?.account_id ?? null,
+    };
+  });
 }

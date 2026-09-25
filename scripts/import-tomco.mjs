@@ -927,33 +927,111 @@ async function stageCosts() {
 }
 
 /**
+ * Which PERSON is a crew company, when Salesforce is confident about it.
+ *
+ * Mary, 2026-09-23: "Why do we have Tomco-Greg and Greg Stankewicz listed
+ * under the Attendance drop-down? Each employee is listed twice."
+ *
+ * She was right. Half the attendance rows name a worker, half name only the
+ * crew company the worker came through, so one man arrived as two roster
+ * entries with his hours split between them. The original import would not
+ * guess which company was which man — correctly, because guessing puts one
+ * man's hours on another.
+ *
+ * But it does not have to be a guess. 929 rows name BOTH, and Salesforce is
+ * emphatic about the pairing: "Tomco Labor - Rob" appears with Robert Caputo
+ * 155 times and with anyone else once. So the mapping is DERIVED from those
+ * rows and applied only where the evidence is overwhelming:
+ *
+ *   · at least 5 rows and at least 80% of that company's named rows, or
+ *   · unanimous over at least 2 rows (this is what carries "Robert P", which
+ *     Salesforce names only twice, both times as Robert Patterson).
+ *
+ * A company that never names a person — Omar LI, LC RA Jose, the generic
+ * "Tomco Labor", and "Tomco Labor - Keith", who is on no roster — maps to
+ * nothing and stays exactly as it was. There is no person to fold it into.
+ *
+ * Built from the FULL attendance set, not the in-scope slice: a pairing seen
+ * on a work order we do not import is still evidence about who that company is.
+ */
+let CREW_COMPANY_WORKER = null;
+
+function crewCompanyWorker() {
+  if (CREW_COMPANY_WORKER) return CREW_COMPANY_WORKER;
+  const counts = new Map(); // company -> Map(worker -> rows)
+  for (const a of SF.attendance ?? []) {
+    const company = (a.Crew__r?.Name ?? "").trim();
+    const worker = (a.Crew_Worker__c ?? "").trim();
+    if (!company || !worker) continue;
+    if (!counts.has(company)) counts.set(company, new Map());
+    const m = counts.get(company);
+    m.set(worker, (m.get(worker) ?? 0) + 1);
+  }
+  CREW_COMPANY_WORKER = new Map();
+  for (const [company, m] of counts) {
+    const ranked = [...m.entries()].sort((a, b) => b[1] - a[1]);
+    const [topWorker, topRows] = ranked[0];
+    const total = ranked.reduce((s, [, n]) => s + n, 0);
+    const share = topRows / total;
+    const confident = (topRows >= 5 && share >= 0.8) || (total >= 2 && share === 1);
+    if (confident) CREW_COMPANY_WORKER.set(company, { worker: topWorker, rows: topRows, total, share });
+  }
+  return CREW_COMPANY_WORKER;
+}
+
+/**
  * Who a row of attendance belongs to.
  *
- * 919 of the 1,919 rows name a worker ("Miguel Melgar"). The other 1,000 —
- * 7,790 hours, more than half — name only the crew company they came through
- * ("Tomco Labor - Miguel"). Salesforce records them that way, so the hours land
- * where Salesforce put them rather than being guessed onto a person: "Rob"
- * could be Robert Caputo or Robert Patterson, and attributing a man's hours to
- * the wrong man is worse than an extra row in a list Katie can merge.
+ * A named worker always wins. Where Salesforce named only the company, the
+ * derived mapping above puts the hours on the man that company IS — so his
+ * week is one line under his own name instead of two under two.
  */
 function attendanceWho(a) {
   const worker = (a.Crew_Worker__c ?? "").trim();
   if (worker) return { key: `crew:${worker}`, name: worker, viaCompany: false };
   const company = (a.Crew__r?.Name ?? "").trim();
-  if (company) return { key: `crewco:${company}`, name: company, viaCompany: true };
-  return null;
+  if (!company) return null;
+  const resolved = crewCompanyWorker().get(company);
+  if (resolved) return { key: `crew:${resolved.worker}`, name: resolved.worker, viaCompany: false, viaCompanyName: company };
+  return { key: `crewco:${company}`, name: company, viaCompany: true };
 }
 
 async function stageEmployees() {
   const r = newReport("employees");
+  // Say which companies were folded into a person, and on what evidence. A
+  // mapping this consequential must not be invisible: it decides whose name a
+  // week of work appears under.
+  for (const [company, m] of crewCompanyWorker()) {
+    if (company === m.worker) continue;
+    r.notes.push(`${company} → ${m.worker} (${m.rows} of ${m.total} Salesforce rows naming a worker)`);
+  }
   const people = new Map();
   for (const a of SF.attendanceInScope) {
     const who = attendanceWho(a);
     if (who) people.set(who.key, who);
   }
+  /**
+   * THE ROSTER SHOWS THE TOMCO NAME.
+   *
+   * Mary, 2026-09-23, having been shown the merged list: "Lets stick with
+   * Tomco-name option please."
+   *
+   * So a painter who works through a crew company is listed the way Tomco
+   * refers to him — "Tomco Labor - Greg" — rather than "Greg Stankewicz". This
+   * is a LABEL, not an identity: he is still one employee holding one history,
+   * which was the point of the fold, and his real name stays on the record in
+   * first_name / last_name so nothing is lost. A man with no crew company
+   * keeps his own name, because there is no other name to use.
+   */
+  const companyForWorker = new Map();
+  for (const [company, m] of crewCompanyWorker()) companyForWorker.set(m.worker, company);
+
   for (const [, who] of people) {
+    const base = employeeFromCrewWorker(who.name);
+    const tomcoName = companyForWorker.get(who.name);
     await put("employee", who.key, "commercial_employees", {
-      ...employeeFromCrewWorker(who.name),
+      ...base,
+      display_name: tomcoName ?? base.display_name,
       external_ref: `sf-${who.key}`,
       active: true,
     }, r);
@@ -1156,6 +1234,40 @@ async function stageAttendance() {
     // hours that the reconciliation would then report as missing.
     const hours = storedHours(day.hours);
     if (hours !== rounded) r.skipped.push(`${key}: ${rounded}h is more than the column holds; stored ${hours}`);
+
+    /**
+     * ADOPT A DAY THE PLATFORM ALREADY RECORDED, rather than inserting a
+     * second one. Same shape as the job adoption above, and it took the sync
+     * down the same way.
+     *
+     * `commercial_time_entries` is UNIQUE on (employee, job, work_date). Mary
+     * records attendance in the office, and since the crew-company fold her
+     * rows sit on exactly the person+job+day that Salesforce also owns — so an
+     * unmapped key whose slot is already occupied used to throw
+     * "duplicate key value violates unique constraint", killing the run with
+     * costs and payments already committed and attendance half-written. Seen
+     * 2026-09-23 on Joseph Lucatorto, 2026-09-16.
+     *
+     * Writing the mapping first turns the insert into an UPDATE of the row
+     * that is already there. The hours then come from Salesforce, which is
+     * right for the dual run — and if a person has edited that row since,
+     * `editedHere` still protects it, exactly as it would for any other row.
+     */
+    if (!mapped("attendance", key)) {
+      const { data: sameDay } = await sb
+        .from("commercial_time_entries")
+        .select("id")
+        .eq("employee_id", employeeId)
+        .eq("job_id", jobId)
+        .eq("work_date", day.workDate)
+        .limit(1)
+        .maybeSingle();
+      if (sameDay?.id) {
+        await remember("attendance", key, sameDay.id);
+        r.notes.push(`adopted the day already on the platform: ${key}`);
+      }
+    }
+
     await put("attendance", key, "commercial_time_entries", {
       job_id: jobId,
       employee_id: employeeId,
@@ -1798,7 +1910,16 @@ async function reconcile() {
   const fromSf = (p) => importedPurchaseRowIds.has(p.id);
   const authoredHere = purch.filter((p) => !fromSf(p));
   const ourMaterials = purch.filter((p) => p.category === "materials" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
-  const ourLabor = purch.filter((p) => p.category === "labor" && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
+  // BOTH labor categories.
+  //
+  // Salesforce has one idea of a labor payment; we now have two — `labor` for
+  // outside help and `employee_labor` for Tomco's own crew, split out when the
+  // crew went W-2. This compares OUR total against SF's, so counting only
+  // `labor` would have reported a ~$500k discrepancy that does not exist and
+  // hard-exited the nightly sync. The money is identical; only the heading
+  // this side changed.
+  const LABOR_CATS = new Set(["labor", "employee_labor"]);
+  const ourLabor = purch.filter((p) => LABOR_CATS.has(p.category) && fromSf(p)).reduce((n, p) => n + Number(p.amount_cents), 0);
   if (authoredHere.length > 0) {
     const byCat = {};
     for (const p of authoredHere) byCat[p.category] = (byCat[p.category] ?? 0) + Number(p.amount_cents);

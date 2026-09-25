@@ -187,10 +187,35 @@ export async function insertCommercialTeamAssignedNotification(
     // insertCustomerFormSubmittedNotification above.
     const { data: recipient } = await sb
       .from("profiles")
-      .select("is_active")
+      .select("is_active, has_new_platform_access")
       .eq("user_id", input.recipientUserId)
       .maybeSingle();
-    if ((recipient as { is_active?: boolean | null } | null)?.is_active === false) return;
+    const r = recipient as
+      | { is_active?: boolean | null; has_new_platform_access?: boolean | null }
+      | null;
+    if (r?.is_active === false) return;
+
+    /**
+     * AND DON'T RING A BELL AT A PAGE THEY CANNOT OPEN.
+     *
+     * `dispatchCommercialNotification` — which every other commercial kind
+     * goes through — checks platform access AND crew status, with a comment
+     * describing this exact bug as fixed: "a painter added to a deal's team
+     * was getting bell rows pointing at pages that redirect them straight
+     * back to their own home". The fix landed on the chokepoint. These two
+     * team-added kinds write the row directly and never went through it.
+     *
+     * And a painter DOES reach the picker: `listAssignableStaff` selects on
+     * has_new_platform_access, which every crew login carries by definition.
+     * Assign one and they get a bell linking to `?tab=team`, which bounces
+     * them to /commercial/crew.
+     */
+    if (r?.has_new_platform_access !== true) return;
+    const { crewOnlyStatus } = await import("@/lib/commercial/crew-access");
+    const crew = await crewOnlyStatus(input.recipientUserId);
+    // "unknown" means the lookup failed: say nothing rather than guess, the
+    // same way the chokepoint does.
+    if (crew !== "not-crew") return;
 
     const kind: NotificationKind =
       input.surface === "account"

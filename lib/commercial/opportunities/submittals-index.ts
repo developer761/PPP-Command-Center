@@ -72,6 +72,7 @@ export async function listAllSubmittals(
     id: string;
     title: string | null;
     title_override: string | null;
+    title_override_mode: string | null;
     client_name: string | null;
     property_street: string | null;
     account_id: string;
@@ -81,7 +82,7 @@ export async function listAllSubmittals(
   const opps = await paginateAll<OppRow>(() =>
     sb
       .from("commercial_opportunities")
-      .select("id, title, title_override, client_name, property_street, account_id, deleted_at, archived_at")
+      .select("id, title, title_override, title_override_mode, client_name, property_street, account_id, deleted_at, archived_at")
       .in("id", oppIds)
       .order("id", { ascending: true })
   );

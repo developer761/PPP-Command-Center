@@ -452,3 +452,37 @@ export function aiaDueAtFrom(
   if (Number.isNaN(ms)) return null;
   return new Date(ms + dueDays * 86_400_000).toISOString();
 }
+
+/**
+ * Collected on an AIA job, once some payments are recorded and some aren't.
+ *
+ * G702 line 6 is CUMULATIVE — it carries every prior period — so a recorded
+ * payment and a legacy "paid" flag are not two numbers you can add naively,
+ * and they are not two numbers where one simply replaces the other either.
+ *
+ * The first version of this replaced: any recorded payment on the job dropped
+ * the inference entirely. On AIREF Building #1, where Application 2 was marked
+ * paid before payments existed, recording $35,000 against Application 3 made
+ * the $66,833.31 already collected VANISH — collected went DOWN when money
+ * came in. It was caught by running it against the live job, not by reading it.
+ *
+ * The split is by application number:
+ *   baseline — line 6 of the latest PAID application carrying no recorded
+ *              payments. That single figure already contains everything
+ *              collected up to and including it.
+ *   plus     — payments recorded on applications AFTER that one.
+ *
+ * With nothing recorded, callers keep the old inference untouched, so no
+ * existing job restates itself the day payments ship.
+ */
+export function aiaCollectedWithPayments(input: {
+  /** Line 6 of the latest paid application that has no recorded payments. */
+  baselineCents: number;
+  /** Payments recorded against applications after the baseline one. */
+  recordedAfterBaselineCents: number;
+}): number {
+  return (
+    Math.max(0, Math.round(input.baselineCents)) +
+    Math.max(0, Math.round(input.recordedAfterBaselineCents))
+  );
+}

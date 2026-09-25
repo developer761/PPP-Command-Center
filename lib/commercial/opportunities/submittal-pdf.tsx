@@ -331,10 +331,16 @@ type SubmittalPdfInput = {
    *  signature image on file … wherever a doc needs a signature, Tap to sign
    *  autofills the stored signature + date. Covers warranty, LoT, contracts…"
    *
-   *  The close-out transmittal, the warranty, the work order and the change
-   *  order all had it; the Letter of Transmittal — the document that actually
-   *  goes to the architect — was the one left without. The restructure doc says
-   *  so out loud: "LoT is the one document still missing it."
+   *  The warranty, the work order and the change order had it; the Letter of
+   *  Transmittal — the document that actually goes to the architect — was the
+   *  one left without. The restructure doc says so out loud: "LoT is the one
+   *  document still missing it."
+   *
+   *  This sentence used to list the close-out transmittal among the signed
+   *  ones. It was not signed, and would not be for another month — anyone
+   *  reading the code to answer "is the closeout signed?" would have said
+   *  yes on the strength of it. Signed now; the claim is corrected rather
+   *  than deleted, because the wrong version was load-bearing for a while.
    *
    *  Null renders a blank rule to sign by hand, which is what the paper form
    *  does and is never worse than no block at all. */

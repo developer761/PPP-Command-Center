@@ -87,14 +87,28 @@ describe("dealMargin", () => {
     expect(m.overBudget).toBe(true);
   });
 
-  it("warns when unrated crew hours understate the margin", () => {
+  /**
+   * The wording changed on 2026-09-24 and these tests were pinning the old
+   * one. Having no cost rate is CORRECT for a W-2 employee — the cost arrives
+   * when the payroll week is posted — so "have no cost rate" was telling
+   * people to go and cause a double count. What is asserted is the part that
+   * matters: the hour count, its plural, and that the sentence points at
+   * payroll rather than at a rate to set.
+   */
+  it("says how many crew hours are not costed yet", () => {
     const m = dealMargin({ ...base, totalCostCents: 12_000_00, laborUnratedHours: 37 });
-    expect(m.caveat).toMatch(/37 crew hours have no cost rate/i);
+    expect(m.caveat).toMatch(/37 crew hours not costed yet/i);
+    expect(m.caveat).toMatch(/payroll/i);
+    // Never the old advice: setting a rate on a W-2 employee double-counts.
+    expect(m.caveat).not.toMatch(/cost rate/i);
   });
 
-  it("keeps the unrated-hours warning singular for one hour", () => {
+  it("keeps it singular for one hour", () => {
+    // The old string read "1 crew hour have no cost rate" — singular noun,
+    // plural verb. The new one sidesteps the verb entirely.
     const m = dealMargin({ ...base, totalCostCents: 1_00, laborUnratedHours: 1 });
-    expect(m.caveat).toMatch(/1 crew hour have/i);
+    expect(m.caveat).toMatch(/1 crew hour not costed yet/i);
+    expect(m.caveat).not.toMatch(/hours/i);
   });
 
   it("omits the contract line entirely when there is no contract", () => {

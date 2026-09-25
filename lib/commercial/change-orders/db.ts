@@ -234,13 +234,21 @@ export async function createChangeOrder(
   const proposal_id = await validProposalForOpp(sb, input.proposal_id, input.opportunity_id);
 
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Next per-opp CO number. Only live rows count toward the max, but the
-    // UNIQUE index spans all rows — a soft-deleted CO-002 keeps its number, so
-    // we compute max over ALL rows (incl. deleted) to avoid reusing it.
+    // Next per-opp CO number, over LIVE rows only.
+    //
+    // This used to count deleted rows too, because the UNIQUE index spanned
+    // all of them and reusing a soft-deleted CO-002's number would fail the
+    // insert. That avoided the error and burned the number instead: delete
+    // CO-002, raise another, and it comes back CO-003 with no 002 on the job.
+    //
+    // Migration 20260924170000 makes the index partial, so a deleted change
+    // order reserves nothing and the next one fills the gap. Same repair as
+    // the AIA applications Stephanie reported the same morning.
     const { data: last } = await sb
       .from("commercial_change_orders")
       .select("co_number")
       .eq("opportunity_id", input.opportunity_id)
+      .is("deleted_at", null)
       .order("co_number", { ascending: false })
       .limit(1)
       .maybeSingle();

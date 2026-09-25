@@ -343,9 +343,23 @@ describe("nextStep", () => {
     }
   });
 
-  it("falls back to the proposals tab when there is no proposal to point at", () => {
-    const step = at({ proposalCount: 0 })!;
+  it("goes straight into the builder — the button does what it says", () => {
+    /**
+     * Brendan 2026-09-23: "Build a proposal brings us to the actual building
+     * the proposal page." It used to land on the deal's Proposals TAB, where
+     * you then pressed a second button to do the thing the first one named.
+     * /proposal/new creates one (reusing an empty draft, so pressing twice
+     * does not leave two) and redirects into the editor.
+     */
+    const step = at({ proposalCount: 0, accountId: "acc-1" })!;
     expect(step.label).toBe("Build a proposal");
+    expect(step.href).toContain("/proposal/new");
+    expect(step.href).toContain("/accounts/acc-1/");
+  });
+
+  it("falls back to the proposals tab when the account isn't in scope", () => {
+    // A link to /accounts/undefined/… is worse than one extra click.
+    const step = at({ proposalCount: 0, accountId: null })!;
     expect(step.href).toContain("tab=proposals");
   });
 });

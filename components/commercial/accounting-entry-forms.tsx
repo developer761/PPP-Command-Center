@@ -2,7 +2,7 @@ import { SearchableSelect, type SearchableOption } from "@/components/commercial
 import { SelectWithOther } from "@/components/commercial/select-with-other";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { INPUT_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
-import { OFFERED_PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
+import { OFFERED_PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META, isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 
 /**
  * The three things Mary does every day, on the page she already has open.
@@ -75,18 +75,21 @@ export function RecordPaymentForm({
   return (
     <FormCard
       title="Record a payment"
-      hint="Money in, against an open invoice. It lands on the invoice, the job and the deposit list at once."
+      hint="Money in, against an open invoice or AIA certificate. It lands on the document, the job and the deposit list at once."
       action={action}
       submitLabel="Record payment"
       pendingLabel="Recording…"
     >
       {invoices.length === 0 ? (
-        <p className="text-[12.5px] text-ppp-charcoal-500">Nothing is open — every invoice is paid.</p>
+        <p className="text-[12.5px] text-ppp-charcoal-500">Nothing is open — every invoice and AIA certificate is paid.</p>
       ) : (
         <>
           <label data-tour="pay:invoice_id" className="block">
-            <span className={LABEL_CLS}>Invoice *</span>
-            <SearchableSelect name="invoice_id" options={invoices} required placeholder="Search by job or invoice number…" ariaLabel="Invoice" />
+            {/* Invoices AND AIA certificates. Stephanie 2026-09-23: a job
+                billed by progress certificate had nothing to pick here, which
+                is where she first hit it. */}
+            <span className={LABEL_CLS}>Invoice or AIA certificate *</span>
+            <SearchableSelect name="invoice_id" options={invoices} required placeholder="Search by job, invoice number or AIA no.…" ariaLabel="Invoice or AIA certificate" />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label data-tour="pay:amount" className="block">
@@ -142,13 +145,33 @@ export function RecordLaborPaymentForm({
   return (
     <FormCard
       title="Record a labor payment"
-      hint="Money out to a crew. Books against the job as a Subcontract cost, which is where crew labor is counted."
+      hint="Money out to a crew. Books against the job as a labor cost — pick whether it went to Tomco's own people or to outside help."
       action={action}
       submitLabel="Record payment out"
       pendingLabel="Recording…"
     >
       {/* Both spend forms post to one action; this is what tells them apart. */}
       <input type="hidden" name="kind" value="labor" />
+      {/* WHOSE TIME THIS WAS.
+          Mary 2026-09-24: "Can you move Tomco labor entries from Sub to
+          Employee Labor?" — and the reason she had 782 of them to move is
+          that this form hardcoded the subcontract category, so every payout
+          she recorded to Tomco's own crew was filed as outside help no matter
+          who it went to. Migrating the history without fixing this would just
+          refill it. Defaults to their own crew, which is 94% of the rows. */}
+      <label data-tour="labor:labor_category" className="block">
+        <span className={LABEL_CLS}>Who was paid *</span>
+        <select
+          name="labor_category"
+          defaultValue="employee_labor"
+          className={SELECT_CLS}
+          style={SELECT_BG_STYLE}
+          aria-label="Whose labor this was"
+        >
+          <option value="employee_labor">Employee labor — Tomco&rsquo;s own crew</option>
+          <option value="labor">Subcontract labor — an outside company or 1099 worker</option>
+        </select>
+      </label>
       <label data-tour="labor:opportunity_id" className="block">
         <span className={LABEL_CLS}>Job *</span>
         <SearchableSelect name="opportunity_id" options={jobs} required placeholder="Search jobs…" ariaLabel="Job" />
@@ -229,7 +252,7 @@ export function RecordPurchaseForm({
           <SelectWithOther
             name="category"
             defaultValue="materials"
-            options={OFFERED_PURCHASE_CATEGORIES.filter((c) => c !== "labor").map((c) => ({
+            options={OFFERED_PURCHASE_CATEGORIES.filter((c) => !isLaborPaymentCategory(c)).map((c) => ({
               value: c,
               label: PURCHASE_CATEGORY_META[c].label,
             }))}

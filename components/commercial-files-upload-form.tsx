@@ -6,11 +6,10 @@ import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { directUploadDocument } from "@/lib/commercial/uploads/direct-upload-client";
 
-/** Mirror of MAX_UPLOAD_BYTES in lib/commercial/documents/db.ts (100 MB).
- *  Duplicated because importing a server-only lib into a client component
- *  errors at build time. Keep in sync — if either changes, also audit the
- *  bucket setting in the Supabase console. */
-const CLIENT_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+// Imported, not mirrored. The hand-copied "keep in sync" constant that used
+// to live here said 100 MB while storage accepted 50, so the picker cheerfully
+// admitted a 60 MB bid set and let the upload fail at the far end.
+import { MAX_UPLOAD_BYTES as CLIENT_MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, tooLargeMessage } from "@/lib/commercial/uploads/limits";
 
 /** Files at/above this size can't go through the multipart API route —
  *  Vercel caps serverless request bodies at ~4.5 MB. Above the threshold we
@@ -88,7 +87,7 @@ export function CommercialFilesUploadForm({
     setSelectedFile(f);
     setError(null);
     if (f && f.size > CLIENT_MAX_UPLOAD_BYTES) {
-      setError(`File too big (${Math.round(f.size / 1024 / 1024)} MB). Max 100 MB.`);
+      setError(tooLargeMessage(f.size, "on this tab"));
     }
   };
 
@@ -119,7 +118,7 @@ export function CommercialFilesUploadForm({
       return;
     }
     if (selectedFile.size > CLIENT_MAX_UPLOAD_BYTES) {
-      setError(`File too big (${Math.round(selectedFile.size / 1024 / 1024)} MB). Max 100 MB.`);
+      setError(tooLargeMessage(selectedFile.size, "on this tab"));
       return;
     }
 
@@ -201,7 +200,7 @@ export function CommercialFilesUploadForm({
         <div>
           <h3 className="text-sm font-semibold text-ppp-charcoal">Upload a file</h3>
           <p className="text-[11.5px] text-ppp-charcoal-500 mt-0.5">
-            PDFs, images, Word, Excel, or plain text. Up to 100 MB.
+            PDFs, images, Word, Excel, or plain text. Up to {MAX_UPLOAD_LABEL}.
           </p>
           {/* Google Drive silently recompresses PDFs on download (per
               Brendan/Katie 2026-07-10). Note it here so users upload

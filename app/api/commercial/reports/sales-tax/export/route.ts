@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 const money = (cents: number) => (cents / 100).toFixed(2);
 
 export async function GET(req: NextRequest) {
-  const guard = await guardExport();
+  const guard = await guardExport({ accounting: true });
   if (!guard.ok) return guard.response;
 
   const sp = req.nextUrl.searchParams;

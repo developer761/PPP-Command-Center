@@ -715,9 +715,13 @@ function splitBoldLead(text: string): { lead: string | null; body: string } {
 function LogoBlock({
   dateLabel,
   dealNumber,
+  logo: uploadedLogo,
 }: {
   dateLabel: string;
   dealNumber: string | null;
+  /** The operating company's logo. Null → the bundled file, then the
+   *  text wordmark. */
+  logo?: Buffer | null;
 }) {
   // Karan 2026-07-17: real Tomco logo image from Alex, cached at module
   // load. If the file is missing (dev without asset, deploy hiccup),
@@ -729,7 +733,16 @@ function LogoBlock({
   // sequential, matches Tomco's JD Sports reference "No. ALT0125"
   // convention). Only renders when the header carries a real deal
   // number — legacy proposals with no deal_number show only the date.
-  const logo = getLogoBuffer();
+  // THE OPERATING COMPANY'S LOGO, not a file path.
+  //
+  // Karan 2026-07-31: "ONE configurable operating company (name/address/phone/
+  // logo/letterhead/signature) that flows into EVERY generated doc." Every
+  // other document does that through getBrandLogoBuffer(). This one read
+  // public/brand/tomco-logo.jpg straight off disk and cached it at module
+  // load — so uploading a new logo in Settings changed the invoice, the AIA,
+  // the warranty and the work order, and left the proposal, which is the
+  // document a GC actually looks at, on the old one.
+  const logo = uploadedLogo ?? getLogoBuffer();
   return (
     <>
       <View style={styles.headerRow}>
@@ -829,6 +842,33 @@ function ProjectBlock({ h, revisionLabel }: { h: ProposalHeaderJson; revisionLab
  *  with the description below/next to it (Product + Description are now
  *  distinct). Legacy rows (product_name null) fall back to parsing a
  *  bold-lead out of the description, preserving how they were authored. */
+/**
+ * How a scope line reads on the page: `Name: description.`
+ *
+ * Brendan, 2026-09-23, with the approved Tesla CC proposal as the reference:
+ *
+ *   was   Prime & Paint Gypsum Walls 2 Coats — Primer + 2 finish coats.
+ *   wants New Gypsum Walls: primer and 2 finish coats.
+ *
+ * Every line on the proposal Tomco actually sent reads that way — "GWB Wall:
+ * Standard preparation, apply 2 finish coats." — so the em-dash was ours, not
+ * theirs. A colon also survives a line wrap: an em-dash at a break looks like
+ * a stray hyphen, while a colon has already done its job by then.
+ *
+ * The full stop is added when the description hasn't got one. It is the only
+ * punctuation this touches — the WORDING stays exactly as it was typed,
+ * because that belongs to whoever wrote the product.
+ */
+export function scopeSeparator(): string {
+  return ": ";
+}
+
+export function withFullStop(text: string): string {
+  const t = text.trim();
+  if (!t) return t;
+  return /[.!?:;]$/.test(t) ? t : `${t}.`;
+}
+
 function ItemLine({ item }: { item: CommercialProposalLineItem }) {
   const productName = item.product_name?.trim();
   // Brendan 2026-08-17: "when you click show line item price on the product it
@@ -862,7 +902,7 @@ function ItemLine({ item }: { item: CommercialProposalLineItem }) {
           <View style={styles.bulletDot} />
           <Text style={styles.bulletBody}>
             <Text style={styles.bulletLead}>{productName}</Text>
-            {bodyLines.length === 1 ? <Text>{" — " + bodyLines[0]}</Text> : null}
+            {bodyLines.length === 1 ? <Text>{scopeSeparator() + withFullStop(bodyLines[0])}</Text> : null}
           </Text>
           {priceText && <Text style={styles.inlinePrice}>{priceText}</Text>}
         </View>
@@ -1009,6 +1049,7 @@ function InclusionsCustomer({
   items,
   laborItems = [],
   hideLaborPrices = false,
+  usePhasing,
 }: {
   items: CommercialProposalLineItem[];
   /** Karan 2026-08: "Move the Labor into Inclusions." Labor used to print as
@@ -1022,6 +1063,15 @@ function InclusionsCustomer({
   /** A final-price override is active, so per-line labor money would
    *  contradict the reconciled TOTAL — drop the rate tail. */
   hideLaborPrices?: boolean;
+  /**
+   * The proposal's phasing decision (header_json.use_phasing).
+   *
+   * `undefined` means the proposal predates the checkbox: fall back to the old
+   * rule — group if any line happens to carry a phase. `false` means somebody
+   * deliberately turned phasing off, and then a stray phase left on a line
+   * must NOT quietly re-group the document behind them.
+   */
+  usePhasing?: boolean;
 }) {
   if (items.length === 0 && laborItems.length === 0) return null;
   const laborLines = laborItems.map((it) => {
@@ -1052,7 +1102,7 @@ function InclusionsCustomer({
   // compat with every existing proposal). Phase-null items when some
   // items DO have phases collect under a "General" section at the top.
   const { anyHasPhase, groups } = groupItemsByPhase(items);
-  if (!anyHasPhase) {
+  if (!anyHasPhase || usePhasing === false) {
     return (
       <View style={{ marginTop: 14 }}>
         {/* Stephanie 2026-08-20: "Inclusions, scope of work, change all PDF's
@@ -1124,10 +1174,14 @@ function LiRow({
     <View style={styles.liRow}>
       <Text style={[styles.liCell, styles.liCellDesc]}>
         {showAlternateBadge && it.is_alternate ? "[ALT] " : ""}
+        {/* The internal report is the only document this line appears on, so
+            say why it is here — otherwise an approver reading the scope has no
+            way to tell it from something the GC was quoted line by line. */}
+        {it.is_internal ? "[INTERNAL] " : ""}
         {it.product_name ? (
           <Text style={{ fontFamily: "Times-Bold" }}>
             {it.product_name}
-            {it.description ? " — " : ""}
+            {it.description ? scopeSeparator() : ""}
           </Text>
         ) : null}
         {it.description}
@@ -1654,6 +1708,16 @@ export type RenderProposalArgs = {
    */
   company?: OperatingCompany | null;
   /**
+   * The operating company's uploaded logo.
+   *
+   * Same story as `company`, one document later: the footer was fixed to read
+   * Settings, and the LOGO was still read straight off disk at module load. So
+   * uploading a new one updated the invoice, AIA, warranty and work order and
+   * left the proposal on the bundled file. Read by the caller because this
+   * module renders synchronously and cannot await.
+   */
+  logo?: Buffer | null;
+  /**
    * Sales tax for this job, or null when no line should print.
    *
    * Stephanie 2026-08-20: "Sales Tax isn't carrying over to proposal." It had
@@ -1731,6 +1795,7 @@ export function ProposalPdfDocument({
   proposal,
   lineItems,
   exclusions,
+  logo,
   mode = "customer",
   /**
    * Print the sign-and-return block on the CUSTOMER copy.
@@ -1768,7 +1833,21 @@ export function ProposalPdfDocument({
   // section between Inclusions and Alternates. Rolls into TOTAL like
   // inclusions (which is why we filter them out of the inclusions
   // bucket here — they'd double-count the TOTAL otherwise).
-  const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  const allInclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  /**
+   * INTERNAL LINES NEVER REACH THE CUSTOMER COPY.
+   *
+   * Brendan 2026-09-23 asked for a line the GC does not see — lifts, night
+   * access, a dumpster. It is real priced work, so it stays in the TOTAL
+   * (which is computed from the line items, not from this list); it just is
+   * not itemised to them.
+   *
+   * Filtered HERE, once, on the way into the renderer — rather than inside
+   * each of the three places that print a line — so a new print path cannot
+   * forget the rule and leak one onto the page a GC reads.
+   */
+  const inclusions =
+    mode === "customer" ? allInclusions.filter((i) => i.is_internal !== true) : allInclusions;
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   const totalLabel = proposalTotalLabel(exclusions);
@@ -1832,6 +1911,7 @@ export function ProposalPdfDocument({
 
         <LogoBlock
           dateLabel={dateLabel}
+          logo={logo}
           dealNumber={
             proposal.header_json.proposal_number?.trim() ||
             proposalRevisionLabel(proposal)
@@ -1898,6 +1978,7 @@ export function ProposalPdfDocument({
             items={inclusions}
             laborItems={laborRows}
             hideLaborPrices={overrideActive}
+            usePhasing={proposal.header_json.use_phasing}
           />
         )}
 

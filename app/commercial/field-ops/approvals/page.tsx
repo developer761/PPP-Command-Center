@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -15,6 +16,7 @@ import {
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS } from "@/lib/commercial/form-classnames";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { safeReturnPath } from "@/lib/commercial/safe-return";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/approvals";
@@ -30,31 +32,36 @@ async function requireAdmin(): Promise<string> {
   return user.id;
 }
 
-function doneOr(res: { ok: true } | { ok: false; error: string }) {
+function doneOr(res: { ok: true } | { ok: false; error: string }, back: string | null) {
+  // Stay on THIS page while there is still work to do, but keep carrying the
+  // return so the back link survives each approval.
+  const home = back ? `${BASE}?return=${encodeURIComponent(back)}` : BASE;
   revalidatePath(BASE);
-  redirect(res.ok ? BASE : `${BASE}?error=${encodeURIComponent(res.error)}`);
+  if (res.ok) redirect(home);
+  redirect(`${home}${home.includes("?") ? "&" : "?"}error=${encodeURIComponent(res.error)}`);
 }
 async function approveAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  doneOr(await approveTimeEntry(String(formData.get("id") ?? ""), userId));
+  doneOr(await approveTimeEntry(String(formData.get("id") ?? ""), userId), safeReturnPath(String(formData.get("return") ?? "") || undefined));
 }
 async function questionAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  doneOr(await questionTimeEntry(String(formData.get("id") ?? ""), String(formData.get("reason") ?? ""), userId));
+  doneOr(await questionTimeEntry(String(formData.get("id") ?? ""), String(formData.get("reason") ?? ""), userId), safeReturnPath(String(formData.get("return") ?? "") || undefined));
 }
 async function overrideAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
-  doneOr(await overrideTimeEntryHours(String(formData.get("id") ?? ""), Number(formData.get("hours") ?? 0), userId));
+  doneOr(await overrideTimeEntryHours(String(formData.get("id") ?? ""), Number(formData.get("hours") ?? 0), userId), safeReturnPath(String(formData.get("return") ?? "") || undefined));
 }
-async function bulkApproveAction() {
+async function bulkApproveAction(formData: FormData) {
   "use server";
   const userId = await requireAdmin();
   await bulkApproveZeroVariance(userId);
   revalidatePath(BASE);
-  redirect(`${BASE}?ok=bulk`);
+  const back = safeReturnPath(String(formData.get("return") ?? "") || undefined);
+  redirect(`${BASE}?ok=bulk${back ? `&return=${encodeURIComponent(back)}` : ""}`);
 }
 
 function varTone(v: number | null): string {
@@ -63,10 +70,11 @@ function varTone(v: number | null): string {
   return v < 0 ? "text-rose-700" : "text-amber-700";
 }
 
-export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
+export default async function ApprovalsPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string; return?: string | string[] }> }) {
   await requireAdmin();
   const sp = await searchParams;
   const rows = await listPendingApprovals();
+  const back = safeReturnPath(sp.return);
   // Capped-guess (force-closed) rows are excluded from the zero-variance sweep —
   // they need a human eye — so the button count must exclude them too. Same for
   // SELF-LOGGED (`manual`) rows: the crew log pre-fills the scheduled hours, so
@@ -85,6 +93,17 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="pb-8 max-w-4xl">
+      {/* Sent here from somewhere with work waiting on these approvals — the
+          payroll week, usually. Leaving without a way back meant navigating to
+          Accounting → Payroll → the right week again by hand. */}
+      {back && (
+        <Link
+          href={back}
+          className="mb-3 inline-flex items-center gap-1 min-h-[44px] text-[12.5px] font-semibold text-cc-brand-700 hover:underline"
+        >
+          ← Back to payroll
+        </Link>
+      )}
       <div className="mb-4 flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">Approvals</h1>
@@ -93,6 +112,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
         </div>
         {zeroCount > 0 && (
           <form action={bulkApproveAction}>
+            {back && <input type="hidden" name="return" value={back} />}
             <SubmitButton
               className="inline-flex items-center px-3 py-2 rounded-lg bg-ppp-green-600 text-white text-[12.5px] font-semibold hover:bg-ppp-green-700 min-h-[44px] sm:min-h-[40px]"
             >Approve {zeroCount} matching</SubmitButton>
@@ -110,7 +130,12 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
       ) : (
         <div className="space-y-4">
           {[...byEmp.values()].map((grp) => (
-            <div key={grp.name} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            // Keyed on the EMPLOYEE ID, not the display name. This crew has
+            // two Lucatortos and two Roberts behind names like "Tomco Labor -
+            // Joe" — the calendar says so in its own comment — and duplicate
+            // React keys on a money screen let two groups reconcile onto each
+            // other's rows after an approve.
+            <div key={grp.rows[0]?.employee_id ?? grp.name} className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
               <div className="px-4 py-2 bg-ppp-charcoal-50 border-b border-ppp-charcoal-100 flex items-center justify-between">
                 <span className="text-[13px] font-bold text-ppp-charcoal">{grp.name}</span>
                 <span className="text-[11px] text-ppp-charcoal-400">{grp.rows.length} entr{grp.rows.length === 1 ? "y" : "ies"}</span>
@@ -132,6 +157,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                       </div>
                       <form action={approveAction}>
                         <input type="hidden" name="id" value={r.id} />
+                        {back && <input type="hidden" name="return" value={back} />}
                         <SubmitButton
                           className="inline-flex items-center px-3 rounded-lg bg-ppp-green-50 text-ppp-green-700 text-[12px] font-semibold hover:bg-ppp-green-100 min-h-[44px] touch-manipulation"
                         >Approve</SubmitButton>
@@ -141,6 +167,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                         <div className="mt-2 flex flex-col gap-2 bg-ppp-charcoal-50/60 rounded-lg p-2">
                           <form action={overrideAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
+                            {back && <input type="hidden" name="return" value={back} />}
                             <input name="hours" type="number" min="0" max="24" step="0.25" defaultValue={r.actual} className={`${INPUT_CLS} w-20`} />
                             <SubmitButton
                               className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-cc-brand-700 hover:bg-cc-brand-50 touch-manipulation"
@@ -148,6 +175,7 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                           </form>
                           <form action={questionAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={r.id} />
+                            {back && <input type="hidden" name="return" value={back} />}
                             <input name="reason" placeholder="What's wrong?" className={`${INPUT_CLS} flex-1`} />
                             <SubmitButton
                               className="shrink-0 inline-flex items-center px-3 min-h-[44px] rounded-lg text-[12px] font-semibold text-amber-700 hover:bg-amber-50 touch-manipulation"

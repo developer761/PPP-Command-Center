@@ -8,11 +8,11 @@ import { useRouter } from "next/navigation";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { DateField } from "@/components/commercial/date-field";
 
-/** Mirror of MAX_UPLOAD_BYTES in lib/commercial/accounts/documents.ts.
- *  Duplicated because importing a server-only lib into a client component
- *  errors at build time. Keep these two in sync — if either changes,
- *  audit the bucket policy in Supabase too. Last verified: 50 MB. */
-const CLIENT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+// The limit that binds this form is NOT the platform's upload ceiling — it is
+// Vercel's ~4.5 MB request body, because this posts multipart and there is no
+// sign/finalize route under accounts/[id]/documents. Imported, never mirrored:
+// the "keep these two in sync" copy that used to live here said 50 MB against
+// a 4.5 MB pipe, and pointing it at the shared 500 MB constant made it worse.
 
 // AUDIT 2026-08-12: this was a hardcoded copy of the category list, and it is
 // how Brendan's removal failed to reach the screen — the enum dropped four
@@ -105,9 +105,17 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
         }
       }
     }
-    if (f && f.size > CLIENT_MAX_UPLOAD_BYTES) {
-      const maxMb = Math.round(CLIENT_MAX_UPLOAD_BYTES / 1024 / 1024);
-      setError(`That file is ${Math.round(f.size / 1024 / 1024)} MB — max is ${maxMb} MB. Try compressing or splitting.`);
+    // THIS FORM POSTS MULTIPART, so the ceiling is Vercel's ~4.5 MB request
+    // body — not the platform's upload limit. There is no sign/finalize route
+    // under accounts/[id]/documents the way there is for opportunities, so a
+    // bigger file 413s at the edge and the catch below shows a bare "Upload
+    // failed." Guarding against CLIENT_MAX_UPLOAD_BYTES let a 60 MB file
+    // through this check to die at the far end, and raising that constant to
+    // 500 MB made the gap ten times wider.
+    if (f && f.size > SAFE_MULTIPART_BYTES) {
+      setError(
+        `That file is ${(f.size / 1024 / 1024).toFixed(1)} MB. This form can only take files under ${Math.round(SAFE_MULTIPART_BYTES / 1024 / 1024)} MB — a scanned packet usually needs splitting, or send it to Karan to load directly.`
+      );
       setPickedFile(null);
       return;
     }
@@ -268,7 +276,7 @@ export default function CommercialDocumentUploadForm({ accountId }: { accountId:
           ) : (
             <>
               <div className="text-sm font-medium text-ppp-charcoal-700">Drag &amp; drop or tap to pick</div>
-              <div className="text-[11px] text-ppp-charcoal-500 mt-1">PDF, image, Word, Excel — max 50 MB</div>
+              <div className="text-[11px] text-ppp-charcoal-500 mt-1">PDF, image, Word, Excel — max {Math.round(SAFE_MULTIPART_BYTES / 1024 / 1024)} MB</div>
             </>
           )}
           <input

@@ -119,13 +119,30 @@ export function activityTone(iso: string | null | undefined): "ok" | "stale" | "
  * (won + lost both 0) — the UI should render "—" rather than "0%" in
  * that case so we don't shame a customer with zero history.
  */
+/**
+ * Share of decided bids won with this GC, 0..1 — or null when there is nothing
+ * to compare against.
+ *
+ * NULL FOR "WINS BUT NO LOSSES", not just for an empty history. It used to
+ * guard only `total === 0`, so an account with one won job and no recorded
+ * losses rendered the subtitle "100% win". Tomco's migration imported 92 won
+ * jobs and no lost bids, which means that was every account on the list — a
+ * perfect record against every GC, asserted from having filed no losses.
+ *
+ * The subtitle carries no denominator ("100% win · ~32d close"), so there is
+ * nothing on screen to signal that the number rests on two data points or
+ * none. Where a denominator IS shown the trade is different — the estimator
+ * report deliberately keeps 100% for that reason, and says so.
+ *
+ * Same rule as `hadHeadToHead` on the Win/Loss report. Not imported from it:
+ * that module is server-only and this one is used client-side.
+ */
 export function winRate(overview: AccountOverview | null | undefined): number | null {
   if (!overview) return null;
   const won = overview.won_opps_count ?? 0;
   const lost = overview.lost_opps_count ?? 0;
-  const total = won + lost;
-  if (total === 0) return null;
-  return won / total;
+  if (won === 0 || lost === 0) return null;
+  return won / (won + lost);
 }
 
 /** Format cents → dollar shorthand. 50_000_00 → "$50k", 1_250_000_00 → "$1.25M". */

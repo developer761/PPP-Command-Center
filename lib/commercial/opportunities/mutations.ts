@@ -284,6 +284,43 @@ export async function createCommercialOpportunity(
     }
   }
 
+  // TELL THE ESTIMATOR NAMED AT CREATION, TOO.
+  //
+  // Karan 2026-09-23: "just to make sure that when we add someone in teams or
+  // estimator for an account or opp then it notifies them and they're
+  // technically tied to the job."
+  //
+  // updateOpportunity does this on a change; creating the deal with the
+  // estimator already filled in — which is how the New Opportunity form is
+  // actually used — did not. The column was written and that was all: no
+  // notification, and the person pricing the job did not appear on its Team
+  // tab, so "who is on this?" answered wrong from the first minute.
+  //
+  // Same call as the update path, deliberately: one way an estimator becomes
+  // an assignment, one notification, nothing to keep in step.
+  if (opp.estimator_user_id) {
+    try {
+      const { addOpportunityAssignment } = await import("./assignments");
+      // Same swallowed-result trap as the update path — see the comment there.
+      const res = await addOpportunityAssignment({
+        opportunity_id: opp.id,
+        user_id: opp.estimator_user_id,
+        role: "estimator",
+        assigned_by_user_id: input.created_by_user_id ?? null,
+      });
+      if (!res.ok) {
+        console.warn(
+          `[opportunities] estimator ${opp.estimator_user_id} was set on ${opp.id} but not notified: ${res.error}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[opportunities] estimator assignment/notify on create failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // Log the initial status as the first row in the opp's status_log
   // (from_status=NULL) so the Timeline tab in later batches has a
   // complete history with no gap at creation.
@@ -529,6 +566,57 @@ export async function updateCommercialOpportunity(
     }
   }
 
+  /**
+   * TELL THE ESTIMATOR THEY ARE ON THE JOB.
+   *
+   * Brendan 2026-09-23: "Estimator and teams are assigning so they should get
+   * emailed that they are on the job and stuff."
+   *
+   * Picking a team already emailed everyone on it — that goes through
+   * addOpportunityAssignment, which notifies. Naming an ESTIMATOR did not: it
+   * wrote a column on the deal and nothing else, so the one person now
+   * expected to price the job was the only one not told.
+   *
+   * Fixed by making it a real assignment rather than bolting a second email
+   * onto a field write. The estimator lands on the deal's Team tab like
+   * everybody else, the existing notification does the telling, and there is
+   * no second mail path to keep in step with the first.
+   *
+   * Only on a CHANGE, and addOpportunityAssignment treats an existing row as
+   * "already assigned" — so re-saving a deal does not re-notify. Best-effort:
+   * naming an estimator must not fail because the email did.
+   */
+  const estimatorChanged =
+    input.estimator_user_id !== undefined &&
+    !!opp.estimator_user_id &&
+    before.estimator_user_id !== opp.estimator_user_id;
+  if (estimatorChanged) {
+    try {
+      const { addOpportunityAssignment } = await import("./assignments");
+      // READ THE RESULT. This returns {ok:false} on refusal — it does not
+      // throw — so the catch below could never see a failed assignment. An
+      // inactive or unknown assignee produced a silent no-notification: the
+      // estimator's name went on the deal and nobody told them, which is the
+      // half of "assign an estimator" that the request was actually about.
+      const res = await addOpportunityAssignment({
+        opportunity_id: opp.id,
+        user_id: opp.estimator_user_id as string,
+        role: "estimator",
+        assigned_by_user_id: input.updated_by_user_id ?? null,
+      });
+      if (!res.ok) {
+        console.warn(
+          `[opportunities] estimator ${opp.estimator_user_id} was set on ${opp.id} but not notified: ${res.error}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[opportunities] estimator assignment/notify failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   return { ok: true, opportunity: opp };
 }
 
@@ -582,6 +670,46 @@ export async function softDeleteCommercialOpportunity(
     .single();
 
   if (error) return { ok: false, error: error.message };
+
+  /**
+   * Cascade: CLEAR THE TO-DOS THIS DEAL WAS CARRYING.
+   *
+   * The Action Needed bar reads unread actionable notifications and never
+   * re-checks whether the subject still exists. Deleting a deal left its
+   * "Brendan is requesting approval on Proposal · $13,500.00" sitting at the
+   * top of every admin's screen, with a "Review & approve →" button pointing
+   * at a deleted opportunity — found on the live platform, a day after the
+   * deal was removed. The Proposals page correctly showed nothing, which made
+   * the bar the only place it existed.
+   *
+   * Marked read, not deleted: the bell stays a history of what happened.
+   */
+  {
+    // The account comes from the OPPORTUNITY. `commercial_proposals` has no
+    // `account_id` column — selecting one makes PostgREST reject the whole
+    // query and return null, so the first version of this cascade would have
+    // resolved nothing, silently, and looked like it worked.
+    const { data: props, error: propErr } = await sb
+      .from("commercial_proposals")
+      .select("id")
+      .eq("opportunity_id", id);
+    if (propErr) {
+      console.warn(
+        `[opportunities] could not read proposals to clear their to-dos: ${propErr.message}`,
+      );
+    } else if ((props ?? []).length > 0) {
+      const accountId = (after as { account_id?: string | null } | null)?.account_id ?? null;
+      const { resolveActionItems, PROPOSAL_ACTION_KINDS } = await import(
+        "@/lib/notifications/resolve-action-items"
+      );
+      for (const pr of props as { id: string }[]) {
+        await resolveActionItems({
+          link: `/commercial/accounts/${accountId}/deals/${id}/proposal/${pr.id}`,
+          kinds: PROPOSAL_ACTION_KINDS,
+        });
+      }
+    }
+  }
 
   // Cascade: soft-delete the (unpaid) invoices attached to this deal so
   // they don't linger as orphans on the invoices list. Best-effort — if

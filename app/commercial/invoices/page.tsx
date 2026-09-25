@@ -52,6 +52,7 @@ import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classn
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { MoneyInput } from "@/components/commercial/money-input";
 import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
+import { logDelete } from "@/lib/commercial/audit-log";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,15 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
     // who or what the balances were. Batch-log a status-change row per
     // invoice (actor, prior status, payment amount) into the same log the
     // single-record path writes.
+    // AND the platform audit log. These two bulk paths never called logDelete
+    // — the exact gap closed for the single-invoice path yesterday, where a
+    // $286,695 invoice vanished with no entry anyone could reach. The status
+    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
+    // it cannot answer "who removed these".
+    for (const r of rows) {
+      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
+      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
+    }
     await sb.from("commercial_invoice_status_log").insert(
       rows.map((r) => ({
         invoice_id: r.id,
@@ -314,6 +324,15 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
     }
     // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
     // trail survives orphan cleanup (see per-opp variant above).
+    // AND the platform audit log. These two bulk paths never called logDelete
+    // — the exact gap closed for the single-invoice path yesterday, where a
+    // $286,695 invoice vanished with no entry anyone could reach. The status
+    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
+    // it cannot answer "who removed these".
+    for (const r of rows) {
+      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
+      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
+    }
     await sb.from("commercial_invoice_status_log").insert(
       rows.map((r) => ({
         invoice_id: r.id,
@@ -1170,7 +1189,19 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
             tone="blue"
             label="Paid this month"
             value={formatCentsCompact(paidThisMonthCents)}
-            sub={paidThisMonthCents === 0 ? "no payments yet" : "collected in the current month"}
+            /* SAY "excludes AIA", like the Outstanding tile three columns left.
+               That one is qualified deliberately — "an unqualified 'across the
+               book' here would be a second, smaller number wearing the same
+               words". This reads from commercial_invoice_payments only, so it
+               is exactly that second number, and the argument was never
+               applied to it. On a book where most commercial work bills by
+               certificate, Stephanie records a $75k cheque and this tile does
+               not move. */
+            sub={
+              paidThisMonthCents === 0
+                ? "no invoice payments yet (excludes AIA)"
+                : "collected in the current month (excludes AIA)"
+            }
           />
           <KpiCard
             tone="neutral"

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
-import { logInsert, logUpdate } from "@/lib/commercial/audit-log";
+import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { daysFromTodayEt } from "@/lib/date-et";
 
 /**
@@ -242,6 +242,50 @@ export async function recordHoursForEmployee(input: {
   return writeTimeEntry(input);
 }
 
+/**
+ * Remove one logged day.
+ *
+ * Mary, 2026-09-23: "Please delete JJ himself. and anyone else… I erroneously
+ * entered under both selections. Can I delete or edit entries in the future?"
+ *
+ * She had no way to take back a mistake. Re-entering the same person, job and
+ * day overwrites the hours — that is the edit — but an entry made against the
+ * WRONG person could only be corrected by someone with database access, which
+ * is not a workflow, it is a dependency on me. So: a delete she can reach.
+ *
+ * Deliberately narrow. Attendance has no soft-delete column, so this removes
+ * the row — but it writes the whole row to the audit log first, which is the
+ * difference between a deletion that can be answered for and one that cannot.
+ * An entry already EXPORTED to payroll is refused: that hour has been paid,
+ * and making paid time disappear from the record is not a correction.
+ */
+export async function deleteTimeEntry(
+  entryId: string,
+  actorUserId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = commercialDb();
+  const { data: before } = await sb
+    .from("commercial_time_entries")
+    .select("*")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!before) return { ok: false, error: "That entry is already gone." };
+
+  const row = before as { status?: string; pay_period_id?: string | null };
+  if (row.status === "exported" || row.pay_period_id) {
+    return {
+      ok: false,
+      error:
+        "That day has already gone out with a payroll export, so it can't be deleted here. Tell Karan what needs correcting and it can be handled on the payroll side.",
+    };
+  }
+
+  const { error } = await sb.from("commercial_time_entries").delete().eq("id", entryId);
+  if (error) return { ok: false, error: error.message };
+  await logDelete("commercial_time_entries", entryId, before, actorUserId);
+  return { ok: true };
+}
+
 export async function submitDailyHours(input: {
   employeeId: string;
   jobId: string;
@@ -270,6 +314,34 @@ async function writeTimeEntry(input: {
   const clamped = Math.min(24, Math.round(hours * 10) / 10);
 
   const sb = commercialDb();
+
+  /**
+   * THE JOB HAS TO BE A REAL, LIVE JOB.
+   *
+   * The employee is taken from the session and never from the form — that was
+   * done deliberately and is correct. `job_id` was not: it came straight off
+   * the posted form and went into the insert unchecked, so a crew member could
+   * file payable hours against any job id they could produce, including a
+   * soft-deleted one.
+   *
+   * Deliberately NOT restricted to jobs they are scheduled on. Working
+   * somewhere you were not scheduled is a real thing that happens, and
+   * `getDailyLog` has an "unscheduled — worked anyway" path for exactly that;
+   * refusing it here would push a genuine day off the books. Existing and live
+   * is the line.
+   */
+  {
+    const { data: job, error } = await sb
+      .from("commercial_jobs")
+      .select("id, deleted_at")
+      .eq("id", input.jobId)
+      .maybeSingle();
+    if (error) return { ok: false, error: "Could not check that job. Try again." };
+    if (!job || (job as { deleted_at: string | null }).deleted_at) {
+      return { ok: false, error: "That job is not available to log hours against." };
+    }
+  }
+
   const { data: existing } = await sb
     .from("commercial_time_entries")
     .select("id, status, actual_hours")

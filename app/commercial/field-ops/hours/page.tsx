@@ -6,12 +6,15 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { todayEtIso, mondayOf, monthStartOf, addDaysIso } from "@/lib/commercial/field-ops/schedule";
 import { getHoursLog } from "@/lib/commercial/field-ops/hours-log";
-import { listEmployees } from "@/lib/commercial/field-ops/employees";
+import { listEmployees, employeePickerLabel, isLaborCompanyRow } from "@/lib/commercial/field-ops/employees";
+import { deleteTimeEntry } from "@/lib/commercial/field-ops/daily-log";
+import { overrideTimeEntryHours } from "@/lib/commercial/field-ops/approvals";
 import { listJobs } from "@/lib/commercial/field-ops/jobs";
 import { recordHoursForEmployee } from "@/lib/commercial/field-ops/daily-log";
 import { revalidatePath } from "next/cache";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/hours";
@@ -51,6 +54,50 @@ async function recordHoursAction(formData: FormData) {
   redirect(back("recorded=1"));
 }
 
+/**
+ * Remove one logged day.
+ *
+ * Mary, 2026-09-23: "Please delete JJ himself. and anyone else… I erroneously
+ * entered under both selections. Can I delete or edit entries in the future?"
+ *
+ * Editing already worked — recording the same person, job and day again
+ * overwrites the hours — but a day put against the WRONG person could not be
+ * taken back from any screen. That made every mis-click a message to me.
+ */
+async function deleteEntryAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const res = await deleteTimeEntry(String(formData.get("entry_id") ?? ""), userId);
+  if (!res.ok) redirect(`${BASE}?${new URLSearchParams({ rec_error: res.error })}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}?deleted=1`);
+}
+
+/**
+ * Change the hours on one logged day, in place.
+ *
+ * Karan, 2026-09-23: "is there an easier way to edit as well, like can we have
+ * pencil icon". Re-recording the same person, work order and date did
+ * overwrite the hours, but that is a workaround dressed as a feature: it means
+ * knowing the trick, and retyping three fields to fix a digit.
+ *
+ * Reuses `overrideTimeEntryHours`, the same writer the Approvals queue uses —
+ * so the 0-24 bound, the refusal to touch exported (paid) time and the audit
+ * row all behave identically wherever the edit is made from.
+ */
+async function updateEntryHoursAction(formData: FormData) {
+  "use server";
+  const userId = await requireAdmin();
+  const res = await overrideTimeEntryHours(
+    String(formData.get("entry_id") ?? ""),
+    Number(formData.get("hours") ?? 0),
+    userId,
+  );
+  if (!res.ok) redirect(`${BASE}?${new URLSearchParams({ rec_error: res.error })}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}?edited=1`);
+}
+
 const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 type Range = "today" | "week" | "month" | "custom";
 
@@ -85,7 +132,7 @@ const fmtH = (h: number) => `${h % 1 === 0 ? h : h.toFixed(2).replace(/0$/, "")}
 export default async function FieldOpsHoursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; from?: string; to?: string; recorded?: string; rec_error?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; recorded?: string; rec_error?: string; deleted?: string; edited?: string }>;
 }) {
   await requireAdmin();
   const sp = await searchParams;
@@ -141,14 +188,27 @@ export default async function FieldOpsHoursPage({
             Recorded. It shows in the log below and goes to Approvals like any other entry.
           </p>
         ) : null}
+        {sp.edited ? (
+          <p className="mt-3 text-[12.5px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+            Hours updated. The day goes back to Approvals so the change is reviewed like any other entry.
+          </p>
+        ) : null}
+        {sp.deleted ? (
+          <p className="mt-3 text-[12.5px] rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+            Day deleted. To correct hours instead of removing them, record the same person, work order and date again — it overwrites.
+          </p>
+        ) : null}
 
         <form action={recordHoursAction} className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <span className={LABEL_CLS}>Crew member</span>
             <select name="employee_id" required className={SELECT_CLS} style={SELECT_BG_STYLE}>
               <option value="">Choose…</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.display_name}</option>
+              {/* People first, then the labor-company rows the import could not
+                  safely fold into a person — marked, so the same man does not
+                  read as two employees (Mary 2026-09-23). */}
+              {[...employees].sort((a, b) => Number(isLaborCompanyRow(a)) - Number(isLaborCompanyRow(b))).map((e) => (
+                <option key={e.id} value={e.id}>{employeePickerLabel(e)}</option>
               ))}
             </select>
           </label>
@@ -261,12 +321,81 @@ export default async function FieldOpsHoursPage({
                     <span className="shrink-0 tabular-nums">sched · worked</span>
                   </li>
                   {r.jobs.map((j) => (
-                    <li key={j.job_id} className="flex items-center justify-between gap-3 text-[12.5px]">
-                      <span className="text-ppp-charcoal-600 truncate min-w-0">
-                        {j.job_name}
-                        {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
-                      </span>
-                      <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.scheduled_hours)} · <span className="font-semibold text-ppp-charcoal-700">{fmtH(j.worked_hours)}</span></span>
+                    <li key={j.job_id} className="text-[12.5px]">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-ppp-charcoal-600 truncate min-w-0">
+                          {j.job_name}
+                          {j.job_code && <span className="text-ppp-charcoal-400 font-mono text-[11px]"> · {j.job_code}</span>}
+                        </span>
+                        <span className="text-ppp-charcoal-500 tabular-nums shrink-0">{fmtH(j.scheduled_hours)} · <span className="font-semibold text-ppp-charcoal-700">{fmtH(j.worked_hours)}</span></span>
+                      </div>
+                      {/* THE DAYS THEMSELVES. Without these the log showed a
+                          total and no dates, so a missing Tuesday and a Tuesday
+                          entered twice looked exactly alike (Mary 2026-09-23).
+                          A 0h day is shown too — it is the likeliest mistake. */}
+                      {j.days.length > 0 && (
+                        <ul className="mt-1 ml-1 space-y-0.5">
+                          {j.days.map((d) => (
+                            <li key={d.entry_id} className="flex items-center justify-between gap-2 text-[11.5px] text-ppp-charcoal-500">
+                              <span className="tabular-nums">
+                                {fmtDay(d.work_date)}
+                                {d.hours <= 0 && <span className="ml-1.5 text-amber-700 font-semibold">0h — nothing recorded</span>}
+                              </span>
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                <span className="tabular-nums font-semibold text-ppp-charcoal-700">{fmtH(d.hours)}</span>
+                                {/* Pencil → an hours field on the spot. A
+                                    <details> so it needs no client JS and the
+                                    row stays a server component. */}
+                                <details className="relative">
+                                  <summary
+                                    className="list-none cursor-pointer text-ppp-charcoal-400 hover:text-cc-brand-700 px-1.5 min-h-[32px] inline-flex items-center"
+                                    title={`Edit hours for ${fmtDay(d.work_date)}`}
+                                    aria-label={`Edit hours for ${fmtDay(d.work_date)}`}
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                                      <path d="M12 20h9" />
+                                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                    </svg>
+                                  </summary>
+                                  <form
+                                    action={updateEntryHoursAction}
+                                    className="absolute right-0 z-10 mt-1 flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-200 bg-surface p-2 shadow-lg"
+                                  >
+                                    <input type="hidden" name="entry_id" value={d.entry_id} />
+                                    <input
+                                      type="number"
+                                      name="hours"
+                                      defaultValue={d.hours}
+                                      min="0"
+                                      max="24"
+                                      step="0.25"
+                                      inputMode="decimal"
+                                      aria-label="Hours"
+                                      className="w-20 rounded-lg border border-ppp-charcoal-100 px-2 py-1 text-base sm:text-[12.5px] tabular-nums"
+                                    />
+                                    <SubmitButton className="rounded-lg bg-cc-brand-600 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-cc-brand-700 min-h-[32px]">
+                                      Save
+                                    </SubmitButton>
+                                  </form>
+                                </details>
+                                <form action={deleteEntryAction}>
+                                  <input type="hidden" name="entry_id" value={d.entry_id} />
+                                  {/* Somebody else's payroll hours, hard
+                                      deleted, styled smaller and greyer than
+                                      the Save button beside it. */}
+                                  <ConfirmSubmitButton
+                                    message={`Delete ${d.hours}h logged on ${d.work_date}? This removes the hours payroll reads.`}
+                                    pendingLabel="Deleting…"
+                                    className="text-[11px] font-semibold text-ppp-charcoal-400 hover:text-rose-700 px-1.5 min-h-[32px]"
+                                  >
+                                    Delete
+                                  </ConfirmSubmitButton>
+                                </form>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   ))}
                 </ul>

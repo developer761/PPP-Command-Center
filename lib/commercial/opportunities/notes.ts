@@ -329,7 +329,7 @@ export async function addOpportunityNote(
   //      from getting two emails for one note.
   afterResponse("note_added", async () => {
     try {
-      let actorName = "PPP admin";
+      let actorName = "An admin";
       if (input.author_user_id) {
         const { data: actor } = await sb
           .from("profiles")
@@ -340,7 +340,7 @@ export async function addOpportunityNote(
           sf_user_name?: string | null;
           email?: string | null;
         } | null;
-        actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
+        actorName = personName(a?.sf_user_name, a?.email, "An admin");
       }
       const preview =
         body.length > 240 ? `${body.slice(0, 240).trimEnd()}…` : body;
@@ -512,7 +512,7 @@ export async function editOpportunityNote(
           .select("company_name")
           .eq("id", (opp as { account_id: string }).account_id)
           .maybeSingle();
-        let actorName = "PPP admin";
+        let actorName = "An admin";
         if (acting_user_id) {
           const { data: actor } = await sb
             .from("profiles")
@@ -523,7 +523,7 @@ export async function editOpportunityNote(
             sf_user_name?: string | null;
             email?: string | null;
           } | null;
-          actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
+          actorName = personName(a?.sf_user_name, a?.email, "An admin");
         }
         const preview =
           trimmed.length > 240

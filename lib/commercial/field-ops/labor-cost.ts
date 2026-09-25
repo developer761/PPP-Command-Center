@@ -87,6 +87,36 @@ const EMPTY: OppLaborCost = { cents: 0, ratedHours: 0, unratedHours: 0 };
  * pass, no N+1. Opps with no linked/approved labor simply don't appear in the
  * map (callers treat a miss as $0).
  */
+/**
+ * "Is this work day inside a week payroll has already costed?"
+ *
+ * Extracted so the two readers of the time-entry table cannot drift.
+ * `fieldOpsLaborByOpp` stood down for an allocated week and
+ * `fieldOpsCrewDetailForOpp` did not, while claiming in its own docblock to
+ * return the same figure — so the deal page would have priced hours from the
+ * rate card that were already posted as a payout beside them.
+ */
+async function allocatedWeekPredicate(
+  sb: ReturnType<typeof commercialDb>,
+): Promise<(ymd: string) => boolean> {
+  const { data, error } = await sb
+    .from("commercial_payroll_periods")
+    .select("start_date, end_date")
+    .eq("status", "allocated")
+    .is("deleted_at", null);
+  // Read the error: supabase-js RESOLVES on failure. Treating a failed read as
+  // "no allocated weeks" would silently re-enable the double count.
+  if (error) {
+    console.error("[labor-cost] could not read allocated payroll weeks:", error.message);
+    // Fail CLOSED: stand down everywhere rather than risk charging twice.
+    return () => true;
+  }
+  const weeks = ((data ?? []) as { start_date: string; end_date: string }[]).map(
+    (w) => [w.start_date, w.end_date] as const,
+  );
+  return (ymd: string) => weeks.some(([from, to]) => ymd >= from && ymd <= to);
+}
+
 export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, OppLaborCost>> {
   const out = new Map<string, OppLaborCost>();
   const ids = [...new Set(oppIds.filter(Boolean))];
@@ -131,8 +161,27 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
 
   const rates = await loadRates(entries.map((e) => e.employee_id));
 
+  /**
+   * WEEKS ALREADY COSTED BY PAYROLL ARE NOT PRICED AGAIN.
+   *
+   * Job cost is `purchases + fieldOpsLabor` (projects/db.ts). Posting a
+   * payroll week writes a `labor` PURCHASE per job from the real Gusto
+   * liability — so if this also prices those same hours from the rate card,
+   * the same person's week is charged twice, both halves real, and the only
+   * symptom is a margin that quietly drops.
+   *
+   * The payout is the better figure: it is what left the bank, taxes included,
+   * rather than a rate somebody has to remember to keep current. So an
+   * allocated week wins and this stands down for it.
+   *
+   * Keyed on the WEEK, not the employee, because an employee can be costed by
+   * payroll for one week and have no payroll at all for another.
+   */
+  const inAllocatedWeek = await allocatedWeekPredicate(sb);
+
   for (const e of entries) {
     if (!w2.has(e.employee_id)) continue;
+    if (inAllocatedWeek(String(e.work_date).slice(0, 10))) continue;
     const oppId = oppByJob.get(e.job_id);
     if (!oppId) continue;
     const hours = Number(e.actual_hours ?? 0);
@@ -213,6 +262,7 @@ export async function fieldOpsCrewDetailForOpp(
   range?: { fromYmd: string; toYmd: string } | null
 ): Promise<CrewDetailForOpp> {
   const sb = commercialDb();
+  const inAllocatedWeek = await allocatedWeekPredicate(sb);
   // Include soft-deleted jobs — their settled hours were paid (audit 2026-08).
   const { data: jobRows } = await sb
     .from("commercial_jobs")
@@ -266,6 +316,21 @@ export async function fieldOpsCrewDetailForOpp(
     if (hours <= 0) continue;
     const isW2 = w2.has(e.employee_id);
     const workDate = String(e.work_date).slice(0, 10);
+    /**
+     * STAND DOWN for a week payroll has already costed — the same rule
+     * `fieldOpsLaborByOpp` follows, and for the same reason.
+     *
+     * That function skips hours inside an `allocated` payroll period because
+     * posting the week writes the real Gusto cost as an `employee_labor`
+     * purchase on each job; pricing the same hours from the rate card as well
+     * charges them twice, both halves looking real. This function reads the
+     * same table with the same W-2 pricing and had no such guard, while its
+     * own docblock promised `costCents` was "the same figure
+     * fieldOpsLaborForOpp returns". The moment any week is posted that stops
+     * being true, and the deal page's Crew labor panel prices hours that are
+     * already sitting as a payout in the Costs section beside it.
+     */
+    if (isW2 && inAllocatedWeek(workDate)) continue;
     const rows = rates.get(e.employee_id);
     // A sub has no rate BY DESIGN — their money is the payout to their company.
     // Reading one for them would both double the cost and put all 23 crew under

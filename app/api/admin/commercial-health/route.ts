@@ -496,23 +496,70 @@ export async function GET() {
     }),
 
     probe("latest_migrations", "Latest migrations applied", "commercial_cc", async () => {
-      // Soft probe: confirm migration 035 (property address) by selecting
-      // a field added in it. If it's missing, we know migrations got
-      // stuck somewhere.
-      const { error: m035 } = await sb
-        .from("commercial_opportunities")
-        .select("property_street")
-        .limit(1);
-      if (m035) {
+      /**
+       * PROBE THE NEWEST ONES, and say only what was actually checked.
+       *
+       * This selected ONE column from migration 035 and then reported
+       * "Migrations 018–037 confirmed via column probes". Everything after
+       * 037 was unverified while the page read green — including the five
+       * payroll and AIA migrations added on 2026-09-24.
+       *
+       * That matters more here than almost anywhere: there is no migration
+       * runner in this repo. Karan pastes the SQL into Supabase by hand, so a
+       * missed paste is a real and recurring risk, and this page is the only
+       * thing that would catch it. A probe that overstates its coverage turns
+       * the one safety net into a false all-clear.
+       *
+       * Each entry names the column or table its migration added, so a
+       * failure says which file to paste rather than "something is stuck".
+       */
+      const checks: { label: string; file: string; run: () => Promise<boolean> }[] = [
+        {
+          label: "035 property address",
+          file: "035_commercial_opportunity_property_address.sql",
+          run: async () =>
+            !(await sb.from("commercial_opportunities").select("property_street").limit(1)).error,
+        },
+        {
+          label: "AIA payments",
+          file: "20260924090000_aia_payments.sql",
+          run: async () =>
+            !(await sb.from("commercial_aia_payments").select("id").limit(1)).error,
+        },
+        {
+          label: "payroll periods",
+          file: "20260924200000_payroll_periods.sql",
+          run: async () =>
+            !(await sb.from("commercial_payroll_periods").select("id").limit(1)).error,
+        },
+        {
+          label: "payroll unassigned job",
+          file: "20260924210000_payroll_unassigned_job.sql",
+          run: async () =>
+            !(
+              await sb
+                .from("commercial_payroll_costs")
+                .select("unassigned_opportunity_id")
+                .limit(1)
+            ).error,
+        },
+      ];
+      const missing: { label: string; file: string }[] = [];
+      for (const c of checks) {
+        // A rejected select is how PostgREST reports an unknown column or
+        // table, which is exactly "this migration has not been pasted".
+        if (!(await c.run())) missing.push({ label: c.label, file: c.file });
+      }
+      if (missing.length > 0) {
         return {
           status: "fail",
-          message: "Migration 035 (property address) missing",
-          fix: "Paste supabase/migrations/035_commercial_opportunity_property_address.sql",
+          message: `Not applied: ${missing.map((m) => m.label).join(", ")}`,
+          fix: `Paste ${missing.map((m) => `supabase/migrations/${m.file}`).join(" and ")}`,
         };
       }
       return {
         status: "ok",
-        message: "Migrations 018–037 confirmed via column probes",
+        message: `${checks.length} migrations confirmed by probing the column or table each one adds — through 2026-09-24 (payroll + AIA payments)`,
       };
     }),
 

@@ -51,6 +51,46 @@ async function removeRecipientAction(formData: FormData) {
   redirect(res.ok ? ACCESS : `${ACCESS}?se_error=${encodeURIComponent(res.error)}`);
 }
 
+/**
+ * Point a login at the crew member it belongs to.
+ *
+ * ── WHY THIS EXISTS ────────────────────────────────────────────────────────
+ *
+ * `linkEmployeeToUser` was written with the Crew role in 2026-08, complete
+ * with a duplicate-link guard and an audit trail, and then nothing ever called
+ * it. A repo-wide search found the definition, the build spec, and no caller.
+ *
+ * That made the Crew role a trap rather than a feature. Pressing "Restrict to
+ * crew" confines a login to five screens; all five resolve the person through
+ * `getEmployeeForUser`, which reads `commercial_employees.user_id`; and there
+ * was no way in the product to set that column. So the button locked someone
+ * out of the entire platform and left them on "Almost there" forever, with the
+ * only remedy a hand-written UPDATE. The live database agrees: 24 employees,
+ * zero linked.
+ *
+ * The control is rendered only on rows that are actually crew-restricted —
+ * that is exactly the set of people for whom the link is load-bearing — and
+ * the row shouts when a crew login has no link, because that is the locked-out
+ * state and nothing used to say so.
+ */
+async function linkCrewAction(formData: FormData) {
+  "use server";
+  const actorId = await requireAccessAdmin();
+  const targetId = String(formData.get("user_id") ?? "");
+  if (!UUID_RE.test(targetId)) {
+    redirect(`${ACCESS}?crew_error=${encodeURIComponent("Unknown login.")}`);
+  }
+  // "" is the deliberate "unlink" option, not a validation failure.
+  const raw = String(formData.get("employee_id") ?? "").trim();
+  if (raw && !UUID_RE.test(raw)) {
+    redirect(`${ACCESS}?crew_error=${encodeURIComponent("Unknown crew member.")}`);
+  }
+  const { linkEmployeeToUser } = await import("@/lib/commercial/crew-access");
+  const res = await linkEmployeeToUser(targetId, raw || null, actorId);
+  revalidatePath(ACCESS);
+  redirect(res.ok ? ACCESS : `${ACCESS}?crew_error=${encodeURIComponent(res.error)}`);
+}
+
 /** Grant / revoke the Crew role — the scoped self-service login. */
 async function toggleCrewAction(formData: FormData) {
   "use server";
@@ -158,8 +198,13 @@ async function toggleOptOutAction(formData: FormData) {
 
 export const dynamic = "force-dynamic";
 
-export default async function CommercialAccessPage({ searchParams }: { searchParams: Promise<{ se_error?: string }> }) {
-  const seError = (await searchParams).se_error;
+export default async function CommercialAccessPage({ searchParams }: { searchParams: Promise<{ se_error?: string; crew_error?: string }> }) {
+  const sp = await searchParams;
+  const seError = sp.se_error;
+  // Its own param, not `se_error`: that one renders inside the Schedule Emails
+  // card at the bottom, and a failed crew link belongs beside the list where
+  // the admin just clicked.
+  const crewError = sp.crew_error;
   const supabase = await createClient();
   const {
     data: { user },
@@ -217,8 +262,8 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         <h1 className="text-2xl font-bold tracking-tight text-ppp-charcoal">Access</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
           Give someone a Commercial login — email + password, no Google needed.
-          Accounts made here can reach the Commercial Command Center only, not PPP
-          Command Center. Anyone who needs both is set up separately.
+          Accounts made here can reach the Commercial Command Center only, not the
+          residential Command Center. Anyone who needs both is set up separately.
         </p>
       </header>
 
@@ -249,6 +294,12 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         </dl>
       </details>
 
+      {crewError && (
+        <div className="mb-3 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-[12.5px] text-rose-700" role="status">
+          {crewError}
+        </div>
+      )}
+
       <CommercialAccessManager
         initialUsers={users}
         currentUserId={user.id}
@@ -256,8 +307,14 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         initialReceiverEmails={receiverEmails}
         crewUserIds={[...crewRoleUserIds]}
         emailOnUserIds={[...emailOnUserIds]}
+        /* Active only: linkEmployeeToUser refuses an inactive employee, so
+           offering one would be an option that always errors. */
+        crewMembers={crew
+          .filter((e) => e.active)
+          .map((e) => ({ id: e.id, name: e.display_name, userId: e.user_id ?? null }))}
         toggleCrewAction={toggleCrewAction}
         toggleUserEmailAction={toggleUserEmailAction}
+        linkCrewAction={linkCrewAction}
       />
 
       {/* The standalone "Crew logins" list lived here and has been removed.

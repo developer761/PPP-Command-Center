@@ -67,10 +67,45 @@ export async function attachInvoiceFile(input: {
   });
   if (error) {
     // Link failed → retire the just-uploaded doc so it doesn't float unattached.
-    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
     return { ok: false, error: error.message };
   }
   return { ok: true, value: uploaded.document };
+}
+
+/**
+ * Every file that can go out WITH this invoice — its attachments and its
+ * signed lien waiver.
+ *
+ * Katie: "Final bill sent WITH a final lien waiver." It could not be. The
+ * waiver is stored on `commercial_invoices.lien_waiver_document_id`, the send
+ * path read `commercial_invoice_attachments`, and the two never met — so the
+ * one document Katie named by name was the one document the email could not
+ * carry, whatever the sender ticked. The invoice page even described the
+ * attachment list as "typically signed lien waivers", which it provably was
+ * not.
+ *
+ * Unioned here rather than at each call site so the list the sender SEES and
+ * the list the email ACTUALLY sends come from one function. They disagreed
+ * once already; that is the whole defect.
+ */
+export async function listInvoiceSendableDocuments(
+  invoiceId: string,
+): Promise<CommercialDocument[]> {
+  const { getInvoiceLienWaiver } = await import("./lien-waiver");
+  const [attached, waiver] = await Promise.all([
+    listInvoiceAttachments(invoiceId),
+    getInvoiceLienWaiver(invoiceId).catch(() => null),
+  ]);
+  if (!waiver) return attached;
+  // A waiver that is also a plain attachment must appear once, not twice.
+  return attached.some((d) => d.id === waiver.id) ? attached : [waiver, ...attached];
 }
 
 /** Live attachment docs for an invoice, newest first. */
@@ -124,6 +159,12 @@ export async function removeInvoiceAttachment(
     // never touch the document.
     return { ok: false, error: "Attachment not found on this invoice." };
   }
-  await softDeleteDocument(documentId, actorUserId).catch(() => {});
+  await softDeleteDocument(documentId, actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   return { ok: true, value: null };
 }

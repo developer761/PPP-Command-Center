@@ -53,7 +53,9 @@ export type Control = {
 };
 
 /** A drawn tab strip, showing where on the row this surface sits. */
-export type Strip = { boxes: string[]; at: number };
+/** `boxes` is readonly so a strip can be the live tab list itself rather than a
+ *  copy of it — see lib/commercial/accounting/tabs.ts for why that matters. */
+export type Strip = { boxes: readonly string[]; at: number };
 
 export type Surface = {
   /** The name on screen. */

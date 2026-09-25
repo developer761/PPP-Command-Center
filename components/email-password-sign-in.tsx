@@ -40,6 +40,17 @@ export default function EmailPasswordSignIn({
         setPending(false);
         return;
       }
+      // Record the sign-in before leaving. Only the OAuth callback stamped
+      // `last_login_at`, so for password users — every Tomco account — it was
+      // never written, and Settings → Access reported them as long gone.
+      //
+      // Best effort on purpose: a failed timestamp must never keep somebody
+      // out of the platform they just authenticated to.
+      try {
+        await fetch("/api/auth/touch-login", { method: "POST" });
+      } catch {
+        /* ignore — signing in matters, the timestamp does not */
+      }
       // Full navigation so the server layout re-reads the fresh session cookie.
       window.location.href = redirectTo;
     } catch {

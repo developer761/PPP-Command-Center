@@ -5,7 +5,7 @@ import { apiAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { formatAccountNumber } from "@/lib/commercial/accounts/db";
-import { formatOpportunityNumber } from "@/lib/commercial/opportunities/db";
+import { formatOpportunityNumber, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 
 /**
@@ -125,7 +125,7 @@ export async function GET(request: Request) {
       .limit(MAX_PER_KIND) : EMPTY,
     want("opportunity") ? sb
       .from("commercial_opportunities")
-      .select("id, title, title_override, client_name, property_street, project_number, account_id, status, sub_status")
+      .select("id, title, title_override, title_override_mode, client_name, property_street, project_number, account_id, status, sub_status")
       .is("deleted_at", null)
       .or(
         // title_override was omitted, so a renamed deal couldn't be found in ⌘K
@@ -200,24 +200,53 @@ export async function GET(request: Request) {
     });
   }
 
-  for (const o of (oppsRes.data ?? []) as {
+  const oppRows = (oppsRes.data ?? []) as {
     id: string;
     title: string;
     title_override: string | null;
+    title_override_mode: string | null;
     client_name: string | null;
     property_street: string | null;
     project_number: string | null;
     account_id: string;
     status: string;
     sub_status: string | null;
-  }[]) {
-    // Same name the rest of the platform shows — a manual rename (title_override)
-    // wins, then client/street, then the raw title.
-    const derived =
-      o.title_override?.trim() ||
-      [o.client_name, o.property_street].filter(Boolean).join(" — ") ||
-      o.title ||
-      "(untitled)";
+  }[];
+
+  // derivedOppName needs the GC's name, and this route did not have it.
+  // Bounded by MAX_PER_KIND, so one small lookup.
+  const oppAccountNames = new Map<string, string>();
+  if (oppRows.length > 0) {
+    const { data: accs } = await sb
+      .from("commercial_accounts")
+      .select("id, company_name")
+      .in("id", [...new Set(oppRows.map((o) => o.account_id).filter(Boolean))]);
+    for (const a of (accs ?? []) as { id: string; company_name: string | null }[]) {
+      if (a.company_name) oppAccountNames.set(a.id, a.company_name);
+    }
+  }
+
+  for (const o of oppRows) {
+    /**
+     * THE SHARED RULE, not a local copy of it.
+     *
+     * Stephanie, 2026-09-23: "When searching for opportunities, the address of
+     * the GC populates the search instead of the name of the opportunity."
+     *
+     * She was describing this precedence exactly. The old line put
+     * `client_name — property_street` AHEAD of the title, so unless a deal had
+     * been manually renamed, the palette showed the customer and their street
+     * while every other screen showed the job's name. The comment above it
+     * claimed this was "the same name the rest of the platform shows", which
+     * is how it survived: it read as settled.
+     *
+     * derivedOppName puts the typed name first, falls back to the computed
+     * "{account} - {client} - {street}" only when there ISN'T one (or the
+     * title is itself the auto-filled version), and honours the append /
+     * replace nickname mode this copy ignored entirely — so a deal nicknamed
+     * "Building C" in append mode kept its full name everywhere except here.
+     */
+    const derived = derivedOppName(o, oppAccountNames.get(o.account_id) ?? null);
     const oppNo = formatOpportunityNumber(o.project_number);
     // Distinguish Won vs Lost — both are `pre_sale_closed`, so a bare status
     // showed the same hint for a win and a loss (audit N14).

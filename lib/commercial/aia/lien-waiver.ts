@@ -77,14 +77,26 @@ export async function attachAiaLienWaiver(input: {
     .eq("id", input.applicationId);
   if (error) {
     // Don't strand the freshly-uploaded file in Documents when the link fails.
-    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
     return { ok: false, error: error.message };
   }
 
   // Replacing: retire the previous one so the Documents tab doesn't collect
   // stale copies of the same waiver.
   if (app.lien_waiver_document_id && app.lien_waiver_document_id !== uploaded.document.id) {
-    await softDeleteDocument(app.lien_waiver_document_id, input.actorUserId).catch(() => {});
+    await softDeleteDocument(app.lien_waiver_document_id, input.actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   }
   return { ok: true, value: uploaded.document };
 }
@@ -103,6 +115,12 @@ export async function removeAiaLienWaiver(
     .update({ lien_waiver_document_id: null })
     .eq("id", applicationId);
   if (error) return { ok: false, error: error.message };
-  await softDeleteDocument(app.lien_waiver_document_id, actorUserId).catch(() => {});
+  await softDeleteDocument(app.lien_waiver_document_id, actorUserId).catch((e) => {
+    // Was `.catch(() => {})`. The link row is already gone, so this is not a
+    // failure the user can act on — but a document that quietly survives as an
+    // orphan, or quietly does not get removed, is exactly the kind of thing
+    // nobody discovers until a GC asks for the waiver.
+    console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
+  });
   return { ok: true, value: null };
 }

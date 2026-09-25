@@ -33,7 +33,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, title_override, client_name, property_street, account_id, deleted_at")
+    .select("title, title_override, title_override_mode, client_name, property_street, account_id, deleted_at")
     .eq("id", pkg.opportunity_id)
     .maybeSingle();
   const { data: acctRow } = await sb.from("commercial_accounts").select("company_name, deleted_at").eq("id", pkg.account_id).maybeSingle();
@@ -47,15 +47,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   let pdf: Buffer;
   try {
     const { renderCloseoutTransmittalPdf } = await import("@/lib/commercial/closeout/pdf");
-    const { getBrandLogoBuffer } = await import("@/lib/commercial/operating-company/assets");
+    const { getBrandLogoBuffer, getBrandSignatureBuffer } = await import(
+      "@/lib/commercial/operating-company/assets"
+    );
     const oc = await getOperatingCompany();
     const logo = await getBrandLogoBuffer();
+    const signature = await getBrandSignatureBuffer().catch(() => null);
     // One page — a transmittal that runs to two is a transmittal with a
     // second sheet nobody staples on.
     const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
     pdf = (
       await renderFitToOnePage((pageHeightScale) =>
-        renderCloseoutTransmittalPdf({ pkg, items, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website }, logo, pageHeightScale })
+        renderCloseoutTransmittalPdf({ pkg, items, dealName, accountName, company: { name: oc.name, phone: oc.phone, website: oc.website, signature_name: oc.signature_name, signature_title: oc.signature_title }, logo, signature, pageHeightScale })
       )
     ).bytes;
   } catch (err) {

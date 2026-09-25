@@ -254,7 +254,6 @@ import {
 } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
-import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
 import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
@@ -270,6 +269,10 @@ import { normalizeToolOrigin } from "@/lib/commercial/tool-origin";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { MoneyInput } from "@/components/commercial/money-input";
+import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -292,6 +295,8 @@ type SP = Promise<{
    *  Read by the change-status card; ignoring it opened the Lost flow on Won. */
   to_sub?: string;
   status_ok?: string;
+  /** Set by 'File to Documents' on the proposal — confirms the report landed. */
+  estimate_filed?: string;
   /** What picking a team just did, e.g. "Added 3 team members to this job". */
   team_applied?: string;
   /** `status` when a next-step button sent the user here to change it. */
@@ -395,6 +400,64 @@ async function submitDebriefOnlyAction(formData: FormData) {
     internalNotes: internalNotes || null,
     statusLogId,
     actorUserId: user.id,
+  });
+  if (!result.ok) {
+    redirect(
+      `/commercial/opportunities/${opp_id}?tab=debrief&error=` +
+        encodeURIComponent(result.error),
+    );
+  }
+  redirect(`/commercial/opportunities/${opp_id}?tab=debrief&debrief_saved=1`);
+}
+
+/**
+ * Correct a debrief that is already on file.
+ *
+ * `updateDebrief` was written for exactly this, with an audit trail, and had
+ * no caller anywhere in the codebase — so the defect its own docblock
+ * describes was still live: `canDebrief` flips this tab read-only once
+ * `win_loss_debriefed_at` is set, which meant a typo in "lessons learned", or
+ * a competitor named wrong, was permanent unless somebody reopened and
+ * re-closed the whole deal to clear the flag. For a document whose entire
+ * purpose is that somebody reads it later and it is right, that is the wrong
+ * way round.
+ *
+ * The OUTCOME stays underivable from here — won/lost comes from the deal, and
+ * editing it here would put the debrief and the opportunity into disagreement
+ * with no way to tell which is true. Change the deal to change the outcome.
+ */
+async function editDebriefAction(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/");
+  await assertCommercialAccess(user.id);
+  const opp_id = String(formData.get("opp_id") ?? "");
+  if (!UUID_RE.test(opp_id)) redirect("/commercial/opportunities");
+  const debrief_id = String(formData.get("debrief_id") ?? "");
+  if (!UUID_RE.test(debrief_id)) {
+    redirect(`/commercial/opportunities/${opp_id}?tab=debrief`);
+  }
+  const decidingFactor = String(
+    formData.get("debrief_deciding_factor") ?? "",
+  ).trim();
+  const { updateDebrief } = await import("@/lib/commercial/win-loss/debrief");
+  const result = await updateDebrief({
+    debriefId: debrief_id,
+    actorUserId: user.id,
+    competitorName: String(formData.get("debrief_competitor") ?? "").trim() || null,
+    // Same allowlist the create path uses — an unknown value becomes null
+    // rather than being written through, so the report can't grow a category
+    // nobody defined.
+    decidingFactor:
+      decidingFactor &&
+      (OPPORTUNITY_LOSS_REASONS as readonly string[]).includes(decidingFactor)
+        ? decidingFactor
+        : null,
+    lessonsLearned: String(formData.get("debrief_lessons") ?? "").trim() || null,
+    internalNotes: String(formData.get("debrief_internal_notes") ?? "").trim() || null,
   });
   if (!result.ok) {
     redirect(
@@ -1290,10 +1353,16 @@ async function toggleTaskAction(formData: FormData) {
   if (!UUID_RE.test(opportunity_id) || !UUID_RE.test(task_id)) {
     redirect("/commercial/opportunities");
   }
-  if (make_complete) {
-    await completeOpportunityTask(opportunity_id, task_id, user.id);
-  } else {
-    await uncompleteOpportunityTask(opportunity_id, task_id, user.id);
+  // Both Results were discarded, while the create and delete actions beside
+  // them branch on `.ok`. A tick that silently does not save is the kind of
+  // thing somebody only notices when the task is still open a week later.
+  const toggled = make_complete
+    ? await completeOpportunityTask(opportunity_id, task_id, user.id)
+    : await uncompleteOpportunityTask(opportunity_id, task_id, user.id);
+  if (!toggled.ok) {
+    redirect(
+      `/commercial/opportunities/${opportunity_id}?tab=tasks&error=${encodeURIComponent(toggled.error)}`,
+    );
   }
   redirect(`/commercial/opportunities/${opportunity_id}?tab=tasks`);
 }
@@ -2136,6 +2205,22 @@ export default async function OpportunityDetailPage({
         () => false,
       )
     : false;
+  /**
+   * COST AND MARGIN ARE FINANCE-ONLY.
+   *
+   * `requireFinanceViewer` states the boundary in its own comment —
+   * "Rep-facing surfaces never show cost or margin" — and this page rendered
+   * gross profit and margin % to anybody who could open it, which is every
+   * commercial user. A rep could read the profit on every job by clicking
+   * through the pipeline.
+   */
+  const viewerRole = await (async () => {
+    if (!pageViewer) return null;
+    const p = await getProfileByUserId(pageViewer.id);
+    return normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(pageViewer.email));
+  })();
+  const canSeeMargin = viewerRole === "admin" || viewerRole === "account_manager";
+
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
   // Weighted tile matches the dashboard instead of reading $0.
@@ -2169,7 +2254,7 @@ export default async function OpportunityDetailPage({
     pathFin,
     pathChangeOrders,
     pathSubmittals,
-    pathLabor,
+    pathCrewDetail,
     pathCloseouts,
     pathRetainageCents,
     pathAiaRoll,
@@ -2178,9 +2263,22 @@ export default async function OpportunityDetailPage({
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
         listOpportunitySubmittals(opp.id).catch(() => []),
-        pathOnSite
-          ? laborByWorkerForProject(opp.id).catch(() => [])
-          : Promise.resolve([]),
+        /**
+         * CREW HOURS ON THIS JOB — every approved hour, whoever worked it.
+         *
+         * Three candidates were wrong before this one. `laborByWorkerForProject`
+         * reads LABOR PAYMENTS, which the handbook says outright are "not the
+         * crew's attendance". `oppLaborCost`'s rated+unrated is W-2 only AND
+         * skips weeks already costed by payroll, so on AIREF Building #1 it
+         * gives 326 — it is a COSTING figure, not an attendance one.
+         *
+         * The Costs tool has said 400 hrs on that job all along, and it is
+         * right: 326 W-2 hours awaiting a rate plus 74 hours from sub crews
+         * paid through a crew payout. `fieldOpsCrewDetailForOpp` is what feeds
+         * that panel, so taking it here makes the deal page and the Costs tool
+         * answer the same question the same way.
+         */
+        fieldOpsCrewDetailForOpp(opp.id).catch(() => null),
         // Loaded for any won deal now, not just a closed-out one: the delivery
         // strip reports closeout's state at every stage, and a strip that says
         // "Not started" because it never looked is worse than no strip.
@@ -2199,7 +2297,7 @@ export default async function OpportunityDetailPage({
           .then((m) => m.get(opp.id) ?? null)
           .catch(() => null),
       ])
-    : [null, [], [], [], [], 0, null];
+    : [null, [], [], null, [], 0, null];
 
   // Warranty runs from substantial completion. A job can carry more than one
   // package (a re-issue after a punch item); the LATEST completion date is the
@@ -2377,7 +2475,28 @@ export default async function OpportunityDetailPage({
   const dealStanding = {
     billedCents: pathFin?.billedPreTaxCents ?? 0,
     contractCents: contractToDate,
-    outstandingCents: Math.max(0, invoicedCents - collectedCents),
+    /**
+     * NET OF RETAINAGE, like every other "owed" figure on this page.
+     *
+     * This was billed minus collected, which INCLUDES retainage. The very next
+     * line of the panel prints "Retainage held" with a comment saying it is
+     * "not 'owed' — it is held by agreement" — so the panel contradicted
+     * itself, counting the retainage inside "GC owes" and then listing it
+     * again beneath as though it were additional.
+     *
+     * On AIREF Building #1 that put "GC owes $123k" three inches from the mini
+     * P&L's "Owed now $113k · plus $9.5k retainage at close-out". Same job,
+     * same screen, two answers to one question, and the $123k one overstated
+     * what the GC can actually be chased for today by exactly the retainage.
+     *
+     * `openBalanceCents` is the folded, per-invoice-clamped figure the mini
+     * P&L and every rollup above this page already use. Taking it rather than
+     * re-deriving keeps them identical; the pre-win fallback stays because
+     * pathFin is null until the job is won.
+     */
+    outstandingCents: pathFin
+      ? pathFin.openBalanceCents
+      : Math.max(0, invoicedCents - collectedCents),
     retainageCents: pathRetainageCents ?? 0,
     workOrderSent: pathWorkOrder ? !!pathWorkOrder.sent_at : null,
     pendingCoCount,
@@ -2617,6 +2736,7 @@ export default async function OpportunityDetailPage({
   const pathMargin = pathFin ? dealMargin(pathFin) : null;
 
   const stageKpiList = stageKpis({
+    canSeeMargin,
     status: opp.status,
     subStatus: opp.sub_status,
     todayIso: etTodayIso(),
@@ -2656,8 +2776,10 @@ export default async function OpportunityDetailPage({
     pendingChangeOrders: pathChangeOrders.filter((c) => c.status === "pending")
       .length,
     // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
-    crewHours:
-      Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
+    // Approved attendance, same base as the Project tab's tile and as the
+    // margin caveat's unrated-hours figure. It used to read the hours typed
+    // onto labor PAYMENTS, which are explicitly not attendance.
+    crewHours: Math.round(pathCrewDetail?.totalHours ?? 0) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
     retainageHeldCents: pathRetainageCents,
     warrantyThroughAt: pathWarrantyThrough,
@@ -2688,7 +2810,25 @@ export default async function OpportunityDetailPage({
     targetStartIso: startYmd,
     targetEndIso: etDateOf(opp.proposed_end_at),
     startInDays: startYmd ? daysFromTodayEt(startYmd) : null,
-    crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)),
+    /**
+     * THE HOURS THE CREW WORKED HERE, not the hours typed onto a payout.
+     *
+     * This summed `laborByWorkerForProject`, which reads LABOR PAYMENTS. The
+     * handbook says of that field, in as many words: "Optional, and only a
+     * note on the payment. It is not the crew's attendance." So the tile
+     * labelled "Crew hours" was showing the one number the platform documents
+     * as NOT being the crew's hours.
+     *
+     * On AIREF Building #1 that put "Crew hours 91" directly beside a margin
+     * caveat reading "326 crew hours not costed yet" — two crew-hour figures
+     * on one row, differing by 235, with nothing to say they measured
+     * different things.
+     *
+     * Approved attendance, priced or not, is what somebody means by "how many
+     * hours has the crew put in". `laborUnratedHours` is a subset of it, so
+     * the tile and the caveat now sit on the same base.
+     */
+    crewHours: Math.round(pathCrewDetail?.totalHours ?? 0),
     onSite: pathOnSite,
   };
   // A payment application past its due date with money still on it. An AIA job
@@ -2939,7 +3079,9 @@ export default async function OpportunityDetailPage({
       ? await Promise.all([
           wantActivity ? loadActivityEntries(opp.id) : Promise.resolve([]),
           crewScheduleForOpp(opp.id, etTodayIso()),
-          fieldOpsCrewDetailForOpp(opp.id),
+          // Already loaded above for the Crew hours tile on any won deal —
+          // reused rather than fetched a second time on the same render.
+          pathCrewDetail ?? fieldOpsCrewDetailForOpp(opp.id),
           costBreakdownForProject(opp.id),
         ])
       : [[], null, null, null];
@@ -3827,6 +3969,7 @@ export default async function OpportunityDetailPage({
           oppId={opp.id}
           errorMessage={pickFirst(sp.error)}
           categoryFilter={pickFirst(sp.category) ?? null}
+          estimateFiled={pickFirst(sp.estimate_filed) === "1"}
         />
       )}
       {tab === "timeline" && <TimelineTab oppId={opp.id} />}
@@ -3858,6 +4001,9 @@ export default async function OpportunityDetailPage({
           accountId={opp.account_id}
           oppId={opp.id}
           proposals={dealProposals}
+          // Changes only the empty state — see dealIsWon. A migrated job has no
+          // proposal and does not need one.
+          dealIsWon={pathIsWon}
           // The editor is a full-width route of its own; hand it this tab to
           // come back to so a save doesn't eject you to the account page.
           backHref={`/commercial/opportunities/${opp.id}?tab=proposals#deal-proposals`}
@@ -5110,6 +5256,23 @@ async function InfoTab({
    *  the same render. */
   oppProposalTotal?: number;
 }) {
+  /**
+   * Settings → Teams is admin-only and redirects everyone else to /commercial
+   * with no message. The line naming it is shown to EVERYBODY on purpose — it
+   * was added because Brendan could not find where teams are made. Keeping the
+   * words and dropping the LINK for non-admins preserves the reason it exists
+   * without throwing Mary out of the page she was reading.
+   */
+  const viewerIsAdmin = await (async () => {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    if (!data?.user) return false;
+    const prof = await getProfileByUserId(data.user.id);
+    return (
+      normalizeRole(prof?.role, prof?.is_admin ?? isAdminEmail(data.user.email)) === "admin"
+    );
+  })();
+
   // ── Everything this tab reads, in ONE wave ──────────────────────────────
   //
   // These were three sequential awaits — teams, then contacts, then the
@@ -5427,36 +5590,39 @@ async function InfoTab({
             {effectiveTeam.team.members.length === 1 ? "" : "s"}
             {effectiveTeam.inherited ? " · inherited from the customer" : ""}
             {" · "}
-            <Link
-              href="/commercial/settings/teams"
-              className="text-cc-brand-700 hover:underline"
-            >
-              Edit teams
-            </Link>
+            {viewerIsAdmin ? (
+              <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                Edit teams
+              </Link>
+            ) : (
+              <span className="text-ppp-charcoal-400">teams are managed in Settings</span>
+            )}
           </p>
         ) : (
           <p className="text-[11px] text-ppp-charcoal-500 -mt-1">
             {allTeams.length === 0 ? (
               <>
                 No teams yet — build one in{" "}
-                <Link
-                  href="/commercial/settings/teams"
-                  className="font-semibold text-cc-brand-700 hover:underline"
-                >
-                  Settings → Teams
-                </Link>{" "}
+                {viewerIsAdmin ? (
+                  <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">
+                    Settings → Teams
+                  </Link>
+                ) : (
+                  <span className="font-semibold">Settings → Teams</span>
+                )}{" "}
                 (e.g. “Tomco Suffolk”: sales rep, estimator, office contact),
                 then pick it here and everyone lands on the job with their role.
               </>
             ) : (
               <>
                 Picking a team adds its people to this job with their roles.{" "}
-                <Link
-                  href="/commercial/settings/teams"
-                  className="text-cc-brand-700 hover:underline"
-                >
-                  Manage teams
-                </Link>
+                {viewerIsAdmin ? (
+                  <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                    Manage teams
+                  </Link>
+                ) : (
+                  <span className="text-ppp-charcoal-400">an admin can manage teams</span>
+                )}
               </>
             )}
           </p>
@@ -6292,6 +6458,7 @@ function DebriefReadOnlyView({
 }: {
   opp: CommercialOpportunity;
   debrief: {
+    id: string;
     competitor_name: string | null;
     deciding_factor: string | null;
     lessons_learned: string | null;
@@ -6376,6 +6543,93 @@ function DebriefReadOnlyView({
           </p>
         </details>
       )}
+
+      {/* CORRECTING WHAT IS ON FILE.
+          This panel was terminal: once a debrief was saved the tab went
+          read-only forever, so a competitor named wrong or a typo in the
+          lessons stayed wrong unless somebody reopened and re-closed the
+          entire deal. `updateDebrief` was written for this in August and
+          never wired to anything.
+
+          Collapsed by default — the common act here is reading, and a form
+          sitting open would bury the thing people came for. The outcome
+          (won/lost) is deliberately absent: it belongs to the deal, and an
+          editable copy here could disagree with it. */}
+      <details className="mt-5 border-t border-ppp-charcoal-100 pt-4">
+        <summary className="cursor-pointer text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 select-none min-h-[44px] sm:min-h-0 flex items-center">
+          Correct this debrief
+        </summary>
+        <p className="mt-2 text-[12px] text-ppp-charcoal-500">
+          Fixes the write-up only. The outcome comes from the deal&rsquo;s status —
+          change that on the Info tab. Every edit is logged.
+        </p>
+        <form action={editDebriefAction} className="mt-3 space-y-3">
+          <input type="hidden" name="opp_id" value={opp.id} />
+          <input type="hidden" name="debrief_id" value={debrief.id} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="edit_debrief_competitor" className={LABEL_CLS}>
+                {isWon(opp) ? "Beat" : isLost(opp) ? "Lost to" : "Competitor"}
+              </label>
+              <input
+                id="edit_debrief_competitor"
+                name="debrief_competitor"
+                type="text"
+                defaultValue={debrief.competitor_name ?? ""}
+                placeholder="Leave blank if none"
+                className={INPUT_CLS}
+              />
+            </div>
+            <div>
+              <label htmlFor="edit_debrief_deciding_factor" className={LABEL_CLS}>
+                {isWon(opp) ? "What sealed it" : "Deciding factor"}
+              </label>
+              <select
+                id="edit_debrief_deciding_factor"
+                name="debrief_deciding_factor"
+                defaultValue={debrief.deciding_factor ?? ""}
+                className={SELECT_CLS}
+              >
+                <option value="">—</option>
+                {OPPORTUNITY_LOSS_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {opportunityLossReasonLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="edit_debrief_lessons" className={LABEL_CLS}>
+              {isWon(opp) ? "What worked" : "What we'd do differently"}
+            </label>
+            <textarea
+              id="edit_debrief_lessons"
+              name="debrief_lessons"
+              rows={3}
+              defaultValue={debrief.lessons_learned ?? ""}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div>
+            <label htmlFor="edit_debrief_internal_notes" className={LABEL_CLS}>
+              Internal notes
+            </label>
+            <textarea
+              id="edit_debrief_internal_notes"
+              name="debrief_internal_notes"
+              rows={2}
+              defaultValue={debrief.internal_notes ?? ""}
+              className={INPUT_CLS}
+            />
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px] touch-manipulation">
+              Save changes
+            </SubmitButton>
+          </div>
+        </form>
+      </details>
     </section>
   );
 }
@@ -6456,7 +6710,7 @@ async function TeamTab({
       )}
       {staff.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          No PPP staff have Commercial CC access yet. Grant access on the admin
+          Nobody has Commercial access yet. Grant access on the admin
           Users page first.
         </div>
       )}
@@ -6586,7 +6840,7 @@ async function TeamTab({
       {team.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No team assigned yet. Add the sales rep, estimator, PM, and anyone
-          else from PPP working this opportunity.
+          else working this opportunity.
         </div>
       ) : (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -6888,13 +7142,17 @@ function TaskList({
                 <form action={deleteTaskAction} className="shrink-0">
                   <input type="hidden" name="opportunity_id" value={oppId} />
                   <input type="hidden" name="task_id" value={t.id} />
-                  <SubmitButton
-                    aria-label={`Delete ${t.title}`}
-                    title="Delete task"
+                  {/* Anyone can delete anyone's task — there is no author
+                      gate on the action — so the least this can do is name the
+                      task being removed. */}
+                  <ConfirmSubmitButton
+                    ariaLabel={`Delete ${t.title}`}
+                    message={`Delete the task "${(t.title ?? "").slice(0, 60)}"? It can't be undone.`}
+                    pendingLabel="…"
                     className="px-2 py-1 text-[11px] text-ppp-charcoal-500 hover:text-rose-700 min-h-[44px] inline-flex items-center touch-manipulation"
                   >
                     Delete
-                  </SubmitButton>
+                  </ConfirmSubmitButton>
                 </form>
               </li>
             );
@@ -7107,9 +7365,13 @@ function NoteCard({
             <form action={deleteNoteAction}>
               <input type="hidden" name="opportunity_id" value={oppId} />
               <input type="hidden" name="note_id" value={note.id} />
-              <SubmitButton className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1">
+              <ConfirmSubmitButton
+                message="Delete this note? It can't be undone."
+                pendingLabel="Deleting…"
+                className="text-[11px] text-rose-700 hover:text-rose-900 underline min-h-[44px] inline-flex items-center touch-manipulation rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 px-1"
+              >
                 Delete note
-              </SubmitButton>
+              </ConfirmSubmitButton>
             </form>
           </div>
         </div>
@@ -7775,10 +8037,13 @@ async function FilesTab({
   oppId,
   errorMessage,
   categoryFilter,
+  estimateFiled = false,
 }: {
   oppId: string;
   errorMessage?: string;
   categoryFilter: string | null;
+  /** The estimating report was just filed here from the proposal builder. */
+  estimateFiled?: boolean;
 }) {
   const allDocs = await listDocumentsForParent("opportunity", oppId);
   // Apply category filter if set. Kept case-sensitive because our own
@@ -7819,6 +8084,20 @@ async function FilesTab({
             ⚠
           </span>
           <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {estimateFiled && (
+        /* "File to Documents" on the proposal used to redirect here and say
+           nothing, on a tab that wasn't even the one holding the file. Say
+           plainly that it landed, and where. */
+        <div
+          role="status"
+          aria-live="polite"
+          className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-sm text-emerald-800"
+        >
+          Estimating report filed here, under <strong>Estimating Report (internal)</strong>. It is the
+          internal copy — per-line prices and bid notes — not the customer proposal.
         </div>
       )}
 

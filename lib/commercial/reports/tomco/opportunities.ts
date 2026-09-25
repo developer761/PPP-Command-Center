@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { bidMidCents } from "@/lib/commercial/reports/pipeline";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -167,6 +168,39 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
     }
   }
 
+  // The current proposal per opportunity, so a bid with no range still carries
+  // its quoted value — see the note on `bid` below.
+  const { listCurrentProposalTotalByOpp } = await import("@/lib/commercial/proposals/db");
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(opps.map((o) => o.id));
+
+  /**
+   * AIA BILLING, which every other money report already counts and this one
+   * did not.
+   *
+   * Tomco's biggest GCs are billed through G702/G703 applications, not
+   * invoices, and `money` above is built from `commercial_invoices` alone. So
+   * on Open Sales — a report whose own blurb promises "what has been billed
+   * and what is in" — the four AIREF Bellport buildings sat at the top of the
+   * list reading:
+   *
+   *     AIREF Building #2   contract $404,836.00   billed $0.00   owed $0.00
+   *     AIREF Building #1            $283,082.00          $0.00        $0.00
+   *     AIREF Building #3            $256,624.50          $0.00        $0.00
+   *     AIREF Building #4            $256,624.50          $0.00        $0.00
+   *
+   * $1.2M of live contract shown as never billed and nothing outstanding,
+   * while the AIA tool has three submitted applications against #1 alone and
+   * the job-costs report puts #2 at $272,448.21 billed. Two reports, the same
+   * job, $272k apart.
+   *
+   * ar-aging, cash-flow, jobs, receivables and transactions were all folded
+   * into AIA months ago; this module was simply missed. Using the same bulk
+   * rollup they use, so it cannot answer differently — two queries for the
+   * whole set, not five per opportunity (see aiaBillingRollupBulk).
+   */
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const aiaByOpp = await aiaBillingRollupBulk(opps.map((o) => o.id));
+
   const money = new Map<string, { sub: number; total: number; paid: number; bal: number }>();
   for (const i of invoices) {
     const e = money.get(i.opportunity_id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
@@ -188,9 +222,28 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
 
   return opps.map((o) => {
     const m = money.get(o.id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
+    const aia = aiaByOpp.get(o.id);
     const a = acct.get(o.account_id);
     const c = reach.get(o.account_id);
-    const bid = Number(o.bid_value_low_cents ?? 0);
+    /**
+     * THE SAME BID FIGURE THE TILES ABOVE THIS TABLE USE.
+     *
+     * This read `bid_value_low_cents ?? 0` — one end of a range, and zero when
+     * there is no range at all. The Pipeline page shows both this table and
+     * `getPipelineReport`'s tiles, and on 2026-09-25 they disagreed by
+     * $54,537.20 over the same forty open bids.
+     *
+     * The gap was two opportunities with no bid range and a priced proposal on
+     * file, which this counted as $0 — one of them Vision General Contractors
+     * at Tesla CC, a proposal actually SENT for $38,030.20. A pipeline report
+     * that values a live quote at nothing is worse than one that is merely
+     * imprecise: the deal is invisible in the total Brendan reads.
+     *
+     * `bidMidCents` is the shared derivation — midpoint of the range, falling
+     * back to the current proposal when there is no range. Using it here means
+     * the two halves of one page cannot disagree again.
+     */
+    const bid = bidMidCents(o, proposalTotalByOpp.get(o.id));
     return {
       oppId: o.id,
       accountId: o.account_id,
@@ -205,9 +258,17 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
       contractCents: Number(o.accepted_contract_cents ?? 0) + (coByOpp.get(o.id) ?? 0),
       bidCents: bid,
       taxCents: Math.max(0, m.total - m.sub),
-      billedCents: m.sub,
-      paidCents: m.paid,
-      balanceCents: m.bal,
+      // Invoice subtotal PLUS anything billed through AIA. The two are
+      // mutually exclusive in practice — a job bills one way or the other —
+      // but adding rather than choosing means a job that has done both is
+      // still right, and a job that has done neither is still zero.
+      billedCents: m.sub + (aia?.billedCents ?? 0),
+      paidCents: m.paid + (aia?.collectedCents ?? 0),
+      // `dueNowCents` is G702 line 6 less what has been collected, and it
+      // EXCLUDES retainage on purpose: retainage is held to close-out, not
+      // late, so counting it as owed would age money nobody is withholding
+      // wrongly. Same field the AR aging report ages.
+      balanceCents: m.bal + (aia?.dueNowCents ?? 0),
       isOpenBid: ["proposal", "estimating", "qualifying"].includes(o.status),
       internal: isInternalJob(o.title),
     };

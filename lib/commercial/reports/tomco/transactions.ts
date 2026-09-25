@@ -7,7 +7,7 @@ import {
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
-import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
+import { purchaseCategoryLabel, isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -121,7 +121,34 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
       )
       .order("id", { ascending: true }),
   );
-  if (payments.length === 0) return [];
+  /**
+   * AIA certificate payments belong on this tab too.
+   *
+   * This is the screen you open with a bank statement and tick cash off. It
+   * read commercial_invoice_payments only, so from 2026-09-24 — when a G702
+   * certificate could be paid directly — that cash could never be reconciled.
+   * `deposited_at` existed on the table and nothing could write it.
+   *
+   * Tolerates the table being absent (migration not applied), in which case
+   * this reads exactly as it did before.
+   */
+  const aiaPayments = await paginateAll<{
+    id: string;
+    application_id: string;
+    amount_cents: number;
+    paid_at: string | null;
+    deposited_at: string | null;
+    method: string | null;
+    reference: string | null;
+  }>(() =>
+    sb
+      .from("commercial_aia_payments")
+      .select("id, application_id, amount_cents, paid_at, deposited_at, method, reference")
+      .is("deleted_at", null)
+      .order("id", { ascending: true }),
+  ).catch(() => []);
+
+  if (payments.length === 0 && aiaPayments.length === 0) return [];
 
   const invoices = await paginateAll<{
     id: string;
@@ -146,7 +173,7 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
     ),
   );
 
-  return payments.map((p) => {
+  const invoiceRows: MoneyInRow[] = payments.map((p) => {
     const inv = invById.get(p.invoice_id);
     return {
       id: p.id,
@@ -160,6 +187,54 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
       reference: (p.reference ?? "").trim() || null,
     };
   });
+
+  if (aiaPayments.length === 0) return invoiceRows;
+
+  const apps = await paginateAll<{
+    id: string;
+    opportunity_id: string | null;
+    account_id: string;
+    application_number: number;
+  }>(() =>
+    sb
+      .from("commercial_aia_applications")
+      .select("id, opportunity_id, account_id, application_number")
+      .in("id", [...new Set(aiaPayments.map((p) => p.application_id))])
+      .is("deleted_at", null)
+      .order("id", { ascending: true }),
+  );
+  const appById = new Map(apps.map((a) => [a.id, a] as const));
+  const aiaNames = await jobNames(apps.map((a) => a.opportunity_id));
+  const { data: aiaAccounts } = await sb
+    .from("commercial_accounts")
+    .select("id, company_name")
+    .in("id", [...new Set(apps.map((a) => a.account_id))]);
+  const aiaAcct = new Map(
+    ((aiaAccounts ?? []) as { id: string; company_name: string | null }[]).map(
+      (a) => [a.id, a.company_name],
+    ),
+  );
+
+  const aiaRows: MoneyInRow[] = [];
+  for (const p of aiaPayments) {
+    const app = appById.get(p.application_id);
+    // A payment on a deleted certificate is gone from the app; it must be gone
+    // from here too, or the tab never ties out against the bank statement.
+    if (!app) continue;
+    aiaRows.push({
+      id: p.id,
+      oppId: app.opportunity_id ?? null,
+      jobName: (app.opportunity_id && aiaNames.get(app.opportunity_id)) || "—",
+      accountName: aiaAcct.get(app.account_id) || "—",
+      ymd: ymdOf(p.paid_at),
+      depositedYmd: ymdOf(p.deposited_at),
+      amountCents: Number(p.amount_cents),
+      method: p.method,
+      reference: (p.reference ?? "").trim() || `AIA No. ${app.application_number}`,
+    });
+  }
+
+  return [...invoiceRows, ...aiaRows].sort((a, b) => (a.ymd ?? "").localeCompare(b.ymd ?? ""));
 }
 
 /** Job names for a set of opportunity ids, resolved once. */
@@ -425,15 +500,22 @@ export const DEPOSIT_HISTORY_SPEC: ReportSpec<MoneyInRow> = {
 // ─── Row filters ────────────────────────────────────────────────────────────
 
 /** Materials and everything that is not crew labor or a reimbursement. */
+/**
+ * WAS a bare `=== "labor"` check — the hardcoded-string trap. When
+ * `employee_labor` arrived it fell straight through, so Mary's own entries
+ * were listed under PURCHASES beside the paint. Sixteen rows today, and it
+ * would have been 798 the moment her Tomco payouts moved across, taking half
+ * a million dollars off the screen she actually reads.
+ */
 export const purchaseRows = (rows: SpendRow[], vendor?: string) =>
   rows
-    .filter((r) => r.category !== "labor" && !r.reimburseTo)
+    .filter((r) => !isLaborPaymentCategory(r.category) && !r.reimburseTo)
     .filter((r) => !vendor || r.vendor === vendor)
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const laborPaymentRows = (rows: SpendRow[]) =>
   rows
-    .filter((r) => r.category === "labor")
+    .filter((r) => isLaborPaymentCategory(r.category))
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
 export const reimbursementRows = (rows: SpendRow[]) =>

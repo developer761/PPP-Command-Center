@@ -28,6 +28,7 @@ import {
   upsertAiaLineItem,
   deleteAiaLineItem,
   resolveG702,
+  nextAiaApplicationNumber,
   reconcileDraftChangeOrderRows,
   getEffectiveContractBaseCents,
   aiaBillingRollupBulk,
@@ -43,7 +44,9 @@ import { ToolBackHeader } from "@/components/commercial/tool-back-header";
 import { DateField } from "@/components/commercial/date-field";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { AiaPaymentsPanel } from "@/components/commercial/aia-payments-panel";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
+import { taxInclusiveCents } from "@/lib/commercial/aia/tax-inline";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{ app?: string; error?: string; ok?: string; back?: string; from?: string }>;
@@ -89,6 +92,17 @@ function revalidateAia(id: string, dealId: string) {
   revalidatePath(`/commercial/opportunities/${dealId}`);
   revalidatePath(`/commercial/accounts/${id}`);
 }
+/** The Application No. box, when it holds a usable whole number. Blank or
+ *  nonsense leaves the number alone rather than resetting it — the field
+ *  autosaves on every keystroke, and a half-typed "1" on the way to "12" must
+ *  not renumber the certificate. */
+function appNumberFrom(formData: FormData): number | null {
+  const raw = String(formData.get("application_number") ?? "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
 function toEtNoon(dateStr: string): string | null {
   const s = dateStr.trim();
   if (!s) return null;
@@ -112,11 +126,19 @@ async function createApplicationAction(formData: FormData) {
     retainage_pct: Number.isFinite(retainage_pct) ? retainage_pct : DEFAULT_RETAINAGE_PCT,
     period_to: toEtNoon(String(formData.get("period_to") ?? "")),
     period_from: toEtNoon(String(formData.get("period_from") ?? "")),
+    application_number: appNumberFrom(formData),
     created_by_user_id: userId,
   });
   if (!result.ok) redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
-  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${backQ(back)}`);
+  // A PARTIAL success still has to say so. The application exists, but if its
+  // schedule of values could not be seeded the G703 is blank and G702 line 1
+  // will not match it — on a document the GC receives. Landing on the
+  // certificate with no word of that is how it gets sent.
+  const warn = result.warning
+    ? `&error=${encodeURIComponent(result.warning)}`
+    : "";
+  redirect(`${base(id, dealId, origin, from)}&app=${result.value.id}${warn}${backQ(back)}`);
 }
 
 /**
@@ -176,6 +198,7 @@ async function updateApplicationAction(formData: FormData) {
   const result = await updateAiaApplication(
     appId,
     {
+      ...(appNumberFrom(formData) != null ? { application_number: appNumberFrom(formData) as number } : {}),
       period_from: toEtNoon(String(formData.get("period_from") ?? "")),
       period_to: toEtNoon(String(formData.get("period_to") ?? "")),
       ...(original != null && original >= 0 ? { original_contract_cents: original } : {}),
@@ -208,6 +231,7 @@ async function saveSettingsAutosaveAction(formData: FormData): Promise<{ ok: boo
   const result = await updateAiaApplication(
     appId,
     {
+      ...(appNumberFrom(formData) != null ? { application_number: appNumberFrom(formData) as number } : {}),
       period_from: toEtNoon(String(formData.get("period_from") ?? "")),
       period_to: toEtNoon(String(formData.get("period_to") ?? "")),
       ...(original != null && original >= 0 ? { original_contract_cents: original } : {}),
@@ -244,6 +268,70 @@ async function setStatusAction(formData: FormData) {
   // Auto-file the G702/G703 workbook when the application is submitted to the GC
   // (best-effort — never blocks the status change).
   if (status === "submitted") await autoFileAiaApplication(id, dealId, appId, userId);
+  revalidateAia(id, dealId);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+}
+
+/**
+ * Record money received against an application.
+ *
+ * Stephanie 2026-09-24: "At times we would need to record multiple payments
+ * against 1 AIA." Until this existed, marking an application paid was the only
+ * way to say money had arrived — one flag, no amount, no date, no cheque
+ * number, and no way to record a GC paying half a certificate.
+ */
+async function recordPaymentAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
+  const cents = parseDollarsToCents(String(formData.get("amount") ?? ""));
+  const paidOn = toEtNoon(String(formData.get("paid_at") ?? ""));
+  const { recordAiaPayment } = await import("@/lib/commercial/aia/payments");
+  const result = await recordAiaPayment({
+    application_id: appId,
+    amount_cents: cents ?? 0,
+    paid_at: paidOn ?? new Date().toISOString(),
+    method: String(formData.get("method") ?? "") || null,
+    reference: String(formData.get("reference") ?? "") || null,
+    recorded_by_user_id: userId,
+  });
+  if (!result.ok)
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  revalidateAia(id, dealId);
+  // A capped amount is recorded, not rejected — say so, or the figure on the
+  // screen quietly differs from the cheque that was typed in.
+  const capNote = result.capped
+    ? `&error=${encodeURIComponent(
+        `Recorded ${(Number(result.value.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: "USD" })} — capped at what this certificate bills. Put the rest on the next application.`,
+      )}`
+    : "";
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${capNote}${backQ(back)}`);
+}
+
+async function deletePaymentAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  const paymentId = String(formData.get("payment_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId) || !UUID_RE.test(paymentId))
+    redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
+  const { deleteAiaPayment } = await import("@/lib/commercial/aia/payments");
+  const result = await deleteAiaPayment(paymentId, userId);
+  if (!result.ok)
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
   redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
 }
@@ -469,7 +557,7 @@ export async function AiaTool({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20 M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
         </span>
         <span className="min-w-0 text-[12px] text-ppp-charcoal-600 flex-1">
-          <span className="font-semibold text-ppp-charcoal">This certifies completed work.</span> The actual money requests are Invoices — record payments there.
+          <span className="font-semibold text-ppp-charcoal">This certifies completed work.</span> Payments are recorded on the certificate itself, or under Accounting.
         </span>
         <span className="shrink-0 text-[12px] font-semibold text-cc-brand-700 inline-flex items-center gap-0.5">Invoices<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
       </Link>
@@ -488,12 +576,14 @@ export async function AiaTool({
           if (application.status === "draft") {
             await reconcileDraftChangeOrderRows(selectedAppId);
           }
-          const [lines, g702, lienWaiver] = await Promise.all([
+          const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
+          const [lines, g702, lienWaiver, payments] = await Promise.all([
             listAiaLineItems(selectedAppId),
             resolveG702(selectedAppId),
             // Stephanie 2026-08-20: "Add lien waiver option to AIA billing just
             // as it is under the invoicing."
             getAiaLienWaiver(selectedAppId).catch(() => null),
+            listAiaPayments(selectedAppId),
           ]);
           return (
             <>
@@ -516,6 +606,35 @@ export async function AiaTool({
                 setStatusAction={setStatusAction}
                 errorMessage={sp.error ?? null}
               />
+              {/* Money received. Draft applications are excluded: a certificate
+                  nobody has sent cannot have been paid, and offering the form
+                  invites recording a payment against the wrong one. */}
+              {application.status !== "draft" && (
+                <AiaPaymentsPanel
+                  applicationId={selectedAppId}
+                  applicationNumber={application.application_number}
+                  accountId={id}
+                  dealId={dealId}
+                  back={sp.back ?? ""}
+                  from={sp.from ?? ""}
+                  origin={variant}
+                  payments={payments}
+                  earnedLessRetainageCents={await (async () => {
+                    // What THIS certificate asks for, not the job to date.
+                    // G702 line 6 is cumulative, so using it raw made
+                    // Application 3 on AIREF read "$0.00 of $141,962.49" when
+                    // the GC owes $75,129.18 on it — and paying it in full
+                    // could never mark it paid. One definition, shared with
+                    // the Accounting picker and the status rule.
+                    const { applicationPeriodDueCents } = await import(
+                      "@/lib/commercial/aia/payments"
+                    );
+                    return applicationPeriodDueCents(selectedAppId);
+                  })()}
+                  recordAction={recordPaymentAction}
+                  deleteAction={deletePaymentAction}
+                />
+              )}
               {/* Application settings + delete (compact) — Draft only; an issued
                   certificate's contract/retainage/period are locked. */}
               {application.status === "draft" && (
@@ -544,6 +663,7 @@ export async function AiaTool({
                   dealId={dealId}
                   saveAction={saveSettingsAutosaveAction}
                   initial={{
+                    application_number: String(application.application_number),
                     period_from: application.period_from?.slice(0, 10) ?? "",
                     period_to: application.period_to?.slice(0, 10) ?? "",
                     original_contract: (application.original_contract_cents / 100).toFixed(2),
@@ -608,7 +728,32 @@ async function AiaApplicationList({
     aiaBillingRollupBulk([dealId]).then((m) => m.get(dealId) ?? null),
   ]);
   const baseContractCents = baseContract > 0 ? baseContract : null;
-  const contractToDateCents = baseContractCents != null ? baseContractCents + netCO : null;
+  /**
+   * TAX-INCLUSIVE, to match what is actually billed against it.
+   *
+   * `baseContract` and `netCO` are both PRE-tax — a proposal total is pre-tax
+   * and change orders store a bare amount. But the schedule of values is
+   * seeded at `taxInclusiveCents(contract)`, so G702 line 4 (and therefore
+   * `billing.billedCents`) carries the tax.
+   *
+   * Comparing the two directly made every taxable job read wrong near the
+   * end: `leftToBillCents` is `contractToDate − billed`, so on a $25,000
+   * Suffolk job at 8.625% it hit zero at 92.06% of the scope every time —
+   * "$0.00 left to bill" with $1,750 still unbilled, `fullyBilled` flipping
+   * true, and the strip printing "Fully billed and the retainage has been
+   * billed. Nothing further to requisition."
+   *
+   * It also disagreed with G702 line 3 rendered directly beneath it, by
+   * exactly the tax. Exempt (capital-improvement) jobs are unaffected —
+   * taxOnCents returns 0 and this is the same number it always was.
+   */
+  const contractToDateCents =
+    baseContractCents != null
+      ? await taxInclusiveCents({
+          opportunityId: dealId,
+          baseCents: baseContractCents + netCO,
+        })
+      : null;
   const submittedCount = applications.filter((a) => a.status === "submitted").length;
   const paidCount = applications.filter((a) => a.status === "paid").length;
   // Billed-of-contract: the LATEST application's G702 line-4 "completed & stored
@@ -621,6 +766,21 @@ async function AiaApplicationList({
   // strip above them can legitimately disagree. Say so rather than letting it
   // read as two numbers for the same thing.
   const frozenCount = applications.filter((a) => a.status !== "draft" && a.frozen_at != null).length;
+  /** Defaults for the New application form. The number carries on from the
+   *  highest one on the job — and is editable, because a job that was already
+   *  running when it arrived here does not start at 1. The period starts the
+   *  day after the last one ended, which is what a progress billing is. */
+  // Not `latestApp + 1` — that reads live rows only, and a deleted draft still
+  // reserves its number. See nextAiaApplicationNumber.
+  const suggestedAppNumber = await nextAiaApplicationNumber(dealId);
+  const suggestedPeriodFrom = (() => {
+    const prevEnd = latestApp?.period_to?.slice(0, 10);
+    if (!prevEnd) return "";
+    const d = new Date(`${prevEnd}T12:00:00Z`);
+    if (Number.isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
   const appsHint = applications.length === 0
     ? "None yet"
     : [paidCount > 0 ? `${paidCount} paid` : null, submittedCount > 0 ? `${submittedCount} submitted` : null]
@@ -702,7 +862,15 @@ async function AiaApplicationList({
               "released at close-out", which described it as something that
               happens on its own. It doesn't: it is billed on the final payment
               application, and until then it is money earned and not yet asked
-              for. The tile now says which of those it is. */}
+              for. The tile now says which of those it is.
+
+              NOT "won, not invoiced", which this said until 2026-09-25.
+              That exact phrase is already a different metric with its own tile
+              on Accounting — whole won JOBS that have never been billed at
+              all. Retainage is the opposite kind of thing: the work was
+              certified, the GC agreed it, and 5% of it is being held back. Two
+              screens using one phrase for two meanings is how somebody adds
+              them together. */}
           <AiaSummaryTile
             label="Retainage held"
             value={formatCentsFull(retainageHeldCents)}
@@ -712,7 +880,7 @@ async function AiaApplicationList({
                 ? "none held"
                 : releaseApp
                   ? `billed on Application No. ${releaseApp.application_number}`
-                  : "won, not invoiced"
+                  : "earned, not yet billed"
             }
           />
         </div>
@@ -841,16 +1009,45 @@ async function AiaApplicationList({
             </svg>
             New application
           </summary>
-          <form action={createAction} className="mt-2.5 rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-3 gap-3 items-end">
+          <form action={createAction} className="mt-2.5 rounded-lg border border-dashed border-cc-brand-200 p-3.5 grid sm:grid-cols-4 gap-3 items-end">
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />
             <input type="hidden" name="back" value={back} />
             <input type="hidden" name="from" value={from} />
             <input type="hidden" name="origin" value={origin} />
+            {/* PERIOD FROM was missing entirely.
+                Stephanie 2026-09-24: "when drafting a new AIA, the date
+                doesn't stick and I have to add it again after I create the
+                application." The Period to she picked here was always saved —
+                what she had to go back and add was the START of the period,
+                because this form never asked for it. It defaults to the day
+                after the previous application's period ended, which is what a
+                progress billing always is. */}
+            <div>
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period from</span>
+              <DateField
+                ariaLabel="Period from date"
+                name="period_from"
+                defaultValue={suggestedPeriodFrom}
+                placeholder="Pick a date"
+              />
+            </div>
             <div>
               <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Period to</span>
               <DateField ariaLabel="Period to date" name="period_to" placeholder="Pick a date" />
             </div>
+            <label className="block">
+              <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                Application No.
+              </span>
+              <input
+                name="application_number"
+                inputMode="numeric"
+                defaultValue={String(suggestedAppNumber)}
+                aria-label="Application number"
+                className={INPUT}
+              />
+            </label>
             <label className="block">
               <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
               <input name="retainage_pct" inputMode="decimal" defaultValue={String(DEFAULT_RETAINAGE_PCT)} className={INPUT} />

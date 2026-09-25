@@ -13,6 +13,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import {
   computeG702,
   aiaBilledCollectedFrom,
+  aiaCollectedWithPayments,
   lineCompletedStoredCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
@@ -81,7 +82,12 @@ export type AiaLineItem = {
   updated_at: string;
 };
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+/** `warning` is for a partial success — the thing was created, but something
+ *  alongside it did not finish and the operator needs to know before they act
+ *  on it. Distinct from `ok: false`, which means nothing was written. */
+type Result<T> =
+  | { ok: true; value: T; warning?: string | null }
+  | { ok: false; error: string };
 const COLS = "*";
 
 export async function listAiaApplications(opportunityId: string): Promise<AiaApplication[]> {
@@ -155,6 +161,20 @@ export type CreateAiaApplicationInput = {
   /** Create the retainage-release (final payment) application. Forces
    *  retainage_pct to 0 — that zero IS the release. */
   is_retainage_release?: boolean;
+  /**
+   * Start the numbering somewhere other than 1.
+   *
+   * Stephanie 2026-09-24: "on this job, we didn't start invoicing building 1
+   * until AIA number 3." The auto-number is max+1 over what this platform
+   * holds, which is right for a job billed here from the start and wrong for
+   * every job that was already running when it arrived — the GC has certificates
+   * 1 and 2 on file and ours would call the next one 1.
+   *
+   * Ignored when it collides: the UNIQUE index on (opportunity_id,
+   * application_number) is the authority, and the loop below falls back to
+   * max+1 rather than failing the create.
+   */
+  application_number?: number | null;
   created_by_user_id: string;
 };
 
@@ -163,6 +183,27 @@ export type CreateAiaApplicationInput = {
  * (never trusted from the caller). application_number is max+1; the UNIQUE
  * constraint catches an insert race, retried once.
  */
+/**
+ * The next free application number on a job — over LIVE applications only.
+ *
+ * Stephanie 2026-09-24: *"it numbers them automatically even after a draft is
+ * deleted"*. Both halves of that are fixed now. The number is editable, and
+ * migration 20260924160000 makes a deleted draft release its number, so
+ * deleting No. 1 and starting again offers No. 1 rather than No. 2.
+ */
+export async function nextAiaApplicationNumber(opportunityId: string): Promise<number> {
+  const sb = commercialDb();
+  const { data } = await sb
+    .from("commercial_aia_applications")
+    .select("application_number")
+    .eq("opportunity_id", opportunityId)
+    .is("deleted_at", null)
+    .order("application_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return ((data as { application_number: number } | null)?.application_number ?? 0) + 1;
+}
+
 export async function createAiaApplication(
   input: CreateAiaApplicationInput
 ): Promise<Result<AiaApplication>> {
@@ -204,15 +245,28 @@ export async function createAiaApplication(
       ? input.retainage_pct
       : DEFAULT_RETAINAGE_PCT;
 
+  let seedWarning: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // LIVE rows only — a deleted draft releases its number (migration
+    // 20260924160000), so max+1 over what actually exists is right, and a
+    // number freed by deleting the last draft gets used again rather than
+    // being skipped for ever.
     const { data: last } = await sb
       .from("commercial_aia_applications")
       .select("application_number")
       .eq("opportunity_id", input.opportunity_id)
+      .is("deleted_at", null)
       .order("application_number", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const application_number = ((last as { application_number: number } | null)?.application_number ?? 0) + 1;
+    const autoNumber = ((last as { application_number: number } | null)?.application_number ?? 0) + 1;
+    // An explicit number wins on the FIRST attempt only. If it collides, the
+    // retry takes the auto number rather than looping on the same conflict.
+    const requested =
+      attempt === 0 && typeof input.application_number === "number" && Number.isFinite(input.application_number)
+        ? Math.max(1, Math.round(input.application_number))
+        : null;
+    const application_number = requested ?? autoNumber;
     const { data: inserted, error } = await sb
       .from("commercial_aia_applications")
       .insert({
@@ -237,7 +291,19 @@ export async function createAiaApplication(
       // the prior application forward. Best-effort — a seed failure never blocks
       // the create (the operator can add lines manually).
       try {
-        await seedAiaScheduleOfValues(appRow);
+        // The try/catch around this CANNOT catch a rejected insert —
+        // supabase-js resolves with { error } rather than throwing — so the
+        // Result is what matters. A certificate whose G703 is blank is worse
+        // than no certificate: G702 line 1 disagrees with the schedule beneath
+        // it on a document the GC receives.
+        const seeded = await seedAiaScheduleOfValues(appRow);
+        if (!seeded.ok) {
+          console.error(
+            `[aia] application ${appRow.id} created with an INCOMPLETE schedule of values: ${seeded.error}`,
+          );
+          seedWarning =
+            "The application was created, but its schedule of values could not be filled in. Add the lines by hand, or delete it and try again.";
+        }
         // AIA invariant: G702 line 1 (Original Contract Sum) == Σ G703 BASE
         // scheduled values. When the contract was auto-defaulted (from the bid
         // midpoint) AND a schedule got seeded, snap the contract to the schedule
@@ -265,8 +331,12 @@ export async function createAiaApplication(
         }
       } catch (e) {
         console.warn("[aia] schedule-of-values seed failed:", e instanceof Error ? e.message : String(e));
+        seedWarning =
+          "The application was created, but its schedule of values could not be filled in. Add the lines by hand, or delete it and try again.";
       }
-      return { ok: true, value: appRow };
+      // The application exists either way — refusing it would strand a row the
+      // caller cannot see. The warning rides alongside so the screen can say so.
+      return { ok: true, value: appRow, warning: seedWarning };
     }
     if (error && (error as { code?: string }).code === "23505") continue;
     return { ok: false, error: error?.message ?? "insert_failed" };
@@ -283,7 +353,19 @@ export async function createAiaApplication(
  *    line becomes a schedule-of-values row; scheduled value = qty × unit price).
  * No-op if there's nothing to seed from.
  */
-async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
+/**
+ * ⚠ THE INSERTS MUST BE CHECKED, and the caller's try/catch cannot do it:
+ * supabase-js RESOLVES with `{ error }`, it does not throw, so the `catch`
+ * around this call never fires for a rejected insert. The function used to
+ * return void, so there was nothing for the caller to check either — and the
+ * operator got a certificate with a completely blank schedule of values and a
+ * success redirect. The comment further down records that happening before;
+ * the cause was fixed and the swallow was not. G702 line 1 then disagrees with
+ * the Σ of the G703 on a document the GC receives.
+ */
+async function seedAiaScheduleOfValues(
+  app: AiaApplication,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
 
   if (app.application_number > 1) {
@@ -359,15 +441,21 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
           });
           carryNo += 1;
         }
-        await sb.from("commercial_aia_line_items").insert(rows);
-        return;
+        const { error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows);
+        if (carryErr) {
+          console.error("[aia] carry-forward seed insert failed:", carryErr.message);
+          return { ok: false, error: carryErr.message };
+        }
+        return { ok: true };
       }
     }
     // No prior lines — fall through to the proposal seed.
   }
 
   const proposals = await listProposalsForOpp(app.opportunity_id);
-  if (proposals.length === 0) return;
+  // Nothing to seed from is not a failure: a bid with no proposal yet gets an
+  // empty schedule the estimator fills in by hand.
+  if (proposals.length === 0) return { ok: true };
   // Seed from the WON proposal (the signed contract that drives G702 line 1), so
   // the G703 schedule-of-values total can't diverge from the contract sum. Fall
   // back to the latest revision when nothing is won yet — the same ladder as
@@ -375,7 +463,7 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
   const seedProposal = proposals.find((p) => p.status === "won") ?? proposals[0];
   const items = await listLineItemsForProposal(seedProposal.id);
   const sov = items.filter((li) => !li.is_alternate);
-  if (sov.length === 0) return;
+  if (sov.length === 0) return { ok: true };
 
   const contractCents = Math.round(Number(seedProposal.total_cents ?? 0));
   const rows: Array<{
@@ -496,12 +584,28 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
       // deduct — clamping made the whole batch insert fail the column's old
       // >= 0 CHECK, and the failure was swallowed, so the operator got an
       // application with a completely blank schedule of values and no error.
-      // A change order on a taxable job is taxable too, and its tax rides
-      // inside its own line for the same reason the contract's does.
-      scheduled_value_cents: await taxInclusiveCents({
-        opportunityId: app.opportunity_id,
-        baseCents: Math.round(Number(co.amount_cents)),
-      }),
+      /**
+       * Tax rides inside the line ONLY when the schedule folds it inline.
+       *
+       * An itemized schedule seeds its base lines RAW (scaled to the pre-tax
+       * contract, just above) and maintains a separate TAX row —
+       * `taxReconcileMode` returns "row" as soon as there is more than one
+       * base line. That row is computed from Σ non-tax lines, so writing CO
+       * rows tax-inclusive here fed the tax back into its own base: tax on
+       * the contract, plus tax on the change orders, plus tax on the change
+       * orders' tax. The GC is billed the CO tax twice.
+       *
+       * The reconcile path next door already guards on exactly this with its
+       * `foldsInline` check; the seed folded unconditionally. Rare — Stephanie:
+       * "we don't provide an item specific SOV unless the GC specifically
+       * requests it" — and zero applications on the book are itemized today.
+       */
+      scheduled_value_cents: itemized
+        ? Math.round(Number(co.amount_cents))
+        : await taxInclusiveCents({
+            opportunityId: app.opportunity_id,
+            baseCents: Math.round(Number(co.amount_cents)),
+          }),
       from_previous_cents: 0,
       this_period_cents: 0,
       materials_stored_cents: 0,
@@ -509,7 +613,12 @@ async function seedAiaScheduleOfValues(app: AiaApplication): Promise<void> {
     });
     nextNo += 1;
   }
-  await sb.from("commercial_aia_line_items").insert(rows);
+  const { error: seedErr } = await sb.from("commercial_aia_line_items").insert(rows);
+  if (seedErr) {
+    console.error("[aia] schedule-of-values seed insert failed:", seedErr.message);
+    return { ok: false, error: seedErr.message };
+  }
+  return { ok: true };
 }
 
 /**
@@ -712,7 +821,7 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
 
 export async function updateAiaApplication(
   id: string,
-  patch: Partial<Pick<AiaApplication, "period_from" | "period_to" | "original_contract_cents" | "retainage_pct" | "status" | "notes">>,
+  patch: Partial<Pick<AiaApplication, "period_from" | "period_to" | "original_contract_cents" | "retainage_pct" | "status" | "notes" | "application_number">>,
   userId: string
 ): Promise<Result<AiaApplication>> {
   const before = await getAiaApplication(id);
@@ -728,17 +837,94 @@ export async function updateAiaApplication(
     patch.period_to === undefined &&
     patch.original_contract_cents === undefined &&
     patch.retainage_pct === undefined &&
+    patch.application_number === undefined &&
     patch.notes === undefined;
   if (!isStatusOnly && before.status !== "draft") {
     return { ok: false, error: "This application has been issued — reopen it to Draft before editing." };
   }
   // Block a status DOWNGRADE when a later application carries this one forward:
   // reopening a certified period would over-bill the next application.
-  if (patch.status !== undefined && STATUS_RANK[patch.status] < STATUS_RANK[before.status]) {
+  //
+  // TO DRAFT ONLY. The danger is RE-CERTIFYING: a draft unfreezes lines 1 and 2
+  // and lets the period's numbers move under an application that already
+  // carried them forward. paid → submitted moves no numbers at all — the
+  // certificate stays issued and frozen, and the only thing that changes is
+  // whether the money has arrived.
+  //
+  // Blocking it broke the payment sync: removing a payment from Application 3
+  // could not put it back to submitted while Application 4 existed, so the
+  // status stayed `paid` with no money behind it and every report kept
+  // counting it as collected. Caught on live data — the cleanup at the end of
+  // a verification run failed to restore AIREF, which is the only reason
+  // anybody noticed.
+  if (patch.status === "draft" && before.status !== "draft") {
     const later = await laterApplication(before.opportunity_id, before.application_number);
     if (later) return { ok: false, error: blockedByLaterMessage(later) };
+    // MONEY ON IT. The payments panel is hidden on a draft, so reopening a
+    // certificate that has been paid takes the record off the screen while the
+    // rows are still there — and deleting it then strands them where no screen
+    // can reach them. Say what has to happen first rather than swallowing it.
+    const paidCents = await recordedPaymentsCents(id);
+    if (paidCents > 0) {
+      return {
+        ok: false,
+        error: `This certificate has ${formatCentsPlain(paidCents)} recorded against it. Remove the payments first if you really need it back in draft.`,
+      };
+    }
   }
   const next: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  /**
+   * RENUMBERING.
+   *
+   * Stephanie 2026-09-24: "we didn't start invoicing building 1 until AIA
+   * number 3. It looks like the system automatically numbers the AIA, even
+   * after a draft is deleted. I need to be able to change the application
+   * numbers."
+   *
+   * Both halves of that are real. The number is max+1 over what WE hold, so a
+   * job that was already running when it arrived starts at 1 while the GC has
+   * certificates 1 and 2 on file; and deleting a draft does not give its
+   * number back, because max+1 reads the highest number ever used, not the
+   * count of live rows.
+   *
+   * The number on a certificate is how the GC files it, so it has to be the
+   * operator's to set. Two things still hold:
+   *  · it must be a positive whole number, and
+   *  · it must not collide with another application on the same deal — the
+   *    UNIQUE index would refuse it anyway, and a raw 23505 in the UI is not
+   *    an answer anybody can act on.
+   */
+  if (patch.application_number !== undefined && patch.application_number !== null) {
+    const wanted = Math.round(Number(patch.application_number));
+    if (!Number.isFinite(wanted) || wanted < 1) {
+      return { ok: false, error: "The application number has to be 1 or higher." };
+    }
+    if (wanted !== before.application_number) {
+      const sbCheck = commercialDb();
+      // LIVE rows only, matching the partial unique index from migration
+      // 20260924160000. A deleted draft releases its number — Stephanie
+      // deleted draft No. 1 to fix a tax setting and could not create No. 1
+      // again, which is the ordinary way to correct a mistake before anything
+      // has been sent. Before that migration this had to count deleted rows
+      // too, because the constraint did; explaining the wall was not the same
+      // as removing it.
+      const { data: clash } = await sbCheck
+        .from("commercial_aia_applications")
+        .select("id")
+        .eq("opportunity_id", before.opportunity_id)
+        .eq("application_number", wanted)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (clash) {
+        return {
+          ok: false,
+          error: `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
+        };
+      }
+      next.application_number = wanted;
+    }
+  }
 
   // ISSUING freezes G702 lines 1 and 2 onto the application.
   //
@@ -896,6 +1082,16 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
       error: later
         ? blockedByLaterMessage(later)
         : "This application has been issued. Mark it Draft first, then delete it.",
+    };
+  }
+  // Belt and braces. A draft cannot normally hold payments — the panel is not
+  // offered on one — but a certificate reopened before this guard existed can,
+  // and deleting it would leave live rows nothing can reach.
+  const strandedCents = await recordedPaymentsCents(id);
+  if (strandedCents > 0) {
+    return {
+      ok: false,
+      error: `This application still has ${formatCentsPlain(strandedCents)} of payments recorded against it. Remove them first.`,
     };
   }
   const sb = commercialDb();
@@ -1090,9 +1286,37 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     });
   }
 
+  /**
+   * LINE 2 CARRIES TAX TOO, on the same either/or as line 1.
+   *
+   * `netCO` is the raw approved change-order total, which is PRE-tax, while
+   * the G703 change-order rows are written tax-INCLUSIVE — so on a taxable
+   * job the cover sheet and the continuation sheet did not foot. A $25,000
+   * change order at 8.625% put $27,156.25 on the G703 and $25,000.00 on line
+   * 2, leaving Contract Sum to Date $2,156.25 BELOW the schedule's grand
+   * total, on a document this codebase's own constants say "a GC's
+   * accounts-payable system can reject".
+   *
+   * Line 4 does carry the CO tax, so a fully-billed job also reported over
+   * 100% complete with a negative balance to finish.
+   *
+   * Guarded by the same condition as line 1: when a legacy separate TAX row
+   * exists it already carries the whole tax, and adding it here would bill it
+   * twice. Every live job is capital-improvement exempt, so taxOnCents
+   * returns 0 and this changes nothing today.
+   */
+  let line2Cents = netCO;
+  if (netCO !== 0 && !lines.some((l) => isAiaTaxLine(l))) {
+    const { taxOnCents } = await import("./tax-inline");
+    line2Cents += await taxOnCents({
+      opportunityId: app.opportunity_id,
+      baseCents: netCO,
+    });
+  }
+
   return computeG702({
     originalContractCents: line1Cents,
-    netChangeOrdersCents: netCO,
+    netChangeOrdersCents: line2Cents,
     retainagePct: app.retainage_pct,
     lines,
     previousCertificatesCents,
@@ -1158,10 +1382,72 @@ export async function aiaBillingRollup(
     latestIssued: latestIssuedG702,
     latestPaid: latestPaidResolved,
   });
+  /**
+   * RECORDED PAYMENTS WIN OVER THE INFERENCE.
+   *
+   * `collectedCents` above is derived from the latest PAID application's line
+   * 6 — an inference from a status flag, which is all there was before
+   * 2026-09-24. It is right when a GC pays a certificate in full and wrong the
+   * moment they part-pay one, which Stephanie says happens: "at times we would
+   * need to record multiple payments against 1 AIA."
+   *
+   * So once any payment has actually been recorded on this job, the sum of
+   * those rows IS what was collected, and the inference is dropped. A job with
+   * no recorded payments keeps the old behaviour exactly — nothing restates
+   * itself the day this ships, and a book that was migrated with paid flags and
+   * no payment rows still reads the same.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("./payments");
+  const paymentsByApp = await listAiaPaymentsByApplication(apps.map((a) => a.id));
+
+  /**
+   * The two sources have to ADD UP, not replace one another.
+   *
+   * First attempt at this took "any payment recorded on the job" to mean
+   * "drop the inference" — and on AIREF Building #1, where Application 2 is
+   * marked paid from before payments existed, recording $35,000 against
+   * Application 3 made the $66,833.31 already collected VANISH. Collected went
+   * DOWN when money came in. Caught by running it against the live job rather
+   * than reasoning about it.
+   *
+   * G702 line 6 is CUMULATIVE — it carries every prior period — so the right
+   * split is by application number:
+   *
+   *   baseline = line 6 of the latest PAID application that carries no
+   *              recorded payments. That one number already contains
+   *              everything collected up to and including it.
+   *   plus     = payments recorded on applications AFTER that one.
+   *
+   * With no legacy paid-but-unrecorded application, the baseline is zero and
+   * collected is simply the sum of what was recorded. With no recorded
+   * payments at all, `plus` is zero and this returns exactly the old
+   * inference — so no existing job restates itself.
+   */
+  const legacyPaid = apps
+    .filter((a) => a.status === "paid" && (paymentsByApp.get(a.id)?.length ?? 0) === 0)
+    .sort((a, b) => a.application_number - b.application_number)
+    .pop() ?? null;
+
+  const baselineCents = legacyPaid
+    ? Math.round((await resolveG702(legacyPaid.id))?.totalEarnedLessRetainageCents ?? 0)
+    : 0;
+
+  let recordedAfterBaseline = 0;
+  for (const a of apps) {
+    if (legacyPaid && a.application_number <= legacyPaid.application_number) continue;
+    recordedAfterBaseline += sumAiaPayments(paymentsByApp.get(a.id) ?? []);
+  }
+
+  const hasRecorded = [...paymentsByApp.values()].some((l) => l.length > 0);
+  const collectedFinal = hasRecorded
+    ? aiaCollectedWithPayments({ baselineCents, recordedAfterBaselineCents: recordedAfterBaseline })
+    : collectedCents;
+  const dueNowFinal = Math.max(0, billedCents - retainageHeldCents - collectedFinal);
+
   return {
     billedCents,
-    collectedCents,
-    dueNowCents,
+    collectedCents: collectedFinal,
+    dueNowCents: hasRecorded ? dueNowFinal : dueNowCents,
     retainageHeldCents,
     // ONE ladder — the same one the AR-aging report, the receivables list and
     // the dashboard use.
@@ -1372,14 +1658,65 @@ export async function aiaBillingRollupBulk(
   }
   if (latestIssued.size === 0) return out;
 
+  /**
+   * RECORDED PAYMENTS — the same fold the single-deal rollup does.
+   *
+   * This bulk twin is what almost every REPORT uses: AR aging, the statement
+   * emailed to the GC, receivables, Account 360, the deal page, and the AIA
+   * screen's own header tiles. When payments landed only in the single-deal
+   * path (2026-09-24), recording a cheque changed the one deal page that reads
+   * it and nothing else — including "Owed now" on the very screen you typed it
+   * into, and a statement that would have gone to the GC showing $0 paid on a
+   * certificate they had part-paid. Found by an audit, not by a test: both
+   * paths were green and the numbers only disagreed with each other.
+   *
+   * ONE query for every application on every deal asked about, so this stays a
+   * bulk call and does not become N round-trips.
+   */
+  const { listAiaPaymentsByApplication, sumAiaPayments } = await import("./payments");
+  const paymentsByApp = await listAiaPaymentsByApplication(apps.map((a) => a.id));
+  const recordedByOpp = new Map<string, { baselineAppNumber: number | null; recorded: number }>();
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id) ?? { baselineAppNumber: null, recorded: 0 };
+    const hasRows = (paymentsByApp.get(a.id)?.length ?? 0) > 0;
+    // The latest PAID application carrying no recorded payments is the legacy
+    // baseline — its cumulative line 6 already contains everything before it.
+    if (a.status === "paid" && !hasRows) {
+      if (cur.baselineAppNumber == null || a.application_number > cur.baselineAppNumber) {
+        cur.baselineAppNumber = a.application_number;
+      }
+    }
+    recordedByOpp.set(a.opportunity_id, cur);
+  }
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id);
+    if (!cur) continue;
+    if (cur.baselineAppNumber != null && a.application_number <= cur.baselineAppNumber) continue;
+    cur.recorded += sumAiaPayments(paymentsByApp.get(a.id) ?? []);
+  }
+  const baselineAppByOpp = new Map<string, App>();
+  for (const a of apps) {
+    const cur = recordedByOpp.get(a.opportunity_id);
+    if (cur?.baselineAppNumber === a.application_number && a.status === "paid") {
+      baselineAppByOpp.set(a.opportunity_id, a);
+    }
+  }
+
   const wantedAppIds = [
     ...new Set([
       ...[...latestIssued.values()].map((a) => a.id),
       ...[...latestPaid.values()].map((a) => a.id),
+      // The legacy baseline too. It is usually the latest paid application and
+      // already in this list — but once a LATER application is paid through
+      // recorded rows, the baseline is an earlier one, and without it here its
+      // schedule lines are never fetched, baselineCents reads 0, and the whole
+      // legacy amount silently drops out of collected. That is exactly the
+      // shape AIREF Building #1 takes the moment Application 3 is paid.
+      ...[...baselineAppByOpp.values()].map((a) => a.id),
     ]),
   ];
   const pctByApp = new Map<string, number>();
-  for (const a of [...latestIssued.values(), ...latestPaid.values()]) {
+  for (const a of [...latestIssued.values(), ...latestPaid.values(), ...baselineAppByOpp.values()]) {
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
 
@@ -1418,16 +1755,32 @@ export async function aiaBillingRollupBulk(
     const paidCompleted = paid ? completedByApp.get(paid.id) ?? 0 : 0;
     const paidRetainage = paid ? retainageByApp.get(paid.id) ?? 0 : 0;
 
-    const { billedCents, collectedCents, dueNowCents, retainageHeldCents } =
-      aiaBilledCollectedFrom({
-        latestIssued: {
-          totalCompletedStoredCents: issuedCompleted,
-          totalEarnedLessRetainageCents: issuedCompleted - issuedRetainage,
-        },
-        latestPaid: paid
-          ? { totalEarnedLessRetainageCents: paidCompleted - paidRetainage }
-          : null,
+    const base = aiaBilledCollectedFrom({
+      latestIssued: {
+        totalCompletedStoredCents: issuedCompleted,
+        totalEarnedLessRetainageCents: issuedCompleted - issuedRetainage,
+      },
+      latestPaid: paid
+        ? { totalEarnedLessRetainageCents: paidCompleted - paidRetainage }
+        : null,
+    });
+    const { billedCents, retainageHeldCents } = base;
+
+    const rec = recordedByOpp.get(oppId);
+    const hasRecorded = (rec?.recorded ?? 0) > 0;
+    let collectedCents = base.collectedCents;
+    let dueNowCents = base.dueNowCents;
+    if (hasRecorded) {
+      const baselineApp = baselineAppByOpp.get(oppId);
+      const baselineCents = baselineApp
+        ? (completedByApp.get(baselineApp.id) ?? 0) - (retainageByApp.get(baselineApp.id) ?? 0)
+        : 0;
+      collectedCents = aiaCollectedWithPayments({
+        baselineCents,
+        recordedAfterBaselineCents: rec?.recorded ?? 0,
       });
+      dueNowCents = Math.max(0, billedCents - retainageHeldCents - collectedCents);
+    }
 
     out.set(oppId, {
       billedCents,
@@ -1442,4 +1795,25 @@ export async function aiaBillingRollupBulk(
     });
   }
   return out;
+}
+
+/** What has been recorded against one certificate. Zero when the payments
+ *  table is not there yet, so an unapplied migration cannot block an edit. */
+async function recordedPaymentsCents(applicationId: string): Promise<number> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_aia_payments")
+    .select("amount_cents")
+    .eq("application_id", applicationId)
+    .is("deleted_at", null);
+  if (error) return 0;
+  return ((data ?? []) as { amount_cents: number }[]).reduce(
+    (n, r) => n + (Number(r.amount_cents) || 0),
+    0,
+  );
+}
+
+/** "$1,234.56" without pulling a formatter module into this file. */
+function formatCentsPlain(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

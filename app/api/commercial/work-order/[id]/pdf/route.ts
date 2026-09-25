@@ -40,7 +40,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: oppRow } = await sb
     .from("commercial_opportunities")
-    .select("title, title_override, client_name, property_street, property_city, property_state, project_number, account_id, status, sub_status, deleted_at")
+    .select("title, title_override, title_override_mode, client_name, property_street, property_city, property_state, project_number, account_id, status, sub_status, deleted_at")
     .eq("id", wo.opportunity_id)
     .maybeSingle();
   const { data: acctRow } = await sb.from("commercial_accounts").select("company_name, deleted_at").eq("id", wo.account_id).maybeSingle();

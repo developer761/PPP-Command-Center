@@ -22,12 +22,20 @@ import { type ProjectRow } from "@/lib/commercial/projects/db";
 import { listAllProjects } from "./all-projects";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { marginFrom } from "@/lib/commercial/projects/financials";
-/** The seven cost buckets a job can carry, in display order. `subLabor` is the
- *  manual "labor" purchase category (renamed Subcontract labor); `crewLabor` is
- *  the auto field-ops cost. */
+/** The cost buckets a job can carry, in display order.
+ *
+ *  `subLabor` is the `labor` purchase category (Subcontract labor) — outside
+ *  help. `employeeLabor` is Tomco's own crew, which is what a posted payroll
+ *  week writes. `crewLabor` is the auto field-ops cost.
+ *
+ *  `employeeLabor` HAD NO BUCKET, which is worse than it sounds: the row total
+ *  is `p.costsCents`, which counts it, so the columns quietly stopped adding
+ *  up to Total cost by exactly the amount of Tomco's own payroll. Margin was
+ *  right; the breakdown underneath it was not. */
 export type CostBuckets = {
   materials: number;
   crewLabor: number;
+  employeeLabor: number;
   subLabor: number;
   subcontractor: number;
   equipment: number;
@@ -81,12 +89,13 @@ export type JobCostsReport = {
 };
 
 const emptyBuckets = (): CostBuckets => ({
-  materials: 0, crewLabor: 0, subLabor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0,
+  materials: 0, crewLabor: 0, employeeLabor: 0, subLabor: 0, subcontractor: 0, equipment: 0, permit: 0, other: 0,
 });
 
 function addBuckets(into: CostBuckets, from: CostBuckets): void {
   into.materials += from.materials;
   into.crewLabor += from.crewLabor;
+  into.employeeLabor += from.employeeLabor;
   into.subLabor += from.subLabor;
   into.subcontractor += from.subcontractor;
   into.equipment += from.equipment;
@@ -98,6 +107,7 @@ function rowBuckets(p: ProjectRow): CostBuckets {
   return {
     materials: p.costs.materials,
     crewLabor: p.fieldOpsLaborCents,
+    employeeLabor: p.costs.employee_labor,
     subLabor: p.costs.labor,
     subcontractor: p.costs.subcontractor,
     equipment: p.costs.equipment,
@@ -206,6 +216,7 @@ export async function getJobCostsReport(): Promise<JobCostsReport> {
 export const COST_BUCKET_COLUMNS: { key: keyof CostBuckets; label: string }[] = [
   { key: "materials", label: "Materials" },
   { key: "crewLabor", label: "Crew labor" },
+  { key: "employeeLabor", label: "Employee labor" },
   { key: "subLabor", label: "Subcontract labor" },
   { key: "subcontractor", label: "Subcontractor" },
   { key: "equipment", label: "Equipment" },
