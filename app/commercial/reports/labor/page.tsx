@@ -146,6 +146,39 @@ export default async function LaborReportPage({
             />
           </div>
 
+          {/* WHY THE TWO HALVES CAN DISAGREE.
+              Live on 2026-09-25, "This week" read: 0h worked, 0 jobs worked,
+              $19,721.50 paid out. That is correct and it looks like money
+              leaving the business for nothing.
+
+              The halves are dated differently on purpose — an hour is dated
+              when it was WORKED, a payout when it was PAID — and crews are
+              paid for work they finished earlier. Over a month it washes out;
+              over a week it is the normal state, not an anomaly.
+
+              Said only when the period actually shows it, so it is an
+              explanation of what is on screen rather than another standing
+              caveat to read past. */}
+          {report.payoutCents > 0 && report.totalHours === 0 && (
+            <p className="text-[12px] text-ppp-charcoal-600 bg-ppp-charcoal-50/70 border border-ppp-charcoal-100 rounded-lg px-3 py-2">
+              Money out, no hours in this period — that is normal, not a gap. A
+              payout is dated when it was <strong>paid</strong>; hours are dated
+              when they were <strong>worked</strong>, and crews are paid for work
+              they finished earlier. Widen the period to see the hours this money
+              covers.
+            </p>
+          )}
+          {report.totalHours > 0 && report.payoutCents === 0 && (
+            <p className="text-[12px] text-ppp-charcoal-600 bg-ppp-charcoal-50/70 border border-ppp-charcoal-100 rounded-lg px-3 py-2">
+              Hours in, nothing paid out in this period — the work is done and the
+              payment has not gone out yet, or has not been recorded on{" "}
+              <Link href="/commercial/accounting?view=labor-out" className="font-semibold text-cc-brand-700 underline underline-offset-2">
+                Labor payments
+              </Link>
+              .
+            </p>
+          )}
+
           {/* WHO WAS PAID. The thing Katie came here for and could not find:
               "the Labor payouts from Salesforce aren't showing up in Command
               Center." They were in the book the whole time; no report read
