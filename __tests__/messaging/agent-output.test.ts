@@ -263,6 +263,47 @@ describe("validateAction — never promise work PPP does not do", () => {
   });
 
   /**
+   * THE NEGATION CAN COME AFTER THE NOUN, AND THE APOSTROPHE IS CURLY.
+   *
+   * The first version read backwards from the banned word, so it caught "we
+   * do not paint furniture" and still blocked "Furniture painting isn't
+   * something we do" — the noun opens the sentence and there is nothing
+   * behind it to read. Seen in the simulator, which reported the block on
+   * "Furniture" with a capital F, which is what gave it away.
+   *
+   * And the contraction list named don't and can't but not isn't, which is
+   * the word the model actually reached for.
+   */
+  it("lets the bot say no whichever way round the sentence is built", () => {
+    for (const t of [
+      "Furniture painting isn\u2019t something we do.",
+      "Furniture painting isn't something we do.",
+      "We aren\u2019t able to paint furniture.",
+      "Murals aren't something we offer.",
+      "I am afraid bathtubs are outside what we cover.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
+
+  /** "not a problem" is how you say YES to a job, not how you refuse one. */
+  it("does not read an agreement as a refusal", () => {
+    for (const t of [
+      "We can paint your furniture, not a problem",
+      "Refinishing your bathtub is no problem.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(false);
+    }
+  });
+
+  /** The apostrophe is required, so an ordinary word ending in nt is safe. */
+  it("does not treat the front door as a negation", () => {
+    const r = validateAction(ok({ freeText: "We can paint the front door and your furniture." }));
+    expect(r.ok).toBe(false);
+    expect(validateAction(ok({ freeText: "We can paint the front door." })).ok).toBe(true);
+  });
+
+  /**
    * CLAUSE BY CLAUSE. A decline earlier in the sentence must not license a
    * promise later in it — "but" breaks the clause exactly as a full stop does.
    */

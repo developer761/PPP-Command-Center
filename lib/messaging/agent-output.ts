@@ -455,7 +455,13 @@ const OUT_OF_SCOPE = new RegExp(
  * negation from anywhere in the sentence would wave the promise through, so
  * "but" and "however" break a clause exactly as a full stop does.
  */
-const DECLINING = /\b(?:not|never|cannot|can'?t|do(?:es)?\s?n'?t|wo\s?n'?t|unable|outside|beyond|unfortunately|sorry)\b/i;
+// ANY n't CONTRACTION, AND THE CURLY APOSTROPHE TOO. The list used to name
+// don't and can't and missed isn't, which is the word the model actually
+// reached for — "Furniture painting isn't something we do" — and a phone
+// keyboard types ’ rather than '. The apostrophe is REQUIRED in that branch
+// so "front" does not read as a negation.
+const DECLINING =
+  /\b(?:not|never|cannot|unable|outside|beyond|unfortunately|sorry|afraid)\b|\b\w+n['’]t\b/i;
 const CLAUSE_BREAK = /[.!?;]|\bbut\b|\bhowever\b|\bthough\b/gi;
 
 /** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
@@ -468,7 +474,19 @@ export function promisesOutOfScopeWork(text: string): boolean {
   const finder = new RegExp(OUT_OF_SCOPE.source, "gi");
   for (let m; (m = finder.exec(text)); ) {
     const start = breaks.filter((b) => b <= m.index).pop() ?? 0;
-    if (!DECLINING.test(text.slice(start, m.index))) return true;
+    const end = breaks.find((b) => b > m.index) ?? text.length;
+    // THE WHOLE CLAUSE, NOT JUST WHAT CAME BEFORE.
+    //
+    // Reading backwards only caught "we do not paint furniture" and missed
+    // "Furniture painting isn't something we do" — where the noun opens the
+    // sentence and the negation follows it. Seen in the simulator, which
+    // reported the block on "Furniture" with a capital F: the model had led
+    // with the word, and there was nothing behind it to read.
+    const clause = text.slice(start, end)
+      // "not a problem" is an agreement, not a refusal, and it is the
+      // commonest way to say yes to a job. Removed before asking.
+      .replace(/\bnot a problem\b|\bno problem\b|\bno worries\b/gi, " ");
+    if (!DECLINING.test(clause)) return true;
   }
   return false;
 }
