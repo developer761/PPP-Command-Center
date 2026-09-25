@@ -80,7 +80,7 @@ export default async function FieldOpsOverviewPage() {
             </li>
             <li className="flex items-center justify-between">
               <span className="text-[13px] text-ppp-charcoal">Open work orders not yet scheduled</span>
-              <Link href="/commercial/field-ops/jobs" className={`text-[13px] font-bold tabular-nums ${o.unscheduledOpenJobs > 0 ? "text-cc-brand-700 hover:underline" : "text-ppp-charcoal-400"}`}>
+              <Link href="/commercial/field-ops/jobs?unscheduled=1" className={`text-[13px] font-bold tabular-nums ${o.unscheduledOpenJobs > 0 ? "text-cc-brand-700 hover:underline" : "text-ppp-charcoal-400"}`}>
                 {o.unscheduledOpenJobs} {o.unscheduledOpenJobs > 0 ? "→" : ""}
               </Link>
             </li>
