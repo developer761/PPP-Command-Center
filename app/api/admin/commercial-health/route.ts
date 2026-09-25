@@ -563,6 +563,88 @@ export async function GET() {
       };
     }),
 
+    probe("aia_number_reuse", "AIA number re-use · Migration 20260924180000", "commercial_cc", async () => {
+      /**
+       * A MIGRATION THAT DROPS SOMETHING IS INVISIBLE TO THE CHECK ABOVE.
+       *
+       * That one probes for the column or table each migration ADDS. This
+       * migration adds nothing — its whole job is to drop a UNIQUE constraint
+       * — so it had nothing to look for, and the page read "4 migrations
+       * confirmed" while saying nothing at all about it.
+       *
+       * It is the one that matters most of the five. 20260924160000 tried to
+       * drop that constraint by the name the naming convention implies,
+       * `..._application_number_key`. That string is 65 characters; Postgres
+       * truncates identifiers at 63 and shortens the middle, so the real name
+       * is `..._application_numb_key`. Nothing matched, `if exists` swallowed
+       * it, the migration reported success, and Stephanie stayed blocked —
+       * "duplicate key value violates unique constraint" every time she
+       * re-used a deleted application's number.
+       *
+       * ── WHAT THIS CAN AND CANNOT SEE ───────────────────────────────────
+       *
+       * PostgREST cannot read pg_constraint, so the constraint's absence
+       * cannot be asserted directly. What CAN be asserted is a state the old
+       * constraint made impossible: one (opportunity, application number)
+       * held by a live row and a soft-deleted row at the same time. Finding
+       * that is proof the drop landed.
+       *
+       * Not finding it proves nothing — it may simply mean nobody has re-used
+       * a number yet. So that case says so rather than reporting a clean
+       * pass. This page's own migration probe carries a comment about a
+       * check that overstated its coverage and turned the safety net into a
+       * false all-clear; this is the same trap, and naming the blind spot is
+       * the only honest way through it.
+       *
+       * Two live rows sharing a number is a real failure either way: the
+       * partial index that replaced the constraint exists to prevent exactly
+       * that.
+       */
+      const { data, error } = await sb
+        .from("commercial_aia_applications")
+        .select("opportunity_id, application_number, deleted_at");
+      if (error) {
+        return {
+          status: "warn",
+          message: `Could not read AIA applications: ${error.message}`,
+          fix: "Check the commercial_aia_applications table is reachable.",
+        };
+      }
+      const rows = (data ?? []) as {
+        opportunity_id: string;
+        application_number: number;
+        deleted_at: string | null;
+      }[];
+      const seen = new Map<string, { live: number; deleted: number }>();
+      for (const r of rows) {
+        const key = `${r.opportunity_id}|${r.application_number}`;
+        const cur = seen.get(key) ?? { live: 0, deleted: 0 };
+        if (r.deleted_at) cur.deleted += 1;
+        else cur.live += 1;
+        seen.set(key, cur);
+      }
+      const twoLive = [...seen.values()].filter((v) => v.live > 1).length;
+      if (twoLive > 0) {
+        return {
+          status: "fail",
+          message: `${twoLive} application number${twoLive === 1 ? " is" : "s are"} held by more than one LIVE application`,
+          fix: "Paste supabase/migrations/20260924180000_aia_drop_truncated_unique.sql — it re-asserts the partial unique index that prevents this.",
+        };
+      }
+      const reused = [...seen.values()].filter((v) => v.live > 0 && v.deleted > 0).length;
+      if (reused > 0) {
+        return {
+          status: "ok",
+          message: `Constraint confirmed dropped — ${reused} number${reused === 1 ? " is" : "s are"} held by a live and a deleted application at once, which the old table-wide constraint made impossible`,
+        };
+      }
+      return {
+        status: "ok",
+        message:
+          "No number has been re-used yet, so the drop cannot be confirmed from the data. If a deleted application's number is ever rejected, 20260924180000_aia_drop_truncated_unique.sql has not been pasted.",
+      };
+    }),
+
     probe("winloss_migration", "Win/Loss Debrief · Migrations 038 + 039", "commercial_cc", async () => {
       // Confirm 038 by hitting the debrief table; confirm 039 by checking
       // the source_outcome column on account_notes (added in 039 for

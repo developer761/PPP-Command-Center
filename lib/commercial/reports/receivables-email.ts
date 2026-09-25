@@ -108,8 +108,16 @@ export async function sendReceivablesToAlex(): Promise<
     brief
       ? `<div style="margin:0 0 16px;padding:12px 14px;background:#fff7ed;border-left:4px solid #EE662E;border-radius:6px;">
     <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#c2410c;margin-bottom:4px;">The brief</div>
-    <div style="color:#333;">${escape(brief.text)}</div>
-    ${stale ? `<div style="font-size:10px;color:#9ca3af;margin-top:6px;">Written before the latest changes.</div>` : ""}
+    ${
+      // ABOVE the prose, not beneath it — same reason as the page. A caveat in
+      // 10px grey AFTER sixty words of dollar figures is read, if at all,
+      // once the reader has already believed them. Alex reads this in his
+      // inbox, where there is no Rewrite button to press.
+      stale
+        ? `<div style="margin:0 0 8px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;font-weight:600;color:#78350f;">The figures below have moved since this was written — the totals in this email are the current ones.</div>`
+        : ""
+    }
+    <div style="color:${stale ? "#9ca3af" : "#333"};">${escape(brief.text)}</div>
   </div>`
       : ""
   }
