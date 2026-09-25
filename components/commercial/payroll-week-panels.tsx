@@ -246,7 +246,7 @@ export function PayrollWeekPanels({
         {/* ── 1. HOURS — what goes to Gusto ───────────────────────────── */}
         <section className={CARD}>
           <div className={HEAD}>
-            <h3 className={TITLE}>Hours this week</h3>
+            <h3 className={TITLE} data-tour="payroll:hours">Hours this week</h3>
             <span className={SUB}>
               Approved time only. This is what gets submitted to Gusto.
             </span>
@@ -333,7 +333,7 @@ export function PayrollWeekPanels({
         {/* ── 2. GUSTO — what came back ───────────────────────────────── */}
         <section className={CARD}>
           <div className={HEAD}>
-            <h3 className={TITLE}>Actual cost from Gusto</h3>
+            <h3 className={TITLE} data-tour="payroll:gusto-costs">Actual cost from Gusto</h3>
             <span className={SUB}>
               What Gusto took out of the bank: wages plus payroll taxes. Not the gross.
             </span>
@@ -441,7 +441,7 @@ export function PayrollWeekPanels({
         {/* ── 3. THE SPLIT ────────────────────────────────────────────── */}
         <section className={CARD}>
           <div className={HEAD}>
-            <h3 className={TITLE}>Job cost allocation</h3>
+            <h3 className={TITLE} data-tour="payroll:allocation">Job cost allocation</h3>
             <span className={SUB}>
               Each person&rsquo;s cost split across the jobs they worked, by hours.
             </span>
@@ -507,7 +507,7 @@ export function PayrollWeekPanels({
         <section className={CARD}>
           <div className={`${HEAD} flex items-baseline justify-between gap-3 flex-wrap`}>
             <div className="min-w-0">
-              <h3 className={TITLE}>Labor detail</h3>
+              <h3 className={TITLE} data-tour="payroll:labor-detail">Labor detail</h3>
               <span className={SUB}>Who worked it, and what each of them cost it.</span>
             </div>
           </div>

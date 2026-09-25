@@ -66,6 +66,7 @@ import {
   cashFlowRange, CASH_FLOW_DEFAULT, changeOrderRange, CHANGE_ORDER_DEFAULT,
 } from "@/lib/commercial/reports/presets";
 import TrendChart from "@/components/trend-chart";
+import { ACCOUNTING_VIEWS, type AccountingView } from "@/lib/commercial/accounting/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -737,62 +738,14 @@ async function sendToAlexAction(formData: FormData) {
   );
 }
 
-/**
- * The in-page views.
- *
- * Karan, 2026-08-19: *"I don't want it to bring me to the reports page but just
- * keep me on the same page."* The old bottom "Go deeper" row navigated away, so
- * the money desk was really a launcher — you left it to do anything. These
- * render inline instead: the URL stays /commercial/accounting, the headline
- * figures stay on screen above the switcher, and nothing is lost on a switch.
- *
- * Receivables is deliberately FIRST after Overview and carries the actions
- * (export, send) — it's the one Alex asked for by name.
- *
- * Invoices is the one thing still a real link: it is a workspace where records
- * get created and edited, not a read-only view, and embedding it would mean two
- * places that can create an invoice.
- */
 /** Tabs whose CSV comes from the shared grouped-report export. */
 const EXPORTABLE_TABS = new Set(["ar", "owed", "purchases", "labor-out", "deposits"]);
 
-const VIEWS = [
-  { key: "overview", label: "Overview", primary: true },
-  // Karan 2026-09-24: "put payroll tab before receivables". It is the most
-  // time-critical thing on this page — it runs to a deadline every week —
-  // and the rest of the tabs are things you look up rather than things that
-  // are due.
-  { key: "payroll", label: "Payroll" , primary: true },
-  { key: "receivables", label: "Receivables" , primary: true },
-  // Alex's ledger. Sits next to Receivables on purpose: one answers "what is
-  // owed", the other "what actually moved", and he reads them together.
-  { key: "transactions", label: "Transactions" , primary: false },
-  { key: "aging", label: "AR aging" , primary: false },
-  { key: "cash", label: "Cash flow" , primary: false },
-  { key: "costs", label: "Job costs" , primary: false },
-  // The last two of Alex's reports the platform didn't carry.
-  { key: "tax", label: "Sales tax" , primary: false },
-  { key: "reimbursements", label: "Reimbursements" , primary: false },
-  // Karan 2026-09-16: "all of Mary's stuff should be in accounting." These four
-  // are Tomco's own Salesforce reports, rebuilt in the shape she reads them —
-  // records grouped and subtotalled, not a chart of them. They were briefly
-  // separate pages under Reports, which meant her work was in two places.
-  // Mary's own AR sheet, generated from the AIA certificates she raises.
-  { key: "ar", label: "AR sheet" , primary: true },
-  // Katie: "Balance Owed Report — only the projects which are completed but
-  // there is still a balance due from the customer." It is one of the reports
-  // she and Alex actually run, so it sits on the bar beside the AR sheet
-  // rather than behind More.
-  { key: "owed", label: "Balance owed" , primary: true },
-  // Won work with no invoice raised against it. Reached from the line on the
-  // Overview, which used to send you to the dashboard and leave you to find
-  // the jobs yourself.
-  { key: "unbilled", label: "Won, not invoiced" , primary: false },
-  { key: "purchases", label: "Purchases" , primary: true },
-  { key: "labor-out", label: "Labor payments" , primary: true },
-  { key: "deposits", label: "Deposits" , primary: true },
-] as const;
-type View = (typeof VIEWS)[number]["key"];
+// The tab list moved to lib/commercial/accounting/tabs.ts so the How-it-works
+// handbook can draw the SAME bar instead of a hand-typed copy that went stale.
+const VIEWS = ACCOUNTING_VIEWS;
+
+type View = AccountingView;
 
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v ?? undefined;

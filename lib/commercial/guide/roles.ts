@@ -1,4 +1,12 @@
 import type { RoleGuide, RoleKey } from "./walkthrough";
+import {
+  ACCOUNTING_PRIMARY_LABELS,
+  ACCOUNTING_VIEWS,
+  accountingTabIndex,
+} from "@/lib/commercial/accounting/tabs";
+
+/** How many views the Accounting page has in total — bar plus behind More. */
+const ACCOUNTING_VIEW_COUNT = ACCOUNTING_VIEWS.length;
 
 /**
  * The four walkthroughs.
@@ -67,8 +75,16 @@ export const LOOKUP: { question: string; answer: string }[] = [
   { question: "…ask a question about any of this?", answer: "Press Ask, bottom right of any page" },
 ];
 
-/** The Accounting tab bar, as it reads on screen. Used by Mary's chapters. */
-const ACCOUNTING_BAR = ["Overview", "Receivables", "AR sheet", "Purchases", "Labor payments", "Deposits"];
+/**
+ * The Accounting tab bar the handbook draws, taken from the bar itself.
+ *
+ * It used to be a hand-typed copy and it went stale: Payroll landed on the
+ * real page on 2026-09-24 and Balance owed before it, and neither appeared
+ * here — so Mary's chapter, the one titled "The money", drew a bar that was
+ * missing two tabs and highlighted the wrong one on every surface after
+ * Receivables. Somebody counting along to "the third tab" pressed AR sheet.
+ */
+const ACCOUNTING_BAR = ACCOUNTING_PRIMARY_LABELS;
 
 const OVERVIEW: RoleGuide = {
   key: "overview",
@@ -119,7 +135,10 @@ const OVERVIEW: RoleGuide = {
             "All the money, on one page behind tabs: what is owed, what came in, what went out, and the sheets that get sent to the bookkeeper. This is Mary's desk.",
           steps: [
             "Click Accounting in the left menu.",
-            "Six tabs sit on the bar. Click More for the other seven.",
+            // Counted, not typed. It read "Six tabs … the other seven" while
+            // the bar had eight, because both numbers were written by hand in
+            // 2026-08 and two tabs were added after.
+            `${ACCOUNTING_PRIMARY_LABELS.length} tabs sit on the bar. Click More for the other ${ACCOUNTING_VIEW_COUNT - ACCOUNTING_PRIMARY_LABELS.length}.`,
           ],
         },
         {
@@ -167,11 +186,124 @@ const MARY: RoleGuide = {
   intro:
     "Everything to do with money is on the Accounting page, behind tabs. On a normal day you should not have to leave it: record what came in, record what went out, and at month end send the sheets on.",
   chapters: [
+    /**
+     * PAYROLL COMES FIRST because it is the only thing on this page with a
+     * deadline. Karan 2026-09-24: "put payroll tab before receivables" — the
+     * rest of Accounting is things you look up; this is a thing that is due.
+     *
+     * It was missing from this handbook entirely. The chapter titled "The
+     * money", claiming to be Mary's whole day, did not mention the tab she
+     * runs the week from.
+     */
+    {
+      id: "mary-week",
+      title: "Every week",
+      blurb:
+        "Payroll, in one place and in one order: hours out to Gusto, what Gusto charged back in, then onto the jobs.",
+      surfaces: [
+        {
+          name: "Payroll",
+          href: "/commercial/accounting?view=payroll",
+          path: "Accounting › Payroll",
+          tourTarget: "payroll:hours",
+          purpose:
+            "The week's approved hours to send to Gusto, the real cost Gusto took out of the bank, and the two joined up so every job carries its share of the labor. One tab, start to finish.",
+          /**
+           * NO TAB STRIP ON THIS SURFACE, DELIBERATELY — the printed handbook
+           * cannot take another one.
+           *
+           * Adding a strip here (any strip: 6 boxes or 8, any highlighted
+           * index, with or without wrap={false}) sends react-pdf into a
+           * runaway page-height search. It doubles the page height about
+           * twenty times — 19,355,170 then 1,088,727,936 and so on — until the
+           * absolutely-positioned footer lands at top: -1.9e21 and pdfkit
+           * throws `unsupported number`. The whole handbook fails to render,
+           * and nothing in the message mentions a strip, a page, or this file.
+           *
+           * It is cumulative, not about this strip: with the two new sections
+           * here carrying no strip the document renders, and the five older
+           * strips are untouched. So this is a ceiling in the PDF layout, not
+           * a fault in the content, and it is worth real time with react-pdf
+           * rather than a guess at midnight.
+           *
+           * Nothing is lost for the reader: the `path` line above already
+           * reads "Accounting › Payroll", which is the instruction. The strip
+           * is a picture of it.
+           *
+           * `guide-sections-dont-start-at-a-page-foot` renders the real PDF
+           * and is what caught this before it shipped — it is the guard that
+           * matters here, so do not skip it when adding to this file.
+           */
+          steps: [
+            "Click Accounting in the left menu.",
+            "Click the Payroll tab. It opens on the last week that has hours.",
+            "Check the week in the middle of the arrows. Use ‹ and › to move, or This week to jump back.",
+            "Read Hours this week. This is APPROVED time only — anything still unapproved is not here.",
+            "If someone is missing, the panel says so by name. Click check approvals and approve their hours first.",
+            "Click Copy hours for Gusto and paste it into Gusto. Run payroll there.",
+            "Come back here. In Actual cost from Gusto, type what Gusto took out of the bank for each person.",
+            "Faster: click Paste a column from Gusto and paste the whole column in one go.",
+            "Click Save Gusto costs.",
+            "Read Job cost allocation — each person's cost split across the jobs they worked, by hours.",
+            "Click Post to job costs.",
+          ],
+          controls: [
+            { label: "‹ and ›", kind: "button", does: "Moves back and forward a week. The dates between them are the week you are working on." },
+            { label: "This week", kind: "link", does: "Jumps to the current week. Only shows when you are looking at a different one." },
+            { label: "Hours this week", tourTarget: "payroll:hours", does: "Approved hours per person, split into ON JOBS and NOT ON A JOB, with how many jobs each worked. The total at the bottom is what Gusto should be paying for." },
+            { label: "check approvals", kind: "link", does: "Appears only when somebody has no approved hours this week. Opens the approvals screen so you can fix it before payroll goes out." },
+            { label: "Copy hours for Gusto", kind: "button", does: "Puts the hours on your clipboard in Gusto's column order. The text stays on screen and selectable, so you can copy it by hand if the clipboard is blocked." },
+            { label: "Actual cost from Gusto", tourTarget: "payroll:gusto-costs", kind: "field", does: "What Gusto took out of the BANK for each person — wages plus payroll taxes, not the gross on their payslip. This is the number the jobs get charged." },
+            { label: "Paste a column from Gusto", kind: "button", does: "Paste the whole column in one go instead of typing each person. It shows you what it read before anything is saved, so a column that is one row short is obvious now rather than next month." },
+            { label: "Save Gusto costs", does: "Saves the figures. It does not touch the jobs yet — that is the next button." },
+            { label: "Job cost allocation", tourTarget: "payroll:allocation", does: "Each person's cost spread across the jobs they worked, in proportion to hours. This is the split that gets written." },
+            { label: "Labor detail", tourTarget: "payroll:labor-detail", does: "The same thing the other way round — per job, who worked it, what they cost and the loaded rate per hour." },
+            { label: "Post to job costs", does: "Writes a labor payout onto each job, exactly like a crew payment. Greyed out until the costs are in, and it tells you what it is waiting for." },
+          ],
+          watchOut:
+            "Enter what Gusto took out of the bank, not the gross wage. The gross leaves the payroll taxes off every job, so margins read better than they are. And posting a week twice REPLACES what it wrote last time rather than adding to it — the confirmation says which.",
+        },
+      ],
+    },
     {
       id: "mary-day",
       title: "Every day",
       blurb: "Money in, money out for materials, money out for crew. Three tabs, one form each.",
       surfaces: [
+        /** Where the page opens, and the only tab nobody had written down. */
+        {
+          name: "Overview",
+          href: "/commercial/accounting?view=overview",
+          path: "Accounting › Overview",
+          purpose:
+            "Where Accounting opens: what is owed, who owes most of it, how long it is taking to arrive, and what the work actually cost. Nothing is entered here — every figure is a way in to the tab that holds the detail.",
+          // See the note on the Payroll surface: no strip, or the handbook PDF will not render.
+          steps: [
+            "Click Accounting in the left menu. This is the tab it opens on.",
+            "Read the four boxes across the top — they stay there on every tab.",
+            "Read the yellow line: how much of the book sits with one GC.",
+            "Click See just them to filter Receivables down to that GC.",
+            "Read Won, not invoiced — work finished with no bill raised. Click it for the list.",
+            "Scroll to Biggest outstanding for the largest open items, newest chase first.",
+            "Scroll to What the work cost for margin and the cost mix.",
+          ],
+          controls: [
+            { label: "Total outstanding", does: "Everything still owed, with how many items and how much of it is past due." },
+            { label: "Biggest GC", does: "The GC holding the most of it, and what share of the whole book that is." },
+            { label: "Over 90 days", does: "The money that is properly late. This is the number to chase first." },
+            { label: "Oldest", does: "The single longest-waiting item, named, so it is not just a statistic." },
+            { label: "See just them", kind: "link", does: "Opens Receivables filtered to that GC. The concentration line is a shortcut into the chase list, not a fact to read and move past." },
+            { label: "Won, not invoiced", kind: "link", does: "Work that is won and finished with no invoice raised against it — the fastest cash in the building. Opens the list of jobs." },
+            { label: "Cash in · last 6 months", does: "Payments RECEIVED per month, not invoices raised. The two move differently and this is the one the bank agrees with." },
+            { label: "Days to pay", does: "How long money takes to arrive, weighted by amount — so one huge slow invoice counts more than five small quick ones." },
+            { label: "Collection rate", does: "Collected ÷ billed for the period. Over 100% is not an error: it means older invoices landed inside the window." },
+            { label: "Biggest outstanding", does: "The largest open items with what each one is — an AIA application, an invoice, or won work never billed." },
+            { label: "See all", kind: "link", does: "Every block has one. It opens the tab that holds that block's full detail." },
+            { label: "What the work cost", does: "Margin, total cost, the cost mix, and vendor spend for the year. The cost side of the same money." },
+          ],
+          watchOut:
+            "Unpriced labor is hours logged against jobs with no rate on them yet. Those hours are real but cost nothing here, so margin reads HIGHER than it is until they are priced. Check that figure before quoting the margin to anyone.",
+        },
         {
           name: "Receivables",
           href: "/commercial/accounting?view=receivables",
@@ -179,7 +311,7 @@ const MARY: RoleGuide = {
           tourTarget: "accounting:record-payment",
           purpose:
             "Every job with money still out, and the form for recording a payment when it comes in. Each row carries a note so anyone can see what has been chased and when.",
-          strip: { boxes: ACCOUNTING_BAR, at: 1 },
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Receivables") },
           steps: [
             "Click Accounting in the left menu.",
             "Click the Receivables tab.",
@@ -216,7 +348,7 @@ const MARY: RoleGuide = {
           tourTarget: "accounting:record-purchase",
           purpose:
             "Record what was bought against a job, and see everything bought grouped by vendor, by job or by month.",
-          strip: { boxes: ACCOUNTING_BAR, at: 3 },
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Purchases") },
           steps: [
             "Click Accounting in the left menu.",
             "Click the Purchases tab.",
@@ -250,7 +382,7 @@ const MARY: RoleGuide = {
           path: "Accounting › Labor payments",
           tourTarget: "accounting:record-labor",
           purpose: "Record what was paid out to a crew or labor company, and see what each has been paid.",
-          strip: { boxes: ACCOUNTING_BAR, at: 4 },
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Labor payments") },
           steps: [
             "Click Accounting in the left menu.",
             "Click the Labor payments tab.",
@@ -285,7 +417,7 @@ const MARY: RoleGuide = {
             "Read down the list against your bank statement.",
             "Click Mark on a row once it has cleared the bank. It turns green and reads Deposited.",
           ],
-          strip: { boxes: ACCOUNTING_BAR, at: 5 },
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Deposits") },
           watchOut:
             "Receivables and Deposits are the two halves of the same money: Receivables is what has not arrived, Deposits is what has. A payment moves from one to the other the moment you record it.",
         },
@@ -311,7 +443,7 @@ const MARY: RoleGuide = {
             "To add one: click Edit the sheet, fill in Job and Billed / open, click Add line.",
             "Click Export for the file to send Alex.",
           ],
-          strip: { boxes: ACCOUNTING_BAR, at: 2 },
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("AR sheet") },
           controls: [
             { label: "Edit the sheet", does: "Opens the editor underneath the table. Everything below is inside it." },
             { label: "Add line", does: "Puts a line on the sheet that has no application behind it yet. Needs a Job and a Billed / open figure." },
