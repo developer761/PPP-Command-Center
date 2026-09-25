@@ -356,10 +356,39 @@ export function CommandPalette() {
                     const isHighlighted = flatIdx === highlight;
                     return (
                       <li key={r.id} role="option" id={`palette-opt-${r.id}`} aria-selected={isHighlighted}>
-                        <button
-                          type="button"
+                        {/* AN ANCHOR, NOT A BUTTON.
+                            Every result already carries a real `href`; the row
+                            just did not use it, so ⌘-click and middle-click did
+                            nothing and the status bar showed no destination.
+                            Brendan opens several jobs from one search — that is
+                            the whole point of a palette — and had to come back
+                            and search again for each one.
+
+                            Karan 2026-09-24, on the same shape elsewhere: "it
+                            should be like a link or something that brings me to
+                            the panel but then when I click back it brings me
+                            right back to this page."
+
+                            A plain click is still `commit(r)`: preventDefault
+                            then router.push, so navigation stays client-side
+                            and the palette closes. A click carrying a modifier
+                            — or any non-primary button — is left to the
+                            browser, which is what makes a new tab work. */}
+                        <a
+                          href={r.href}
+                          {...(r.kind === "document"
+                            ? { target: "_blank", rel: "noopener noreferrer" }
+                            : {})}
                           onMouseEnter={() => setHighlight(flatIdx)}
-                          onClick={() => commit(r)}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                              // Let the browser open it however the user asked.
+                              setOpen(false);
+                              return;
+                            }
+                            e.preventDefault();
+                            commit(r);
+                          }}
                           className={`w-full flex items-start gap-2.5 px-4 py-2.5 text-left transition-colors ${
                             isHighlighted ? "bg-cc-brand-50" : "hover:bg-ppp-charcoal-50"
                           }`}
@@ -385,7 +414,7 @@ export function CommandPalette() {
                               ↵
                             </span>
                           )}
-                        </button>
+                        </a>
                       </li>
                     );
                   })}
