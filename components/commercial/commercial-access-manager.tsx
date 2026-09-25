@@ -8,8 +8,10 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import type { ManagedUser } from "@/lib/auth/user-management";
 import { SubmitButton } from "@/components/commercial/submit-button";
+import { SELECT_CLS } from "@/lib/commercial/form-classnames";
 
 const INPUT =
   "w-full rounded-lg border border-ppp-charcoal-200 bg-surface px-3 py-2.5 text-base sm:text-sm text-ppp-charcoal focus:border-cc-brand-500 focus:ring-1 focus:ring-cc-brand-500 outline-none min-h-[44px]";
@@ -36,8 +38,10 @@ export default function CommercialAccessManager({
   initialReceiverEmails = [],
   crewUserIds = [],
   emailOnUserIds = [],
+  crewMembers = [],
   toggleCrewAction,
   toggleUserEmailAction,
+  linkCrewAction,
 }: {
   initialUsers: ManagedUser[];
   currentUserId: string;
@@ -56,8 +60,16 @@ export default function CommercialAccessManager({
    */
   crewUserIds?: string[];
   emailOnUserIds?: string[];
+  /**
+   * The active crew roster, with whichever login each person is already tied
+   * to. A crew login resolves to a person through
+   * `commercial_employees.user_id`; until that is set, every one of the five
+   * crew screens says "Almost there" and there is nothing the person can do.
+   */
+  crewMembers?: { id: string; name: string; userId: string | null }[];
   toggleCrewAction?: (fd: FormData) => Promise<void>;
   toggleUserEmailAction?: (fd: FormData) => Promise<void>;
+  linkCrewAction?: (fd: FormData) => Promise<void>;
   /** R1d: emails flagged as proposal approvers (admins are always approvers). */
   initialApproverEmails?: string[];
   /** RUX-6: emails flagged to get pinged on proposal approve / changes-requested. */
@@ -230,8 +242,11 @@ export default function CommercialAccessManager({
                 receiverToggleLocked={togglingReceiver}
                 isCrew={crewUserIds.includes(u.user_id)}
                 emailsOn={emailOnUserIds.includes(u.user_id)}
+                crewMembers={crewMembers}
+                linkedCrewId={crewMembers.find((c) => c.userId === u.user_id)?.id ?? ""}
                 toggleCrewAction={toggleCrewAction}
                 toggleUserEmailAction={toggleUserEmailAction}
+                linkCrewAction={linkCrewAction}
                 onChanged={async (msg) => {
                   note("ok", msg);
                   await refresh();
@@ -506,8 +521,11 @@ function UserRow({
   receiverToggleLocked,
   isCrew = false,
   emailsOn = false,
+  crewMembers = [],
+  linkedCrewId = "",
   toggleCrewAction,
   toggleUserEmailAction,
+  linkCrewAction,
   onChanged,
   onError,
 }: {
@@ -521,8 +539,11 @@ function UserRow({
   receiverToggleLocked: boolean;
   isCrew?: boolean;
   emailsOn?: boolean;
+  crewMembers?: { id: string; name: string; userId: string | null }[];
+  linkedCrewId?: string;
   toggleCrewAction?: (fd: FormData) => Promise<void>;
   toggleUserEmailAction?: (fd: FormData) => Promise<void>;
+  linkCrewAction?: (fd: FormData) => Promise<void>;
   onChanged: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -867,6 +888,68 @@ function UserRow({
           )}
         </div>
       </div>
+      {/* WHICH PERSON IS THIS LOGIN?
+          Only on crew-restricted rows, because that is the only place the
+          answer is load-bearing: the five crew screens all resolve the viewer
+          through commercial_employees.user_id, so an unlinked crew login sees
+          "Almost there" and nothing else, forever. Restricting someone used to
+          do exactly that with no warning and no way back. */}
+      {isCrew && linkCrewAction && (
+        <form action={linkCrewAction} className="mt-3">
+          <input type="hidden" name="user_id" value={user.user_id} />
+          {!linkedCrewId && (
+            <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+              <strong>Not linked to a crew member yet.</strong> Until it is, this
+              login opens to &ldquo;Almost there&rdquo; and can&rsquo;t see a
+              schedule, hours or jobs.
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor={`crew-link-${user.user_id}`}
+              className="text-[12px] font-semibold text-ppp-charcoal-600"
+            >
+              Crew member
+            </label>
+            <select
+              id={`crew-link-${user.user_id}`}
+              name="employee_id"
+              defaultValue={linkedCrewId}
+              className={`${SELECT_CLS} flex-1 min-w-[180px]`}
+            >
+              <option value="">— not linked —</option>
+              {crewMembers.map((c) => {
+                // Shown-but-disabled rather than hidden: linkEmployeeToUser
+                // refuses a person another login already holds, and an admin
+                // who can't find a name needs to know it is taken, not wonder
+                // whether the roster is wrong.
+                const takenByOther = !!c.userId && c.userId !== user.user_id;
+                return (
+                  <option key={c.id} value={c.id} disabled={takenByOther}>
+                    {c.name}
+                    {takenByOther ? " — already linked to another login" : ""}
+                  </option>
+                );
+              })}
+            </select>
+            <SubmitButton className="rounded-lg bg-cc-brand-600 px-3 text-[12px] font-semibold text-white hover:bg-cc-brand-700 min-h-[44px] sm:min-h-[36px] touch-manipulation">
+              Save
+            </SubmitButton>
+          </div>
+          {crewMembers.length === 0 && (
+            <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500">
+              No active crew on the roster yet —{" "}
+              <Link
+                href="/commercial/field-ops/employees"
+                className="font-semibold text-cc-brand-700 underline underline-offset-2"
+              >
+                add them on the Crew page
+              </Link>{" "}
+              first.
+            </p>
+          )}
+        </form>
+      )}
       {resetOpen && !isSelf && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input

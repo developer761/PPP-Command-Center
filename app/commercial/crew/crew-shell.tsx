@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getEmployeeForUser } from "@/lib/commercial/crew-access";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 import type { CommercialEmployee } from "@/lib/commercial/field-ops/employees";
+
+const ACCESS_HREF = "/commercial/settings/access";
 
 /**
  * Shared shell for every scoped crew page.
@@ -31,16 +36,55 @@ export async function requireCrewEmployee(): Promise<
 
   const employee = await getEmployeeForUser(user.id);
   if (!employee) {
+    /**
+     * NAMING A SCREEN IS NOT THE SAME AS OFFERING IT.
+     *
+     * This told every reader to go to "Settings → Access" in bold text that
+     * was not a link. For the crew member that is correct — Settings → Access
+     * is admin-only (`requireAccessAdmin` redirects anyone else), so linking
+     * it would hand them a bounce. But an admin lands here too: the crew
+     * landing page says so in as many words ("your login isn't restricted to
+     * these 5 screens"), and an admin testing the crew view is the single most
+     * likely visitor to this state. They were told to go ask themselves, with
+     * no way through.
+     *
+     * So the instruction is now addressed to whoever is actually reading it,
+     * and it is a link exactly when that link would work.
+     */
+    const profile = await getProfileByUserId(user.id);
+    const canFixIt =
+      normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email)) === "admin";
     return {
       ok: false,
       node: (
-        <CrewPage title="Almost there">
+        <CrewPage title={canFixIt ? "This one belongs to a crew login" : "Almost there"}>
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-[13.5px] text-amber-900">
-            <p className="font-semibold">Your login isn&rsquo;t linked to a crew member yet.</p>
-            <p className="mt-1.5 leading-relaxed">
-              Ask an admin to connect it in <strong>Settings → Access</strong>. Once
-              they do, your schedule, hours and jobs will show up here.
-            </p>
+            {canFixIt ? (
+              <>
+                <p className="font-semibold">
+                  Nothing is wrong — your admin login isn&rsquo;t a crew member, so
+                  there&rsquo;s no schedule to show.
+                </p>
+                <p className="mt-1.5 leading-relaxed">
+                  To set someone up: in{" "}
+                  <Link href={ACCESS_HREF} className="font-semibold underline underline-offset-2">
+                    Settings → Access
+                  </Link>
+                  , find them under <strong>Commercial users</strong>, press{" "}
+                  <strong>Restrict to crew</strong>, then pick their name in the{" "}
+                  <strong>Crew member</strong> box that appears on their row. Both
+                  steps are needed — the role alone lands them right here.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold">Your login isn&rsquo;t linked to a crew member yet.</p>
+                <p className="mt-1.5 leading-relaxed">
+                  Ask an admin to connect it in <strong>Settings → Access</strong>. Once
+                  they do, your schedule, hours and jobs will show up here.
+                </p>
+              </>
+            )}
           </div>
         </CrewPage>
       ),
