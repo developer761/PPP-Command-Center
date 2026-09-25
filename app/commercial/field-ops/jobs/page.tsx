@@ -248,7 +248,12 @@ export default async function FieldOpsJobsPage({
           What the crew gets scheduled on. Won commercial opportunities flow in
           here automatically when you <strong>Send to Field Ops</strong> from
           the deal. You can also add one manually below —{" "}
-          <strong>connect it to a deal</strong> (it&rsquo;ll show on that
+          {/* {" "} rather than a plain space: the build dropped the space
+              between </strong> and "(" here and rendered "deal(it\u2019ll",
+              exactly as it did between an expression and "of work" on the
+              sales-tax banner. An explicit space cannot be trimmed. */}
+          <strong>connect it to a deal</strong>{" "}
+          (it&rsquo;ll show on that
           deal&rsquo;s Work Orders too), or leave the deal blank for a{" "}
           <strong>standard, prevailing-wage, or one-off</strong> job.
         </p>
