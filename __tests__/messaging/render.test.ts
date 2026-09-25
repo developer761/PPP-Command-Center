@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderMessage, SILENT_INTENTS } from "@/lib/messaging/render";
+import { tooManyAsks } from "@/lib/messaging/one-ask";
 import { END_INTENTS, CONTINUE_INTENTS, type Intent } from "@/lib/messaging/agent-output";
 
 const ALL: Intent[] = [...END_INTENTS, ...CONTINUE_INTENTS];
@@ -157,6 +158,60 @@ describe("rendering an intent into words", () => {
   it("still says nothing to somebody who has disengaged", () => {
     for (const intent of ["discard", "lost", "msg_liked_loved"] as const) {
       expect(renderMessage({ intent }), intent).toBe("");
+    }
+  });
+
+  /**
+   * A22, WHICH WAS NOT ENFORCED ANYWHERE.
+   *
+   * one-ask.ts was written with ten tests of its own and never imported by a
+   * single production file, so the rule it implements was never applied to an
+   * outgoing message. Found by sweeping lib/messaging for exported functions
+   * with no callers — the same sweep that found loadInbox and bucketCounts.
+   *
+   * The count only means anything on the WHOLE message. The template asks for
+   * one thing, the model's rapport can quietly ask for two more, and neither
+   * half is over the line alone.
+   */
+  it("drops rapport that pushes the message over the ask limit", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 0,
+      freeText: "Also, what is your first and last name and the best email to reach you?",
+    });
+    expect(tooManyAsks(out)).toBeNull();
+    expect(out).not.toMatch(/last name/i);
+    // The template still carries the turn.
+    expect(out).toMatch(/address/i);
+  });
+
+  it("leaves rapport alone when the message is within the limit", () => {
+    const out = renderMessage({ intent: "ask_address", turn: 0, freeText: "Kitchen cabinets, got it." });
+    expect(out).toContain("Kitchen cabinets");
+  });
+
+  /** The first version dropped the photo acknowledgement instead, because it
+   *  assumed rapport was always the part before the template. */
+  it("keeps the photo acknowledgement when it is the rapport that goes", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 0, photos: 2,
+      freeText: "Also, what is your first and last name and the best email to reach you?",
+    });
+    expect(out).toMatch(/thanks for the photos/i);
+    expect(out).not.toMatch(/last name/i);
+  });
+
+  /** Every template, on its own, must already satisfy the rule. */
+  it("has no template that asks for too much by itself", () => {
+    for (const intent of ALL) {
+      if (SILENT_INTENTS.has(intent)) continue;
+      for (const turn of [0, 1, 2]) {
+        const out = renderMessage({ intent, turn, known: {
+          address: "12 Oak St, Garden City, NY 11530", phone: "999-784-6046",
+          email: "tom@example.com", scope: "interior painting", zip: "11530", state: "New York",
+        }, offsiteReason: "you're not able to be at the property" });
+        if (!out) continue;
+        expect(tooManyAsks(out), `${intent}/${turn}: ${out}`).toBeNull();
+      }
     }
   });
 });

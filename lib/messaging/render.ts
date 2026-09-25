@@ -20,6 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import { BARE_ACKNOWLEDGEMENT, type Intent } from "./agent-output";
+import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 
@@ -524,6 +525,8 @@ export function renderMessage(input: RenderInput): string {
 
   const rapport = (input.freeText ?? "").trim();
   const parts: string[] = [];
+  /** Where the model's rapport ended up, or -1 when it was not used at all. */
+  let rapportAt = -1;
 
   if (input.photos && input.photos > 0) {
     parts.push(input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!");
@@ -542,10 +545,33 @@ export function renderMessage(input: RenderInput): string {
     && !rapportIsRedundant(rapport, pick)
   ) {
     parts.push(rapport);
+    rapportAt = parts.length - 1;
   }
   if (pick) parts.push(pick);
 
-  const body = parts.join(" ").replace(/\s+/g, " ").trim();
+  let body = parts.join(" ").replace(/\s+/g, " ").trim();
+
+  /**
+   * A22, AT LAST ACTUALLY ENFORCED.
+   *
+   * one-ask.ts was written with ten tests and never imported by anything, so
+   * the rule it implements was not applied to a single outgoing message. The
+   * count only means something on the WHOLE message: the template asks for one
+   * thing, the model's rapport can quietly ask for two more, and neither half
+   * is over the line on its own.
+   *
+   * Dropping the rapport rather than refusing the turn, which is what a style
+   * breach already does here. The template still carries the ask, the
+   * conversation still moves, and the part that broke the rule is simply not
+   * sent. If the TEMPLATE alone is over the limit that is a template bug and
+   * dropping rapport cannot fix it, so the message goes as written and the
+   * template tests are where that gets caught.
+   */
+  if (rapportAt >= 0 && tooManyAsks(body)) {
+    const withoutRapport = parts.filter((_, i) => i !== rapportAt)
+      .join(" ").replace(/\s+/g, " ").trim();
+    if (!tooManyAsks(withoutRapport)) body = withoutRapport;
+  }
   // Nothing to say means nothing to send, and a disclosure on its own is not a
   // message — appending it to an empty body would turn a dropped turn into a
   // bare "Reply STOP to opt out."
