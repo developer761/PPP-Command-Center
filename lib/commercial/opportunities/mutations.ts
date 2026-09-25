@@ -671,6 +671,46 @@ export async function softDeleteCommercialOpportunity(
 
   if (error) return { ok: false, error: error.message };
 
+  /**
+   * Cascade: CLEAR THE TO-DOS THIS DEAL WAS CARRYING.
+   *
+   * The Action Needed bar reads unread actionable notifications and never
+   * re-checks whether the subject still exists. Deleting a deal left its
+   * "Brendan is requesting approval on Proposal · $13,500.00" sitting at the
+   * top of every admin's screen, with a "Review & approve →" button pointing
+   * at a deleted opportunity — found on the live platform, a day after the
+   * deal was removed. The Proposals page correctly showed nothing, which made
+   * the bar the only place it existed.
+   *
+   * Marked read, not deleted: the bell stays a history of what happened.
+   */
+  {
+    // The account comes from the OPPORTUNITY. `commercial_proposals` has no
+    // `account_id` column — selecting one makes PostgREST reject the whole
+    // query and return null, so the first version of this cascade would have
+    // resolved nothing, silently, and looked like it worked.
+    const { data: props, error: propErr } = await sb
+      .from("commercial_proposals")
+      .select("id")
+      .eq("opportunity_id", id);
+    if (propErr) {
+      console.warn(
+        `[opportunities] could not read proposals to clear their to-dos: ${propErr.message}`,
+      );
+    } else if ((props ?? []).length > 0) {
+      const accountId = (after as { account_id?: string | null } | null)?.account_id ?? null;
+      const { resolveActionItems, PROPOSAL_ACTION_KINDS } = await import(
+        "@/lib/notifications/resolve-action-items"
+      );
+      for (const pr of props as { id: string }[]) {
+        await resolveActionItems({
+          link: `/commercial/accounts/${accountId}/deals/${id}/proposal/${pr.id}`,
+          kinds: PROPOSAL_ACTION_KINDS,
+        });
+      }
+    }
+  }
+
   // Cascade: soft-delete the (unpaid) invoices attached to this deal so
   // they don't linger as orphans on the invoices list. Best-effort — if
   // this fails the deal is already deleted; the orphaned-invoice fallback
