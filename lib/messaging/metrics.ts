@@ -45,11 +45,21 @@ export type FunnelStep = {
   /** Share of those who reached the PREVIOUS stage and then stopped here.
    *  This is the number that names the problem question. */
   droppedHerePct: number;
+  /**
+   * How many conversations this row is computed from.
+   *
+   * Carried out so the screen can say so. Every percentage here is a
+   * percentage of something, and "−100%" off ONE conversation was being shown
+   * in the same red as a real funnel collapse — next to "0 · 0% reached",
+   * which reads as a contradiction until you know n is 1. The rest of this
+   * page already refuses to draw conclusions under MIN_MEASURED.
+   */
+  total: number;
 };
 
 export function qualificationFunnel(rows: ConversationRow[]): FunnelStep[] {
   const total = rows.length;
-  if (total === 0) return STAGES.map((s) => ({ stage: s.n, label: s.label, reached: 0, reachedPct: 0, droppedHerePct: 0 }));
+  if (total === 0) return STAGES.map((s) => ({ stage: s.n, label: s.label, reached: 0, reachedPct: 0, droppedHerePct: 0, total: 0 }));
 
   return STAGES.map((s) => {
     const reached = rows.filter((r) => r.qualification_stage >= s.n).length;
@@ -61,6 +71,7 @@ export function qualificationFunnel(rows: ConversationRow[]): FunnelStep[] {
       stage: s.n,
       label: s.label,
       reached,
+      total,
       reachedPct: pct(reached, total),
       // Guarded: if nobody reached the prior stage, nobody can have dropped at
       // this one, and 0/0 would render as NaN on the page.

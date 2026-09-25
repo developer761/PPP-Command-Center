@@ -213,6 +213,14 @@ export default async function ReportingConsole({
             Emily collects four things in order. A success rate says how many
             finished; this says which question loses them.
           </p>
+          {/* Every number below is a percentage OF something. Saying what, so
+              "−100%" off one conversation cannot read as a collapse. */}
+          <p className="mt-0.5 text-[12px] text-ppp-charcoal-400">
+            {r.funnel[0]?.total ?? 0} conversation{(r.funnel[0]?.total ?? 0) === 1 ? "" : "s"} measured
+            {(r.funnel[0]?.total ?? 0) < MIN_MEASURED
+              ? `, which is fewer than ${MIN_MEASURED} and too few to read a pattern into.`
+              : "."}
+          </p>
         </div>
         <ul className="px-4 py-3 space-y-2.5">
           {r.funnel.map((f) => (
@@ -222,7 +230,12 @@ export default async function ReportingConsole({
                 <span className="shrink-0 text-[12px] tabular-nums text-ppp-charcoal-500">
                   {f.reached} · {f.reachedPct}%
                   {f.droppedHerePct > 0 && (
-                    <span className="ml-2 text-ppp-orange-700">−{f.droppedHerePct}%</span>
+                    // Muted under MIN_MEASURED: the same figure means something
+                    // very different at n=1 than at n=500, and only one of them
+                    // is worth showing in red.
+                    <span className={`ml-2 ${f.total < MIN_MEASURED ? "text-ppp-charcoal-400" : "text-ppp-orange-700"}`}>
+                      −{f.droppedHerePct}% stopped here
+                    </span>
                   )}
                 </span>
               </div>
