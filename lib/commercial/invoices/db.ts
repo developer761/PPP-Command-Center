@@ -29,13 +29,13 @@ import {
 import { personName } from "@/lib/commercial/person-name";
 
 /** Resolve the actor's display name from profiles.sf_user_name (falls
- *  back to email → "PPP admin"). Every invoicing notification uses this
+ *  back to email → "An admin"). Every invoicing notification uses this
  *  so the bell body reads "Alex Chen recorded a payment" instead of a
- *  raw UUID. Failure is silent — worst case we send "PPP admin". */
+ *  raw UUID. Failure is silent — worst case we send "An admin". */
 async function resolveActorName(
   user_id: string | null | undefined,
 ): Promise<string> {
-  if (!user_id) return "PPP admin";
+  if (!user_id) return "An admin";
   const sb = commercialDb();
   const { data } = await sb
     .from("profiles")
@@ -46,7 +46,7 @@ async function resolveActorName(
     sf_user_name?: string | null;
     email?: string | null;
   } | null;
-  return personName(a?.sf_user_name, a?.email, "PPP admin");
+  return personName(a?.sf_user_name, a?.email, "An admin");
 }
 
 /** Fetch the parent opp's display name (CEO {account}-{client}-{location}

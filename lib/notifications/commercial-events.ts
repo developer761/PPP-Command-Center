@@ -420,7 +420,7 @@ export async function insertCommercialTaskAssignedNotification(input: {
   recipientUserId: string;
   /** Who created the task. Drives self-skip. */
   actingUserId: string | null;
-  /** Display name of the actor ("Alex Chen"). Defaults to "PPP admin". */
+  /** Display name of the actor ("Alex Chen"). Defaults to "An admin". */
   assignerName: string;
 }): Promise<void> {
   const dueClause = input.dueAt && input.dueAt.length >= 10

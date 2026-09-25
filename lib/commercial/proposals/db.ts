@@ -2905,7 +2905,7 @@ export async function sendProposal(input: {
       sf_user_name?: string | null;
       email?: string | null;
     } | null;
-    actorName = personName(p?.sf_user_name, p?.email, "PPP admin");
+    actorName = personName(p?.sf_user_name, p?.email, "An admin");
   }
 
   // Freshly re-read the proposal + do all the pre-flight checks here so

@@ -416,11 +416,22 @@ async function notifyAssignment(
     );
     return;
   }
+  // Same as the account path: a crew login is assignable but the link in this
+  // email redirects them to /commercial/crew. Assign them, don't email them.
+  {
+    const { crewOnlyStatus } = await import("@/lib/commercial/crew-access");
+    if ((await crewOnlyStatus(user_id)) !== "not-crew") {
+      console.info(
+        `[commercial/opportunities/assignments] ${user_id} is crew-only — assigned, not emailed a link they cannot open`,
+      );
+      return;
+    }
+  }
   const assignerName =
     (byRes.data as { sf_user_name?: string; email?: string } | null)
       ?.sf_user_name ||
     (byRes.data as { sf_user_name?: string; email?: string } | null)?.email ||
-    "PPP admin";
+    "An admin";
   const roleLabel = opportunityAssignmentRoleLabel(role);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const oppUrl = `${baseUrl}/commercial/opportunities/${opportunity_id}`;

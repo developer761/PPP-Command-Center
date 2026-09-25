@@ -892,7 +892,7 @@ export async function changeOpportunityStatus(
   if (isRealStatusMove)
     afterResponse("opp_status_changed", async () => {
       try {
-        let actorName = "PPP admin";
+        let actorName = "An admin";
         if (input.acting_user_id) {
           const { data: actor } = await sb
             .from("profiles")
@@ -903,7 +903,7 @@ export async function changeOpportunityStatus(
             sf_user_name?: string | null;
             email?: string | null;
           } | null;
-          actorName = personName(a?.sf_user_name, a?.email, "PPP admin");
+          actorName = personName(a?.sf_user_name, a?.email, "An admin");
         }
         // Phase B: compute the derived opp name (account - client - location)
         // for the bell + email body so users see the CEO's standardized

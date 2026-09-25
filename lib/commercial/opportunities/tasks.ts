@@ -199,12 +199,12 @@ export async function createOpportunityTask(
   // Heads-up to the assignee — fire-and-forget so a notification
   // hiccup never breaks the task write. Self-skip + inactive skip are
   // handled inside the helper. Resolving the assigner name is a single
-  // profiles lookup; if it errors we fall back to "PPP admin" so the
+  // profiles lookup; if it errors we fall back to "An admin" so the
   // email/bell still goes out.
   if (task.assigned_user_id) {
     afterResponse("task_assigned", async () => {
       try {
-        let assignerName = "PPP admin";
+        let assignerName = "An admin";
         if (input.created_by_user_id) {
           const { data: actor } = await sb
             .from("profiles")
@@ -215,7 +215,7 @@ export async function createOpportunityTask(
             sf_user_name?: string | null;
             email?: string | null;
           } | null;
-          assignerName = personName(a?.sf_user_name, a?.email, "PPP admin");
+          assignerName = personName(a?.sf_user_name, a?.email, "An admin");
         }
         // Phase B: derived opp name so the bell + email body reads
         // {account} - {client} - {location} when the CEO structural
