@@ -164,7 +164,7 @@ import NewDealAccountPicker from "@/components/commercial/new-deal-account-picke
 import { DateField } from "@/components/commercial/date-field";
 import { AutoOpportunityTitle } from "@/components/commercial/auto-opportunity-title";
 import { listTeams } from "@/lib/commercial/teams/db";
-import { listPlatformEstimators } from "@/lib/commercial/opportunities/estimator";
+import { listPlatformEstimators, listTypedEstimatorNames } from "@/lib/commercial/opportunities/estimator";
 import { IconBulb } from "@/components/commercial/inline-icons";
 import CommercialAddressFields from "@/components/commercial-address-fields";
 import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
@@ -812,7 +812,7 @@ export default async function CommercialOpportunitiesPage({
   // step is the one that's actually correct — Qualifying and Request for
   // Proposal share the real status `qualifying`, and Proposal spans two
   // statuses, so no single .eq() expresses either column on its own.
-  const [oppsUnfiltered, accounts, allTeams, estimators] = await Promise.all([
+  const [oppsUnfiltered, accounts, allTeams, estimators, typedEstimatorNames] = await Promise.all([
     listCommercialOpportunities({
       search,
       // Only narrowed in the DB when exactly ONE GC is picked — with several,
@@ -836,6 +836,7 @@ export default async function CommercialOpportunitiesPage({
     // the account is chosen inside this same form — there is no team to scope
     // to yet. See listPlatformEstimators.
     listPlatformEstimators(),
+    listTypedEstimatorNames(),
   ]);
   const oppsRaw =
     stageSet.size > 0
@@ -2459,6 +2460,7 @@ export default async function CommercialOpportunitiesPage({
           accounts={accounts.filter((a) => !a.deleted_at)}
           allTeams={allTeams}
           estimators={estimators}
+          typedEstimatorNames={typedEstimatorNames}
           todayIso={todayEtIso}
           closeHref={newDealSheetCloseHref}
           sheetError={sheetError}
@@ -2486,6 +2488,7 @@ function NewDealSlideOut({
   accounts,
   allTeams,
   estimators,
+  typedEstimatorNames,
   todayIso,
   closeHref,
   sheetError,
@@ -2497,6 +2500,7 @@ function NewDealSlideOut({
   allTeams: { id: string; name: string }[];
   /** Roster for the Estimator picker — parity with the account's form. */
   estimators: { user_id: string; name: string }[];
+  typedEstimatorNames: string[];
   /** Today in ET, for the RFP-received default. Computed on the server so the
    *  default doesn't depend on the viewer's machine clock. */
   todayIso: string;
@@ -2738,12 +2742,25 @@ function NewDealSlideOut({
               disabled={estimators.length === 0}
               emptyMessage="Nobody matches. Try a different search, or type a name below."
             />
+            {/* Suggestions from names already used. The picker above only
+                lists people with a LOGIN, and Kim — who does most of the
+                estimating — has none, so all her work comes through this box.
+                Typed once per job, it drifted: she is in the database as
+                "Kim" three times and "Kim Laude" once, and the estimator
+                report shows two people with a fraction of her record each.
+                This constrains nothing; a new name still goes straight in. */}
             <input
               name="estimator_name"
+              list="estimator-name-suggestions"
               maxLength={120}
               placeholder="…or type a name manually"
               className={`${INPUT_CLS} mt-1`}
             />
+            <datalist id="estimator-name-suggestions">
+              {typedEstimatorNames.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
             <p className="text-[11px] text-ppp-charcoal-400 mt-0.5">
               Assigning one moves this opportunity to Estimating. Picking from the
               roster also emails them and puts them on the job&rsquo;s Team tab.

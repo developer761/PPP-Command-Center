@@ -62,7 +62,7 @@ import { listPrimaryLeadByOpp } from "@/lib/commercial/opportunities/assignments
 import { listAttachmentCountByOpp } from "@/lib/commercial/opportunities/attachments";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { listFinishCountByOpp } from "@/lib/commercial/opportunities/finishes";
-import { listEstimatorChoices, type EstimatorChoice } from "@/lib/commercial/opportunities/estimator";
+import { listEstimatorChoices, listTypedEstimatorNames, type EstimatorChoice } from "@/lib/commercial/opportunities/estimator";
 import { findDuplicateOpportunities } from "@/lib/commercial/opportunities/duplicates";
 import { PRE_SALE_OPEN_STATUSES, IN_DELIVERY_STATUSES, TERMINAL_STATUSES, isWon, isLost, isPostSale, isPostSaleProject, dealPhase, probabilityFor } from "@/lib/commercial/opportunities/constants";
 import { fetchOpportunityLifecycle } from "@/lib/commercial/opportunities/lifecycle";
@@ -3391,6 +3391,7 @@ async function restoreDocumentAction(formData: FormData) {
 async function NewDealForm({
   accountId,
   estimators,
+  typedEstimatorNames,
   contactOptions,
   duplicateWarning,
   account,
@@ -3398,6 +3399,7 @@ async function NewDealForm({
 }: {
   accountId: string;
   estimators: EstimatorChoice[];
+  typedEstimatorNames: string[];
   /** Katie gap #1 — this GC's contacts, for the Attention-contact picker. */
   contactOptions: Array<{ value: string; label: string; hint?: string }>;
   duplicateWarning: { id: string; label: string } | null;
@@ -3670,7 +3672,16 @@ async function NewDealForm({
           disabled={estimators.length === 0}
           emptyMessage="No teammates match. Try a different search or type a name below."
         />
-        <input type="text" name="estimator_name" maxLength={120} placeholder="…or type a name manually" className={`${inputCls} mt-1`} />
+        <input type="text" name="estimator_name" list="estimator-names-newdeal" maxLength={120} placeholder="…or type a name manually" className={`${inputCls} mt-1`} />
+        {/* Suggestions from names already used. The roster picker above only
+            lists people with a LOGIN; Kim, who does most of the estimating,
+            has none, so all her work comes through this box — and typed once
+            per job it drifted into "Kim" and "Kim Laude", two rows on the
+            estimator report with a fraction of her record each. Constrains
+            nothing: a new name still goes straight in. */}
+        <datalist id="estimator-names-newdeal">
+          {typedEstimatorNames.map((n) => (<option key={n} value={n} />))}
+        </datalist>
         <span className="block text-[10px] text-ppp-charcoal-400 mt-0.5">
           Assigning one moves this opportunity to Estimating.
         </span>
@@ -3800,7 +3811,7 @@ async function OpportunitiesTab({
   // batch query regardless of opp count. Also preload the eligible
   // estimator list for the New + Edit forms (Phase B) so we don't need
   // a client-side fetch per form render.
-  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators, contactRows] = await Promise.all([
+  const [statusEnteredMap, taskStatsMap, lastNoteMap, primaryLeadMap, attachmentMap, submittalMap, finishMap, estimators, contactRows, typedEstimatorNames] = await Promise.all([
     listCurrentStatusEnteredAtByOpp(ids),
     listOpenTaskStatsByOpp(ids),
     listLastNoteByOpp(ids),
@@ -3810,6 +3821,9 @@ async function OpportunitiesTab({
     listFinishCountByOpp(ids),
     listEstimatorChoices(accountId),
     listAccountContacts(accountId),
+    // Names already typed into the manual estimator box, offered back as
+    // suggestions so the same person is picked rather than re-typed.
+    listTypedEstimatorNames(),
   ]);
   // Katie gap #1 — Attention-contact options for the New-deal form (choose the
   // GC contact this job's proposals will address; blank auto-inherits the GC's
@@ -3867,7 +3881,7 @@ async function OpportunitiesTab({
               </p>
             </div>
           </div>
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
+          <NewDealForm accountId={accountId} estimators={estimators} typedEstimatorNames={typedEstimatorNames} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </div>
     );
@@ -3976,6 +3990,7 @@ async function OpportunitiesTab({
             accountName={account.company_name}
             primaryLead={primaryLeadMap.get(dealRow.id) ?? null}
             estimators={estimators}
+            typedEstimatorNames={typedEstimatorNames}
             errorMessage={errorMessage}
             lifecycle={editLifecycle}
             dealBack={dealBack}
@@ -4048,7 +4063,7 @@ async function OpportunitiesTab({
           <span aria-hidden className="text-cc-brand-500 transition-transform group-open/newdeal:rotate-180 shrink-0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg></span>
         </summary>
         <div className="p-4 border-t border-cc-brand-100 bg-cc-brand-50/20">
-          <NewDealForm accountId={accountId} estimators={estimators} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
+          <NewDealForm accountId={accountId} estimators={estimators} typedEstimatorNames={typedEstimatorNames} contactOptions={contactOptions} duplicateWarning={duplicateWarning ?? null} account={account} keptValues={keptValues} />
         </div>
       </details>
 
@@ -5870,6 +5885,7 @@ async function DealEditSheet({
   accountName,
   primaryLead,
   estimators,
+  typedEstimatorNames,
   errorMessage,
   lifecycle,
   dealBack,
@@ -5883,6 +5899,7 @@ async function DealEditSheet({
    *  saving returns to the deal rather than the account's Deals tab. */
   dealBack?: boolean;
   estimators: EstimatorChoice[];
+  typedEstimatorNames: string[];
   /** Karan 2026-07-10 audit fix (P1): when the edit action fails +
    *  redirects back with ?edit=<opp>&error=..., the tab-level
    *  errorMessage banner was rendered BEHIND this sheet's z-40
@@ -6404,11 +6421,17 @@ async function DealEditSheet({
                 <input
                   name="estimator_name"
                   type="text"
+                  list="estimator-names-editdeal"
                   maxLength={120}
                   defaultValue={deal.estimator_name ?? ""}
                   placeholder="…or type a name"
                   className={`${inputCls} mt-1`}
                 />
+                {/* Same list as the new-deal form, its own id because a
+                    document may not carry two datalists with one id. */}
+                <datalist id="estimator-names-editdeal">
+                  {typedEstimatorNames.map((n) => (<option key={n} value={n} />))}
+                </datalist>
                 <span className="block text-[10.5px] text-ppp-charcoal-500 mt-1">
                   {estimators.length === 0
                     ? "No teammates yet — type a name above."

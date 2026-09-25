@@ -178,3 +178,47 @@ export async function getEstimatorDisplayName(
   const row = data as { sf_user_name: string | null; email: string | null } | null;
   return row ? personName(row.sf_user_name, row.email, "") || null : null;
 }
+
+/**
+ * Estimator names already typed into the free-text box.
+ *
+ * The picker above it only lists people with a LOGIN. Kim, who does most of
+ * the estimating, has none — so every opportunity of hers goes in through
+ * "…or type a name manually", and a free-text box typed once per job drifts.
+ * It already has: the same person is in the database as "Kim" three times and
+ * "Kim Laude" once, and the estimator report duly reports two people, each
+ * with a fraction of her work and her win rate.
+ *
+ * Offering what has been used before turns the second entry into a pick rather
+ * than a retype. It does NOT constrain — a genuinely new name still goes
+ * straight in, which matters because this box exists precisely for people the
+ * roster does not have.
+ *
+ * The real fix is a login for Kim so she is on the roster at all; this stops
+ * the damage accumulating until then.
+ */
+export async function listTypedEstimatorNames(limit = 200): Promise<string[]> {
+  const sb = commercialDb();
+  const { data, error } = await sb
+    .from("commercial_opportunities")
+    .select("estimator_name")
+    .not("estimator_name", "is", null)
+    .is("deleted_at", null)
+    .limit(limit);
+  // A suggestion list is a convenience: if the read fails the box still works
+  // as it always did. Never throw for this.
+  if (error) {
+    console.warn("[commercial/estimator] could not read typed names:", error.message);
+    return [];
+  }
+  const seen = new Map<string, string>();
+  for (const row of (data ?? []) as { estimator_name: string | null }[]) {
+    const name = (row.estimator_name ?? "").trim();
+    if (!name) continue;
+    // Case-insensitive dedupe, keeping the first spelling seen — offering both
+    // "kim" and "Kim" would be the very problem this is here to stop.
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
