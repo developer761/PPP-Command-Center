@@ -5,6 +5,9 @@ import { stageFromIntents } from "@/lib/messaging/agent-output";
 import { runSimTurn, saveScenario, type SimTurn } from "@/lib/messaging/simulator";
 import { exportScenarioToTraining, scenarioAsSheet } from "@/lib/messaging/scenario-export";
 import type { AuditSheet } from "@/lib/messaging/audit-sheet";
+import { scopeAndStage } from "@/lib/messaging/scope";
+import { addressFromCustomer } from "@/lib/messaging/address";
+import { availabilityIsBookable } from "@/lib/messaging/availability";
 
 type Graded = SimTurn & {
   verdict?: "good" | "acceptable" | "wrong";
@@ -74,6 +77,33 @@ export default function Simulator({
 
   const filledKnown = Object.values(known).filter((v) => v.trim()).length;
   const flowStage = stageFromIntents(turns.map((t) => t.intent));
+
+  /**
+   * WHAT IS ACTUALLY HELD, WHICH IS NOT WHAT WAS ASKED FOR.
+   *
+   * This list ticked off from stageFromIntents, which counts the bot's own
+   * past INTENTS — so asking a question ticked the box whether or not anybody
+   * answered. Sending a photo, a thumbs up and a Like, saying nothing at all,
+   * showed "✓ Project details".
+   *
+   * That matters more here than anywhere: this panel is the evidence Kate
+   * reads to decide whether the flow works, and it was telling her a step was
+   * done when the record was empty.
+   *
+   * The ORDER gate still runs on intents — that is production behaviour and
+   * is what refuses an address ask before project details. This is the other
+   * question: do we HOLD it.
+   */
+  const customerSaid = turns.map((t) => t.customerText);
+  const heldScope = !!known.inquiryScope.trim()
+    || customerSaid.some((t) => scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).from === "customer");
+  const heldAddress = !!known.address.trim() || customerSaid.some((t) => !!addressFromCustomer(t));
+  const heldContact = !!known.email.trim() || !!known.phone.trim()
+    || customerSaid.some((t) => /[\w.+-]+@[\w-]+\.[\w.]+/.test(t));
+  const heldAvailability = customerSaid.some((t) => availabilityIsBookable(t));
+  const held = [heldScope, heldAddress, heldContact, heldAvailability];
+  /** The first thing still missing, which is what it should be working on. */
+  const working = held.findIndex((h) => !h);
   const selectedTag = tags.find((t) => t.key === tagKey);
 
   /**
@@ -287,10 +317,15 @@ export default function Simulator({
               <p className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400">
                 What it has to collect, in order
               </p>
+              {/* Says what a tick MEANS, because it used to mean "was asked
+                  for" while reading as "we have it". */}
+              <p className="mt-0.5 text-[11px] text-ppp-charcoal-400">
+                A tick means we actually hold it, not that it was asked for.
+              </p>
               <ol className="mt-1.5 space-y-1">
                 {["Project details", "Full address", "Contact information", "Appointment availability"].map((label, n) => {
-                  const done = flowStage > n;
-                  const current = flowStage === n;
+                  const done = held[n];
+                  const current = working === n;
                   return (
                     <li key={label} className="flex items-center gap-2">
                       <span aria-hidden className={[
