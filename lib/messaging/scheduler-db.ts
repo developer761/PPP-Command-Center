@@ -14,6 +14,8 @@ import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
 import { scopeAndStage } from "./scope";
+import { addressFromCustomer } from "./address";
+import { normalizeInbound } from "./inbound-normalize";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
@@ -49,6 +51,11 @@ import type { DueAction, SchedulerDeps } from "./scheduler";
  * escalation, and one a person already claimed is left alone rather than
  * having its reason overwritten by the bot.
  */
+/** The customer's OWN words, with an iPhone reaction's quoted text stripped. */
+function ownWordsOf(m: { body: string; media_count?: number }): string {
+  return normalizeInbound(m.body, m.media_count ?? 0).text ?? "";
+}
+
 async function handToAPerson(
   sb: ReturnType<typeof messagingDb>,
   conversationId: string,
@@ -331,6 +338,33 @@ export function schedulerDeps(): SchedulerDeps {
         if (scopeErr) console.warn(`could not store the scope: ${scopeErr.message}`);
       }
 
+      /**
+       * THE ADDRESS THEY TYPED, WHICH NOTHING WAS KEEPING EITHER.
+       *
+       * customer_address is written once at enrolment and was never written
+       * again, so an address given in the thread was held nowhere. The same
+       * hole inquiry_scope had, and three things fell out of it on a single
+       * simulator message: confirm_address could never render although A3
+       * REQUIRES the address to be confirmed before the conversation ends,
+       * the bot asked again for what it had just been given (A11, the most
+       * breached critical rule in Kate's grading), and the model's attempt to
+       * acknowledge it in rapport instead was refused for containing a
+       * number, because every number a customer sees comes from a template.
+       *
+       * Only when the column is empty. What PPP holds on the lead is the
+       * office's version and this never overwrites it.
+       */
+      const onFileAddress = (conv as { customer_address?: string | null }).customer_address ?? null;
+      const saidAddress = onFileAddress ? null : addressFromCustomer(ownWordsOf(lastInbound));
+      if (saidAddress) {
+        const { error: addrErr } = await sb.from("sms_conversations")
+          .update({ customer_address: saidAddress })
+          .eq("id", conv.id)
+          .is("customer_address", null);
+        // Not fatal. The turn still runs on the value just derived.
+        if (addrErr) console.warn(`could not store the address: ${addrErr.message}`);
+      }
+
       // Kate 44 Class A rules, the standard this reply will be graded
       // against. Rendered by forPrompt, which never sees her rater-only
       // column because it is not in the table this loader reads.
@@ -371,7 +405,7 @@ export function schedulerDeps(): SchedulerDeps {
           // Cast because the columns are newer than the generated types, and
           // undefined when the migration has not been applied — which is the
           // old behaviour, not a crash.
-          address: (conv as { customer_address?: string | null }).customer_address ?? null,
+          address: onFileAddress ?? saidAddress,
           inquiryScope: resolved.scope,
         },
         services: resolveServices(svc.services, svc.exceptions),

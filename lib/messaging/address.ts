@@ -88,3 +88,60 @@ export function addressGap(raw: string | null | undefined): AddressGap {
 export function addressIsComplete(raw: string | null | undefined): boolean {
   return addressGap(raw) === null;
 }
+
+/**
+ * An address the customer typed into the chat, or null.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────
+ *
+ * customer_address is written ONCE, at enrolment, from the Salesforce lead.
+ * Nothing ever wrote it again, so an address a customer typed into the thread
+ * was never held anywhere. Three things follow, and all three were visible in
+ * the simulator on one message:
+ *
+ *   - confirm_address can never render, because it has no value to read back,
+ *     and A3 REQUIRES the address to be confirmed before the conversation ends
+ *   - the bot asks again for an address it was already given, which is A11,
+ *     the most broken critical rule in Kate's grading
+ *   - the model tries to acknowledge it in rapport instead, and the reply is
+ *     refused for containing a number, because every number a customer sees
+ *     has to come from a template
+ *
+ * This is the same hole inquiry_scope had.
+ *
+ * ── WHY IT DOES NOT REUSE addressParts ──────────────────────────────────
+ *
+ * That one parses a string already known to BE an address, so its street
+ * pattern is deliberately loose: a house number and any word. Pointed at
+ * ordinary prose it reads "600 sq ft" and "2 bedrooms" as street addresses,
+ * and a wrong address is worse than none — it would be read back to the
+ * customer as theirs and sent to an estimator.
+ *
+ * So the street needs a street-type WORD, as the PII scrubber's does, for the
+ * same reason: this is the conservative direction.
+ */
+const STREET_IN_PROSE =
+  /\b\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'-]+\s+){0,4}(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|blvd|boulevard|ct|court|cir|circle|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|trail|trl)\b\.?/i;
+
+/**
+ * A zip, but not a measurement. "1450 sq ft" and "10000 square feet" are the
+ * numbers a painting customer types most, and a bare five-digit match reads
+ * the second one as a zip code.
+ */
+const ZIP_IN_PROSE = /\b(\d{5})(?:-\d{4})?\b(?!\s*(?:sq|square|ft|feet|sqft))/i;
+
+export function addressFromCustomer(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+
+  const street = STREET_IN_PROSE.exec(t)?.[0]?.trim().replace(/[.,]$/, "") ?? null;
+  // Read the zip from the text with the street removed, so a house number
+  // cannot be mistaken for one.
+  const rest = street ? t.replace(street, " ") : t;
+  const zip = ZIP_IN_PROSE.exec(rest)?.[1] ?? null;
+
+  if (!street && !zip) return null;
+  // Partial is worth keeping: addressGap then asks for the missing half only,
+  // which is exactly what A11 requires.
+  return [street, zip].filter(Boolean).join(", ");
+}
