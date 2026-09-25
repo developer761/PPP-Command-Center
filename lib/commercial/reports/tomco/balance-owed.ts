@@ -5,6 +5,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
+import { formatUsPhone } from "@/lib/commercial/format-phone";
 
 /**
  * "Balance Owed" — Tomco's, reproduced.
@@ -191,7 +192,18 @@ export const BALANCE_OWED_SPEC: ReportSpec<BalanceOwedRow> = {
     { key: "charges", label: "Total customer charges", kind: "money", amount: (r) => r.chargesCents },
     { key: "paid", label: "Total payments in", kind: "money", amount: (r) => r.paidCents },
     { key: "balance", label: "Balance owed", kind: "money", amount: (r) => r.balanceCents },
-    { key: "phone", label: "Phone", text: (r) => r.phone, secondary: true },
+    // Dialable and one shape, like the Pipeline Manager's and Scheduling's.
+    // This is the third report with a GC's number beside a balance owed, and
+    // leaving it as plain text would make the odd one out the one you chase
+    // from.
+    {
+      key: "phone",
+      label: "Phone",
+      text: (r) => formatUsPhone(r.phone),
+      href: (r) => (r.phone ? `tel:${r.phone.replace(/[^0-9+]/g, "")}` : null),
+      csvText: (r) => r.phone,
+      secondary: true,
+    },
     { key: "aging", label: "Aging", text: (r) => (r.agingDays === null ? null : `${r.agingDays}d`), secondary: true },
   ],
 };

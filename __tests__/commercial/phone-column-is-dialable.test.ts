@@ -62,11 +62,29 @@ const src = readFileSync(
   "utf8",
 ).replace(/\/\*[\s\S]*?\*\//g, "");
 
+const balanceOwed = readFileSync(
+  join(ROOT, "lib/commercial/reports/tomco/balance-owed.ts"),
+  "utf8",
+).replace(/\/\*[\s\S]*?\*\//g, "");
+
 describe("the contact columns are clickable", () => {
-  it("both reports dial the phone", () => {
-    const tels = src.match(/href:\s*\(r\) => \(r\.phone \? `tel:/g) ?? [];
-    // Pipeline Manager and Scheduling — the two with a GC's number on the row.
-    expect(tels.length).toBe(2);
+  /**
+   * Every report that puts a GC's number next to money. Leaving one as plain
+   * text would make the odd one out the one you chase from — and an
+   * inconsistency you introduce while fixing the others is worse than the
+   * original, because now the shape of the column means nothing.
+   */
+  it("all three reports dial the phone", () => {
+    const tel = /href:\s*\(r\) => \(r\.phone \? `tel:/g;
+    // Pipeline Manager and Scheduling live in one module; Balance Owed in its
+    // own.
+    expect((src.match(tel) ?? []).length).toBe(2);
+    expect((balanceOwed.match(tel) ?? []).length).toBe(1);
+  });
+
+  it("Balance Owed formats its column too", () => {
+    expect(balanceOwed).toMatch(/text:\s*\(r\) => formatUsPhone\(r\.phone\)/);
+    expect(balanceOwed).toMatch(/csvText:\s*\(r\) => r\.phone/);
   });
 
   it("dials the raw digits, not the formatted string", () => {
