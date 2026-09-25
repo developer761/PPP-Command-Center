@@ -15,6 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadAgentConfig, loadWorkspaceServices } from "../lib/messaging/db.ts";
 import { resolveServices } from "../lib/messaging/services.ts";
 import { buildSystemPrompt } from "../lib/messaging/agent-run.ts";
+import { validateAction } from "../lib/messaging/agent-output.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -101,6 +102,37 @@ try {
   const restored = await promptFor(nassau.id);
   ok("removing the exception puts it back on the default",
      !restored.includes("WE DO NOT OFFER THESE IN THIS AREA"));
+
+  /* ── THE HARDCODED LIST MUST NOT CONTRADICT THE CONFIGURED ONE ──────
+   *
+   * Services are rows in sms_services and ticked per workspace on the Chatbot
+   * screen. OUT_OF_SCOPE in agent-output.ts is a regex nobody can see from
+   * there. When they disagreed, the prompt told the model PPP does flooring,
+   * the model said so, and the turn was refused as out of scope — a correct
+   * answer turned into a handover by two lists that never met.
+   *
+   * Checked here rather than in a unit test because the service list is a
+   * table, and a hardcoded copy of it in a test is the same bug one level up.
+   */
+  const { data: services } = await sb.from("sms_services")
+    .select("key, phrase").eq("is_active", true);
+  const said = (phrase) => [
+    `Yes, we do ${phrase}.`, `We can handle the ${phrase}.`, `we install ${phrase}`,
+  ];
+  const ctx = {
+    knownFields: { name: true, phone: true, email: true, address: true, inquiryScope: true },
+    stage: 4, priorIntents: [], customerText: "ok",
+  };
+  const clashes = [];
+  for (const svc of services ?? []) {
+    for (const sentence of said(svc.phrase)) {
+      const v = validateAction({ intent: "answer_question", confidence: 0.9, freeText: sentence }, ctx);
+      if (!v.ok && v.reason === "out_of_scope_work") clashes.push(`${svc.key}: ${sentence}`);
+    }
+  }
+  ok("no service PPP offers is refused as out of scope",
+     clashes.length === 0,
+     clashes.length ? clashes.join(" | ") : `${(services ?? []).length} services checked`);
 
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 } catch (err) {

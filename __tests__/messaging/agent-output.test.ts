@@ -146,13 +146,33 @@ describe("validateAction — never promise work PPP does not do", () => {
       "Yes, we can reroof that for you.",
       "we can fix the roof leak",
       "our electricians can rewire it",
-      "we install flooring",
       "we do concrete driveways",
       "we can pour a new foundation",
     ]) {
       const r = validateAction(ok({ freeText: t }));
       expect(r.ok, t).toBe(false);
       if (!r.ok) expect(r.reason).toBe("out_of_scope_work");
+    }
+  });
+
+  /**
+   * FLOORING IS NOT OUT OF SCOPE, and this test said it was until the Chatbot
+   * screen showed it ticked. sms_services has a `flooring` row with
+   * covered_by_default true, so the prompt tells the model PPP does it and a
+   * regex here refused the model for agreeing. The hardcoded list must never
+   * contradict the configured one — verify-workspace-config checks that
+   * against the live table, which is the only place it can be checked
+   * honestly.
+   */
+  it("does not refuse a service PPP actually offers", () => {
+    for (const t of [
+      "we install flooring",
+      "Yes, we do drywall.",
+      "We can handle the power washing.",
+      "We do skim coating and lime washing.",
+      "Cabinet refinishing is no problem.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
     }
   });
 

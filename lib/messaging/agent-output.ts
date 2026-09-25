@@ -397,7 +397,19 @@ const OUT_OF_SCOPE_TRADES =
  * still pass.
  */
 const OUT_OF_SCOPE_VERBS =
-  /\b(?:replac\w*|install\w*|re-?wir\w*|repair\w*|fix(?:ing)?|pour\w*|lay(?:ing)?)\s+(?:\w+\s+){0,2}(?:windows?|roofs?|floor\w*|carpet\w*|tiles?|gutters?|sidings?|foundations?|driveways?|wiring|plumbing|electrics?)\b/i;
+  /\b(?:replac\w*|install\w*|re-?wir\w*|repair\w*|fix(?:ing)?|pour\w*|lay(?:ing)?)\s+(?:\w+\s+){0,2}(?:windows?|roofs?|carpet\w*|tiles?|gutters?|sidings?|foundations?|driveways?|wiring|plumbing|electrics?)\b/i;
+//
+// FLOOR IS NOT IN THAT LIST, and it was until this line. sms_services has a
+// row `flooring`, covered_by_default true, and every workspace ticks it. So
+// the prompt tells the model flooring is covered, the model says so, and a
+// hardcoded regex three files away refused the turn — a correct answer turned
+// into a handover.
+//
+// The rule this breaks is bigger than the word: THE HARDCODED LIST MUST NEVER
+// CONTRADICT THE CONFIGURED ONE. Services are per workspace and editable on
+// the Chatbot screen; this filter is global and editable only here. Where they
+// disagree the configuration wins, because somebody chose it. Checked against
+// the live table in verify-workspace-config-e2e.
 const OUT_OF_SCOPE = new RegExp(
   [OUT_OF_SCOPE_SURFACES.source, OUT_OF_SCOPE_TRADES.source, OUT_OF_SCOPE_VERBS.source].join("|"),
   "i"
