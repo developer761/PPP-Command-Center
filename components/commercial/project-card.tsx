@@ -188,7 +188,13 @@ export function ProjectCard({ p, hideAccountName = false }: { p: ProjectRow; hid
             )}
           </span>
           <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] ${p.submittalAwaiting > 0 ? "border-amber-200 bg-amber-50/50" : "border-ppp-charcoal-100 bg-surface"}`}>
-            <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Subs</span>
+            {/* "Submittals", not "Subs". On a platform that also has
+                subcontractors and a Subcontract-labor cost category, a chip
+                reading SUBS beside COs and CLOSEOUT reads as subcontractors —
+                I misread it that way myself while walking the account page,
+                and went looking for why it said "None yet" on a job with half
+                a million dollars of labor on it. */}
+            <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Submittals</span>
             {p.submittalTotal === 0 ? (
               <span className="text-ppp-charcoal-400">None yet</span>
             ) : p.submittalAwaiting > 0 ? (
