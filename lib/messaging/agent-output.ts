@@ -175,6 +175,77 @@ export function intentsForTrack(track: Track): readonly string[] {
     : [...END_INTENTS, ...CONTINUE_INTENTS];
 }
 
+/**
+ * WHAT EACH INTENT IS FOR, in the words the model sees.
+ *
+ * The tool schema handed over the enum and nothing else: twenty-five bare
+ * names, described only as "What to do next." So the model had to infer
+ * schedule_follow_up and transferred from the strings themselves, and it
+ * does not. Played as a customer in the simulator:
+ *
+ *   "dont text me just call me"  ->  ask_availability, refused out_of_order,
+ *                                    customer got nothing. Kate's tag says a
+ *                                    callback ends as Schedule Follow-up
+ *                                    rather than continuing to text.
+ *   "Hola, necesito pintar mi casa. No hablo ingles."
+ *                                ->  answered in English and carried on. Her
+ *                                    tag says another language means
+ *                                    transferring, today.
+ *
+ * Every line below is the intent's own template said plainly, or Kate's tag
+ * where there is one, so this describes what the system already does rather
+ * than inventing new behaviour.
+ */
+export const INTENT_GUIDE: Record<string, string> = {
+  // Collecting, in order
+  ask_project_details: "ask what they want painted, when nothing on file says",
+  ask_address: "ask where the job is",
+  ask_contact: "ask for a name and email",
+  ask_availability: "ask which days suit them",
+  confirm_scope: "read the job back from the RECORD for a yes. Never for something they just typed",
+  confirm_address: "read the address on file back for a yes",
+  confirm_contact: "read the phone and email on file back for a yes",
+
+  // Keeping it moving
+  acknowledge: "say you have it and nothing more",
+  acknowledge_negative: "they are annoyed or you repeated yourself; apologise once and move on",
+  answer_question: "answer what they asked, in freeText, then keep going",
+  defer_to_estimator: "they want something only the estimator decides, including any price",
+  checking_availability: "you are looking something up and will come back",
+
+  // The off-site quote
+  present_offsite_quote: "this job does not need a visit, so offer the quick quote",
+  offer_offsite_quote: "a visit is normal for this job but something stops it, and the reason must be on file",
+
+  // Handing over and ending
+  escalate: "you are not sure, or it needs a person for any other reason",
+  transferred: "hand straight to the office. Use this when they are writing in a language other than English",
+  schedule_follow_up: "they asked to be CALLED, or to be contacted later. Stop texting and end here",
+  bot_suspected: "they asked whether they are talking to a bot or a person",
+  phone_pricing: "they want to talk money on the phone",
+  area_not_serviced: "the zip on file is somewhere PPP does not cover",
+  bailout: "they have said they are not going ahead",
+  success: "everything is collected and the office can take it",
+  discard: "not a real lead",
+  lost: "they have gone with somebody else",
+  msg_liked_loved: "they reacted to a message rather than replying, and nothing needs saying",
+
+  // Nurture only
+  accepted: "they have said yes to the quote",
+  nurture_check_in: "nothing has happened for a while; check in about the quote",
+  ask_for_decision: "ask whether they have decided",
+  ask_check_back: "ask when to check back",
+  offer_estimator_call: "offer to have the estimator call and walk through it",
+};
+
+/** The guide for one track, as the lines the schema shows. */
+export function intentGuideFor(track: Track): string {
+  return intentsForTrack(track)
+    .map((i) => `- ${i}: ${INTENT_GUIDE[i] ?? "(no guidance written for this intent)"}`)
+    .join("\n");
+}
+
+
 export type EndIntent = (typeof END_INTENTS)[number];
 export type ContinueIntent = (typeof CONTINUE_INTENTS)[number];
 export type NurtureIntent =

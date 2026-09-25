@@ -13,7 +13,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  validateAction, shouldEscalate, intentsForTrack, FLOW_ORDER,
+  validateAction, shouldEscalate, intentsForTrack, intentGuideFor, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
@@ -214,7 +214,11 @@ function actionTool(track: Track): Anthropic.Tool {
         // Restricted to the track. A nurture conversation has no ask_address
         // to choose, which is a stronger guarantee than telling it not to.
         enum: [...intentsForTrack(track)],
-        description: "What to do next.",
+        // The enum alone left the model guessing what the names meant, and it
+        // guessed wrong on the two Kate has written tags for: a callback
+        // request became ask_availability, and a message in Spanish was
+        // answered in English.
+        description: `What to do next.\n${intentGuideFor(track)}`,
       },
       freeText: {
         type: "string",
