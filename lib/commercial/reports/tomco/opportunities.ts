@@ -104,6 +104,7 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
   const [invoices, accounts, contacts] = await Promise.all([
     paginateAll<{
       opportunity_id: string;
+      status: string | null;
       subtotal_cents: number;
       total_cents: number;
       paid_cents: number;
@@ -111,7 +112,7 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
     }>(() =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, subtotal_cents, total_cents, paid_cents, balance_cents")
+        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents, balance_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -202,8 +203,38 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
   const aiaByOpp = await aiaBillingRollupBulk(opps.map((o) => o.id));
 
   const money = new Map<string, { sub: number; total: number; paid: number; bal: number }>();
+  /**
+   * A DRAFT IS NOT BILLED, AND A VOID IS NOT OWED.
+   *
+   * This added up `balance_cents` across every live invoice whatever its
+   * status. On LMJ- Galil Brands -21 Newton Place that put a DRAFT invoice of
+   * $75,000 into "balance owed" on a $75,000 contract — so the Scheduling
+   * report showed $94,000 owed (the draft plus $19,000 genuinely due through
+   * AIA) while the job's own page, the AR sheet and the invoice panel all said
+   * $19k. Owed was larger than the whole contract, on a report Brendan reads
+   * down to decide who to chase.
+   *
+   * The Bannett Group read $71,250 owed on a $37,500 contract for the same
+   * reason. Every draft in the book was inflating the grand total too.
+   *
+   * `receivableVerdict` is where this is already decided, and it records why:
+   * a void is money nobody owes, and a draft is owed but NOT BILLED — so it is
+   * listed as uninvoiced and never aged. Asking it here rather than
+   * re-deriving is the same fix made in the assistant's money tools earlier
+   * today, in the module that sits right next to this one.
+   */
+  const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
   for (const i of invoices) {
+    const verdict = receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]);
+    // Void: nobody owes it and nobody billed it. It contributes nothing.
+    if (verdict === "skip") continue;
     const e = money.get(i.opportunity_id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
+    // A draft is work that will be billed, not work that has been. It counts
+    // towards neither billed nor owed — "left to bill" is where it shows up.
+    if (verdict === "uninvoiced") {
+      money.set(i.opportunity_id, e);
+      continue;
+    }
     e.sub += Number(i.subtotal_cents);
     e.total += Number(i.total_cents);
     e.paid += Number(i.paid_cents);

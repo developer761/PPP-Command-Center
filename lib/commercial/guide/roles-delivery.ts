@@ -218,11 +218,19 @@ export const BRENDAN: RoleGuide = {
           purpose: "Hours the foremen submitted, waiting on you — approve them, or question one and send it back.",
           steps: [
             "Click Field Ops in the left menu, then Approvals.",
-            "Read the hours a foreman submitted.",
-            "Approve them, or question one to send it back.",
+            "Read each line: the grey figure is what they were scheduled, the bold one is what they clocked.",
+            "Click Approve on the ones that look right.",
+            "For anything else click More, then either type the right number and click Set hours, or type what is wrong and click Question to send it back.",
+          ],
+          controls: [
+            { label: "Approve", does: "Accepts that line as it stands. One click, no confirmation." },
+            { label: "More", does: "Opens the two things you can do instead of approving. They are not on the row until you press it." },
+            { label: "Set hours", does: "Under More. Type the right number yourself and save it. Use this when you know what they worked." },
+            { label: "Question", does: "Under More. Type what is wrong and send the line back to the foreman. Nothing is approved and nothing is lost." },
+            { label: "Approve N matching", does: "Top right, and only when there are some. Approves every line where the clocked hours equal the scheduled hours — and nothing else. A capped guess, a day marked absent, or hours the crew logged themselves are all left for you." },
           ],
           watchOut:
-            "Hours are a record of who was on site. They are not what the crew is paid: that is a labor payment Mary records on the Accounting page. The two are kept apart so a job is never charged twice.",
+            "Three things are flagged on the line itself and none of them should be approved without looking: capped guess means somebody forgot to clock out and the platform guessed; marked absent means the hours sit on a day the painter said they were off; no hours on it means the entry was opened and never filled in — set the hours or send it back, because approving a zero records nothing and clears the line. Separately: hours are a record of who was on site. They are not what the crew is paid — that is a labor payment Mary records on the Accounting page, and the two are kept apart so a job is never charged twice.",
         },
         {
           name: "Crew",

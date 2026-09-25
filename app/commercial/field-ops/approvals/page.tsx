@@ -148,7 +148,28 @@ export default async function ApprovalsPage({ searchParams }: { searchParams: Pr
                     <div className="flex items-center gap-3 flex-wrap">
                       <div className="min-w-0 flex-1">
                         <div className="text-[12.5px] font-semibold text-ppp-charcoal truncate">{r.job_name}</div>
-                        <div className="text-[11px] text-ppp-charcoal-500">{fmtEtDate(r.work_date)} · {r.source === "clocked" ? "clocked" : "manual"}{r.status === "questioned" ? " · questioned" : ""}{r.capped && <span className="text-amber-700 font-semibold"> · capped guess — review</span>}{r.absent && <span className="text-rose-700 font-semibold"> · marked absent — review</span>}</div>
+                        <div className="text-[11px] text-ppp-charcoal-500">{fmtEtDate(r.work_date)} · {r.source === "clocked" ? "clocked" : "manual"}{r.status === "questioned" ? " · questioned" : ""}{r.capped && <span className="text-amber-700 font-semibold"> · capped guess — review</span>}{r.absent && <span className="text-rose-700 font-semibold"> · marked absent — review</span>}{r.actual === 0 && !r.absent && (
+                            /*
+                             * A ZERO-HOUR ENTRY IS NOT SOMETHING TO APPROVE.
+                             *
+                             * Brendan's queue was showing "—h → 0h" with an
+                             * Approve button and nothing else said about it.
+                             * Approving it records nothing and clears the row,
+                             * so the entry stops being anybody's problem while
+                             * the day it covers is still unaccounted for.
+                             *
+                             * Somebody who genuinely did not work is marked
+                             * absent, which this row already flags separately
+                             * — hence the guard. Zero with no absence is an
+                             * entry that was opened and never filled in.
+                             *
+                             * Flagged rather than blocked: the two things
+                             * worth doing are both already on the row, under
+                             * More, and there may be a case for clearing a bad
+                             * clock-in that nobody has told me about.
+                             */
+                            <span className="text-amber-700 font-semibold"> · no hours on it — set them or send it back</span>
+                          )}</div>
                         {r.status === "questioned" && r.questioned_reason && (
                           <div className="text-[11px] text-amber-800 mt-0.5">“{r.questioned_reason}”</div>
                         )}
