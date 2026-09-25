@@ -44,7 +44,11 @@ describe("Kate's JOB ROUTING LOOKUP, as a table", () => {
     // rooms, so it routes off-site rather than being unroutable.
     expect(roomCount("just the hallway")).toBe(0);
     expect(jobRoute("just the hallway painted", null)?.route).toBe("offsite");
-    expect(jobRoute("paint the hallway and the stairwell", null)?.route).toBe("offsite");
+    // NOT ANY MORE, AND THE RULE IS WHAT CHANGED. Kate's 2026-09-25 A6 names
+    // "the corridors, the stairwells" among the shared spaces that make a job
+    // commercial, and commercial routes ONSITE above the lookup. A hallway on
+    // its own is still nobody's shared space and still routes off-site.
+    expect(jobRoute("paint the hallway and the stairwell", null)?.route).toBe("onsite");
   });
 
   it("kitchen cabinets are ONSITE, except in the Queens area", () => {
@@ -174,5 +178,96 @@ describe("the two sentences are genuinely different", () => {
     );
     expect(v.ok).toBe(true);
     if (v.ok) expect(v.action.freeText ?? "").toBe("");
+  });
+});
+
+/**
+ * A6, REWRITTEN BY KATE ON 2026-09-25 TO MAKE PHONE PRICING LAND MORE OFTEN.
+ *
+ * The card gained a commercial gate above the lookup, two new component rows
+ * (wallpaper and drywall), and an explicit rule for reading a job with more
+ * than one component in it. Every expectation below is taken from her own
+ * words, and the two worked examples are quoted verbatim from the card.
+ */
+describe("A6 as rewritten 2026-09-25", () => {
+  const route = (t: string, area: string | null = null) => jobRoute(t, area)?.route ?? "ask";
+
+  it("routes Kate's two worked examples the way the card does", () => {
+    // "'Kitchen cabinets in Queens plus one accent wall' is OFF-SITE;
+    //  'cabinets plus three rooms' is ONSITE."
+    expect(route("paint the kitchen cabinets plus one accent wall", "Queens")).toBe("offsite");
+    expect(route("paint the cabinets plus three rooms", "Queens")).toBe("onsite");
+  });
+
+  it("sends commercial onsite whatever the scope", () => {
+    for (const t of [
+      "we are a dentists office and need the interior painted",
+      "paint our store front",
+      "the restaurant needs one room painted",
+      "paint the lobby of our building",
+      "the common areas and corridors need painting",
+      "repaint the stairwells",
+    ]) expect(route(t), t).toBe("onsite");
+  });
+
+  /**
+   * "THE TRIGGER IS THE SPACE, NEVER THE BUILDING. The words co-op, condo,
+   * tenant and apartment DO NOT fire this gate and must never be treated as
+   * commercial signals — they describe where someone lives."
+   */
+  it("does not treat somebody's home as commercial", () => {
+    for (const t of [
+      "paint my condo living room",
+      "I am a tenant and want my bedroom painted",
+      "paint my apartment bedroom",
+      "paint my co-op kitchen",
+      // And a home office is a room in a house, which is neither commercial
+      // nor the exterior of one.
+      "paint my home office",
+    ]) expect(route(t), t).toBe("offsite");
+  });
+
+  it("reads the two new rows", () => {
+    expect(route("hang wallpaper on one accent wall")).toBe("offsite");
+    expect(route("wallpaper for all the walls in the den")).toBe("onsite");
+    expect(route("patch a few holes in the drywall")).toBe("offsite");
+    expect(route("replace the drywall board in the basement")).toBe("onsite");
+  });
+
+  /**
+   * "PATCHES IS THE WHOLE DRYWALL TEST... 'scraping and repair of the ceiling
+   * and walls due to water damage' is more than patches and routes ONSITE on
+   * its own, before the interior row is even read."
+   */
+  it("routes more-than-patches onsite on its own", () => {
+    expect(route("scraping and repair of the ceiling and walls due to water damage")).toBe("onsite");
+  });
+
+  /** "PARTIAL-ROOM WORK COUNTS AS FEWER THAN TWO FULL ROOMS." */
+  it("counts partial-room work as fewer than two full rooms", () => {
+    expect(route("just the ceiling only in the den")).toBe("offsite");
+    expect(route("paint the trim only")).toBe("offsite");
+  });
+
+  /** "A ROOM WORD ON A CABINET JOB IS NOT A SECOND COMPONENT." */
+  it("does not count the room word on a cabinet job", () => {
+    expect(route("refinish the bathroom cabinets", "Queens")).toBe("offsite");
+  });
+
+  /**
+   * "UNRESOLVED IS NOT ONSITE. Where the lookup is run and a fact is missing,
+   * the answer is ASK for that fact — the lookup has not returned ONSITE, it
+   * has not returned at all."
+   */
+  it("asks rather than defaulting to onsite when a fact is missing", () => {
+    for (const t of ["paint the interior", "wallpaper in the den", "paint the exterior"]) {
+      expect(route(t), t).toBe("ask");
+    }
+  });
+
+  /** \bpaint has no word boundary inside "repaint" — the same bug as scope.ts. */
+  it("reads a job the customer described as a repaint", () => {
+    expect(route("repaint the whole house exterior")).toBe("onsite");
+    expect(route("repaint one bedroom")).toBe("offsite");
   });
 });

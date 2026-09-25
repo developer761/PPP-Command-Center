@@ -79,7 +79,10 @@ const HOME_WALLS = new RegExp(
     String.raw`\b(?:whole|full|entire)\s+(?:home|house|exterior)\b`,
     String.raw`\bbody\s+of\s+the\s+(?:home|house)\b`,
     String.raw`\b(?:home|house)\s+exterior\b`,
-    String.raw`\b(?:paint|painting|stain)\w*\s+(?:the\s+|my\s+|our\s+)?(?:home|house)\b`,
+    // "paint my home office" is a ROOM, and this matched it as the exterior
+    // of a house — the same shape as "I'm home all day" that the comment
+    // above already guards against, one word further on.
+    String.raw`\b(?:re)?(?:paint|painting|stain)\w*\s+(?:the\s+|my\s+|our\s+)?(?:home|house)\b(?!\s*(?:office|gym|theat(?:er|re)|bar|library|studio|interior|inside))`,
   ].join("|"),
   "i"
 );
@@ -93,7 +96,14 @@ const HOME_WALLS = new RegExp(
  * route from the SIZE field on the record — ask what the job IS."
  */
 const DESCRIBES_WORK =
-  /\b(?:paint\w*|stain\w*|refinish\w*|coat\w*|primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|estimate|quote|project|job|redo|spray\w*)\b/i;
+  // (?:re)? for the same reason scope.ts needed it: \bpaint has no word
+  // boundary inside "repaint", so "repaint the stairwells" described no work
+  // at all and nothing downstream ever ran.
+  //
+  // wallpaper, repair, scraping and resurfacing joined the lookup on
+  // 2026-09-25 — A6 gained rows for them, and a row cannot fire if the text
+  // never gets past this gate.
+  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b/i;
 
 const EXTERIOR = /\b(?:exterior|outside|outdoor)\b/i;
 const INTERIOR = /\b(?:interior|inside|indoor)\b/i;
@@ -147,49 +157,197 @@ export function roomCount(text: string): number | null {
  * `area` is the workspace or territory fragment, for the one geographic
  * exception in the table: kitchen cabinets are ONSITE except in Queens.
  */
+/**
+ * COMMERCIAL ROUTES ONSITE — A6's gate, which sits ABOVE the lookup.
+ *
+ * Kate, 2026-09-25: "IF THE PROPERTY IS COMMERCIAL, THE JOB ROUTES ONSITE.
+ * Any scope, any size, no exceptions on the JOB side." So this is read before
+ * the component rows, the same way A2's zip gate sits above all of A6.
+ *
+ * TWO HALVES, AND THE SECOND ONE IS A PROHIBITION. Shared space in a
+ * multi-unit building counts — "the lobby, the common areas, the corridors,
+ * the stairwells, the whole floor" — but "THE TRIGGER IS THE SPACE, NEVER THE
+ * BUILDING": co-op, condo, tenant and apartment "must never be treated as
+ * commercial signals". A condo owner painting their own living room is a
+ * residential interior job.
+ *
+ * KATE, THIS IS THE ONE THING I COULD NOT RECONCILE. A3 lists "the tenants"
+ * among the phrases that establish commercial; A6 names "tenant" among the
+ * words that must never fire it. They cannot both hold, so this follows A6,
+ * because A6 owns the gate and states its half as a never. Worth a line in
+ * the sheet either way.
+ */
+const COMMERCIAL_SPACE =
+  /\b(?:lobb(?:y|ies)|common\s+areas?|corridors?|stair\s?wells?|the\s+whole\s+floor|entire\s+floor|suites?)\b/i;
+
+const COMMERCIAL_PROPERTY =
+  /\b(?:dentists?|dental|doctors?|medical|clinics?|law\s+(?:firm|office)|stores?|shops?|storefronts?|retail|restaurants?|cafes?|bars?|salons?|gyms?|warehouses?|hotels?|motels?|schools?|churches|church|offices?\s+building|commercial|business(?:es)?)\b/i;
+
+/** "our building", "our facility" — the possessive is what makes it a business. */
+const COMMERCIAL_OURS = /\b(?:our|the)\s+(?:building|facility|premises|property\s+management)\b/i;
+
+/**
+ * Words that describe where somebody LIVES and must not route anything.
+ * Named explicitly so a future edit cannot quietly add them to the list above.
+ */
+const NOT_COMMERCIAL = /\b(?:co-?ops?|condos?|condominiums?|tenants?|apartments?|apt)\b/i;
+
+export function isCommercial(scope: string | null | undefined): boolean {
+  const t = (scope ?? "").trim();
+  if (!t) return false;
+  // A named shared space fires even in a residential building — that is the
+  // whole point of the multi-unit clause.
+  if (COMMERCIAL_SPACE.test(t)) return true;
+  // "home office" is a room in a house, not an office building.
+  const withoutHomeOffice = t.replace(/\bhome\s+offices?\b/gi, " ");
+  return COMMERCIAL_PROPERTY.test(withoutHomeOffice) || COMMERCIAL_OURS.test(withoutHomeOffice);
+}
+
+/** Wallpaper: one wall or less is off-site, more than one wall is not. */
+const WALLPAPER = /\bwall\s?paper\w*\b/i;
+const ONE_WALL_OR_LESS =
+  /\b(?:one|a|an|single|accent|1)\s+wall\b|\bhalf\s+(?:a\s+)?wall\b/i;
+const MORE_THAN_ONE_WALL =
+  /\b(?:two|three|four|several|all|every|both|\d+)\s+walls\b|\b(?:whole|entire)\s+room\b|\bwalls\b/i;
+
+/**
+ * Drywall: "PATCHES IS THE WHOLE DRYWALL TEST. The test is the KIND of work,
+ * not how many rooms it touches." Patches stay off-site across several rooms;
+ * board replacement, hanging or finishing new board, and resurfacing a whole
+ * wall or ceiling do not.
+ */
+const DRYWALL_WORK =
+  /\b(?:dry\s?wall|sheet\s?rock|plaster\w*|patch\w*|holes?|cracks?|water\s+damage|scrap\w*|resurfac\w*)\b/i;
+const PATCHES_ONLY = /\b(?:patch\w*|holes?|cracks?|small\s+damaged\s+areas?)\b/i;
+const MORE_THAN_PATCHES =
+  /\b(?:replac\w*|hang\w*|new\s+board|board\s+to\s+replace|resurfac\w*|water\s+damage|scrap\w*)\b/i;
+
+/**
+ * "PARTIAL-ROOM WORK COUNTS AS FEWER THAN TWO FULL ROOMS. A single wall, a
+ * ceiling only, or trim only is eligible on the interior row, on the same
+ * logic that a hallway is not a full room."
+ */
+const PARTIAL_ROOM =
+  /\b(?:accent\s+wall|one\s+wall|single\s+wall|ceilings?\s+only|just\s+the\s+ceilings?|trim\s+only|just\s+the\s+trim|baseboards?\s+only)\b/i;
+
+/** One row of the lookup. `eligible: null` means the row cannot be resolved yet. */
+type Component = { name: string; eligible: boolean | null; why: string };
+
+/**
+ * Route the job, reading the lookup PER COMPONENT.
+ *
+ * Kate, 2026-09-25: "ONSITE DOMINATES — THE JOB IS OFF-SITE ONLY IF EVERY
+ * PART OF IT IS... A single ineligible component routes the whole job ONSITE,
+ * no matter what else is in scope. THIS IS NOT A COUNT OF COMPONENTS: two
+ * eligible components stay off-site."
+ *
+ * Her two worked examples, and this function is checked against both:
+ *   "Kitchen cabinets in Queens plus one accent wall"  → OFF-SITE
+ *   "cabinets plus three rooms"                        → ONSITE
+ *
+ * UNRESOLVED IS NOT ONSITE. "Where the lookup is run and a fact is missing,
+ * the answer is ASK for that fact — the lookup has not returned ONSITE, it
+ * has not returned at all." So an unresolvable row returns null, and null
+ * still means keep asking, exactly as before.
+ */
 export function jobRoute(scope: string | null | undefined, area?: string | null): RouteVerdict {
   const t = (scope ?? "").trim();
   if (!t) return null;
   // Scheduling, pleasantries and everything else that is not a description of
   // work. Routing those is answering a question nobody asked.
-  if (!DESCRIBES_WORK.test(t)) return null;
+  // A named surface is a description of work even with no verb: "just the
+  // ceiling" is scope, and A6 now routes it on the interior row.
+  if (!DESCRIBES_WORK.test(t) && !PARTIAL_ROOM.test(t)) return null;
 
-  // Cabinets first: the row has its own geography and would otherwise be
-  // swallowed by the interior rules, since a kitchen is a room.
+  // THE GATE, ABOVE THE LOOKUP. Any scope, any size, no exceptions.
+  if (isCommercial(t)) {
+    return { route: "onsite", why: "commercial work, which is always seen in person" };
+  }
+
+  const parts: Component[] = [];
+
+  // A ROOM WORD ON A CABINET JOB IS NOT A SECOND COMPONENT. "Bathroom
+  // cabinets" and "kitchen cabinets" are cabinet jobs; the room word only
+  // says which cabinets. Removed before anything counts rooms.
+  const withoutCabinetRooms = t.replace(
+    /\b(?:kitchen|bath\s?room|bath|bed\s?room|laundry|garage|office)\s+(?:cabinets?|cabinetry)\b/gi,
+    " cabinets ",
+  );
+
   if (CABINETS.test(t)) {
-    if (area && /queens/i.test(area)) {
-      return { route: "offsite", why: "kitchen cabinets in the Queens area" };
-    }
-    return { route: "onsite", why: "kitchen cabinets" };
+    const queens = !!area && /queens/i.test(area);
+    parts.push({
+      name: "cabinets",
+      eligible: queens,
+      why: queens ? "kitchen cabinets in the Queens area" : "kitchen cabinets",
+    });
+  }
+
+  if (WALLPAPER.test(t)) {
+    const one = ONE_WALL_OR_LESS.test(t);
+    const many = !one && MORE_THAN_ONE_WALL.test(t);
+    parts.push({
+      name: "wallpaper",
+      eligible: one ? true : many ? false : null,
+      why: one ? "wallpaper on one wall or less" : many ? "wallpaper on more than one wall" : "wallpaper, but not how many walls",
+    });
+  }
+
+  if (DRYWALL_WORK.test(t)) {
+    const more = MORE_THAN_PATCHES.test(t);
+    const patches = !more && PATCHES_ONLY.test(t);
+    parts.push({
+      name: "drywall",
+      eligible: more ? false : patches ? true : null,
+      why: more ? "drywall work beyond patching" : patches ? "drywall patches" : "drywall work, but not which kind",
+    });
   }
 
   const exterior = EXTERIOR.test(t) || SMALL_EXTERIOR.test(t) || HOME_WALLS.test(t);
-  const rooms = roomCount(t);
-  // rooms !== null, not rooms > 0. "Just the hallway" counts ZERO full rooms
-  // and is still plainly an interior job — under two rooms, so it routes
-  // offsite. Requiring a positive count made it unknown, which is the one
-  // answer the lookup does not have for it.
-  const interior = INTERIOR.test(t) || rooms !== null;
-
-  // Both named is a mixed job, and the lookup has no row for one. Onsite is
-  // not the safe default either — it is a guess — so this stays unknown and
-  // the bot keeps asking.
-  if (exterior && interior && !EXTERIOR.test(t)) return null;
-
   if (exterior) {
-    // HOME WALLS, any size, is ONSITE always — and it wins over a small item
-    // mentioned alongside it, because the walls still need the visit.
-    if (HOME_WALLS.test(t)) return { route: "onsite", why: "exterior home walls, which always need a visit" };
-    if (SMALL_EXTERIOR.test(t)) return { route: "offsite", why: "a smaller, clearly defined exterior item" };
-    // "exterior" alone says nothing about which row applies.
-    return null;
+    if (HOME_WALLS.test(t)) {
+      parts.push({ name: "exterior", eligible: false, why: "exterior home walls, which always need a visit" });
+    } else if (SMALL_EXTERIOR.test(t)) {
+      parts.push({ name: "exterior", eligible: true, why: "a smaller, clearly defined exterior item" });
+    } else {
+      // "exterior" alone says nothing about which row applies.
+      parts.push({ name: "exterior", eligible: null, why: "exterior, but not what on it" });
+    }
   }
 
-  if (interior) {
-    if (rooms === null) return null;
-    if (rooms >= 2) return { route: "onsite", why: "two or more full rooms" };
-    return { route: "offsite", why: rooms === 0 ? "no full rooms, which is a legible interior job" : "fewer than two full rooms" };
+  // Interior is only its own component when something other than the rows
+  // above says so — otherwise "kitchen cabinets" would count a kitchen.
+  const rooms = roomCount(withoutCabinetRooms);
+  const partial = PARTIAL_ROOM.test(t);
+  const interiorNamed = INTERIOR.test(withoutCabinetRooms) || rooms !== null || partial;
+  if (interiorNamed && !(parts.length && rooms === null && !partial && !INTERIOR.test(withoutCabinetRooms))) {
+    if (partial && (rooms === null || rooms < 2)) {
+      parts.push({ name: "interior", eligible: true, why: "partial-room work, which is fewer than two full rooms" });
+    } else if (rooms === null) {
+      parts.push({ name: "interior", eligible: null, why: "interior, but not how many rooms" });
+    } else if (rooms >= 2) {
+      parts.push({ name: "interior", eligible: false, why: "two or more full rooms" });
+    } else {
+      parts.push({
+        name: "interior",
+        eligible: true,
+        why: rooms === 0 ? "no full rooms, which is a legible interior job" : "fewer than two full rooms",
+      });
+    }
   }
 
-  return null;
+  if (!parts.length) return null;
+
+  // A missing fact is a question, not a route.
+  const unresolved = parts.find((p) => p.eligible === null);
+  if (unresolved) return null;
+
+  // ONSITE DOMINATES.
+  const blocking = parts.find((p) => p.eligible === false);
+  if (blocking) return { route: "onsite", why: blocking.why };
+
+  return {
+    route: "offsite",
+    why: parts.length === 1 ? parts[0].why : parts.map((p) => p.why).join(", and "),
+  };
 }

@@ -134,6 +134,33 @@ function dateOf(v: string | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
 }
 
+/**
+ * A REAL PHONE NUMBER MUST NOT REACH THE PROMPT, WHOEVER PUT IT THERE.
+ *
+ * Kate, 2026-09-24: "you can modify the example to remove the actual phone
+ * number + email!" — so A22's read-back example was scrubbed to [PHONE] and
+ * [EMAIL], and A22 was taken out of the PII sweep's allowlist because it no
+ * longer needed excusing.
+ *
+ * Her 2026-09-25 export has "516-784-6046" and "tom@x.com" back in it. She
+ * re-issues this sheet every time rules are merged or reworded, so a scrub
+ * that lives only in the database is a scrub that lasts until the next
+ * import. Doing it here means the file can say anything and the bot-facing
+ * text still carries nothing.
+ *
+ * The example still teaches: the shape being taught is "read both values
+ * back for a single yes", and [PHONE] and [EMAIL] show that as well as real
+ * values do. A13's "12 Oak St" is an address, not a contact, and is a
+ * textbook one — it is untouched here and stays the sweep's one exception.
+ */
+const A_PHONE = /\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g;
+const AN_EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g;
+
+export function scrubContacts(text: string | null): string | null {
+  if (!text) return text;
+  return text.replace(A_PHONE, "[PHONE]").replace(AN_EMAIL, "[EMAIL]");
+}
+
 export function parseClassARules(csv: string): ParsedRules {
   const rows = parseCsvRows(csv);
   if (!rows.length) return { rules: [], notes: [], problems: [{ row: 0, why: "the file is empty" }], absent: new Set() };
@@ -175,9 +202,11 @@ export function parseClassARules(csv: string): ParsedRules {
     seen.add(code);
     rules.push({
       code,
-      statement,
-      ruleCard: at.ruleCard >= 0 ? text(r[at.ruleCard]) : null,
-      correctiveAction: at.correctiveAction >= 0 ? text(r[at.correctiveAction]) : null,
+      // Scrubbed on the way in — see scrubContacts. These three are the
+      // bot-facing fields; rater notes go to another table entirely.
+      statement: scrubContacts(statement) ?? statement,
+      ruleCard: at.ruleCard >= 0 ? scrubContacts(text(r[at.ruleCard])) : null,
+      correctiveAction: at.correctiveAction >= 0 ? scrubContacts(text(r[at.correctiveAction])) : null,
       severity,
       status,
       phrasingOnly: at.phrasingOnly >= 0 ? yesish(r[at.phrasingOnly]) : false,
