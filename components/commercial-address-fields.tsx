@@ -35,6 +35,7 @@ export default function CommercialAddressFields({
   defaults,
   showStreet2 = true,
   streetLabel = "Street",
+  streetFieldName,
 }: {
   /** Drives every input name: `${prefix}_street`, `${prefix}_city`, …
    *  "property" is the opportunity/project address — Brendan 2026-08-17:
@@ -47,6 +48,16 @@ export default function CommercialAddressFields({
   /** Opportunities have no street2 column — hide the input rather than render
    *  one that silently goes nowhere. */
   showStreet2?: boolean;
+  /**
+   * Override the street input's NAME when the column is not `<prefix>_street`.
+   *
+   * Field Ops work orders store the street in `site_address` (migration 112),
+   * while their city/state/zip already match this component's `site_*` names.
+   * Without this the crew's address — the one they drive to — was the only
+   * address block in the platform with no lookup, so a typo there is a van in
+   * the wrong car park.
+   */
+  streetFieldName?: string;
   streetLabel?: string;
 }) {
   const [street, setStreet] = useState(defaults?.street ?? "");
@@ -319,7 +330,7 @@ export default function CommercialAddressFields({
         <input
           ref={streetRef}
           id={`${prefix}_street`}
-          name={`${prefix}_street`}
+          name={streetFieldName ?? `${prefix}_street`}
           type="text"
           value={street}
           onChange={(e) => setStreet(e.target.value)}

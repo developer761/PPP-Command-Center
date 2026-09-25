@@ -34,7 +34,7 @@ import { SearchableSelect } from "@/components/commercial/searchable-select";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import InfoDot from "@/components/info-dot";
 import { SubmitButton } from "@/components/commercial/submit-button";
-
+import CommercialAddressFields from "@/components/commercial-address-fields";
 const PW_HELP =
   "Prevailing wage: on government / public-works jobs (schools, DOT/highway, municipal buildings) the law requires paying workers a set, usually higher, hourly wage plus benefits. Flagging a work order PW tells the crew and payroll it's a special-rate job. It's a label here — it does not change any pay math yet.";
 
@@ -329,27 +329,21 @@ export default async function FieldOpsJobsPage({
               ))}
             </select>
           </label>
-          <label className="block sm:col-span-2">
-            <span className={LABEL_CLS}>Site address</span>
-            <input
-              name="site_address"
-              placeholder="Street"
-              className={INPUT_CLS}
+          {/* THE ADDRESS THE CREW DRIVES TO — now searchable, like the rest.
+              Brendan 2026-08-17: "Can the new opportunity / project address be
+              a searchable address to ensure we find the correct address.
+              Similar to the account address." Accounts and opportunities got
+              it; this one did not, and it is the one a van navigates by.
+              `streetFieldName` keeps the posted name as `site_address`, the
+              column migration 112 created — city/state/zip already match the
+              component's `site_*` names, so nothing else changes. */}
+          <div className="sm:col-span-2 grid grid-cols-1 gap-3">
+            <CommercialAddressFields
+              prefix="site"
+              showStreet2={false}
+              streetLabel="Site address"
+              streetFieldName="site_address"
             />
-          </label>
-          <label className="block">
-            <span className={LABEL_CLS}>City</span>
-            <input name="site_city" className={INPUT_CLS} />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className={LABEL_CLS}>State</span>
-              <input name="site_state" className={INPUT_CLS} />
-            </label>
-            <label className="block">
-              <span className={LABEL_CLS}>Zip</span>
-              <input name="site_zip" className={INPUT_CLS} />
-            </label>
           </div>
           <label className="block">
             <span className={LABEL_CLS}>Status</span>
