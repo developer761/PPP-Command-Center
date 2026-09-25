@@ -618,7 +618,24 @@ export function checkTone(text: string, customerText?: string): RapportCheck {
     if (b.re.test(text)) return { ok: false, why: `it uses ${b.why}` };
   }
 
-  if (customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
+  /**
+   * A REFUSAL HAS TO NAME THE THING IT IS REFUSING.
+   *
+   * A9 stops the bot reading the customer's scope back at them as a
+   * confirmation. It is not about the word appearing at all — and a decline
+   * cannot avoid it: the customer asks about furniture, and the only honest
+   * answer contains the word furniture.
+   *
+   * This was the THIRD guard in a row to block the same refusal. The
+   * out-of-scope list blocked it for naming furniture, then this dropped it
+   * for echoing, and with the answer dropped the turn was refused again as
+   * question_left_unanswered. Each guard was written for a bot trying to
+   * SELL; none of them expected it to say no, which is the one thing the
+   * configuration requires for uncovered work.
+   */
+  const refusingWorkWeDoNotDo = DECLINING.test(text) && OUT_OF_SCOPE.test(text);
+
+  if (!refusingWorkWeDoNotDo && customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
     return { ok: false, why: "it repeats the customer's own words back" };
   }
   return { ok: true };

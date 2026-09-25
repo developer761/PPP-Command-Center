@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAction, shouldEscalate, type AgentAction } from "@/lib/messaging/agent-output";
+import { validateAction, shouldEscalate, checkTone, type AgentAction } from "@/lib/messaging/agent-output";
 
 const ok = (over: Partial<AgentAction> = {}) => ({ intent: "acknowledge", confidence: 0.98, ...over });
 
@@ -311,6 +311,36 @@ describe("validateAction — never promise work PPP does not do", () => {
     const r = validateAction(ok({ freeText: "We do not do murals, but we can paint your appliances." }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("out_of_scope_work");
+  });
+
+  /**
+   * THE THIRD GUARD TO BLOCK THE SAME REFUSAL.
+   *
+   * Out-of-scope blocked it for naming furniture. A9's echo check then
+   * dropped it for repeating the customer's words — a refusal cannot avoid
+   * that, since the customer asked about furniture and the only honest answer
+   * says furniture. With the answer dropped, the turn was refused a third
+   * time as question_left_unanswered.
+   *
+   * A9 is about reading SCOPE back as a confirmation, not about a word
+   * appearing at all.
+   */
+  it("lets a refusal name the work it is refusing", () => {
+    const customer = "Hi, do you guys paint furniture? I have a big standalone bookcase and a dresser I want redone in black";
+    for (const t of [
+      "Furniture painting isn't something we do.",
+      "We do not paint furniture or standalone bookcases.",
+      "Unfortunately a standalone bookcase is not work we cover.",
+    ]) {
+      expect(checkTone(t, customer).ok, t).toBe(true);
+    }
+  });
+
+  it("still drops rapport that reads the customer's scope back at them", () => {
+    const customer = "I need my living room and hallway painted, about 600 sq ft, walls and ceilings";
+    const r = checkTone("Got it, your living room and hallway painted, about 600 sq ft.", customer);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.why).toMatch(/repeats the customer/);
   });
 
   it("allows the work PPP actually does", () => {
