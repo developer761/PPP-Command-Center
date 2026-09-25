@@ -62,6 +62,51 @@ describe("ordering", () => {
     expect(rankJobsInFlight([big, small]).map((j) => j.oppId)).toEqual(["small", "big"]);
   });
 
+  /**
+   * THE WORST FLAG COMES FIRST, even when a lesser one is less billed.
+   *
+   * `jobFlag` ranks the flags deliberately — over-billed, then a crew that
+   * cannot start, then money owed, then work not yet invoiced — and that
+   * ordering decided which flag a ROW shows. It did not reach the row order,
+   * which sorted on "has a flag at all" and then on least-billed percent. A
+   * 0%-billed job therefore beat every other flag by construction.
+   *
+   * Live on the dashboard 2026-09-25: all six rows read "nothing billed yet",
+   * the LOWEST-priority flag, on jobs worth $950, $1.5k, $3k, $3.1k, $16k and
+   * $40k — while AIREF Building #1 was off the list with $113,129.18 awaiting
+   * payment. Six trivia rows pushing the largest collectable off the page
+   * Alex opens every morning.
+   */
+  it("puts money owed above a job nobody has billed yet", () => {
+    const owed = job({
+      oppId: "owed",
+      billedCents: 189_434_20,
+      contractCents: 283_082_00,
+      outstandingCents: 113_129_18,
+    });
+    const untouched = job({ oppId: "untouched", billedCents: 0, contractCents: 950_00 });
+    expect(jobFlag(owed)).toBe("awaiting payment");
+    expect(jobFlag(untouched)).toBe("nothing billed yet");
+    expect(rankJobsInFlight([untouched, owed]).map((j) => j.oppId)).toEqual([
+      "owed",
+      "untouched",
+    ]);
+  });
+
+  it("keeps a blocked crew above money owed", () => {
+    // The flag order is not "biggest number wins" — a crew that cannot start
+    // outranks an invoice, however large.
+    const blocked = job({ oppId: "blocked", contractCents: 2_000_00, billedCents: 0, workOrderUnsent: true });
+    const owed = job({ oppId: "owed", billedCents: 500_000_00, contractCents: 600_000_00, outstandingCents: 500_000_00 });
+    expect(rankJobsInFlight([owed, blocked]).map((j) => j.oppId)).toEqual(["blocked", "owed"]);
+  });
+
+  it("inside one flag, the most money at stake first", () => {
+    const smallOwed = job({ oppId: "small", billedCents: 1_000_00, contractCents: 5_000_00, outstandingCents: 1_000_00 });
+    const bigOwed = job({ oppId: "big", billedCents: 90_000_00, contractCents: 100_000_00, outstandingCents: 90_000_00 });
+    expect(rankJobsInFlight([smallOwed, bigOwed]).map((j) => j.oppId)).toEqual(["big", "small"]);
+  });
+
   it("among flagged jobs, the least-billed first", () => {
     const a = job({ oppId: "a", billedCents: 20_000_00, workOrderUnsent: true });
     const b = job({ oppId: "b", billedCents: 1_000_00, workOrderUnsent: true });

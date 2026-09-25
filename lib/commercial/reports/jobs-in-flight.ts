@@ -53,10 +53,34 @@ export function jobFlag(j: JobFlightInput): string | null {
   return null;
 }
 
+/** The flag order from `jobFlag`, as a rank. Lower sorts first. */
+const FLAG_RANK: Record<string, number> = {
+  "billed over contract": 0,
+  "no work order": 1,
+  "work order not sent": 2,
+  "awaiting payment": 3,
+  "nothing billed yet": 4,
+};
+
 /**
- * Flagged jobs first, then the least-billed — the ones with the most still to
- * come. NOT by contract size: a $2k job whose work order never went out is
- * blocking a crew this morning, and a $200k job billed in full is not.
+ * Flagged jobs first, WORST FLAG FIRST, then the least-billed.
+ *
+ * `jobFlag` above ranks the flags deliberately — "Ordered by what actually
+ * costs something, most expensive first" — and that ordering decided which
+ * flag a row shows. It did not reach the row ORDER, which sorted only on
+ * "has a flag at all" and then on least-billed percent.
+ *
+ * So a 0%-billed job outranked every other flag by construction. On the live
+ * dashboard all six rows read "nothing billed yet" — the LOWEST-priority flag
+ * — on jobs worth $950, $1.5k, $3k, $3.1k, $16k and $40k, while AIREF
+ * Building #1 sat off the list entirely with $113,129.18 awaiting payment.
+ * Six trivia rows pushing out the largest collectable on the board, on the
+ * page Alex opens every morning.
+ *
+ * Still NOT by contract size: a $2k job whose work order never went out is
+ * blocking a crew this morning and a $200k job billed in full is not. Size
+ * only breaks ties inside a flag, so the worst thing on the board comes first
+ * and, among equally bad things, the one with the most money on it.
  */
 export function rankJobsInFlight(rows: JobFlightInput[], limit = 6): JobInFlight[] {
   const withFlags = rows.map((r) => ({ ...r, flag: jobFlag(r) }));
@@ -66,6 +90,17 @@ export function rankJobsInFlight(rows: JobFlightInput[], limit = 6): JobInFlight
     .sort((a, b) => {
       const flagged = Number(!!b.flag) - Number(!!a.flag);
       if (flagged !== 0) return flagged;
+      // Worst flag first. Unknown flags sort after the known ones rather than
+      // jumping the queue on a typo.
+      const byFlag =
+        (a.flag ? FLAG_RANK[a.flag] ?? 98 : 99) - (b.flag ? FLAG_RANK[b.flag] ?? 98 : 99);
+      if (byFlag !== 0) return byFlag;
+      // Inside one flag, the most money at stake. "Awaiting payment" means the
+      // biggest unpaid bill; everywhere else the biggest contract.
+      const atStake = (r: JobFlightInput) =>
+        r.outstandingCents > 0 ? r.outstandingCents : r.contractCents;
+      const byMoney = atStake(b) - atStake(a);
+      if (byMoney !== 0) return byMoney;
       const byProgress = pctBilled(a) - pctBilled(b);
       if (byProgress !== 0) return byProgress;
       // Deterministic tail so the strip doesn't reshuffle between loads.
