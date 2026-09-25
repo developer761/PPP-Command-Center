@@ -17,6 +17,7 @@ import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
 import { agentConfigFor } from "./agent-config-for";
 import { normalizeInbound } from "./inbound-normalize";
+import { scopeAndStage } from "./scope";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
@@ -128,6 +129,31 @@ export async function runSimTurn(input: {
     };
   }
 
+  /**
+   * THE SAME STAGE THE LIVE PATH WOULD COMPUTE.
+   *
+   * The stage arriving here is stageFromIntents over the BOT's past intents,
+   * so on turn one it is 0 whatever the customer said. The live path does not
+   * stop there — it raises the floor when the customer has already described
+   * the job, because that step is done and only the bookkeeping disagrees.
+   *
+   * Without this, a customer opening with "I need my living room and hallway
+   * painted, about 600 sq ft, walls and ceilings" gets their next step
+   * refused here as out_of_order while production answers it. That is the
+   * sandbox lying to the person using it to decide whether the bot works —
+   * the exact failure the comment below already warns about twice.
+   *
+   * Scope is read from the customer's OWN words: a reaction arrives as
+   * `Liked "<our message>"` and would otherwise resolve our sentence as their
+   * project.
+   */
+  const { stage } = scopeAndStage({
+    stage: input.stage ?? 0,
+    onFile: input.known?.inquiryScope ?? null,
+    rawInbound: input.customerText,
+    mediaCount: input.mediaCount ?? 0,
+  });
+
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
     // THE SAME RULES THE LIVE PATH GETS. A bot that behaves differently in the
@@ -139,12 +165,12 @@ export async function runSimTurn(input: {
     track,
     known: input.known,
     services: resolveServices(svc.services, svc.exceptions),
-    stage: input.stage,
+    stage,
     lastIntent: input.lastIntent,
     // The whole point of the corpus. Selected per turn, because which rule is
     // live depends on where the conversation has got to.
     examples: selectExamples(corpus, {
-      stage: input.stage,
+      stage,
       track,
       // Which examples are worth showing depends on what the customer actually
       // sent, not only on how far the flow has got.

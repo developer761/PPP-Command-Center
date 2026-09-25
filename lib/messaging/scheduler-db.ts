@@ -13,7 +13,7 @@ import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
-import { resolveScope } from "./scope";
+import { scopeAndStage } from "./scope";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
@@ -306,11 +306,17 @@ export function schedulerDeps(): SchedulerDeps {
       // lead uses most.
       //
       // The step was done. Only the bookkeeping disagreed.
-      const resolved = resolveScope({
+      // Scope and stage together, shared with the simulator so the sandbox
+      // cannot answer differently from production. Reads the customer's own
+      // words: a reaction arrives as `Liked "<our message>"` and would
+      // otherwise record our sentence as their project.
+      const resolved = scopeAndStage({
+        stage: stage0,
         onFile: (conv as { inquiry_scope?: string | null }).inquiry_scope,
-        customerText: lastInbound.body,
+        rawInbound: lastInbound.body,
+        mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
       });
-      const stage = resolved.from === "customer" ? Math.max(stage0, 1) : stage0;
+      const stage = resolved.stage;
 
       // Persisted so the next turn does not have to find it again, and so the
       // thread and the reporting show what the conversation is actually about.

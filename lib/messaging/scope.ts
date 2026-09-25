@@ -1,3 +1,5 @@
+import { normalizeInbound } from "./inbound-normalize";
+
 /**
  * Is what is on file actually a description of the work?
  *
@@ -199,6 +201,36 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
  * Returns the value AND where it came from, because the caller persists a
  * conversation-sourced scope and must not rewrite a record-sourced one.
  */
+/**
+ * ONE RULE, TWO CALLERS, AND THEY HAD ALREADY DRIFTED.
+ *
+ * The live scheduler raised the flow stage when the customer had already
+ * described the job; the simulator did not, so Kate's own test tool refused
+ * turns that production answers — a sandbox that disagrees with production is
+ * a bot nobody has tested. And the scheduler read the RAW inbound, so an
+ * iPhone reaction (`Liked "<our message>"`) resolved our own sentence as the
+ * customer's project and persisted it.
+ *
+ * Both of those are this one calculation, so it lives in one place and both
+ * callers take it whole.
+ */
+export function scopeAndStage(input: {
+  stage: number;
+  onFile: string | null | undefined;
+  /** The inbound EXACTLY as it arrived — this is what strips a reaction. */
+  rawInbound: string;
+  mediaCount?: number;
+}): { scope: string | null; from: "record" | "customer" | null; stage: number } {
+  // null for a bare reaction or a lone emoji: they said nothing of their own.
+  const ownWords = normalizeInbound(input.rawInbound, input.mediaCount ?? 0).text;
+  const resolved = resolveScope({ onFile: input.onFile, customerText: ownWords ?? "" });
+  return {
+    ...resolved,
+    // The step was done. Only the bookkeeping disagreed.
+    stage: resolved.from === "customer" ? Math.max(input.stage, 1) : input.stage,
+  };
+}
+
 export function resolveScope(input: {
   onFile: string | null | undefined;
   customerText: string | null | undefined;

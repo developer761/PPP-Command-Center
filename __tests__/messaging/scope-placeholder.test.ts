@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPlaceholderScope, usableScope, scopeFromCustomer, resolveScope } from "@/lib/messaging/scope";
+import { isPlaceholderScope, usableScope, scopeFromCustomer, resolveScope, scopeAndStage } from "@/lib/messaging/scope";
 import { knownFields, knownCustomerPrompt } from "@/lib/messaging/known-customer";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
@@ -219,5 +219,59 @@ describe("scope the customer supplies in the conversation", () => {
     it("reports nothing when neither side has any", () => {
       expect(resolveScope({ onFile: null, customerText: "hi" })).toEqual({ scope: null, from: null });
     });
+  });
+});
+
+describe("scopeAndStage — the rule the scheduler and the simulator share", () => {
+  /**
+   * The simulator only ever knew the stage from the BOT's past intents, so on
+   * turn one it was 0 no matter what the customer said. Playing a homeowner
+   * who opens with the whole job, the next step came back refused —
+   * "ask_address belongs to step 2 but only 0 of the required information has
+   * been collected" — while production would have answered it. A sandbox that
+   * disagrees with production is a bot nobody has tested.
+   */
+  it("counts a job the customer described as step one already done", () => {
+    const r = scopeAndStage({
+      stage: 0, onFile: null,
+      rawInbound: "Hi I need my living room and hallway painted, about 600 sq ft, walls and ceilings",
+    });
+    expect(r.from).toBe("customer");
+    expect(r.stage).toBe(1);
+  });
+
+  /**
+   * AND IT MUST BE THEIR WORDS, NOT OURS READ BACK.
+   *
+   * An iPhone reaction arrives as `Liked "<our message>"`. Resolving scope
+   * from the raw body recorded our own confirmation sentence as the project,
+   * persisted it to inquiry_scope, and showed it in the thread and the
+   * reporting — because somebody tapped Like.
+   */
+  it("takes no scope from a reaction, which is our own sentence quoted back", () => {
+    const r = scopeAndStage({
+      stage: 0, onFile: null,
+      rawInbound: 'Liked "Just to confirm, you are looking for: paint the kitchen cabinets. Is that right?"',
+    });
+    expect(r.scope).toBeNull();
+    expect(r.from).toBeNull();
+    expect(r.stage).toBe(0);
+  });
+
+  it("takes no scope from a bare emoji either", () => {
+    expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: "👍" }).scope).toBeNull();
+  });
+
+  it("never lowers a stage the flow has already reached", () => {
+    expect(scopeAndStage({ stage: 3, onFile: null, rawInbound: "paint my kitchen cabinets" }).stage).toBe(3);
+  });
+
+  it("leaves what the office recorded alone — that version wins", () => {
+    const r = scopeAndStage({
+      stage: 0, onFile: "Interior repaint, 3 bedrooms",
+      rawInbound: "actually I also want the trim done",
+    });
+    expect(r.from).toBe("record");
+    expect(r.scope).toBe("Interior repaint, 3 bedrooms");
   });
 });
