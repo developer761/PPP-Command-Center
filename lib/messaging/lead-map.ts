@@ -8,6 +8,7 @@
  */
 import type { IncomingLead } from "./lead-intake";
 import type { LeadRecord } from "./rules";
+import { customerAsk } from "./inquiry-notes";
 
 /** Exactly the fields the poll asks for. Adding one means adding it to SOQL. */
 export const LEAD_FIELDS = [
@@ -19,6 +20,17 @@ export const LEAD_FIELDS = [
   "Street",
   "State", "City", "PostalCode", "RecordType.Name", "CreatedDate", "Status",
   "IsConverted", "SMS_Opt_In__c", "LeadGroup__c",
+  // WHAT THE CUSTOMER ASKED FOR. Named by Kate on 2026-09-24. Until this line
+  // the bot received no description of the job at all, so inquiryScope was
+  // always null: it could not confirm scope, could not tell an off-site job
+  // from an on-site one, and asked every customer what they wanted even when
+  // the record already said. Inquiry Notes is the live source; Description
+  // carries a JSON payload on some sources and is the fallback.
+  "Inquiry_Notes__c", "Description",
+  // Structured size and type, filled on 67% and 100% of recent leads. Not read
+  // yet — A6 and A7 are being rewritten — but polled now so that the routing
+  // work does not need another deploy to see them.
+  "No_of_Areas_Project_Size__c", "Project_Type__c",
 ] as const;
 
 export type SalesforceLead = {
@@ -39,6 +51,10 @@ export type SalesforceLead = {
   IsConverted?: boolean | null;
   SMS_Opt_In__c?: string | null;
   LeadGroup__c?: string | null;
+  Inquiry_Notes__c?: string | null;
+  Description?: string | null;
+  No_of_Areas_Project_Size__c?: string | null;
+  Project_Type__c?: string | null;
 };
 
 /**
@@ -87,6 +103,12 @@ export function leadFromSalesforce(r: SalesforceLead): { lead: IncomingLead; rec
     postalCode: r.PostalCode ?? null,
     street: r.Street?.trim() || null,
     address: composeAddress(r),
+    // Cleaned, not raw. The call centre types into the same field, and 10% of
+    // these are a web form's own question keys rather than a sentence.
+    inquiryScope: customerAsk({
+      inquiryNotes: r.Inquiry_Notes__c,
+      description: r.Description,
+    }),
     sfCreatedAt: r.CreatedDate ?? null,
   };
   // What the entry and exit rules read. RecordType flattened to its name,

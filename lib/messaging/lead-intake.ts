@@ -34,12 +34,12 @@ export type IncomingLead = {
   /**
    * What the lead said they wanted done, in their own words.
    *
-   * NOT YET SOURCED. PPP plainly has such a field — the placeholder Kate
-   * quotes, "Customer did not provide additional comments. Please contact the
-   * customer to discuss the details of this project.", is a value sitting in
-   * one — but Description is standard and PPP may use a custom field, and
-   * guessing a Salesforce field name is how the last mistake happened. The
-   * plumbing is here so that naming it is a one-line change in lead-map.ts.
+   * Inquiry_Notes__c, named by Kate on 2026-09-24, cleaned by
+   * inquiry-notes.ts before it lands here. The placeholder she quotes —
+   * "Customer did not provide additional comments. Please contact the
+   * customer to discuss the details of this project." — is a real value in
+   * that field on 8% of leads and arrives here as null, because the absence
+   * of scope sitting in a scope field is not scope.
    */
   inquiryScope?: string | null;
   sfCreatedAt?: string | null;
