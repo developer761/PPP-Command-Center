@@ -155,6 +155,27 @@ describe("the assistant's money tools count AIA", () => {
     expect(src).toContain("aiaDueAtFrom");
   });
 
+  /**
+   * Void and draft are decided ONCE, in receivableVerdict, which records why:
+   * void is money nobody owes; a draft is owed but not billed, so it is listed
+   * and never aged. The assistant filtered on `balance_cents > 0` alone, so a
+   * void with a balance would have counted as owed and a draft with a due date
+   * would have counted as late. Neither is true in the database today, which
+   * is exactly what makes it worth pinning — a latent wrong answer waits for
+   * one row.
+   */
+  it("asks receivableVerdict rather than re-deriving void/draft", () => {
+    expect(src).toContain("receivableVerdict");
+    expect(
+      /const open = invoices\.filter\(\(i\) => Number\(i\.balance_cents\) > 0\)/.test(src),
+      "filtering on a balance alone re-creates the void-counts-as-owed bug",
+    ).toBe(false);
+  });
+
+  it("never ages a draft", () => {
+    expect(src).toMatch(/verdict === "invoice"/);
+  });
+
   it("uses the same lateness ladder AR aging uses", () => {
     // An application must be late here on the day it is late there.
     const aging = stripComments(

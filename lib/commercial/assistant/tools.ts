@@ -202,11 +202,37 @@ export async function moneyOverview(): Promise<string> {
       }
     }
   }
-  const open = invoices.filter((i) => Number(i.balance_cents) > 0);
+  /**
+   * THE ONE VERDICT, not a second copy of it.
+   *
+   * `receivableVerdict` is the platform's written rule and says why:
+   *   void  — money nobody owes. Not on the list.
+   *   draft — money somebody owes that has not been billed. On the list,
+   *           flagged, and NEVER aged: there is nothing to be late against.
+   *
+   * This filtered on `balance_cents > 0` alone, which meant a void invoice
+   * with a balance would have counted as owed, and a draft with a due date
+   * would have counted as LATE. Neither is true in the database today — no
+   * void carries a balance and none of the 15 drafts has a due_at — so both
+   * were latent rather than live. One row either way and they would not be.
+   *
+   * Reading the verdict instead of re-deriving it is the whole point: the
+   * comment above it records that this exact rule was once two words inline
+   * and was wrong, invisibly, because the tests could not reach the decision.
+   */
+  const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
+  const scored = invoices
+    .map((i) => ({ i, verdict: receivableVerdict(i.status as never) }))
+    .filter((x) => x.verdict !== "skip" && Number(x.i.balance_cents) > 0);
+  const open = scored.map((x) => x.i);
   const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaOwed;
   const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
   const today = new Date().toISOString().slice(0, 10);
-  const late = open.filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
+  // Drafts are never aged — see the verdict above.
+  const late = scored
+    .filter((x) => x.verdict === "invoice")
+    .map((x) => x.i)
+    .filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
 
