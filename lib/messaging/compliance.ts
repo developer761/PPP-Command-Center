@@ -76,11 +76,69 @@ export function normalizeKeyword(body: string): string {
     .trim();
 }
 
-/** Classify an inbound message. Only a whole-message keyword counts. */
+/**
+ * A24, WHICH IS LIVE AND CRITICAL AND WAS NOT IMPLEMENTED.
+ *
+ * "Any clear 'STOP', 'stop', or PLAIN-LANGUAGE REQUEST to end or halt
+ * communication STOPS all further text outreach immediately." Only the
+ * carrier keywords were honoured, so every one of these came back `normal`
+ * and the bot carried on texting somebody who had asked it to stop:
+ *
+ *   stop texting me · take me off your list · remove me from your list
+ *   quit texting me · leave me alone · do not contact me again · stop all
+ *
+ * AN OPT-OUT IS NOT A DECLINE, and the rule is emphatic about it. "No
+ * thanks", "I'm all set", "we hired someone" decline the SERVICE and are
+ * A17 — close warmly. These decline the CONTACT. Getting that backwards
+ * suppresses a live lead, so every pattern here needs a communication verb
+ * or a list; a bare "stop" on its own is already a carrier keyword and
+ * anything softer is deliberately not here.
+ *
+ * "stop by tomorrow" and "can you stop at the house first" must never match,
+ * which is why the verb after stop is enumerated rather than open.
+ */
+const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
+  [
+    // stop/quit + how we are reaching them. The verb is ENUMERATED, never
+    // open, so "stop by tomorrow" and "stop at the house" cannot match.
+    String.raw`\b(?:stop|quit|cease|halt|discontinue)\s+(?:any\s+|the\s+)?(?:text\w*|messag\w*|contact\w*|calling|email\w*|sending|reaching)\b`,
+    // "stop all", which is STOPALL typed the way a person types it.
+    String.raw`\b(?:stop|quit)\s+all\b`,
+    // take/remove me off the list
+    String.raw`\b(?:take|get|remove|delete)\s+me\s+(?:off|out\s+of|from)\b`,
+    // do not contact me
+    String.raw`\b(?:do\s?n'?t|do\s+not|never|no\s+longer)\s+(?:text|contact|messag\w*|call|email|reach)\s+me\b`,
+    String.raw`\bleave\s+me\s+alone\b`,
+    String.raw`\bunsubscribe\b`,
+    String.raw`\bopt\s*me\s*out\b`,
+    String.raw`\bno\s+more\s+(?:texts?|messages?|emails?|calls?)\b`,
+  ].join("|"),
+  "i",
+);
+
+/** Did this opt out in words rather than by carrier keyword? */
+export function isPlainLanguageOptOut(body: string): boolean {
+  return PLAIN_LANGUAGE_OPT_OUT.test(body ?? "");
+}
+
+/**
+ * Which evidence this opt-out rests on. A carrier keyword and a sentence are
+ * not the same thing if one is ever disputed, so they are not recorded as
+ * though they were.
+ */
+export function optOutSource(body: string): "inbound_keyword" | "inbound_phrase" {
+  const k = normalizeKeyword(body);
+  return (OPT_OUT_KEYWORDS as readonly string[]).includes(k) ? "inbound_keyword" : "inbound_phrase";
+}
+
+/** Classify an inbound message. A whole-message keyword, or A24's plain language. */
 export function classifyInbound(body: string): InboundIntent {
   const k = normalizeKeyword(body);
   if (!k) return "normal";
   if ((OPT_OUT_KEYWORDS as readonly string[]).includes(k)) return "opt_out";
+  // "IT COUNTS EVEN WHEN THE CUSTOMER PACKS OTHER CONTENT INTO THE SAME
+  // MESSAGE — the opt-out takes priority over anything else in that message."
+  if (PLAIN_LANGUAGE_OPT_OUT.test(body)) return "opt_out";
   if ((OPT_IN_KEYWORDS as readonly string[]).includes(k)) return "opt_in";
   if ((HELP_KEYWORDS as readonly string[]).includes(k)) return "help";
   return "normal";

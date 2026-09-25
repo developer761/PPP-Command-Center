@@ -1,3 +1,4 @@
+import { optOutSource } from "./compliance";
 /**
  * Writing down a message a customer sent us.
  *
@@ -60,14 +61,32 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     //
     // The body is stored verbatim because the table asks for it: if an opt-out
     // is ever disputed, "they replied 'Stop.'" is the evidence.
-    const { error } = await sb.from("sms_opt_outs").insert({
+    const row = {
       phone_e164: decision.from,
       channel: "sms",
-      source: "inbound_keyword",
       inbound_body: decision.body,
       opted_out_at: new Date().toISOString(),
-    });
-    if (error && error.code !== "23505") throw asError("recording the opt-out", error);
+    };
+    // A carrier keyword and a sentence are different evidence if an opt-out is
+    // ever disputed, so they are not recorded as the same thing.
+    const { error } = await sb.from("sms_opt_outs").insert({ ...row, source: optOutSource(decision.body) });
+
+    // THE SUPPRESSION MATTERS MORE THAN THE LABEL ON IT.
+    //
+    // 'inbound_phrase' needs migration 20260925140000, and this repo has no
+    // migration runner — the README says so, and says the app must tolerate a
+    // migration being un-applied. Un-applied, that value fails the source
+    // CHECK with 23514, and throwing here would 500 the webhook on the one
+    // path that must never drop a message: somebody asking us to stop.
+    //
+    // So the narrower row goes in instead. The number is suppressed either
+    // way; only the audit label is coarser until the SQL is pasted.
+    if (error?.code === "23514") {
+      const { error: retry } = await sb.from("sms_opt_outs").insert({ ...row, source: "inbound_keyword" });
+      if (retry && retry.code !== "23505") throw asError("recording the opt-out", retry);
+    } else if (error && error.code !== "23505") {
+      throw asError("recording the opt-out", error);
+    }
   }
   if (decision.keyword === "opt_in") {
     // Never delete. The schema is explicit about this: START sets opted_in_at

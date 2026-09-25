@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  classifyInbound, normalizeKeyword, withinQuietHours, nextSendableTime,
-  localHour, clampToFederal, withinDailyCap,
-  DEFAULT_QUIET_HOURS, FEDERAL_BOUND, DEFAULT_DAILY_CAP,
-} from "@/lib/messaging/compliance";
+import { classifyInbound, normalizeKeyword, withinQuietHours, nextSendableTime, localHour, clampToFederal, withinDailyCap, DEFAULT_QUIET_HOURS, FEDERAL_BOUND, DEFAULT_DAILY_CAP, optOutSource, isPlainLanguageOptOut } from "@/lib/messaging/compliance";
 
 /** A wall-clock instant expressed in UTC, for readable fixtures. */
 const utc = (iso: string) => new Date(iso);
@@ -174,5 +170,79 @@ describe("daily cap", () => {
   it("honours a per-workspace override", () => {
     expect(withinDailyCap(1, 1)).toBe(false);
     expect(withinDailyCap(0, 1)).toBe(true);
+  });
+});
+
+/**
+ * A24 — LIVE, CRITICAL, AND NOT IMPLEMENTED UNTIL NOW.
+ *
+ * "Any clear 'STOP', 'stop', or PLAIN-LANGUAGE REQUEST to end or halt
+ * communication STOPS all further text outreach immediately."
+ *
+ * Only the carrier keywords were honoured, so every one of these came back
+ * `normal` and the bot carried on texting somebody who had asked it to stop.
+ * This sat open for weeks as "a decision for Kate" when Kate had already
+ * decided it, in a rule marked critical.
+ */
+describe("A24 — an opt-out can be a sentence", () => {
+  it("honours a plain-language request to stop", () => {
+    for (const t of [
+      "stop texting me", "please stop texting me", "take me off your list",
+      "remove me from your list", "quit texting me", "leave me alone",
+      "do not contact me again", "stop contacting me", "unsubscribe me please",
+      "stop all", "no more texts please", "opt me out",
+    ]) {
+      expect(classifyInbound(t), t).toBe("opt_out");
+    }
+  });
+
+  /**
+   * "AN OPT-OUT IS NOT A DECLINE... A customer saying they will do the work
+   * themselves, or that they are all set, has declined the SERVICE — close
+   * warmly and stop collecting (A17)."
+   *
+   * Reading these as opt-outs would suppress a live lead permanently, which
+   * is the expensive direction to get wrong.
+   */
+  it("does not suppress somebody who is merely declining the work", () => {
+    for (const t of [
+      "no thanks", "I'm all set", "we hired someone else",
+      "not interested", "I'll do it myself", "we decided to go another way",
+    ]) {
+      expect(classifyInbound(t), t).toBe("normal");
+    }
+  });
+
+  /** The verb after "stop" is enumerated precisely so these cannot match. */
+  it("does not read an ordinary sentence containing stop as an opt-out", () => {
+    for (const t of [
+      "stop by tomorrow", "can you stop at the house first",
+      "I want to paint the stop sign wall", "sounds good",
+    ]) {
+      expect(classifyInbound(t), t).toBe("normal");
+    }
+  });
+
+  /**
+   * "IT COUNTS EVEN WHEN THE CUSTOMER PACKS OTHER CONTENT INTO THE SAME
+   * MESSAGE — the opt-out takes priority over anything else in that message."
+   */
+  it("counts even when packed in with other content", () => {
+    for (const t of [
+      "Thanks for the quote but please stop texting me",
+      "Sounds good, also take me off your list",
+      "Not interested, stop contacting me",
+    ]) {
+      expect(classifyInbound(t), t).toBe("opt_out");
+    }
+  });
+
+  /** Different evidence if it is ever disputed, so recorded differently. */
+  it("records which kind of evidence the opt-out rests on", () => {
+    expect(optOutSource("STOP")).toBe("inbound_keyword");
+    expect(optOutSource("stop")).toBe("inbound_keyword");
+    expect(optOutSource("take me off your list")).toBe("inbound_phrase");
+    expect(isPlainLanguageOptOut("take me off your list")).toBe(true);
+    expect(isPlainLanguageOptOut("STOP")).toBe(false);
   });
 });
