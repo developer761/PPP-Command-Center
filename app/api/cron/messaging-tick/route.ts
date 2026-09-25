@@ -50,12 +50,23 @@ export async function GET(request: Request) {
   // own try: Salesforce being down must never stop replies that are due from
   // going out. Throttled inside to once a minute. LEAD_POLL_DISABLED=true
   // switches it off without a deploy of code.
+  //
+  // THAT FLAG GATES THE POLL AND NOTHING ELSE, which it did not until now. It
+  // sat on the whole Salesforce block, so setting a variable called
+  // LEAD_POLL_DISABLED also silenced the exit sweep and the service-area
+  // refresh. Somebody pausing intake — a bad routing change, a migration —
+  // would have stopped the thing that notices a customer has since booked,
+  // and the campaign would have carried on chasing them: exactly the harm the
+  // sweep below was added to prevent, reintroduced by a flag named after
+  // something else. The sweep and the refresh are guarded by Salesforce being
+  // configured, and each already survives Salesforce being down on its own.
   let leads: PollSummary | { error: string } | null = null;
   let exits: SweepSummary | { error: string } | null = null;
   let zips: RefreshResult | null = null;
   let writeback: WritebackSummary | { error: string } | null = null;
-  if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
-    try {
+  if (isSalesforceConfigured()) {
+    const pollLeads = process.env.LEAD_POLL_DISABLED !== "true";
+    if (pollLeads) try {
       const conn = await getSalesforceClient();
       leads = await pollSalesforceLeads(messagingDb(), (soql, opts) =>
         (opts?.all
