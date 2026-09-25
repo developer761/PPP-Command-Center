@@ -224,17 +224,42 @@ export default async function ReceivablesReportPage({
           </div>
           {brief ? (
             <>
-              <p className="text-[13.5px] text-ppp-charcoal leading-relaxed">{brief.text}</p>
+              {/* THE WARNING GOES ABOVE THE PROSE WHEN IT IS STALE.
+                  It used to sit underneath in 10.5px grey, after 60-odd words
+                  of confident dollar figures. On 2026-09-25 the brief opened
+                  "All $1.37M is past due… LMJ accounts for roughly $1.14M"
+                  while the tiles on the same screen read $796,181.08
+                  outstanding and $538,582.53 for LMJ. Alex reads the prose;
+                  nobody reads a footnote to find out whether the paragraph
+                  they just finished was true.
+
+                  So when it is stale it is announced first, dated, and the
+                  prose is muted — it stops looking like a current statement of
+                  the book and starts looking like what it is: the last read,
+                  taken before the numbers moved. */}
+              {stale && (
+                <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-amber-900">
+                  The numbers below have moved since this was written
+                  {brief.generatedAt ? ` on ${fmtEtDate(brief.generatedAt)}` : ""} — press
+                  Rewrite for a current read.
+                </p>
+              )}
+              <p
+                className={`text-[13.5px] leading-relaxed ${
+                  stale ? "text-ppp-charcoal-400" : "text-ppp-charcoal"
+                }`}
+              >
+                {brief.text}
+              </p>
               <p className="text-[10.5px] text-ppp-charcoal-400 mt-2">
-                {stale
-                  // Say so rather than quietly showing an old read of a book
-                  // that has since moved. Staleness is measured against the
-                  // WHOLE book, so a filter can never fake it.
-                  ? "Written before the latest changes — rewrite for a current read."
-                  : `Written ${fmtEtDate(brief.generatedAt)}`}
+                {/* Staleness is measured against the WHOLE book, so a filter
+                    can never fake it. */}
+                {stale ? "" : `Written ${fmtEtDate(brief.generatedAt)}`}
                 {/* The brief is always the whole book. On a filtered view that
                     has to be said, or it reads as a summary of the slice. */}
-                {report.filtered ? " · covers the whole book, not this filter" : ""}
+                {report.filtered
+                  ? `${stale ? "" : " · "}covers the whole book, not this filter`
+                  : ""}
               </p>
             </>
           ) : (
