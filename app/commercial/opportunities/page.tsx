@@ -24,6 +24,7 @@
  * visual layout + component composition changed.
  */
 import { dealValueCents } from "@/lib/commercial/opportunities/db";
+import { bidMidCents } from "@/lib/commercial/reports/pipeline";
 import { formatBidCents } from "@/lib/commercial/accounts/overview";
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
@@ -1056,12 +1057,40 @@ export default async function CommercialOpportunitiesPage({
     (acc, o) => acc + oppValue(o),
     0,
   );
+  /**
+   * A BID WITH NO RANGE IS WORTH ITS PROPOSAL, not nothing.
+   *
+   * These summed the raw range columns, so a deal priced only on its proposal
+   * — no low, no high — counted as $0 at both ends. On 2026-09-25 that made
+   * this tile read "Out for bid $2.11M" while the Pipeline report, over the
+   * same forty open deals, said $2.17M. The gap was two bids, one of them a
+   * proposal actually SENT to Vision General Contractors for $38,030.20.
+   *
+   * The Weighted tile on this very page was already right: `oppValue` calls
+   * `weightedPipelineCents(o, proposalTotalByOpp.get(o.id))`, which carries
+   * the same fallback. Only the unweighted pair below it read the columns
+   * raw, which is why one tile could be correct and the one beside it short
+   * by $54,537.20.
+   *
+   * The fallback fills BOTH ends, so a deal priced on its proposal has low
+   * equal to high and the headline still renders one figure rather than
+   * inventing a range nobody typed.
+   */
+  const bidEndsCents = (o: CommercialOpportunity) => {
+    const lo = o.bid_value_low_cents;
+    const hi = o.bid_value_high_cents;
+    if (lo == null && hi == null) {
+      const mid = bidMidCents(o, proposalTotalByOpp.get(o.id));
+      return { low: mid, high: mid };
+    }
+    return { low: lo ?? hi ?? 0, high: hi ?? lo ?? 0 };
+  };
   const totalBidLowCents = presaleOpenOpps.reduce(
-    (acc, o) => acc + (o.bid_value_low_cents ?? 0),
+    (acc, o) => acc + bidEndsCents(o).low,
     0,
   );
   const totalBidHighCents = presaleOpenOpps.reduce(
-    (acc, o) => acc + (o.bid_value_high_cents ?? 0),
+    (acc, o) => acc + bidEndsCents(o).high,
     0,
   );
   // "—" when nothing is priced, a single figure when low and high agree (which
