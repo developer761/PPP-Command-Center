@@ -24,7 +24,25 @@ import { trackForWorkspace } from "./track";
 import { selectAllIn } from "./paging";
 
 export type EnrolResult =
-  | { ok: true; conversationId: string; workflow: string; stepsScheduled: number; alreadyLive?: boolean; firstMessageAt?: string }
+  | {
+      ok: true; conversationId: string; workflow: string; stepsScheduled: number;
+      alreadyLive?: boolean; firstMessageAt?: string;
+      /**
+       * Other workflows whose entry rules ALSO matched this lead.
+       *
+       * chooseWorkflow has always worked this out and said why: "Two workflows
+       * matching one lead means the audiences overlap, which is a
+       * configuration mistake rather than a choice to make at runtime — and
+       * picking one silently would hide it. The overlap is reported so
+       * somebody can fix the filters."
+       *
+       * It was not reported. The value was computed, returned, and read by
+       * nothing, so the first workflow in the list quietly won and which
+       * campaign a customer got depended on row order. Carried out to the poll
+       * now, which is the only thing watching.
+       */
+      alsoMatched?: string[];
+    }
   | { ok: false; reason: string };
 
 /** Workflows for one workspace, with their rule sets loaded. */
@@ -130,8 +148,13 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
   const { data: live } = await sb.from("sms_conversations")
     .select("id").eq("workspace_id", ws.id).eq("customer_phone", to)
     .neq("state", "ended").maybeSingle();
+  const alsoMatched = decision.alsoMatched?.length ? decision.alsoMatched : undefined;
+
   if (live) {
-    return { ok: true, conversationId: live.id, workflow: decision.workflow.name, stepsScheduled: 0, alreadyLive: true };
+    return {
+      ok: true, conversationId: live.id, workflow: decision.workflow.name,
+      stepsScheduled: 0, alreadyLive: true, alsoMatched,
+    };
   }
 
   const { data: conv, error: convErr } = await sb.from("sms_conversations").insert({
@@ -188,6 +211,7 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     ok: true, conversationId: conv.id,
     workflow: decision.workflow.name, stepsScheduled: rows.length,
     firstMessageAt: launchAt.toISOString(),
+    alsoMatched,
   };
 }
 

@@ -45,6 +45,16 @@ export type PollSummary = {
    *  back rather than advanced to now. */
   more?: boolean;
   why?: string;
+  /**
+   * Workspaces where one lead matched more than one live workflow.
+   *
+   * Karan's rule from the 2026-09-02 meeting: if a workspace holds more than
+   * one campaign the entry criteria must not overlap at all, or a lead
+   * qualifies for both. Enrolment takes the FIRST match, so nobody is texted
+   * twice — but which campaign they got depended on row order, and until now
+   * the fact that it happened was computed and thrown away.
+   */
+  overlaps?: string[];
 };
 
 /**
@@ -162,7 +172,8 @@ export async function loadZipMap(query: Query, now = Date.now()): Promise<Map<st
 }
 
 export async function processPendingLeads(sb: SupabaseClient, now = new Date(), query?: Query) {
-  const out = { routed: 0, triaged: 0, ignored: 0, failed: 0 };
+  const out: { routed: number; triaged: number; ignored: number; failed: number; overlaps?: string[] } =
+    { routed: 0, triaged: 0, ignored: 0, failed: 0 };
   const { data: pending } = await sb.from("sf_lead_inbound")
     .select("id, payload").eq("status", "pending").order("received_at").limit(50);
   if (!pending?.length) return out;
@@ -237,6 +248,10 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
         status: "routed", workspace_id: decision.workspaceId, conversation_id: enrolled.conversationId,
         first_message_at: enrolled.firstMessageAt ?? null, triage_reason: null,
       });
+      if (enrolled.alsoMatched?.length) {
+        const note = `${enrolled.workflow} also matched ${enrolled.alsoMatched.join(", ")}`;
+        out.overlaps = [...new Set([...(out.overlaps ?? []), note])];
+      }
       out.routed++;
     } catch (err) {
       await set({ status: "failed", triage_reason: err instanceof Error ? err.message : String(err) });

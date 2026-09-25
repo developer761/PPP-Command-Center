@@ -75,7 +75,23 @@ export async function GET(request: Request) {
           ? conn.query(soql, { autoFetch: true, maxFetch: 50_000 })
           : conn.query(soql)) as never);
       if (leads.failed > 0) {
-        reportWarn({ key: "lead_poll_failed_rows", platform: "ppp_cc", message: `${leads.failed} lead(s) failed intake`, context: leads });
+        reportWarn({
+          key: "lead_poll_failed_rows", platform: "ppp_cc",
+          message: `${leads.failed} lead(s) failed intake`,
+          context: { ...leads, overlaps: leads.overlaps?.join(" | ") ?? null },
+        });
+      }
+      // TWO WORKFLOWS MATCHED ONE LEAD, which by Karan's rule cannot happen:
+      // overlapping entry criteria in one workspace. Enrolment takes the first
+      // match so nobody is texted twice, but which campaign they got came down
+      // to row order. chooseWorkflow has always worked this out and the value
+      // was read by nothing, so it has never once been said out loud.
+      if (leads.overlaps?.length) {
+        reportWarn({
+          key: "workflow_entry_overlap", platform: "ppp_cc",
+          message: `Entry rules overlap: ${leads.overlaps.join(" | ")}`,
+          context: { count: leads.overlaps.length, detail: leads.overlaps.join(" | ") },
+        });
       }
     } catch (err) {
       leads = { error: err instanceof Error ? err.message : String(err) };

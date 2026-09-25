@@ -18,7 +18,7 @@
     "check:receipt": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-receipt-path.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
-    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit && npm run verify:pii && npm run verify:truncation",
+    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit && npm run verify:pii && npm run verify:truncation && npm run verify:enrol && npm run verify:lead-poll && npm run verify:handoff && npm run verify:held-reply && npm run verify:reply-delay && npm run verify:reply-to && npm run verify:repair && npm run verify:optout-rate && npm run verify:port-readiness && npm run verify:messaging",
     "build:aia-template": "node scripts/build-aia-template.mjs",
     "verify:inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-inbound-e2e.mjs",
     "verify:twilio-inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-twilio-inbound-e2e.mjs",
@@ -32,7 +32,16 @@
     "import:rules": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-class-a-rules.mjs",
     "import:rated": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-rated-conversations.mjs",
     "verify:pii": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-no-pii-e2e.mjs",
-    "verify:truncation": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-no-truncation-e2e.mjs"
+    "verify:truncation": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-no-truncation-e2e.mjs",
+    "verify:enrol": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-enrol-e2e.mjs",
+    "verify:handoff": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-handoff-e2e.mjs",
+    "verify:held-reply": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-held-reply-e2e.mjs",
+    "verify:lead-poll": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-lead-poll-e2e.mjs",
+    "verify:optout-rate": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-optout-rate-e2e.mjs",
+    "verify:port-readiness": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-port-readiness-e2e.mjs",
+    "verify:repair": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-repair-e2e.mjs",
+    "verify:reply-delay": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-reply-delay-e2e.mjs",
+    "verify:reply-to": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-reply-to-e2e.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

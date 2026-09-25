@@ -59,7 +59,13 @@ try {
   await sb.from("sf_poll_state").update({ last_polled_at: new Date(Date.now() - 10 * 60_000).toISOString() }).eq("id", true);
   let asked = "";
   const res = await pollSalesforceLeads(sb, async (soql) => {
-    asked = soql;
+    // ONLY THE LEAD QUERY. The poll also fetches the zip map through this same
+    // function, and it goes last, so capturing every call left `asked` holding
+    // "SELECT Zip_Code__c ... FROM Zip_Code" and both assertions below failed
+    // on a poll that was perfectly correct. They have been failing for as long
+    // as the zip map has been part of the poll, unnoticed because this script
+    // was not in `npm run verify`.
+    if (/FROM Lead\b/.test(soql)) asked = soql;
     return { records: [
       lead(ids[0]),                                            // a Meta lead with a phone
       lead(ids[1], { LeadSource: "Angi Quote Request" }),      // Angi: excluded by the entry rule
