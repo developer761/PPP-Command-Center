@@ -31,30 +31,70 @@ export const dynamic = "force-dynamic";
  * The three tabs that already had their own endpoints — receivables,
  * transactions, sales tax — keep them; they carry filters this cannot.
  */
+/**
+ * EACH SHEET CARRIES ITS OWN GATE.
+ *
+ * One `guardExport({ report: "receivables", orAccounting: true })` covered all
+ * five, so the permission being asked for was "are you in the Receivables
+ * report folder" — for Purchases by vendor, crew payouts and the partner
+ * deposit history, none of which are receivables. A rep put in a folder holding
+ * only Receivables could pull all three by changing `?view=`.
+ *
+ * The sheets that ARE receivables keep the folder rule, so an account manager
+ * outside the Finance folder still gets a working Export button on the tabs it
+ * belongs to. The three Accounting-only registers require the Accounting roles,
+ * and labor payouts additionally declare `people` — it is per-person pay, which
+ * is the same role test for a different reason, and guardExport says in as many
+ * words that a reader should not have to know they coincide.
+ */
 const SHEETS = {
-  ar: { title: "Accounts Receivable", file: "AR_sheet", load: getArSheetRows, spec: AR_APPLICATIONS_SPEC },
-  owed: { title: "Balance Owed", file: "Balance_owed", load: getBalanceOwedRows, spec: BALANCE_OWED_SPEC },
+  ar: {
+    title: "Accounts Receivable",
+    file: "AR_sheet",
+    load: getArSheetRows,
+    spec: AR_APPLICATIONS_SPEC,
+    guard: { report: "receivables", orAccounting: true },
+  },
+  owed: {
+    title: "Balance Owed",
+    file: "Balance_owed",
+    load: getBalanceOwedRows,
+    spec: BALANCE_OWED_SPEC,
+    guard: { report: "receivables", orAccounting: true },
+  },
   purchases: {
     title: "Purchases by vendor",
     file: "Purchases",
     load: async () => purchaseRows(await getSpendRows()),
     spec: PURCHASES_BY_VENDOR_SPEC,
+    guard: { accounting: true },
   },
   "labor-out": {
     title: "Labor payments out",
     file: "Labor_payments",
     load: async () => laborPaymentRows(await getSpendRows()),
     spec: LABOR_PAYMENTS_SPEC,
+    // Per-person pay, by name and by amount.
+    guard: { accounting: true, people: true },
   },
-  deposits: { title: "Partner deposit history", file: "Deposits", load: getMoneyInRows, spec: DEPOSIT_HISTORY_SPEC },
+  deposits: {
+    title: "Partner deposit history",
+    file: "Deposits",
+    load: getMoneyInRows,
+    spec: DEPOSIT_HISTORY_SPEC,
+    guard: { accounting: true },
+  },
 } as const;
 
 export async function GET(req: NextRequest) {
-  const guard = await guardExport({ report: "receivables", orAccounting: true });
-  if (!guard.ok) return guard.response;
-
   const view = req.nextUrl.searchParams.get("view") ?? "";
   const sheet = (SHEETS as Record<string, (typeof SHEETS)[keyof typeof SHEETS] | undefined>)[view];
+
+  // The sheet's own gate, and the strictest one for a `view` we don't know —
+  // so an unrecognised value can't be used to get a 400 without credentials.
+  const guard = await guardExport(sheet?.guard ?? { accounting: true });
+  if (!guard.ok) return guard.response;
+
   if (!sheet) {
     return new Response(`Nothing to export for "${view}".`, { status: 400 });
   }

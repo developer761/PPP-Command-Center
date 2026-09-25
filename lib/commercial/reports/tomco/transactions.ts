@@ -37,6 +37,14 @@ export type SpendRow = {
   amountCents: number;
   reference: string | null;
   hasReceipt: boolean;
+  /**
+   * The receipt document itself, not just whether there is one.
+   *
+   * The column read "Yes" as dead text: 55 receipts uploaded and not one of
+   * them openable from the list they are uploaded into. Attaching a receipt is
+   * only worth doing if somebody can pull it back out when a GC queries a line.
+   */
+  receiptDocumentId: string | null;
   reimburseTo: string | null;
   reimbursedYmd: string | null;
 };
@@ -97,6 +105,7 @@ export async function getSpendRows(): Promise<SpendRow[]> {
     // against the paperwork, so it is not dropped as "just a description".
     reference: (p.description ?? "").trim() || null,
     hasReceipt: !!p.receipt_document_id,
+    receiptDocumentId: p.receipt_document_id,
     reimburseTo: (p.reimburse_to ?? "").trim() || null,
     reimbursedYmd: ymdOf(p.reimbursed_at),
   }));
@@ -370,7 +379,25 @@ export const PURCHASES_BY_VENDOR_SPEC: ReportSpec<SpendRow> = {
     {
       key: "receipt",
       label: "Receipt",
-      text: (r) => (r.hasReceipt ? "Yes" : null),
+      /**
+       * "View", and it opens the receipt.
+       *
+       * It read "Yes" as plain text — 55 receipts attached and not one of them
+       * reachable from the list they were attached in. The upload form's own
+       * help text calls this column the thing it is ticking, so the tick was
+       * the whole visible return on the work of photographing every receipt.
+       * A GC queries a line, and the answer sat behind a word that wasn't a
+       * link.
+       *
+       * The route already existed and already gates itself — it issues a
+       * 5-minute signed URL and redirects — so this is the column catching up
+       * with what the data could always do.
+       */
+      text: (r) => (r.hasReceipt ? "View" : null),
+      csvText: (r) => (r.hasReceipt ? "Yes" : null),
+      href: (r) =>
+        r.receiptDocumentId ? `/api/commercial/documents/${r.receiptDocumentId}/download` : null,
+      newTab: true,
       secondary: true,
     },
   ],

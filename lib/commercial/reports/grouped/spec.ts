@@ -20,6 +20,13 @@ export type ReportColumn<R> = {
   /** What the cell shows. `null` renders as Salesforce's em-dash. */
   text?: (row: R) => string | null;
   /**
+   * What the CSV says instead, when the screen text only makes sense as a
+   * link. A Receipt column reading "View" on screen has to read "Yes" in a
+   * spreadsheet — "View" in a cell is an instruction to click something that
+   * isn't there.
+   */
+  csvText?: (row: R) => string | null;
+  /**
    * The number this column contributes to subtotals and the grand total, in
    * CENTS for money and whole units otherwise. A column with no `amount` is
    * never summed — Salesforce only totals the columns you ask it to.
@@ -29,6 +36,15 @@ export type ReportColumn<R> = {
   kind?: "money" | "number" | "hours" | "text" | "date";
   /** Makes the cell a link, the way Salesforce links the record. */
   href?: (row: R) => string | null;
+  /**
+   * Opens the link in a new tab instead of navigating.
+   *
+   * For a link that is a FILE rather than a page — a receipt, a signed
+   * document URL. Following one in place throws away your position in a
+   * hundred-row list you are reading against paperwork, and the back button
+   * from a downloaded file does not reliably bring it back.
+   */
+  newTab?: boolean;
   /** Hidden below `sm` — phones get the columns that matter, not all fourteen. */
   secondary?: boolean;
 };

@@ -44,9 +44,13 @@ export function groupedReportCsv<R>(
           out.push(
             [
               csvEscape(here.join(" › ")),
-              ...spec.columns.map((c) =>
-                csvEscape(c.text ? c.text(row) ?? "" : c.amount ? cell(c.kind, c.amount(row)) : "")
-              ),
+              ...spec.columns.map((c) => {
+                // csvText wins where the on-screen word only means something
+                // as a link — "View" in a spreadsheet cell is an instruction
+                // to click something that isn't there.
+                const t = c.csvText ?? c.text;
+                return csvEscape(t ? t(row) ?? "" : c.amount ? cell(c.kind, c.amount(row)) : "");
+              }),
             ].join(",")
           );
         }
