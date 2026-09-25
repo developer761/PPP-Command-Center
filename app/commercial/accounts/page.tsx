@@ -314,10 +314,33 @@ export default async function CommercialAccountsPage({
   // deal. formatBidCents(0, 0) returns "$0" (0 isn't null), NOT "—", so the KPI
   // showed a permanent "Bid range · $0" and the Open-value fallback below was
   // dead code (audit D3). Force "—" so the fallback to Open value engages.
+  /**
+   * A RANGE ONLY WHEN THERE IS ONE — otherwise the proposal-aware total.
+   *
+   * `total_active_bid_*` come from the commercial_account_overview VIEW, which
+   * sums the raw bid columns. A deal priced only on its proposal has neither,
+   * so it counts as nothing: this tile read "Bid range $2.11M" while the
+   * Vision General Contractors row two inches below it showed its $38k open
+   * bid, and the Pipeline report put the same forty bids at $2.17M.
+   *
+   * `bookOpenValueCents` is already on this page and already correct — it uses
+   * `dealValueCents` with the proposal fallback, described in its own comment
+   * as "the same fallback every money surface uses". The tile simply preferred
+   * the view.
+   *
+   * Low and high are identical on every deal in the book (the create forms
+   * stopped collecting them; pricing lives on the proposal), so a range is
+   * only shown if one genuinely exists — and then it is the view's figure,
+   * because a range is the one thing the fallback cannot express.
+   *
+   * The real repair is in the view, which would need a migration pasted by
+   * hand and is shared by other surfaces. This makes the tile agree with the
+   * rest of the platform today without touching it.
+   */
   const bookBidRange =
-    totalActiveBidLowCents === 0 && totalActiveBidHighCents === 0
-      ? "—"
-      : formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents);
+    totalActiveBidLowCents !== totalActiveBidHighCents
+      ? formatBidCents(totalActiveBidLowCents, totalActiveBidHighCents)
+      : "—";
   const bookOpenValueCents = accounts.reduce((acc, a) => acc + openValueForAccount(a.id), 0);
 
   // URL builders (unchanged behavior — link helpers for chip toggles + sort).
