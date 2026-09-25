@@ -17,7 +17,7 @@ import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
 import { agentConfigFor } from "./agent-config-for";
 import { normalizeInbound } from "./inbound-normalize";
-import { scopeAndStage } from "./scope";
+import { knownFromThread } from "./known-from-thread";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
 import type { KnownCustomer } from "./known-customer";
@@ -147,12 +147,19 @@ export async function runSimTurn(input: {
    * `Liked "<our message>"` and would otherwise resolve our sentence as their
    * project.
    */
-  const { stage, scope: resolvedScope } = scopeAndStage({
+  // The SAME derivation the live path runs. See known-from-thread.ts: these
+  // two drifted apart four times in a day before it existed.
+  const derived = knownFromThread({
+    onFile: { inquiryScope: input.known?.inquiryScope, address: input.known?.address },
+    messages: [
+      ...input.history.filter((t) => t.role === "customer").map((t) => ({ body: t.text })),
+      { body: input.customerText, mediaCount: input.mediaCount ?? 0 },
+    ],
     stage: input.stage ?? 0,
-    onFile: input.known?.inquiryScope ?? null,
-    rawInbound: input.customerText,
-    mediaCount: input.mediaCount ?? 0,
   });
+  const stage = derived.stage;
+  const resolvedScope = derived.inquiryScope;
+  const saidAddress = derived.address;
 
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
@@ -169,7 +176,19 @@ export async function runSimTurn(input: {
     // the customer just described it, and the turns that can only speak when
     // there IS a scope — confirm_scope, and the discard that turns work down
     // in words — came out silent here and talk in production.
-    known: { ...input.known, inquiryScope: input.known?.inquiryScope || resolvedScope || undefined },
+    known: {
+      ...input.known,
+      inquiryScope: input.known?.inquiryScope || resolvedScope || undefined,
+      // AND THE ADDRESS, for the same reason and the fourth time this file
+      // has needed it. scheduler-db captures an address the customer typed
+      // and persists it on the conversation; nothing did that here, so the
+      // sandbox kept refusing the turn as commitment_in_free_text while
+      // production went on to confirm the address.
+      //
+      // Read across the whole thread, not just this message: production reads
+      // it from the conversation row, which remembers.
+      address: input.known?.address || saidAddress || undefined,
+    },
     services: resolveServices(svc.services, svc.exceptions),
     stage,
     lastIntent: input.lastIntent,

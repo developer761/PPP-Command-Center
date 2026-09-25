@@ -13,9 +13,7 @@ import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
-import { scopeAndStage } from "./scope";
-import { addressFromCustomer } from "./address";
-import { normalizeInbound } from "./inbound-normalize";
+import { knownFromThread } from "./known-from-thread";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
@@ -51,11 +49,6 @@ import type { DueAction, SchedulerDeps } from "./scheduler";
  * escalation, and one a person already claimed is left alone rather than
  * having its reason overwritten by the bot.
  */
-/** The customer's OWN words, with an iPhone reaction's quoted text stripped. */
-function ownWordsOf(m: { body: string; media_count?: number }): string {
-  return normalizeInbound(m.body, m.media_count ?? 0).text ?? "";
-}
-
 async function handToAPerson(
   sb: ReturnType<typeof messagingDb>,
   conversationId: string,
@@ -317,11 +310,22 @@ export function schedulerDeps(): SchedulerDeps {
       // cannot answer differently from production. Reads the customer's own
       // words: a reaction arrives as `Liked "<our message>"` and would
       // otherwise record our sentence as their project.
-      const resolved = scopeAndStage({
+      // ONE DERIVATION, SHARED WITH THE SIMULATOR. See known-from-thread.ts:
+      // these two answered "what do we hold" separately and drifted apart
+      // four times in a day, every time with the sandbox knowing less.
+      //
+      // The conversation row already remembers anything found on an earlier
+      // turn, so the latest inbound is the only message this has to read.
+      const resolved = knownFromThread({
+        onFile: {
+          inquiryScope: (conv as { inquiry_scope?: string | null }).inquiry_scope,
+          address: (conv as { customer_address?: string | null }).customer_address,
+        },
+        messages: [{
+          body: lastInbound.body,
+          mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
+        }],
         stage: stage0,
-        onFile: (conv as { inquiry_scope?: string | null }).inquiry_scope,
-        rawInbound: lastInbound.body,
-        mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
       });
       const stage = resolved.stage;
 
@@ -329,9 +333,9 @@ export function schedulerDeps(): SchedulerDeps {
       // thread and the reporting show what the conversation is actually about.
       // Guarded on the column still being empty: what PPP had on the lead is
       // the office's version and is never overwritten by ours.
-      if (resolved.from === "customer" && resolved.scope) {
+      if (resolved.scopeFrom === "customer" && resolved.inquiryScope) {
         const { error: scopeErr } = await sb.from("sms_conversations")
-          .update({ inquiry_scope: resolved.scope })
+          .update({ inquiry_scope: resolved.inquiryScope })
           .eq("id", conv.id)
           .is("inquiry_scope", null);
         // Not fatal. The turn can still run on the value we just derived.
@@ -354,11 +358,9 @@ export function schedulerDeps(): SchedulerDeps {
        * Only when the column is empty. What PPP holds on the lead is the
        * office's version and this never overwrites it.
        */
-      const onFileAddress = (conv as { customer_address?: string | null }).customer_address ?? null;
-      const saidAddress = onFileAddress ? null : addressFromCustomer(ownWordsOf(lastInbound));
-      if (saidAddress) {
+      if (resolved.addressFromChat && resolved.address) {
         const { error: addrErr } = await sb.from("sms_conversations")
-          .update({ customer_address: saidAddress })
+          .update({ customer_address: resolved.address })
           .eq("id", conv.id)
           .is("customer_address", null);
         // Not fatal. The turn still runs on the value just derived.
@@ -405,8 +407,8 @@ export function schedulerDeps(): SchedulerDeps {
           // Cast because the columns are newer than the generated types, and
           // undefined when the migration has not been applied — which is the
           // old behaviour, not a crash.
-          address: onFileAddress ?? saidAddress,
-          inquiryScope: resolved.scope,
+          address: resolved.address,
+          inquiryScope: resolved.inquiryScope,
         },
         services: resolveServices(svc.services, svc.exceptions),
         examples: selectExamples(corpus, { stage }),
