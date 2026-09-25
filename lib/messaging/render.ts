@@ -19,7 +19,7 @@
  * better." Selection is deterministic on the turn number rather than random —
  * same conversation, same words, so a regression test can assert output.
  */
-import { BARE_ACKNOWLEDGEMENT, type Intent } from "./agent-output";
+import { BARE_ACKNOWLEDGEMENT, type Intent , mentionsWorkWeDoNotDo } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
@@ -64,8 +64,23 @@ export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
  * "rendered nothing and was not meant to" — so if the two disagreed, every
  * wrong number would land on somebody's desk.
  */
-export function isSilent(input: { intent: Intent; known?: { scope?: string | null } | null }): boolean {
-  if (input.intent === "discard") return !input.known?.scope;
+export function isSilent(input: {
+  intent: Intent;
+  known?: { scope?: string | null } | null;
+  customerText?: string | null;
+}): boolean {
+  if (input.intent === "discard") {
+    // EITHER SIGNAL IS ENOUGH, and the second one is why the first was not.
+    //
+    // "Is there a project on file" only recognises work PPP PAINTS — scope
+    // capture is built from the rooms and surfaces it sells, so "a standalone
+    // bookcase and a dresser" resolved to nothing and a real customer asking
+    // a real question got silence again. Which is the exact case this whole
+    // branch exists for.
+    //
+    // So: a project on file, OR the customer naming work we do not cover.
+    return !input.known?.scope && !mentionsWorkWeDoNotDo(input.customerText);
+  }
   return SILENT_INTENTS.has(input.intent);
 }
 
@@ -444,6 +459,8 @@ export type RenderInput = {
    * made the bot refuse flooring it actually sells.
    */
   covers?: string | null;
+  /** What the customer just said, for the one decision that needs it. */
+  customerText?: string | null;
 };
 
 /**
