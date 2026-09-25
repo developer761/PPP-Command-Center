@@ -104,6 +104,74 @@ describe("summarizeSalesTax", () => {
     expect(r.rows.map((x) => x.invoiceId)).toEqual(["i3"]);
   });
 
+  /**
+   * A FILTER MUST RETURN WHAT THE SENTENCE BESIDE IT COUNTED.
+   *
+   * The page shows two warnings, and they are deliberately different problems:
+   * "marked exempt with no certificate on file" is missing paperwork, and
+   * "charged no tax on a job that was never marked exempt" is usually
+   * under-billing — in NY everything is taxable unless an exemption is claimed.
+   *
+   * Both banners' "Show just those" pointed at `uncertifiedOnly`, which is
+   * `exempt && no certificate` — the UNION of the two. On production that meant
+   * pressing it under a sentence reading 2 returned 5: the two it named plus
+   * the three from the banner above. And the worse of the two warnings had no
+   * link at all, so the only filter offered was for the lesser problem and it
+   * silently included the greater one.
+   *
+   * The count you are checking against is the one you just read, so a filter
+   * that returns more than it is wrong in the direction that gets believed.
+   */
+  describe("each warning filters to its own rows", () => {
+    const rows = [
+      row({ invoiceId: "taxed" }),
+      exempt({ invoiceId: "certified", certNumber: "EX-1" }),
+      exempt({ invoiceId: "nocert", certNumber: null, exemptSource: "job" }),
+      exempt({ invoiceId: "unmarked-a", certNumber: null }),
+      exempt({ invoiceId: "unmarked-b", certNumber: null }),
+    ];
+
+    it("checks the fixture really holds both kinds", () => {
+      // An audit must prove it measured: a fixture where every exempt row is
+      // the same kind would pass both assertions below for the wrong reason.
+      const kinds = rows.map((r) => r.exemptKind);
+      expect(kinds).toContain("no_cert");
+      expect(kinds).toContain("unmarked");
+      expect(kinds).toContain("certified");
+    });
+
+    it("no_cert returns only the claimed-but-undocumented ones", () => {
+      const r = summarizeSalesTax(rows, { exemptKind: "no_cert" });
+      expect(r.rows.map((x) => x.invoiceId)).toEqual(["nocert"]);
+      expect(r.filtered).toBe(true);
+    });
+
+    it("unmarked returns only the never-claimed ones", () => {
+      const r = summarizeSalesTax(rows, { exemptKind: "unmarked" });
+      expect(r.rows.map((x) => x.invoiceId).sort()).toEqual(["unmarked-a", "unmarked-b"]);
+      expect(r.filtered).toBe(true);
+    });
+
+    it("neither kind returns the other's rows — the actual bug", () => {
+      const noCert = summarizeSalesTax(rows, { exemptKind: "no_cert" }).rows;
+      const unmarked = summarizeSalesTax(rows, { exemptKind: "unmarked" }).rows;
+      expect(noCert.length + unmarked.length).toBe(3);
+      expect(noCert.some((r) => r.exemptKind === "unmarked")).toBe(false);
+      expect(unmarked.some((r) => r.exemptKind === "no_cert")).toBe(false);
+    });
+
+    it("keeps the old both-kinds filter working for a bookmarked link", () => {
+      const r = summarizeSalesTax(rows, { uncertifiedOnly: true });
+      expect(r.rows).toHaveLength(3);
+    });
+
+    it("ignores a kind nobody defined rather than filtering to nothing", () => {
+      const r = summarizeSalesTax(rows, { exemptKind: undefined });
+      expect(r.rows).toHaveLength(5);
+      expect(r.filtered).toBe(false);
+    });
+  });
+
   it("lists newest first — a filing is about the period you just closed", () => {
     const r = summarizeSalesTax([
       row({ invoiceId: "old", issuedYmd: "2026-06-01" }),

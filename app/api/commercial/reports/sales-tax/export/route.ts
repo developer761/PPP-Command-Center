@@ -26,10 +26,15 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const period = resolvePreset(sp.get("tp") ?? undefined, ACTIVITY_PRESETS, ACTIVITY_DEFAULT);
   const range = activityRange(period);
+  // The same narrowing the screen is showing, or the file and the screen
+  // disagree — the trap this route's siblings already name.
+  const rawKind = sp.get("kind");
+  const kind = rawKind === "no_cert" || rawKind === "unmarked" ? rawKind : undefined;
   const report = await getSalesTaxReport({
     fromYmd: range?.fromYmd,
     toYmd: range?.toYmd,
-    uncertifiedOnly: sp.get("nocert") === "1" || undefined,
+    exemptKind: kind,
+    uncertifiedOnly: (!kind && sp.get("nocert") === "1") || undefined,
   });
 
   const header = ["Issued", "Invoice", "Job", "GC", "Taxable base", "Rate %", "Tax", "Exempt", "Certificate"];

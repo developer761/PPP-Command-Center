@@ -772,6 +772,11 @@ export default async function AccountingPage({
   const txDirection: TxnDirection | "all" = rawDir === "in" || rawDir === "out" ? rawDir : "all";
   const txParty = pickFirst(sp.tparty)?.trim() || null;
   const txUndeposited = pickFirst(sp.tundep) === "1";
+  // Which of the two sales-tax warnings to narrow to. Anything else is ignored
+  // rather than filtering to nothing.
+  const rawTaxKind = pickFirst(sp.kind);
+  const taxKind: "no_cert" | "unmarked" | undefined =
+    rawTaxKind === "no_cert" || rawTaxKind === "unmarked" ? rawTaxKind : undefined;
   const txRange = activityRange(txPeriod);
   const txFilters: TxnFilters = {
     fromYmd: txRange?.fromYmd,
@@ -964,7 +969,10 @@ export default async function AccountingPage({
       ? getSalesTaxReport({
           fromYmd: txRange?.fromYmd,
           toYmd: txRange?.toYmd,
-          uncertifiedOnly: pickFirst(sp.nocert) === "1" || undefined,
+          // `?kind=` narrows to ONE of the two warnings; `?nocert=1` is the
+          // older link that meant both, kept working for a bookmark.
+          exemptKind: taxKind,
+          uncertifiedOnly: (!taxKind && pickFirst(sp.nocert) === "1") || undefined,
         })
       : Promise.resolve(null),
     view === "reimbursements"
@@ -2211,8 +2219,24 @@ export default async function AccountingPage({
             <p className="text-[12px] rounded-lg border px-3 py-2 border-rose-300 bg-rose-100 text-rose-900">
               <strong>{salesTax.unmarkedCount - salesTax.unmarkedMigratedCount}</strong> invoice
               {salesTax.unmarkedCount - salesTax.unmarkedMigratedCount === 1 ? "" : "s"} charged no tax on a job that was never marked
-              exempt — {formatCentsFull(salesTax.unmarkedBaseCents - salesTax.unmarkedMigratedBaseCents)} of work. That is usually tax
-              that should have been billed, not a certificate that&rsquo;s missing.
+              exempt &mdash;{" "}
+              {/* {" "} on BOTH sides of the figure. Without it this rendered
+                  "$17,483.42of work" in production: the space after a JSX
+                  expression is not reliably preserved once the line is
+                  reflowed, and the one before it survived while the one after
+                  it did not. The banner beside this one already did it this
+                  way and read correctly. */}
+              {formatCentsFull(salesTax.unmarkedBaseCents - salesTax.unmarkedMigratedBaseCents)}{" "}
+              of work. That is usually tax that should have been billed, not a
+              certificate that&rsquo;s missing.{" "}
+              {/* The WORSE of the two warnings had no way to see its own rows,
+                  while the lesser one did. */}
+              <Link
+                href={`${BASE}?view=tax&kind=unmarked${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`}
+                className="font-semibold underline"
+              >
+                Show just those
+              </Link>
             </p>
           )}
           {salesTax.unmarkedMigratedCount > 0 && (
@@ -2233,7 +2257,14 @@ export default async function AccountingPage({
               {salesTax.noCertCount === 1 ? " is" : "s are"} marked exempt with no certificate on file —{" "}
               {formatCentsFull(salesTax.noCertBaseCents)} of work. NY capital-improvement exemptions are
               per-project, so the certificate belongs on the job that claimed it.{" "}
-              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
+              {/* `kind=no_cert`, not `nocert=1`: the old link filtered to
+                  "exempt with no certificate", which is the union of THIS
+                  banner and the one above it. Pressing "Show just those" under
+                  a sentence reading 2 returned 5. */}
+              <Link
+                href={`${BASE}?view=tax&kind=no_cert${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`}
+                className="font-semibold underline"
+              >
                 Show just those
               </Link>
             </p>
@@ -2247,10 +2278,12 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}?view=tax${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
+                // Changing the period must not silently drop the narrowing —
+                // that is the trap the ledger and AR exports both name.
+                href: `${BASE}?view=tax${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}${taxKind ? `&kind=${taxKind}` : pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
               }))}
             />
-            {pickFirst(sp.nocert) === "1" && (
+            {(taxKind || pickFirst(sp.nocert) === "1") && (
               <Link href={`${BASE}?view=tax${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
                 Show all invoices
               </Link>
@@ -2259,7 +2292,7 @@ export default async function AccountingPage({
               href="/api/commercial/reports/sales-tax/export"
               params={{
                 ...(txPeriod !== LEDGER_DEFAULT ? { tp: txPeriod } : {}),
-                ...(pickFirst(sp.nocert) === "1" ? { nocert: "1" } : {}),
+                ...(taxKind ? { kind: taxKind } : pickFirst(sp.nocert) === "1" ? { nocert: "1" } : {}),
               }}
               label="Export for filing"
               disabled={salesTax.rows.length === 0}
