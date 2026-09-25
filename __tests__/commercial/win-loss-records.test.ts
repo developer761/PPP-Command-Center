@@ -116,11 +116,51 @@ describe("the table agrees with the summary, in every grouping", () => {
     expect(groups.map((g) => g.label)).toEqual(["Won", "Lost", "No bid"]);
   });
 
-  it("a win has no loss reason, so grouping by reason keeps it under the blank", () => {
+  /**
+   * EVERY GROUP UNDER "WHY WE LOST" IS NAMED.
+   *
+   * A win has no loss reason, and it is not dropped — the subtotals have to
+   * keep adding up to the same money however the report is grouped. But the
+   * wins used to fall under the empty string, which renders as an em-dash. On
+   * a quarter with twelve wins and no losses, pressing "Why we lost" gave
+   * Brendan one group headed "— (12)" holding every deal he had WON.
+   *
+   * The bucket was honest about having no reason and silent about what was in
+   * it, which is the worse half.
+   */
+  it("keeps wins and no-bids in the reason view, in named buckets", () => {
     const groups = buildGroups(SAMPLE, WIN_LOSS_SPEC.groupings[2], WIN_LOSS_SPEC.columns);
-    const blank = groups.find((g) => g.label === "" || g.label === "—");
-    expect(blank, "wins must still appear when grouped by why we lost").toBeTruthy();
-    expect(countRows(blank!)).toBe(3); // two wins + the no-bid
+    const labels = groups.map((g) => g.label);
+    expect(labels, "no group may be blank under Why we lost").not.toContain("");
+    expect(labels).toContain("Won — no loss reason");
+    expect(labels).toContain("No bid — we passed");
+
+    const won = groups.find((g) => g.label === "Won — no loss reason")!;
+    const noBid = groups.find((g) => g.label === "No bid — we passed")!;
+    expect(countRows(won)).toBe(2);
+    expect(countRows(noBid)).toBe(1);
+  });
+
+  it("names a loss whose reason nobody recorded, rather than blanking it", () => {
+    const groups = buildGroups(
+      [...SAMPLE, rec({ oppId: "6", outcome: "lost", valueCents: 1_000, lossReason: null })],
+      WIN_LOSS_SPEC.groupings[2],
+      WIN_LOSS_SPEC.columns,
+    );
+    expect(groups.map((g) => g.label)).toContain("Lost — no reason recorded");
+  });
+
+  it("sorts real reasons above the buckets that are not losses", () => {
+    // This view exists for the reasons; Won and No bid are only there so the
+    // totals reconcile, so they belong at the bottom.
+    const labels = buildGroups(SAMPLE, WIN_LOSS_SPEC.groupings[2], WIN_LOSS_SPEC.columns).map(
+      (g) => g.label,
+    );
+    expect(labels.indexOf("Price")).toBeLessThan(labels.indexOf("Won — no loss reason"));
+    expect(labels.indexOf("Schedule")).toBeLessThan(labels.indexOf("Won — no loss reason"));
+    expect(labels.indexOf("Won — no loss reason")).toBeLessThan(
+      labels.indexOf("No bid — we passed"),
+    );
   });
 });
 
