@@ -329,7 +329,7 @@ export default async function ProductsCatalogPage({
                               {p.default_unit_cost_cents !== null && (
                                 <div
                                   className="text-[11px] text-ppp-charcoal-500 tabular-nums"
-                                  title="PPP unit cost"
+                                  title="Our unit cost"
                                 >
                                   cost {formatDollars(p.default_unit_cost_cents)}
                                 </div>

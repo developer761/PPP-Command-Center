@@ -217,8 +217,8 @@ export default async function CommercialAccessPage({ searchParams }: { searchPar
         <h1 className="text-2xl font-bold tracking-tight text-ppp-charcoal">Access</h1>
         <p className="text-[13px] text-ppp-charcoal-500 mt-1 max-w-2xl">
           Give someone a Commercial login — email + password, no Google needed.
-          Accounts made here can reach the Commercial Command Center only, not PPP
-          Command Center. Anyone who needs both is set up separately.
+          Accounts made here can reach the Commercial Command Center only, not the
+          residential Command Center. Anyone who needs both is set up separately.
         </p>
       </header>
 

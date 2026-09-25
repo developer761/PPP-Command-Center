@@ -223,7 +223,7 @@ export default async function FieldOpsJobsPage({
           the deal. You can also add one manually below —{" "}
           <strong>connect it to a deal</strong> (it&rsquo;ll show on that
           deal&rsquo;s Work Orders too), or leave the deal blank for a{" "}
-          <strong>PPP, prevailing-wage, or one-off</strong> job.
+          <strong>standard, prevailing-wage, or one-off</strong> job.
         </p>
       </div>
 

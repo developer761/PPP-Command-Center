@@ -157,7 +157,7 @@ export default async function TaxJurisdictionsAdminPage({
           )}
         </div>
         <p className="text-sm text-ppp-charcoal-500 max-w-2xl">
-          Configure the jurisdictions PPP works in — a name, the combined (state + local) sales-tax rate, and the ZIP prefixes that fall inside it. When you create an invoice, the platform reads the project&apos;s property ZIP and pre-fills the tax&nbsp;% from here. You can always override the rate on any individual invoice.
+          Configure the jurisdictions you work in — a name, the combined (state + local) sales-tax rate, and the ZIP prefixes that fall inside it. When you create an invoice, the platform reads the project&apos;s property ZIP and pre-fills the tax&nbsp;% from here. You can always override the rate on any individual invoice.
         </p>
       </header>
 

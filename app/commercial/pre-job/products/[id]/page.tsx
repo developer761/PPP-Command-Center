@@ -501,7 +501,7 @@ export default async function ProductDetailPage({
               </label>
               <label className="block">
                 <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-                  PPP cost ($)
+                  Our cost ($)
                 </span>
                 <MoneyInput
                   name="default_unit_cost"

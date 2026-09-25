@@ -268,7 +268,7 @@ export default async function NewProductPage({
           </label>
           <label className="block">
             <span className="block text-[12px] font-semibold text-ppp-charcoal-700 mb-1">
-              PPP cost ($)
+              Our cost ($)
             </span>
             <MoneyInput
               name="default_unit_cost"
@@ -277,7 +277,7 @@ export default async function NewProductPage({
               className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors tabular-nums"
             />
             <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
-              What PPP pays. Used for margin math on line items.
+              What we pay. Used for margin math on line items.
             </span>
           </label>
         </div>

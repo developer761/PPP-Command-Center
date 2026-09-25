@@ -6485,7 +6485,7 @@ async function TeamTab({
       )}
       {staff.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          No PPP staff have Commercial CC access yet. Grant access on the admin
+          Nobody has Commercial access yet. Grant access on the admin
           Users page first.
         </div>
       )}
@@ -6615,7 +6615,7 @@ async function TeamTab({
       {team.length === 0 ? (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-8 text-center text-sm text-ppp-charcoal-500">
           No team assigned yet. Add the sales rep, estimator, PM, and anyone
-          else from PPP working this opportunity.
+          else working this opportunity.
         </div>
       ) : (
         <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
