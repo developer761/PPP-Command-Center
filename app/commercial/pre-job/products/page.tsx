@@ -27,6 +27,8 @@ import { InstantSearch } from "@/components/commercial/instant-search";
  * Search + category + surface_area filter above. Read-open, admin-write.
  */
 
+export const metadata = { title: "Products" };
+
 export const dynamic = "force-dynamic";
 
 function formatDollars(cents: number): string {

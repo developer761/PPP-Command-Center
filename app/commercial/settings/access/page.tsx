@@ -196,6 +196,8 @@ async function toggleOptOutAction(formData: FormData) {
  * access you see everything. So there's no role picker here, unlike the PPP side.
  */
 
+export const metadata = { title: "Access" };
+
 export const dynamic = "force-dynamic";
 
 export default async function CommercialAccessPage({ searchParams }: { searchParams: Promise<{ se_error?: string; crew_error?: string }> }) {

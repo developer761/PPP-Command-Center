@@ -28,6 +28,8 @@ import {
   removeFolderMember,
 } from "@/lib/commercial/reports/folders-db";
 
+export const metadata = { title: "Report folders" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/report-folders";

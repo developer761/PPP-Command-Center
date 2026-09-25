@@ -555,6 +555,8 @@ async function createDealFromPipelineAction(formData: FormData) {
   void backHref;
 }
 
+export const metadata = { title: "Opportunities" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<Record<string, string | string[] | undefined>>;

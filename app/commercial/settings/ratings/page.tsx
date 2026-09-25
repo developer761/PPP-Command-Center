@@ -24,6 +24,8 @@ import { RATING_CODES, isRatingCode } from "@/lib/commercial/accounts/rating-cod
  * Mobile: single column, every control ≥44px.
  */
 
+export const metadata = { title: "Ratings" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/ratings";

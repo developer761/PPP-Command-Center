@@ -3,6 +3,8 @@ import { listMyUpcomingShifts, listMyAbsences } from "@/lib/commercial/field-ops
 import { todayEtIso } from "@/lib/commercial/field-ops/schedule";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
+export const metadata = { title: "My schedule" };
+
 export const dynamic = "force-dynamic";
 
 /** My Schedule — this crew member's upcoming shifts only. Every query is

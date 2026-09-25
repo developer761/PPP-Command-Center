@@ -80,6 +80,25 @@ import { MoneyInput } from "@/components/commercial/money-input";
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;
+
+/** The tab says which invoice. See the note on the opportunity page's own
+ *  generateMetadata for why every one of these was "PPP Command Center". */
+export async function generateMetadata({ params }: { params: PP }) {
+  try {
+    const { id } = await params;
+    if (!UUID_RE.test(id)) return { title: "Invoice" };
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const { data } = await commercialDb()
+      .from("commercial_invoices")
+      .select("invoice_number")
+      .eq("id", id)
+      .maybeSingle();
+    return { title: data?.invoice_number ? `Invoice ${data.invoice_number}` : "Invoice" };
+  } catch {
+    return { title: "Invoice" };
+  }
+}
+
 type SP = Promise<{
   error?: string;
   saved?: string;

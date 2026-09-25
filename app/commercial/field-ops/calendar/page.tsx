@@ -8,6 +8,8 @@ import { listEmployees } from "@/lib/commercial/field-ops/employees";
 import { listJobs, ensureJobsForSentWorkOrders, cleanOrphanedJobs } from "@/lib/commercial/field-ops/jobs";
 import { FieldOpsCalendar } from "@/components/commercial/field-ops-calendar";
 
+export const metadata = { title: "Calendar" };
+
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

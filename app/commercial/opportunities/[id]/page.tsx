@@ -276,6 +276,47 @@ import { isAdminEmail } from "@/lib/auth/admin";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * THE TAB SAYS WHICH JOB.
+ *
+ * This page had no title, so it inherited "PPP Command Center" — as did every
+ * other page under /commercial bar Accounting. Stephanie works paperwork
+ * across several jobs at once; with six of these open, every tab was labelled
+ * the same and finding the right one meant clicking through them. The same
+ * string went into history and into any bookmark.
+ *
+ * The name is built the way the page's own heading builds it, so the tab and
+ * the H1 never disagree. A missing or unreadable record falls back rather than
+ * throwing — a metadata failure would take the whole page down with it.
+ */
+export async function generateMetadata({ params }: { params: PP }) {
+  try {
+    const { id } = await params;
+    if (!UUID_RE.test(id)) return { title: "Opportunity" };
+    const sb = commercialDb();
+    const { data } = await sb
+      .from("commercial_opportunities")
+      .select(
+        "title, title_override, title_override_mode, client_name, property_street, account_id",
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (!data) return { title: "Opportunity" };
+    let accountName: string | null = null;
+    if (data.account_id) {
+      const { data: acct } = await sb
+        .from("commercial_accounts")
+        .select("company_name")
+        .eq("id", data.account_id)
+        .maybeSingle();
+      accountName = acct?.company_name ?? null;
+    }
+    return { title: jobDisplayName(data, accountName) || "Opportunity" };
+  } catch {
+    return { title: "Opportunity" };
+  }
+}
+
 type PP = Promise<{ id: string }>;
 type SP = Promise<{
   tab?: string;

@@ -26,6 +26,8 @@ import { TourButton } from "@/components/commercial/guide-tour-button";
  * from the same place, so the printed copy and the screen cannot drift.
  */
 
+export const metadata = { title: "How it works" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ as?: string }>;

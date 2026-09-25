@@ -16,6 +16,8 @@ import {
 } from "@/lib/commercial/repairs/db";
 import { SubmitButton } from "@/components/commercial/submit-button";
 
+export const metadata = { title: "Repairs" };
+
 export const dynamic = "force-dynamic";
 
 /**

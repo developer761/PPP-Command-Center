@@ -9,6 +9,8 @@ import { GroupedReport } from "@/components/commercial/grouped-report";
 import { viewIndex } from "@/components/commercial/tomco-report-page";
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 
+export const metadata = { title: "Pipeline" };
+
 export const dynamic = "force-dynamic";
 
 const STAGE_ACCENT: Record<string, string> = {

@@ -90,6 +90,24 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type PP = Promise<{ id: string }>;
+
+/** The tab says which GC. See the note on the opportunity page's own
+ *  generateMetadata for why every one of these was "PPP Command Center". */
+export async function generateMetadata({ params }: { params: PP }) {
+  try {
+    const { id } = await params;
+    if (!UUID_RE.test(id)) return { title: "Account" };
+    const { data } = await commercialDb()
+      .from("commercial_accounts")
+      .select("company_name")
+      .eq("id", id)
+      .maybeSingle();
+    return { title: data?.company_name || "Account" };
+  } catch {
+    return { title: "Account" };
+  }
+}
+
 type SP = Promise<{
   tab?: string;
   sub?: string;

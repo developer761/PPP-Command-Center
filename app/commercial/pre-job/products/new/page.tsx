@@ -27,6 +27,8 @@ import { MoneyInput } from "@/components/commercial/money-input";
  * user can fix without losing typed input.
  */
 
+export const metadata = { title: "New product" };
+
 export const dynamic = "force-dynamic";
 
 function parseDollarsToCents(raw: FormDataEntryValue | null): number | null {

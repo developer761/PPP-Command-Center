@@ -12,6 +12,8 @@ import NotificationsView from "@/components/notifications-view";
  * (platform access is enforced by the commercial layout).
  */
 
+export const metadata = { title: "Notifications" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ page?: string; filter?: string; kind?: string }>;

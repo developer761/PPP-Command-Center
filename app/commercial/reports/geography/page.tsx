@@ -9,6 +9,8 @@ import { GroupedReport } from "@/components/commercial/grouped-report";
 import { GEOGRAPHY_SPEC } from "@/lib/commercial/reports/tomco/geography-spec";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 
+export const metadata = { title: "Geography" };
+
 export const dynamic = "force-dynamic";
 
 // Palette cycled across dynamic groupings (states/towns) for the pie.

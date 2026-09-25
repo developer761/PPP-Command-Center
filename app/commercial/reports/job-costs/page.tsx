@@ -13,6 +13,8 @@ import { JOB_COSTS_SPEC } from "@/lib/commercial/reports/tomco/job-costs-spec";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import TrendChart from "@/components/trend-chart";
 
+export const metadata = { title: "Job costs report" };
+
 export const dynamic = "force-dynamic";
 
 // One color per cost bucket, reused by the composition bar + chips.

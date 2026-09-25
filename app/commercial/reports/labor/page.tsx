@@ -21,6 +21,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
  * about the work. The named breakdown is about people, and it is scoped.
  */
 
+export const metadata = { title: "Labor" };
+
 export const dynamic = "force-dynamic";
 
 type Preset = LaborPreset;

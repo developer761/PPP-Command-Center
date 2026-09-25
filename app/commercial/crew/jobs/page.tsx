@@ -3,6 +3,8 @@ import { listMyUpcomingShifts } from "@/lib/commercial/field-ops/schedule";
 import { todayEtIso } from "@/lib/commercial/field-ops/schedule";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
+export const metadata = { title: "My jobs" };
+
 export const dynamic = "force-dynamic";
 
 /**

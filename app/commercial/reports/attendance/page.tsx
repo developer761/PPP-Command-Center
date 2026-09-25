@@ -5,6 +5,8 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getAttendanceRows, ATTENDANCE_SPEC } from "@/lib/commercial/reports/tomco/attendance";
 import { TomcoReportPage, viewIndex, periodFrom } from "@/components/commercial/tomco-report-page";
 
+export const metadata = { title: "Attendance" };
+
 export const dynamic = "force-dynamic";
 
 const VIEWS = [

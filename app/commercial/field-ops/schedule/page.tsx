@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
  * R10.7 - the Week Grid is retired; the interactive Calendar is the one
  * scheduling surface. Old links (incl. ?week=) fold onto the calendar month.
  */
+export const metadata = { title: "Schedule" };
+
 export default async function SchedulePage({
   searchParams,
 }: {

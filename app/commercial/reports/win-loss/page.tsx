@@ -47,6 +47,8 @@ import { WIN_LOSS_SPEC } from "@/lib/commercial/reports/tomco/win-loss-spec";
  * card lists, the lessons feed is the bottom of the scroll.
  */
 
+export const metadata = { title: "Win / loss" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ from?: string; to?: string; preset?: string; view?: string }>;

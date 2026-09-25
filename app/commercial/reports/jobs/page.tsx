@@ -27,6 +27,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
 import { INPUT_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 
+export const metadata = { title: "Jobs in flight" };
+
 export const dynamic = "force-dynamic";
 
 /**

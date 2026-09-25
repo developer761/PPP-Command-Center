@@ -51,6 +51,8 @@ function factorLabel(raw: string | null): string {
  * Mobile: table → card grid on small screens.
  */
 
+export const metadata = { title: "Competitors" };
+
 export const dynamic = "force-dynamic";
 
 async function addAction(formData: FormData) {

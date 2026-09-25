@@ -7,6 +7,8 @@ import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/f
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import Link from "next/link";
 
+export const metadata = { title: "AR aging" };
+
 export const dynamic = "force-dynamic";
 
 const BUCKETS: { key: keyof Omit<ArAgingBuckets, "total">; label: string; color: string; tone: ChartTone; danger?: boolean }[] = [

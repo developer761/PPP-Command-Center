@@ -87,7 +87,8 @@ export async function generateMetadata({
   const sp = await searchParams;
   const view = pickFirst(sp.view) ?? "overview";
   const label = VIEWS.find((v) => v.key === view)?.label ?? "Accounting";
-  return { title: `Tomco Painting - ${label}` };
+  // Just the tab name — the layout's template adds "· Tomco Painting".
+  return { title: label };
 }
 
 /** FormData gives FormDataEntryValue | null; the helpers want a string. */

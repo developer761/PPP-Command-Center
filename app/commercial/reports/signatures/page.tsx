@@ -20,6 +20,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
  * also lives on each deal's Files tab.
  */
 
+export const metadata = { title: "Signatures" };
+
 export const dynamic = "force-dynamic";
 
 const CHIP: Record<"green" | "amber" | "grey" | "red", string> = {

@@ -23,6 +23,8 @@ import { isAdminEmail } from "@/lib/auth/admin";
  *  * Mobile: single column, ≥44px controls.
  */
 
+export const metadata = { title: "Operating company" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/operating-company";

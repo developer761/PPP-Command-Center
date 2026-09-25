@@ -36,6 +36,8 @@ const VALID_ROLES = new Set<AssignmentRole>(ASSIGNMENT_ROLES);
 // Documents tab, where the file usually arrives anyway.
 const ON_CREATE_DOC_CATEGORIES: DocumentCategory[] = [];
 
+export const metadata = { title: "New account" };
+
 export const dynamic = "force-dynamic";
 
 async function createAction(formData: FormData) {

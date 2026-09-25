@@ -18,6 +18,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
  * has invoiced.
  */
 
+export const metadata = { title: "Change orders report" };
+
 export const dynamic = "force-dynamic";
 
 type Preset = ChangeOrderPreset;

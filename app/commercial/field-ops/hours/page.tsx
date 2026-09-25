@@ -16,6 +16,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
+export const metadata = { title: "Hours log" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/hours";
 

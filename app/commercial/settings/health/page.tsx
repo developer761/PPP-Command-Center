@@ -24,6 +24,8 @@ import HealthChecksView from "@/components/health-checks-view";
  * (profile.is_admin OR email matches isAdminEmail allowlist).
  */
 
+export const metadata = { title: "Data health" };
+
 export const dynamic = "force-dynamic";
 
 export default async function CommercialHealthPage() {

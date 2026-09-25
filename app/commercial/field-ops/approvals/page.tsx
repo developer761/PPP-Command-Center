@@ -18,6 +18,8 @@ import { INPUT_CLS } from "@/lib/commercial/form-classnames";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { safeReturnPath } from "@/lib/commercial/safe-return";
 
+export const metadata = { title: "Approvals" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/approvals";
 

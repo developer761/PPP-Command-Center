@@ -30,6 +30,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
  * Mobile: single-column cards; every control ≥44px touch target.
  */
 
+export const metadata = { title: "Sales tax settings" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/tax";

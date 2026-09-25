@@ -54,6 +54,8 @@ import { MoneyInput } from "@/components/commercial/money-input";
 import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
 import { logDelete } from "@/lib/commercial/audit-log";
 
+export const metadata = { title: "Invoices" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{

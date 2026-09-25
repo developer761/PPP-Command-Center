@@ -11,6 +11,8 @@ import { DateField } from "@/components/commercial/date-field";
 import { LABEL_CLS } from "@/lib/commercial/form-classnames";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 
+export const metadata = { title: "Payroll" };
+
 export const dynamic = "force-dynamic";
 
 async function requireAdmin(): Promise<void> {

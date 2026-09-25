@@ -104,6 +104,8 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { MoneyInput } from "@/components/commercial/money-input";
 
+export const metadata = { title: "Proposal" };
+
 export const dynamic = "force-dynamic";
 
 function centsToDollarInput(cents: number): string {

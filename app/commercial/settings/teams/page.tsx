@@ -24,6 +24,8 @@ import {
 } from "@/lib/commercial/teams/db";
 import { SubmitButton } from "@/components/commercial/submit-button";
 
+export const metadata = { title: "Teams" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/teams";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

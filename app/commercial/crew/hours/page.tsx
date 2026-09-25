@@ -3,6 +3,8 @@ import { getMyHoursLog } from "@/lib/commercial/field-ops/hours-log";
 import { todayEtIso } from "@/lib/commercial/field-ops/schedule";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
+export const metadata = { title: "My hours" };
+
 export const dynamic = "force-dynamic";
 
 /** My Hours — this crew member's own scheduled-vs-worked. No company totals,

@@ -14,6 +14,30 @@ import { AssistantPanel } from "@/components/commercial/assistant-panel";
 import { assistantAvailable } from "@/lib/commercial/assistant/ask";
 import { Suspense } from "react";
 import { normalizeRole } from "@/lib/auth/roles";
+import type { Metadata } from "next";
+
+/**
+ * EVERY TAB READ "PPP Command Center".
+ *
+ * Eighty-eight of the eighty-nine pages under /commercial declared no title,
+ * so they all inherited the root one. Accounting was the only exception.
+ *
+ * That is not cosmetic for the people who use this. Stephanie works paperwork
+ * across several jobs at once and Alex reads it on a phone; with six tabs open
+ * every one of them is labelled identically, so picking the right one means
+ * clicking through them. It is also what a browser writes into history and a
+ * bookmark, so both are unusable too.
+ *
+ * The template lives here so a page only declares its own name: a static page
+ * exports `metadata = { title: "Accounts" }`, a record page generates one that
+ * names the record. `default` covers a page that declares nothing.
+ */
+export const metadata: Metadata = {
+  title: {
+    template: "%s · Tomco Painting",
+    default: "Tomco Painting · Commercial",
+  },
+};
 
 /**
  * /commercial — New Platform layout.
