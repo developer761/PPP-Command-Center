@@ -87,7 +87,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
       row(r.margin.label, d(r.margin.cents), "Margin %", r.margin.pct === null ? "" : r.margin.pct, r.margin.caveat ?? "");
       if (r.margin.vsContract) row(r.margin.vsContract.label, d(r.margin.vsContract.cents), "%", r.margin.vsContract.pct);
     }
-    if (f.laborUnratedHours > 0) row("WARNING", `${f.laborUnratedHours} crew hours have no cost rate — cost and margin are understated.`);
+    // Same correction as the nine screens: no cost rate is correct for a W-2
+    // employee, whose cost arrives when the payroll week is posted.
+    if (f.laborUnratedHours > 0) row("WARNING", `${f.laborUnratedHours} crew hours are not costed yet — cost and margin read high until that week is posted in Payroll.`);
   }
   blank();
 

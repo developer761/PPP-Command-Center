@@ -315,9 +315,22 @@ export function dealMargin(fin: {
     };
   }
 
+  /**
+   * The ninth surface carrying this sentence, and the one on every deal page.
+   *
+   * Eight screens were corrected earlier today; this one builds the string
+   * that feeds the deal's own margin card, so AIREF Building #1 still read
+   * "Margin understated — 326 crew hours have no cost rate" beside a "Crew
+   * hours 91" tile.
+   *
+   * Having no cost rate is CORRECT for a W-2 employee: their cost is the real
+   * Gusto liability, split across jobs when the week is posted. Telling
+   * somebody to fix it invites the double-count the payroll build exists to
+   * prevent. The hours are not misconfigured, they are waiting.
+   */
   const caveat =
     fin.laborUnratedHours > 0
-      ? `Margin understated — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} have no cost rate.`
+      ? `Margin reads high — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} not costed yet, until that week is posted in Payroll.`
       : null;
   return {
     pct,

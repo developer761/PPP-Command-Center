@@ -125,7 +125,12 @@ export default async function EmailHubPage({
           </p>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-md mx-auto">
             {emails.length === 0
-              ? "BCC a job's archive address on anything you send a GC and it files itself here, on the job, and on the GC."
+              ? // SAY WHERE THE ADDRESS IS. This told you to BCC "a job's
+                // archive address" and never said where to get one — and the
+                // Copy button lives two clicks away, inside a tab you would
+                // only open if you already knew. An instruction whose first
+                // step is missing is why this page stays empty.
+                "Open a job → Activity → Email Archive, and copy the address there. BCC it on anything you send the GC and it files itself here, on the job, and on the GC."
               : "Try a different search, or switch tab."}
           </p>
         </div>

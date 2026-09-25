@@ -89,7 +89,7 @@ export type StageKpiInput = {
    * depending which tab you were on.
    *
    * Worse, the caveat was dropped. `dealMargin` says things like "Margin
-   * understated — 12 crew hours have no cost rate", which is the difference
+   * reads high — 12 crew hours not costed yet", which is the difference
    * between a number you can quote and one you can't; the strip showed the
    * percentage alone.
    */
