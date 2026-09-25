@@ -552,6 +552,16 @@ const ASK_AVAILABILITY_GAP: Record<"window" | "day", string[]> = {
   ],
 };
 
+/**
+ * A customer asking to be phoned, in their own words.
+ *
+ * Deliberately narrow: "call" has to be aimed at US calling THEM. "I'll call
+ * you tomorrow" and "call it a day" are not requests, and "give us a call"
+ * on our own literature is not either.
+ */
+const ASKED_FOR_A_CALL =
+  /\b(?:call|llam\w*|telefone\w*)\b[^.?!]{0,24}\b(?:me|us|him|her|back|conmigo|me\s+llame)\b|\b(?:can|could|please|prefer|rather)\b[^.?!]{0,30}\b(?:call|speak|talk|phone)\b|\bhablar\s+por\s+tel[eé]fono\b|\bque\s+me\s+llamen\b/i;
+
 export function renderMessage(input: RenderInput): string {
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
@@ -616,6 +626,32 @@ export function renderMessage(input: RenderInput): string {
   }
 
   if (isSilent(input)) return "";
+
+  /**
+   * THEY ASKED FOR A CALL, SO SAY SOMEBODY WILL CALL.
+   *
+   * schedule_follow_up covers two situations the guide names together: "they
+   * asked to be CALLED, or to be contacted later." The template answered both
+   * with "I'll check back in with you later on", so a customer who asked for
+   * a phone call was told they would get another text. Seen in the simulator
+   * playing "please have someone call me".
+   *
+   * Read from their own words, never guessed: no call is promised unless they
+   * asked for one. No time is named, because nothing here knows the schedule.
+   */
+  if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
+    const es = input.language === "es";
+    const variants = es
+      ? [
+          "Claro que sí. Le pido a alguien de la oficina que lo llame.",
+          "Por supuesto. Hago que alguien de nuestro equipo se comunique con usted por teléfono.",
+        ]
+      : [
+          "No problem at all. I'll have someone from the office give you a call.",
+          "Of course. I'll get someone on our team to call you instead.",
+        ];
+    return variants[(input.turn ?? 0) % variants.length];
+  }
 
   /**
    * TURNING WORK DOWN SHOULD LEAVE A DOOR OPEN.

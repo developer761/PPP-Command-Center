@@ -328,6 +328,40 @@ describe("rendering an intent into words", () => {
     expect(out).not.toMatch(/last name/i);
   });
 
+  /**
+   * "THEY ASKED TO BE CALLED, OR TO BE CONTACTED LATER" — TWO SITUATIONS,
+   * ONE INTENT, AND THE TEMPLATE ONLY ANSWERED THE SECOND.
+   *
+   * Playing "please have someone call me" in the simulator: the bot chose
+   * schedule_follow_up correctly, then replied "I'll check back in with you
+   * later on", which is another text. The one thing they asked for was the
+   * one thing it did not say.
+   */
+  it("promises a call when a call is what they asked for", () => {
+    for (const t of [
+      "please have someone call me",
+      "can someone just call me instead? I'd rather talk than text",
+      "could I speak to someone on the phone",
+      "call me back please",
+    ]) {
+      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+      expect(out, t).toMatch(/call you|give you a call/i);
+      // Still no time named: nothing here knows the schedule.
+      expect(out, t).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b|tomorrow|monday/i);
+    }
+  });
+
+  it("does not invent a call for somebody who only wants time to think", () => {
+    for (const t of [
+      "I'll get back to you next week",
+      "let me check with my wife first",
+      "I'm not sure yet, can I come back to you later",
+    ]) {
+      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+      expect(out, t).not.toMatch(/call/i);
+    }
+  });
+
   /** Every template, on its own, must already satisfy the rule. */
   it("has no template that asks for too much by itself", () => {
     for (const intent of ALL) {
