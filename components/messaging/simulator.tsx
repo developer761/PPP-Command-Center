@@ -246,9 +246,9 @@ export default function Simulator({
                 </p>
                 {([
                   ["name", "Name", "Jeremy Saxe"],
-                  ["phone", "Texting them on", "516-784-6046"],
+                  ["phone", "Texting them on", "999-784-6046"],
                   ["email", "Email", "tom@example.com"],
-                  ["address", "Address", "166 S Park Ave, Rockville Centre, NY 11570"],
+                  ["address", "Address", "12 Oak St, Rockville Centre, NY 11570"],
                   ["inquiryScope", "What the enquiry said", "1500sqft Cape Cod, cedar shake cleaned and scraped, 2 coats exterior"],
                 ] as const).map(([k, label, placeholder]) => (
                   <label key={k} className="block">

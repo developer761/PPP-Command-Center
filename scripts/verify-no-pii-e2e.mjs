@@ -19,6 +19,8 @@
  * Nothing is written. It reads, reports, and exits non-zero on a finding.
  */
 import { createClient } from "@supabase/supabase-js";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { residualPii, suspectedNames } from "../lib/messaging/pii.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
@@ -95,7 +97,7 @@ const BY_DESIGN = new Set([
 /**
  * Kate's own teaching examples, which are supposed to be in the prompt.
  *
- * "Is 516-784-6046 and tom@x.com still the best contact?" is what teaches the
+ * "Is 999-784-6046 and tom@x.com still the best contact?" is what teaches the
  * read-back shape, and scrubbing it would remove the lesson.
  *
  * KEYED BY TABLE, ROW AND COLUMN, and the first version was not. It excused
@@ -144,6 +146,63 @@ const page = async (table, cols, key) => {
   }
   return out;
 };
+
+
+/**
+ * ── AND THE SOURCE TREE, WHICH THIS SWEEP NEVER LOOKED AT ───────────────
+ *
+ * Everything above reads the database. The database was ALL CLEAN while
+ * scripts/seed-kate-graded.mjs carried three real customers verbatim —
+ * "Customer: Hpolli@gmail.com", "Is 3059248125 and roberto_0810@hotmail.com
+ * the best contact" — and import-rated-conversations.mjs had a real phone and
+ * Gmail sitting in a COMMENT describing the PII leak it was written to fix.
+ * Committed, pushed, and invisible to a sweep that only queries Postgres.
+ *
+ * A full PII scan of the source is useless: it finds 538 hits, almost all of
+ * them deliberate vendor seed data in the commercial migrations, and a noisy
+ * check is worse than none.
+ *
+ * A PERSONAL INBOX DOMAIN is the precise signal. PPP staff are @precision-
+ * paintingplus.net, fixtures are @example.com, and nobody has a legitimate
+ * reason to write somebody's gmail into the messaging code. Scanned across
+ * 245 messaging files it finds exactly the three that were there and nothing
+ * else.
+ */
+const PERSONAL_INBOX =
+  /\b[A-Za-z0-9._%+-]+@(?:gmail|hotmail|yahoo|aol|outlook|icloud|live|msn|comcast|verizon|att)\.[a-z.]{2,}\b/gi;
+
+function sweepSource() {
+  const files = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d)) {
+      if (e.startsWith(".")) continue;
+      const p = join(d, e);
+      statSync(p).isDirectory() ? walk(p) : (/\.(ts|tsx|mjs)$/.test(e) && files.push(p));
+    }
+  };
+  for (const r of ["lib/messaging", "components/messaging", "app/messaging", "__tests__/messaging"]) {
+    try { walk(r); } catch {}
+  }
+  try {
+    for (const f of readdirSync("scripts")) {
+      if (/\.(mjs|ts)$/.test(f) && /sms|messag|kate|rated|class-a|training|lead/.test(f)) files.push(join("scripts", f));
+    }
+  } catch {}
+
+  let found = 0;
+  for (const f of files) {
+    readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(PERSONAL_INBOX)) {
+        found++;
+        console.log(`  \u2717 ${f}:${i + 1} carries a personal inbox address — ${m[0]}`);
+      }
+    });
+  }
+  console.log(found
+    ? `\n  ${found} personal inbox address(es) committed in ${files.length} messaging files`
+    : `  \u2713 ${String(files.length).padStart(3)} messaging source files \u00b7 no personal inbox addresses`);
+  return found;
+}
 
 let findings = 0, scanned = 0, columns = 0;
 
@@ -216,5 +275,7 @@ for (const table of TABLES) {
 }
 
 console.log(`\n  ${columns} text columns scanned, ${scanned} values read`);
+console.log("\nAND THE SOURCE TREE\n");
+findings += sweepSource();
 console.log(findings ? `\nFAILURES — ${findings} value(s) carry customer data\n` : "\nALL CLEAN\n");
 process.exit(findings ? 1 : 0);

@@ -8,7 +8,7 @@
  * was removed 2026-09-10 because it proves nothing either way."
  *
  * It proves nothing in both directions. "What's your name, email and phone
- * number?" is one question mark and three asks. "Is 516-784-6046 and
+ * number?" is one question mark and three asks. "Is 999-784-6046 and
  * tom@x.com still the best contact?" is one question mark and one ask,
  * because it reads back values we already hold for a single yes.
  *

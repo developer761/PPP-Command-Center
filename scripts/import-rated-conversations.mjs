@@ -170,7 +170,7 @@ try {
       // The transcripts go through scrub() and this did not, so the first
       // load of the per-finding files put 256 rows of real customer data into
       // the database: 143 addresses, 104 emails, 118 phone numbers. One read
-      // "Is 646-361-3637 and rsap462@gmail.com the best contact".
+      // "Is [PHONE] and [EMAIL] the best contact".
       //
       // These never reach a model — retrieval reads transcripts, not findings
       // — so it was not a prompt leak. It was worse in a quieter way: the
@@ -253,7 +253,7 @@ try {
         // her prose carries whatever the bot said — and the bot reads
         // addresses back. 113 of these held real customer data before this:
         // 73 addresses, 37 emails, 39 phone numbers, including "Is 10565
-        // Parkdale Avenue…" and "the lead is 6 Teak Rd, Wayne NJ 07470".
+        // Parkdale Avenue…" and "the lead is [ADDRESS]".
         //
         // should_have was already clean, because a corrective describes what
         // the bot SHOULD have done and has no reason to quote anybody. It is

@@ -35,8 +35,8 @@ const ALL = [...new Set([
  */
 describe("the templates obey the tone rules they enforce", () => {
   const known = {
-    address: "166 S Park Ave, Rockville Centre, NY 11570",
-    phone: "516-784-6046", email: "tom@example.com", scope: "interior painting",
+    address: "12 Oak St, Rockville Centre, NY 11570",
+    phone: "999-784-6046", email: "tom@example.com", scope: "interior painting",
   };
 
   it("uses no em dash, ellipsis or parentheses in any variant", () => {
@@ -107,7 +107,7 @@ describe("the templates obey the tone rules they enforce", () => {
   /** The phone we read back must not reintroduce parentheses. */
   it("reads a contact back without brackets", () => {
     const out = renderMessage({ intent: "confirm_contact", known });
-    expect(out).toContain("516-784-6046");
+    expect(out).toContain("999-784-6046");
     expect(out).not.toMatch(/[()]/);
   });
 });

@@ -14,9 +14,9 @@ const CFG: AgentConfigForRun = {
 
 const KNOWN = {
   name: "Tom",
-  phone: "+15167846046",
+  phone: "+19997846046",
   email: "tomrvc@example.com",
-  address: "166 S Park Ave, Rockville Centre, NY 11570",
+  address: "12 Oak St, Rockville Centre, NY 11570",
   inquiryScope: "1500sqft Cape Cod, cedar shake cleaned and scraped, 2 coats exterior",
 };
 
@@ -26,7 +26,7 @@ describe("the bot must not ask for what it already has", () => {
     const p = buildSystemPrompt(CFG, [], "new_lead", KNOWN);
     expect(p).toMatch(/NEVER ask for it/);
     expect(p).toMatch(/never ask them to type it out/i);
-    expect(p).toContain("516-784-6046");
+    expect(p).toContain("999-784-6046");
   });
 
   it("says so even when we hold nothing else — we always have the handset", () => {
@@ -68,7 +68,7 @@ describe("the bot must not ask for what it already has", () => {
 
   it("reads the address back instead of asking for it", () => {
     const out = renderMessage({ intent: "confirm_address", known: { address: KNOWN.address } });
-    expect(out).toContain("166 S Park Ave");
+    expect(out).toContain("12 Oak St");
     expect(out).toMatch(/correct address|right address/i);
   });
 
@@ -80,9 +80,9 @@ describe("the bot must not ask for what it already has", () => {
   it("confirms both contact details in one message, as Emily does well", () => {
     const out = renderMessage({
       intent: "confirm_contact",
-      known: { phone: "516-784-6046", email: "tomrvc@example.com" },
+      known: { phone: "999-784-6046", email: "tomrvc@example.com" },
     });
-    expect(out).toContain("516-784-6046");
+    expect(out).toContain("999-784-6046");
     expect(out).toContain("tomrvc@example.com");
   });
 
@@ -94,8 +94,8 @@ describe("the bot must not ask for what it already has", () => {
   it("formats the number for a human, not as E.164", () => {
     // Dashed, matching how Emily writes it in the conversation Kate graded
     // well — and because parentheses are on Kate's banned list.
-    expect(displayPhone("+15167846046")).toBe("516-784-6046");
-    expect(knownFields({ phone: "+15167846046" }).phone).toBe("516-784-6046");
+    expect(displayPhone("+19997846046")).toBe("999-784-6046");
+    expect(knownFields({ phone: "+19997846046" }).phone).toBe("999-784-6046");
   });
 
   it("treats blank and whitespace as not known", () => {

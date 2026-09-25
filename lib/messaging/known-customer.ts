@@ -42,12 +42,12 @@ const clean = (v: string | null | undefined): string | null => {
 };
 
 /**
- * Human-readable, because "+15167846046" in a text message reads like a
+ * Human-readable, because "+19997846046" in a text message reads like a
  * machine wrote it.
  *
  * Dashed rather than "(516) 784-6046" for two reasons, and the second one is
  * the real one. It matches how Emily actually writes it in the conversation
- * Kate graded well: "Is 516-784-6046 and tomrvc@gmail.com the best contact".
+ * Kate graded well: "Is 999-784-6046 and tom@example.com the best contact".
  * And Kate's tone rules ban parentheses, so the bracketed form would have put
  * a rule violation into every contact confirmation we send.
  *
