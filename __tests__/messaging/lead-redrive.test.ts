@@ -32,7 +32,29 @@ describe("a lead is only worth texting while they still remember asking", () => 
   it("holds a lead from last week, and says how old it is", () => {
     const d = shouldRedrive(held({ sfCreatedAt: hoursAgo(24 * 6), receivedAt: hoursAgo(24 * 6) }), { now: NOW });
     expect(d.redrive).toBe(false);
-    if (!d.redrive) expect(d.why).toMatch(/6 day\(s\) old/);
+    // The age is still reported — it just is not part of the sentence any
+    // more, because that is what split one cause across ten rows.
+    if (!d.redrive) expect(d.ageDays).toBe(6);
+  });
+
+  /**
+   * ONE CAUSE, ONE ROW.
+   *
+   * On the live screen 619 of 686 held leads were all past the age limit and
+   * arrived as ten separate rows — 84, 83, 80, 78, 74, 74, 72, 50, 15, 9 —
+   * because the age was baked into the reason string they were grouped by.
+   * The single most useful fact on the panel was the one it could not show.
+   */
+  it("groups every too-old lead under one reason, whatever their ages", () => {
+    const plan = planRedrive(
+      [2, 3, 5, 7, 10].map((d) => held({ sfCreatedAt: hoursAgo(24 * d), receivedAt: hoursAgo(24 * d) })),
+      { now: NOW },
+    );
+    const reasons = Object.keys(plan.holdReasons);
+    expect(reasons).toHaveLength(1);
+    expect(plan.holdReasons[reasons[0]]).toBe(5);
+    // And nothing is lost by collapsing them.
+    expect(plan.holdOldestDays[reasons[0]]).toBe(10);
   });
 
   it("holds right on the far side of the limit", () => {
@@ -149,7 +171,7 @@ describe("planning a release", () => {
   });
 
   it("releases nothing from an empty batch", () => {
-    expect(planRedrive([], { now: NOW })).toEqual({ release: [], holdReasons: {} });
+    expect(planRedrive([], { now: NOW })).toEqual({ release: [], holdReasons: {}, holdOldestDays: {} });
   });
 
   it("is safe to run against the real production mix", () => {

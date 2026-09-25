@@ -51,7 +51,7 @@ export type HeldSummary = {
   releasable: number;
   maxAgeHours: number;
   /** Why the rest are staying put, counted. */
-  holding: { why: string; count: number }[];
+  holding: { why: string; count: number; oldestDays?: number }[];
 };
 
 /** What is held, and what a release would do. Reads only. */
@@ -64,7 +64,7 @@ export async function heldLeads(maxAgeHours = DEFAULT_MAX_AGE_HOURS): Promise<He
     releasable: plan.release.length,
     maxAgeHours,
     holding: Object.entries(plan.holdReasons)
-      .map(([why, count]) => ({ why, count }))
+      .map(([why, count]) => ({ why, count, oldestDays: plan.holdOldestDays[why] }))
       .sort((a, b) => b.count - a.count),
   };
 }
