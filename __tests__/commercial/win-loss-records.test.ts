@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 
-import { summarizeWinLoss, type WinLossRecord } from "@/lib/commercial/win-loss/reports";
+import {
+  summarizeWinLoss,
+  hadHeadToHead,
+  wonValueRatioPct,
+  type WinLossRecord,
+} from "@/lib/commercial/win-loss/reports";
 import { WIN_LOSS_SPEC } from "@/lib/commercial/reports/tomco/win-loss-spec";
 import { buildGroups, grandTotals, type GroupNode } from "@/lib/commercial/reports/grouped/spec";
 
@@ -132,3 +137,63 @@ function sumRows(groups: GroupNode<WinLossRecord>[]): WinLossRecord[] {
   }
   return out;
 }
+
+/**
+ * Neither headline ratio may answer when there is nothing to compare against.
+ *
+ * The two tiles sit side by side and disagreed off the SAME rows. "Win rate"
+ * was fixed when Tomco's migration brought in 92 won jobs and no lost bids —
+ * the comment in the page still describes it — but "$ won ratio" was guarded
+ * only against a zero denominator, so with wins and no losses it printed a
+ * confident 100% "of every $ we bid on". On 2026-09-25 the live report read
+ * "—  ·  none lost on record" and "100%" next to each other.
+ *
+ * That is the shape of every partial guard: the case was understood, and
+ * narrowing it in one place left the other reading like a clean sweep. Alex
+ * reads these at the quarterly review, and 100% is what gets quoted.
+ *
+ * Pinned on the PREDICATES, not the JSX, so a tile rewrite cannot quietly
+ * reintroduce it.
+ */
+describe("a ratio with nothing on the other side", () => {
+  const won = (cents: number) => rec({ oppId: `w${cents}`, outcome: "won", valueCents: cents });
+  const lost = (cents: number) => rec({ oppId: `l${cents}`, outcome: "lost", valueCents: cents });
+
+  it("refuses both ratios when nothing has been lost — Tomco's live state", () => {
+    const s = summarizeWinLoss([won(100_00), won(900_00)]);
+    expect(s.wonCount).toBe(2);
+    expect(s.lostCount).toBe(0);
+    expect(hadHeadToHead(s), "no losses on record is not a head-to-head").toBe(false);
+    expect(
+      wonValueRatioPct(s),
+      "with no losses recorded the $ ratio is unknown, not 100%",
+    ).toBeNull();
+  });
+
+  it("refuses both when nothing has been won either", () => {
+    const s = summarizeWinLoss([rec({ oppId: "n1", outcome: "no_bid", valueCents: 500_00 })]);
+    expect(hadHeadToHead(s)).toBe(false);
+    expect(wonValueRatioPct(s)).toBeNull();
+  });
+
+  it("refuses when both sides exist but carry no value", () => {
+    // Real for unpriced bids: a percentage of nothing is still not an answer,
+    // and 0/0 would otherwise be NaN%.
+    const s = summarizeWinLoss([won(0), lost(0)]);
+    expect(hadHeadToHead(s)).toBe(true);
+    expect(wonValueRatioPct(s)).toBeNull();
+  });
+
+  it("answers as soon as there is a real head-to-head", () => {
+    const s = summarizeWinLoss([won(750_00), lost(250_00)]);
+    expect(hadHeadToHead(s)).toBe(true);
+    expect(wonValueRatioPct(s)).toBe(75);
+  });
+
+  it("is a DOLLAR ratio, not a count ratio — that is the whole point of the tile", () => {
+    // One big win against three small losses: 25% by count, 80% by dollars.
+    const s = summarizeWinLoss([won(400_00), lost(50_00), lost(30_00), lost(20_00)]);
+    expect(s.winRatePct).toBe(25);
+    expect(wonValueRatioPct(s)).toBe(80);
+  });
+});

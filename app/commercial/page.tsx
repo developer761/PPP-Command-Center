@@ -54,6 +54,7 @@ import { companyPnl } from "@/lib/commercial/reports/company-pnl";
 import { Worklist, WorklistClear } from "@/components/commercial/worklist";
 import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
 import { IN_DELIVERY_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { hadHeadToHead } from "@/lib/commercial/win-loss/reports";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -314,10 +315,24 @@ export default async function CommercialDashboardPage() {
       wasWonInPeriod(o, monthStartDate)
   );
   const totalDecidedForMonth = countableThisMonth.length;
-  const monthWinPct =
-    totalDecidedForMonth > 0
-      ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
-      : null;
+  /**
+   * A win rate needs something to have been lost.
+   *
+   * This guarded only the empty month, so a month with wins and no losses on
+   * record printed "100% win" on Alex's dashboard — which is not a measurement,
+   * it is the absence of one. Tomco's migration brought in 92 won jobs and no
+   * lost bids, so that is the live state, not a hypothetical. The Win/Loss
+   * report already refused this case; the tile that links to it did not.
+   *
+   * Same predicate as the report, from the same module, so they cannot drift.
+   */
+  const lostThisMonth = totalDecidedForMonth - wonThisMonth.length;
+  const monthWinPct = hadHeadToHead({
+    wonCount: wonThisMonth.length,
+    lostCount: lostThisMonth,
+  })
+    ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
+    : null;
   // D1: the tile and the report it opens must cover the SAME period. The tile
   // is this month; the report defaults to the quarter, so tapping a "62% win"
   // tile used to land on a different number with nothing explaining the gap.
@@ -702,7 +717,7 @@ export default async function CommercialDashboardPage() {
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
         <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
-        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : wonThisMonth.length > 0 ? "none lost on record" : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
         {/* Brendan 2026-09-23: "dashboard add pending bids for approval."
             A bid sitting in the approval queue is the one thing on this page
             nobody else will chase — the estimator has done their part and is

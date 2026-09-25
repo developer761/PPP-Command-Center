@@ -21,7 +21,7 @@ import { IconGlobe, IconMapPin, IconDollar } from "@/components/commercial/inlin
 import Link from "next/link";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { MoneyInput } from "@/components/commercial/money-input";
-
+import { hadHeadToHead } from "@/lib/commercial/win-loss/reports";
 function formatCentsCompact(cents: number): string {
   const dollars = cents / 100;
   if (dollars === 0) return "$0";
@@ -215,7 +215,11 @@ export default async function CompetitorsAdminPage({
   const totalLosses = Array.from(statsById.values()).reduce((s, x) => s + x.lost_count, 0);
   const totalWins = Array.from(statsById.values()).reduce((s, x) => s + x.won_count, 0);
   const totalDollarLost = Array.from(statsById.values()).reduce((s, x) => s + x.dollar_lost_cents, 0);
-  const overallWinRate = totalWins + totalLosses > 0
+  // Same rule as the Win/Loss report and the dashboard tile: a win rate needs
+  // something to have been lost. Guarding only the empty case meant a roster
+  // with wins and no recorded losses read 100% — a perfect record against
+  // every competitor, asserted from having filed no losses.
+  const overallWinRate = hadHeadToHead({ wonCount: totalWins, lostCount: totalLosses })
     ? Math.round((totalWins / (totalWins + totalLosses)) * 100)
     : null;
   const topRival = active.find((c) => (statsById.get(c.id)?.lost_count ?? 0) > 0) ?? null;

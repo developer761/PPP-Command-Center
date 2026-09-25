@@ -321,6 +321,40 @@ export async function getWinLossSummary(range: DateRange): Promise<WinLossSummar
   return summarizeWinLoss(await getWinLossRecords(range));
 }
 
+/**
+ * Is there anything to compare against — did we both win and lose?
+ *
+ * Both headline ratios on the Win/Loss report are meaningless without it, and
+ * they are meaningless in DIFFERENT directions, which is how the bug got in.
+ * With wins on record and no losses, "win rate" correctly printed "—" while
+ * "$ won ratio", guarded only against a zero denominator, printed a confident
+ * 100% "of every $ we bid on" — off the same rows, side by side. The live
+ * report said exactly that on 2026-09-25: 12 won, none lost, and a clean
+ * sweep in the second tile.
+ *
+ * One predicate, used by both, so they cannot disagree again.
+ */
+export function hadHeadToHead(s: Pick<WinLossSummary, "wonCount" | "lostCount">): boolean {
+  return s.wonCount > 0 && s.lostCount > 0;
+}
+
+/**
+ * Share of bid DOLLARS won, or null when there is nothing to compare against.
+ *
+ * Null rather than 0 or 100: "we have no record of losing" is not a result,
+ * and a tile is the wrong place to guess. The caller renders "—".
+ */
+export function wonValueRatioPct(
+  s: Pick<WinLossSummary, "wonCount" | "lostCount" | "wonValueCents" | "lostValueCents">,
+): number | null {
+  if (!hadHeadToHead(s)) return null;
+  const total = s.wonValueCents + s.lostValueCents;
+  // Both sides have records but both are valued at zero — real for unpriced
+  // bids. A percentage of nothing is still not an answer.
+  if (total === 0) return null;
+  return Math.round((s.wonValueCents / total) * 100);
+}
+
 function midpointCents(low: number | null, high: number | null): number {
   if (low == null && high == null) return 0;
   if (low == null) return high ?? 0;
