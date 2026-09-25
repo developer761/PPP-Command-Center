@@ -594,8 +594,9 @@ export default function Simulator({
             {(!overall || !tagKey) && (
               <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
                 {!overall && "Say how it went"}{!overall && !tagKey && ", and "}
-                {!tagKey && "pick which rule it shows at the top"} before sending it to training —
-                an untagged example counts towards the total and teaches none of Emily&apos;s rules.
+                {!tagKey && "pick which rule it shows at the top"}{" "}
+                before sending it to training — an untagged example counts
+                towards the total and teaches none of Emily&apos;s rules.
               </p>
             )}
             {exportNote && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600 leading-relaxed">{exportNote}</p>}

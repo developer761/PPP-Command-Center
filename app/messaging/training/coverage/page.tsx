@@ -60,7 +60,7 @@ export default async function TrainingCoverage() {
         </p>
         <p className="mt-2 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
           Three ways to fill a gap: <strong>write one</strong> if you already
-          know what a good version says, <strong>grade an imported one</strong>
+          know what a good version says, <strong>grade an imported one</strong>{" "}
           if Hatch has an example, or <strong>try it in the simulator</strong> —
           that produces a test rather than an example, but it tells you whether
           the bot gets the rule right at all.
@@ -129,8 +129,8 @@ export default async function TrainingCoverage() {
         <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3">
           {gradedNoReason > 0 && (
             <p className="text-[13px] text-ppp-orange-700 leading-relaxed">
-              <strong>{gradedNoReason}</strong> example{gradedNoReason === 1 ? " has" : "s have"} a
-              grade but no reason. &ldquo;Good&rdquo; on its own tells retrieval it
+              <strong>{gradedNoReason}</strong> example{gradedNoReason === 1 ? " has" : "s have"}{" "}
+              a grade but no reason. &ldquo;Good&rdquo; on its own tells retrieval it
               was good at <em>something</em>, which is not a signal it can use.
             </p>
           )}
