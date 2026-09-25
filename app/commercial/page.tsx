@@ -53,6 +53,7 @@ import { buildWorklist, worklistTotals } from "@/lib/commercial/worklist";
 import { companyPnl } from "@/lib/commercial/reports/company-pnl";
 import { Worklist, WorklistClear } from "@/components/commercial/worklist";
 import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
+import { IN_DELIVERY_STATUSES } from "@/lib/commercial/opportunities/constants";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -495,9 +496,23 @@ export default async function CommercialDashboardPage() {
   }
   const jobsInFlight = rankJobsInFlight(
     allProjectRows
-      // Finished jobs are not "in flight". They still count in the revenue
-      // totals above, which is why those load with includeClosed.
-      .filter((p) => p.opp.status !== "post_sale_closed")
+      /**
+       * WON AND WORKING — not everything that isn't finished.
+       *
+       * This excluded only `post_sale_closed`, so every open BID was a "job
+       * in flight". AVR-Lot C sat at the top of Alex's dashboard at $386k,
+       * 0% billed, flagged "no work order" — it is a proposal nobody has
+       * accepted yet, so of course it has no work order and of course nothing
+       * is billed. And because flagged rows sort FIRST, the panel led with
+       * three un-won bids wearing problems they cannot have.
+       *
+       * IN_DELIVERY_STATUSES is the existing answer to "won and under
+       * contract, not yet closed", and constants.ts says those three sets
+       * partition every status with no overlap and no gap. Finished jobs stay
+       * out, and still count in the revenue totals above, which is why those
+       * load with includeClosed.
+       */
+      .filter((p) => IN_DELIVERY_STATUSES.includes(p.opp.status))
       .map((p) => {
         const wo = woByOpp.get(p.opp.id);
         return {
