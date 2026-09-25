@@ -77,6 +77,53 @@ describe("the deal report rows include AIA money", () => {
 });
 
 /**
+ * A DRAFT IS NOT BILLED, AND A VOID IS NOT OWED — in this module too.
+ *
+ * The same file summed `balance_cents` across every live invoice whatever its
+ * status. On LMJ- Galil Brands -21 Newton Place that put a DRAFT invoice of
+ * $75,000 into "balance owed" on a $75,000 contract, so Scheduling showed
+ * $94,000 owed — the draft plus $19,000 genuinely due through AIA — while the
+ * job page, the AR sheet and the invoice panel all said $19k. Owed came out
+ * larger than the whole contract, on the report Brendan reads down to decide
+ * who to chase. The Bannett Group read $71,250 owed on a $37,500 contract for
+ * the same reason, and every draft in the book was inflating the grand total.
+ *
+ * The rule was already written down, one directory away, with its reasons:
+ * void is money nobody owes; a draft is owed but NOT BILLED, so it is listed
+ * as uninvoiced and never aged. This module re-derived instead of asking —
+ * the identical mistake found in the assistant's money tools the same day.
+ *
+ * Pinned as source because reconciling the real figures needs a database and
+ * this suite has none. What was missing was the CONSULTATION, not the
+ * arithmetic, so that is what is held. Proven to fail by deleting the guard.
+ */
+describe("the deal report rows respect invoice status", () => {
+  it("asks receivableVerdict rather than trusting every balance", () => {
+    expect(
+      src.includes("receivableVerdict"),
+      `${MODULE} feeds Scheduling and Open Sales; without this a draft counts as owed`,
+    ).toBe(true);
+  });
+
+  it("selects the column the verdict needs", () => {
+    // Asking for a status it never fetched is the silent half of this bug:
+    // `status` comes back undefined and every invoice looks like the default.
+    expect(src).toMatch(/\.select\("opportunity_id, status,/);
+  });
+
+  it("drops a void entirely and counts a draft as neither billed nor owed", () => {
+    expect(src).toMatch(/verdict === "skip"[\s\S]{0,80}continue/);
+    expect(src).toMatch(/verdict === "uninvoiced"[\s\S]{0,140}continue/);
+  });
+
+  it("still adds AIA on top, which is the other half of the same row", () => {
+    // The two fixes touch the same four lines; this catches one being undone
+    // while the other is edited.
+    expect(src).toMatch(/balanceCents:\s*m\.bal\s*\+/);
+  });
+});
+
+/**
  * The wider rule, so the next money report cannot quietly skip AIA: any
  * reports module that reads invoice balances should also know about AIA.
  * Listed explicitly rather than inferred, so adding a module is a decision.
