@@ -206,10 +206,21 @@ export const BRENDAN: RoleGuide = {
             "Who is on which job, by week. Put a crew on a day here and they get their schedule by email — in Spanish where that is their language.",
           steps: [
             "Click Field Ops in the left menu, then Calendar.",
-            "Find the week and the job.",
-            "Add the crew to the day.",
+            "Use Month or Week, and the arrows, to find the week.",
+            "Click the day. Pick the crew member and the work order, set the hours and any note.",
             "They get their schedule by email, in Spanish where that is their language.",
           ],
+          controls: [
+            { label: "Month / Week", kind: "filter", does: "Which span the grid shows. Week gives each day room for the whole crew; Month is the overview." },
+            // Named in words, not drawn: the handbook PDF's font cannot print
+            // a left arrow, and guide.test.ts catches it rather than letting
+            // the character vanish from the printed page.
+            { label: "The two arrows, and Today", does: "Move the grid back and forward. Today jumps to the current week or month." },
+            { label: "Copy week", does: "Repeats this week's crew onto next week. It asks you first about anyone who was off this week, so a holiday does not copy forward." },
+            { label: "A name in a day", kind: "link", does: "Opens that person's shift for the day, with their clock-in status." },
+          ],
+          watchOut:
+            "An empty calendar does not mean nobody worked. Hours also reach the platform through the clock station and the Hours Log, with no schedule behind them — which is how Tomco record most of their time today. So a blank month is a statement about scheduling, not about work done, and the page says so.",
         },
         {
           name: "Approvals",
