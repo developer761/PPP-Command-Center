@@ -336,6 +336,30 @@ export async function runAgentTurn(
     ...history.filter((t) => t.role === "customer").map((t) => t.text),
     inbound.description,
   ]);
+  /**
+   * THE CUSTOMER'S OWN WORDS, FOR THE RULES THAT JUDGE WHAT THEY SAID.
+   *
+   * inbound.description is written for the MODEL — "The customer liked the
+   * message: <our sentence>" — so it quotes us back. Two rule checks read it
+   * and both were reading our own text as theirs:
+   *
+   *   asksSomething() saw the question mark in OUR question and refused the
+   *   turn as question_left_unanswered, so a customer who simply LIKED a
+   *   message got a rejected turn and a handover.
+   *
+   *   the A9 echo check compared our reply against a string containing our
+   *   own previous sentence, so rephrasing a question — which is exactly what
+   *   a reaction to a question calls for — reads as echoing the customer.
+   *
+   * The same trap that put `Liked "..."` into inquiry_scope this morning, one
+   * layer up. normalizeInbound already answers it: text is null for a bare
+   * reaction, because they said nothing of their own.
+   *
+   * The PROMPT still gets the description. The model needs to know a photo
+   * arrived or a message was liked; the rules need to know what was said.
+   */
+  const ownWords = inbound.text ?? "";
+
   const reaction = reactionResponse(inbound, opts.lastAskedForInfo ?? false);
 
   // Their turns are quoted; ours are not. The asymmetry is the point: a
@@ -393,7 +417,7 @@ Choose the next action.`;
       // Ordering only applies to the new-lead flow. Nurture has no collection
       // steps to keep in order.
       stage: track === "new_lead" ? opts.stage : undefined,
-      customerText: inbound.description,
+      customerText: ownWords,
       negativeReaction: inbound.reaction?.sentiment === "negative",
       // The last thing WE said. Only meaningful when they reacted to it.
       lastIntent: opts.lastIntent,
@@ -440,7 +464,7 @@ Choose the next action.`;
       covers: coveredPhrase(opts.services),
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
-      customerText: inbound.description,
+      customerText: ownWords,
       // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
       // switch back to English on the next turn." So it reads every customer
       // message in the thread plus this one, not just the latest — somebody
