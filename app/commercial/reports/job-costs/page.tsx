@@ -113,7 +113,7 @@ export default async function JobCostsReportPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Tile label="Contract value" value={formatCentsCompact(t.contractCents)} tone="navy" sub={`${t.dealCount} ${t.dealCount === 1 ? "deal" : "deals"} · ${t.accountCount} ${t.accountCount === 1 ? "GC" : "GCs"}`} />
             <Tile label="Billed to date" value={formatCentsCompact(t.billedCents)} tone="brand" sub="pre-tax" />
-            <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · crew · subs" />
+            <Tile label="Total cost" value={formatCentsCompact(t.totalCostCents)} tone="amber" sub="materials · labor · crew" />
             <Tile label="Margin" value={t.marginPct === null ? "—" : `${t.marginPct}%`} tone={marginTone} sub={t.totalCostCents === 0 ? "no costs logged yet" : `${t.marginCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(t.marginCents))} · billed − cost`} />
           </div>
 
@@ -253,7 +253,9 @@ function DealRow({ d }: { d: JobCostRow }) {
   );
 }
 
-/** Stacked proportion bar of the seven cost buckets. */
+/** Stacked proportion bar of the cost buckets — driven by COST_BUCKET_COLUMNS,
+ *  so adding one reaches this without an edit. It said "seven" and there are
+ *  eight since employee labor arrived. */
 function CompositionBar({ buckets, total }: { buckets: CostBuckets; total: number }) {
   if (total <= 0) return <p className="text-[12px] text-ppp-charcoal-400">No costs logged yet.</p>;
   return (

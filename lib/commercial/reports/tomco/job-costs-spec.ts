@@ -32,6 +32,22 @@ export const JOB_COSTS_SPEC: ReportSpec<JobCostRow> = {
     { key: "contract", label: "Contract", kind: "money", amount: (r) => r.contractCents },
     { key: "billed", label: "Billed", kind: "money", amount: (r) => r.billedCents, secondary: true },
     { key: "materials", label: "Materials", kind: "money", amount: (r) => r.buckets.materials, secondary: true },
+    /**
+     * EMPLOYEE LABOR HAS A COLUMN NOW, and it is the big one.
+     *
+     * This spec is hand-written and lists a chosen few buckets, so adding
+     * `employeeLabor` to CostBuckets did not reach it — the report showed
+     * Materials and Sub labor beside a Total cost that included neither
+     * employee labor nor crew labor, and the columns visibly did not add up.
+     * On AIREF Building #2: $89,544.39 materials + $780.00 sub labor against
+     * $137,883.76 total, with $47,559 of Tomco's own payroll unaccounted for
+     * on screen.
+     *
+     * Since the crew went W-2 this is the LARGEST cost on most jobs —
+     * $507,342.39 across the book against $67,844.63 of subcontract labor —
+     * so leaving it out was leaving out the answer.
+     */
+    { key: "employee_labor", label: "Employee labor", kind: "money", amount: (r) => r.buckets.employeeLabor, secondary: true },
     { key: "labor", label: "Sub labor", kind: "money", amount: (r) => r.buckets.subLabor, secondary: true },
     { key: "cost", label: "Total cost", kind: "money", amount: (r) => r.totalCostCents },
     { key: "margin", label: "Margin", kind: "money", amount: (r) => r.marginCents },
