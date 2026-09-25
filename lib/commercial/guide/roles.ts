@@ -431,9 +431,10 @@ const MARY: RoleGuide = {
             { label: "Save", does: "Saves your changes to one carried-over line." },
             { label: "Remove", does: "Takes a line off this sheet only — do this once its certificate has been raised here. It deletes nothing on the job." },
             { label: "Export", does: "Downloads the AR sheet as a spreadsheet — the file that goes to Alex." },
+            { label: "Send receivables", does: "Not this sheet. It emails the RECEIVABLES sheet, from the other tab, to whoever is set up to get it. The AR sheet goes out through Export." },
           ],
           watchOut:
-            "Retention is held until close-out. It is not late, and it must never be chased as overdue. Only carried-over lines can be edited — a line generated from a certificate is changed on the job, not here.",
+            "Retention is held until close-out. It is not late, and it must never be chased as overdue. Only carried-over lines can be edited — a line generated from a certificate is changed on the job, not here. And the blue Send receivables button at the top does not send this sheet — it sends Receivables. Use Export for this one.",
         },
         {
           name: "Any tab › Print / PDF",

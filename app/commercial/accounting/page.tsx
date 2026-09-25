@@ -1179,7 +1179,23 @@ export default async function AccountingPage({
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
                 </svg>
-                Send
+                {/*
+                 * THE LABEL NAMES WHAT IT SENDS, off its own tab.
+                 *
+                 * This button sits in the page header on every tab and always
+                 * emails RECEIVABLES. On the AR sheet it sat one inch from an
+                 * Export that exports the AR sheet — so two adjacent buttons,
+                 * one meaning "this screen" and one meaning "a different
+                 * report", both labelled as though they meant the same thing.
+                 *
+                 * That tab is the one Mary's own job description is about:
+                 * "the sheet you send on". Her handbook says to Export it and
+                 * attach it, which is right, and a button reading Send beside
+                 * that instruction is a trap set for the one person it matters
+                 * most to. The tooltip was honest; nobody hovers a button that
+                 * looks like the obvious one.
+                 */}
+                {view === "receivables" ? "Send" : "Send receivables"}
               </PendingSubmitButton>
             </form>
           )}

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ROLES } from "@/lib/commercial/guide/roles";
 import {
   ACCOUNTING_PRIMARY_LABELS,
@@ -91,6 +93,40 @@ describe("the handbook and the Accounting tab bar agree", () => {
       missing,
       "these Accounting tabs are on the bar and in no chapter",
     ).toEqual([]);
+  });
+
+  /**
+   * THE SEND BUTTON NAMES WHAT IT SENDS.
+   *
+   * It sits in the Accounting page header on every tab and always emails the
+   * RECEIVABLES sheet. On the AR sheet tab it sat an inch from an Export that
+   * exports the AR sheet — two adjacent buttons, one meaning "this screen" and
+   * one meaning "a different report", labelled as though they meant the same
+   * thing. That tab is the one Mary's job is about: "the sheet you send on".
+   *
+   * Same class as three already closed here — a label that doesn't name its
+   * scope. The tooltip was honest, and nobody hovers the button that looks
+   * like the obvious one.
+   */
+  it("labels Send with its scope everywhere except its own tab", () => {
+    const src = readFileSync(
+      join(process.cwd(), "app/commercial/accounting/page.tsx"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(src).toMatch(/view === "receivables" \? "Send" : "Send receivables"/);
+  });
+
+  it("warns on the AR sheet that Send is not this sheet", () => {
+    // The one tab where the wrong button and the right one sit side by side.
+    const ar = ROLES.flatMap((g) => g.chapters.flatMap((c) => c.surfaces)).find(
+      (s) => s.name === "AR sheet",
+    ) as (Surface & { watchOut?: string; controls?: { label: string }[] }) | undefined;
+    expect(ar, "the AR sheet chapter is gone").toBeTruthy();
+    expect(ar!.watchOut ?? "").toMatch(/Send receivables/);
+    expect(
+      (ar!.controls ?? []).some((c) => c.label === "Send receivables"),
+      "the AR sheet chapter does not list the button sitting next to its Export",
+    ).toBe(true);
   });
 
   it("points every Accounting surface at a view the page serves", () => {
