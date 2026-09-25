@@ -46,7 +46,8 @@
     "check:soft-delete-uniques": "node scripts/check-soft-delete-uniques.mjs",
     "check:form-fields": "node scripts/check-duplicate-form-fields.mjs",
     "check:report-folders": "node --env-file=.env.local scripts/check-report-folders.mjs",
-    "verify:scenarios": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-scenarios-e2e.mjs"
+    "verify:scenarios": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-scenarios-e2e.mjs",
+    "import:optouts": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/import-optouts.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
