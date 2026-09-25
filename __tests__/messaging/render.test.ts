@@ -102,4 +102,33 @@ describe("rendering an intent into words", () => {
     const out = renderMessage({ intent: "answer_question", freeText: "Yes, we do cabinet refinishing." });
     expect(out).toContain("cabinet refinishing");
   });
+
+  /**
+   * THE TEMPLATE'S PUNCTUATION WINS AT A SLOT SEAM.
+   *
+   * Seen in the simulator against a real lead: Inquiry Notes ended in a full
+   * stop, the template adds its own, and the customer was sent
+   * "...two bathrooms.. Is that right?".
+   *
+   * Scope is somebody's typing — it comes from Salesforce Inquiry Notes now —
+   * so it ends however they left it, and every slot with punctuation behind it
+   * has the same seam.
+   */
+  it("does not double the punctuation when a slot value ends with it", () => {
+    for (const scope of [
+      "Paint ceiling walls baseboards 1450 sq ft apartment. Open living room and two bathrooms.",
+      "walls and ceilings, trim,",
+      "interior painting...",
+      "the hallway;",
+    ]) {
+      const out = renderMessage({ intent: "confirm_scope", turn: 0, known: { scope } });
+      expect(out, scope).not.toMatch(/[.,;:]{2}/);
+      expect(out, scope).toContain("Is that right?");
+    }
+  });
+
+  it("leaves a value alone when the template has no punctuation behind the slot", () => {
+    const out = renderMessage({ intent: "confirm_scope", turn: 0, known: { scope: "Kitchen cabinets, maybe 20 doors" } });
+    expect(out).toContain("Kitchen cabinets, maybe 20 doors");
+  });
 });

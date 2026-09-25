@@ -480,10 +480,18 @@ export function renderMessage(input: RenderInput): string {
       state: input.known?.state ?? null,
     };
     let missing = false;
-    pick = pick.replace(/\{(\w+)\}/g, (_m, key: string) => {
+    pick = pick.replace(/\{(\w+)\}/g, (_m: string, key: string, offset: number, whole: string) => {
       const val = v[key];
       if (!val) { missing = true; return ""; }
-      return val;
+      // THE TEMPLATE'S PUNCTUATION WINS.
+      //
+      // "Just to confirm, you're looking for: {scope}. Is that right?" with a
+      // scope that ends in a full stop rendered "...two bathrooms.. Is that
+      // right?" to the customer. Inquiry Notes is somebody's typing, so it
+      // ends however they left it, and every slot followed by punctuation has
+      // the same problem — this is fixed at the seam rather than per template.
+      const next = whole[offset + _m.length];
+      return next && /[.,;:!?]/.test(next) ? val.replace(/[.,;:]+$/, "") : val;
     });
     if (missing) return "";
   }
