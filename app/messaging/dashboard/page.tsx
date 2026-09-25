@@ -63,7 +63,15 @@ export default async function MessagingDashboard({
   const blockers = [
     { done: ready.activeWorkspaces > 0, label: `${ready.activeWorkspaces} workspaces live`, detail: "NY, NJ and Florida — one timezone." },
     { done: ready.missingNumbers === 0, label: ready.missingNumbers === 0 ? "Every live workspace has a number" : `${ready.missingNumbers} live workspace(s) with no number`, detail: "Without one it cannot send from the local area code the customer replies to." },
-    { done: ready.optOuts > 0, label: ready.optOuts > 0 ? `${ready.optOuts} numbers suppressed` : "Opt-out list not imported", detail: "Hard gate on the first send. Somebody who told Hatch to stop has told PPP to stop." },
+    {
+      done: ready.optOuts > 0,
+      // Says WHICH of each, because 24,288 of these are email addresses and
+      // "numbers suppressed" is not what a reader takes from that.
+      label: ready.optOuts > 0
+        ? `${ready.optOutPhones} numbers and ${ready.optOutEmails} addresses suppressed`
+        : "Opt-out list not imported",
+      detail: "Hard gate on the first send. Somebody who told Hatch or Salesforce to stop has told PPP to stop.",
+    },
     { done: transport.live, label: transport.live ? "Carrier connected — messages are being delivered" : "Carrier not delivering", detail: transport.why },
     { done: true, label: "Inbound replies can be received", detail: "POST /api/webhooks/sms-inbound, SNS-signature verified. Point the End User Messaging topic at it once the numbers exist." },
     { done: ready.cronSecret, label: ready.cronSecret ? "Scheduler authenticated" : "CRON_SECRET not set", detail: "The tick refuses to run without it rather than running open." },

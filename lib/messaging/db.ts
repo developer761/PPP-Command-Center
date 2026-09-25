@@ -151,15 +151,33 @@ export const REPORT_PAGE_SIZE = 25;
 
 export async function readinessChecks() {
   const sb = messagingDb();
-  const [{ count: optOuts }, { count: workspaces }, { count: campaigns }, { data: numbered }] = await Promise.all([
-    sb.from("sms_opt_outs").select("*", { count: "exact", head: true }),
+  const [{ count: optOutPhones }, { count: optOutEmails }, { count: workspaces }, { count: campaigns }, { data: numbered }] = await Promise.all([
+    /**
+     * ACTIVE suppressions, counted the way the GATE counts them.
+     *
+     * This counted every row in the table. Two things wrong with that, and
+     * gate-deps already spells out the first: "a list of 200 rows where every
+     * one has opted back in is an empty suppression list" — opted_in_at was
+     * never filtered here, so somebody who texted START still counted towards
+     * the launch check that says it is safe to send.
+     *
+     * And it counted email addresses as though they were phone numbers. After
+     * Katie's Salesforce import that is 24,288 addresses reported as
+     * "numbers suppressed", which is not what anybody reading it would think.
+     */
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("phone_e164", "is", null).is("opted_in_at", null),
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("email", "is", null).is("opted_in_at", null),
     sb.from("sms_sub_accounts").select("*", { count: "exact", head: true }).eq("is_active", true),
     sb.from("sms_campaigns").select("*", { count: "exact", head: true }).eq("is_active", true),
     sb.from("sms_sub_accounts").select("phone_e164").eq("is_active", true),
   ]);
   const missingNumbers = (numbered ?? []).filter((w) => !w.phone_e164).length;
   return {
-    optOuts: optOuts ?? 0,
+    optOuts: (optOutPhones ?? 0) + (optOutEmails ?? 0),
+    optOutPhones: optOutPhones ?? 0,
+    optOutEmails: optOutEmails ?? 0,
     activeWorkspaces: workspaces ?? 0,
     activeCampaigns: campaigns ?? 0,
     missingNumbers,
