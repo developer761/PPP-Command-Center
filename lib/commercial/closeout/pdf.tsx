@@ -110,7 +110,7 @@ function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer |
   );
 }
 
-function TransmittalDoc({ pkg, items, dealName, accountName, company, logo, pageHeightScale = 1 }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; pageHeightScale?: number }) {
+function TransmittalDoc({ pkg, items, dealName, accountName, company, logo, signature, pageHeightScale = 1 }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null; pageHeightScale?: number }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
   const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
@@ -170,6 +170,38 @@ function TransmittalDoc({ pkg, items, dealName, accountName, company, logo, page
             <Text>{pkg.remarks}</Text>
           </View>
         ) : null}
+
+        {/* ── Signed ────────────────────────────────────────────────────
+            This document went out UNSIGNED, while a comment in the submittal
+            transmittal asserted the opposite in writing — "the close-out
+            transmittal, the warranty, the work order and the change order all
+            had it". Three of those four did. Anyone reading the code to
+            answer "is the closeout signed?" would have said yes.
+
+            A transmittal is a document somebody stands behind: the GC's
+            close-out clerk files it and comes back to it. Unsigned, it is a
+            list. Same tap-to-sign image and the same fall back to a blank
+            rule as the warranty on the next page. */}
+        <View style={{ marginTop: 22, flexDirection: "row", gap: 24 }} wrap={false}>
+          <View>
+            <Text style={styles.fwLabel}>Transmitted by</Text>
+            {signature ? (
+              <Image src={signature} style={styles.sigImage} />
+            ) : (
+              <View style={styles.fwRule} />
+            )}
+            <Text>
+              {company.signature_name ?? fromCompany}
+              {company.signature_name && company.signature_title
+                ? `, ${company.signature_title}`
+                : ""}
+            </Text>
+          </View>
+          <View>
+            <Text style={styles.fwLabel}>Date</Text>
+            <Text>{dateStr}</Text>
+          </View>
+        </View>
 
         <Text style={styles.footer}>{fromCompany} · Project Close-Out Transmittal</Text>
       </Page>
@@ -310,7 +342,7 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature, pag
   );
 }
 
-export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; pageHeightScale?: number }): Promise<Buffer> {
+export async function renderCloseoutTransmittalPdf(input: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null; pageHeightScale?: number }): Promise<Buffer> {
   return renderToBuffer(<TransmittalDoc {...input} />);
 }
 
