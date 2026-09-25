@@ -27,9 +27,24 @@ import { validateAction, intentsForTrack, stageFromIntents } from "../lib/messag
 import { renderMessage, isSilent } from "../lib/messaging/render.ts";
 import { knownFromThread } from "../lib/messaging/known-from-thread.ts";
 import { conversationLanguage } from "../lib/messaging/language.ts";
+import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
 import { classifyInbound } from "../lib/messaging/compliance.ts";
 import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
+import { addressGap } from "../lib/messaging/address.ts";
 
+/**
+ * WHAT THIS CANNOT SEE.
+ *
+ * It builds the validate context and the render input the way agent-run does,
+ * which means it holds a SECOND COPY of that wiring. So it proves the gate
+ * and the templates behave, and it cannot prove agent-run still passes them
+ * what it should — remove offsiteReason from agent-run and this stays green.
+ *
+ * That is the same two-copies problem this codebase keeps producing, and the
+ * honest fix is to lift the render-input construction into one function both
+ * call. Until then: this catches what the rules do, not what the caller
+ * forgets.
+ */
 let pass = 0, fail = 0;
 const ok = (label, cond, extra = "") => {
   if (cond) { pass++; console.log(`  ✓  ${label}${extra ? "  " + extra : ""}`); }
@@ -78,8 +93,11 @@ function waysThrough(scenario) {
       address: !!derived.address,
       inquiryScope: !!derived.inquiryScope,
     },
-    stage: derived.stage,
+    stage: track === "new_lead" ? derived.stage : undefined,
     priorIntents,
+    // A11: WHICH HALF is missing. agent-run passes this, and without it a
+    // partial address reads as a complete one and blocks the ask.
+    addressGap: derived.address ? addressGap(derived.address) : undefined,
     customerText: ownWords,
   };
 
@@ -95,6 +113,7 @@ function waysThrough(scenario) {
         photos: mediaCount,
         known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
         customerText: ownWords,
+        offsiteReason: offsiteReasonFor(ownWords),
         covers: COVERS,
         language,
       });
@@ -112,7 +131,7 @@ function waysThrough(scenario) {
       const rendered = renderMessage({
         intent, freeText: v.action.freeText, turn: history.length, photos: mediaCount,
         known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
-        customerText: ownWords, covers: COVERS, language,
+        customerText: ownWords, offsiteReason: offsiteReasonFor(ownWords), covers: COVERS, language,
       });
       if (!rendered) return "validates but renders nothing";
     }
@@ -124,7 +143,7 @@ function waysThrough(scenario) {
       const out = renderMessage({
         intent, freeText: v.action.freeText, turn: history.length, photos: mediaCount,
         known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
-        customerText: ownWords, covers: COVERS, language,
+        customerText: ownWords, offsiteReason: offsiteReasonFor(ownWords), covers: COVERS, language,
       });
       if (out) return out;
     }
@@ -166,6 +185,56 @@ const SCENARIOS = [
   { name: "asks a direct question mid-flow", text: "do you do the prep work too?", priorIntents: ["ask_project_details"], wants: "answer_question" },
   { name: "quote already sent, goes quiet", track: "nurture", text: "still thinking about it", wants: "ask_for_decision" },
   { name: "quote already sent, accepts", track: "nurture", text: "yes lets go ahead with it", wants: "accepted" },
+
+  // ── A2: outside the service area ──────────────────────────────────────
+  { name: "out of state address", text: "paint the whole exterior, I am at 4821 Oak Lane, Dallas TX 75201",
+    known: { zip: "75201", state: "Texas" }, wants: "confirm_address" },
+
+  // ── A7 triggers: the customer's own reason for a remote quote ─────────
+  { name: "cannot get to the property", text: "I cannot be at the house for the next month, it is a rental",
+    priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "offer_offsite_quote" },
+  { name: "asks to be quoted from photos", text: "can you just quote it from the pictures I sent?",
+    mediaCount: 2, priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "offer_offsite_quote" },
+  { name: "wants the quote by text", text: "can you text me the quote instead of coming out?",
+    priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "offer_offsite_quote" },
+
+  // ── A6 rows, as a customer would phrase them ──────────────────────────
+  { name: "cabinets in Queens", text: "refinish my kitchen cabinets", wants: "ask_address" },
+  { name: "one wall of wallpaper", text: "I want wallpaper hung on one accent wall", wants: "ask_address" },
+  { name: "drywall patches", text: "just need a few holes patched in the drywall", wants: "ask_address" },
+  { name: "shared space in a building", text: "we need the lobby and corridors of our condo building painted", wants: "ask_address" },
+
+  // ── A11 and A41: partial and refused addresses ────────────────────────
+  { name: "gives a street but no zip", text: "its 482 Marchmont Ave",
+    priorIntents: ["ask_project_details", "ask_address"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "ask_address" },
+  { name: "gives a zip but no street", text: "11530",
+    priorIntents: ["ask_project_details", "ask_address"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "ask_address" },
+  { name: "refuses to give the street", text: "I would rather not give my address over text",
+    priorIntents: ["ask_project_details", "ask_address"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "acknowledge_negative" },
+
+  // ── A40: parking, which is not declining ──────────────────────────────
+  { name: "has to check with someone first", text: "let me check with my wife and get back to you",
+    priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },
+
+  // ── A33: a question only the estimator can answer ─────────────────────
+  { name: "asks about color matching", text: "can you match the existing color on the brick?",
+    priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "defer_to_estimator" },
+  { name: "asks when you can come", text: "what times do you have available this week?",
+    priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "defer_to_estimator" },
+
+  // ── the unpleasant end of the range ───────────────────────────────────
+  { name: "is abusive", text: "stop wasting my time you idiots", wants: "bailout" },
+  { name: "wrong number", text: "who is this? I think you have the wrong number", wants: "discard" },
+
+  // ── shapes, not sentences ─────────────────────────────────────────────
+  { name: "sends an emoji only", text: "😀", priorIntents: ["ask_project_details"], wants: "ask_project_details" },
+  { name: "sends a very long message", text: "hi there so we bought this house last year and its a colonial built in 1974 and honestly the whole thing needs doing, the living room and dining room have wallpaper we hate, the kitchen cabinets are that orange oak, upstairs there are three bedrooms and a hallway, and outside the trim is peeling badly on the south side, we are not in a rush but would like it done before the holidays if possible", wants: "ask_address" },
+  { name: "sends two photos with a caption", text: "here is the wall I mean", mediaCount: 2, wants: "ask_project_details" },
+
+  // ── nurture, further in ───────────────────────────────────────────────
+  { name: "quote already sent, wants a call", track: "nurture", text: "can the estimator call me to go through it?", wants: "offer_estimator_call" },
+  { name: "quote already sent, declines", track: "nurture", text: "we went with someone else, thanks", wants: "lost" },
+  { name: "quote already sent, asks a question", track: "nurture", text: "does the price include the primer?", wants: "defer_to_estimator" },
 ];
 
 console.log("\nEVERY SCENARIO — is there a way through?\n");
@@ -181,7 +250,7 @@ for (const s of SCENARIOS) {
      open.length ? `${open.length} legal` : "EVERY INTENT REFUSED OR SILENT");
   if (s.wants) {
     const have = open.includes(s.wants);
-    ok(`  …and "${s.wants}" is available`, have, have ? "" : probe(s.wants));
+    ok(`  …and "${s.wants}" is available [${s.name}]`, have, have ? "" : probe(s.wants));
 
     /**
      * AND IT HAS TO COME OUT IN THEIR LANGUAGE.
@@ -199,6 +268,30 @@ for (const s of SCENARIOS) {
     }
   }
 }
+
+/**
+ * AND NOTHING ANY OF THEM CAN SAY IS A PRICE OR AN INVENTED TIME.
+ *
+ * The model cannot put either into an outgoing message, because it does not
+ * write outgoing messages. This checks the other half: that no TEMPLATE
+ * reachable from any of these scenarios carries one either. Kate's A1 and the
+ * availability rule are the two that cost PPP money when they break.
+ */
+console.log("");
+let unsafe = 0;
+for (const s of SCENARIOS) {
+  if (classifyInbound(s.text) === "opt_out") continue;
+  const { open, say } = waysThrough(s);
+  for (const intent of open) {
+    const said = say(intent);
+    if (!said) continue;
+    if (/\$|\b\d+\s*(?:dollars|usd|dolares)\b/i.test(said)) { unsafe++; console.log(`     price in ${s.name}/${intent}: ${said}`); }
+    if (/\b\d{1,2}\s*(?:am|pm)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|jueves|viernes)\b/i.test(said)) {
+      unsafe++; console.log(`     time in ${s.name}/${intent}: ${said}`);
+    }
+  }
+}
+ok("no reply reachable from any scenario quotes a price or names a day", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
 
 // The opt-out path, checked from the other side.
 console.log("");

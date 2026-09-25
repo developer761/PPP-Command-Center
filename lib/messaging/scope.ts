@@ -185,6 +185,20 @@ const WORK_WORD =
   // cabinets" was not scope until this bracket.
   /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat(?:s|ing|ed)?|seal\w*|sand\w*|spray\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackl\w*|skim\s?coat\w*|wallpaper\w*|(?:pressure|power)[\s-]?wash\w*)\b/i;
 
+/**
+ * THE SERVICES ARE SUBJECTS TOO.
+ *
+ * "just need a few holes patched in the drywall" described no job, because
+ * drywall is a service PPP sells and was not a SUBJECT — so the scope never
+ * resolved, the stage stayed at 0, and asking for the address came back
+ * out_of_order. Same for wallpaper, which A6 gained a routing row for today.
+ *
+ * And the shared spaces A6 now routes as commercial: a lobby and a corridor
+ * are where the work is, and neither was a place this could recognise.
+ */
+const SUBJECT_EXTRA =
+  /\b(?:dry\s?wall|sheet\s?rock|wall\s?paper|plaster|stucco|lobb(?:y|ies)|corridors?|common\s+areas?|floors?|patios?|sheds?|driveways?|gutters?|columns?|mantels?|wainscot\w*)\b/i;
+
 const SUBJECT =
   /\b(?:rooms?|bedrooms?|bathrooms?|bath|kitchens?|living\s?rooms?|dining\s?rooms?|hallways?|stairs?|stairwells?|closets?|basements?|garages?|attics?|ceilings?|walls?|trim|baseboards?|mouldings?|moldings?|cabinets?|doors?|windows?|shutters?|decks?|fences?|porch(?:es)?|sidings?|soffits?|railings?|houses?|homes?|apartments?|condos?|units?|offices?|interiors?|exteriors?|bd|br|ba)\b/i;
 
@@ -228,7 +242,7 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length < MIN_SCOPE_CHARS || t.length > MAX_SCOPE_CHARS) return null;
   if (isPlaceholderScope(t)) return null;
-  const subject = SUBJECT.test(t) || SUBJECT_ES.test(t);
+  const subject = SUBJECT.test(t) || SUBJECT_ES.test(t) || SUBJECT_EXTRA.test(t);
   const counted = COUNTED.test(t) || COUNTED_ES.test(t);
   if (!subject && !counted) return null;
   // A verb, or measurements against a subject, which says the same thing.

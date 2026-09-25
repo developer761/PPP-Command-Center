@@ -20,7 +20,7 @@ import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
 import { quoteCustomer, UNTRUSTED_NOTE } from "./untrusted";
 import { addressGap } from "./address";
-import { jobRoute } from "./offsite";
+import { jobRoute, offsiteReasonFor } from "./offsite";
 import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
@@ -462,6 +462,10 @@ Choose the next action.`;
       // Capped, because this goes out as a text message and the full list is
       // fifteen rows long.
       covers: coveredPhrase(opts.services),
+      // A7's MANDATED reason, matched from what the customer actually said.
+      // Nothing supplied this before, so offer_offsite_quote rendered empty
+      // every time and the turn escalated instead of making the offer.
+      offsiteReason: offsiteReasonFor(ownWords),
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
       customerText: ownWords,

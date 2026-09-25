@@ -351,3 +351,62 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
     why: parts.length === 1 ? parts[0].why : parts.map((p) => p.why).join(", and "),
   };
 }
+
+/**
+ * WHY THIS CUSTOMER QUALIFIES FOR A REMOTE QUOTE, IN WORDS.
+ *
+ * A7 mandates a reason and it is the ONLY place in the system where a
+ * justification belongs in an ask: "for projects like this we like to visit in
+ * person, but since [reason], we can provide a quick quote."
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────
+ *
+ * Nothing supplied that reason. Anywhere. `offsiteReason` appeared in
+ * render.ts's input type and in the template, and no caller ever passed it —
+ * so offer_offsite_quote rendered EMPTY every time, and an empty render is a
+ * dropped turn that escalates to a person.
+ *
+ * A7 is live and critical. It means every customer who cannot get to the
+ * property, wants the quote by text, or asks to be quoted from their own
+ * photos has been handed to a human instead of being offered the thing the
+ * rule exists to offer.
+ *
+ * Found by a scenario sweep asking "does the right move actually produce a
+ * message", not by reading the code — the code looks complete.
+ *
+ * ── THE REASON IS MATCHED, NEVER INVENTED ───────────────────────────────
+ *
+ * Phrased to follow "but since". Each one comes from a trigger in A7's own
+ * list, so the sentence the customer reads is grounded in something they
+ * actually said. A reason the bot made up for departing from the normal route
+ * is worse than no reason at all, which is why null is a real answer here.
+ */
+const A7_TRIGGERS: { re: RegExp; reason: string }[] = [
+  // "cannot meet within 2 weeks, INCLUDING no access to the property yet"
+  { re: /\b(?:no|not have|don'?t have|without)\s+access\b|\bcan'?t\s+(?:be|get)\s+(?:at|to|into)\b|\bnot\s+(?:be\s+)?able\s+to\s+be\s+at\b|\bdon'?t\s+live\s+(?:there|near)\b|\bout\s+of\s+(?:state|town|the country)\b|\bit\s+is\s+a\s+rental\b/i,
+    reason: "you're not able to be at the property" },
+  { re: /\bcannot\s+meet\b|\bcan'?t\s+meet\b|\bnot\s+(?:around|available)\s+for\s+(?:the\s+next\s+)?(?:\w+\s+)?(?:weeks?|months?)\b|\baway\s+for\b|\bnext\s+month\b/i,
+    reason: "you're not able to meet for a while" },
+  // "ASKS to be quoted from photos or measurements they supplied"
+  { re: /\bquote\s+it\s+from\s+the\s+(?:pictures?|photos?|images?)\b|\b(?:from|off)\s+(?:the\s+)?(?:pictures?|photos?)\s+I\s+sent\b|\bcan\s+(?:you|I)\s+(?:just\s+)?(?:quote|send)\b[^.?!]{0,24}\b(?:pictures?|photos?|measurements?)\b|\bgo\s+off\s+(?:the\s+)?(?:pictures?|photos?)\b/i,
+    reason: "you've got photos we can work from" },
+  // "explicitly wants the QUOTE by text"
+  { re: /\b(?:text|email)\s+me\s+the\s+(?:quote|estimate|price)\b|\bquote\s+(?:by|over|via)\s+(?:text|email)\b|\bsend\s+(?:me\s+)?(?:the\s+)?(?:quote|estimate)\b[^.?!]{0,20}\b(?:text|email)\b/i,
+    reason: "you'd rather have the quote by text" },
+  // "ASKS TO SPEAK WITH THE ESTIMATOR BY PHONE rather than meet"
+  { re: /\b(?:speak|talk)\s+(?:to|with)\s+(?:the\s+)?estimator\b[^.?!]{0,24}\b(?:phone|call)\b|\bestimator\s+call\s+me\b/i,
+    reason: "you'd rather speak with the estimator by phone" },
+  // "wants only a price / rough estimate / ballpark"
+  { re: /\b(?:just|only)\s+(?:want|need|after|looking for)\b[^.?!]{0,20}\b(?:a\s+)?(?:price|ballpark|rough\s+(?:idea|estimate|number)|estimate)\b|\bballpark\b|\brough\s+(?:price|idea|number)\b/i,
+    reason: "you're just after a rough price for now" },
+  // "available ONLY outside our booking windows"
+  { re: /\bonly\s+(?:free|available)\b[^.?!]{0,24}\b(?:evenings?|weekends?|nights?|after\s+\d)\b|\bafter\s+hours\b/i,
+    reason: "you're only free outside our usual hours" },
+];
+
+export function offsiteReasonFor(customerText: string | null | undefined): string | null {
+  const t = (customerText ?? "").trim();
+  if (!t) return null;
+  for (const { re, reason } of A7_TRIGGERS) if (re.test(t)) return reason;
+  return null;
+}
