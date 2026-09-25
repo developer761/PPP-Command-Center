@@ -108,7 +108,14 @@ const BY_DESIGN = new Set([
  * check stops checking, quietly, while still printing a tick.
  */
 const ALLOWED = new Set([
-  "sms_class_a_rules.A22.rule_card",
+  // A22 IS NO LONGER HERE. Kate, 2026-09-24: "you can modify the example to
+  // remove the actual phone number + email!" — so it now reads "Is [PHONE]
+  // and [EMAIL] still the best contact?", which teaches the same read-back
+  // shape and carries nothing. One fewer thing this sweep has to excuse.
+  //
+  // A13 stays: "Is 12 Oak St correct for the project address?" is a textbook
+  // address, not a customer's. It is the one exception left, and it is keyed
+  // to a single row and column so it cannot quietly cover anything else.
   "sms_class_a_rules.A13.rule_card",
 ]);
 
