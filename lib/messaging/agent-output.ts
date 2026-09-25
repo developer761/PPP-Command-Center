@@ -929,6 +929,41 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
           `${missing.length === 1 ? "was" : "were"} never asked for or confirmed`,
       };
     }
+
+    /**
+     * ASKING IS NOT COLLECTING, AND SUCCESS CLAIMS COLLECTING.
+     *
+     * The legs above are satisfied by having ASKED, deliberately: that is what
+     * covers A41's refusal carve-out without having to detect a refusal. But
+     * it means a customer who replies "ok" to all four questions walks the bot
+     * through every step, and `success` was allowed holding nothing at all.
+     * Seen in the simulator playing exactly that.
+     *
+     * Kate's own definition of the outcome is "Details, address, contact and
+     * availability collected. Checking the schedule." A Success with an empty
+     * record tells the office a job is ready to book when there is nothing to
+     * book it against, and her 2026-09-25 A3 says what should happen instead:
+     * where attempts have not produced the information, "the bot HANDS THE
+     * CONVERSATION TO A PERSON rather than looping or defaulting".
+     *
+     * ONLY success. phone_pricing keeps the ask-based test, because A3's
+     * carve-out explicitly allows a zip alone there once a street refusal has
+     * been honoured.
+     */
+    if (a.intent === "success" && ctx.knownFields) {
+      const held = ctx.knownFields;
+      const empty = [
+        !held.inquiryScope && "the project details",
+        !held.address && "the address",
+        !held.email && !held.phone && "any contact details",
+      ].filter(Boolean) as string[];
+      if (empty.length) {
+        return {
+          ok: false, reason: "details_never_collected",
+          detail: `this closes the conversation as booked, but we do not hold ${empty.join(" or ")}`,
+        };
+      }
+    }
   }
 
   // A2: NOTHING PROMISES COVERAGE UNTIL THE ZIP SAYS WE HAVE IT.
