@@ -59,7 +59,24 @@ export type ThreadMessage = {
   created_at: string;
 };
 
+/**
+ * A conversation id that cannot exist is NOT FOUND, not a system fault.
+ *
+ * [conversationId] is a dynamic segment, so it catches every unmatched path
+ * under /messaging. Postgres rejects a non-uuid with 22P02, loadThread threw,
+ * and a stale bookmark or a mistyped URL — /messaging/reports, when the route
+ * is /messaging/reporting — was shown as "This screen could not load,
+ * something went wrong reading the data" with a reference number, which reads
+ * like an outage. not-found.tsx was sitting right there, unreachable.
+ *
+ * The comment below still holds for a real id: a failed read must not be
+ * reported as a missing conversation. This is the other direction — an id
+ * that is not an id at all never reaches the database.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function loadThread(id: string) {
+  if (!UUID.test(id)) return null;
   const sb = messagingDb();
   const { data: conv, error } = await sb
     .from("sms_conversations")
