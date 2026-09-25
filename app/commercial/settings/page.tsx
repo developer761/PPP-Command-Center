@@ -45,6 +45,10 @@ const CARDS: Card[] = [
     blurb:
       "The company identity on every document — name, address, phone, website, logo + signature. This is who proposals, work orders, and invoices come from.",
     icon: <IconBuilding />,
+    // Admin-gated as of today — it stamps the signature on every invoice, AIA
+    // certificate, transmittal and warranty the company sends. The card has to
+    // follow the page, or it becomes another silent bounce.
+    adminOnly: true,
   },
   {
     // Karan 2026-09-17: "put this in settings, make a new tab for it and call
@@ -55,6 +59,10 @@ const CARDS: Card[] = [
     blurb:
       "The whole picture in Alex's inbox on a schedule — is the company making money, what is owed, what came in, and the AR sheet in full. Off until somebody turns it on; preview one to yourself first.",
     icon: <IconClock />,
+    // The page behind this is `requireSettingsAdmin`, so without the flag it
+    // was offered to Mary and Kelvi and then redirected them OUT of Settings
+    // entirely, with no message. Every other admin-only card carries it.
+    adminOnly: true,
   },
   {
     href: "/commercial/settings/notifications",

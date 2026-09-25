@@ -2157,12 +2157,13 @@ export default async function OpportunityDetailPage({
    * commercial user. A rep could read the profit on every job by clicking
    * through the pipeline.
    */
-  const canSeeMargin = await (async () => {
-    if (!pageViewer) return false;
+  const viewerRole = await (async () => {
+    if (!pageViewer) return null;
     const p = await getProfileByUserId(pageViewer.id);
-    const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(pageViewer.email));
-    return role === "admin" || role === "account_manager";
+    return normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(pageViewer.email));
   })();
+  const canSeeMargin = viewerRole === "admin" || viewerRole === "account_manager";
+
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
   // Weighted tile matches the dashboard instead of reading $0.
@@ -5139,6 +5140,23 @@ async function InfoTab({
    *  the same render. */
   oppProposalTotal?: number;
 }) {
+  /**
+   * Settings → Teams is admin-only and redirects everyone else to /commercial
+   * with no message. The line naming it is shown to EVERYBODY on purpose — it
+   * was added because Brendan could not find where teams are made. Keeping the
+   * words and dropping the LINK for non-admins preserves the reason it exists
+   * without throwing Mary out of the page she was reading.
+   */
+  const viewerIsAdmin = await (async () => {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    if (!data?.user) return false;
+    const prof = await getProfileByUserId(data.user.id);
+    return (
+      normalizeRole(prof?.role, prof?.is_admin ?? isAdminEmail(data.user.email)) === "admin"
+    );
+  })();
+
   // ── Everything this tab reads, in ONE wave ──────────────────────────────
   //
   // These were three sequential awaits — teams, then contacts, then the
@@ -5456,36 +5474,39 @@ async function InfoTab({
             {effectiveTeam.team.members.length === 1 ? "" : "s"}
             {effectiveTeam.inherited ? " · inherited from the customer" : ""}
             {" · "}
-            <Link
-              href="/commercial/settings/teams"
-              className="text-cc-brand-700 hover:underline"
-            >
-              Edit teams
-            </Link>
+            {viewerIsAdmin ? (
+              <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                Edit teams
+              </Link>
+            ) : (
+              <span className="text-ppp-charcoal-400">teams are managed in Settings</span>
+            )}
           </p>
         ) : (
           <p className="text-[11px] text-ppp-charcoal-500 -mt-1">
             {allTeams.length === 0 ? (
               <>
                 No teams yet — build one in{" "}
-                <Link
-                  href="/commercial/settings/teams"
-                  className="font-semibold text-cc-brand-700 hover:underline"
-                >
-                  Settings → Teams
-                </Link>{" "}
+                {viewerIsAdmin ? (
+                  <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">
+                    Settings → Teams
+                  </Link>
+                ) : (
+                  <span className="font-semibold">Settings → Teams</span>
+                )}{" "}
                 (e.g. “Tomco Suffolk”: sales rep, estimator, office contact),
                 then pick it here and everyone lands on the job with their role.
               </>
             ) : (
               <>
                 Picking a team adds its people to this job with their roles.{" "}
-                <Link
-                  href="/commercial/settings/teams"
-                  className="text-cc-brand-700 hover:underline"
-                >
-                  Manage teams
-                </Link>
+                {viewerIsAdmin ? (
+                  <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                    Manage teams
+                  </Link>
+                ) : (
+                  <span className="text-ppp-charcoal-400">an admin can manage teams</span>
+                )}
               </>
             )}
           </p>
