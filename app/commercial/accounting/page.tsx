@@ -16,7 +16,7 @@ import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDi
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
-import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
+import { ACTIVITY_PRESETS, LEDGER_DEFAULT, activityRange, resolvePreset, type ActivityPreset } from "@/lib/commercial/reports/presets";
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
@@ -814,7 +814,7 @@ export default async function AccountingPage({
   // Its own query keys (`tp`/`td`/`tparty`/`tundep`) so switching between the
   // Receivables view and this one never carries a filter across and quietly
   // narrows a different list.
-  const txPeriod = resolvePreset(pickFirst(sp.tp), ACTIVITY_PRESETS, ACTIVITY_DEFAULT);
+  const txPeriod = resolvePreset(pickFirst(sp.tp), ACTIVITY_PRESETS, LEDGER_DEFAULT);
   const rawDir = pickFirst(sp.td);
   const txDirection: TxnDirection | "all" = rawDir === "in" || rawDir === "out" ? rawDir : "all";
   const txParty = pickFirst(sp.tparty)?.trim() || null;
@@ -833,7 +833,7 @@ export default async function AccountingPage({
       if (v) p.set(k, v);
       else p.delete(k);
     };
-    set("tp", txPeriod === ACTIVITY_DEFAULT ? null : txPeriod);
+    set("tp", txPeriod === LEDGER_DEFAULT ? null : txPeriod);
     set("td", txDirection === "all" ? null : txDirection);
     set("tparty", txParty);
     set("tundep", txUndeposited ? "1" : null);
@@ -884,7 +884,7 @@ export default async function AccountingPage({
     // it on a tab switch means re-picking the month every time.
     if (v === "tax" || v === "reimbursements") {
       const p = new URLSearchParams({ view: v });
-      if (txPeriod !== ACTIVITY_DEFAULT) p.set("tp", txPeriod);
+      if (txPeriod !== LEDGER_DEFAULT) p.set("tp", txPeriod);
       return `${BASE}?${p.toString()}`;
     }
     const qs = viewQs(v);
@@ -1800,7 +1800,7 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}${txQuery({ tp: p.key === ACTIVITY_DEFAULT ? null : p.key })}`,
+                href: `${BASE}${txQuery({ tp: p.key === LEDGER_DEFAULT ? null : p.key })}`,
               }))}
             />
             <NavSelect
@@ -1847,7 +1847,7 @@ export default async function AccountingPage({
             <ExportCsvLink
               href="/api/commercial/reports/transactions/export"
               params={{
-                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(txPeriod !== LEDGER_DEFAULT ? { tp: txPeriod } : {}),
                 ...(txDirection !== "all" ? { td: txDirection } : {}),
                 ...(txParty ? { tparty: txParty } : {}),
                 ...(txUndeposited ? { tundep: "1" } : {}),
@@ -2229,7 +2229,7 @@ export default async function AccountingPage({
               {salesTax.noCertCount === 1 ? " is" : "s are"} marked exempt with no certificate on file —{" "}
               {formatCentsFull(salesTax.noCertBaseCents)} of work. NY capital-improvement exemptions are
               per-project, so the certificate belongs on the job that claimed it.{" "}
-              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
+              <Link href={`${BASE}?view=tax&nocert=1${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="font-semibold underline">
                 Show just those
               </Link>
             </p>
@@ -2243,18 +2243,18 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}?view=tax${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
+                href: `${BASE}?view=tax${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}${pickFirst(sp.nocert) === "1" ? "&nocert=1" : ""}`,
               }))}
             />
             {pickFirst(sp.nocert) === "1" && (
-              <Link href={`${BASE}?view=tax${txPeriod !== ACTIVITY_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
+              <Link href={`${BASE}?view=tax${txPeriod !== LEDGER_DEFAULT ? `&tp=${txPeriod}` : ""}`} className="text-[12px] font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] sm:min-h-[38px] px-1">
                 Show all invoices
               </Link>
             )}
             <ExportCsvLink
               href="/api/commercial/reports/sales-tax/export"
               params={{
-                ...(txPeriod !== ACTIVITY_DEFAULT ? { tp: txPeriod } : {}),
+                ...(txPeriod !== LEDGER_DEFAULT ? { tp: txPeriod } : {}),
                 ...(pickFirst(sp.nocert) === "1" ? { nocert: "1" } : {}),
               }}
               label="Export for filing"
@@ -2386,7 +2386,7 @@ export default async function AccountingPage({
               choices={ACTIVITY_PRESETS.map((p): NavChoice => ({
                 value: p.key,
                 label: p.label,
-                href: `${BASE}?view=reimbursements${p.key === ACTIVITY_DEFAULT ? "" : `&tp=${p.key}`}`,
+                href: `${BASE}?view=reimbursements${p.key === LEDGER_DEFAULT ? "" : `&tp=${p.key}`}`,
               }))}
             />
             <span className="text-[11px] text-ppp-charcoal-400">

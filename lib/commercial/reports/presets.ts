@@ -280,6 +280,21 @@ export const ACTIVITY_PRESETS: { key: ActivityPreset; label: string }[] = [
 
 export const ACTIVITY_DEFAULT: ActivityPreset = "all";
 
+/**
+ * The TRANSACTIONS ledger opens on this month, not all time.
+ *
+ * Its own default, deliberately separate from ACTIVITY_DEFAULT: the
+ * receivables chase list must keep defaulting to the whole book, because
+ * hiding old debt is the one thing a collections screen must never do, and
+ * there is a test saying so.
+ *
+ * The ledger has the opposite problem. On "all time" it renders 10,908kb of
+ * HTML — ten and a half megabytes, growing weekly — against 1,347kb for a
+ * month. Nothing is hidden: the period control is right there, it names the
+ * window, and All time is one click away.
+ */
+export const LEDGER_DEFAULT: ActivityPreset = "this_month";
+
 /** Monday of the ET week containing a YYYY-MM-DD. Matches the payroll week
  *  already used by the labor report — two different "weeks" in one platform
  *  would make a Sunday shift land in different weeks on different screens. */

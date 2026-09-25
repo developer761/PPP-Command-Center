@@ -62,6 +62,19 @@ export type StageKpiInput = {
   collectedCents?: number | null;
   openBalanceCents?: number | null;
   grossMarginCents?: number | null;
+  /**
+   * May THIS viewer see cost and margin?
+   *
+   * "Rep-facing surfaces never show cost or margin" is the finance boundary
+   * this platform states in `requireFinanceViewer`'s own comment — and the
+   * deal page rendered gross profit and margin % to anybody who could open it,
+   * which is every commercial user. A rep could read the profit on every job
+   * by clicking through the pipeline.
+   *
+   * Defaults to true so an un-updated caller renders exactly as before; the
+   * deal page passes the real answer.
+   */
+  canSeeMargin?: boolean;
   grossMarginPct?: number | null;
   /** True while a job is only part-billed, so the margin is a running figure
    *  rather than the final one. Saying so is the difference between a number
@@ -242,7 +255,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
       });
       }
     }
-    if (hasContract && i.grossMarginPct != null) {
+    if (hasContract && i.grossMarginPct != null && i.canSeeMargin !== false) {
       out.push({
         key: "margin",
         // The source's own name for it, so this tab and the Costs tab agree.
@@ -291,7 +304,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
     if ((i.approvedChangeOrderCents ?? 0) !== 0) {
       out.push({ key: "cos", label: "Approved COs", value: money(i.approvedChangeOrderCents), href: "?tab=project&sub=change-orders" });
     }
-    if (i.grossMarginPct != null && hasContract) {
+    if (i.grossMarginPct != null && hasContract && i.canSeeMargin !== false) {
       out.push({
         key: "margin",
         label: i.marginLabel ?? (i.marginProvisional ? "Margin so far" : "Margin"),
@@ -367,7 +380,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
   }
 
   if (phase === "closed") {
-    if (hasContract && i.grossMarginPct != null) {
+    if (hasContract && i.grossMarginPct != null && i.canSeeMargin !== false) {
       out.push({
         key: "final_margin",
         // "Final" is worth saying on a closed job — but only when it IS final.

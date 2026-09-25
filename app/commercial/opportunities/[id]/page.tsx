@@ -271,6 +271,9 @@ import { statusPillTone } from "@/lib/commercial/opportunities/status-tone";
 import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { MoneyInput } from "@/components/commercial/money-input";
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -2145,6 +2148,21 @@ export default async function OpportunityDetailPage({
         () => false,
       )
     : false;
+  /**
+   * COST AND MARGIN ARE FINANCE-ONLY.
+   *
+   * `requireFinanceViewer` states the boundary in its own comment —
+   * "Rep-facing surfaces never show cost or margin" — and this page rendered
+   * gross profit and margin % to anybody who could open it, which is every
+   * commercial user. A rep could read the profit on every job by clicking
+   * through the pipeline.
+   */
+  const canSeeMargin = await (async () => {
+    if (!pageViewer) return false;
+    const p = await getProfileByUserId(pageViewer.id);
+    const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(pageViewer.email));
+    return role === "admin" || role === "account_manager";
+  })();
   // Bid low/high is gone from the create forms (2026-08); pricing lives on the
   // proposal now. Supply the current proposal total so a bid-less deal's
   // Weighted tile matches the dashboard instead of reading $0.
@@ -2626,6 +2644,7 @@ export default async function OpportunityDetailPage({
   const pathMargin = pathFin ? dealMargin(pathFin) : null;
 
   const stageKpiList = stageKpis({
+    canSeeMargin,
     status: opp.status,
     subStatus: opp.sub_status,
     todayIso: etTodayIso(),

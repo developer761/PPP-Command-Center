@@ -8,6 +8,9 @@ import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { BrandAssetUpload } from "@/components/commercial/brand-asset-upload";
 import { SignaturePad } from "@/components/commercial/signature-pad";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 /**
  * Operating Company — the single identity that flows into the generated
@@ -25,12 +28,28 @@ export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/operating-company";
 
 async function requireCommercialUser() {
-  // Roles are open for now (Karan 2026-07-31) — any commercial user can manage
-  // the operating company (so e.g. Brendan can set up his own signature).
+  /**
+   * ADMIN ONLY.
+   *
+   * It was open to any commercial user (Karan 2026-07-31, "so e.g. Brendan can
+   * set up his own signature") — a decision made when every login WAS an
+   * admin. Kelvi's rep login and the crew logins did not exist yet.
+   *
+   * What sits behind this page is the company's legal name and address, and
+   * the SIGNATURE NAME, TITLE and image stamped on invoices, AIA billing,
+   * transmittals, warranties, work orders and statements — plus the logo. One
+   * upload changes every document the company sends, with no confirmation and
+   * nobody notified.
+   *
+   * Brendan and Stephanie are admins, so the original intent still holds.
+   */
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
+  const profile = await getProfileByUserId(user.id);
+  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  if (role !== "admin") redirect("/commercial/settings");
   return user;
 }
 
