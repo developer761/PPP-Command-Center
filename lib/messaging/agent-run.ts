@@ -399,6 +399,9 @@ Choose the next action.`;
       // Capped, because this goes out as a text message and the full list is
       // fifteen rows long.
       covers: coveredPhrase(opts.services),
+      // What they actually said. Decides whether a discard is a wrong number
+      // (silence) or a real customer asking about work we do not cover.
+      customerText: inbound.description,
     };
     const rendered = renderMessage(renderInput);
 

@@ -499,6 +499,19 @@ export function outOfScopePromise(text: string): { word: string; clause: string 
   return null;
 }
 
+/**
+ * Does the CUSTOMER's message name work PPP does not cover?
+ *
+ * A bare mention, deliberately — the opposite of the promise test above. When
+ * WE say "furniture" the question is whether we are promising it; when THEY
+ * say it, naming it is the whole signal. This is what separates Kate's two
+ * discards: "not an estimate request" (a wrong number, and silence is right)
+ * from "work we do not cover" (a real customer owed an answer).
+ */
+export function mentionsWorkWeDoNotDo(text: string | null | undefined): boolean {
+  return !!text && OUT_OF_SCOPE.test(text);
+}
+
 /** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
 export function promisesOutOfScopeWork(text: string): boolean {
   return outOfScopePromise(text) !== null;

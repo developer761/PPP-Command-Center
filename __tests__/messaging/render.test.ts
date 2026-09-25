@@ -218,6 +218,33 @@ describe("rendering an intent into words", () => {
     expect(out).not.toMatch(/[—–]/);
   });
 
+  /**
+   * THE CUSTOMER'S OWN WORDS ARE THE OTHER HALF OF THE SIGNAL.
+   *
+   * "Is there a project on file" only recognises work PPP PAINTS — scope
+   * capture is built from the rooms and surfaces it sells — so "a big
+   * standalone bookcase and a dresser" resolved to nothing and the customer
+   * got silence. Which is precisely the case this branch was written for.
+   *
+   * Watched it happen three times in the simulator before the reason was
+   * visible.
+   */
+  it("answers a customer who names work PPP does not cover, with nothing on file", () => {
+    const customerText = "Hi, do you guys paint furniture? I have a big standalone bookcase and a dresser I want redone in black";
+    const out = renderMessage({
+      intent: "discard", turn: 0, customerText,
+      covers: "interior painting, exterior painting, cabinets and drywall",
+    });
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toMatch(/interior painting/);
+  });
+
+  it("stays silent on a wrong number, which names no work at all", () => {
+    for (const customerText of ["Hi is this Joe's Pizza?", "wrong number sorry", "who is this"]) {
+      expect(renderMessage({ intent: "discard", turn: 0, customerText, covers: "interior painting" }), customerText).toBe("");
+    }
+  });
+
   it("still turns work down when no services are configured", () => {
     // The list comes from the workspace, and a workspace can have none. The
     // message must not disappear because the pivot is unavailable.
