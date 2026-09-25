@@ -1808,6 +1808,21 @@ export async function insertCommercialProposalSentNotifications(input: {
   <p style="font-size:12px;color:#666;margin-top:32px;">— PPP Commercial Command Center</p>
 </div>`;
 
+  /**
+   * SENDING IT RESOLVES "ready to send".
+   *
+   * The Action Needed bar reads unread actionable notifications and never
+   * re-checks whether the work is still outstanding, so an "Approved —
+   * ready to send" sat on the bar after the proposal had been sent AND
+   * superseded. Marked read, never deleted: the bell is a history.
+   */
+  {
+    const { resolveActionItems, PROPOSAL_ACTION_KINDS } = await import(
+      "./resolve-action-items"
+    );
+    await resolveActionItems({ link: relativeLink, kinds: PROPOSAL_ACTION_KINDS });
+  }
+
   let fanout = 0;
   await Promise.allSettled(
     recipients.map(async (uid) => {
