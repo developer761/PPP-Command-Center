@@ -152,7 +152,11 @@ export function AccountHoverCard({
                   </span>
                   {data.invoiced_cents > 0 && (
                     <span className="block">
-                      <strong>${(data.invoiced_cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> invoiced
+                      {/* "billed", not "invoiced": this figure now includes
+                          AIA applications, and most of Tomco's big GCs bill by
+                          certificate rather than invoice. Calling it invoiced
+                          would be precise about the wrong thing. */}
+                      <strong>${(data.invoiced_cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> billed
                     </span>
                   )}
                   <span className="block text-ppp-charcoal-500">

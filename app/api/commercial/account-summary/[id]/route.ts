@@ -79,10 +79,36 @@ export async function GET(
       .maybeSingle(),
   ]);
 
-  const invoiced_cents = ((invoiceRes.data ?? []) as { total_cents: number }[]).reduce(
-    (acc, r) => acc + (r.total_cents ?? 0),
-    0
-  );
+  /**
+   * AIA COUNTS HERE TOO — the hover card is a GC's size at a glance.
+   *
+   * This summed invoices alone. LMJ Management & Construction, the biggest GC
+   * in the book, carries 18 AIA applications across its jobs — AIREF #1 at
+   * $189,434.20, #2 at $272,448.21, #3 and #4 besides. The card showed
+   * $456,723.49 for an account that has billed well over a million.
+   *
+   * Same rollup every other money surface uses, so the hover card and the
+   * account page cannot disagree. Scoped to this account's opportunities: the
+   * applications table is keyed by opportunity, not account.
+   */
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const { data: oppRows } = await sb
+    .from("commercial_opportunities")
+    .select("id")
+    .eq("account_id", id)
+    .is("deleted_at", null);
+  const oppIds = ((oppRows ?? []) as { id: string }[]).map((o) => o.id);
+  let aiaBilledCents = 0;
+  if (oppIds.length > 0) {
+    for (const [, roll] of await aiaBillingRollupBulk(oppIds)) {
+      aiaBilledCents += roll.billedCents;
+    }
+  }
+  const invoiced_cents =
+    ((invoiceRes.data ?? []) as { total_cents: number }[]).reduce(
+      (acc, r) => acc + (r.total_cents ?? 0),
+      0,
+    ) + aiaBilledCents;
   const last_activity_at =
     (latestRes.data as { updated_at?: string } | null)?.updated_at ?? null;
 
