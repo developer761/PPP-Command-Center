@@ -22,6 +22,17 @@ import type { WinLossRecord } from "@/lib/commercial/win-loss/reports";
 /** Won before Lost before No bid, whatever the alphabet thinks. */
 const OUTCOME_ORDER: Record<string, number> = { Won: 0, Lost: 1, "No bid": 2 };
 
+/**
+ * Under "Why we lost", an actual reason outranks the two buckets that are not
+ * losses. Reasons fall through to `0<label>`, which sorts alphabetically ahead
+ * of both — so a new reason needs no entry here.
+ */
+const REASON_GROUP_ORDER: Record<string, string> = {
+  "Lost — no reason recorded": "1",
+  "Won — no loss reason": "2",
+  "No bid — we passed": "3",
+};
+
 const outcomeLabel = (r: WinLossRecord): string =>
   r.outcome === "won" ? "Won" : r.outcome === "lost" ? "Lost" : "No bid";
 
@@ -39,10 +50,35 @@ export const WIN_LOSS_SPEC: ReportSpec<WinLossRecord> = {
   groupings: [
     [{ key: "outcome", label: "Outcome", of: outcomeLabel, sortBy: (l) => OUTCOME_ORDER[l] ?? 9 }],
     [{ key: "account", label: "GC", of: (r) => r.accountName }],
-    // Losses gathered by reason. A win has no reason, so it groups under the
-    // em-dash rather than being dropped — the subtotals have to keep adding up
-    // to the same money however the report is grouped.
-    [{ key: "reason", label: "Why we lost", of: (r) => r.lossReason ?? "" }],
+    /**
+     * Losses gathered by reason.
+     *
+     * A win has no loss reason, and it is NOT dropped from this view — the
+     * subtotals have to keep adding up to the same money however the report is
+     * grouped, or switching the grouping silently changes the totals above it.
+     *
+     * But it used to group under the empty string, which the report renders as
+     * an em-dash. On a quarter with twelve wins and no losses, pressing "Why
+     * we lost" gave Brendan one group headed "— (12)" containing every deal he
+     * had WON. The bucket was honest about having no reason and said nothing
+     * about what was in it.
+     *
+     * Every group is named now. Reasons sort first, because they are what this
+     * view is for; the two buckets that are not losses sink to the bottom.
+     */
+    [
+      {
+        key: "reason",
+        label: "Why we lost",
+        of: (r) =>
+          r.outcome === "won"
+            ? "Won — no loss reason"
+            : r.outcome === "no_bid"
+              ? "No bid — we passed"
+              : (r.lossReason ?? "").trim() || "Lost — no reason recorded",
+        sortBy: (label) => REASON_GROUP_ORDER[label] ?? `0${label}`,
+      },
+    ],
   ],
   columns: [
     { key: "opp", label: "Opportunity", text: (r) => r.name, href: (r) => `/commercial/opportunities/${r.oppId}` },
