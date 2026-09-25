@@ -262,6 +262,42 @@ describe("scopeAndStage — the rule the scheduler and the simulator share", () 
     expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: "👍" }).scope).toBeNull();
   });
 
+  /**
+   * THE MORE SPECIFIC MESSAGE WAS THE ONE THAT FAILED.
+   *
+   * Playing somebody who wants a number: "just give me a ballpark, how much
+   * for a 12x14 bedroom? I don't want an appointment". The bot answered
+   * "What are you looking to have painted?" — asking for the one thing they
+   * had just told it. "how much to paint a bedroom" worked, because it
+   * happens to contain a verb; naming the room AND its size did not.
+   */
+  it("counts a room given with its measurements as the job described", () => {
+    for (const t of [
+      "just give me a ballpark, how much for a 12x14 bedroom? I don't want an appointment",
+      "how much for a 12 x 14 bedroom",
+      "10x12 deck, whats the cost",
+    ]) {
+      expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).stage, t).toBe(1);
+    }
+  });
+
+  /**
+   * And the guard that keeps it narrow. A subject on its own says nothing
+   * about the work — a house is named in half the messages a painter gets —
+   * so the measurements are what carry it.
+   */
+  it("does not treat merely naming a room as describing the job", () => {
+    for (const t of [
+      "Can you come to my house on Tuesday?",
+      "whats your price",
+      "what is your address",
+      "I am at 12 Oak St apartment 3",
+      "Do you service my area",
+    ]) {
+      expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).stage, t).toBe(0);
+    }
+  });
+
   it("never lowers a stage the flow has already reached", () => {
     expect(scopeAndStage({ stage: 3, onFile: null, rawInbound: "paint my kitchen cabinets" }).stage).toBe(3);
   });

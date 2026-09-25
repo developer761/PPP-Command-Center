@@ -166,6 +166,22 @@ const WORK_WORD =
 const SUBJECT =
   /\b(?:rooms?|bedrooms?|bathrooms?|bath|kitchens?|living\s?rooms?|dining\s?rooms?|hallways?|stairs?|stairwells?|closets?|basements?|garages?|attics?|ceilings?|walls?|trim|baseboards?|mouldings?|moldings?|cabinets?|doors?|windows?|shutters?|decks?|fences?|porch(?:es)?|sidings?|soffits?|railings?|houses?|homes?|apartments?|condos?|units?|offices?|interiors?|exteriors?|bd|br|ba)\b/i;
 
+/**
+ * "12x14 bedroom" — a room given with its dimensions describes the job even
+ * with no verb in the sentence.
+ *
+ * Found playing somebody who wants a number: "just give me a ballpark, how
+ * much for a 12x14 bedroom? I don't want an appointment". The bot replied
+ * "What are you looking to have painted?" — asking for the one thing they had
+ * just said, which the prompt forbids. The shorter "how much to paint a
+ * bedroom" worked, so the MORE specific message was the one that failed.
+ *
+ * Narrow on purpose. A subject alone cannot mean the job is described —
+ * "Can you come to my house on Tuesday?" names a house and describes nothing
+ * — so this needs the measurements too, which is somebody sizing up work.
+ */
+const DIMENSIONED = /\b\d+\s*[x×]\s*\d+\b/i;
+
 /** "4 rooms", "3 bd", "1450 sq ft" — a count is a subject on its own. */
 const COUNTED = /\b\d+\s*(?:bd|br|ba|bed|bath|rooms?|sq\.?\s?ft|sqft|square\s?feet)\b/i;
 
@@ -190,8 +206,9 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length < MIN_SCOPE_CHARS || t.length > MAX_SCOPE_CHARS) return null;
   if (isPlaceholderScope(t)) return null;
-  if (!WORK_WORD.test(t)) return null;
   if (!SUBJECT.test(t) && !COUNTED.test(t)) return null;
+  // A verb, or measurements against a subject, which says the same thing.
+  if (!WORK_WORD.test(t) && !(DIMENSIONED.test(t) && SUBJECT.test(t))) return null;
   return t;
 }
 
