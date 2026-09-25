@@ -253,7 +253,7 @@ import {
   dealMargin,
 } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
-import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
+import { isTerminalSubmittalStatus, submittalHasGoneToGc } from "@/lib/commercial/opportunities/submittal-constants";
 import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
 import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
@@ -275,6 +275,47 @@ import { normalizeRole } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * THE TAB SAYS WHICH JOB.
+ *
+ * This page had no title, so it inherited "PPP Command Center" — as did every
+ * other page under /commercial bar Accounting. Stephanie works paperwork
+ * across several jobs at once; with six of these open, every tab was labelled
+ * the same and finding the right one meant clicking through them. The same
+ * string went into history and into any bookmark.
+ *
+ * The name is built the way the page's own heading builds it, so the tab and
+ * the H1 never disagree. A missing or unreadable record falls back rather than
+ * throwing — a metadata failure would take the whole page down with it.
+ */
+export async function generateMetadata({ params }: { params: PP }) {
+  try {
+    const { id } = await params;
+    if (!UUID_RE.test(id)) return { title: "Opportunity" };
+    const sb = commercialDb();
+    const { data } = await sb
+      .from("commercial_opportunities")
+      .select(
+        "title, title_override, title_override_mode, client_name, property_street, account_id",
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (!data) return { title: "Opportunity" };
+    let accountName: string | null = null;
+    if (data.account_id) {
+      const { data: acct } = await sb
+        .from("commercial_accounts")
+        .select("company_name")
+        .eq("id", data.account_id)
+        .maybeSingle();
+      accountName = acct?.company_name ?? null;
+    }
+    return { title: jobDisplayName(data, accountName) || "Opportunity" };
+  } catch {
+    return { title: "Opportunity" };
+  }
+}
 
 type PP = Promise<{ id: string }>;
 type SP = Promise<{
@@ -2011,8 +2052,21 @@ const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "change-orders", label: "Change Orders" },
   { key: "aia", label: "AIA Billing" },
   { key: "invoices", label: "Invoices" },
-  { key: "transactions", label: "Transactions" },
-  { key: "closeout", label: "Closeout" },
+  /*
+   * THESE TWO ARE THE NAMES ON THE TILES.
+   *
+   * They used to read "Transactions" and "Closeout" while the tiles that open
+   * them read "Costs" and "Closeout & Warranty" — so the heading changed under
+   * you at the moment you arrived, on the two tools where it happened to
+   * differ. Stephanie's handbook carried a standing note about it, which only
+   * helps the people who read it first: somebody following a written step that
+   * says "Transactions" still goes looking for a tile that says Costs.
+   *
+   * `__tests__/commercial/tool-names-match-their-tiles.test.ts` holds this
+   * list and the tile labels together.
+   */
+  { key: "transactions", label: "Costs" },
+  { key: "closeout", label: "Closeout & Warranty" },
 ];
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
@@ -2876,7 +2930,10 @@ export default async function OpportunityDetailPage({
           pendingCoCents: pathChangeOrders
             .filter((c) => c.status === "pending")
             .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
-          submittalsNotSent: liveSubmittals.length === 0,
+          submittalCount: liveSubmittals.length,
+          submittalsSentCount: liveSubmittals.filter((sm) =>
+            submittalHasGoneToGc(sm.status),
+          ).length,
           closeoutNotStarted: liveCloseout.length === 0,
           crewHours: projectSchedule.crewHours,
           targetStartInDays: projectSchedule.startInDays,

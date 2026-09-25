@@ -5,6 +5,8 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getDealReportRows, OPEN_SALES_SPEC, openSalesRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { TomcoReportPage, viewIndex } from "@/components/commercial/tomco-report-page";
 
+export const metadata = { title: "Open sales" };
+
 export const dynamic = "force-dynamic";
 
 const VIEWS = [

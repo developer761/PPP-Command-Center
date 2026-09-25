@@ -5,6 +5,8 @@
  */
 import { redirect } from "next/navigation";
 
+export const metadata = { title: "Revenue" };
+
 export const dynamic = "force-dynamic";
 
 export default function RevenueReportRedirect() {

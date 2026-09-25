@@ -5,6 +5,8 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getEmailHub } from "@/lib/commercial/email-archive/hub";
 
+export const metadata = { title: "Email" };
+
 export const dynamic = "force-dynamic";
 
 /**

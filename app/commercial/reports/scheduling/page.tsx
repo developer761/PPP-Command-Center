@@ -5,6 +5,8 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getDealReportRows, SCHEDULING_SPEC, schedulingRows } from "@/lib/commercial/reports/tomco/opportunities";
 import { TomcoReportPage, viewIndex } from "@/components/commercial/tomco-report-page";
 
+export const metadata = { title: "Scheduling" };
+
 export const dynamic = "force-dynamic";
 
 const VIEWS = [

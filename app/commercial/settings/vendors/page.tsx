@@ -41,6 +41,8 @@ import { VENDOR_VIEWS, filterVendorList, parseVendorView, type VendorView } from
  * exactly what was on screen.
  */
 
+export const metadata = { title: "Vendors" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/vendors";

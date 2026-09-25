@@ -29,6 +29,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
  * Same admin gate as /commercial/settings/health + /competitors.
  */
 
+export const metadata = { title: "Archived" };
+
 export const dynamic = "force-dynamic";
 
 async function unarchiveManyAction(formData: FormData) {

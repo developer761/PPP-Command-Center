@@ -40,6 +40,8 @@ import {
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { SubmitButton } from "@/components/commercial/submit-button";
 
+export const metadata = { title: "Exclusions" };
+
 export const dynamic = "force-dynamic";
 
 async function requireAdmin(): Promise<{ userId: string; isAdmin: boolean }> {

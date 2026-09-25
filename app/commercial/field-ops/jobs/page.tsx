@@ -38,6 +38,8 @@ import CommercialAddressFields from "@/components/commercial-address-fields";
 const PW_HELP =
   "Prevailing wage: on government / public-works jobs (schools, DOT/highway, municipal buildings) the law requires paying workers a set, usually higher, hourly wage plus benefits. Flagging a work order PW tells the crew and payroll it's a special-rate job. It's a label here — it does not change any pay math yet.";
 
+export const metadata = { title: "Work orders" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/jobs";
 

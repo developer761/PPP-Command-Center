@@ -18,6 +18,8 @@ import CommercialSiteAddressToggle from "@/components/commercial-site-address-to
 import { SELECT_CLS, SELECT_BG_STYLE, INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { SubmitButton } from "@/components/commercial/submit-button";
 
+export const metadata = { title: "Edit account" };
+
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string }>;

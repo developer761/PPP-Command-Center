@@ -14,6 +14,8 @@ import { StartTourButton } from "@/components/commercial/start-tour-button";
  * to its existing page.
  */
 
+export const metadata = { title: "Settings" };
+
 export const dynamic = "force-dynamic";
 
 type Card = {

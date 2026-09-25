@@ -25,6 +25,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
 import { PrintButton } from "@/components/commercial/reports/print-button";
 import { PrintSheetStyles } from "@/components/commercial/print-sheet";
 
+export const metadata = { title: "Job report" };
+
 export const dynamic = "force-dynamic";
 
 /**

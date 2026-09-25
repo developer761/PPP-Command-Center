@@ -29,6 +29,8 @@ import { etTodayIso, relativeAgoEt } from "@/lib/date-et";
  * paint on your hands. Big targets, one column, no dropdowns to hunt through.
  */
 
+export const metadata = { title: "Log hours" };
+
 export const dynamic = "force-dynamic";
 
 async function confirmHoursAction(formData: FormData) {

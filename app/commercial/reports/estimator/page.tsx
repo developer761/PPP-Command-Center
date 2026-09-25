@@ -22,6 +22,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
  * the four numbers you would otherwise add up by hand.
  */
 
+export const metadata = { title: "Estimator performance" };
+
 export const dynamic = "force-dynamic";
 
 type Preset = EstimatorPreset;

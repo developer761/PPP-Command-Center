@@ -18,6 +18,8 @@ import { getCachedBrief, generateBrief, briefAvailable } from "@/lib/commercial/
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { fmtEtDate } from "@/lib/commercial/invoices/format";
 
+export const metadata = { title: "Receivables" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/reports/receivables";

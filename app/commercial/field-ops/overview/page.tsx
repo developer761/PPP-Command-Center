@@ -6,6 +6,8 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getFieldOpsOverview } from "@/lib/commercial/field-ops/overview";
 
+export const metadata = { title: "Field Ops overview" };
+
 export const dynamic = "force-dynamic";
 
 function weekLabel(mondayIso: string): string {

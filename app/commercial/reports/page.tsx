@@ -36,6 +36,8 @@ import {
   moveReportInPersonalFolderAction,
 } from "./folder-actions";
 
+export const metadata = { title: "Reports" };
+
 export const dynamic = "force-dynamic";
 
 /**

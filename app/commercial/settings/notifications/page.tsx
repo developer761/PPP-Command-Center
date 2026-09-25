@@ -27,6 +27,8 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
  * cron evaluates them and notifies the owner.
  */
 
+export const metadata = { title: "Notification settings" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/settings/notifications";

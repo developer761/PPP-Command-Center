@@ -20,6 +20,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
  * (Karan 2026-08-14.)
  */
 
+export const metadata = { title: "Field Ops settings" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/settings/field-ops";
 

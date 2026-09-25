@@ -77,6 +77,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
  * Mirror of yesterday's cross-account security fix shape.
  */
 
+export const metadata = { title: "Submittal" };
+
 export const dynamic = "force-dynamic";
 
 type PP = Promise<{ id: string; dealId: string; sid: string }>;

@@ -63,6 +63,8 @@ const DASH_COST_TONE: Record<string, ChartTone> = {
 // its own donut slice so "where the money goes" shows in-house labor distinctly.
 const CREW_LABOR_TONE: ChartTone = "emerald";
 
+export const metadata = { title: "Commercial" };
+
 export const dynamic = "force-dynamic";
 
 

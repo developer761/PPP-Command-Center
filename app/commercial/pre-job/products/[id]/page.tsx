@@ -42,6 +42,8 @@ import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
  * carry ?ok / ?error markers so the user sees a clear result.
  */
 
+export const metadata = { title: "Product" };
+
 export const dynamic = "force-dynamic";
 
 function parseDollarsToCents(raw: FormDataEntryValue | null): number | null {

@@ -16,6 +16,8 @@
 import { redirect } from "next/navigation";
 import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
+export const metadata = { title: "Submittals" };
+
 export default async function RetiredPostJobSubmittals() {
   redirect(savedViewHref("under_contract"));
 }

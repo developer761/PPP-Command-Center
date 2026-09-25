@@ -19,6 +19,8 @@ import { ExportCsvLink } from "@/components/commercial/export-csv-link";
  * Not admin-gated — this is company money, not per-person performance.
  */
 
+export const metadata = { title: "Cash flow" };
+
 export const dynamic = "force-dynamic";
 
 type Preset = CashFlowPreset;

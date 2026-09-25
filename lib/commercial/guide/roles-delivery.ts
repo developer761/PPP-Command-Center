@@ -31,12 +31,18 @@ import type { RoleGuide } from "./walkthrough";
 const JOB_TABS = ["Overview", "Where it stands", "Proposals", "Documents", "Activity", "Project"];
 
 /**
- * The delivery tools as they are LABELLED ON THE TILES you click.
+ * The delivery tools as they are LABELLED ON THE TILES you click — and, since
+ * 2026-09-25, as they are headed once open.
  *
- * Two of them read differently once open: the Costs tile opens a tool headed
- * "Transactions & Job P&L", and Closeout & Warranty opens one headed
- * "Closeout". Worth knowing, because somebody following a written instruction
- * that says "Transactions" will be looking for a tile that says Costs.
+ * This list used to carry a note that two of them read differently inside:
+ * Costs opened a tool headed "Transactions & Job P&L", and Closeout & Warranty
+ * opened one headed "Closeout". Closeout had been fixed and the note had gone
+ * stale; Costs is fixed now, and both headings match their tile.
+ *
+ * The note was the wrong shape of answer anyway. A handbook explaining a
+ * mismatch only helps the people who read it first, and somebody following a
+ * written step that says "Transactions" still goes looking for a tile that
+ * says Costs.
  */
 const PROJECT_TILES = [
   "Submittals",
@@ -297,7 +303,7 @@ export const STEPHANIE: RoleGuide = {
       id: "steph-tools",
       title: "The Project tab",
       blurb:
-        "Open a job and press Project. You get a set of tiles; pressing one opens that tool on its own, with a back arrow to the list. Two tiles are named differently from the tool they open — Costs opens Transactions, and Closeout & Warranty opens Closeout.",
+        "Open a job and press Project. You get a set of tiles; pressing one opens that tool on its own, headed with the same name you pressed, and with a back arrow to the list.",
       surfaces: [
         {
           name: "Submittals",
@@ -429,7 +435,7 @@ export const STEPHANIE: RoleGuide = {
           path: "The job › Project › Costs",
           tourTarget: "job:tool-open:transactions",
           purpose:
-            "Everything spent on the job and what it has made — the tool is headed “Transactions & Job P&L” once you open it. Entries are numbered TRANS-0001 and up.",
+            "Everything spent on the job and what it has made. Entries are numbered TRANS-0001 and up.",
           steps: [
             "Open the job and click the Project tab.",
             "Click the Costs tile.",

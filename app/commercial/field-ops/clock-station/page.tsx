@@ -7,6 +7,8 @@ import { isCrewOnlyUser } from "@/lib/commercial/crew-access";
 import { listEmployees, listClockablePins } from "@/lib/commercial/field-ops/employees";
 import { ClockStation } from "@/components/commercial/clock-station";
 
+export const metadata = { title: "Clock station" };
+
 export const dynamic = "force-dynamic";
 
 export default async function ClockStationPage() {

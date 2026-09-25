@@ -250,6 +250,8 @@ async function submitDebriefAction(formData: FormData) {
   );
 }
 
+export const metadata = { title: "Win / loss debrief" };
+
 export default async function AccountDebriefPage({
   params,
   searchParams,

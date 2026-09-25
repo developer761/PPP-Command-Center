@@ -16,6 +16,8 @@
 import { redirect } from "next/navigation";
 import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
+export const metadata = { title: "Closeout" };
+
 export default async function RetiredPostJobCloseout() {
   redirect(savedViewHref("billing"));
 }

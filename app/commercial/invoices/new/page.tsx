@@ -26,6 +26,8 @@ import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 import { DealNewInvoiceForm } from "../../accounts/[id]/page";
 
+export const metadata = { title: "New invoice" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ opp?: string; error?: string; created?: string; from?: string }>;

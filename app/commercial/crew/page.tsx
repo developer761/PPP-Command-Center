@@ -5,6 +5,8 @@ import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isCrewOnlyUser } from "@/lib/commercial/crew-access";
 
+export const metadata = { title: "My work" };
+
 export const dynamic = "force-dynamic";
 
 /**

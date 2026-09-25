@@ -18,6 +18,8 @@ import {
 } from "@/lib/commercial/field-ops/jobs";
 import { StatusMoveSelect } from "@/components/commercial/status-move-select";
 
+export const metadata = { title: "Job status" };
+
 export const dynamic = "force-dynamic";
 const BASE = "/commercial/field-ops/status";
 

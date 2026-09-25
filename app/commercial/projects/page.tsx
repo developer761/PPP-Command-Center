@@ -12,6 +12,8 @@
 import { redirect } from "next/navigation";
 import { savedViewHref } from "@/lib/commercial/opportunities/saved-views";
 
+export const metadata = { title: "Projects" };
+
 export default async function RetiredProjectsIndex() {
   redirect(savedViewHref("active_projects"));
 }

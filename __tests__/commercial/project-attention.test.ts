@@ -24,7 +24,9 @@ const base: ProjectAttentionInput = {
   retainageCents: 0,
   pendingCoCount: 0,
   pendingCoCents: 0,
-  submittalsNotSent: false,
+  // One raised and already gone out: neither submittal line should fire.
+  submittalCount: 1,
+  submittalsSentCount: 1,
   closeoutNotStarted: false,
   crewHours: 0,
   targetStartInDays: null,
@@ -69,8 +71,51 @@ describe("deriveProjectAttention", () => {
     expect(co.detail).toBe("$3200");
   });
 
-  it("flags submittals not sent", () => {
-    expect(keys({ ...base, submittalsNotSent: true })).toContain("submittals");
+  /**
+   * TWO STATES, TWO SENTENCES.
+   *
+   * This was one boolean, `submittalsNotSent`, fed `liveSubmittals.length === 0`
+   * — so the rail said "Submittals not sent to the GC" on jobs that had no
+   * submittals at all. On AIREF Building #1 it said exactly that while the
+   * Submittals tool on the same page said "No submittals yet".
+   *
+   * They need different sentences because they need different actions: with
+   * none raised there is a package to build, with one raised and unsent there
+   * is a PDF to email. "Not sent" sent Stephanie to an empty tool looking for
+   * something to send.
+   */
+  describe("submittals", () => {
+    const titleOf = (i: Parameters<typeof deriveProjectAttention>[0]) =>
+      deriveProjectAttention(i, money).find((a) => a.key === "submittals")?.title;
+
+    it("says none are raised when there are none — never 'not sent'", () => {
+      const t = titleOf({ ...base, submittalCount: 0, submittalsSentCount: 0 });
+      expect(t).toBe("No submittals raised yet");
+      expect(t).not.toMatch(/not sent/i);
+    });
+
+    it("says not sent only when one exists and has not gone out", () => {
+      expect(titleOf({ ...base, submittalCount: 1, submittalsSentCount: 0 })).toBe(
+        "1 submittal not sent to the GC",
+      );
+      expect(titleOf({ ...base, submittalCount: 3, submittalsSentCount: 0 })).toBe(
+        "3 submittals not sent to the GC",
+      );
+    });
+
+    it("names the action, because the tool does not send it for you", () => {
+      const a = deriveProjectAttention(
+        { ...base, submittalCount: 1, submittalsSentCount: 0 },
+        money,
+      ).find((x) => x.key === "submittals");
+      expect(a?.detail).toMatch(/email/i);
+    });
+
+    it("says nothing once one has gone out", () => {
+      expect(keys({ ...base, submittalCount: 2, submittalsSentCount: 1 })).not.toContain(
+        "submittals",
+      );
+    });
   });
 
   it("flags crew-not-scheduled only when start is near, no hours, and off site", () => {

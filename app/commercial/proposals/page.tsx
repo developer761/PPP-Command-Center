@@ -48,6 +48,8 @@ import {
 } from "@/components/commercial/proposals-kanban-dnd";
 import { reconcileDealStatesFromProposals } from "@/lib/commercial/proposals/db";
 
+export const metadata = { title: "Proposals" };
+
 export const dynamic = "force-dynamic";
 
 type ProposalRow = {

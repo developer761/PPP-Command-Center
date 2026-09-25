@@ -22,6 +22,8 @@ import { redirect } from "next/navigation";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { pickFirst } from "@/lib/commercial/form-utils";
 
+export const metadata = { title: "New opportunity" };
+
 export const dynamic = "force-dynamic";
 
 type SP = Promise<{ account?: string; error?: string }>;

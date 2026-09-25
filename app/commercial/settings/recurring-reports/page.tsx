@@ -31,7 +31,8 @@ import { receivablesRecipients } from "@/lib/commercial/reports/receivables-emai
  */
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Tomco Painting - Recurring Reports" };
+// Just the page name — the /commercial layout's template adds the suffix.
+export const metadata = { title: "Recurring reports" };
 
 const BASE = "/commercial/settings/recurring-reports";
 

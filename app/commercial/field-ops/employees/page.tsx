@@ -27,6 +27,8 @@ import { SubmitButton } from "@/components/commercial/submit-button";
  *  blank/invalid. Blank = "don't change the rate", never "set to $0". */
 import { parseCostRateToCents } from "@/lib/commercial/field-ops/cost-rate";
 
+export const metadata = { title: "Employees" };
+
 export const dynamic = "force-dynamic";
 
 const BASE = "/commercial/field-ops/employees";
