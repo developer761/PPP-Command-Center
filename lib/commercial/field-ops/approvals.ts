@@ -211,8 +211,23 @@ export async function questionTimeEntry(id: string, reason: string, actorUserId:
   return { ok: true };
 }
 
-/** Manual override of the actual hours (Karan's manual-edit). Keeps it in
- *  'submitted' unless already approved; tags source 'manual'. */
+/**
+ * Manual override of the actual hours (Karan's manual-edit). Tags source
+ * 'manual'.
+ *
+ * KEEPS AN APPROVED ENTRY APPROVED — which is what this docblock always said,
+ * and what the code did not do. It wrote `status: "submitted"` unconditionally,
+ * so correcting a digit on an already-approved day silently un-approved it.
+ * That row then drops out of `exportPayroll`'s lock set and out of
+ * `getPayrollWeek`'s SETTLED list: Mary sees "Saved", and the day is now
+ * unpaid. The amber "still waiting" banner does surface it afterwards, which
+ * is why it was survivable — but the action was doing the opposite of what it
+ * promised.
+ *
+ * Only an admin can reach this, and the person correcting the hours is the
+ * person who would re-approve them, so preserving the status is both the
+ * documented intent and the one that cannot quietly cost somebody a day.
+ */
 export async function overrideTimeEntryHours(id: string, hours: number, actorUserId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!Number.isFinite(hours) || hours < 0 || hours > 24) return { ok: false, error: "Hours must be 0-24." };
   const sb = commercialDb();
@@ -221,7 +236,14 @@ export async function overrideTimeEntryHours(id: string, hours: number, actorUse
   if ((before as { status?: string }).status === "exported") return { ok: false, error: EXPORTED_LOCKED };
   const { data: after, error } = await sb
     .from("commercial_time_entries")
-    .update({ actual_hours: Math.round(hours * 4) / 4, source: "manual", status: "submitted", questioned_reason: null, updated_at: new Date().toISOString() })
+    .update({
+      actual_hours: Math.round(hours * 4) / 4,
+      source: "manual",
+      // Approved stays approved; anything else lands back in the queue.
+      status: (before as { status?: string }).status === "approved" ? "approved" : "submitted",
+      questioned_reason: null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id)
     .neq("status", "exported")
     .select("*")

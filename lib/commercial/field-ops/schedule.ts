@@ -95,6 +95,20 @@ export function hoursBetween(
   return Math.round(((e - s) / 60) * 4) / 4;
 }
 
+/**
+ * "HH:MM" → minutes past midnight, with the SAME cross-midnight rule
+ * `hoursBetween` uses: an end before its start belongs to the next day.
+ * Shared so the overlap check and the hours maths cannot disagree about when
+ * a shift finishes.
+ */
+export function toMinutes(t: string | null | undefined, after?: number | null): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t ?? "");
+  if (!m) return null;
+  let v = Number(m[1]) * 60 + Number(m[2]);
+  if (after != null && v < after) v += 24 * 60;
+  return v;
+}
+
 /** First day of the month containing `iso`, as YYYY-MM-01. */
 export function monthStartOf(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
@@ -492,6 +506,59 @@ export async function upsertAssignment(input: {
   else if (ex)
     hours = ex.scheduled_hours; // preserve the existing hours on an edit
   else hours = 8;
+
+  /**
+   * ONE PERSON, ONE DAY, ONE PLACE AT A TIME.
+   *
+   * The unique key on this table is (job_id, employee_id, work_date) — per
+   * JOB, not per person-day — and nothing anywhere checked for an overlap. Put
+   * Bob on Job A 07:00–15:00 and then on Job B, and the day panel's "already
+   * on this day" hint is keyed on employee AND job, so picking a second job
+   * shows nothing: the form fills its 7–3 default and saves.
+   *
+   * What follows is the expensive part. The crew Daily Log renders both jobs
+   * pre-filled at 8h, two taps of Confirm files two 8h entries, and Approvals
+   * compares each row against ITS OWN job's assignment — so both read variance
+   * 0 and render GREEN. The screen actively signals "this is fine" for a
+   * sixteen-hour day, and nothing sums a person's hours across jobs.
+   *
+   * Refused rather than warned: there is no correct reading of one painter
+   * being in two buildings at once, and the person scheduling can move the
+   * times. `copyWeekForward` already guards inactive crew and deleted jobs;
+   * this path, which is the one the calendar and the API actually use,
+   * guarded nothing.
+   */
+  if (finalStart && finalEnd) {
+    const { data: sameDay } = await sb
+      .from("commercial_assignments")
+      .select("id, job_id, scheduled_start_time, scheduled_end_time, commercial_jobs(name)")
+      .eq("employee_id", input.employee_id)
+      .eq("work_date", input.work_date)
+      .neq("status", "cancelled")
+      .neq("job_id", input.job_id);
+    const newStart = toMinutes(finalStart);
+    const newEnd = toMinutes(finalEnd, newStart);
+    for (const other of (sameDay ?? []) as Array<{
+      scheduled_start_time: string | null;
+      scheduled_end_time: string | null;
+      commercial_jobs?: { name?: string } | { name?: string }[] | null;
+    }>) {
+      if (!other.scheduled_start_time || !other.scheduled_end_time) continue;
+      const os = toMinutes(other.scheduled_start_time);
+      const oe = toMinutes(other.scheduled_end_time, os);
+      if (newStart == null || newEnd == null || os == null || oe == null) continue;
+      if (newStart < oe && os < newEnd) {
+        const j = Array.isArray(other.commercial_jobs)
+          ? other.commercial_jobs[0]
+          : other.commercial_jobs;
+        const where = j?.name ? ` on ${j.name}` : " on another job";
+        return {
+          ok: false,
+          error: `They are already scheduled${where} from ${other.scheduled_start_time.slice(0, 5)} to ${other.scheduled_end_time.slice(0, 5)} that day. Change the times, or take them off that job first.`,
+        };
+      }
+    }
+  }
 
   const row = {
     scheduled_hours: hours,
