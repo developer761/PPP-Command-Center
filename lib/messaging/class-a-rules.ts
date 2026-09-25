@@ -67,6 +67,9 @@ export type ParsedRules = {
   notes: ClassARuleNotes[];
   /** Rows that could not be read, with why. Never silently dropped. */
   problems: { row: number; why: string }[];
+  /** Field names whose column was not in this sheet, so their values are
+   *  defaults rather than anything Kate chose. The change log skips these. */
+  absent: Set<string>;
 };
 
 /** Kate's headings are long and carry bracketed audience notes; match on the
@@ -131,9 +134,36 @@ function dateOf(v: string | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null;
 }
 
+/**
+ * A REAL PHONE NUMBER MUST NOT REACH THE PROMPT, WHOEVER PUT IT THERE.
+ *
+ * Kate, 2026-09-24: "you can modify the example to remove the actual phone
+ * number + email!" — so A22's read-back example was scrubbed to [PHONE] and
+ * [EMAIL], and A22 was taken out of the PII sweep's allowlist because it no
+ * longer needed excusing.
+ *
+ * Her 2026-09-25 export has "516-784-6046" and "tom@x.com" back in it. She
+ * re-issues this sheet every time rules are merged or reworded, so a scrub
+ * that lives only in the database is a scrub that lasts until the next
+ * import. Doing it here means the file can say anything and the bot-facing
+ * text still carries nothing.
+ *
+ * The example still teaches: the shape being taught is "read both values
+ * back for a single yes", and [PHONE] and [EMAIL] show that as well as real
+ * values do. A13's "12 Oak St" is an address, not a contact, and is a
+ * textbook one — it is untouched here and stays the sweep's one exception.
+ */
+const A_PHONE = /\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g;
+const AN_EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.]+\b/g;
+
+export function scrubContacts(text: string | null): string | null {
+  if (!text) return text;
+  return text.replace(A_PHONE, "[PHONE]").replace(AN_EMAIL, "[EMAIL]");
+}
+
 export function parseClassARules(csv: string): ParsedRules {
   const rows = parseCsvRows(csv);
-  if (!rows.length) return { rules: [], notes: [], problems: [{ row: 0, why: "the file is empty" }] };
+  if (!rows.length) return { rules: [], notes: [], problems: [{ row: 0, why: "the file is empty" }], absent: new Set() };
 
   const headers = rows[0];
   const at = Object.fromEntries(
@@ -144,7 +174,7 @@ export function parseClassARules(csv: string): ParsedRules {
   for (const required of ["code", "statement", "status"] as const) {
     if (at[required] < 0) problems.push({ row: 0, why: `no column for ${required}` });
   }
-  if (problems.length) return { rules: [], notes: [], problems };
+  if (problems.length) return { rules: [], notes: [], problems, absent: new Set() };
 
   const rules: ClassARule[] = [];
   const notes: ClassARuleNotes[] = [];
@@ -172,9 +202,11 @@ export function parseClassARules(csv: string): ParsedRules {
     seen.add(code);
     rules.push({
       code,
-      statement,
-      ruleCard: at.ruleCard >= 0 ? text(r[at.ruleCard]) : null,
-      correctiveAction: at.correctiveAction >= 0 ? text(r[at.correctiveAction]) : null,
+      // Scrubbed on the way in — see scrubContacts. These three are the
+      // bot-facing fields; rater notes go to another table entirely.
+      statement: scrubContacts(statement) ?? statement,
+      ruleCard: at.ruleCard >= 0 ? scrubContacts(text(r[at.ruleCard])) : null,
+      correctiveAction: at.correctiveAction >= 0 ? scrubContacts(text(r[at.correctiveAction])) : null,
       severity,
       status,
       phrasingOnly: at.phrasingOnly >= 0 ? yesish(r[at.phrasingOnly]) : false,
@@ -194,7 +226,21 @@ export function parseClassARules(csv: string): ParsedRules {
     });
   });
 
-  return { rules, notes, problems };
+  /**
+   * Columns this sheet did NOT carry.
+   *
+   * A parser that defaults a missing column is doing the right thing for the
+   * bot and the wrong thing for the change log: the default is not a value
+   * Kate chose, so diffing against it reports an edit nobody made. The 23
+   * September sheet dropped binds and phrasing_only, and without this the
+   * import recorded twelve "Binds the bot: no -> yes" changes that never
+   * happened. See rule-diff.ts, which skips what this names.
+   */
+  const absent = new Set(
+    Object.entries(at).filter(([, i]) => (i as number) < 0).map(([k]) => k)
+  );
+
+  return { rules, notes, problems, absent };
 }
 
 /** Which rules may be shown to the model at all. */

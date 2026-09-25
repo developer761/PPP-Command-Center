@@ -45,6 +45,16 @@ export type PollSummary = {
    *  back rather than advanced to now. */
   more?: boolean;
   why?: string;
+  /**
+   * Workspaces where one lead matched more than one live workflow.
+   *
+   * Karan's rule from the 2026-09-02 meeting: if a workspace holds more than
+   * one campaign the entry criteria must not overlap at all, or a lead
+   * qualifies for both. Enrolment takes the FIRST match, so nobody is texted
+   * twice — but which campaign they got depended on row order, and until now
+   * the fact that it happened was computed and thrown away.
+   */
+  overlaps?: string[];
 };
 
 /**
@@ -57,7 +67,7 @@ export type PollSummary = {
  * next to the number Salesforce reports, which is the only reason it did not
  * ship looking fine.
  */
-type Query = (soql: string, opts?: { all?: boolean }) => Promise<{ records: SalesforceLead[] }>;
+export type Query = (soql: string, opts?: { all?: boolean }) => Promise<{ records: SalesforceLead[] }>;
 
 export async function pollSalesforceLeads(sb: SupabaseClient, query: Query, now = new Date()): Promise<PollSummary> {
   const summary: PollSummary = { polled: false, found: 0, inserted: 0, routed: 0, triaged: 0, ignored: 0, failed: 0 };
@@ -162,7 +172,8 @@ export async function loadZipMap(query: Query, now = Date.now()): Promise<Map<st
 }
 
 export async function processPendingLeads(sb: SupabaseClient, now = new Date(), query?: Query) {
-  const out = { routed: 0, triaged: 0, ignored: 0, failed: 0 };
+  const out: { routed: number; triaged: number; ignored: number; failed: number; overlaps?: string[] } =
+    { routed: 0, triaged: 0, ignored: 0, failed: 0 };
   const { data: pending } = await sb.from("sf_lead_inbound")
     .select("id, payload").eq("status", "pending").order("received_at").limit(50);
   if (!pending?.length) return out;
@@ -215,6 +226,12 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
         customerPhone: decision.phone,
         customerName: lead.fullName,
         customerEmail: lead.email,
+        // The lead's own words and its address, kept for the conversation.
+        // Routing reads the zip and then threw everything away; the reply
+        // path needs it too.
+        customerAddress: lead.address ?? null,
+        customerZip: normalizeZip(lead.postalCode ?? null),
+        inquiryScope: lead.inquiryScope ?? null,
         sfLeadId: lead.sfRecordId,
         record,
         leadCreatedAt: lead.sfCreatedAt ? new Date(lead.sfCreatedAt) : null,
@@ -231,6 +248,10 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
         status: "routed", workspace_id: decision.workspaceId, conversation_id: enrolled.conversationId,
         first_message_at: enrolled.firstMessageAt ?? null, triage_reason: null,
       });
+      if (enrolled.alsoMatched?.length) {
+        const note = `${enrolled.workflow} also matched ${enrolled.alsoMatched.join(", ")}`;
+        out.overlaps = [...new Set([...(out.overlaps ?? []), note])];
+      }
       out.routed++;
     } catch (err) {
       await set({ status: "failed", triage_reason: err instanceof Error ? err.message : String(err) });

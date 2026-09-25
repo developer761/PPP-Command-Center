@@ -16,17 +16,46 @@
  *
  * Pure: validation and rendering only. Nothing here calls a model or a network.
  */
+import type { AddressGap } from "./address";
+import type { JobRoute } from "./offsite";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
   "success", "discard", "schedule_follow_up", "lost", "bailout",
   "phone_pricing", "transferred", "bot_suspected", "msg_liked_loved",
+  // A2's SECOND script, and the only one that ends anything. It is reached
+  // only when the project really is in a state PPP does not cover.
   "area_not_serviced",
 ] as const;
 
 export const CONTINUE_INTENTS = [
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
-  "acknowledge", "answer_question", "offer_offsite_quote", "escalate",
+  // TWO off-site intents, not one. A6 PRESENTS the quick quote when the JOB
+  // routes off-site and forbids a reason; A7 OFFERS it when the job routes
+  // onsite but the customer qualifies, and mandates one. "A6 is REQUIRED and
+  // states the quick quote as the plan; A7 is OPTIONAL and asks. Different
+  // sentences, different situations." One intent could only ever say one of
+  // them, so every turn of the other kind was a breach.
+  "acknowledge", "answer_question", "present_offsite_quote", "offer_offsite_quote", "escalate",
+  // A33: DEFER, AND KEEP GOING. "Defer a question you genuinely cannot answer
+  // to the estimator — and keep the conversation going. Deflecting is
+  // correct; ENDING the conversation in order to deflect is not."
+  //
+  // There was no way to say this. escalate hands the whole conversation to a
+  // person and reads as a close, and every other outlet either answers or
+  // asks. The commonest case by far is the calendar: "you suggest a time and
+  // date", "what is available", "are you available tomorrow morning". The bot
+  // has no calendar and never books, so it cannot answer and must not invent
+  // one, and the only two moves available were to end or to ignore.
+  "defer_to_estimator",
+  // A2's FIRST script. "If the zip does NOT resolve to a Zip_Code__c row, OR
+  // its Service Territory is INACTIVE or named 'Out of Area', SAY SOMETHING
+  // LIKE: 'Just a moment, I'm checking availability.', then hand off — a
+  // human must check with the estimator before any coverage is promised."
+  //
+  // Not an ending. The conversation stays open and a person picks it up,
+  // which is the difference between this and area_not_serviced.
+  "checking_availability",
   // Something landed badly. Without this the only outlets for a customer who
   // reacted negatively were re-asking the same question or escalating, so it
   // re-asked — and the renderer's variant rotation made a repeat look like a
@@ -91,11 +120,27 @@ export const CONFIRM_REQUIRES: Record<string, "inquiryScope" | "address" | "emai
   confirm_contact: "email",
 };
 
-/** The ask that is forbidden once we hold the value. */
-export const ASK_SUPERSEDED_BY: Record<string, "inquiryScope" | "address" | "phone"> = {
-  ask_project_details: "inquiryScope",
-  ask_address: "address",
+/**
+ * The ask that is forbidden once we hold the value.
+ *
+ * EVERY field listed must be held before the ask is refused, because an ask
+ * that collects two things is still worth making when we only have one of
+ * them. ask_contact collects a name and an email, and refusing it because we
+ * happen to know the name would strand the conversation with no email.
+ *
+ * ask_contact was missing from this table entirely. That is A13 — "Do not ask
+ * the customer to RETYPE data already held" — 206 breaches and critical: with
+ * the email and name on file, nothing stopped the bot asking for them again.
+ * The old type even declared "phone" as a legal value with no entry using it,
+ * which is the shape of an intention that never landed.
+ */
+export const ASK_SUPERSEDED_BY: Record<string, readonly KnownField[]> = {
+  ask_project_details: ["inquiryScope"],
+  ask_address: ["address"],
+  ask_contact: ["name", "email"],
 };
+
+export type KnownField = "name" | "phone" | "email" | "address" | "inquiryScope";
 
 /**
  * Nurture: the quote already went out and the job is to get a decision.
@@ -110,7 +155,10 @@ export const ASK_SUPERSEDED_BY: Record<string, "inquiryScope" | "address" | "pho
 export const NURTURE_CONTINUE_INTENTS = [
   "nurture_check_in", "ask_for_decision", "ask_check_back",
   "offer_estimator_call", "acknowledge", "acknowledge_negative",
-  "answer_question", "escalate",
+  // A29 and A33 bind here too. Somebody holding a quote asks about prep,
+  // timing and what is included constantly, and "at ANY point" includes a
+  // conversation that started after the estimator had already visited.
+  "answer_question", "defer_to_estimator", "escalate",
 ] as const;
 
 export const NURTURE_END_INTENTS = [
@@ -126,6 +174,77 @@ export function intentsForTrack(track: Track): readonly string[] {
     ? [...NURTURE_END_INTENTS, ...NURTURE_CONTINUE_INTENTS]
     : [...END_INTENTS, ...CONTINUE_INTENTS];
 }
+
+/**
+ * WHAT EACH INTENT IS FOR, in the words the model sees.
+ *
+ * The tool schema handed over the enum and nothing else: twenty-five bare
+ * names, described only as "What to do next." So the model had to infer
+ * schedule_follow_up and transferred from the strings themselves, and it
+ * does not. Played as a customer in the simulator:
+ *
+ *   "dont text me just call me"  ->  ask_availability, refused out_of_order,
+ *                                    customer got nothing. Kate's tag says a
+ *                                    callback ends as Schedule Follow-up
+ *                                    rather than continuing to text.
+ *   "Hola, necesito pintar mi casa. No hablo ingles."
+ *                                ->  answered in English and carried on. Her
+ *                                    tag says another language means
+ *                                    transferring, today.
+ *
+ * Every line below is the intent's own template said plainly, or Kate's tag
+ * where there is one, so this describes what the system already does rather
+ * than inventing new behaviour.
+ */
+export const INTENT_GUIDE: Record<string, string> = {
+  // Collecting, in order
+  ask_project_details: "ask what they want painted, when nothing on file says",
+  ask_address: "ask where the job is",
+  ask_contact: "ask for a name and email",
+  ask_availability: "ask which days suit them",
+  confirm_scope: "read the job back from the RECORD for a yes. Never for something they just typed",
+  confirm_address: "read the address on file back for a yes",
+  confirm_contact: "read the phone and email on file back for a yes",
+
+  // Keeping it moving
+  acknowledge: "say you have it and nothing more",
+  acknowledge_negative: "they are annoyed or you repeated yourself; apologise once and move on",
+  answer_question: "answer what they asked, in freeText, then keep going",
+  defer_to_estimator: "they want something only the estimator decides, including any price",
+  checking_availability: "you are looking something up and will come back",
+
+  // The off-site quote
+  present_offsite_quote: "this job does not need a visit, so offer the quick quote",
+  offer_offsite_quote: "a visit is normal for this job but something stops it, and the reason must be on file",
+
+  // Handing over and ending
+  escalate: "you are not sure, or it needs a person for any other reason",
+  transferred: "hand straight to the office. Use this when they are writing in a language other than English",
+  schedule_follow_up: "they asked to be CALLED, or to be contacted later. Stop texting and end here",
+  bot_suspected: "they asked whether they are talking to a bot or a person",
+  phone_pricing: "they want to talk money on the phone",
+  area_not_serviced: "the zip on file is somewhere PPP does not cover",
+  bailout: "they have said they are not going ahead",
+  success: "everything is collected and the office can take it",
+  discard: "not a real lead",
+  lost: "they have gone with somebody else",
+  msg_liked_loved: "they reacted to a message rather than replying, and nothing needs saying",
+
+  // Nurture only
+  accepted: "they have said yes to the quote",
+  nurture_check_in: "nothing has happened for a while; check in about the quote",
+  ask_for_decision: "ask whether they have decided",
+  ask_check_back: "ask when to check back",
+  offer_estimator_call: "offer to have the estimator call and walk through it",
+};
+
+/** The guide for one track, as the lines the schema shows. */
+export function intentGuideFor(track: Track): string {
+  return intentsForTrack(track)
+    .map((i) => `- ${i}: ${INTENT_GUIDE[i] ?? "(no guidance written for this intent)"}`)
+    .join("\n");
+}
+
 
 export type EndIntent = (typeof END_INTENTS)[number];
 export type ContinueIntent = (typeof CONTINUE_INTENTS)[number];
@@ -156,19 +275,92 @@ export type RejectReason =
   | "out_of_scope_work"
   | "quoted_a_price"
   | "invented_availability"
-  | "banned_by_hard_no";
+  | "banned_by_hard_no"
+  | "wrong_offsite_rule"      // presented what should be offered, or the reverse
+  | "coverage_not_established"
+  | "question_left_unanswered"
+  | "details_never_collected";    // presented what should be offered, or the reverse
 
 /**
  * Phrases that mean the model has committed to something it has no authority
  * to commit to. Deliberately blunt: a false positive costs one regenerated
  * draft, a false negative sends a customer a price PPP never agreed.
  */
-const PRICE = /\$\s?\d|(?:\d+\s?(?:dollars|bucks))|\b(?:costs?|price|quote|charge|estimate)\s+(?:is|will be|would be|starts? at|around|about)\b/i;
+const PRICE = new RegExp(
+  [
+    String.raw`\$\s?\d`,                                   // $2500, $ 2500
+    String.raw`\b\d[\d,]*\s?(?:dollars?|bucks|usd|k\b|grand)`, // 2500 dollars, 4k, 3 grand
+    String.raw`\busd\s?\d`,
+    // A money word followed by ANY amount, however it is introduced. The old
+    // version listed the introducers — is, will be, starts at, around, about —
+    // so "costs run about 1800" and "price: 2500" both went straight through.
+    String.raw`\b(?:costs?|pric\w*|quotes?|charges?|estimates?|rates?|fee)\b[^.!?]{0,24}\d`,
+    // …and an amount followed by a money word, which is the other order.
+    String.raw`\d[^.!?]{0,16}\b(?:per hour|an hour|per room|a room|per square|per sq)\b`,
+    // Written amounts. "roughly fifteen hundred" carries no digit at all.
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|grand|k)\b`,
+    // A WRITTEN NUMBER MEETING A CURRENCY WORD, which the line above misses
+    // because it only looks for a MAGNITUDE after the number. "fifty dollars"
+    // is as much a quote as "$50", and it went straight through: probed with
+    // twenty-one plausible prices this was the one that got out, and
+    // "fifty dollars", "twenty bucks" and "a hundred bucks" with it.
+    String.raw`\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|couple|few)\s+(?:hundred\s+|thousand\s+)?(?:dollars?|bucks|usd|quid)\b`,
+    // "a grand", "a few grand", "a couple hundred" — no digit, no currency
+    // word, still a number the estimator never agreed to.
+    //
+    // Only at the end of the clause. Without that it ate "a hundred percent"
+    // and "we cover a few hundred zip codes", which is the failure mode this
+    // whole filter is supposed to be careful about: over-blocking costs a
+    // regenerated draft, but it costs it on ordinary sentences, every time.
+    // Anything followed by a currency word is already caught above.
+    String.raw`\b(?:a|an|another)\s+(?:couple|few)?\s*(?:hundred|thousand|grand)(?=\s*(?:[.,!?;]|$))`,
+    // Per-unit rates written out. Cabinet work is quoted per door, so this is
+    // the shape a cabinet price actually takes.
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:a|per|each)\b`,
+  ].join("|"),
+  "i"
+);
+
+/**
+ * A NUMBER IN RAPPORT IS A COMMITMENT UNTIL PROVEN OTHERWISE.
+ *
+ * The two filters above list the shapes a price or a time takes, and a list
+ * of shapes is a list of the ones somebody thought of. Probed against eleven
+ * plausible prices and twelve plausible times, the originals let EVERY ONE
+ * through: "it will be around 2500", "ballpark 2200", "we charge 95 per
+ * hour", "Mon at 2", "we can come at noon", "the 15th".
+ *
+ * So this is the backstop, and it runs the other way round. Rapport exists
+ * for "Got it" and "Happy to help with that" — sentences that do not contain
+ * numbers. Every value a customer should see comes from a template slot the
+ * system filled, never from here.
+ *
+ * Dropping rapport costs a slightly warmer message and nothing else, because
+ * the template still carries the turn. Letting "around 2500" through is a
+ * promise PPP has to keep or explain.
+ */
+const NUMBER_IN_RAPPORT = /\d/;
 
 /** A specific time or date. The model may never offer one — Emily's prompt is
  *  explicit: "Never offer, confirm, or suggest appointment times yourself." */
-const TIME_COMMITMENT =
-  /\b(?:\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|(?:mon|tues|wednes|thurs|fri|satur|sun)day\b|tomorrow\b|next week\b|this (?:afternoon|morning|evening)\b)/i;
+const TIME_COMMITMENT = new RegExp(
+  [
+    String.raw`\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b`,
+    String.raw`\b\d{1,2}\s?o'?clock\b`,
+    // ABBREVIATIONS TOO. The old pattern demanded the full word, so "Tues at
+    // 3" and "first thing Mon" were not times as far as it was concerned.
+    String.raw`\b(?:mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|sun)\b\.?`,
+    String.raw`\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b`,
+    String.raw`\b(?:today|tomorrow|tmrw|tonight)\b`,
+    String.raw`\b(?:this|next|following)\s+(?:week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening)\b`,
+    String.raw`\bin the (?:morning|afternoon|evening)\b`,
+    String.raw`\b(?:noon|midday|first thing|end of the (?:day|week))\b`,
+    String.raw`\bthe \d{1,2}(?:st|nd|rd|th)\b`,
+    String.raw`\b\d{1,2}\s*/\s*\d{1,2}\b`,
+    String.raw`\ba week from\b`,
+  ].join("|"),
+  "i"
+);
 
 /**
  * Work PPP does not do.
@@ -184,10 +376,62 @@ const TIME_COMMITMENT =
  */
 const OUT_OF_SCOPE_SURFACES =
   /\b(?:bathtubs?|appliances?|vehicles?|pool (?:tiles?|liners?)|murals?)\b/i;
+
+/**
+ * THE REST OF WHAT THE CONFIGURATION SAYS PPP DOES NOT SERVICE.
+ *
+ * The "What we do not cover" box on the Chatbot screen names seven things.
+ * The list above covered four of them, so "we can paint your furniture", "we
+ * can refinish the bookcase", "we can coat your industrial equipment" and
+ * "we can do artistic painting" all went out unrefused — the mirror of the
+ * flooring bug, and the same root: a configured list and a hardcoded one that
+ * never met.
+ *
+ * BUILT-IN IS NOT STANDALONE. The configuration is precise about it —
+ * "furniture, including bookcases and shelving that are STANDALONE rather
+ * than built in" — and PPP paints built-in shelving all day. A bare noun here
+ * would refuse the work it actually sells, which is exactly the mistake the
+ * trades list made with windows and roofs.
+ */
+const OUT_OF_SCOPE_ITEMS =
+  /\b(?<!built[-\s]?in\s)(?:furniture|bookcases?|shelving|shelves)\b|\bindustrial\s+(?:equipment|machinery)\b|\b(?:artistic|graphic)\s+painting\b/i;
 const OUT_OF_SCOPE_TRADES =
-  /\b(?:roofing|roof repair|plumbing|electrical|hvac|landscap\w*|masonry|paving|window replacement|siding install\w*|reupholster\w*)\b/i;
+  /\b(?:roofing|roof repair|plumbing|electrical|electrician\w*|hvac|landscap\w*|masonry|paving|re-?roof\w*|concrete|driveways?|foundations?|window replacement|siding install\w*|reupholster\w*)\b/i;
+/**
+ * THE SAME BUG THE SURFACES LIST ALREADY FIXED, LEFT IN THE TRADES LIST.
+ *
+ * The note above says the first version required "bathtub refinishing" in that
+ * order and let "refinish the bathtub" straight through, so surfaces became
+ * bare nouns. Trades never got the same treatment: "window replacement" is
+ * still order-bound, so "we can replace the windows" went out unrefused, and
+ * so did "we install flooring" and "we can fix the roof leak".
+ *
+ * These cannot be bare nouns. PPP paints window trim, door frames and the
+ * boards under a roof line, so "window", "floor" and "roof" on their own would
+ * refuse the work it actually sells. The verb is what makes it somebody else's
+ * trade: painting a window is the job, replacing one is not.
+ *
+ * Probed with fourteen plausible out-of-scope promises, the list above caught
+ * six. With this it catches fourteen, and seven legitimate painting sentences
+ * still pass.
+ */
+const OUT_OF_SCOPE_VERBS =
+  /\b(?:replac\w*|install\w*|re-?wir\w*|repair\w*|fix(?:ing)?|pour\w*|lay(?:ing)?)\s+(?:\w+\s+){0,2}(?:windows?|roofs?|carpet\w*|tiles?|gutters?|sidings?|foundations?|driveways?|wiring|plumbing|electrics?)\b/i;
+//
+// FLOOR IS NOT IN THAT LIST, and it was until this line. sms_services has a
+// row `flooring`, covered_by_default true, and every workspace ticks it. So
+// the prompt tells the model flooring is covered, the model says so, and a
+// hardcoded regex three files away refused the turn — a correct answer turned
+// into a handover.
+//
+// The rule this breaks is bigger than the word: THE HARDCODED LIST MUST NEVER
+// CONTRADICT THE CONFIGURED ONE. Services are per workspace and editable on
+// the Chatbot screen; this filter is global and editable only here. Where they
+// disagree the configuration wins, because somebody chose it. Checked against
+// the live table in verify-workspace-config-e2e.
 const OUT_OF_SCOPE = new RegExp(
-  `${OUT_OF_SCOPE_SURFACES.source}|${OUT_OF_SCOPE_TRADES.source}`, "i"
+  [OUT_OF_SCOPE_SURFACES.source, OUT_OF_SCOPE_ITEMS.source, OUT_OF_SCOPE_TRADES.source, OUT_OF_SCOPE_VERBS.source].join("|"),
+  "i"
 );
 
 /**
@@ -211,6 +455,15 @@ const BANNED_STYLE: { re: RegExp; why: string }[] = [
   { re: /[()]/, why: "parentheses" },
   { re: /\byep\b/i, why: '"Yep"' },
   { re: /thanks for letting me know/i, why: '"Thanks for letting me know"' },
+  // A23 names five things. Three were checked here and two were not, and the
+  // two that were not account for 100 of the 400 A23 breaches sampled out of
+  // Kate's grading. A rule enforced at three fifths reads, from her side of
+  // it, as a bot that ignores the rule.
+  //
+  // Letters are required BOTH sides of the hyphen so this cannot fire on a
+  // phone number, a date range, a minus sign or a trailing dash.
+  { re: /[a-z]{2,}-[a-z]{2,}/i, why: "a hyphenated compound" },
+  { re: /;/, why: "a semicolon" },
 ];
 
 /** Longest run of words appearing verbatim in both strings. */
@@ -237,9 +490,56 @@ function longestSharedRun(a: string, b: string): number {
  *  fire on "for the estimate". */
 export const ECHO_WORDS = 5;
 
+/**
+ * A justification bolted onto an ask. A32.
+ *
+ * Every pattern comes from a line the bot actually sent in Kate's corpus, not
+ * from imagining what a reason looks like:
+ *
+ *   "so we can get your free quote moving"     "since it's already Thursday"
+ *   "so we can get you on the calendar"        "since it's a small shed"
+ *   "so we can get your estimate set up"       "to save you a visit"
+ *   "for faster turnaround"                    "since it's one room"
+ *
+ * "so" needs a following verb phrase, so "so glad to hear it" and "so that
+ * works" stay allowed — those are rapport, which is what this field is for.
+ *
+ * ── FIRST PERSON ONLY, AND THE CORPUS IS WHY ────────────────────────────
+ *
+ * "so WE can" and "so I can" are padding: they explain OUR process, which is
+ * the thing Kate says makes the message longer without making it clearer.
+ * "so YOU can" is the customer's benefit and reads as a courtesy rather than
+ * a justification. Run over the 2,861 non-question bot sentences in her
+ * corpus, this pattern flagged 18, and the only two that were arguable were
+ * both second person:
+ *
+ *   "we'll give you a heads up before anyone arrives so you can get the
+ *    dog settled"
+ *   "we can keep everything clear by going over it in person so you can
+ *    ask questions"
+ *
+ * The second is Kate's own redirect carve-out — the bot proposing a visit
+ * when the customer asked for something else IS a departure and owes an
+ * explanation. Excluding the second person keeps both and loses nothing that
+ * she marked.
+ */
+const REASON_CLAUSE =
+  /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*/i;
+
 export type RapportCheck = { ok: true } | { ok: false; why: string };
 
-export function checkRapport(text: string, customerText?: string): RapportCheck {
+/**
+ * TONE ONLY: the rules that bind every word we send, template or not.
+ *
+ * Split out from checkRapport because A32 is the one rule that binds rapport
+ * and NOT templates. Kate's exception is explicit: "THE ONE EXCEPTION is A7's
+ * off-site offer, where the bot is explaining a DEPARTURE from the normal
+ * route... A reason is MANDATED there." That reason lives in a template, by
+ * design, because the system decides when a departure is happening and the
+ * model does not. Running the reason check over templates would forbid the
+ * exact sentence the rule requires.
+ */
+export function checkTone(text: string, customerText?: string): RapportCheck {
   // One question at a time. The template asks the question; rapport that also
   // asks one makes two, which is the rule Kate states first.
   if (text.includes("?")) return { ok: false, why: "it asks a second question" };
@@ -254,6 +554,148 @@ export function checkRapport(text: string, customerText?: string): RapportCheck 
   return { ok: true };
 }
 
+export function checkRapport(text: string, customerText?: string): RapportCheck {
+  const tone = checkTone(text, customerText);
+  if (!tone.ok) return tone;
+
+  // A32: CUT THE REASON. The ask stands alone.
+  //
+  // "No 'since you're moving', no 'before we schedule anything', no 'so we can
+  // get you taken care of'. A reason padded onto a routine ask makes the
+  // message longer without making it clearer." 199 breaches in Kate's
+  // grading, all of this shape:
+  //
+  //   "Just checking back SO WE CAN GET YOUR FREE QUOTE MOVING. What day…"
+  //   "SINCE IT'S ALREADY THURSDAY, we have a few openings next week…"
+  //
+  // Checked HERE and not on the templates, because the templates are clean
+  // and this is the only channel through which the model can add prose to a
+  // message. The rule's exceptions all live in templates and so cannot reach
+  // this check: A7's off-site offer explains a genuine departure from the
+  // normal route and its reason is MANDATED, but it is template text, chosen
+  // by intent rather than improvised here.
+  //
+  // Rapport exists for "Got it" and "Happy to help". A justification is not
+  // rapport, and the template it would be bolted onto already says the thing.
+  const reason = REASON_CLAUSE.exec(text);
+  if (reason) return { ok: false, why: `it pads the ask with a reason ("${reason[0].trim()}")` };
+
+  return { ok: true };
+}
+
+/**
+ * Intents that ANSWER something by their nature, so they need no rapport to
+ * satisfy A29.
+ *
+ * answer_question is the answer. The two off-site turns respond to what the
+ * customer asked about getting quoted. defer_to_estimator is A33's reply to a
+ * question we cannot answer, which is still an answer. The confirm_* turns
+ * read a value back, which answers "do you have my details". escalate hands
+ * the question to a person, which is the honest answer when there is none.
+ */
+const ANSWERS_A_QUESTION = new Set<string>([
+  "answer_question", "defer_to_estimator", "escalate",
+  "present_offsite_quote", "offer_offsite_quote",
+  "confirm_scope", "confirm_address", "confirm_contact",
+  "phone_pricing", "offer_estimator_call", "acknowledge_negative",
+  "area_not_serviced", "transferred", "accepted", "success",
+]);
+
+/**
+ * Did the customer actually ask something?
+ *
+ * A question mark is the reliable signal and nearly everyone uses one. The
+ * bare-word forms are here for the ones who do not: "what time" and "how much"
+ * are questions with or without the punctuation. Deliberately NOT matching a
+ * lone "can you" or "do you", which open plenty of statements.
+ */
+const QUESTION_WORD =
+  /\b(?:what|when|where|which|who|why|how)\b[^.!?]{0,40}\?|\?/;
+const BARE_QUESTION =
+  /\b(?:how much|how many|how long|what time|what days?|when can|when will|when would|are you able|can you tell|do you (?:do|offer|handle|cover))\b/i;
+
+/**
+ * Rapport that acknowledges and says nothing else.
+ *
+ * "Got it", "Perfect, thanks", "Sorry about that". A29 asks whether a direct
+ * question was answered, and the first version of that check accepted ANY
+ * rapport — so "Do you do cabinets as well?" answered with "Got it. Where's
+ * the property located?" passed, which is the defect the rule describes,
+ * wearing a politeness.
+ *
+ * Found by walking conversations through the pipeline and reading them, not
+ * by a test. Every test asserted the right words were present, and they were.
+ */
+export const BARE_ACKNOWLEDGEMENT =
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
+
+export function asksSomething(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return QUESTION_WORD.test(t) || BARE_QUESTION.test(t);
+}
+
+/**
+ * A3: the three things that must be collected or confirmed before the bot can
+ * call a conversation finished.
+ *
+ * "collect/confirm the project details, full address, and contact information
+ * (email and phone)... this rule is strictly about ensuring that this
+ * information is collected."
+ *
+ * Each leg is satisfied by an EVENT, not by the state of the record, and that
+ * is Kate's own emphasis: "HOLDING IS NOT CONFIRMING. Where the record already
+ * holds the address and contact IN FULL, the obligation is NOT satisfied by
+ * holding them — confirm them once with the customer before the conversation
+ * ends. The confirmation is an EVENT IN THE CONVERSATION, not a state of the
+ * record." So asking counts and reading it back counts; quietly having it
+ * does not.
+ *
+ * Asking also covers the refusal carve-out without needing to detect one.
+ * Where a customer refuses to give a street and that refusal is honoured
+ * (A41), ask_address still happened, so this stays satisfied and the refusal
+ * is governed by its own rule rather than by this one.
+ */
+const A3_LEGS: { label: string; satisfiedBy: readonly string[] }[] = [
+  { label: "project details", satisfiedBy: ["ask_project_details", "confirm_scope"] },
+  { label: "the full address", satisfiedBy: ["ask_address", "confirm_address"] },
+  { label: "contact details", satisfiedBy: ["ask_contact", "confirm_contact"] },
+];
+
+/**
+ * Endings that CLAIM the flow finished, and so owe all three.
+ *
+ * Deliberately short. "WHERE THIS DOES NOT FIRE: a customer who DECLINES
+ * (A17) or DEFERS (A40) ends the collection obligation at that turn. A bot
+ * that stops collecting after 'no thanks', 'I'm not interested', 'I hired
+ * someone' or 'I'll reach out later' is CORRECT and carries no A3 defect."
+ *
+ * Every one of those outcomes has its own intent — bailout, lost, discard,
+ * schedule_follow_up — so the carve-out is structural here rather than
+ * something this has to detect. Kate measured what happens without it: 8 of
+ * 49 rows are exactly that shape, and the rule would have fired a critical on
+ * every one, flipping 6 rows from good to bad.
+ *
+ * phone_pricing IS included, on her instruction: "A Phone Pricing is NOT that
+ * [a deferral]: the quote going out by text or phone still requires all three
+ * here." transferred is not, because a person has taken the conversation and
+ * finishes the collection themselves.
+ */
+const CLAIMS_THE_FLOW_FINISHED = new Set<string>(["success", "phone_pricing"]);
+
+/**
+ * Intents that promise PPP will do the work.
+ *
+ * Booking, quoting and closing all say we cover this address. Asking for
+ * details does not, and is deliberately absent: A2's own out-of-state script
+ * asks whether the project is somewhere else, which cannot happen if the
+ * conversation is not allowed to continue.
+ */
+const PROMISES_COVERAGE = new Set<string>([
+  "ask_availability", "present_offsite_quote", "offer_offsite_quote",
+  "success", "phone_pricing", "accepted", "offer_estimator_call",
+]);
+
 export type ValidateContext = {
   /** Slots the system verified. An intent may only reference these. */
   verifiedSlots?: Record<string, unknown>;
@@ -266,13 +708,53 @@ export type ValidateContext = {
   track?: Track;
   /** Which known fields we hold. Drives both directions: confirm_* needs the
    *  value to exist, and ask_* is refused once it does. */
-  knownFields?: Partial<Record<"name" | "phone" | "email" | "address" | "inquiryScope", boolean>>;
+  knownFields?: Partial<Record<KnownField, boolean>>;
+  /**
+   * What is still missing from a PARTIAL address, when one is held.
+   *
+   * A boolean cannot express A11. "482 Marchmont Ave" with no zip is neither
+   * held nor missing: refusing the ask strands the conversation without a zip,
+   * and allowing the ordinary ask makes the customer retype the street they
+   * already sent. Undefined means the caller does not track addresses in
+   * parts, and the plain held/not-held rule applies.
+   */
+  addressGap?: AddressGap;
+  /**
+   * Where the JOB routes, from the lookup in offsite.ts. Decides whether the
+   * quick quote is PRESENTED (A6, no reason) or OFFERED (A7, reason
+   * mandatory). Undefined when the scope is not known well enough to say,
+   * which refuses neither — both rules are gated on knowing what the job is.
+   */
+  jobRoute?: JobRoute | null;
+  /**
+   * What the service-area lookup says about the zip we are holding RIGHT NOW.
+   *
+   * A2: "Validate the zip against the service area BEFORE promising
+   * coverage." Intake already refuses to start a conversation for an
+   * unserviceable lead, so this is for the zip that CHANGES — the customer
+   * who gives a New Jersey address while FL 33308 sits on the record.
+   *
+   * Undefined when the map cannot be read, which is deliberately the same as
+   * "we do not know" rather than "not serviced": telling a customer we do not
+   * cover them because our own lookup failed is the harm the rule exists to
+   * prevent.
+   */
+  serviceArea?: "serviced" | "out_of_state" | "needs_a_person" | null;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
   /** The customer reacted negatively to the previous message. */
   negativeReaction?: boolean;
   /** What we said last, so the same thing is not said straight back. */
   lastIntent?: string;
+  /**
+   * Every intent this conversation has already used, oldest first.
+   *
+   * A3 is satisfied by events rather than by the state of the record, so the
+   * only way to answer it is to know what has actually been asked and
+   * confirmed. Undefined disables the check, which is what a caller that does
+   * not track a conversation wants.
+   */
+  priorIntents?: readonly string[];
   /** How much of the required flow is already done: 0 means nothing collected,
    *  4 means all of it. Undefined disables the ordering check, which is what
    *  every caller that does not track a conversation wants. */
@@ -322,12 +804,97 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // Asking for something we already hold. Kate: "asked customer for phone
   // number + to type out phone number" — the reason that reached her was a
   // prompt instruction, which the model ignored. This is not an instruction.
-  const supersededBy = ASK_SUPERSEDED_BY[a.intent];
-  if (supersededBy && ctx.knownFields?.[supersededBy]) {
+  // A3: THE HANDOFF TURN CARRIES THE COLLECTION FAILURE.
+  //
+  // "Where details were never collected or confirmed, the defect sits on the
+  // turn where the bot handed off or closed — the sign-off, whichever came
+  // last. That is the last moment it could have happened."
+  //
+  // So this is checked exactly there, on the turn that claims the flow
+  // finished. Escalating rather than refusing outright, because the model may
+  // be right that the conversation is over and a person can see in seconds
+  // which leg was skipped; refusing would send it round to choose again with
+  // the same information.
+  //
+  // THE OFF-SITE PATH DOES NOT RELEASE THIS. "Even when an off-site quote is
+  // suggested or required, you must still collect Project Details, Full
+  // Address and Contact Information."
+  if (ctx.priorIntents && CLAIMS_THE_FLOW_FINISHED.has(a.intent)) {
+    const seen = new Set([...ctx.priorIntents, a.intent]);
+    const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
+    if (missing.length) {
+      return {
+        ok: false, reason: "details_never_collected",
+        detail: `this closes the conversation but ${missing.map((m) => m.label).join(" and ")} ` +
+          `${missing.length === 1 ? "was" : "were"} never asked for or confirmed`,
+      };
+    }
+  }
+
+  // A2: NOTHING PROMISES COVERAGE UNTIL THE ZIP SAYS WE HAVE IT.
+  //
+  // "Validate the zip against the service area BEFORE promising coverage."
+  // Booking a visit, presenting a quote or calling the conversation a success
+  // all promise it. Asking for details does not, and must stay allowed — the
+  // whole point of A2's second script is to ASK whether the project is
+  // somewhere else, which needs the conversation to continue.
+  //
+  // needs_a_person covers the zip being unknown AND the map being unreadable,
+  // and both land on checking_availability, which hands to a human. Telling a
+  // customer we do not cover them because our own lookup failed is the harm
+  // the rule exists to prevent.
+  if (ctx.serviceArea && ctx.serviceArea !== "serviced" && PROMISES_COVERAGE.has(a.intent)) {
     return {
-      ok: false, reason: "unknown_intent",
-      detail: `${a.intent} was chosen but ${supersededBy} is already on file — read it back instead of asking`,
+      ok: false, reason: "coverage_not_established",
+      detail: ctx.serviceArea === "out_of_state"
+        ? "the zip on file is outside the states PPP covers, so nothing may promise a visit or a quote until they confirm the project is elsewhere"
+        : "the service area could not be confirmed for this zip, so a person checks with the estimator before any coverage is promised",
     };
+  }
+
+  // A6 vs A7: THE JOB DECIDES WHICH SENTENCE, NOT THE MODEL.
+  //
+  // "THE TEST IS THE JOB, NOT THE CUSTOMER. Read the JOB ROUTING LOOKUP: does
+  // the job allow phone pricing? It is a LOOKUP, not a judgement."
+  //
+  // So the model may pick either off-site intent and this refuses the one the
+  // route contradicts. Presenting a quick quote as the plan for a job that
+  // needs a visit promises something PPP will not do; offering one as an
+  // option for a job that routes off-site runs the in-person booking flow A6
+  // exists to replace, and carries A7's mandatory reason into a turn where
+  // A32 forbids it — which is how one template breached two rules at once.
+  //
+  // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
+  // job is, and a caller that does not track scope should behave as it always
+  // has.
+  if (ctx.jobRoute && (a.intent === "present_offsite_quote" || a.intent === "offer_offsite_quote")) {
+    const wanted = ctx.jobRoute === "offsite" ? "present_offsite_quote" : "offer_offsite_quote";
+    if (a.intent !== wanted) {
+      return {
+        ok: false, reason: "wrong_offsite_rule",
+        detail: ctx.jobRoute === "offsite"
+          ? "the job routes off-site, so the quick quote is PRESENTED as the plan with no reason attached (A6), not offered as an option"
+          : "the job routes on-site, so the quick quote is OFFERED as an option with the reason the customer qualifies (A7), not presented as the plan",
+      };
+    }
+  }
+
+  const supersededBy = ASK_SUPERSEDED_BY[a.intent];
+  if (supersededBy && ctx.knownFields && supersededBy.every((f) => ctx.knownFields?.[f])) {
+    // A PARTIAL ADDRESS IS NOT AN ADDRESS ON FILE.
+    //
+    // A11 asks for the missing part only. Refusing the ask outright when we
+    // hold a street but no zip is how a conversation stalls holding half an
+    // address, so the ask survives here and the renderer narrows it to the
+    // gap. Only a complete address supersedes the ask.
+    const partial = a.intent === "ask_address" && ctx.addressGap != null && ctx.addressGap !== undefined;
+    if (!partial) {
+      const names = supersededBy.join(" and ");
+      return {
+        ok: false, reason: "unknown_intent",
+        detail: `${a.intent} was chosen but ${names} is already on file. Read it back instead of asking`,
+      };
+    }
   }
 
   if (typeof a.confidence !== "number" || Number.isNaN(a.confidence) || a.confidence < 0 || a.confidence > 1) {
@@ -351,6 +918,25 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
       const m = TIME_COMMITMENT.exec(text);
       return { ok: false, reason: "invented_availability", detail: `free text names "${m?.[0]}" with no verified availability behind it` };
     }
+    // THE BACKSTOP. Anything numeric the two lists above did not recognise.
+    // Rapport is "Got it" and "Happy to help"; every value the customer
+    // should see is filled into a template by the system.
+    //
+    // A VERIFIED TIME EXCUSES ITSELF AND NOTHING ELSE. Where the system has
+    // handed the model a real appointment time, "Does 2pm work?" is the model
+    // using what it was given. So the time-shaped tokens are removed and the
+    // rest of the sentence is still checked — "around 2500 at 2pm" keeps its
+    // 2500 and is still refused. Exempting the whole sentence would have made
+    // a verified time a licence to say any number at all.
+    const unexplained = hasVerifiedSlot(ctx, "times")
+      ? text.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")
+      : text;
+    if (NUMBER_IN_RAPPORT.test(unexplained)) {
+      return {
+        ok: false, reason: "commitment_in_free_text",
+        detail: "free text contains a number, and every number a customer sees comes from a template rather than from the model",
+      };
+    }
     for (const phrase of ctx.hardNoPhrases ?? []) {
       if (!phrase.trim()) continue;
       if (new RegExp(`\\b${escapeRe(phrase.trim())}\\b`, "i").test(text)) {
@@ -371,6 +957,39 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (rapport) {
     const style = checkRapport(rapport, ctx.customerText);
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
+  }
+
+  // A29: A DIRECT QUESTION IS NEVER LEFT UNANSWERED.
+  //
+  // "Answer a direct question the customer asks — at ANY point, not only
+  // before closing." 31 breaches, critical, and the correction on 28 of them
+  // is the same sentence: "answered the direct question, at whatever point in
+  // the conversation it was asked."
+  //
+  // The architecture already has the right shape. Kate's model answer is
+  // "Absolutely. What time works best for you?" — an answer, then the next
+  // step. Here the answer is the RAPPORT and the next step is the TEMPLATE.
+  // So a turn that asks the next question while carrying no answer at all,
+  // with a question outstanding, is that defect exactly.
+  //
+  // Escalating rather than refusing: the model has judged what to do next and
+  // may well be right about it, and refusing would loop it into choosing
+  // again from the same information. A person reading the thread can see the
+  // question and answer it in seconds. This also catches the case where an
+  // answer WAS written and the style filter dropped it, which leaves the
+  // question just as unanswered as never writing one.
+  // A BARE ACKNOWLEDGEMENT IS NOT AN ANSWER. "Got it." in front of the next
+  // question is the shape A29 exists to catch, and accepting any rapport at
+  // all let it straight through.
+  const saysSomething = !!rapport && !BARE_ACKNOWLEDGEMENT.test(rapport.trim());
+  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || saysSomething;
+  if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
+    return {
+      ok: false, reason: "question_left_unanswered",
+      detail: droppedRapport
+        ? `the customer asked something and the answer was dropped because ${droppedRapport}`
+        : "the customer asked something and this turn only asks the next question back",
+    };
   }
 
   return {
@@ -413,6 +1032,10 @@ export const LOW_STAKES_FLOOR = 0.5;
  */
 export function shouldEscalate(action: AgentAction, ctx: ValidateContext = {}): boolean {
   if (action.intent === "escalate") return true;
+  // A2: "a human must check with the estimator before any coverage is
+  // promised." The message buys a moment; the hand-off is the point of it,
+  // so this escalates whatever the model's confidence was.
+  if (action.intent === "checking_availability") return true;
   const strict = ctx.confidenceThreshold ?? 0.95;
   const threshold = LOW_STAKES.has(action.intent) ? Math.min(strict, LOW_STAKES_FLOOR) : strict;
   return action.confidence < threshold;

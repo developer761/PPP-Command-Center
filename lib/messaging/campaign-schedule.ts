@@ -18,6 +18,9 @@
  * Scheduling something for 2am is fine; the gate will hold it until 9.
  */
 
+import { reachableHour, type UnreachableWindow } from "./reachability";
+import { FEDERAL_BOUND } from "./compliance";
+
 export type ScheduleMode = "at_launch" | "delay_after_last" | "absolute_on_day";
 
 export type CampaignStep = {
@@ -127,7 +130,8 @@ export function firstMessageAt(input: {
  * firstMessageAt); everything after it stacks on the opener as before.
  */
 export function scheduleSteps(
-  steps: CampaignStep[], enrolledAt: Date, timeZone: string, opts: { launchAt?: Date } = {}
+  steps: CampaignStep[], enrolledAt: Date, timeZone: string,
+  opts: { launchAt?: Date; unreachable?: UnreachableWindow | null } = {}
 ): ScheduledStep[] {
   const ordered = [...steps].sort((a, b) => a.ordinal - b.ordinal);
   const out: ScheduledStep[] = [];
@@ -152,7 +156,24 @@ export function scheduleSteps(
           runAt = last;
           break;
         }
-        runAt = localTimeOnDay(enrolledAt, step.dayOffset ?? 0, mins, timeZone);
+        // A44: A STATED CONSTRAINT MOVES THE CADENCE.
+        //
+        // Only the day-based steps shift. The opener and a delay_after_last
+        // are anchored to something that already happened, and moving them
+        // would change what they are rather than when they land; a follow-up
+        // on day N at a named hour is exactly the thing Kate is describing.
+        //
+        // The HOUR moves, never the day. "Day 2" staying day 2 is the
+        // cadence; A36's window still gets the final say downstream, and the
+        // gate still holds anything outside it.
+        const shifted = opts.unreachable
+          ? reachableHour(opts.unreachable, Math.floor(mins / 60), FEDERAL_BOUND)
+          : Math.floor(mins / 60);
+        // null means the whole sendable day is ruled out. Keep the intended
+        // hour and let the gate defer it rather than inventing a day.
+        const hour = shifted ?? Math.floor(mins / 60);
+        const minute = shifted === null || shifted === Math.floor(mins / 60) ? mins % 60 : 0;
+        runAt = localTimeOnDay(enrolledAt, step.dayOffset ?? 0, hour * 60 + minute, timeZone);
         break;
       }
     }

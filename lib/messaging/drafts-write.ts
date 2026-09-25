@@ -14,7 +14,7 @@
  * when nothing left the building would be the worst of both: a customer who
  * never heard from us and a queue that says they did.
  */
-import { messagingDb } from "./db";
+import { messagingDb, selectAllIn } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { queueTurnIfUnanswered } from "./turn-queue";
 import { gateDeps } from "./gate-deps";
@@ -66,11 +66,14 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
   // draft is answering something the customer has already moved past.
   const latest = new Map<string, { id: string; at: string }>();
   if (ids.length) {
-    const { data: msgs } = await sb
-      .from("sms_messages").select("id, conversation_id, created_at")
-      .in("conversation_id", ids).eq("direction", "inbound")
-      .order("created_at", { ascending: false });
-    for (const m of msgs ?? []) {
+    const msgs = await selectAllIn<{ id: string; conversation_id: string; created_at: string }>(
+      ids,
+      (chunk, from, to) => sb.from("sms_messages").select("id, conversation_id, created_at")
+        .in("conversation_id", chunk).eq("direction", "inbound")
+        .order("created_at", { ascending: false }).order("id").range(from, to),
+      "the newest inbound per draft"
+    );
+    for (const m of msgs) {
       if (!latest.has(m.conversation_id)) latest.set(m.conversation_id, { id: m.id, at: m.created_at });
     }
   }

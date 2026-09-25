@@ -56,6 +56,45 @@ describe("validateAction — never quote a price", () => {
     const r = validateAction(ok({ freeText: "We can text or email you a quote. Which would you prefer?" }));
     expect(r.ok).toBe(true);
   });
+
+  /**
+   * A WRITTEN NUMBER IS STILL A PRICE.
+   *
+   * The pattern only looked for a written number in front of a MAGNITUDE —
+   * "five hundred", "two grand" — so it caught those and let "fifty dollars"
+   * straight through. Probed with twenty-one plausible prices, that was the
+   * one shape that escaped, and it is not an exotic one: cabinet work is
+   * quoted per door and lands on exactly this phrasing.
+   */
+  it("catches a price written out in words", () => {
+    for (const t of [
+      "fifty dollars", "fifty bucks", "twenty bucks", "a hundred bucks",
+      "a couple hundred bucks", "about fifty bucks a door", "fifty quid",
+      "about a grand", "a few grand", "fifty per door",
+    ]) {
+      const r = validateAction(ok({ freeText: t }));
+      expect(r.ok, t).toBe(false);
+      if (!r.ok) expect(r.reason, t).toBe("quoted_a_price");
+    }
+  });
+
+  /**
+   * The other half of the same trade. This filter is deliberately blunt, so
+   * widening it costs ordinary sentences — the first version of the fix above
+   * refused "a hundred percent" and "we cover a few hundred zip codes", which
+   * is a worse failure than the hole it closed.
+   */
+  it("does not refuse ordinary sentences that happen to carry a number word", () => {
+    for (const t of [
+      "Absolutely, a hundred percent.",
+      "We cover a few hundred zip codes.",
+      "Got it, twenty doors is no problem.",
+      "One of our estimators will come out.",
+      "Give us a couple of days and we will be in touch.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
 });
 
 describe("validateAction — never offer a time we do not have", () => {
@@ -100,10 +139,101 @@ describe("validateAction — never promise work PPP does not do", () => {
       "bathtub refinishing is no problem",
       "we can paint your appliances",
       "we do murals too",
+      // THE TRADES LIST HAD THE SAME ORDER BUG THE SURFACES LIST FIXED.
+      // It carried "window replacement", so this went out unrefused — along
+      // with seven more of fourteen plausible out-of-scope promises.
+      "we can replace the windows",
+      "Yes, we can reroof that for you.",
+      "we can fix the roof leak",
+      "our electricians can rewire it",
+      "we do concrete driveways",
+      "we can pour a new foundation",
     ]) {
       const r = validateAction(ok({ freeText: t }));
       expect(r.ok, t).toBe(false);
       if (!r.ok) expect(r.reason).toBe("out_of_scope_work");
+    }
+  });
+
+  /**
+   * FLOORING IS NOT OUT OF SCOPE, and this test said it was until the Chatbot
+   * screen showed it ticked. sms_services has a `flooring` row with
+   * covered_by_default true, so the prompt tells the model PPP does it and a
+   * regex here refused the model for agreeing. The hardcoded list must never
+   * contradict the configured one — verify-workspace-config checks that
+   * against the live table, which is the only place it can be checked
+   * honestly.
+   */
+  it("does not refuse a service PPP actually offers", () => {
+    for (const t of [
+      "we install flooring",
+      "Yes, we do drywall.",
+      "We can handle the power washing.",
+      "We do skim coating and lime washing.",
+      "Cabinet refinishing is no problem.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
+
+  /**
+   * The nouns above cannot be matched bare. PPP paints window trim, door
+   * frames and the boards under a roof line, so "window" and "roof" on their
+   * own would refuse the work it actually sells. The verb is what makes it
+   * somebody else's trade.
+   */
+  it("still allows painting work that touches those same nouns", () => {
+    for (const t of [
+      "We can paint the window trim.",
+      "We'll paint the window frames and sills.",
+      "We can paint the floor of the porch.",
+      "We paint the boards under the roof line.",
+      "We can prep and paint the siding.",
+      "We'll paint the garage floor.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
+
+  /**
+   * THE FLOORING BUG WITH THE SIGN FLIPPED.
+   *
+   * "What we do not cover" on the Chatbot screen names seven categories. The
+   * regex knew four, so furniture, industrial equipment and artistic painting
+   * were promised freely. Same root cause as flooring — a configured list and
+   * a hardcoded one that never met — just costing a promise PPP cannot keep
+   * instead of a refusal it should not make.
+   */
+  it("refuses the rest of what the configuration excludes", () => {
+    for (const t of [
+      "Yes, we can paint your furniture.",
+      "we can refinish the bookcase",
+      "we do standalone shelving too",
+      "we can coat your industrial equipment",
+      "yes we paint industrial equipment",
+      "we can do artistic painting",
+      "graphic painting is no problem",
+    ]) {
+      const r = validateAction(ok({ freeText: t }));
+      expect(r.ok, t).toBe(false);
+      if (!r.ok) expect(r.reason, t).toBe("out_of_scope_work");
+    }
+  });
+
+  /**
+   * BUILT-IN IS NOT STANDALONE, and the configuration says so in those words:
+   * "bookcases and shelving that are STANDALONE rather than built in". PPP
+   * sells built-in work, so a bare noun here would refuse the job — the same
+   * mistake the trades list made with "window" and "roof".
+   */
+  it("still allows built-in work, which the configuration does cover", () => {
+    for (const t of [
+      "We can paint the built-in shelving.",
+      "We can paint your built in bookcases.",
+      "We do built-in cabinetry.",
+      "We can paint the trim and the built in shelves.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
     }
   });
 

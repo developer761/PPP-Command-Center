@@ -22,6 +22,7 @@
  * missing enum entry is a guarantee.
  */
 import { toE164, formatUs } from "./phone";
+import { usableScope } from "./scope";
 
 export type KnownCustomer = {
   name?: string | null;
@@ -41,12 +42,12 @@ const clean = (v: string | null | undefined): string | null => {
 };
 
 /**
- * Human-readable, because "+15167846046" in a text message reads like a
+ * Human-readable, because "+19997846046" in a text message reads like a
  * machine wrote it.
  *
  * Dashed rather than "(516) 784-6046" for two reasons, and the second one is
  * the real one. It matches how Emily actually writes it in the conversation
- * Kate graded well: "Is 516-784-6046 and tomrvc@gmail.com the best contact".
+ * Kate graded well: "Is 999-784-6046 and tom@example.com the best contact".
  * And Kate's tone rules ban parentheses, so the bracketed form would have put
  * a rule violation into every contact confirmation we send.
  *
@@ -70,7 +71,18 @@ export function knownFields(k: KnownCustomer | undefined): {
     phone: displayPhone(k?.phone),
     email: clean(k?.email),
     address: clean(k?.address),
-    inquiryScope: clean(k?.inquiryScope),
+    // A9: A PLACEHOLDER IS NOT SCOPE, and this is the single place to say so.
+    //
+    // "'Customer did not provide additional comments…' is not scope — it is
+    // the absence of scope sitting in a scope field. Treat it as no scope
+    // held: ask for it, never summarise it back."
+    //
+    // Nulling it here rather than at each call site is deliberate: every
+    // consumer already asks this function what we hold, so all four of them
+    // get the same answer and cannot drift. The worst of the four is silent —
+    // a truthy scope makes ask_project_details a redundant ask (A13), so the
+    // bot never asks what the job is and nothing anywhere says why.
+    inquiryScope: usableScope(clean(k?.inquiryScope)),
   };
 }
 
@@ -91,6 +103,8 @@ export function knownCustomerPrompt(k: KnownCustomer | undefined): string {
   if (f.name) have.push(`Their name: ${f.name}`);
   if (f.address) have.push(`The property address: ${f.address}`);
   if (f.email) have.push(`Their email: ${f.email}`);
+  // Only ever their ACTUAL words. A form label quoted here as "their own
+  // words" is a lie the model then acts on.
   if (f.inquiryScope) have.push(`What they said they need, in their own words: "${f.inquiryScope}"`);
 
   const phoneLine = f.phone

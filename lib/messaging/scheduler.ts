@@ -59,7 +59,7 @@ export type SchedulerDeps = {
     fromEmail?: string | null;
     replyToEmail?: string | null;
     subject?: string | null;
-  } | null>;
+  } | { cancelBecause: string } | null>;
   send(req: SendRequest): Promise<GateResult>;
   markSent(a: DueAction, providerId: string, body: string, channel?: "sms" | "email", intent?: string | null): Promise<void>;
   /**
@@ -165,6 +165,14 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     const reason = "conversation or step no longer exists";
     await deps.cancel(a, reason);
     return { kind: "cancelled", reason };
+  }
+  // Resolved fine, but the row should no longer send — an outreach step for
+  // somebody who has since replied, say. Carries its own reason rather than
+  // borrowing "no longer exists", because a cancelled row nobody can explain
+  // is how a sequence gets turned back on by the next person to look at it.
+  if ("cancelBecause" in ctx) {
+    await deps.cancel(a, ctx.cancelBecause);
+    return { kind: "cancelled", reason: ctx.cancelBecause };
   }
 
   // THE RACE. The cancel-on-end trigger catches rows that are pending or

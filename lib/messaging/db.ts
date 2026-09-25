@@ -21,112 +21,20 @@ export function messagingDb() {
   );
 }
 
-/**
- * Read every row, not the first thousand.
- *
- * PostgREST caps an unbounded select at 1,000 rows and says nothing about it —
- * no error, no flag, just a short array. A query that counts things then
- * quietly counts the first thousand of them, and the number on the screen is
- * wrong in a direction nobody can see.
- *
- * loadOptOutRates was doing exactly that: reading the whole conversations
- * table to build the DENOMINATOR of the opt-out rate. Truncate the denominator
- * while the numerator stays whole and the rate over-reports — which on that
- * screen means telling somebody to pause a number that is fine. Harmless at
- * ten conversations; wrong within about a week at 171 leads a day.
- *
- * Pages explicitly. The last page is the one shorter than the page size, which
- * is also how it stops on an exact multiple.
- */
-const PAGE = 1000;
 
-export async function selectAll<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-  label: string
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw new Error(`${label}: ${error.message}`);
-    const rows = data ?? [];
-    out.push(...rows);
-    if (rows.length < PAGE) return out;
-    // A runaway guard. Nothing here should ever reach this, and looping
-    // forever against a paging bug is worse than a short answer that throws.
-    if (out.length > 200_000) throw new Error(`${label}: refusing to read more than 200,000 rows`);
-  }
-}
 
-export type InboxBucket = "needs_human" | "active" | "waiting" | "ended";
+import { selectAll, selectAllIn } from "./paging";
+// Re-exported so the many existing callers keep their import.
+export { selectAll, selectAllIn } from "./paging";
 
-/** The buckets the office actually triages by, in the order they matter.
- *  "Needs human" is first because an escalation nobody sees is an escalation
- *  that failed. */
-export const BUCKETS: { key: InboxBucket; label: string; short: string }[] = [
-  { key: "needs_human", label: "Needs human", short: "Needs you" },
-  { key: "active",      label: "AI working",  short: "AI" },
-  { key: "waiting",     label: "Awaiting customer", short: "Waiting" },
-  { key: "ended",       label: "Ended",       short: "Ended" },
-];
-
-export type InboxRow = {
-  id: string;
-  customer_phone: string;
-  customer_name: string | null;
-  state: string;
-  outcome: string | null;
-  owning_agent: string | null;
-  last_message_at: string | null;
-  workspace_name: string;
-};
-
-const STATE_FOR: Record<InboxBucket, string[]> = {
-  needs_human: ["human_active"],
-  active: ["ai_active"],
-  waiting: ["awaiting_customer"],
-  ended: ["ended"],
-};
-
-export async function loadInbox(bucket: InboxBucket, workspaceId?: string, search?: string) {
-  const sb = messagingDb();
-  let q = sb
-    .from("sms_conversations")
-    .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at, sms_sub_accounts(name)")
-    .in("state", STATE_FOR[bucket])
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(100);
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  // Name or number. Someone hunting a conversation has one or the other in
-  // front of them — usually the number, off a missed call.
-  if (search?.trim()) {
-    const t = search.trim().replace(/[%,()]/g, "");
-    q = q.or(`customer_name.ilike.%${t}%,customer_phone.ilike.%${t}%`);
-  }
-  const { data, error } = await q;
-  if (error) return { rows: [] as InboxRow[], error: error.message };
-  const rows: InboxRow[] = (data ?? []).map((r) => {
-    const ws = r.sms_sub_accounts as unknown as { name: string } | null;
-    return {
-      id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
-      state: r.state, outcome: r.outcome, owning_agent: r.owning_agent,
-      last_message_at: r.last_message_at, workspace_name: ws?.name ?? "—",
-    };
-  });
-  return { rows, error: null as string | null };
-}
-
-/** Counts per bucket, for the filter chips. One query, not four. */
-export async function bucketCounts(workspaceId?: string) {
-  const sb = messagingDb();
-  let q = sb.from("sms_conversations").select("state");
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  const { data } = await q;
-  const counts: Record<InboxBucket, number> = { needs_human: 0, active: 0, waiting: 0, ended: 0 };
-  for (const r of data ?? []) {
-    for (const b of BUCKETS) if (STATE_FOR[b.key].includes(r.state)) counts[b.key]++;
-  }
-  return counts;
-}
+/* loadInbox, bucketCounts, InboxBucket, BUCKETS, STATE_FOR and InboxRow
+ * lived here and are gone. Nothing called either function — the board uses
+ * loadBoard and the list uses loadReport — and they had been dead long
+ * enough that I paged bucketCounts against the 1,000-row cap earlier today
+ * believing the Needs-human chip was undercounting. It was not rendering at
+ * all. The real undercount was in loadBoard, where the column headings
+ * counted the capped 200 rather than the database. Dead code that looks
+ * live costs more than the space it takes. */
 
 export async function activeWorkspaces() {
   const sb = messagingDb();
@@ -151,7 +59,24 @@ export type ThreadMessage = {
   created_at: string;
 };
 
+/**
+ * A conversation id that cannot exist is NOT FOUND, not a system fault.
+ *
+ * [conversationId] is a dynamic segment, so it catches every unmatched path
+ * under /messaging. Postgres rejects a non-uuid with 22P02, loadThread threw,
+ * and a stale bookmark or a mistyped URL — /messaging/reports, when the route
+ * is /messaging/reporting — was shown as "This screen could not load,
+ * something went wrong reading the data" with a reference number, which reads
+ * like an outage. not-found.tsx was sitting right there, unreachable.
+ *
+ * The comment below still holds for a real id: a failed read must not be
+ * reported as a missing conversation. This is the other direction — an id
+ * that is not an id at all never reaches the database.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function loadThread(id: string) {
+  if (!UUID.test(id)) return null;
   const sb = messagingDb();
   const { data: conv, error } = await sb
     .from("sms_conversations")
@@ -269,7 +194,14 @@ export async function sidebarWorkspaces() {
   const sb = messagingDb();
   const [{ data: ws }, { data: convs }] = await Promise.all([
     sb.from("sms_sub_accounts").select("id, name").eq("is_active", true).order("name"),
-    sb.from("sms_conversations").select("workspace_id").eq("state", "human_active"),
+    // Paged. This is the per-workspace "needs you" badge, and a backed-up
+    // queue is exactly when it passes a thousand and exactly when the number
+    // has to be right.
+    selectAll<{ workspace_id: string }>(
+      (from, to) => sb.from("sms_conversations").select("workspace_id")
+        .eq("state", "human_active").order("id").range(from, to),
+      "the needs-a-person badge"
+    ).then((data) => ({ data })),
   ]);
   const unread = new Map<string, number>();
   for (const c of convs ?? []) unread.set(c.workspace_id, (unread.get(c.workspace_id) ?? 0) + 1);
@@ -302,6 +234,23 @@ export type AgentConfig = {
 };
 
 /**
+ * The transcript, whatever shape the row is in.
+ *
+ * A string is the shape everything writes today. The `{ text, found }` object
+ * is what one importer stored for 1,234 rows before it was fixed; reading
+ * .text out of it is how those rows stay usable without a migration being a
+ * prerequisite for the bot working. Anything else returns "" and is filtered
+ * out upstream — an unreadable transcript must not become prompt text.
+ */
+function transcriptText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object" && typeof (v as { text?: unknown }).text === "string") {
+    return (v as { text: string }).text;
+  }
+  return "";
+}
+
+/**
  * The corpus, for retrieval.
  *
  * Deliberately narrow: only the columns a prompt can use, and only rows that
@@ -311,26 +260,47 @@ export type AgentConfig = {
  */
 export async function loadRetrievalCorpus(): Promise<CorpusExample[]> {
   const sb = messagingDb();
-  const [{ data: rows }, { data: links }] = await Promise.all([
-    sb.from("sms_training_examples")
-      .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note, source")
-      .eq("pii_scrubbed", true),
-    sb.from("sms_training_example_tags").select("example_id, tag_key, note"),
+  // PAGED. This was an unbounded select, and PostgREST caps those at 1,000
+  // silently — 1,294 conversations qualified, so the corpus the bot actually
+  // learns from was missing 294 of them with nothing anywhere saying so.
+  // Every other unbounded read got fixed; the one feeding the model was missed.
+  const [rows, links] = await Promise.all([
+    selectAll<{
+      id: string; transcript: unknown; conduct: string | null; approved: boolean;
+      pii_scrubbed: boolean; conduct_note: string | null; source: string;
+    }>(
+      (a, b) => sb.from("sms_training_examples")
+        .select("id, transcript, conduct, approved, pii_scrubbed, conduct_note, source")
+        .eq("pii_scrubbed", true).order("id").range(a, b) as never,
+      "reading the retrieval corpus"
+    ),
+    selectAll<{ example_id: string; tag_key: string; note: string | null }>(
+      (a, b) => sb.from("sms_training_example_tags")
+        .select("example_id, tag_key, note").order("example_id").range(a, b),
+      "reading example tags"
+    ),
   ]);
 
   const tagsOf = new Map<string, string[]>();
   const noteOf = new Map<string, string>();
-  for (const l of links ?? []) {
+  for (const l of links) {
     const list = tagsOf.get(l.example_id) ?? [];
     list.push(l.tag_key);
     tagsOf.set(l.example_id, list);
     if (l.note && !noteOf.has(l.example_id)) noteOf.set(l.example_id, l.note);
   }
 
-  return (rows ?? []).map((r) => ({
+  return rows.map((r) => ({
     id: r.id,
     source: r.source,
-    transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript),
+    // A transcript that is not a string is a broken row, not a prompt.
+    //
+    // The rated import stored { text, found } objects instead of the scrubbed
+    // string, and JSON.stringify here dutifully rendered the whole blob into
+    // the model's context as a worked example. Reading .text recovers the real
+    // transcript; anything else is dropped by the trim() filter in retrieval
+    // rather than shown to the model as gibberish.
+    transcript: transcriptText(r.transcript),
     conduct: r.conduct as CorpusExample["conduct"],
     approved: r.approved,
     piiScrubbed: r.pii_scrubbed,
@@ -519,10 +489,17 @@ export const END_STATES: { key: string; label: string; when: string }[] = [
 
 export async function trainingStats() {
   const sb = messagingDb();
-  const { data } = await sb
-    .from("sms_training_examples")
-    .select("conduct, outcome, approved, pii_scrubbed, source");
-  const rows = data ?? [];
+  // PAGED. 1,294 examples and PostgREST caps an unbounded select at 1,000,
+  // so every number on this panel was short by the 294 it never saw — and
+  // silently, because a capped read looks exactly like a complete one.
+  const rows = await selectAll<{
+    conduct: string | null; outcome: string | null;
+    approved: boolean; pii_scrubbed: boolean; source: string;
+  }>(
+    (a, b) => sb.from("sms_training_examples")
+      .select("conduct, outcome, approved, pii_scrubbed, source").order("id").range(a, b),
+    "reading the training corpus summary"
+  );
   const usable = rows.filter((r) => r.approved && r.pii_scrubbed);
   const count = (pred: (r: (typeof rows)[number]) => boolean) => rows.filter(pred).length;
   return {
@@ -582,8 +559,35 @@ export type BoardCard = {
   direction: string | null;
 };
 
+/**
+ * THE CARDS ARE CAPPED. THE COUNTS MUST NOT BE.
+ *
+ * The board reads the 200 most recent conversations, which is right — nobody
+ * works a column of five thousand cards. But the number beside each column
+ * heading was the length of that capped bucket, so it was never "how many are
+ * in the inbox", it was "how many of the last 200 are". At ten conversations
+ * those are the same number. At PPP's own figure of 171 leads a day, "All
+ * workspaces" passes 200 in about two days and the Inbox count silently stops
+ * counting, understating the backlog on exactly the screen somebody opens to
+ * see how big it is.
+ *
+ * So the cards keep the cap and the counts come from the database, which does
+ * the counting and is never truncated. Field has no count because PPP has not
+ * said what puts a conversation in it; an invented number would be worse than
+ * the empty column it already shows.
+ */
 export async function loadBoard(workspaceId?: string) {
   const sb = messagingDb();
+  /** A head count, already scoped to the workspace when there is one. */
+  const counting = () => {
+    const q = sb.from("sms_conversations").select("id", { count: "exact", head: true });
+    return workspaceId ? q.eq("workspace_id", workspaceId) : q;
+  };
+  const [inboxRes, followupRes, soldRes] = await Promise.all([
+    counting().neq("state", "ended"),
+    counting().eq("state", "ended").eq("outcome", "schedule_follow_up"),
+    counting().eq("state", "ended").eq("outcome", "success"),
+  ]);
   let q = sb
     .from("sms_conversations")
     .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at")
@@ -595,12 +599,15 @@ export async function loadBoard(workspaceId?: string) {
 
   // One query for the newest message per conversation, rather than N.
   const ids = rows.map((r) => r.id);
-  const { data: msgs } = ids.length
-    ? await sb.from("sms_messages").select("conversation_id, body, direction, created_at")
-        .in("conversation_id", ids).order("created_at", { ascending: false })
-    : { data: [] };
+  const msgs = await selectAllIn<{ conversation_id: string; body: string; direction: string; created_at: string }>(
+    ids,
+    (chunk, from, to) => sb.from("sms_messages").select("conversation_id, body, direction, created_at")
+      .in("conversation_id", chunk)
+      .order("created_at", { ascending: false }).order("id").range(from, to),
+    "the inbox message previews"
+  );
   const newest = new Map<string, { body: string; direction: string }>();
-  for (const m of msgs ?? []) {
+  for (const m of msgs) {
     if (!newest.has(m.conversation_id)) newest.set(m.conversation_id, { body: m.body, direction: m.direction });
   }
 
@@ -620,7 +627,14 @@ export async function loadBoard(workspaceId?: string) {
     // columns than the four visible in the screenshot; those conversations are
     // not invented into a column they do not belong in.
   }
-  return columns;
+  const counts: Record<BoardColumnKey, number> = {
+    inbox: inboxRes.count ?? 0,
+    followup: followupRes.count ?? 0,
+    sold: soldRes.count ?? 0,
+    // Not derivable. The column says so on the page.
+    field: columns.field.length,
+  };
+  return { columns, counts };
 }
 
 /* ─────────────────────── human agent stats ───────────────────────── */
@@ -705,9 +719,23 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   const select =
     "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, campaign_version_id, sms_sub_accounts(name), sms_campaign_versions(sms_campaigns(name))";
 
-  let q = sb.from("sms_conversations").select(select).gte("created_at", prevFrom.toISOString());
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  const { data, error } = await q;
+  // Paged: this is two reporting windows' worth of conversations, and at real
+  // lead volume sixty days is well past a thousand. A truncated numerator and
+  // a truncated denominator do not truncate by the same amount, so every rate
+  // on the page would be wrong by an unknowable margin.
+  const readErrors: string[] = [];
+  const data = await selectAll<Record<string, unknown>>(
+    (from, to) => {
+      let q = sb.from("sms_conversations").select(select)
+        .gte("created_at", prevFrom.toISOString()).order("id").range(from, to);
+      if (workspaceId) q = q.eq("workspace_id", workspaceId);
+      return q;
+    },
+    "the reporting window"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const all = (data ?? []).map((r) => {
     const ws = r.sms_sub_accounts as unknown as { name: string } | null;
@@ -729,12 +757,16 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   // conversation: a thread can pass through more than one person, and crediting
   // all of it to whoever it was last assigned to would flatter them.
   const currentIds = all.filter((r) => new Date(r.created_at) >= from).map((r) => r.id);
-  const { data: humanMsgs } = currentIds.length
-    ? await sb.from("sms_messages")
-        .select("conversation_id, direction, sent_by_agent, created_at")
-        .in("conversation_id", currentIds)
-        .order("created_at")
-    : { data: [] as { conversation_id: string; direction: string; sent_by_agent: string | null; created_at: string }[] };
+  const humanMsgs = await selectAllIn<{ conversation_id: string; direction: string; sent_by_agent: string | null; created_at: string }>(
+    currentIds,
+    (chunk, from, to) => sb.from("sms_messages")
+      .select("conversation_id, direction, sent_by_agent, created_at")
+      .in("conversation_id", chunk).order("created_at").order("id").range(from, to),
+    "who replied, for the reporting window"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const humanRowsRaw: {
     name: string; outcome: string | null; state: string;
@@ -742,7 +774,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   }[] = [];
   {
     const byConv = new Map<string, typeof humanMsgs>();
-    for (const m of humanMsgs ?? []) {
+    for (const m of humanMsgs) {
       const list = byConv.get(m.conversation_id) ?? [];
       list.push(m);
       byConv.set(m.conversation_id, list);
@@ -781,27 +813,47 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
 
   // Aging needs the live set regardless of the reporting window — a
   // conversation from six weeks ago that is still waiting is still waiting.
-  let liveQ = sb
-    .from("sms_conversations")
-    .select("id, state, last_message_at, sms_sub_accounts(name)")
-    .neq("state", "ended");
-  if (workspaceId) liveQ = liveQ.eq("workspace_id", workspaceId);
-  const { data: live } = await liveQ;
+  const live = await selectAll<{ id: string; state: string; last_message_at: string | null; sms_sub_accounts: unknown }>(
+    (from, to) => {
+      let q = sb.from("sms_conversations")
+        .select("id, state, last_message_at, sms_sub_accounts(name)")
+        .neq("state", "ended").order("id").range(from, to);
+      if (workspaceId) q = q.eq("workspace_id", workspaceId);
+      return q;
+    },
+    "the live conversation set"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
-  const liveIds = (live ?? []).map((r) => r.id);
-  const { data: lastMsgs } = liveIds.length
-    ? await sb.from("sms_messages").select("conversation_id, direction, created_at")
-        .in("conversation_id", liveIds).order("created_at", { ascending: false })
-    : { data: [] };
+  const liveIds = live.map((r) => r.id);
+  // CHUNKED AS WELL AS PAGED, and both for different reasons.
+  //
+  // .in() bounds the FILTER, never the RESULT: one row per id is the least
+  // this can return and every message in every one of those threads is the
+  // most, so it truncates long before the id list does. And a .in() carrying
+  // thousands of UUIDs is a URL tens of kilobytes long, which fails outright
+  // rather than quietly. Neither problem is visible at ten conversations.
+  const lastMsgs = await selectAllIn<{ conversation_id: string; direction: string; created_at: string }>(
+    liveIds,
+    (chunk, from, to) => sb.from("sms_messages").select("conversation_id, direction, created_at")
+      .in("conversation_id", chunk)
+      .order("created_at", { ascending: false }).order("id").range(from, to),
+    "messages for the aging report"
+  ).catch((e: unknown) => {
+    readErrors.push(e instanceof Error ? e.message : String(e));
+    return [];
+  });
 
   const lastIn = new Map<string, string>(), lastOut = new Map<string, string>();
-  for (const m of lastMsgs ?? []) {
+  for (const m of lastMsgs) {
     const map = m.direction === "inbound" ? lastIn : lastOut;
     if (!map.has(m.conversation_id)) map.set(m.conversation_id, m.created_at);
   }
 
   const aging = agingConversations(
-    (live ?? []).map((r) => ({
+    live.map((r) => ({
       id: r.id,
       workspace: (r.sms_sub_accounts as unknown as { name: string } | null)?.name ?? "—",
       state: r.state as string,
@@ -812,7 +864,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   );
 
   return {
-    error: error?.message ?? null,
+    error: readErrors[0] ?? null,
     range, days,
     total: current.length,
     previousTotal: previous.length,
@@ -874,8 +926,19 @@ export async function loadTrainingCoverage() {
   const sb = messagingDb();
   const [{ data: tags }, { data: examples }, { data: links }] = await Promise.all([
     sb.from("sms_training_tags").select("*").eq("is_active", true).order("sort_order"),
-    sb.from("sms_training_examples").select("id, conduct, approved, pii_scrubbed"),
-    sb.from("sms_training_example_tags").select("example_id, tag_key"),
+    // Paged for the same reason as the panel above: the coverage report
+    // counts examples, and counting 1,000 of 1,294 makes every tag look
+    // thinner than it is.
+    selectAll<{ id: string; conduct: string | null; approved: boolean; pii_scrubbed: boolean }>(
+      (a, b) => sb.from("sms_training_examples")
+        .select("id, conduct, approved, pii_scrubbed").order("id").range(a, b),
+      "reading examples for coverage"
+    ).then((data) => ({ data })),
+    selectAll<{ example_id: string; tag_key: string }>(
+      (a, b) => sb.from("sms_training_example_tags")
+        .select("example_id, tag_key").order("example_id").range(a, b),
+      "reading example tags for coverage"
+    ).then((data) => ({ data })),
   ]);
 
   const byExample = new Map<string, string[]>();

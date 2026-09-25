@@ -47,7 +47,17 @@ export type HeldLead = {
 
 export type RedriveDecision =
   | { redrive: true }
-  | { redrive: false; why: string };
+  /**
+   * `why` is the CATEGORY and nothing else; anything that varies per lead
+   * goes in `ageDays`.
+   *
+   * The age used to be part of the sentence, so 619 leads held for one reason
+   * arrived on the screen as ten near-identical rows — 84, 83, 80, 78, 74,
+   * 74, 72, 50, 15, 9 — each saying "past the 24h limit" with a different
+   * number in front. The one fact worth reading, that almost the whole
+   * backlog has a single cause, was the one thing the list could not show.
+   */
+  | { redrive: false; why: string; ageDays?: number };
 
 /**
  * How old a lead may be and still be worth texting.
@@ -134,7 +144,11 @@ export function shouldRedrive(
     return { redrive: false, why: "no creation date, so its age cannot be checked" };
   }
   if (age > maxAge) {
-    return { redrive: false, why: `${Math.round(age / 24)} day(s) old, past the ${maxAge}h limit` };
+    return {
+      redrive: false,
+      why: `older than the ${maxAge}h limit`,
+      ageDays: Math.round(age / 24),
+    };
   }
 
   return { redrive: true };
@@ -144,6 +158,8 @@ export type RedrivePlan = {
   release: HeldLead[];
   /** Everything not released, and the reason, counted for the screen. */
   holdReasons: Record<string, number>;
+  /** The oldest lead behind each reason, so collapsing the rows loses nothing. */
+  holdOldestDays: Record<string, number>;
 };
 
 /** Split a batch into what goes back in the queue and what stays put. */
@@ -153,10 +169,14 @@ export function planRedrive(
 ): RedrivePlan {
   const release: HeldLead[] = [];
   const holdReasons: Record<string, number> = {};
+  const holdOldestDays: Record<string, number> = {};
   for (const l of leads) {
     const d = shouldRedrive(l, opts);
-    if (d.redrive) release.push(l);
-    else holdReasons[d.why] = (holdReasons[d.why] ?? 0) + 1;
+    if (d.redrive) { release.push(l); continue; }
+    holdReasons[d.why] = (holdReasons[d.why] ?? 0) + 1;
+    if (d.ageDays !== undefined) {
+      holdOldestDays[d.why] = Math.max(holdOldestDays[d.why] ?? 0, d.ageDays);
+    }
   }
-  return { release, holdReasons };
+  return { release, holdReasons, holdOldestDays };
 }

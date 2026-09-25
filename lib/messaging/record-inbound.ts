@@ -23,6 +23,7 @@ import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 import { trackForWorkspace } from "./track";
+import { statedConstraint } from "./reachability";
 
 export type Accepted = Extract<InboundDecision, { kind: "accept" }>;
 
@@ -135,11 +136,55 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
       channel: "sms",
       body: decision.body,
       provider_id: decision.providerId,
+      // A26: that a photo arrived is the whole fact the rule needs, and it
+      // was being discarded here. The count was computed on the way in, used
+      // to decide the message was not empty, and then dropped, so the
+      // acknowledgement in render.ts could never fire for a real customer.
+      media_count: decision.mediaCount ?? 0,
     });
     // 23505 is the redelivery we expected.
     if (error && error.code !== "23505") throw asError("writing the inbound message", error);
     isNew = error?.code !== "23505";
     const receivedAt = new Date();
+
+    // A44: DID THEY JUST TELL US WHEN NOT TO TEXT THEM?
+    //
+    // "once stated, it binds the whole cadence" and it does not expire, so it
+    // is recorded the moment it is said rather than looked for later. Only on
+    // a genuinely new message: a redelivery restating a constraint we already
+    // hold would rewrite stated_at and make the provenance a lie.
+    //
+    // The LATEST statement wins. "Does not need to be repeated" means silence
+    // never clears it; it does not mean somebody who changes shifts is stuck
+    // with the window they gave in March.
+    //
+    // Best effort on purpose. This is a scheduling refinement, and failing to
+    // record it must never cost us the inbound message itself.
+    if (isNew) {
+      const win = statedConstraint(decision.body);
+      if (win) {
+        const { data: msg } = await sb.from("sms_messages")
+          .select("id").eq("conversation_id", conversationId)
+          .eq("direction", "inbound").order("created_at", { ascending: false }).limit(1);
+        const { error: rErr } = await sb.from("sms_conversations").update({
+          unreachable_start_hour: win.startHour,
+          unreachable_end_hour: win.endHour,
+          unreachable_stated_at: receivedAt.toISOString(),
+          unreachable_message_id: msg?.[0]?.id ?? null,
+          updated_at: receivedAt.toISOString(),
+        }).eq("id", conversationId);
+        // 42703 is the migration not being applied yet. The conversation
+        // carries on either way; the follow-ups simply are not shifted.
+        if (rErr && rErr.code !== "42703") {
+          reportWarn({
+            key: "sms_reachability_not_recorded",
+            message: "The customer said when they cannot be reached and it was not recorded",
+            platform: "ppp_cc",
+            context: { conversationId, error: rErr.message },
+          });
+        }
+      }
+    }
 
     // HELP IS ANSWERED, and it never reaches the model.
     //

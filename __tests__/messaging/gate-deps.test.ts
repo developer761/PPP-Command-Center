@@ -24,7 +24,10 @@ type Result = { data?: unknown; error?: unknown; count?: number | null };
  */
 function sbStub(result: Result, spy?: { calls: string[] }): SupabaseClient {
   const chain: Record<string, unknown> = {};
-  for (const m of ["select", "eq", "is", "ilike", "in", "gte", "lte", "limit", "order", "not", "neq"]) {
+  // "range" because the conversation lookup is paged now: a stub missing it
+  // does not fail the assertion under test, it throws inside the pager and
+  // the test reads as though the rail itself broke.
+  for (const m of ["select", "eq", "is", "ilike", "in", "gte", "lte", "limit", "order", "not", "neq", "range"]) {
     chain[m] = (...args: unknown[]) => { spy?.calls.push(`${m}(${args.map(String).join(",")})`); return chain; };
   }
   chain.maybeSingle = async () => result;

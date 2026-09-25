@@ -246,9 +246,9 @@ export default function Simulator({
                 </p>
                 {([
                   ["name", "Name", "Jeremy Saxe"],
-                  ["phone", "Texting them on", "516-784-6046"],
+                  ["phone", "Texting them on", "999-784-6046"],
                   ["email", "Email", "tom@example.com"],
-                  ["address", "Address", "166 S Park Ave, Rockville Centre, NY 11570"],
+                  ["address", "Address", "12 Oak St, Rockville Centre, NY 11570"],
                   ["inquiryScope", "What the enquiry said", "1500sqft Cape Cod, cedar shake cleaned and scraped, 2 coats exterior"],
                 ] as const).map(([k, label, placeholder]) => (
                   <label key={k} className="block">
@@ -594,8 +594,9 @@ export default function Simulator({
             {(!overall || !tagKey) && (
               <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
                 {!overall && "Say how it went"}{!overall && !tagKey && ", and "}
-                {!tagKey && "pick which rule it shows at the top"} before sending it to training —
-                an untagged example counts towards the total and teaches none of Emily&apos;s rules.
+                {!tagKey && "pick which rule it shows at the top"}{" "}
+                before sending it to training — an untagged example counts
+                towards the total and teaches none of Emily&apos;s rules.
               </p>
             )}
             {exportNote && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600 leading-relaxed">{exportNote}</p>}

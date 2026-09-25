@@ -21,7 +21,7 @@
  * does not know that table exists, and this module reads both on purpose.
  * Two loaders, two audiences, no field anybody has to remember to omit.
  */
-import { messagingDb, selectAll } from "./db";
+import { messagingDb, selectAll, selectAllIn } from "./db";
 import type { ClassARule } from "./class-a-rules";
 
 export type RuleCounts = { fellShort: number; didWell: number; conversations: number };
@@ -127,6 +127,13 @@ export type RuleFinding = {
   id: string;
   exampleId: string;
   turnOrdinal: number | null;
+  /** Kate's own label, "T2.2". A fractional turn cannot live in turn_ordinal. */
+  turnLabel: string | null;
+  /** The bot's own words, as rated. The thing a reader actually wants. */
+  turnText: string | null;
+  /** How the finding was reached: read, detector, lookup, carve. Separates a
+   *  judgement from a measurement. */
+  basis: string | null;
   kind: "fell_short" | "did_well";
   severity: "mild" | "medium" | "critical" | null;
   what: string;
@@ -169,33 +176,56 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
   if (error) throw new Error(`could not read rule ${code}: ${error.message}`);
   if (!row) return null;
 
-  const [{ data: notes }, findingsRes, changesRes] = await Promise.all([
+  const [{ data: notes }, fellRes, wellRes, changesRes] = await Promise.all([
     sb.from("sms_class_a_rule_notes").select("rating_guidance, history").eq("code", row.code).maybeSingle(),
+    // ONE QUERY PER KIND, not one query split afterwards.
+    //
+    // A single ordered read of 100 findings, split into two lists, empties the
+    // "done well" section entirely whenever a rule's newest 100 findings all
+    // happen to be breaches — which for A23 (618 breaches) is the norm. The
+    // page then showed a non-zero "done well" tile above no examples at all,
+    // and the explainer that would have said why is inside the section that
+    // did not render. Asking each question separately means each answer is
+    // about the thing it is displayed next to.
     sb.from("sms_example_findings")
-      .select("id, example_id, turn_ordinal, kind, severity, what, should_have, created_at")
-      .eq("code", row.code)
-      .order("created_at", { ascending: false })
-      .limit(EXAMPLES_PER_KIND * 4),
+      .select("id, example_id, turn_ordinal, turn_label, turn_text, basis, kind, severity, what, should_have, created_at")
+      .eq("code", row.code).neq("kind", "did_well")
+      .order("created_at", { ascending: false }).order("id", { ascending: false })
+      .limit(EXAMPLES_PER_KIND),
+    sb.from("sms_example_findings")
+      .select("id, example_id, turn_ordinal, turn_label, turn_text, basis, kind, severity, what, should_have, created_at")
+      .eq("code", row.code).eq("kind", "did_well")
+      .order("created_at", { ascending: false }).order("id", { ascending: false })
+      .limit(EXAMPLES_PER_KIND),
     sb.from("sms_class_a_rule_changes")
       .select("id, field, before, after, change_type, note, changed_by, changed_at")
       .eq("code", row.code).order("changed_at", { ascending: false }).limit(50),
   ]);
-  if (findingsRes.error) throw new Error(`could not read findings: ${findingsRes.error.message}`);
-  const findings = findingsRes.data ?? [];
+  const bad = fellRes.error ?? wellRes.error;
+  if (bad) throw new Error(`could not read findings: ${bad.message}`);
+  const findings = [...(fellRes.data ?? []), ...(wellRes.data ?? [])];
 
   // The grade of the conversation each finding came from, so a reader can tell
   // a lone slip in a good conversation from one of many in a bad one.
   const ids = [...new Set(findings.map((f) => f.example_id as string))];
   const conductOf = new Map<string, "good" | "mixed" | "bad" | null>();
   if (ids.length) {
-    const { data: exs } = await sb.from("sms_training_examples").select("id, conduct").in("id", ids);
-    for (const e of exs ?? []) conductOf.set(e.id as string, (e.conduct as "good" | "mixed" | "bad" | null) ?? null);
+    const exs = await selectAllIn<{ id: string; conduct: string | null }>(
+      ids,
+      (chunk, from, to) => sb.from("sms_training_examples").select("id, conduct")
+        .in("id", chunk).order("id").range(from, to),
+      "conduct per example"
+    );
+    for (const e of exs) conductOf.set(e.id as string, (e.conduct as "good" | "mixed" | "bad" | null) ?? null);
   }
 
   const shape = (f: Record<string, unknown>): RuleFinding => ({
     id: f.id as string,
     exampleId: f.example_id as string,
     turnOrdinal: (f.turn_ordinal as number | null) ?? null,
+    turnLabel: (f.turn_label as string | null) ?? null,
+    turnText: (f.turn_text as string | null) ?? null,
+    basis: (f.basis as string | null) ?? null,
     kind: f.kind === "did_well" ? "did_well" : "fell_short",
     severity: (f.severity as RuleFinding["severity"]) ?? null,
     what: (f.what as string) ?? "",
@@ -248,7 +278,7 @@ export async function loadRuleDetail(code: string): Promise<RuleDetail | null> {
     },
     ratingGuidance: (notes?.rating_guidance as string | null) ?? null,
     history: (notes?.history as string | null) ?? null,
-    fellShort: all.filter((f) => f.kind === "fell_short").slice(0, EXAMPLES_PER_KIND),
-    didWell: all.filter((f) => f.kind === "did_well").slice(0, EXAMPLES_PER_KIND),
+    fellShort: all.filter((f) => f.kind === "fell_short"),
+    didWell: all.filter((f) => f.kind === "did_well"),
   };
 }

@@ -5,6 +5,7 @@ import { reportError, reportWarn, reportInfo } from "@/lib/observability";
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
 import { pollSalesforceLeads, type PollSummary } from "@/lib/messaging/lead-poll";
 import { sweepExitsFor, type SweepSummary } from "@/lib/messaging/exit-sweep";
+import { refreshServiceZips, type RefreshResult } from "@/lib/messaging/service-zip-refresh";
 import { runOptOutWriteback, writebackEnabled, type WritebackSummary } from "@/lib/messaging/optout-writeback-run";
 import { messagingDb } from "@/lib/messaging/db";
 
@@ -49,11 +50,23 @@ export async function GET(request: Request) {
   // own try: Salesforce being down must never stop replies that are due from
   // going out. Throttled inside to once a minute. LEAD_POLL_DISABLED=true
   // switches it off without a deploy of code.
+  //
+  // THAT FLAG GATES THE POLL AND NOTHING ELSE, which it did not until now. It
+  // sat on the whole Salesforce block, so setting a variable called
+  // LEAD_POLL_DISABLED also silenced the exit sweep and the service-area
+  // refresh. Somebody pausing intake — a bad routing change, a migration —
+  // would have stopped the thing that notices a customer has since booked,
+  // and the campaign would have carried on chasing them: exactly the harm the
+  // sweep below was added to prevent, reintroduced by a flag named after
+  // something else. The sweep and the refresh are guarded by Salesforce being
+  // configured, and each already survives Salesforce being down on its own.
   let leads: PollSummary | { error: string } | null = null;
   let exits: SweepSummary | { error: string } | null = null;
+  let zips: RefreshResult | null = null;
   let writeback: WritebackSummary | { error: string } | null = null;
-  if (isSalesforceConfigured() && process.env.LEAD_POLL_DISABLED !== "true") {
-    try {
+  if (isSalesforceConfigured()) {
+    const pollLeads = process.env.LEAD_POLL_DISABLED !== "true";
+    if (pollLeads) try {
       const conn = await getSalesforceClient();
       leads = await pollSalesforceLeads(messagingDb(), (soql, opts) =>
         (opts?.all
@@ -62,7 +75,23 @@ export async function GET(request: Request) {
           ? conn.query(soql, { autoFetch: true, maxFetch: 50_000 })
           : conn.query(soql)) as never);
       if (leads.failed > 0) {
-        reportWarn({ key: "lead_poll_failed_rows", platform: "ppp_cc", message: `${leads.failed} lead(s) failed intake`, context: leads });
+        reportWarn({
+          key: "lead_poll_failed_rows", platform: "ppp_cc",
+          message: `${leads.failed} lead(s) failed intake`,
+          context: { ...leads, overlaps: leads.overlaps?.join(" | ") ?? null },
+        });
+      }
+      // TWO WORKFLOWS MATCHED ONE LEAD, which by Karan's rule cannot happen:
+      // overlapping entry criteria in one workspace. Enrolment takes the first
+      // match so nobody is texted twice, but which campaign they got came down
+      // to row order. chooseWorkflow has always worked this out and the value
+      // was read by nothing, so it has never once been said out loud.
+      if (leads.overlaps?.length) {
+        reportWarn({
+          key: "workflow_entry_overlap", platform: "ppp_cc",
+          message: `Entry rules overlap: ${leads.overlaps.join(" | ")}`,
+          context: { count: leads.overlaps.length, detail: leads.overlaps.join(" | ") },
+        });
       }
     } catch (err) {
       leads = { error: err instanceof Error ? err.message : String(err) };
@@ -96,6 +125,32 @@ export async function GET(request: Request) {
     } catch (err) {
       exits = { error: err instanceof Error ? err.message : String(err) };
       reportWarn({ key: "exit_sweep_failed", platform: "ppp_cc", message: `Exit sweep failed: ${exits.error}` });
+    }
+
+    // THE SERVICE AREA MAP, WHERE A REPLY CAN READ IT.
+    //
+    // A2 has to be checked when a customer gives us a zip mid-conversation,
+    // not only when a lead arrives. The 2,194 Zip_Code__c rows only existed
+    // in a cache inside this process, and asking Salesforce from the reply
+    // path would put it back in the way of replies — which is the thing the
+    // separate try blocks above exist to avoid.
+    //
+    // Its own try, for the same reason as the others: Salesforce being down
+    // must not stop replies. Throttled to once an hour inside, and it shares
+    // the poll's cache, so on most ticks this is one small read.
+    try {
+      const conn = await getSalesforceClient();
+      zips = await refreshServiceZips(messagingDb(), (soql, opts) =>
+        conn.query(soql, { autoFetch: opts?.all === true, maxFetch: 50_000 }) as never
+      );
+      if (zips.error) {
+        reportWarn({
+          key: "service_zips_not_refreshed", platform: "ppp_cc",
+          message: `The service area map could not be refreshed: ${zips.error}`,
+        });
+      }
+    } catch (err) {
+      zips = { error: err instanceof Error ? err.message : String(err) };
     }
 
     // TELLING SALESFORCE SOMEBODY OPTED OUT.
@@ -143,7 +198,7 @@ export async function GET(request: Request) {
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
-    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback, zips });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });

@@ -24,16 +24,36 @@ function Finding({ f }: { f: RuleFinding }) {
   return (
     <li className="px-4 py-3">
       <div className="flex flex-wrap items-baseline gap-2 text-[11.5px] font-mono text-ppp-charcoal-400">
-        {f.turnOrdinal !== null && <span>Turn {f.turnOrdinal}</span>}
+        {/* Kate's own label. A fractional turn like T2.2 is a merged message
+            rated in parts, and the integer ordinal cannot show it. */}
+        {(f.turnLabel ?? (f.turnOrdinal !== null ? `T${f.turnOrdinal}` : null)) && (
+          <span>{f.turnLabel ?? `T${f.turnOrdinal}`}</span>
+        )}
         {f.severity && (
           <span className={f.severity === "critical" ? "text-ppp-orange-700" : undefined}>{f.severity}</span>
         )}
+        {/* How the finding was reached. A rule whose breaches are mostly
+            "detector" is one a machine can already catch; one that is mostly
+            "read" needs a person, and that is the difference that decides
+            whether it can be enforced in code at all. */}
+        {f.basis && <span>{f.basis}</span>}
         {f.conduct && <span>conversation graded {f.conduct}</span>}
         <Link href={`/messaging/training/rated/${f.exampleId}`} className="underline underline-offset-2">
           open
         </Link>
       </div>
-      <p className="mt-1 text-[13px] text-ppp-charcoal leading-relaxed">{f.what}</p>
+
+      {/* WHAT THE BOT ACTUALLY SAID.
+          Until this arrived a finding read "reason clause on an ask" with
+          nothing to look at, so the only way to judge it was to open the whole
+          conversation. The sentence is the evidence. */}
+      {f.turnText && (
+        <blockquote className="mt-1.5 border-l-2 border-ppp-charcoal-200 pl-2.5 text-[12.5px] text-ppp-charcoal-600 leading-relaxed italic">
+          {f.turnText}
+        </blockquote>
+      )}
+
+      <p className="mt-1.5 text-[13px] text-ppp-charcoal leading-relaxed">{f.what}</p>
       {f.shouldHave && (
         // The most valuable field in her sheet: a correction teaches where a
         // complaint only labels.

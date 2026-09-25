@@ -118,7 +118,7 @@ export default function WorkspaceHoursForm({
         in this workspace&apos;s own timezone.
       </p>
       <p className="text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
-        The list stops at {clock(bound.startHour)} and {clock(bound.endHour)}
+        The list stops at {clock(bound.startHour)} and {clock(bound.endHour)}{" "}
         because federal law does, and that bound is applied when the message is
         sent rather than when this is saved.
       </p>

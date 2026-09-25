@@ -52,12 +52,12 @@ try {
      "a reserved 555-01XX number is refused at intake", `(${decision.action})`);
 
   const realish = decideIntake(
-    { ...lead, phone: "516-892-3401" }, { workspaces });
+    { ...lead, phone: "999-892-3401" }, { workspaces });
   ok(realish.action === "route", "a routable Nassau lead routes", realish.action === "route" ? `→ ${realish.workspaceName}` : realish.detail);
   ok(realish.action === "route" && realish.workspaceName === "NY LI Nassau Leads",
      "…to the right workspace");
 
-  const meta = decideIntake({ ...lead, phone: "516-892-3401", leadSource: "Meta Ad" }, { workspaces });
+  const meta = decideIntake({ ...lead, phone: "999-892-3401", leadSource: "Meta Ad" }, { workspaces });
   ok(meta.action === "route" && meta.workspaceName === "NY LI Meta",
      "source beats region — a Meta lead goes to NY LI Meta");
 

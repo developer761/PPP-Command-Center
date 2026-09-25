@@ -134,6 +134,16 @@ export type SpeedSummary = {
 export const HATCH_POLL_SECONDS = 900;
 export const TARGET_SECONDS = 60;
 
+/**
+ * Below this many measurements, a speed percentage is noise.
+ *
+ * The same reasoning as MIN_PEOPLE in optout-rate.ts, and the same number.
+ * Today this panel reads "100% under 60s" and "100% beating Hatch" off ten
+ * seeded demo conversations whose timestamps are identical, which is a
+ * headline claim built on nothing.
+ */
+export const MIN_MEASURED = 25;
+
 export function speedSummary(secondsList: (number | null)[]): SpeedSummary {
   const s = secondsList.filter((n): n is number => n !== null && Number.isFinite(n));
   return {

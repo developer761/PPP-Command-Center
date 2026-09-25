@@ -54,13 +54,18 @@ export default async function TrainingCoverage() {
       <header>
         <h1 className="text-lg font-bold text-ppp-charcoal">What the corpus actually covers</h1>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
-          Emily follows about twenty rules. A conversation marked good with
-          nothing else attached cannot teach any of them, so each example says
-          which rules it demonstrates — and this is what is still missing.
+          {/* Not "about twenty rules": two different things are called rules
+              here, and saying so made the counts look contradictory. */}
+          These are the {summary.total}{" "}
+          behaviours a graded conversation can demonstrate. They are not the
+          Class A rules on the Rules screen: those are what Emily is written
+          against, these are what the corpus can teach. A conversation marked
+          good with nothing else attached demonstrates none of them, so each
+          example says which ones it shows, and this is what is still missing.
         </p>
         <p className="mt-2 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
           Three ways to fill a gap: <strong>write one</strong> if you already
-          know what a good version says, <strong>grade an imported one</strong>
+          know what a good version says, <strong>grade an imported one</strong>{" "}
           if Hatch has an example, or <strong>try it in the simulator</strong> —
           that produces a test rather than an example, but it tells you whether
           the bot gets the rule right at all.
@@ -129,8 +134,8 @@ export default async function TrainingCoverage() {
         <section className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 px-4 py-3">
           {gradedNoReason > 0 && (
             <p className="text-[13px] text-ppp-orange-700 leading-relaxed">
-              <strong>{gradedNoReason}</strong> example{gradedNoReason === 1 ? " has" : "s have"} a
-              grade but no reason. &ldquo;Good&rdquo; on its own tells retrieval it
+              <strong>{gradedNoReason}</strong> example{gradedNoReason === 1 ? " has" : "s have"}{" "}
+              a grade but no reason. &ldquo;Good&rdquo; on its own tells retrieval it
               was good at <em>something</em>, which is not a signal it can use.
             </p>
           )}

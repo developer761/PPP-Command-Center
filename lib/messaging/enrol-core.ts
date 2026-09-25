@@ -21,9 +21,28 @@ import { TICK_SECONDS } from "./reply-delay";
 import type { LeadRecord, Rule } from "./rules";
 import { toE164 } from "./phone";
 import { trackForWorkspace } from "./track";
+import { selectAllIn } from "./paging";
 
 export type EnrolResult =
-  | { ok: true; conversationId: string; workflow: string; stepsScheduled: number; alreadyLive?: boolean; firstMessageAt?: string }
+  | {
+      ok: true; conversationId: string; workflow: string; stepsScheduled: number;
+      alreadyLive?: boolean; firstMessageAt?: string;
+      /**
+       * Other workflows whose entry rules ALSO matched this lead.
+       *
+       * chooseWorkflow has always worked this out and said why: "Two workflows
+       * matching one lead means the audiences overlap, which is a
+       * configuration mistake rather than a choice to make at runtime — and
+       * picking one silently would hide it. The overlap is reported so
+       * somebody can fix the filters."
+       *
+       * It was not reported. The value was computed, returned, and read by
+       * nothing, so the first workflow in the list quietly won and which
+       * campaign a customer got depended on row order. Carried out to the poll
+       * now, which is the only thing watching.
+       */
+      alsoMatched?: string[];
+    }
   | { ok: false; reason: string };
 
 /** Workflows for one workspace, with their rule sets loaded. */
@@ -85,6 +104,17 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
   customerPhone: string;
   customerName?: string | null;
   customerEmail?: string | null;
+  /**
+   * What the lead told us, carried onto the conversation so a reply can read
+   * it without following a chain back to the lead row.
+   *
+   * These existed nowhere until 2026-09-23, which is why the bot asked for an
+   * address the record already held (A13) and never routed a job off-site
+   * (A6/A7): the fields the rules read were always null.
+   */
+  customerAddress?: string | null;
+  customerZip?: string | null;
+  inquiryScope?: string | null;
   sfLeadId?: string | null;
   /** The Salesforce record, for the entry rules to read. */
   record: LeadRecord;
@@ -118,8 +148,13 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
   const { data: live } = await sb.from("sms_conversations")
     .select("id").eq("workspace_id", ws.id).eq("customer_phone", to)
     .neq("state", "ended").maybeSingle();
+  const alsoMatched = decision.alsoMatched?.length ? decision.alsoMatched : undefined;
+
   if (live) {
-    return { ok: true, conversationId: live.id, workflow: decision.workflow.name, stepsScheduled: 0, alreadyLive: true };
+    return {
+      ok: true, conversationId: live.id, workflow: decision.workflow.name,
+      stepsScheduled: 0, alreadyLive: true, alsoMatched,
+    };
   }
 
   const { data: conv, error: convErr } = await sb.from("sms_conversations").insert({
@@ -127,6 +162,9 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     customer_phone: to,
     customer_name: input.customerName ?? null,
     customer_email: input.customerEmail ?? null,
+    customer_address: input.customerAddress ?? null,
+    customer_zip: input.customerZip ?? null,
+    inquiry_scope: input.inquiryScope ?? null,
     sf_lead_id: input.sfLeadId ?? null,
     campaign_version_id: steps.versionId,
     state: "ai_active",
@@ -173,6 +211,7 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     ok: true, conversationId: conv.id,
     workflow: decision.workflow.name, stepsScheduled: rows.length,
     firstMessageAt: launchAt.toISOString(),
+    alsoMatched,
   };
 }
 
@@ -192,8 +231,16 @@ export async function sweepExitsWith(sb: SupabaseClient, input: {
   const ids = Object.keys(input.records);
   if (!ids.length) return { ended: 0, reasons: {} };
 
-  const { data: convs } = await sb.from("sms_conversations")
-    .select("id, workspace_id, state").in("id", ids).neq("state", "ended");
+  // Paged: a truncated read here does not misreport anything, it simply
+  // leaves every conversation past the thousandth un-ended, which is a live
+  // sequence still texting somebody the records say is done.
+  const convs = await selectAllIn<{ id: string; workspace_id: string; state: string }>(
+    ids,
+    (chunk, from, to) => sb.from("sms_conversations")
+      .select("id, workspace_id, state").in("id", chunk).neq("state", "ended")
+      .order("id").range(from, to),
+    "conversations to end"
+  );
 
   const reasons: Record<string, string> = {};
   let ended = 0;

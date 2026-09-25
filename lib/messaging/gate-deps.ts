@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GateDeps, SendChannel } from "./gate";
 import type { E164 } from "./phone";
+import { selectAll } from "./paging";
 
 /**
  * Whether there is a suppression list at all, cached briefly.
@@ -138,15 +139,30 @@ export function gateDeps(sb: SupabaseClient): GateDeps {
       // Across every agent and workspace — the cap belongs to the handset, not
       // to whoever happens to be texting it.
       const since = new Date(Date.now() - 24 * 3600_000).toISOString();
-      const { data, error } = await sb.from("sms_conversations").select("id").eq("customer_phone", to);
-      // Answering 0 on a failed read says "they have had nothing today", which
-      // is how a capped customer gets a fourth message.
-      if (error) refuseToGuess("could not count today's messages, so the daily cap cannot be enforced", error);
-      const ids = (data ?? []).map((c) => c.id);
+      // Paged. One handset will not reach a thousand conversations and that
+      // is not the point: every truncation bug in this repo was somewhere the
+      // number looked too small to matter, and this one decides whether a
+      // customer gets a message they are capped out of.
+      let ids: string[];
+      try {
+        const rows = await selectAll<{ id: string }>(
+          (from, txo) => sb.from("sms_conversations").select("id")
+            .eq("customer_phone", to).order("id").range(from, txo),
+          "conversations for this handset"
+        );
+        ids = rows.map((c) => c.id);
+      } catch (e) {
+        // Answering 0 on a failed read says "they have had nothing today",
+        // which is how a capped customer gets a fourth message.
+        refuseToGuess("could not count today's messages, so the daily cap cannot be enforced",
+          { message: e instanceof Error ? e.message : String(e) });
+        throw e;
+      }
       if (!ids.length) return 0;
       const { count, error: countErr } = await sb
         .from("sms_messages").select("id", { count: "exact", head: true })
         .in("conversation_id", ids).eq("direction", "outbound").gte("created_at", since);
+      // head+count is exact at any size — the database counts, nothing is read.
       if (countErr) refuseToGuess("could not count today's messages, so the daily cap cannot be enforced", countErr);
       return count ?? 0;
     },

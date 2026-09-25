@@ -31,13 +31,31 @@ const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 let failed = false;
 
 try {
-  const { rules, notes, problems } = parseClassARules(readFileSync(path, "utf8"));
+  const { rules, notes, problems, absent } = parseClassARules(readFileSync(path, "utf8"));
 
   console.log(`\nCLASS A RULES — ${path.split("/").pop()}\n`);
   console.log(`  read:     ${rules.length} rules`);
   console.log(`  live:     ${rules.filter((r) => r.status === "live").length}`);
   console.log(`  retired:  ${rules.filter((r) => r.status === "retired").length}`);
   console.log(`  critical: ${rules.filter((r) => r.status === "live" && r.severity === "critical").length}`);
+
+  // BINDS IS GONE FROM THE SHEET, AND THE FILTER IT FED IS NOW INERT.
+  //
+  // Kate, 23 September: "Your parser defaults it to true when the column is
+  // absent, so nothing changes today... But that filter is now permanently
+  // inert: a rule that is live and rater-only must be marked RETIRED, or it
+  // will reach the prompt."
+  //
+  // Said out loud on every import rather than left as a comment nobody reads,
+  // because the failure is silent: promptable() still names binds in its
+  // filter, so the code reads as though something is being checked.
+  if (rules.length && rules.every((r) => r.binds)) {
+    console.log(
+      "\n  ⚠ no 'binds' column in this file, so every live rule goes in the prompt.\n" +
+      "    STATUS IS THE ONLY GUARD NOW. A live rule that must not reach the bot\n" +
+      "    has to be marked RETIRED in the sheet; there is no other way to hold it back."
+    );
+  }
 
   if (problems.length) {
     // Loudly, and before writing anything. A rule that could not be read is a
@@ -54,11 +72,17 @@ try {
   // six months. The only way it exists in six months is if nobody has to
   // remember to write it — she re-issues this sheet as she re-grades, this
   // already re-runs against it, so the log is a by-product of the work.
-  const { data: existing } = await sb.from("sms_class_a_rules")
+  // THROWS on a read failure rather than carrying on with an empty baseline.
+  // Swallowing this error meant a transient blip made every one of the 44
+  // rules look brand new: 44 spurious "Added" rows, every real edit in that
+  // import lost, and the write below still succeeding so nothing said a word.
+  // A history nobody trusts is a history nobody reads.
+  const { data: existing, error: eErr } = await sb.from("sms_class_a_rules")
     .select("code, statement, rule_card, corrective_action, severity, status, binds, phrasing_only, short_name");
-  const before = new Map((existing ?? []).map((r) => [r.code, r]));
+  if (eErr) throw new Error(`could not read the current rules to diff against: ${eErr.message}`);
+  const before = new Map(existing.map((r) => [r.code, r]));
 
-  const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r));
+  const changes = rules.flatMap((r) => diffRule(before.get(r.code) ?? null, r, absent));
   const edits = changes.filter((c) => c.field !== "added");
   console.log(`\n  changes since the last import: ${edits.length}${changes.length - edits.length ? ` (+${changes.length - edits.length} new rules)` : ""}`);
   for (const c of edits.slice(0, 12)) console.log(`    ${c.code.padEnd(5)} ${describeChange(c)}`);

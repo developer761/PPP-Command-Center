@@ -15,6 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadAgentConfig, loadWorkspaceServices } from "../lib/messaging/db.ts";
 import { resolveServices } from "../lib/messaging/services.ts";
 import { buildSystemPrompt } from "../lib/messaging/agent-run.ts";
+import { validateAction } from "../lib/messaging/agent-output.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -101,6 +102,108 @@ try {
   const restored = await promptFor(nassau.id);
   ok("removing the exception puts it back on the default",
      !restored.includes("WE DO NOT OFFER THESE IN THIS AREA"));
+
+  /* ── THE HARDCODED LIST MUST NOT CONTRADICT THE CONFIGURED ONE ──────
+   *
+   * Services are rows in sms_services and ticked per workspace on the Chatbot
+   * screen. OUT_OF_SCOPE in agent-output.ts is a regex nobody can see from
+   * there. When they disagreed, the prompt told the model PPP does flooring,
+   * the model said so, and the turn was refused as out of scope — a correct
+   * answer turned into a handover by two lists that never met.
+   *
+   * Checked here rather than in a unit test because the service list is a
+   * table, and a hardcoded copy of it in a test is the same bug one level up.
+   */
+  const { data: services } = await sb.from("sms_services")
+    .select("key, phrase").eq("is_active", true);
+  const said = (phrase) => [
+    `Yes, we do ${phrase}.`, `We can handle the ${phrase}.`, `we install ${phrase}`,
+  ];
+  const ctx = {
+    knownFields: { name: true, phone: true, email: true, address: true, inquiryScope: true },
+    stage: 4, priorIntents: [], customerText: "ok",
+  };
+  const clashes = [];
+  for (const svc of services ?? []) {
+    for (const sentence of said(svc.phrase)) {
+      const v = validateAction({ intent: "answer_question", confidence: 0.9, freeText: sentence }, ctx);
+      if (!v.ok && v.reason === "out_of_scope_work") clashes.push(`${svc.key}: ${sentence}`);
+    }
+  }
+  ok("no service PPP offers is refused as out of scope",
+     clashes.length === 0,
+     clashes.length ? clashes.join(" | ") : `${(services ?? []).length} services checked`);
+
+  /**
+   * THE SAME CHECK, POINTED THE OTHER WAY.
+   *
+   * The check above proves the backstop does not refuse work PPP sells. It
+   * says nothing about work PPP does NOT sell, and that half was empty: the
+   * "What we do not cover" box named seven categories and the regex knew
+   * four, so "we can paint your furniture", "we can coat your industrial
+   * equipment" and "we can do artistic painting" all went out unrefused.
+   * Exactly the flooring bug with the sign flipped, and invisible for the
+   * same reason — the configured list and the hardcoded one never met.
+   *
+   * Parsed from the live text rather than restated here, because a copy of
+   * the list in this file is one more thing that can drift out of step with
+   * the box somebody actually edits.
+   */
+  const { data: excluding } = await sb.from("sms_agent_configs")
+    .select("track, services_excluded").not("services_excluded", "is", null);
+
+  /**
+   * Two kinds of ellipsis in one list, running opposite ways:
+   *   "Pool tiles or liners"            — the modifier leads  ("pool" liners)
+   *   "Murals, artistic or graphic painting" — the head noun trails (artistic "painting")
+   * A fragment counts as covered if ANY of those readings is refused.
+   */
+  const itemsIn = (text) => {
+    const out = new Set();
+    for (const line of text.split("\n")) {
+      const bullet = line.match(/^\s*[-*]\s*(.+?)\s*$/)?.[1];
+      if (!bullet) continue;
+      // "that are standalone rather than built in" qualifies, it does not name a thing.
+      const named = bullet.replace(/\s+that\s+are\b.*$/i, "").replace(/,?\s*including\s+/i, ", ");
+      const words = named.split(/\s+/);
+      const lead = words.length > 1 ? words[0] : null;
+      const tail = words.length > 1 ? words[words.length - 1] : null;
+      for (const raw of named.split(/,|\s+or\s+|\s+and\s+/i)) {
+        const frag = raw.trim();
+        if (!frag) continue;
+        out.add(JSON.stringify(frag.includes(" ") ? { frag } : { frag, lead, tail }));
+      }
+    }
+    return [...out].map((j) => JSON.parse(j));
+  };
+
+  const refusedAsOutOfScope = (phrase) =>
+    [`Yes, we can paint your ${phrase.toLowerCase()}.`,
+     `we can do ${phrase.toLowerCase()}`,
+     `${phrase} is no problem.`].some((sentence) => {
+      const v = validateAction({ intent: "answer_question", confidence: 0.9, freeText: sentence }, ctx);
+      return !v.ok && v.reason === "out_of_scope_work";
+    });
+
+  const unrefused = [];
+  let checked = 0;
+  for (const row of excluding ?? []) {
+    for (const { frag, lead, tail } of itemsIn(row.services_excluded)) {
+      checked++;
+      // A LEAD WORD THAT IS ITSELF BANNED PROVES NOTHING.
+      // "Murals, artistic or graphic painting" made the modifier reading
+      // "Murals artistic", which matches the murals rule and marked the
+      // artistic-painting gap covered while it was still wide open. Only a
+      // lead that is not independently refused is carrying a modifier.
+      const readings = [frag];
+      if (lead && !refusedAsOutOfScope(lead)) readings.push(`${lead} ${frag}`);
+      if (tail) readings.push(`${frag} ${tail}`);
+      if (!readings.some(refusedAsOutOfScope)) unrefused.push(`${row.track}: ${frag}`);
+    }
+  }
+  ok("everything the configuration excludes is actually refused",
+     unrefused.length === 0,
+     unrefused.length ? unrefused.join(" | ") : `${checked} excluded items checked`);
 
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 } catch (err) {

@@ -23,11 +23,12 @@
  * change that quietly rewrote what forty people are about to receive should
  * not feel the same as one that touched nothing.
  */
-import { messagingDb } from "./db";
+import { messagingDb, selectAll } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { scheduleSteps, parseTimeOfDay, type CampaignStep } from "./campaign-schedule";
 import { unresolvedFields, isKnownMergeField } from "./merge-fields";
 import { firstMessageProblem, openerStepId } from "./first-message";
+import { silenceOpenerProblem } from "./into-silence";
 
 export type StepEdit = {
   body?: string;
@@ -83,6 +84,17 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
     if (openerStepId(siblings ?? []) === step.id) {
       const problem = firstMessageProblem(next.body);
       if (problem) return { ok: false, error: problem };
+    } else {
+      // A28, and the only body in the system with no check on it until now.
+      //
+      // A follow-up step fires on a schedule rather than in response to
+      // anything, so it can land when the customer has said nothing since our
+      // last message. "A message sent into SILENCE must read as a close, not
+      // as a reply." The agent cannot breach this — scheduler-db refuses a
+      // turn whenever the most recent message is outbound — so a campaign
+      // body is the one way it can still happen.
+      const problem = silenceOpenerProblem(next.body);
+      if (problem) return { ok: false, error: problem };
     }
   }
 
@@ -112,10 +124,19 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
   if (error) return { ok: false, error: error.message };
 
   // Who is mid-sequence on this version right now.
-  const { data: live } = await sb.from("sms_conversations")
-    .select("id, created_at, workspace_id, sms_sub_accounts(time_zone)")
-    .eq("campaign_version_id", step.version_id).neq("state", "ended");
-  const liveConversationsAffected = (live ?? []).length;
+  // Paged, and this is the one where truncation does more than misreport.
+  // `live` is not only counted — it is iterated below to move every queued
+  // message onto the new schedule. Stopping at a thousand would leave every
+  // conversation past that one silently on the OLD timing while the screen
+  // reported the edit applied.
+  const live = await selectAll<{ id: string; created_at: string; workspace_id: string; sms_sub_accounts: unknown }>(
+    (from, to) => sb.from("sms_conversations")
+      .select("id, created_at, workspace_id, sms_sub_accounts(time_zone)")
+      .eq("campaign_version_id", step.version_id).neq("state", "ended")
+      .order("id").range(from, to),
+    "conversations mid-sequence"
+  );
+  const liveConversationsAffected = live.length;
 
   if (!timingChanged) {
     // Wording is already live everywhere: the scheduler reads the body when
@@ -137,7 +158,7 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
   const idOf = new Map((allSteps ?? []).map((s) => [s.ordinal, s.id]));
 
   let rescheduled = 0;
-  for (const c of live ?? []) {
+  for (const c of live) {
     const tz = (c.sms_sub_accounts as unknown as { time_zone: string } | null)?.time_zone ?? "America/New_York";
     const planned = scheduleSteps(asSteps, new Date(c.created_at), tz);
     for (const p of planned) {

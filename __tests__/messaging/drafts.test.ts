@@ -76,7 +76,7 @@ describe("did the reviewer actually change it", () => {
 
   it("catches a real rewrite", () => {
     // This is the training signal: what it said, and what it should have said.
-    expect(wasEdited("What's the address?", "Is 166 S Park Ave still right?")).toBe(true);
+    expect(wasEdited("What's the address?", "Is 12 Oak St still right?")).toBe(true);
   });
 
   it("catches a single changed word", () => {

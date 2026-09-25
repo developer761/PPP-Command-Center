@@ -74,6 +74,34 @@ export function scrub(text: string, knownNames: string[] = []): ScrubResult {
     out = out.replace(re, () => { found.name++; return "[NAME]"; });
   }
 
+  // NICKNAMES AND MISSPELLINGS, which exact matching cannot reach.
+  //
+  // The name on the record is not the name in the conversation. Checked
+  // against Kate's 1,234 real transcripts, exact matching left Victoria as
+  // "Vicky", Ashutosh as "Ashu", Paolo as "Paola" and Alison as "Allison" —
+  // the customer's own name, sitting in text headed for a prompt.
+  //
+  // So: any capitalised word that either starts with the same three letters
+  // as a name we were given, or is one typo away from it, is treated as that
+  // name. Over-redacting costs a slightly vaguer example. Under-redacting
+  // puts a real customer's name in front of a model.
+  const roots = names.filter((n) => n.length >= 4);
+  if (roots.length) {
+    out = out.replace(/\b[A-Z][a-z]{2,}\b/g, (word) => {
+      if (word === "NAME") return word;
+      const w = word.toLowerCase();
+      const hit = roots.some((n) => {
+        const r = n.toLowerCase();
+        if (r === w) return true;
+        if (r.slice(0, 3) === w.slice(0, 3)) return true;
+        return withinOneEdit(r, w);
+      });
+      if (!hit) return word;
+      found.name++;
+      return "[NAME]";
+    });
+  }
+
   return {
     text: out,
     found: (Object.keys(found) as PiiKind[])
@@ -93,6 +121,73 @@ function splitName(full: string): string[] {
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Is `b` reachable from `a` by one insertion, deletion or substitution?
+ *
+ * Catches the doubled letter (Alison / Allison) and the dropped one, which is
+ * how a name written down once and typed again differs. Not a general edit
+ * distance — bailing at the first mismatch is enough for one edit and keeps
+ * this linear over a transcript's worth of words.
+ */
+function withinOneEdit(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  let i = 0, j = 0, edits = 0;
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (short.length === long.length) i++;
+    j++;
+  }
+  return edits + (long.length - j) + (short.length - i) <= 1;
+}
+
+/**
+ * Words that follow a greeting and look like somebody's name.
+ *
+ * The last line of defence, for the names no scrubber can reach. "Amalfi
+ * Blanco" is greeted as "Hi Amy" — a real nickname with no letters in common,
+ * so prefix and typo matching both miss it, and the only honest thing left is
+ * to notice that SOMETHING name-shaped is being greeted and refuse to import
+ * the row. A conversation skipped costs one training example. A name that gets
+ * through is a customer's name in a model prompt.
+ *
+ * Returns the suspect words so the skip can say what it saw.
+ */
+const GREETING = /\b(?:hi|hey|hello|thanks|thank you|dear)[,!]?\s+([A-Z][a-z]{2,})\b/g;
+
+/** Words that follow a greeting constantly and are nobody's name. */
+const NOT_A_NAME = new Set([
+  "There", "Team", "All", "Again", "You", "Guys", "Folks", "Everyone",
+  "Good", "Morning", "Afternoon", "Evening", "Yes", "Yeah", "Sure", "Okay",
+  "The", "This", "That", "For", "And", "But", "Just", "Sorry", "Happy",
+  "Thank", "Thanks", "Sent", "Mrs", "Mr", "Ms", "Rev", "Dr",
+  // "Thanks Can you send a quote" is a sentence carrying on, not a greeting.
+  // Every one of these was a real false positive on Kate's 1,234 transcripts.
+  "Can", "Could", "Would", "Will", "Our", "We", "They", "She", "Her", "His",
+  "Please", "Let", "Any", "How", "What", "When", "Where", "Who", "Not",
+  "Have", "Had", "Are", "Was", "Its", "Been", "Also", "Then", "Here",
+  // Days, months and ordinary words that follow a greeting and are nobody's
+  // name. Each one cost a real graded conversation: quarantining "Thanks
+  // Friday works" as a name leak loses the example and protects nothing.
+  "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+  "January", "February", "March", "April", "May", "June", "July", "August",
+  "September", "October", "November", "December",
+  "One", "Two", "Three", "Did", "Does", "Before", "After", "Both", "Still",
+  "Great", "Perfect", "Awesome", "Understood", "Absolutely", "Ok", "Okay",
+]);
+
+export function suspectedNames(text: string, allow: string[] = []): string[] {
+  const ok = new Set(allow.map((a) => a.toLowerCase()));
+  const out = new Set<string>();
+  for (const m of text.matchAll(GREETING)) {
+    const w = m[1];
+    if (NOT_A_NAME.has(w) || ok.has(w.toLowerCase())) continue;
+    out.add(w);
+  }
+  return [...out];
 }
 
 /** Anything left that looks personal. Used to warn BEFORE import rather than

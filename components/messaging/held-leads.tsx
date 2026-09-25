@@ -88,7 +88,14 @@ export function HeldLeads({ summary }: { summary: HeldSummary }) {
         {summary.holding.map((h) => (
           <li key={h.why} className="px-4 py-2 flex items-baseline gap-3 text-[12.5px]">
             <span className="font-mono text-ppp-charcoal-400 tabular-nums w-10 shrink-0">{h.count}</span>
-            <span className="text-ppp-charcoal-600">{h.why}</span>
+            <span className="text-ppp-charcoal-600">
+              {h.why}
+              {h.oldestDays !== undefined && (
+                <span className="text-ppp-charcoal-400">
+                  {" "}· oldest {h.oldestDays} day{h.oldestDays === 1 ? "" : "s"}
+                </span>
+              )}
+            </span>
           </li>
         ))}
       </ul>
