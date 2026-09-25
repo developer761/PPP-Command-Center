@@ -254,7 +254,6 @@ import {
 } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
-import { laborByWorkerForProject } from "@/lib/commercial/purchases/db";
 import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
 import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
@@ -2255,7 +2254,6 @@ export default async function OpportunityDetailPage({
     pathFin,
     pathChangeOrders,
     pathSubmittals,
-    pathLabor,
     pathCloseouts,
     pathRetainageCents,
     pathAiaRoll,
@@ -2264,9 +2262,11 @@ export default async function OpportunityDetailPage({
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
         listOpportunitySubmittals(opp.id).catch(() => []),
-        pathOnSite
-          ? laborByWorkerForProject(opp.id).catch(() => [])
-          : Promise.resolve([]),
+        // `laborByWorkerForProject` used to be fetched here to feed the "Crew
+        // hours" tile. It reads LABOR PAYMENTS, which the handbook says are
+        // "not the crew's attendance" — the tile now takes approved hours from
+        // the financials read above, so this round-trip is gone rather than
+        // left running for nothing.
         // Loaded for any won deal now, not just a closed-out one: the delivery
         // strip reports closeout's state at every stage, and a strip that says
         // "Not started" because it never looked is worse than no strip.
@@ -2285,7 +2285,7 @@ export default async function OpportunityDetailPage({
           .then((m) => m.get(opp.id) ?? null)
           .catch(() => null),
       ])
-    : [null, [], [], [], [], 0, null];
+    : [null, [], [], [], 0, null];
 
   // Warranty runs from substantial completion. A job can carry more than one
   // package (a re-issue after a punch item); the LATEST completion date is the
@@ -2743,8 +2743,10 @@ export default async function OpportunityDetailPage({
     pendingChangeOrders: pathChangeOrders.filter((c) => c.status === "pending")
       .length,
     // Whole hours — a crew-hours tile reading "412.75" is noise at a glance.
-    crewHours:
-      Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)) || null,
+    // Approved attendance, same base as the Project tab's tile and as the
+    // margin caveat's unrated-hours figure. It used to read the hours typed
+    // onto labor PAYMENTS, which are explicitly not attendance.
+    crewHours: Math.round(pathFin?.laborHours ?? 0) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
     retainageHeldCents: pathRetainageCents,
     warrantyThroughAt: pathWarrantyThrough,
@@ -2775,7 +2777,25 @@ export default async function OpportunityDetailPage({
     targetStartIso: startYmd,
     targetEndIso: etDateOf(opp.proposed_end_at),
     startInDays: startYmd ? daysFromTodayEt(startYmd) : null,
-    crewHours: Math.round(pathLabor.reduce((a, w) => a + (w.hours ?? 0), 0)),
+    /**
+     * THE HOURS THE CREW WORKED HERE, not the hours typed onto a payout.
+     *
+     * This summed `laborByWorkerForProject`, which reads LABOR PAYMENTS. The
+     * handbook says of that field, in as many words: "Optional, and only a
+     * note on the payment. It is not the crew's attendance." So the tile
+     * labelled "Crew hours" was showing the one number the platform documents
+     * as NOT being the crew's hours.
+     *
+     * On AIREF Building #1 that put "Crew hours 91" directly beside a margin
+     * caveat reading "326 crew hours not costed yet" — two crew-hour figures
+     * on one row, differing by 235, with nothing to say they measured
+     * different things.
+     *
+     * Approved attendance, priced or not, is what somebody means by "how many
+     * hours has the crew put in". `laborUnratedHours` is a subset of it, so
+     * the tile and the caveat now sit on the same base.
+     */
+    crewHours: Math.round(pathFin?.laborHours ?? 0),
     onSite: pathOnSite,
   };
   // A payment application past its due date with money still on it. An AIA job
