@@ -46,6 +46,7 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 import ConfirmSubmitButton from "@/components/commercial/confirm-submit-button";
 import { AiaPaymentsPanel } from "@/components/commercial/aia-payments-panel";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
+import { taxInclusiveCents } from "@/lib/commercial/aia/tax-inline";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{ app?: string; error?: string; ok?: string; back?: string; from?: string }>;
@@ -727,7 +728,32 @@ async function AiaApplicationList({
     aiaBillingRollupBulk([dealId]).then((m) => m.get(dealId) ?? null),
   ]);
   const baseContractCents = baseContract > 0 ? baseContract : null;
-  const contractToDateCents = baseContractCents != null ? baseContractCents + netCO : null;
+  /**
+   * TAX-INCLUSIVE, to match what is actually billed against it.
+   *
+   * `baseContract` and `netCO` are both PRE-tax — a proposal total is pre-tax
+   * and change orders store a bare amount. But the schedule of values is
+   * seeded at `taxInclusiveCents(contract)`, so G702 line 4 (and therefore
+   * `billing.billedCents`) carries the tax.
+   *
+   * Comparing the two directly made every taxable job read wrong near the
+   * end: `leftToBillCents` is `contractToDate − billed`, so on a $25,000
+   * Suffolk job at 8.625% it hit zero at 92.06% of the scope every time —
+   * "$0.00 left to bill" with $1,750 still unbilled, `fullyBilled` flipping
+   * true, and the strip printing "Fully billed and the retainage has been
+   * billed. Nothing further to requisition."
+   *
+   * It also disagreed with G702 line 3 rendered directly beneath it, by
+   * exactly the tax. Exempt (capital-improvement) jobs are unaffected —
+   * taxOnCents returns 0 and this is the same number it always was.
+   */
+  const contractToDateCents =
+    baseContractCents != null
+      ? await taxInclusiveCents({
+          opportunityId: dealId,
+          baseCents: baseContractCents + netCO,
+        })
+      : null;
   const submittedCount = applications.filter((a) => a.status === "submitted").length;
   const paidCount = applications.filter((a) => a.status === "paid").length;
   // Billed-of-contract: the LATEST application's G702 line-4 "completed & stored

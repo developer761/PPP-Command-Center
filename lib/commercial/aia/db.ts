@@ -584,12 +584,28 @@ async function seedAiaScheduleOfValues(
       // deduct — clamping made the whole batch insert fail the column's old
       // >= 0 CHECK, and the failure was swallowed, so the operator got an
       // application with a completely blank schedule of values and no error.
-      // A change order on a taxable job is taxable too, and its tax rides
-      // inside its own line for the same reason the contract's does.
-      scheduled_value_cents: await taxInclusiveCents({
-        opportunityId: app.opportunity_id,
-        baseCents: Math.round(Number(co.amount_cents)),
-      }),
+      /**
+       * Tax rides inside the line ONLY when the schedule folds it inline.
+       *
+       * An itemized schedule seeds its base lines RAW (scaled to the pre-tax
+       * contract, just above) and maintains a separate TAX row —
+       * `taxReconcileMode` returns "row" as soon as there is more than one
+       * base line. That row is computed from Σ non-tax lines, so writing CO
+       * rows tax-inclusive here fed the tax back into its own base: tax on
+       * the contract, plus tax on the change orders, plus tax on the change
+       * orders' tax. The GC is billed the CO tax twice.
+       *
+       * The reconcile path next door already guards on exactly this with its
+       * `foldsInline` check; the seed folded unconditionally. Rare — Stephanie:
+       * "we don't provide an item specific SOV unless the GC specifically
+       * requests it" — and zero applications on the book are itemized today.
+       */
+      scheduled_value_cents: itemized
+        ? Math.round(Number(co.amount_cents))
+        : await taxInclusiveCents({
+            opportunityId: app.opportunity_id,
+            baseCents: Math.round(Number(co.amount_cents)),
+          }),
       from_previous_cents: 0,
       this_period_cents: 0,
       materials_stored_cents: 0,
@@ -1270,9 +1286,37 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
     });
   }
 
+  /**
+   * LINE 2 CARRIES TAX TOO, on the same either/or as line 1.
+   *
+   * `netCO` is the raw approved change-order total, which is PRE-tax, while
+   * the G703 change-order rows are written tax-INCLUSIVE — so on a taxable
+   * job the cover sheet and the continuation sheet did not foot. A $25,000
+   * change order at 8.625% put $27,156.25 on the G703 and $25,000.00 on line
+   * 2, leaving Contract Sum to Date $2,156.25 BELOW the schedule's grand
+   * total, on a document this codebase's own constants say "a GC's
+   * accounts-payable system can reject".
+   *
+   * Line 4 does carry the CO tax, so a fully-billed job also reported over
+   * 100% complete with a negative balance to finish.
+   *
+   * Guarded by the same condition as line 1: when a legacy separate TAX row
+   * exists it already carries the whole tax, and adding it here would bill it
+   * twice. Every live job is capital-improvement exempt, so taxOnCents
+   * returns 0 and this changes nothing today.
+   */
+  let line2Cents = netCO;
+  if (netCO !== 0 && !lines.some((l) => isAiaTaxLine(l))) {
+    const { taxOnCents } = await import("./tax-inline");
+    line2Cents += await taxOnCents({
+      opportunityId: app.opportunity_id,
+      baseCents: netCO,
+    });
+  }
+
   return computeG702({
     originalContractCents: line1Cents,
-    netChangeOrdersCents: netCO,
+    netChangeOrdersCents: line2Cents,
     retainagePct: app.retainage_pct,
     lines,
     previousCertificatesCents,
