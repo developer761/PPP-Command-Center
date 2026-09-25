@@ -49,8 +49,8 @@ const pkg = {
 } as Parameters<typeof renderCloseoutTransmittalPdf>[0]["pkg"];
 
 const items = [
-  { kind: "warranty", included: true, item_status: "received", note: null },
-  { kind: "lien_waiver", included: true, item_status: "pending", note: null },
+  { kind: "warranty", label: null, included: true, item_status: "received" },
+  { kind: "lien_waiver", label: null, included: true, item_status: "pending" },
 ] as Parameters<typeof renderCloseoutTransmittalPdf>[0]["items"];
 
 const base = { pkg, items, dealName: "Nordstrom Rack — Holbrook", accountName: "Acme", company };
