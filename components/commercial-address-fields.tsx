@@ -112,15 +112,18 @@ export default function CommercialAddressFields({
        */
       (window as unknown as { gm_authFailure?: () => void }).gm_authFailure = () => {
         console.error(
-          "[commercial/address-fields] Google rejected NEXT_PUBLIC_GOOGLE_MAPS_API_KEY — expired, over quota, billing disabled, or restricted to other referrers. Address lookup is off; typing still works."
+          "[commercial/address-fields] Google rejected NEXT_PUBLIC_GOOGLE_MAPS_API_KEY — expired, over quota, billing disabled, restricted to other referrers, or the key's API-restrictions list is missing Places API. Address lookup is off; typing still works."
         );
         setScriptStatus("key-rejected");
       };
 
       const script = document.createElement("script");
+      // `loading=async` is Google's documented flag for a script appended this
+      // way. Without it the library warns about suboptimal loading on every
+      // page that renders an address field.
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
         apiKey
-      )}&libraries=places&v=weekly`;
+      )}&libraries=places&loading=async&v=weekly`;
       script.async = true;
       script.defer = true;
       script.dataset.commercialGmaps = "1";
@@ -142,8 +145,10 @@ export default function CommercialAddressFields({
    * on" in green, and the only sign of trouble is Google's own grey box saying
    * "This page can't load Google Maps correctly" over the field.
    *
-   * That is the live state of this platform today — `BillingNotEnabledMapError`
-   * in the console, a promise of autofill on screen, and no suggestions ever.
+   * That was the live state of this platform on 2026-09-24 — a promise of
+   * autofill on screen, and no suggestions ever. (The console error turned out
+   * to be `ApiTargetBlockedMapError`, not the billing one first assumed; see
+   * the callback below for why this code no longer guesses which.)
    *
    * One throwaway prediction request settles it. `REQUEST_DENIED` is the
    * documented status for a key the project will not serve, whatever the
@@ -174,8 +179,26 @@ export default function CommercialAddressFields({
       new svc().getPlacePredictions({ input: "1 Main St" }, (_r, status) => {
         if (cancelled) return;
         if (status === "REQUEST_DENIED" || status === "OVER_QUERY_LIMIT") {
+          /**
+           * DO NOT GUESS THE CAUSE HERE. This line used to list four —
+           * "billing disabled, key expired, over quota, or referrer-restricted"
+           * — and on 2026-09-24 it was none of them: the key's API-restrictions
+           * list had Maps JavaScript API but not Places API, and Google says so
+           * itself, in the line immediately above this one, as
+           * `ApiTargetBlockedMapError`. Hours went into the four guesses while
+           * the real answer was already on screen.
+           *
+           * Google always logs a specific `*MapError` before the status reaches
+           * us, and that word is the whole diagnosis. So point at it instead of
+           * competing with it.
+           */
           console.error(
-            `[commercial/address-fields] Google refused a Places request (${status}) — billing disabled, key expired, over quota, or referrer-restricted. Address lookup is off; typing still works.`,
+            `[commercial/address-fields] Google refused a Places request (${status}). ` +
+              `Google logged the specific reason just above this line as a *MapError ` +
+              `(ApiTargetBlockedMapError = the key's API-restrictions list is missing Places API; ` +
+              `RefererNotAllowedMapError = website restrictions; BillingNotEnabledMapError = billing; ` +
+              `ApiNotActivatedMapError = the API is off on the project). ` +
+              `Address lookup is off; typing still works.`,
           );
           setScriptStatus("key-rejected");
         }
@@ -307,10 +330,16 @@ export default function CommercialAddressFields({
         />
         {/* Said once, quietly, and only when the lookup is actually dead. The
             address still saves — the only thing lost is the suggestions, and a
-            person who is not told that will sit waiting for them. */}
+            person who is not told that will sit waiting for them.
+
+            It names NO cause. The old copy said "needs billing enabled or the
+            key renewed" and the real fault was the key's API-restrictions list
+            — so Stephanie would have passed on a confident wrong answer. The
+            exact reason is in the browser console, which is where whoever
+            fixes it is going to look anyway. */}
         {scriptStatus === "key-rejected" && (
           <p id="addr-lookup-off" className="mt-1 text-[11px] text-amber-700">
-            Address lookup is unavailable right now — type the address and it saves normally. (Tell Karan: the Google Maps project needs billing enabled or the key renewed.)
+            Address lookup is unavailable right now — type the address and it saves normally. Worth telling Karan so he can turn it back on.
           </p>
         )}
       </div>
