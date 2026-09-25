@@ -464,8 +464,16 @@ const DECLINING =
   /\b(?:not|never|cannot|unable|outside|beyond|unfortunately|sorry|afraid)\b|\b\w+n['’]t\b/i;
 const CLAUSE_BREAK = /[.!?;]|\bbut\b|\bhowever\b|\bthough\b/gi;
 
-/** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
-export function promisesOutOfScopeWork(text: string): boolean {
+/**
+ * The promise, if there is one: the banned word AND the clause it sits in.
+ *
+ * The clause is returned because the rejection used to read `free text
+ * mentions "furniture"` and nothing else — so the person reading it could see
+ * that a draft was blocked but never what the draft SAID, which on a training
+ * screen is the only part worth knowing. It also cost me two rounds of
+ * guessing at which sentence shape was failing.
+ */
+export function outOfScopePromise(text: string): { word: string; clause: string } | null {
   // Where each clause starts, so a mention can be read with its own words only.
   const breaks: number[] = [0];
   for (let m; (m = CLAUSE_BREAK.exec(text)); ) breaks.push(m.index + m[0].length);
@@ -486,9 +494,14 @@ export function promisesOutOfScopeWork(text: string): boolean {
       // "not a problem" is an agreement, not a refusal, and it is the
       // commonest way to say yes to a job. Removed before asking.
       .replace(/\bnot a problem\b|\bno problem\b|\bno worries\b/gi, " ");
-    if (!DECLINING.test(clause)) return true;
+    if (!DECLINING.test(clause)) return { word: m[0], clause: text.slice(start, end).trim() };
   }
-  return false;
+  return null;
+}
+
+/** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
+export function promisesOutOfScopeWork(text: string): boolean {
+  return outOfScopePromise(text) !== null;
 }
 
 /**
@@ -965,9 +978,15 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     if (PRICE.test(text)) {
       return { ok: false, reason: "quoted_a_price", detail: "free text quotes or implies a price; that is the estimator's job" };
     }
-    if (promisesOutOfScopeWork(text)) {
-      const m = OUT_OF_SCOPE.exec(text);
-      return { ok: false, reason: "out_of_scope_work", detail: `free text mentions "${m?.[0]}", which PPP does not do` };
+    const promise = outOfScopePromise(text);
+    if (promise) {
+      return {
+        ok: false,
+        reason: "out_of_scope_work",
+        // The sentence, not just the word. Blocked drafts are what this
+        // screen exists to show.
+        detail: `it promises "${promise.word}", which PPP does not do, in: "${promise.clause}"`,
+      };
     }
     // A time is only allowed if the system supplied it. The model offering one
     // is how a customer ends up waiting for an estimator who was never booked.
