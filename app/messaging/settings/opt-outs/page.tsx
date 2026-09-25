@@ -21,8 +21,9 @@ export default async function OptOutsPage() {
       <header>
         <h1 className="font-bold text-ppp-charcoal">Who we must not text</h1>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
-          Everyone who told Hatch to stop. The gate checks this before every
-          single send, ahead of every other rule, and nothing overrides it.
+          Everyone who has told PPP to stop, however they said it. The gate
+          checks this before every single send, ahead of every other rule, and
+          nothing overrides it.
         </p>
       </header>
 
@@ -34,8 +35,8 @@ export default async function OptOutsPage() {
           <>
             <p className="text-[13px] font-semibold text-ppp-orange-700">Nothing is suppressed yet</p>
             <p className="mt-1 text-[12.5px] text-ppp-orange-700/90 leading-relaxed">
-              Until Hatch&apos;s list is loaded, every person who has already asked
-              PPP to stop looks like a fresh lead to this system. This has to be
+              Until a list is loaded, every person who has already asked PPP
+              to stop looks like a fresh lead to this system. This has to be
               done before the first real message, not after.
             </p>
           </>
@@ -57,14 +58,27 @@ export default async function OptOutsPage() {
       </section>
 
       <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
-        <h2 className="font-semibold text-ppp-charcoal text-[14px]">Why Hatch and not Salesforce</h2>
+        <h2 className="font-semibold text-ppp-charcoal text-[14px]">
+          Salesforce is a floor, not the whole list
+        </h2>
         <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
-          Kate&apos;s own numbers: of 213 opt-out notifications Salesforce could not
-          match, 98 had no Salesforce record at all and 55 matched a record that
-          was still not marked opted out. Salesforce sits downstream of a
-          matching step that drops a quarter of them. Hatch is where the person
-          actually said stop, so Hatch is what we trust. 92 of those 213 came in
-          over email, which is why this reads both columns.
+          What is loaded came from Salesforce, from Katie&apos;s pull on
+          25 September: the opt-out fields on leads and contacts.
+        </p>
+        <p className="mt-2 text-[12.5px] text-ppp-charcoal-500 leading-relaxed">
+          {/* The analysis that used to sit here under the heading "Why Hatch
+              and not Salesforce". It is still true, and it is the reason this
+              screen must not read as finished now that a list exists. */}
+          Kate&apos;s own numbers say that is not everybody. Of 213 opt-out
+          notifications Salesforce could not match, 98 had no Salesforce record
+          at all and 55 matched a record that was still not marked opted out.
+          Salesforce sits downstream of a matching step that drops a quarter of
+          them, and Hatch is where the person actually said stop.
+        </p>
+        <p className="mt-2 text-[12.5px] font-medium text-ppp-charcoal-600 leading-relaxed">
+          So Hatch&apos;s export is still outstanding, and the people it holds
+          are not suppressed yet. 92 of those 213 came in over email, which is
+          why this reads both columns.
         </p>
       </section>
     </main>
