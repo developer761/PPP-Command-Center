@@ -253,7 +253,7 @@ import {
   dealMargin,
 } from "@/lib/commercial/projects/financials";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
-import { isTerminalSubmittalStatus } from "@/lib/commercial/opportunities/submittal-constants";
+import { isTerminalSubmittalStatus, submittalHasGoneToGc } from "@/lib/commercial/opportunities/submittal-constants";
 import { listCloseoutPackages } from "@/lib/commercial/closeout/db";
 import { computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
@@ -2917,7 +2917,10 @@ export default async function OpportunityDetailPage({
           pendingCoCents: pathChangeOrders
             .filter((c) => c.status === "pending")
             .reduce((a, c) => a + (c.amount_cents ?? 0), 0),
-          submittalsNotSent: liveSubmittals.length === 0,
+          submittalCount: liveSubmittals.length,
+          submittalsSentCount: liveSubmittals.filter((sm) =>
+            submittalHasGoneToGc(sm.status),
+          ).length,
           closeoutNotStarted: liveCloseout.length === 0,
           crewHours: projectSchedule.crewHours,
           targetStartInDays: projectSchedule.startInDays,

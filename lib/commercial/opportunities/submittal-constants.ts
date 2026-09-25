@@ -38,6 +38,22 @@ export function isTerminalSubmittalStatus(s: string | null | undefined): boolean
 }
 
 /**
+ * Has this package actually gone to the GC?
+ *
+ * Draft is the only state where it has not — every status after it in the DAG
+ * is downstream of "Mark as sent to GC". Kept here with the DAG rather than
+ * re-derived at a call site, because the job page's attention rail got it
+ * wrong in the other direction: it read "Submittals not sent to the GC" off a
+ * count of ZERO submittals, so it fired hardest on the jobs that had none.
+ *
+ * `voided` counts as sent only in the sense that it is not a draft — callers
+ * filter voided out before asking, the way the deal page does.
+ */
+export function submittalHasGoneToGc(s: string | null | undefined): boolean {
+  return !!s && s !== "draft";
+}
+
+/**
  * Allowed status transitions. Mirror of ALLOWED_TRANSITIONS in
  * opportunities/constants.ts. Enforced server-side in
  * `lib/commercial/opportunities/submittals.ts:changeSubmittalStatus`.

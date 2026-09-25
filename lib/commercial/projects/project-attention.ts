@@ -42,8 +42,24 @@ export type ProjectAttentionInput = {
   retainageCents: number;
   pendingCoCount: number;
   pendingCoCents: number;
-  /** A won job whose submittals haven't gone to the GC yet. */
-  submittalsNotSent: boolean;
+  /**
+   * How many LIVE submittal packages the job has, and how many have gone out.
+   *
+   * This was a single boolean called `submittalsNotSent`, and it was fed
+   * `liveSubmittals.length === 0` — so it fired when the job had NO submittals
+   * at all, under a line reading "Submittals not sent to the GC". On AIREF
+   * Building #1 the rail said submittals hadn't been sent while the Submittals
+   * tool on the same page said "No submittals yet".
+   *
+   * The two states need different sentences because they need different
+   * actions: with none raised, Stephanie has a package to build; with one
+   * raised and unsent, she has a PDF to email. "Not sent" sent her to an empty
+   * tool looking for something to send.
+   *
+   * The tile beside it already told these apart. The rail did not.
+   */
+  submittalCount: number;
+  submittalsSentCount: number;
   /** Job is fully billed but close-out hasn't been started. */
   closeoutNotStarted: boolean;
   crewHours: number;
@@ -130,12 +146,23 @@ export function deriveProjectAttention(
     });
   }
 
-  // 🟡 Pre-construction gate — submittals have to be back before anyone mobilises.
-  if (i.submittalsNotSent) {
+  // 🟡 Pre-construction gate — submittals have to be back before anyone
+  //    mobilises. Two different states, two different jobs to do.
+  if (i.submittalCount === 0) {
     out.push({
       key: "submittals",
       severity: "med",
-      title: "Submittals not sent to the GC",
+      title: "No submittals raised yet",
+      href: i.hrefs.submittals,
+    });
+  } else if (i.submittalsSentCount === 0) {
+    out.push({
+      key: "submittals",
+      severity: "med",
+      title: `${i.submittalCount} submittal${i.submittalCount === 1 ? "" : "s"} not sent to the GC`,
+      // Naming the action, because this one is a PDF to email rather than a
+      // package to build, and the tool does not send it for you.
+      detail: "download the PDF and email it, then mark it sent",
       href: i.hrefs.submittals,
     });
   }
