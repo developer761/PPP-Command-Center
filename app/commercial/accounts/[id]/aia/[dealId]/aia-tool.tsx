@@ -862,7 +862,15 @@ async function AiaApplicationList({
               "released at close-out", which described it as something that
               happens on its own. It doesn't: it is billed on the final payment
               application, and until then it is money earned and not yet asked
-              for. The tile now says which of those it is. */}
+              for. The tile now says which of those it is.
+
+              NOT "won, not invoiced", which this said until 2026-09-25.
+              That exact phrase is already a different metric with its own tile
+              on Accounting — whole won JOBS that have never been billed at
+              all. Retainage is the opposite kind of thing: the work was
+              certified, the GC agreed it, and 5% of it is being held back. Two
+              screens using one phrase for two meanings is how somebody adds
+              them together. */}
           <AiaSummaryTile
             label="Retainage held"
             value={formatCentsFull(retainageHeldCents)}
@@ -872,7 +880,7 @@ async function AiaApplicationList({
                 ? "none held"
                 : releaseApp
                   ? `billed on Application No. ${releaseApp.application_number}`
-                  : "won, not invoiced"
+                  : "earned, not yet billed"
             }
           />
         </div>
