@@ -3987,6 +3987,9 @@ export default async function OpportunityDetailPage({
           accountId={opp.account_id}
           oppId={opp.id}
           proposals={dealProposals}
+          // Changes only the empty state — see dealIsWon. A migrated job has no
+          // proposal and does not need one.
+          dealIsWon={pathIsWon}
           // The editor is a full-width route of its own; hand it this tab to
           // come back to so a save doesn't eject you to the account page.
           backHref={`/commercial/opportunities/${opp.id}?tab=proposals#deal-proposals`}

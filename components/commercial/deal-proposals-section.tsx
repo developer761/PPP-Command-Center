@@ -21,6 +21,7 @@ export function DealProposalsSection({
   proposals,
   backHref,
   errorMessage,
+  dealIsWon = false,
 }: {
   accountId: string;
   oppId: string;
@@ -29,6 +30,18 @@ export function DealProposalsSection({
   /** Surfaces a failed "New proposal" — createProposal errors used to redirect
    *  to a shim that discarded the message, so a failed create looked silent. */
   errorMessage?: string | null;
+  /**
+   * Is the job already won and being delivered?
+   *
+   * Only changes the EMPTY state. The migration brought 92 jobs across from
+   * Salesforce with no proposal behind them, so on every one of those — jobs
+   * already billing, with a contract and crew on site — this panel read "No
+   * proposals yet — build one from the button above (an opportunity doesn't
+   * need to be Won to propose)". That is advice for a live bid, offered on a
+   * job that was won months ago, and it invites somebody to raise a proposal
+   * against a contract that already exists.
+   */
+  dealIsWon?: boolean;
 }) {
   const base = `/commercial/accounts/${accountId}/deals/${oppId}/proposal`;
   const sorted = [...proposals].sort((a, b) => b.revision_number - a.revision_number);
@@ -67,8 +80,19 @@ export function DealProposalsSection({
       )}
       {sorted.length === 0 ? (
         <p className="px-4 py-3 text-[12px] text-ppp-charcoal-500">
-          No proposals yet — build one from the button above (an opportunity
-          doesn&rsquo;t need to be Won to propose).
+          {dealIsWon ? (
+            <>
+              No proposal on file. Jobs that came across from Salesforce were
+              already won, so the contract they were won on lives on the
+              Overview rather than here. Nothing needs raising — add one only if
+              you are re-pricing the work.
+            </>
+          ) : (
+            <>
+              No proposals yet — build one from the button above (an opportunity
+              doesn&rsquo;t need to be Won to propose).
+            </>
+          )}
         </p>
       ) : (
         <ul className="divide-y divide-ppp-charcoal-50">
