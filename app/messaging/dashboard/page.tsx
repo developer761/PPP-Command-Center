@@ -156,8 +156,11 @@ export default async function MessagingDashboard({
         <h2 className="mb-1 font-semibold text-ppp-charcoal text-[14px]">AI agents</h2>
         <p className="mb-2.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
           Hatch&apos;s columns, kept identical so the two reports can be read side
-          by side. Percentages are of completed conversations — one still running
-          has not failed yet.
+          by side. Success and drop off are of completed conversations, because
+          one still running has not failed yet. Take over is of all of them:
+          somebody holding a conversation right now is the clearest case there
+          is, and waiting for it to end before counting it would read nought on
+          the day it matters.
         </p>
         {r.agents.length === 0 ? (
           <Empty>No conversations in this window. These fill in as leads arrive.</Empty>
