@@ -25,9 +25,19 @@ import type { AvailabilityGap } from "./availability";
 
 /** Intents that END the conversation without sending anything. Sending a
  *  cheerful sign-off to somebody who asked to be left alone is how a
- *  complaint starts. */
+ *  complaint starts.
+ *
+ *  bot_suspected USED TO BE HERE, and that is the opposite situation. The
+ *  three below are people who have disengaged; somebody typing "is this a
+ *  real person or a bot" is the most engaged a customer gets, and they asked
+ *  a direct question. Silence is the single worst answer available: it reads
+ *  exactly like a bot that has been caught.
+ *
+ *  Kate's own tag says so — handled_bot_q, "Answered as Emily and ended as
+ *  Bot Suspected". Answered. The conversation still hands to a person either
+ *  way; this is about whether they hear anything while they wait. */
 export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
-  "discard", "lost", "bot_suspected", "msg_liked_loved",
+  "discard", "lost", "msg_liked_loved",
 ]);
 
 /**
@@ -241,10 +251,24 @@ export const SAYS: Record<Intent, string[]> = {
     "The zip I have on file is {zip}, and unfortunately we do not currently service {state}. Is the project somewhere other than {state}?",
   ],
 
+  /**
+   * ASKED WHETHER THEY ARE TALKING TO A BOT.
+   *
+   * WORDING NEEDS KATE. This answers without claiming to be a person and
+   * without denying anything, because the one thing this message must never
+   * do is lie about it — a customer who asks that question directly and is
+   * told "yes, a real person" has been deceived, and it is the sort of thing
+   * that ends up in a screenshot. It also must not stall: the conversation is
+   * already handing to a person, so it says that and stops.
+   */
+  bot_suspected: [
+    "Good question. Let me get someone from our team to pick this up with you.",
+    "Fair question. I am getting one of our team to take it from here.",
+  ],
+
   // — Silent —
   discard: [""],
   lost: [""],
-  bot_suspected: [""],
   msg_liked_loved: [""],
 };
 

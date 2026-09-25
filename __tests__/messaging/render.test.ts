@@ -131,4 +131,32 @@ describe("rendering an intent into words", () => {
     const out = renderMessage({ intent: "confirm_scope", turn: 0, known: { scope: "Kitchen cabinets, maybe 20 doors" } });
     expect(out).toContain("Kitchen cabinets, maybe 20 doors");
   });
+
+  /**
+   * "ARE YOU A BOT" IS NOT A REASON TO GO QUIET.
+   *
+   * bot_suspected sat in SILENT_INTENTS beside discard and lost, whose comment
+   * explains itself: "sending a cheerful sign-off to somebody who asked to be
+   * left alone is how a complaint starts". That is the opposite situation.
+   * Somebody typing "is this a real person or a bot" is the most engaged a
+   * customer gets, and silence is the single worst answer available — it reads
+   * exactly like a bot that has been caught.
+   *
+   * Kate's tag handled_bot_q: "Answered as Emily and ended as Bot Suspected."
+   * Both halves. It was doing the second one only.
+   */
+  it("answers when asked whether it is a bot", () => {
+    for (const turn of [0, 1, 2, 3]) {
+      const out = renderMessage({ intent: "bot_suspected", turn });
+      expect(out.length, `turn ${turn}`).toBeGreaterThan(0);
+      // It must not claim to be a person, and must not deny anything either.
+      expect(out).not.toMatch(/\b(?:real person|i am human|not a bot|a human)\b/i);
+    }
+  });
+
+  it("still says nothing to somebody who has disengaged", () => {
+    for (const intent of ["discard", "lost", "msg_liked_loved"] as const) {
+      expect(renderMessage({ intent }), intent).toBe("");
+    }
+  });
 });
