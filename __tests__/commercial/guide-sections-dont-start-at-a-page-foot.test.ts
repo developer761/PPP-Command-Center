@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 
 /**
  * A section of the handbook never OPENS at the foot of a page.
@@ -116,4 +117,34 @@ describe("the handbook's page breaks", () => {
     expect(checked).toBeGreaterThanOrEqual(25);
     expect(split).toEqual([]);
   }, 60000);
+});
+
+/**
+ * The running footer must keep an explicit height.
+ *
+ * It is `position: absolute` + `fixed`. Without a height it has no fixed
+ * size, so it takes part in SOLVING the page height rather than being placed
+ * into an already-solved one — and past a certain amount of content that
+ * solve stops converging. react-pdf doubles the page height about twenty
+ * times, the footer's `bottom: 28` resolves to top: -1.9e21, and pdfkit
+ * throws `unsupported number`. The whole handbook fails to render.
+ *
+ * The render test above catches it TODAY, because today's content is past the
+ * tipping point. It would stop catching it if the handbook ever got shorter,
+ * and the failure would lie in wait for whoever next made it longer. This
+ * says the reason out loud so the height is not "tidied away" as a stray
+ * magic number.
+ */
+describe("the running footer", () => {
+  it("has an explicit height", () => {
+    const src = readFileSync("lib/commercial/guide/pdf.tsx", "utf8");
+    const footer = /footer:\s*\{[^}]*\}/.exec(
+      src.replace(/\/\*[\s\S]*?\*\//g, ""),
+    )?.[0];
+    expect(footer, "could not find the footer style — update this test").toBeTruthy();
+    expect(
+      /height:\s*\d/.test(footer!),
+      "an absolutely-positioned fixed footer with no height makes react-pdf run the page height away to 1.9e21",
+    ).toBe(true);
+  });
 });

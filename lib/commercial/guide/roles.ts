@@ -208,32 +208,7 @@ const MARY: RoleGuide = {
           tourTarget: "payroll:hours",
           purpose:
             "The week's approved hours to send to Gusto, the real cost Gusto took out of the bank, and the two joined up so every job carries its share of the labor. One tab, start to finish.",
-          /**
-           * NO TAB STRIP ON THIS SURFACE, DELIBERATELY — the printed handbook
-           * cannot take another one.
-           *
-           * Adding a strip here (any strip: 6 boxes or 8, any highlighted
-           * index, with or without wrap={false}) sends react-pdf into a
-           * runaway page-height search. It doubles the page height about
-           * twenty times — 19,355,170 then 1,088,727,936 and so on — until the
-           * absolutely-positioned footer lands at top: -1.9e21 and pdfkit
-           * throws `unsupported number`. The whole handbook fails to render,
-           * and nothing in the message mentions a strip, a page, or this file.
-           *
-           * It is cumulative, not about this strip: with the two new sections
-           * here carrying no strip the document renders, and the five older
-           * strips are untouched. So this is a ceiling in the PDF layout, not
-           * a fault in the content, and it is worth real time with react-pdf
-           * rather than a guess at midnight.
-           *
-           * Nothing is lost for the reader: the `path` line above already
-           * reads "Accounting › Payroll", which is the instruction. The strip
-           * is a picture of it.
-           *
-           * `guide-sections-dont-start-at-a-page-foot` renders the real PDF
-           * and is what caught this before it shipped — it is the guard that
-           * matters here, so do not skip it when adding to this file.
-           */
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Payroll") },
           steps: [
             "Click Accounting in the left menu.",
             "Click the Payroll tab. It opens on the last week that has hours.",
@@ -277,7 +252,7 @@ const MARY: RoleGuide = {
           path: "Accounting › Overview",
           purpose:
             "Where Accounting opens: what is owed, who owes most of it, how long it is taking to arrive, and what the work actually cost. Nothing is entered here — every figure is a way in to the tab that holds the detail.",
-          // See the note on the Payroll surface: no strip, or the handbook PDF will not render.
+          strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Overview") },
           steps: [
             "Click Accounting in the left menu. This is the tab it opens on.",
             "Read the four boxes across the top — they stay there on every tab.",

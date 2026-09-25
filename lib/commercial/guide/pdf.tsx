@@ -208,7 +208,29 @@ const s = StyleSheet.create({
   lookupA: { width: "48%", fontSize: 9.5, fontFamily: "Helvetica-Bold", color: NAVY, lineHeight: 1.3 },
 
   footnote: { fontSize: 8.5, color: "#9ca3af", marginTop: 12, lineHeight: 1.4, fontStyle: "italic" },
-  footer: { position: "absolute", bottom: 28, left: 46, right: 46, borderTopWidth: 0.5, borderTopColor: RULE, paddingTop: 6, flexDirection: "row", justifyContent: "space-between" },
+  /**
+   * `height` IS LOAD-BEARING. Without it the whole handbook fails to render.
+   *
+   * This is `position: absolute` + `fixed` — the documented react-pdf pattern
+   * for a running footer — but with no height it has no fixed size, so it
+   * takes part in solving the page height instead of being placed inside an
+   * already-solved one. Past a certain amount of content that solve stops
+   * converging: react-pdf doubles the page height about twenty times
+   * (19,355,170 → 1,088,727,936 → …), the footer's `bottom: 28` resolves to
+   * top: -1.9e21, and pdfkit throws `unsupported number`. The document does
+   * not render at all, and nothing in the error names a footer, a page, or
+   * this file.
+   *
+   * It behaves like a content problem, which is what made it so misleading:
+   * adding one control to a section, or a second tab strip, was enough to tip
+   * it, and taking either back out "fixed" it. Bisecting found the strips;
+   * the strips were innocent. Removing `fixed` from this footer also stopped
+   * the loop, which would have cost the running footer on every page.
+   *
+   * 18pt = 6pt paddingTop + one 8pt line. Change the font here and change
+   * this with it.
+   */
+  footer: { position: "absolute", bottom: 28, left: 46, right: 46, height: 18, borderTopWidth: 0.5, borderTopColor: RULE, paddingTop: 6, flexDirection: "row", justifyContent: "space-between" },
   footerText: { fontSize: 7.5, color: "#9ca3af" },
 });
 
