@@ -110,7 +110,10 @@ try {
   const stop = await deliver(signedRequest(field("STOP", "SMe2e3")));
   ok("STOP arriving over Twilio suppresses the handset", stop.keyword === "opt_out");
   const { data: sup } = await sb.from("sms_opt_outs")
-    .select("phone_e164, inbound_body").eq("phone_e164", CUSTOMER).is("opted_in_at", null);
+    // Bounded: the assertion is "exactly one", so two is enough to tell one
+    // from more than one. The checker reads the SHAPE of a read, not the
+    // filter, and it is right to — sms_opt_outs now holds 31,601 rows.
+    .select("phone_e164, inbound_body").eq("phone_e164", CUSTOMER).is("opted_in_at", null).limit(2);
   ok("…and there is exactly one active suppression", (sup ?? []).length === 1);
   ok("…with the exact words kept as evidence", sup?.[0]?.inbound_body === "STOP", sup?.[0]?.inbound_body ?? "");
 

@@ -68,11 +68,21 @@ export async function importOptOuts(csv: string): Promise<ImportOutcome> {
 export async function suppressionCount(): Promise<{ sms: number; email: number }> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const { data } = await sb.from("sms_opt_outs")
-    .select("channel, phone_e164, email, opted_in_at");
-  const active = (data ?? []).filter((r) => !r.opted_in_at);
-  return {
-    sms: active.filter((r) => r.phone_e164).length,
-    email: active.filter((r) => r.email).length,
-  };
+  /**
+   * COUNTED BY THE DATABASE, NOT BY READING EVERY ROW.
+   *
+   * This pulled the whole table and counted in JS. PostgREST caps an
+   * unbounded select at 1,000 rows silently, so the moment Katie's Salesforce
+   * list landed — 31,601 suppressions — this screen would have reported
+   * exactly 1,000 and looked plausible doing it.
+   *
+   * The table was under the cap until today, which is why it never showed.
+   */
+  const [sms, email] = await Promise.all([
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("phone_e164", "is", null).is("opted_in_at", null),
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("email", "is", null).is("opted_in_at", null),
+  ]);
+  return { sms: sms.count ?? 0, email: email.count ?? 0 };
 }

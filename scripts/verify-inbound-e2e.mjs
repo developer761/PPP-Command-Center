@@ -145,7 +145,10 @@ try {
   ok("STOP is recognised as an opt-out", stop.keyword === "opt_out");
 
   const { data: sup } = await sb.from("sms_opt_outs")
-    .select("phone_e164, source, inbound_body, opted_in_at").eq("phone_e164", CUSTOMER).is("opted_in_at", null);
+    // Bounded: the assertion is "exactly one", so two is enough to tell one
+    // from more than one. The checker reads the SHAPE of a read, not the
+    // filter, and it is right to — sms_opt_outs now holds 31,601 rows.
+    .select("phone_e164, source, inbound_body, opted_in_at").eq("phone_e164", CUSTOMER).is("opted_in_at", null).limit(2);
   ok("…and the number is suppressed", (sup ?? []).length === 1);
   ok("…with the exact words kept as evidence", sup?.[0]?.inbound_body === "STOP", sup?.[0]?.inbound_body ?? "");
 
@@ -187,7 +190,10 @@ try {
   ok("a plain-language opt-out is honoured (A24)", phrase.keyword === "opt_out");
 
   const { data: phraseSup } = await sb.from("sms_opt_outs")
-    .select("source, inbound_body").eq("phone_e164", PHRASE_CUSTOMER).is("opted_in_at", null);
+    // Bounded: the assertion is "exactly one", so two is enough to tell one
+    // from more than one. The checker reads the SHAPE of a read, not the
+    // filter, and it is right to — sms_opt_outs now holds 31,601 rows.
+    .select("source, inbound_body").eq("phone_e164", PHRASE_CUSTOMER).is("opted_in_at", null).limit(2);
   ok("…and the number is suppressed", (phraseSup ?? []).length === 1);
   ok("…recorded as a phrase, not as a carrier keyword",
      phraseSup?.[0]?.source === "inbound_phrase", phraseSup?.[0]?.source ?? "");
@@ -258,11 +264,30 @@ try {
     await sb.from("sms_messages").delete().eq("conversation_id", id);
     await sb.from("sms_conversations").delete().eq("id", id);
   }
-  await sb.from("sms_opt_outs").delete().eq("phone_e164", CUSTOMER);
+  /**
+   * EVERY NUMBER THIS RUN SUPPRESSED, not just the main one.
+   *
+   * This deleted CUSTOMER and checked CUSTOMER, so when the A24 checks added
+   * a second number it left that row behind and still printed "0 opt-outs
+   * remain". A cleanup that verifies only what it remembered to delete
+   * reports success by construction.
+   *
+   * It matters more here than in most tables: the send gate's port rail is
+   * satisfied by ACTIVE ROWS EXISTING, so a single forgotten test row is
+   * enough to tell the rail the suppression list has been loaded.
+   */
+  const touched = [...new Set([CUSTOMER, ...created.optOuts])];
+  for (const phone of touched) {
+    await sb.from("sms_opt_outs").delete().eq("phone_e164", phone);
+  }
   const { count: leftConv } = await sb.from("sms_conversations")
-    .select("*", { count: "exact", head: true }).eq("customer_phone", CUSTOMER);
+    .select("*", { count: "exact", head: true }).in("customer_phone", touched);
   const { count: leftSup } = await sb.from("sms_opt_outs")
-    .select("*", { count: "exact", head: true }).eq("phone_e164", CUSTOMER);
+    .select("*", { count: "exact", head: true }).in("phone_e164", touched);
+  // And nothing from the 999 test range at all, whoever created it.
+  const { count: strays } = await sb.from("sms_opt_outs")
+    .select("*", { count: "exact", head: true }).like("phone_e164", "+1999%");
   console.log(`cleanup: ${leftConv} conversations, ${leftSup} opt-outs remain (expect 0, 0)`);
+  console.log(`cleanup: ${strays} test-range (+1999) suppressions remain (expect 0)`);
 }
 process.exit(fail === 0 ? 0 : 1);
