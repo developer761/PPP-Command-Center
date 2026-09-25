@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPlaceholderScope, usableScope } from "@/lib/messaging/scope";
+import { isPlaceholderScope, usableScope, scopeFromCustomer, resolveScope } from "@/lib/messaging/scope";
 import { knownFields, knownCustomerPrompt } from "@/lib/messaging/known-customer";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
@@ -133,5 +133,91 @@ describe("the old behaviour is what was actually wrong", () => {
       { knownFields: { inquiryScope: true }, stage: 0 } as never
     );
     expect(v.ok).toBe(false);
+  });
+});
+
+/**
+ * SCOPE THE CUSTOMER GAVE US IN THE CONVERSATION.
+ *
+ * inquiry_scope was written once at enrolment and never again, so a lead who
+ * opened by describing the job left the record empty and the flow stuck:
+ * ask_project_details was the only legal move and the model would not take it,
+ * having been told never to ask for what they have already given. Reproduced
+ * five times out of five in the simulator.
+ */
+describe("scope the customer supplies in the conversation", () => {
+  it("captures a job description", () => {
+    for (const t of [
+      "Hi, I need the interior of my house painted, about 4 rooms",
+      "hi i need my living room painted",
+      "Looking to repaint kitchen cabinets!",
+      "I have a 10x10 bedroom that I need painted on August 1st.",
+      "I need my 2 car garage trim repaired and painted",
+      "Whole house needs painting. Pretty much every room.",
+    ]) {
+      expect(scopeFromCustomer(t), t).toBeTruthy();
+    }
+  });
+
+  /**
+   * The dangerous direction. Captured scope is treated as collected, so a
+   * question captured here would tick the project-details step off on the
+   * strength of the customer ASKING something.
+   *
+   * "do" was briefly a work word, which made every one of these scope.
+   */
+  it("never captures a question as the job", () => {
+    for (const t of [
+      "Do you do kitchen cabinets?",
+      "do you do exterior houses",
+      "What do you charge for a room",
+      "Do you guys do condos",
+      "How much for a room?",
+      "Can I get a quote?",
+      "Hello can i send pictures here ?",
+      "Hello Are you able to complete a virtual estimate?",
+    ]) {
+      expect(scopeFromCustomer(t), t).toBeNull();
+    }
+  });
+
+  it("never captures scheduling, contact details or acknowledgements", () => {
+    for (const t of [
+      "Ok", "Now", "ok not ready now", "Sábado 9:30 am",
+      "You can reach me by email at tom@example.com.",
+      "Yes still interested but no power at the house. Will contact you later.",
+      "Weekday mornings are best",
+    ]) {
+      expect(scopeFromCustomer(t), t).toBeNull();
+    }
+  });
+
+  it("refuses a placeholder even when the customer types it", () => {
+    expect(scopeFromCustomer("Customer did not provide additional comments. Please contact the customer to discuss the details of this project.")).toBeNull();
+  });
+
+  describe("resolveScope", () => {
+    it("prefers what PPP already had on the lead", () => {
+      const r = resolveScope({ onFile: "Kitchen cabinets, 20 doors", customerText: "actually I need my living room painted" });
+      expect(r).toEqual({ scope: "Kitchen cabinets, 20 doors", from: "record" });
+    });
+
+    it("falls back to what they said when the record holds nothing", () => {
+      const r = resolveScope({ onFile: null, customerText: "hi i need my living room painted" });
+      expect(r.from).toBe("customer");
+      expect(r.scope).toBe("hi i need my living room painted");
+    });
+
+    it("falls back when the record holds a placeholder rather than scope", () => {
+      const r = resolveScope({
+        onFile: "Customer did not provide additional comments. Please contact the customer to discuss the details of this project.",
+        customerText: "I need the interior of my house painted, about 4 rooms",
+      });
+      expect(r.from).toBe("customer");
+    });
+
+    it("reports nothing when neither side has any", () => {
+      expect(resolveScope({ onFile: null, customerText: "hi" })).toEqual({ scope: null, from: null });
+    });
   });
 });

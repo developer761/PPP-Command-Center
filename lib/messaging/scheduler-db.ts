@@ -13,6 +13,7 @@ import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
+import { resolveScope } from "./scope";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
@@ -293,7 +294,36 @@ export function schedulerDeps(): SchedulerDeps {
       // ask_contact and ask_availability as out of order for the rest of the
       // conversation. Invisible in testing, because testing has autosend off.
       const priorIntents = await priorIntentsFor(sb, conv.id);
-      const stage = stageFromIntents(priorIntents);
+      const stage0 = stageFromIntents(priorIntents);
+
+      // WHAT THE CUSTOMER TOLD US IS ALSO COLLECTED.
+      //
+      // inquiry_scope is written once at enrolment and never again, so a lead
+      // who opens by describing the job left the record empty and the flow
+      // stuck: ask_project_details is the only legal move and the model will
+      // not take it, having been told never to ask for what they have already
+      // given. Five out of five in the simulator, on the opening a Web Inquiry
+      // lead uses most.
+      //
+      // The step was done. Only the bookkeeping disagreed.
+      const resolved = resolveScope({
+        onFile: (conv as { inquiry_scope?: string | null }).inquiry_scope,
+        customerText: lastInbound.body,
+      });
+      const stage = resolved.from === "customer" ? Math.max(stage0, 1) : stage0;
+
+      // Persisted so the next turn does not have to find it again, and so the
+      // thread and the reporting show what the conversation is actually about.
+      // Guarded on the column still being empty: what PPP had on the lead is
+      // the office's version and is never overwritten by ours.
+      if (resolved.from === "customer" && resolved.scope) {
+        const { error: scopeErr } = await sb.from("sms_conversations")
+          .update({ inquiry_scope: resolved.scope })
+          .eq("id", conv.id)
+          .is("inquiry_scope", null);
+        // Not fatal. The turn can still run on the value we just derived.
+        if (scopeErr) console.warn(`could not store the scope: ${scopeErr.message}`);
+      }
 
       // Kate 44 Class A rules, the standard this reply will be graded
       // against. Rendered by forPrompt, which never sees her rater-only
@@ -336,7 +366,7 @@ export function schedulerDeps(): SchedulerDeps {
           // undefined when the migration has not been applied — which is the
           // old behaviour, not a crash.
           address: (conv as { customer_address?: string | null }).customer_address ?? null,
-          inquiryScope: (conv as { inquiry_scope?: string | null }).inquiry_scope ?? null,
+          inquiryScope: resolved.scope,
         },
         services: resolveServices(svc.services, svc.exceptions),
         examples: selectExamples(corpus, { stage }),

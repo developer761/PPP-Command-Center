@@ -112,3 +112,99 @@ export function isPlaceholderScope(scope: string | null | undefined): boolean {
 export function usableScope(scope: string | null | undefined): string | null {
   return isPlaceholderScope(scope) ? null : (scope ?? "").trim();
 }
+
+/**
+ * ── SCOPE THE CUSTOMER GAVE US IN THE CONVERSATION ──────────────────────
+ *
+ * inquiry_scope is written once, at enrolment, from the lead. Nothing has
+ * ever updated it from the conversation, and that is what stalls a lead who
+ * opens by describing the job:
+ *
+ *   Customer: "Hi, I need the interior of my house painted, about 4 rooms"
+ *
+ *   ask_project_details  legal, but the prompt says NEVER ask for anything
+ *                        they have already given, so the model will not
+ *   confirm_scope        refused, there is nothing on file to confirm
+ *   ask_address          refused, out_of_order
+ *
+ * The turn dies between two rules that are each correct. Reproduced five
+ * times out of five in the simulator, and it is the opening a Web Inquiry
+ * lead most naturally uses.
+ *
+ * So the record is made honest: what they told us IS the scope.
+ *
+ * AND IT COUNTS AS COLLECTED. The first version of this made confirm_scope
+ * legal instead, so the bot would read the job back for a yes — and that is
+ * the one thing it must not do here, because Kate bans echoing: "no restating
+ * their words back". Quoting a customer's own sentence at them is the echo,
+ * not a confirmation. Reading back the RECORD is different, and confirm_scope
+ * is still exactly right for that: they never said it in this conversation.
+ *
+ * Which means the model was right all along. Told the job in message one, it
+ * chose ask_address, and the stage machine refused it for skipping a step
+ * that the customer had already completed. The step was done; only the
+ * bookkeeping disagreed.
+ *
+ * ── WHY THIS IS STRICTER THAN DESCRIBES_WORK ────────────────────────────
+ *
+ * offsite.ts asks "does this mention work at all" and counts "quote",
+ * "estimate", "project" and "job". That is right for routing and wrong here:
+ * "Can I get a quote?" would become the scope and be read back as the job.
+ *
+ * A sentence is only scope when it names WORK and a SUBJECT — something to
+ * paint. Getting this wrong is not a missed capture, it is confirming
+ * nonsense to a customer, so it leans the other way from most matchers here.
+ */
+const WORK_WORD =
+  // (?:re)? because "repaint" is one of the commonest openings there is and
+  // \bpaint has no word boundary inside it — "Looking to repaint kitchen
+  // cabinets" was not scope until this bracket.
+  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat(?:s|ing|ed)?|seal\w*|sand\w*|spray\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackl\w*|skim\s?coat\w*|wallpaper\w*|(?:pressure|power)[\s-]?wash\w*)\b/i;
+
+const SUBJECT =
+  /\b(?:rooms?|bedrooms?|bathrooms?|bath|kitchens?|living\s?rooms?|dining\s?rooms?|hallways?|stairs?|stairwells?|closets?|basements?|garages?|attics?|ceilings?|walls?|trim|baseboards?|mouldings?|moldings?|cabinets?|doors?|windows?|shutters?|decks?|fences?|porch(?:es)?|sidings?|soffits?|railings?|houses?|homes?|apartments?|condos?|units?|offices?|interiors?|exteriors?|bd|br|ba)\b/i;
+
+/** "4 rooms", "3 bd", "1450 sq ft" — a count is a subject on its own. */
+const COUNTED = /\b\d+\s*(?:bd|br|ba|bed|bath|rooms?|sq\.?\s?ft|sqft|square\s?feet)\b/i;
+
+/**
+ * The most a customer message contributes as scope.
+ *
+ * 300 was too tight. A real opening — "looking for a quote to paint an empty
+ * 725 sq. ft. one-bedroom condo in Stamford", with the rest of the paragraph
+ * behind it — ran past it and was dropped, so the bot asked what the job was
+ * having just been told in detail. render.ts already clips for display; this
+ * only has to refuse an essay.
+ */
+const MAX_SCOPE_CHARS = 700;
+
+/**
+ * The scope contained in something the customer typed, or null.
+ *
+ * Used only when the record holds none — what PPP already had on the lead
+ * always wins, because it is what the office and the estimator are looking at.
+ */
+export function scopeFromCustomer(text: string | null | undefined): string | null {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  if (t.length < MIN_SCOPE_CHARS || t.length > MAX_SCOPE_CHARS) return null;
+  if (isPlaceholderScope(t)) return null;
+  if (!WORK_WORD.test(t)) return null;
+  if (!SUBJECT.test(t) && !COUNTED.test(t)) return null;
+  return t;
+}
+
+/**
+ * The scope to use for this turn: the record first, then what they said.
+ *
+ * Returns the value AND where it came from, because the caller persists a
+ * conversation-sourced scope and must not rewrite a record-sourced one.
+ */
+export function resolveScope(input: {
+  onFile: string | null | undefined;
+  customerText: string | null | undefined;
+}): { scope: string | null; from: "record" | "customer" | null } {
+  const onFile = usableScope(input.onFile);
+  if (onFile) return { scope: onFile, from: "record" };
+  const said = scopeFromCustomer(input.customerText);
+  return said ? { scope: said, from: "customer" } : { scope: null, from: null };
+}
