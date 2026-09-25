@@ -539,6 +539,12 @@ export function FieldOpsCalendar({
   const crewOptions: Opt[] = employees.map((e) => ({ value: e.id, label: e.display_name, hint: e.email ? undefined : "no email — won't be notified" }));
   const jobOptions: Opt[] = jobs.map((j) => ({ value: j.id, label: j.name, hint: [j.job_code, j.customer_name, j.site_city].filter(Boolean).join(" · ") }));
   const maxHead = Math.max(1, ...grid.map((d) => d.headcount));
+  // Counts the days actually in this month/week, not the grey padding days a
+  // six-week grid borrows from the months either side — otherwise a neighbour's
+  // crew would suppress the "nobody is scheduled" line on an empty month.
+  const anyCrewThisView = grid.some(
+    (d) => d.inMonth && (d.headcount > 0 || d.crew.length > 0 || d.off.length > 0),
+  );
 
   return (
     <div>
@@ -577,6 +583,32 @@ export function FieldOpsCalendar({
           Copy week
         </button>
       </div>
+
+      {/*
+        AN EMPTY GRID HAS TO SAY WHICH KIND OF EMPTY IT IS.
+        
+        Thirty blank boxes look identical whether nobody is scheduled or the
+        page failed to load. Tomco have never used this calendar — there is not
+        one assignment in any month — while 400 crew hours sit on AIREF
+        Building #1 and fifteen jobs are in progress, because the hours arrive
+        through the Hours Log and the clock, not through here.
+        
+        So the dangerous reading is not "is it broken", it is "nobody worked".
+        The line says both: how to schedule somebody, and that hours can exist
+        without a schedule, so an empty month is never evidence that a job
+        stood still.
+      */}
+      {!anyCrewThisView && (
+        <p className="mb-2 rounded-lg border border-ppp-charcoal-200 bg-ppp-charcoal-50 px-3 py-2 text-[12px] text-ppp-charcoal-600">
+          <strong className="text-ppp-charcoal">Nobody is scheduled {mode === "week" ? "this week" : "this month"}.</strong>{" "}
+          Click any day to put crew on a work order. Hours can also be recorded
+          without a schedule &mdash; through the clock or the{" "}
+          <Link href="/commercial/field-ops/hours" className="font-semibold text-cc-brand-700 underline">
+            Hours Log
+          </Link>
+          {" "}&mdash; so an empty calendar does not mean nothing happened.
+        </p>
+      )}
 
       <div className="hidden sm:grid grid-cols-7 gap-1 mb-1">
         {DOW.map((d) => <div key={d} className="text-[10.5px] font-bold uppercase tracking-wider text-ppp-charcoal-400 text-center py-1">{d}</div>)}
