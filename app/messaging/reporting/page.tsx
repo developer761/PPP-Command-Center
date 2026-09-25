@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { loadReporting, integrityChecks, activeWorkspaces, loadOptOutRates, type ReportRange } from "@/lib/messaging/db";
-import { humanSeconds, HATCH_POLL_SECONDS, TARGET_SECONDS } from "@/lib/messaging/metrics";
+import { humanSeconds, HATCH_POLL_SECONDS, TARGET_SECONDS, MIN_MEASURED } from "@/lib/messaging/metrics";
 import { rank, summarise, formatRate, WATCH_RATE, HIGH_RATE, MIN_PEOPLE } from "@/lib/messaging/optout-rate";
 import { heldLeads } from "@/lib/messaging/lead-redrive-write";
 import { HeldLeads } from "@/components/messaging/held-leads";
@@ -178,8 +178,12 @@ export default async function ReportingConsole({
         <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
           <h2 className="font-semibold text-ppp-charcoal text-[14px]">Speed to lead</h2>
           <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
-            Hatch polls Salesforce every 15 minutes, so {humanSeconds(HATCH_POLL_SECONDS)} is the
-            best it can do even when everything else is instant.
+            Measured from the lead reaching Connect Hub to the first message
+            going out. Hatch polls Salesforce every 15 minutes, so{" "}
+            {humanSeconds(HATCH_POLL_SECONDS)} is the best it can do even when
+            everything else is instant, but it counts from the moment the lead
+            was created in Salesforce and this does not, so the two are not
+            measured over the same stretch.
           </p>
         </div>
         <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -189,11 +193,16 @@ export default async function ReportingConsole({
           <Stat label={`Under ${TARGET_SECONDS}s`} value={`${r.speed.withinTargetPct}%`} note="the target" />
           <Stat label="Beating Hatch" value={`${r.speed.beatingHatchPct}%`} />
         </div>
-        {r.speed.measured === 0 && (
+        {r.speed.measured === 0 ? (
           <p className="px-4 pb-3 text-[12px] text-ppp-charcoal-500">
             Nothing measured yet. This fills in once leads start flowing.
           </p>
-        )}
+        ) : r.speed.measured < MIN_MEASURED ? (
+          <p className="px-4 pb-3 text-[12px] text-ppp-charcoal-500">
+            {r.speed.measured} measured. Fewer than {MIN_MEASURED} is too few to
+            read anything into, so these are shown but not a result yet.
+          </p>
+        ) : null}
       </section>
 
       {/* The funnel — the part Hatch cannot show. */}

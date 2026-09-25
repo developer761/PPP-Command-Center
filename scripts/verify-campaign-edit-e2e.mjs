@@ -120,8 +120,21 @@ try {
   const movedDay = new Date(moved.run_at).toISOString().slice(0, 10);
   ok("rescheduling moves the queued send to the new day", movedDay !== beforeDay, `${beforeDay} -> ${movedDay}`);
 
-  const daysOut = (new Date(moved.run_at) - new Date(conv.created_at)) / 86_400_000;
-  ok("…to the day that was actually asked for", daysOut > 5.5 && daysOut < 6.5, daysOut.toFixed(1) + "d");
+  // NOT elapsed days. The step says day 6 at 10:00, which is between 5.42 and
+  // 6.42 days out depending on the hour this runs, so a band around six goes
+  // red every evening — it failed at 23:04 with 5.46 and the reschedule was
+  // perfectly correct. Second script with this same bug; see the note in
+  // verify-workflow-e2e.mjs.
+  const et = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const partsOf = (d) => Object.fromEntries(et.formatToParts(d).map((x) => [x.type, x.value]));
+  const landed = partsOf(new Date(moved.run_at));
+  const wanted = partsOf(new Date(new Date(conv.created_at).getTime() + 6 * 86_400_000));
+  ok("…to the day that was actually asked for",
+     landed.day === wanted.day && landed.hour + ":" + landed.minute === "10:00",
+     `day ${landed.day} at ${landed.hour}:${landed.minute}, wanted day ${wanted.day} at 10:00`);
 
   // ── TURNING IT ON ───────────────────────────────────────────────────
   const { data: wf } = await sb.from("sms_workflows")
