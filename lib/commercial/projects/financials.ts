@@ -56,11 +56,6 @@ export type ProjectFinancials = {
   /** Approved crew hours with no cost rate on file → they cost $0 here, so a
    *  value > 0 means labor cost (and margin) is understated until a rate is set. */
   laborUnratedHours: number;
-  /** ALL approved crew hours on this job, priced or not — what the crew
-   *  actually worked here. Exposed because the deal page's "Crew hours" tile
-   *  was showing hours typed onto LABOR PAYMENTS instead, which the handbook
-   *  itself says are "not the crew's attendance". */
-  laborHours: number;
   /** Purchases + field-ops labor = the deal's total cost. */
   totalCostCents: number;
   /** Contract − total costs = projected gross profit. Negative = over budget. */
@@ -153,7 +148,6 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     costs,
     fieldOpsLaborCents,
     laborUnratedHours: labor.unratedHours,
-    laborHours: labor.ratedHours + labor.unratedHours,
     totalCostCents,
     grossMarginCents,
     grossMarginPct,

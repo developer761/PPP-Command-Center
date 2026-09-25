@@ -2254,6 +2254,7 @@ export default async function OpportunityDetailPage({
     pathFin,
     pathChangeOrders,
     pathSubmittals,
+    pathCrewDetail,
     pathCloseouts,
     pathRetainageCents,
     pathAiaRoll,
@@ -2262,11 +2263,22 @@ export default async function OpportunityDetailPage({
         getProjectFinancials(opp.id).catch(() => null),
         listChangeOrders(opp.id).catch(() => []),
         listOpportunitySubmittals(opp.id).catch(() => []),
-        // `laborByWorkerForProject` used to be fetched here to feed the "Crew
-        // hours" tile. It reads LABOR PAYMENTS, which the handbook says are
-        // "not the crew's attendance" — the tile now takes approved hours from
-        // the financials read above, so this round-trip is gone rather than
-        // left running for nothing.
+        /**
+         * CREW HOURS ON THIS JOB — every approved hour, whoever worked it.
+         *
+         * Three candidates were wrong before this one. `laborByWorkerForProject`
+         * reads LABOR PAYMENTS, which the handbook says outright are "not the
+         * crew's attendance". `oppLaborCost`'s rated+unrated is W-2 only AND
+         * skips weeks already costed by payroll, so on AIREF Building #1 it
+         * gives 326 — it is a COSTING figure, not an attendance one.
+         *
+         * The Costs tool has said 400 hrs on that job all along, and it is
+         * right: 326 W-2 hours awaiting a rate plus 74 hours from sub crews
+         * paid through a crew payout. `fieldOpsCrewDetailForOpp` is what feeds
+         * that panel, so taking it here makes the deal page and the Costs tool
+         * answer the same question the same way.
+         */
+        fieldOpsCrewDetailForOpp(opp.id).catch(() => null),
         // Loaded for any won deal now, not just a closed-out one: the delivery
         // strip reports closeout's state at every stage, and a strip that says
         // "Not started" because it never looked is worse than no strip.
@@ -2285,7 +2297,7 @@ export default async function OpportunityDetailPage({
           .then((m) => m.get(opp.id) ?? null)
           .catch(() => null),
       ])
-    : [null, [], [], [], 0, null];
+    : [null, [], [], null, [], 0, null];
 
   // Warranty runs from substantial completion. A job can carry more than one
   // package (a re-issue after a punch item); the LATEST completion date is the
@@ -2767,7 +2779,7 @@ export default async function OpportunityDetailPage({
     // Approved attendance, same base as the Project tab's tile and as the
     // margin caveat's unrated-hours figure. It used to read the hours typed
     // onto labor PAYMENTS, which are explicitly not attendance.
-    crewHours: Math.round(pathFin?.laborHours ?? 0) || null,
+    crewHours: Math.round(pathCrewDetail?.totalHours ?? 0) || null,
     oldestUnpaidInvoiceDate: etDateOf(oldestUnpaid?.issued_at),
     retainageHeldCents: pathRetainageCents,
     warrantyThroughAt: pathWarrantyThrough,
@@ -2816,7 +2828,7 @@ export default async function OpportunityDetailPage({
      * hours has the crew put in". `laborUnratedHours` is a subset of it, so
      * the tile and the caveat now sit on the same base.
      */
-    crewHours: Math.round(pathFin?.laborHours ?? 0),
+    crewHours: Math.round(pathCrewDetail?.totalHours ?? 0),
     onSite: pathOnSite,
   };
   // A payment application past its due date with money still on it. An AIA job
@@ -3067,7 +3079,9 @@ export default async function OpportunityDetailPage({
       ? await Promise.all([
           wantActivity ? loadActivityEntries(opp.id) : Promise.resolve([]),
           crewScheduleForOpp(opp.id, etTodayIso()),
-          fieldOpsCrewDetailForOpp(opp.id),
+          // Already loaded above for the Crew hours tile on any won deal —
+          // reused rather than fetched a second time on the same render.
+          pathCrewDetail ?? fieldOpsCrewDetailForOpp(opp.id),
           costBreakdownForProject(opp.id),
         ])
       : [[], null, null, null];
