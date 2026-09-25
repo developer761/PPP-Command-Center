@@ -106,3 +106,41 @@ describe("every money report module knows about AIA", () => {
     }
   });
 });
+
+/**
+ * The Ask assistant counts AIA too.
+ *
+ * Asked "what's the balance on AIREF Building #2?" on 2026-09-25 it replied:
+ * "Contract $404,836.00, nothing billed yet, so nothing outstanding." The job
+ * had $272,448.21 certified and $86,695.10 owed. The COSTS in the same reply
+ * were right to the cent, which is exactly what made it convincing.
+ *
+ * A wrong tile gets cross-checked against the page beside it. A sentence does
+ * not. And "How much are we owed?" is one of the panel's own suggested
+ * questions, answered from invoices alone on a book whose largest GCs bill by
+ * certificate.
+ */
+describe("the assistant's money tools count AIA", () => {
+  const src = stripComments(
+    readFileSync(join(ROOT, "lib/commercial/assistant/tools.ts"), "utf8"),
+  );
+
+  it("asks for the AIA rollup", () => {
+    expect(src).toContain("aiaBillingRollupBulk");
+  });
+
+  it("adds AIA into a job's billed, collected and owed", () => {
+    expect(src).toMatch(/billed[\s\S]{0,120}aia\?\.billedCents/);
+    expect(src).toMatch(/paid[\s\S]{0,120}aia\?\.collectedCents/);
+    expect(src).toMatch(/owed[\s\S]{0,120}aia\?\.dueNowCents/);
+  });
+
+  it("adds AIA into the whole-book outstanding total", () => {
+    expect(src).toContain("aiaOwed");
+    expect(src).toContain("aiaCollected");
+  });
+
+  it("ages dueNowCents, never the retainage-inclusive figure", () => {
+    expect(/owed[^\n]*retainageHeldCents/.test(src)).toBe(false);
+  });
+});

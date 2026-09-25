@@ -3,7 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
-import { formatCentsFull } from "@/lib/commercial/invoices/format";
+import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";import { formatCentsFull } from "@/lib/commercial/invoices/format";
 
 /**
  * What the assistant is allowed to look up.
@@ -113,9 +113,23 @@ export async function jobSummary(query: string): Promise<string> {
     sb.from("commercial_accounts").select("company_name").eq("id", o.account_id as string).maybeSingle().then((r) => r.data),
   ]);
 
-  const billed = invoices.reduce((n, i) => n + Number(i.total_cents), 0);
-  const paid = invoices.reduce((n, i) => n + Number(i.paid_cents), 0);
-  const owed = invoices.reduce((n, i) => n + Number(i.balance_cents), 0);
+  /**
+   * AIA COUNTS. Asked "what's the balance on AIREF Building #2?" on
+   * 2026-09-25, this answered: "Contract $404,836.00, nothing billed yet, so
+   * nothing outstanding." That job had $272,448.21 certified and $86,695.10
+   * owed, through G702/G703 applications rather than invoices.
+   *
+   * The costs in the same reply were right to the cent, which is what made it
+   * convincing. An assistant stating a confident falsehood in prose is worse
+   * than a wrong tile: nobody cross-checks a sentence.
+   *
+   * Same bulk rollup the reports use, so the answer and the report cannot
+   * disagree. dueNowCents excludes retainage — held by agreement, not late.
+   */
+  const aia = (await aiaBillingRollupBulk([oppId])).get(oppId) ?? null;
+  const billed = invoices.reduce((n, i) => n + Number(i.total_cents), 0) + (aia?.billedCents ?? 0);
+  const paid = invoices.reduce((n, i) => n + Number(i.paid_cents), 0) + (aia?.collectedCents ?? 0);
+  const owed = invoices.reduce((n, i) => n + Number(i.balance_cents), 0) + (aia?.dueNowCents ?? 0);
   const cost = purchases.reduce((n, p) => n + Number(p.amount_cents), 0);
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
@@ -145,16 +159,38 @@ export async function moneyOverview(): Promise<string> {
     paginateAll<{ amount_cents: number }>(() => sb.from("commercial_invoice_payments").select("amount_cents").order("id")),
   ]);
 
+  /**
+   * "How much are we owed?" is one of this panel's own suggested questions,
+   * and it answered with invoices only — on a book where the largest GCs bill
+   * by certificate. Every AIA job was missing from the total.
+   */
+  const aiaRolls = await aiaBillingRollupBulk(
+    (
+      await paginateAll<{ id: string }>(() =>
+        sb.from("commercial_opportunities").select("id").is("deleted_at", null).order("id"),
+      )
+    ).map((o) => o.id),
+  );
+  let aiaOwed = 0;
+  let aiaCollected = 0;
+  let aiaOpenCount = 0;
+  for (const [, r] of aiaRolls) {
+    aiaCollected += r.collectedCents;
+    if (r.dueNowCents > 0) {
+      aiaOwed += r.dueNowCents;
+      aiaOpenCount += 1;
+    }
+  }
   const open = invoices.filter((i) => Number(i.balance_cents) > 0);
-  const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0);
-  const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0);
+  const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaOwed;
+  const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
   const today = new Date().toISOString().slice(0, 10);
   const late = open.filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
 
   return [
-    `Outstanding: ${money(owed)} across ${open.length} open items.`,
+    `Outstanding: ${money(owed)} across ${open.length + aiaOpenCount} open items (invoices + AIA applications).`,
     `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0))} across ${late.length}.`,
     `Collected all time: ${money(collected)} over ${payments.length} payments.`,
     `Costs: ${[...byCat.entries()].map(([c, v]) => `${c} ${money(v)}`).join(", ")}.`,
