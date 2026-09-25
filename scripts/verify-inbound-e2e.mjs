@@ -167,6 +167,45 @@ try {
     .select("*", { count: "exact", head: true }).eq("phone_e164", CUSTOMER).is("opted_in_at", null);
   ok("…and there is still exactly one active suppression", supCount === 1, `got ${supCount}`);
 
+  // 5b. A24: AN OPT-OUT CAN BE A SENTENCE.
+  //
+  //     "Any clear 'STOP', 'stop', or PLAIN-LANGUAGE REQUEST to end or halt
+  //     communication STOPS all further text outreach immediately." Live,
+  //     critical, and only the carrier keywords were honoured — so somebody
+  //     who wrote "take me off your list" kept getting texts.
+  //
+  //     Run against the REAL table because the value it writes needed a
+  //     migration: source allowed only inbound_keyword, manual and
+  //     hatch_import, and inbound_phrase failed the CHECK with 23514. A unit
+  //     test cannot see that, which is the whole reason this file exists.
+  const PHRASE_CUSTOMER = "+19995550461";
+  created.optOuts.push(PHRASE_CUSTOMER);
+  // originationNumber, NOT from — the payload is the carrier's shape, and a
+  // `from` key here is silently ignored, which sent this down the default
+  // customer's already-suppressed thread and made three checks lie.
+  const phrase = await ingest({ ...msg("Thanks but please take me off your list", "e2e-phrase"), originationNumber: PHRASE_CUSTOMER });
+  ok("a plain-language opt-out is honoured (A24)", phrase.keyword === "opt_out");
+
+  const { data: phraseSup } = await sb.from("sms_opt_outs")
+    .select("source, inbound_body").eq("phone_e164", PHRASE_CUSTOMER).is("opted_in_at", null);
+  ok("…and the number is suppressed", (phraseSup ?? []).length === 1);
+  ok("…recorded as a phrase, not as a carrier keyword",
+     phraseSup?.[0]?.source === "inbound_phrase", phraseSup?.[0]?.source ?? "");
+  ok("…with the exact words kept as evidence",
+     phraseSup?.[0]?.inbound_body === "Thanks but please take me off your list",
+     phraseSup?.[0]?.inbound_body ?? "");
+
+  // AND THE OTHER DIRECTION, which is the expensive one to get wrong.
+  // "AN OPT-OUT IS NOT A DECLINE" — somebody who has declined the SERVICE
+  // must not be suppressed, or a live lead is gone for good.
+  const DECLINER = "+19995550462";
+  const declined = await ingest({ ...msg("No thanks, we already hired someone", "e2e-decline"), originationNumber: DECLINER });
+  ok("declining the work is NOT an opt-out (A17, not A24)", declined.keyword !== "opt_out",
+     String(declined.keyword));
+  const { count: declineSup } = await sb.from("sms_opt_outs")
+    .select("*", { count: "exact", head: true }).eq("phone_e164", DECLINER);
+  ok("…and that number is not suppressed", declineSup === 0, `got ${declineSup}`);
+
   // 6. HELP must be answered, and never by the model.
   //
   //    compliance.ts has said "a reply is legally required" since the keywords
