@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { bidMidCents } from "@/lib/commercial/reports/pipeline";
+import { formatUsPhone } from "@/lib/commercial/format-phone";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -327,8 +328,35 @@ export const PIPELINE_MANAGER_SPEC: ReportSpec<DealReportRow> = {
     { key: "opp", label: "Opportunity name", text: (r) => r.oppName, href: (r) => `/commercial/opportunities/${r.oppId}` },
     { key: "account", label: "GC", text: (r) => r.accountName, secondary: true },
     { key: "quoted", label: "Quoted subtotal", kind: "money", amount: (r) => r.bidCents },
-    { key: "phone", label: "Phone", text: (r) => r.phone },
-    { key: "email", label: "Email", text: (r) => r.email, secondary: true },
+    /**
+     * THE TWO COLUMNS THIS REPORT EXISTS FOR, AND NEITHER WAS CLICKABLE.
+     *
+     * The blurb right above says he works down this list, and every other
+     * surface that shows a contact — the account page, the project team card —
+     * dials and mails from it. Here they were plain text, so the one report
+     * built for ringing people was the one you had to copy a number out of,
+     * on a phone as much as on a desk.
+     *
+     * Formatted too: the numbers arrive however they were typed, so the column
+     * ran "631-224-8894" down to "5165236737" and back. A column you read down
+     * at speed, with one row in a different shape, is where the misdial comes
+     * from. The `tel:` target keeps the raw digits — formatting is for the eye,
+     * not the dialler.
+     */
+    {
+      key: "phone",
+      label: "Phone",
+      text: (r) => formatUsPhone(r.phone),
+      href: (r) => (r.phone ? `tel:${r.phone.replace(/[^0-9+]/g, "")}` : null),
+      csvText: (r) => r.phone,
+    },
+    {
+      key: "email",
+      label: "Email",
+      text: (r) => r.email,
+      href: (r) => (r.email ? `mailto:${r.email}` : null),
+      secondary: true,
+    },
   ],
 };
 
@@ -366,7 +394,16 @@ export const SCHEDULING_SPEC: ReportSpec<DealReportRow> = {
     { key: "wo", label: "Work order", text: (r) => r.workOrderNumber, secondary: true },
     { key: "contract", label: "Contract (incl. COs)", kind: "money", amount: (r) => r.contractCents },
     { key: "balance", label: "Balance owed", kind: "money", amount: (r) => r.balanceCents },
-    { key: "phone", label: "Phone", text: (r) => r.phone, secondary: true },
+    // Same treatment as the Pipeline Manager's — this is the other report with
+    // a GC's number beside a balance owed, and it is read the same way.
+    {
+      key: "phone",
+      label: "Phone",
+      text: (r) => formatUsPhone(r.phone),
+      href: (r) => (r.phone ? `tel:${r.phone.replace(/[^0-9+]/g, "")}` : null),
+      csvText: (r) => r.phone,
+      secondary: true,
+    },
   ],
 };
 

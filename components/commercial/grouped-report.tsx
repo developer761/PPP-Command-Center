@@ -48,7 +48,13 @@ function Cell<R>({ col, row }: { col: ReportColumn<R>; row: R }) {
       }`}
     >
       {href ? (
-        col.newTab ? (
+        // `tel:` and `mailto:` are handed to the OS, not the router — Next's
+        // Link is for in-app paths. Anything that isn't one is a plain <a>.
+        !href.startsWith("/") && !col.newTab ? (
+          <a href={href} className="font-semibold text-cc-brand-700 hover:underline">
+            {body}
+          </a>
+        ) : col.newTab ? (
           // A file, not a page. Plain <a>: Next's Link would try a client-side
           // navigation to an API route, and following it in place loses your
           // position in a list you are reading against paperwork.

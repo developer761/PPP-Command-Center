@@ -68,7 +68,14 @@ export async function GET(
       .select("total_cents")
       .eq("account_id", id)
       .is("deleted_at", null)
-      .neq("status", "void"),
+      // A DRAFT IS NOT BILLED EITHER.
+      //
+      // Void was excluded and draft was not, so this card said "$X billed"
+      // counting invoices nobody has sent — and the platform's own rollup for
+      // the same figure (lib/commercial/invoices/rollup.ts) excludes both. The
+      // hover card therefore overstated billed against the Account 360 tile
+      // sitting right beside it.
+      .not("status", "in", "(void,draft)"),
     sb
       .from("commercial_opportunities")
       .select("updated_at")
