@@ -699,6 +699,17 @@ const ANSWERS_A_QUESTION = new Set<string>([
   "confirm_scope", "confirm_address", "confirm_contact",
   "phone_pricing", "offer_estimator_call", "acknowledge_negative",
   "area_not_serviced", "transferred", "accepted", "success",
+  // BOTH OF THESE USED TO SAY NOTHING, AND NOW THEY ANSWER.
+  //
+  // discard turns work down in words — "that isn't something we take on, we
+  // do cover X" — and the question it answers is almost always a question:
+  // "do you guys paint furniture?". bot_suspected answers "are you a bot".
+  //
+  // While they were silent, leaving them out was right. Now that they speak,
+  // leaving them out refuses the very turn that does the answering: the
+  // furniture scenario came back question_left_unanswered with discard as
+  // the correct move.
+  "discard", "bot_suspected",
 ]);
 
 /**
@@ -1069,15 +1080,6 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     // rest of the sentence is still checked — "around 2500 at 2pm" keeps its
     // 2500 and is still refused. Exempting the whole sentence would have made
     // a verified time a licence to say any number at all.
-    const unexplained = hasVerifiedSlot(ctx, "times")
-      ? text.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")
-      : text;
-    if (NUMBER_IN_RAPPORT.test(unexplained)) {
-      return {
-        ok: false, reason: "commitment_in_free_text",
-        detail: "free text contains a number, and every number a customer sees comes from a template rather than from the model",
-      };
-    }
     for (const phrase of ctx.hardNoPhrases ?? []) {
       if (!phrase.trim()) continue;
       if (new RegExp(`\\b${escapeRe(phrase.trim())}\\b`, "i").test(text)) {
@@ -1098,6 +1100,38 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (rapport) {
     const style = checkRapport(rapport, ctx.customerText);
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
+  }
+
+  /**
+   * THE NUMERIC BACKSTOP DROPS THE RAPPORT. IT DOES NOT REFUSE THE TURN.
+   *
+   * Its own comment already said so — "dropping rapport costs a slightly
+   * warmer message and nothing else, because the template still carries the
+   * turn" — and the code refused the whole action anyway.
+   *
+   * What that cost: a customer who opens with everything at once, "I need my
+   * whole house exterior painted, I am at 4821 Oak Lane, Dallas TX 75201",
+   * got no reply and a handover. The model had acknowledged their address,
+   * their address has digits in it, and the turn died. The template underneath
+   * was fine and would have asked the next question.
+   *
+   * A PRICE AND A TIME STILL REFUSE OUTRIGHT, above. Those are commitments
+   * PPP has to keep or explain, and they are checked by name before this. This
+   * is the catch-all for everything those two did not recognise, and for a
+   * catch-all the safe move is to send the template without the sentence.
+   *
+   * A VERIFIED TIME EXCUSES ITSELF AND NOTHING ELSE: the time-shaped tokens
+   * are removed and the rest of the sentence is still read, so "around 2500 at
+   * 2pm" still loses its rapport for the 2500.
+   */
+  if (rapport) {
+    const unexplained = hasVerifiedSlot(ctx, "times")
+      ? rapport.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")
+      : rapport;
+    if (NUMBER_IN_RAPPORT.test(unexplained)) {
+      droppedRapport = "it contains a number, and every number a customer sees comes from a template";
+      rapport = undefined;
+    }
   }
 
   // A29: A DIRECT QUESTION IS NEVER LEFT UNANSWERED.
