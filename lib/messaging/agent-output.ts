@@ -376,6 +376,25 @@ const TIME_COMMITMENT = new RegExp(
  */
 const OUT_OF_SCOPE_SURFACES =
   /\b(?:bathtubs?|appliances?|vehicles?|pool (?:tiles?|liners?)|murals?)\b/i;
+
+/**
+ * THE REST OF WHAT THE CONFIGURATION SAYS PPP DOES NOT SERVICE.
+ *
+ * The "What we do not cover" box on the Chatbot screen names seven things.
+ * The list above covered four of them, so "we can paint your furniture", "we
+ * can refinish the bookcase", "we can coat your industrial equipment" and
+ * "we can do artistic painting" all went out unrefused — the mirror of the
+ * flooring bug, and the same root: a configured list and a hardcoded one that
+ * never met.
+ *
+ * BUILT-IN IS NOT STANDALONE. The configuration is precise about it —
+ * "furniture, including bookcases and shelving that are STANDALONE rather
+ * than built in" — and PPP paints built-in shelving all day. A bare noun here
+ * would refuse the work it actually sells, which is exactly the mistake the
+ * trades list made with windows and roofs.
+ */
+const OUT_OF_SCOPE_ITEMS =
+  /\b(?<!built[-\s]?in\s)(?:furniture|bookcases?|shelving|shelves)\b|\bindustrial\s+(?:equipment|machinery)\b|\b(?:artistic|graphic)\s+painting\b/i;
 const OUT_OF_SCOPE_TRADES =
   /\b(?:roofing|roof repair|plumbing|electrical|electrician\w*|hvac|landscap\w*|masonry|paving|re-?roof\w*|concrete|driveways?|foundations?|window replacement|siding install\w*|reupholster\w*)\b/i;
 /**
@@ -411,7 +430,7 @@ const OUT_OF_SCOPE_VERBS =
 // disagree the configuration wins, because somebody chose it. Checked against
 // the live table in verify-workspace-config-e2e.
 const OUT_OF_SCOPE = new RegExp(
-  [OUT_OF_SCOPE_SURFACES.source, OUT_OF_SCOPE_TRADES.source, OUT_OF_SCOPE_VERBS.source].join("|"),
+  [OUT_OF_SCOPE_SURFACES.source, OUT_OF_SCOPE_ITEMS.source, OUT_OF_SCOPE_TRADES.source, OUT_OF_SCOPE_VERBS.source].join("|"),
   "i"
 );
 

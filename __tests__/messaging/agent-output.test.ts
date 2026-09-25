@@ -195,6 +195,48 @@ describe("validateAction — never promise work PPP does not do", () => {
     }
   });
 
+  /**
+   * THE FLOORING BUG WITH THE SIGN FLIPPED.
+   *
+   * "What we do not cover" on the Chatbot screen names seven categories. The
+   * regex knew four, so furniture, industrial equipment and artistic painting
+   * were promised freely. Same root cause as flooring — a configured list and
+   * a hardcoded one that never met — just costing a promise PPP cannot keep
+   * instead of a refusal it should not make.
+   */
+  it("refuses the rest of what the configuration excludes", () => {
+    for (const t of [
+      "Yes, we can paint your furniture.",
+      "we can refinish the bookcase",
+      "we do standalone shelving too",
+      "we can coat your industrial equipment",
+      "yes we paint industrial equipment",
+      "we can do artistic painting",
+      "graphic painting is no problem",
+    ]) {
+      const r = validateAction(ok({ freeText: t }));
+      expect(r.ok, t).toBe(false);
+      if (!r.ok) expect(r.reason, t).toBe("out_of_scope_work");
+    }
+  });
+
+  /**
+   * BUILT-IN IS NOT STANDALONE, and the configuration says so in those words:
+   * "bookcases and shelving that are STANDALONE rather than built in". PPP
+   * sells built-in work, so a bare noun here would refuse the job — the same
+   * mistake the trades list made with "window" and "roof".
+   */
+  it("still allows built-in work, which the configuration does cover", () => {
+    for (const t of [
+      "We can paint the built-in shelving.",
+      "We can paint your built in bookcases.",
+      "We do built-in cabinetry.",
+      "We can paint the trim and the built in shelves.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
+
   it("allows the work PPP actually does", () => {
     for (const t of [
       "We do interior and exterior painting.",

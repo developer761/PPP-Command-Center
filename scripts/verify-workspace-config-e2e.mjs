@@ -134,6 +134,77 @@ try {
      clashes.length === 0,
      clashes.length ? clashes.join(" | ") : `${(services ?? []).length} services checked`);
 
+  /**
+   * THE SAME CHECK, POINTED THE OTHER WAY.
+   *
+   * The check above proves the backstop does not refuse work PPP sells. It
+   * says nothing about work PPP does NOT sell, and that half was empty: the
+   * "What we do not cover" box named seven categories and the regex knew
+   * four, so "we can paint your furniture", "we can coat your industrial
+   * equipment" and "we can do artistic painting" all went out unrefused.
+   * Exactly the flooring bug with the sign flipped, and invisible for the
+   * same reason — the configured list and the hardcoded one never met.
+   *
+   * Parsed from the live text rather than restated here, because a copy of
+   * the list in this file is one more thing that can drift out of step with
+   * the box somebody actually edits.
+   */
+  const { data: excluding } = await sb.from("sms_agent_configs")
+    .select("track, services_excluded").not("services_excluded", "is", null);
+
+  /**
+   * Two kinds of ellipsis in one list, running opposite ways:
+   *   "Pool tiles or liners"            — the modifier leads  ("pool" liners)
+   *   "Murals, artistic or graphic painting" — the head noun trails (artistic "painting")
+   * A fragment counts as covered if ANY of those readings is refused.
+   */
+  const itemsIn = (text) => {
+    const out = new Set();
+    for (const line of text.split("\n")) {
+      const bullet = line.match(/^\s*[-*]\s*(.+?)\s*$/)?.[1];
+      if (!bullet) continue;
+      // "that are standalone rather than built in" qualifies, it does not name a thing.
+      const named = bullet.replace(/\s+that\s+are\b.*$/i, "").replace(/,?\s*including\s+/i, ", ");
+      const words = named.split(/\s+/);
+      const lead = words.length > 1 ? words[0] : null;
+      const tail = words.length > 1 ? words[words.length - 1] : null;
+      for (const raw of named.split(/,|\s+or\s+|\s+and\s+/i)) {
+        const frag = raw.trim();
+        if (!frag) continue;
+        out.add(JSON.stringify(frag.includes(" ") ? { frag } : { frag, lead, tail }));
+      }
+    }
+    return [...out].map((j) => JSON.parse(j));
+  };
+
+  const refusedAsOutOfScope = (phrase) =>
+    [`Yes, we can paint your ${phrase.toLowerCase()}.`,
+     `we can do ${phrase.toLowerCase()}`,
+     `${phrase} is no problem.`].some((sentence) => {
+      const v = validateAction({ intent: "answer_question", confidence: 0.9, freeText: sentence }, ctx);
+      return !v.ok && v.reason === "out_of_scope_work";
+    });
+
+  const unrefused = [];
+  let checked = 0;
+  for (const row of excluding ?? []) {
+    for (const { frag, lead, tail } of itemsIn(row.services_excluded)) {
+      checked++;
+      // A LEAD WORD THAT IS ITSELF BANNED PROVES NOTHING.
+      // "Murals, artistic or graphic painting" made the modifier reading
+      // "Murals artistic", which matches the murals rule and marked the
+      // artistic-painting gap covered while it was still wide open. Only a
+      // lead that is not independently refused is carrying a modifier.
+      const readings = [frag];
+      if (lead && !refusedAsOutOfScope(lead)) readings.push(`${lead} ${frag}`);
+      if (tail) readings.push(`${frag} ${tail}`);
+      if (!readings.some(refusedAsOutOfScope)) unrefused.push(`${row.track}: ${frag}`);
+    }
+  }
+  ok("everything the configuration excludes is actually refused",
+     unrefused.length === 0,
+     unrefused.length ? unrefused.join(" | ") : `${checked} excluded items checked`);
+
   console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 } catch (err) {
   // Without this an error part-way exits through finally as "N passed, 0 failed",
