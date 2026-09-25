@@ -151,6 +151,49 @@ export async function apiAccessDenied(
  *   const denied = await denyCrewApi(userId);
  *   if (denied) return denied;
  */
+/**
+ * Deny anyone who is not admin or account manager on a MONEY route.
+ *
+ * `apiAccessDenied` answers "may this login use the commercial platform at
+ * all" — which every sales rep satisfies. It was never a finance gate, and
+ * three routes that write money were reading it as one.
+ *
+ * Accounting's own server actions get this right and say why, at length:
+ * "a rep replaying the action id could record payments, edit AR rows, and cost
+ * and POST a whole payroll week onto every job — while being unable to approve
+ * a single hour." Every one of those actions calls `requireFinanceViewer`.
+ *
+ * Then the slow Deposited button was replaced with a fast checkbox posting to
+ * /api/commercial/payments/deposited, and the new route gated on commercial
+ * access alone. The hole that comment describes was reopened by its own
+ * performance fix — the write moved out of the guarded action and into an
+ * unguarded route. A rep could tick and untick bank reconciliation on any
+ * payment in the book, which is the one column Mary reads AGAINST the bank
+ * statement: a wrong tick there does not look wrong, it looks reconciled.
+ *
+ * Two lines at the top of a handler, after its access check:
+ *
+ *   const denied = await financeApiDenied(user.email, profile);
+ *   if (denied) return denied;
+ *
+ * Pass the same partial profile row the route already fetched; select `role`
+ * and `is_admin` alongside the access columns (the env allowlist covers an
+ * admin whose row has `is_admin` null, which is why email is a parameter).
+ */
+export async function financeApiDenied(
+  email: string | null | undefined,
+  row: unknown
+): Promise<Response | null> {
+  const { normalizeRole } = await import("@/lib/auth/roles");
+  const p = row as { role?: string | null; is_admin?: boolean | null } | null;
+  const role = normalizeRole(p?.role, p?.is_admin ?? isAdminEmail(email));
+  if (role === "admin" || role === "account_manager") return null;
+  return new Response(JSON.stringify({ error: "forbidden" }), {
+    status: 403,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 export async function denyCrewApi(
   userId: string | null | undefined
 ): Promise<Response | null> {

@@ -12,7 +12,7 @@ import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, EMPTY_JOB_COS
 import { getChangeOrderVendorReport, EMPTY as EMPTY_CO } from "@/lib/commercial/reports/change-orders-vendors";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { getArAging } from "@/lib/commercial/reports/ar-aging";
-import { getTransactionsReport, setPaymentDeposited, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
+import { getTransactionsReport, type TxnFilters, type TxnDirection } from "@/lib/commercial/reports/transactions";
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { getReimbursementsReport, setReimbursementSettled } from "@/lib/commercial/reports/reimbursements";
 import { TransactionsLedger } from "@/components/commercial/transactions-ledger";
@@ -214,41 +214,17 @@ async function saveNoteAction(formData: FormData) {
 }
 
 /**
- * Tick a payment as deposited (or untick it).
+ * Ticking a payment as deposited has no server action here any more.
  *
- * Its own action so it stays a single click. Reconciling a bank statement is
- * thirty of these in a row; anything heavier doesn't get done, and the column
- * stops meaning anything the moment it's half-filled.
+ * Both tabs that do it — Deposits and Transactions — now use DepositCheckbox,
+ * which POSTs to /api/commercial/payments/deposited and re-renders nothing.
+ * The action this replaced called `revalidatePath(BASE)`, so every tick rebuilt
+ * this whole page; reconciling a month is thirty of those in a row.
+ *
+ * The finance gate moved WITH the write: that route calls `financeApiDenied`,
+ * because for a while it did not, and "has commercial access" is not the same
+ * predicate as `requireFinanceViewer` below.
  */
-async function depositAction(formData: FormData) {
-  "use server";
-  const supabase = await createClient();
-  // FINANCE-GATED, not merely signed-in.
-  //
-  // These actions post to the page path, and a server action executes even
-  // when the render-time redirect WOULD have fired — lib/commercial/auth.ts
-  // says so in as many words. The page requires admin/account_manager; every
-  // one of these ten actions required only "has commercial access", so a rep
-  // replaying the action id could record payments, edit AR rows, and cost and
-  // POST a whole payroll week onto every job — while being unable to approve
-  // a single hour.
-  const user = await requireFinanceViewer();
-  const paymentId = String(formData.get("payment_id") ?? "");
-  if (!paymentId) return;
-  const res = await setPaymentDeposited(paymentId, String(formData.get("deposited")) === "1");
-  // NO redirect on success — Karan: "make sure it doesnt redirect me to a
-  // different page but just keeps me there". Even a redirect to this same URL
-  // is a navigation, and a navigation scrolls you back to the top. Ticking off
-  // a bank statement is thirty of these in a row; being thrown to the top of
-  // the page after each one makes the feature unusable. `revalidatePath` alone
-  // re-renders the row in place and leaves the scroll position alone.
-  revalidatePath(BASE);
-  if (!res.ok) {
-    const qs = String(formData.get("qs") ?? "?view=transactions");
-    const sep = qs.includes("?") ? "&" : "?";
-    redirect(`${BASE}${qs}${sep}error=${encodeURIComponent(res.error)}`);
-  }
-}
 
 /**
  * Mark a reimbursement paid back (or un-mark it). Same rule as the deposit
@@ -1883,8 +1859,6 @@ export default async function AccountingPage({
 
           <TransactionsLedger
             report={transactions}
-            depositAction={depositAction}
-            queryString={txQuery()}
             backHref={`${BASE}${txQuery()}`}
             emptyMessage={
               transactions.filtered

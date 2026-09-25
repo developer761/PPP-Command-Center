@@ -390,7 +390,12 @@ const MARY: RoleGuide = {
             "Click Accounting in the left menu.",
             "Click the Deposits tab.",
             "Read down the list against your bank statement.",
-            "Click Mark on a row once it has cleared the bank. It turns green and reads Deposited.",
+            "Tick the Cleared box on a row once it has cleared the bank. It turns green and reads Cleared.",
+          ],
+          controls: [
+            { label: "Cleared", does: "The tick box at the end of each row. One click, no save button — it ticks straight away. Click it again to untick: a deposit that bounced has to be reversible." },
+            { label: "This week / Last week / This month / Last month / All time", kind: "filter", does: "Which days to show. It opens on this month." },
+            { label: "Export", does: "Downloads what is on screen, with the period you picked." },
           ],
           strip: { boxes: ACCOUNTING_BAR, at: accountingTabIndex("Deposits") },
           watchOut:
@@ -512,14 +517,13 @@ const MARY: RoleGuide = {
             "Click Accounting in the left menu.",
             "Click More, then Transactions.",
             "Find the payment in its month.",
-            "Click Mark when it has cleared the bank.",
+            "Tick the Cleared box when it has cleared the bank — the same box as on Deposits.",
           ],
           tourTarget: "accounting:transactions",
           purpose:
             "The full ledger: everything in and out, newest month first, with a subtotal per month. This is also where you tick payments off against the bank.",
           controls: [
-            { label: "Mark", does: "Ticks a payment as cleared the bank. One click, no save button." },
-            { label: "Deposited", does: "What a ticked payment reads instead. Press it again to untick — a deposit that bounced has to be reversible." },
+            { label: "Cleared", does: "Ticks a payment as cleared the bank, in the Deposited column. One click, no save button. Click it again to untick — a deposit that bounced has to be reversible. The same box as on the Deposits tab." },
             { label: "Not deposited", kind: "filter", does: "Shows only money received that has not cleared yet — the money sitting in the office." },
             { label: "Export ledger", does: "Downloads the ledger with its own filters applied, which the page-level Export does not carry." },
           ],
