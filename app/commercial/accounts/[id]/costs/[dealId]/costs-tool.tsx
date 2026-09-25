@@ -1303,10 +1303,26 @@ export async function ProjectCostsTool({
         back={sp.back}
       />
       <div>
+        {/*
+          THE HEADING MATCHES THE TILE YOU PRESSED.
+
+          The Project tab's tile says "Costs"; this page said "Transactions &
+          Job P&L". Stephanie's handbook had to carry a standing note that two
+          tiles are named differently from the tool they open, and a handbook
+          explaining a mismatch is not the same as not having one — somebody
+          following a written step that says Transactions goes looking for a
+          tile that says Costs, and the note only helps the people who read it
+          first.
+
+          What the tool actually holds has not changed, so it keeps saying so
+          under the name people arrived by.
+        */}
         <h1 className="font-condensed text-2xl sm:text-3xl font-black text-ppp-charcoal tracking-tight leading-none">
-          Transactions &amp; Job P&amp;L
+          Costs
         </h1>
-        <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">{dealName}</p>
+        <p className="text-[12px] text-ppp-charcoal-500 mt-0.5">
+          {dealName} · transactions and job P&amp;L
+        </p>
       </div>
       {panel}
     </div>

@@ -2052,8 +2052,21 @@ const PROJECT_SUB_TABS: { key: SubTab; label: string }[] = [
   { key: "change-orders", label: "Change Orders" },
   { key: "aia", label: "AIA Billing" },
   { key: "invoices", label: "Invoices" },
-  { key: "transactions", label: "Transactions" },
-  { key: "closeout", label: "Closeout" },
+  /*
+   * THESE TWO ARE THE NAMES ON THE TILES.
+   *
+   * They used to read "Transactions" and "Closeout" while the tiles that open
+   * them read "Costs" and "Closeout & Warranty" — so the heading changed under
+   * you at the moment you arrived, on the two tools where it happened to
+   * differ. Stephanie's handbook carried a standing note about it, which only
+   * helps the people who read it first: somebody following a written step that
+   * says "Transactions" still goes looking for a tile that says Costs.
+   *
+   * `__tests__/commercial/tool-names-match-their-tiles.test.ts` holds this
+   * list and the tile labels together.
+   */
+  { key: "transactions", label: "Costs" },
+  { key: "closeout", label: "Closeout & Warranty" },
 ];
 // Karan 2026-07-07: Invoices promoted to a top-level tab (Won opps only).
 // Was living under Info sub-tab; users wanted it as a peer to Docs/Activity.
