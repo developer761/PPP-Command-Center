@@ -5538,8 +5538,15 @@ async function AccountKpisTab({
   // nobody at Tomco enters a spread. This hand-rolled the dash and so printed
   // "$142,000.00 – $142,000.00"; formatBidCents has always collapsed that case,
   // and still shows a real range on the day somebody enters one.
+  //
+  // ALL-OR-NOTHING WAS THE HOLE. The fallback only engaged when the view's
+  // sum was entirely zero, so an account mixing ranged bids with a
+  // proposal-priced one showed the ranged ones and silently dropped the
+  // other. `fallbackTotal` already covers EVERY open bid on this account, so
+  // it is the better answer whenever there is no genuine spread — and there
+  // is no spread anywhere in the book today.
   const bidRangeLabel =
-    bidLow > 0 || bidHigh > 0
+    bidLow !== bidHigh
       ? formatBidCents(bidLow, bidHigh)
       : fallbackTotal > 0
         ? formatCentsFull(fallbackTotal)

@@ -1145,16 +1145,23 @@ function AccountRow({
   // "Open bids: 3" beside "Bid range: —" was the contradiction: the count and
   // the money come from the same deals, but only the count survived the create
   // forms dropping the bid columns.
-  const rawBidRange =
-    overview && openBids > 0
-      ? formatBidCents(overview.total_active_bid_low_cents, overview.total_active_bid_high_cents)
-      : null;
+  // A genuine SPREAD is the only thing the proposal fallback cannot express,
+  // so it is the only thing the view still wins on. Otherwise
+  // `openValueCents` — which covers every open bid on this account, priced by
+  // range or by proposal — is the better number.
+  //
+  // Preferring the view whenever it was non-zero meant an account holding
+  // both kinds showed its ranged bids and dropped the proposal-priced one.
+  const lo = overview?.total_active_bid_low_cents ?? 0;
+  const hi = overview?.total_active_bid_high_cents ?? 0;
   const bidRange =
-    rawBidRange && rawBidRange !== "—"
-      ? rawBidRange
-      : openBids > 0 && openValueCents > 0
-        ? formatCentsCompact(openValueCents)
-        : rawBidRange;
+    openBids === 0
+      ? null
+      : lo !== hi
+        ? formatBidCents(lo, hi)
+        : openValueCents > 0
+          ? formatCentsCompact(openValueCents)
+          : "—";
   const contactCount = overview?.contact_count ?? 0;
   const teamCount = overview?.ppp_team_count ?? 0;
   const docCount = overview?.active_document_count ?? 0;
