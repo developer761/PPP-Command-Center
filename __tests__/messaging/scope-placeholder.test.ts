@@ -298,6 +298,33 @@ describe("scopeAndStage — the rule the scheduler and the simulator share", () 
     }
   });
 
+  /**
+   * A30 MEANS SCOPE CAPTURE HAS TO READ SPANISH TOO.
+   *
+   * The templates were translated and the detection worked, and this was
+   * still entirely English — so "necesito pintar mi casa por dentro"
+   * resolved to no project at all, and the bot would have replied "¿Qué le
+   * gustaría pintar?" to somebody who had just told it. Fluent, polite, and
+   * the exact A3 breach the English fix was for.
+   */
+  it("counts a job described in Spanish as step one already done", () => {
+    for (const t of [
+      "Hola, necesito pintar mi casa por dentro",
+      "quiero pintar dos habitaciones",
+      "necesito pintar la cocina y el bano",
+      "pintar los gabinetes de la cocina",
+      "Quisiera un presupuesto para pintar el exterior de mi casa",
+    ]) {
+      expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).stage, t).toBe(1);
+    }
+  });
+
+  it("does not treat a Spanish greeting or question as a described job", () => {
+    for (const t of ["Hola", "¿Cuánto cuesta?", "gracias", "buenos dias", "Mi direccion es 12 Oak St"]) {
+      expect(scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).stage, t).toBe(0);
+    }
+  });
+
   it("never lowers a stage the flow has already reached", () => {
     expect(scopeAndStage({ stage: 3, onFile: null, rawInbound: "paint my kitchen cabinets" }).stage).toBe(3);
   });
