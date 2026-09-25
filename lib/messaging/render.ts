@@ -23,6 +23,8 @@ import { BARE_ACKNOWLEDGEMENT, type Intent , mentionsWorkWeDoNotDo } from "./age
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
+import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
+import type { Language } from "./language";
 
 /** Intents that END the conversation without sending anything. Sending a
  *  cheerful sign-off to somebody who asked to be left alone is how a
@@ -461,6 +463,8 @@ export type RenderInput = {
   covers?: string | null;
   /** What the customer just said, for the one decision that needs it. */
   customerText?: string | null;
+  /** A30 — the language of the CONVERSATION, not of the latest message. */
+  language?: Language;
 };
 
 /**
@@ -535,11 +539,16 @@ export function renderMessage(input: RenderInput): string {
     && (input.availabilityGap === "window" || input.availabilityGap === "day")
     ? input.availabilityGap
     : null;
+  // A30: reply in the customer's language. One table or the other, chosen
+  // once here, so a message can never come out half in each — which is the
+  // failure that started this: "Hola! Con gusto le ayudo. What are you
+  // looking to have painted?"
+  const es = input.language === "es";
   const variants = gap
-    ? ASK_ADDRESS_GAP[gap]
+    ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap
-      ? ASK_AVAILABILITY_GAP[availGap]
-      : SAYS[input.intent] ?? [""];
+      ? (es ? ASK_AVAILABILITY_GAP_ES : ASK_AVAILABILITY_GAP)[availGap]
+      : (es ? SAYS_ES : SAYS)[input.intent] ?? [""];
   let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
 
   // Substitute verified values. A template whose value is missing must not go
@@ -602,6 +611,12 @@ export function renderMessage(input: RenderInput): string {
     // No em dash. A23 bans it, and it is the one Kate names first — the
     // house-voice test would have caught this in a template, but this string
     // is built in code, so it would have gone out.
+    if (es) {
+      const aperture = (input.turn ?? 0) % 2 === 0
+        ? "\u00a1Gracias por comunicarse! Eso no es algo que nosotros hagamos."
+        : "Le agradezco que nos escriba. Ese no es un trabajo que hagamos.";
+      return `${aperture} S\u00ed cubrimos ${input.covers}. Si entend\u00ed mal el proyecto, av\u00edseme y lo reviso de nuevo.`;
+    }
     const opener = (input.turn ?? 0) % 2 === 0
       ? "Thanks for reaching out! That isn't something we take on."
       : "Appreciate you getting in touch. That isn't work we take on.";
@@ -614,7 +629,10 @@ export function renderMessage(input: RenderInput): string {
   let rapportAt = -1;
 
   if (input.photos && input.photos > 0) {
-    parts.push(input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!");
+    // A26 in the customer's language, same as everything else.
+    parts.push(es
+      ? (input.photos === 1 ? "\u00a1Gracias por la foto!" : "\u00a1Gracias por las fotos!")
+      : (input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!"));
   }
 
   // answer_question has no template of its own — the model's filtered rapport
