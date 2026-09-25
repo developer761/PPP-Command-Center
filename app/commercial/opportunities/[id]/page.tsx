@@ -2463,7 +2463,28 @@ export default async function OpportunityDetailPage({
   const dealStanding = {
     billedCents: pathFin?.billedPreTaxCents ?? 0,
     contractCents: contractToDate,
-    outstandingCents: Math.max(0, invoicedCents - collectedCents),
+    /**
+     * NET OF RETAINAGE, like every other "owed" figure on this page.
+     *
+     * This was billed minus collected, which INCLUDES retainage. The very next
+     * line of the panel prints "Retainage held" with a comment saying it is
+     * "not 'owed' — it is held by agreement" — so the panel contradicted
+     * itself, counting the retainage inside "GC owes" and then listing it
+     * again beneath as though it were additional.
+     *
+     * On AIREF Building #1 that put "GC owes $123k" three inches from the mini
+     * P&L's "Owed now $113k · plus $9.5k retainage at close-out". Same job,
+     * same screen, two answers to one question, and the $123k one overstated
+     * what the GC can actually be chased for today by exactly the retainage.
+     *
+     * `openBalanceCents` is the folded, per-invoice-clamped figure the mini
+     * P&L and every rollup above this page already use. Taking it rather than
+     * re-deriving keeps them identical; the pre-win fallback stays because
+     * pathFin is null until the job is won.
+     */
+    outstandingCents: pathFin
+      ? pathFin.openBalanceCents
+      : Math.max(0, invoicedCents - collectedCents),
     retainageCents: pathRetainageCents ?? 0,
     workOrderSent: pathWorkOrder ? !!pathWorkOrder.sent_at : null,
     pendingCoCount,
