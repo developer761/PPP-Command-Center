@@ -328,9 +328,29 @@ export function dealMargin(fin: {
    * somebody to fix it invites the double-count the payroll build exists to
    * prevent. The hours are not misconfigured, they are waiting.
    */
+  /**
+   * "OF THE CREW HOURS ON THIS JOB" — because this number sits beside a
+   * different one.
+   *
+   * The deal header puts this caveat directly next to a Crew hours tile. On
+   * AIREF Building #1 that reads "Margin reads high — 326 crew hours not
+   * costed yet" an inch from "CREW HOURS 400": two crew-hour figures on one
+   * row, and nothing on screen saying that the first is part of the second.
+   *
+   * Both are right. `laborUnratedHours` is the subset of approved attendance
+   * that has no cost rate on the work day — correct for a W-2 employee, whose
+   * cost is the real Gusto liability split across jobs when the week is posted
+   * — and the tile is all approved attendance. A reader cannot get that from
+   * two bare numbers, and the one they act on is whichever they read second.
+   *
+   * The total is not passed in here and is NOT asserted: saying "326 of 400"
+   * would claim the two are computed off the same base, which this function
+   * cannot see. Naming it as a part is enough to stop it reading as a rival
+   * total.
+   */
   const caveat =
     fin.laborUnratedHours > 0
-      ? `Margin reads high — ${fin.laborUnratedHours} crew hour${fin.laborUnratedHours === 1 ? "" : "s"} not costed yet, until that week is posted in Payroll.`
+      ? `Margin reads high — ${fin.laborUnratedHours} of the crew hours on this job ${fin.laborUnratedHours === 1 ? "is" : "are"} not costed yet, until that week is posted in Payroll.`
       : null;
   return {
     pct,

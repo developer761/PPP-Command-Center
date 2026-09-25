@@ -126,7 +126,7 @@ describe("summarizeSalesTax", () => {
     const rows = [
       row({ invoiceId: "taxed" }),
       exempt({ invoiceId: "certified", certNumber: "EX-1" }),
-      exempt({ invoiceId: "nocert", certNumber: null, exemptSource: "job" }),
+      exempt({ invoiceId: "nocert", certNumber: null, exemptSource: "opportunity" }),
       exempt({ invoiceId: "unmarked-a", certNumber: null }),
       exempt({ invoiceId: "unmarked-b", certNumber: null }),
     ];

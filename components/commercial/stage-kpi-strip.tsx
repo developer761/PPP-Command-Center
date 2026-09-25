@@ -110,7 +110,24 @@ export function StageKpiStrip({
                     {k.value}
                   </div>
                   {k.sub && (
-                    <div className="text-[10.5px] text-ppp-charcoal-500 tabular-nums truncate">
+                    /*
+                     * TWO LINES, and the whole thing on hover.
+                     *
+                     * `truncate` is one line, so the longest sub on the strip
+                     * — the margin caveat — was cut mid-word on the deal
+                     * header: "Margin reads high — 326 crew hours not costed
+                     * yet, u…". A caveat exists to stop somebody acting on a
+                     * number, and one that stops before it says why is doing
+                     * the opposite of its job: it flags a problem and then
+                     * withholds the reason it isn't one.
+                     *
+                     * Most subs are a few words and are unaffected; the row is
+                     * items-stretch, so the one that wraps sets the height.
+                     */
+                    <div
+                      className="text-[10.5px] text-ppp-charcoal-500 tabular-nums line-clamp-2"
+                      title={k.sub}
+                    >
                       {k.sub}
                     </div>
                   )}
