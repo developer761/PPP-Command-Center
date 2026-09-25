@@ -461,12 +461,38 @@ export function PayrollWeekPanels({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ppp-charcoal-100">
-                  {week.byJob.map((j) => (
-                    <tr key={j.opportunityId}>
+                  {week.byJob.map((j) => {
+                    /**
+                     * MARK THE ROW YOU PICKED.
+                     *
+                     * This table is the master; Labor detail beside it is the
+                     * detail. Clicking a job changed the panel on the right and
+                     * left NOTHING on the left to say which row did it — same
+                     * classes on every link, no aria-current. With a dozen jobs
+                     * in the week, Mary picks one, the right-hand panel
+                     * changes, and she cannot tell which line she is looking at
+                     * without reading the heading over there and matching it
+                     * back by name.
+                     *
+                     * `detailJob` above already resolves the selected job (falling
+                     * back to the first row when nothing is chosen), so the
+                     * highlight follows exactly what the right-hand panel is
+                     * showing — including on first load, where the panel is
+                     * already showing row one.
+                     */
+                    const isSelected = detailJob?.opportunityId === j.opportunityId;
+                    return (
+                    <tr
+                      key={j.opportunityId}
+                      aria-current={isSelected ? "true" : undefined}
+                      className={isSelected ? "bg-cc-brand-50" : undefined}
+                    >
                       <td className={TD}>
                         <Link
                           href={`${basePath}&job=${j.opportunityId}`}
-                          className="hover:text-cc-brand-800 hover:underline"
+                          className={`hover:text-cc-brand-800 hover:underline ${
+                            isSelected ? "font-bold text-cc-brand-800" : ""
+                          }`}
                         >
                           {j.jobName}
                         </Link>
@@ -474,7 +500,8 @@ export function PayrollWeekPanels({
                       <td className={NUM}>{hrs(j.hours)}</td>
                       <td className={NUM}>{j.costCents > 0 ? money(j.costCents) : "—"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot className="bg-ppp-charcoal-50/60 border-t border-ppp-charcoal-200">
                   <tr>
