@@ -156,8 +156,35 @@ describe("rendering an intent into words", () => {
   });
 
   it("still says nothing to somebody who has disengaged", () => {
-    for (const intent of ["discard", "lost", "msg_liked_loved"] as const) {
+    // LOST IS NOT IN THIS LIST ANY MORE. A17: "Acknowledge it warmly in one
+    // line and close", and the card names the sentence — "Understood! We'll
+    // be here if things change." Silence was right for exactly one of the
+    // two endings, and lost had it.
+    for (const intent of ["discard", "msg_liked_loved"] as const) {
       expect(renderMessage({ intent }), intent).toBe("");
+    }
+  });
+
+  /**
+   * A17, WHICH HAD THE OPPOSITE PROBLEM TO A24.
+   *
+   * "A DECLINE IS NOT AN OPT-OUT. 'Understood! We'll be here if things
+   * change.' is the RIGHT close here — and is a DEFECT on an opt-out (A24),
+   * where any re-engagement line breaches it. The same sentence, opposite
+   * verdicts, decided entirely by what the customer said."
+   *
+   * Found in the simulator playing "No thanks, we already hired someone
+   * else": the bot chose lost, correctly, and then said nothing. bailout,
+   * which is the same shape of ending, already spoke.
+   */
+  it("closes warmly on a decline, which is not an opt-out", () => {
+    for (const turn of [0, 1, 2, 3]) {
+      const out = renderMessage({ intent: "lost", turn });
+      expect(out.length, `turn ${turn}`).toBeGreaterThan(0);
+      // The re-engagement line is the point here, and the breach on A24.
+      expect(out).toMatch(/things change|be here/i);
+      // And it must not start collecting again.
+      expect(out).not.toMatch(/\?/);
     }
   });
 

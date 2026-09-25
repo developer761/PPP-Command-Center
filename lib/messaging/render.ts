@@ -39,8 +39,25 @@ import type { Language } from "./language";
  *  Kate's own tag says so — handled_bot_q, "Answered as Emily and ended as
  *  Bot Suspected". Answered. The conversation still hands to a person either
  *  way; this is about whether they hear anything while they wait. */
+/**
+ * LOST IS NOT HERE ANY MORE.
+ *
+ * A17 is explicit, and even supplies the sentence: "Acknowledge it warmly in
+ * one line and close... 'Understood! We'll be here if things change.' is the
+ * RIGHT close here — and is a DEFECT on an opt-out (A24), where the customer
+ * asked us to stop contacting them and any re-engagement line breaches it.
+ * The same sentence, opposite verdicts."
+ *
+ * So silence was wrong for exactly one of the two, and lost had it. Somebody
+ * who says "no thanks, we already hired someone" got nothing back — while
+ * bailout, which is the same shape of ending, already spoke. Found in the
+ * simulator playing that customer.
+ *
+ * msg_liked_loved stays: a thumbs-up on our own message is not a turn, and
+ * answering it is how a thread never ends.
+ */
 export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
-  "lost", "msg_liked_loved",
+  "msg_liked_loved",
 ]);
 
 /**
@@ -319,7 +336,15 @@ export const SAYS: Record<Intent, string[]> = {
     "Thanks for reaching out! That isn't something we're able to take on. If I've misread the project, let me know and I'll take another look.",
     "Appreciate you getting in touch. Unfortunately that isn't work we're able to help with. If I've got that wrong, just tell me a bit more about it.",
   ],
-  lost: [""],
+  // Kate's own words, from A17's card. The re-engagement line is the POINT
+  // here and the breach on an opt-out; A24 is what keeps the two apart.
+  lost: [
+    "Understood! We'll be here if things change.",
+    // The second variant avoids a phrase Kate banned outright; the tone test
+    // reads this file's source rather than rendered output, so a variant at a
+    // turn number no test reaches still cannot slip past. It caught mine.
+    "Understood, and thanks for the update. We'll be here if things change.",
+  ],
   msg_liked_loved: [""],
 };
 
