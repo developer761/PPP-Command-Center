@@ -62,7 +62,11 @@ const STAGE_ORDER: { status: string; label: string }[] = PRE_CONTRACT_COLUMNS
  *  back to the deal's current proposal total when no range is set (deals
  *  created since the bid fields were removed from the create forms). */
 export function bidMidCents(
-  o: CommercialOpportunity,
+  // Only the two range columns are read, so this takes the narrowest shape
+  // that has them. The deal-report rows select a slim projection and need the
+  // SAME derivation the tiles use — widening the parameter is what lets one
+  // function serve both halves of the Pipeline page instead of two that drift.
+  o: Pick<CommercialOpportunity, "bid_value_low_cents" | "bid_value_high_cents">,
   proposalTotalCents?: number | null
 ): number {
   const low = o.bid_value_low_cents;

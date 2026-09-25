@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { bidMidCents } from "@/lib/commercial/reports/pipeline";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -167,6 +168,11 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
     }
   }
 
+  // The current proposal per opportunity, so a bid with no range still carries
+  // its quoted value — see the note on `bid` below.
+  const { listCurrentProposalTotalByOpp } = await import("@/lib/commercial/proposals/db");
+  const proposalTotalByOpp = await listCurrentProposalTotalByOpp(opps.map((o) => o.id));
+
   const money = new Map<string, { sub: number; total: number; paid: number; bal: number }>();
   for (const i of invoices) {
     const e = money.get(i.opportunity_id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
@@ -190,7 +196,25 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
     const m = money.get(o.id) ?? { sub: 0, total: 0, paid: 0, bal: 0 };
     const a = acct.get(o.account_id);
     const c = reach.get(o.account_id);
-    const bid = Number(o.bid_value_low_cents ?? 0);
+    /**
+     * THE SAME BID FIGURE THE TILES ABOVE THIS TABLE USE.
+     *
+     * This read `bid_value_low_cents ?? 0` — one end of a range, and zero when
+     * there is no range at all. The Pipeline page shows both this table and
+     * `getPipelineReport`'s tiles, and on 2026-09-25 they disagreed by
+     * $54,537.20 over the same forty open bids.
+     *
+     * The gap was two opportunities with no bid range and a priced proposal on
+     * file, which this counted as $0 — one of them Vision General Contractors
+     * at Tesla CC, a proposal actually SENT for $38,030.20. A pipeline report
+     * that values a live quote at nothing is worse than one that is merely
+     * imprecise: the deal is invisible in the total Brendan reads.
+     *
+     * `bidMidCents` is the shared derivation — midpoint of the range, falling
+     * back to the current proposal when there is no range. Using it here means
+     * the two halves of one page cannot disagree again.
+     */
+    const bid = bidMidCents(o, proposalTotalByOpp.get(o.id));
     return {
       oppId: o.id,
       accountId: o.account_id,
