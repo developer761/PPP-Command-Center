@@ -157,6 +157,28 @@ export function usableScope(scope: string | null | undefined): string | null {
  * paint. Getting this wrong is not a missed capture, it is confirming
  * nonsense to a customer, so it leans the other way from most matchers here.
  */
+/**
+ * THE SAME WORDS IN SPANISH.
+ *
+ * A30 means a Spanish speaker gets a Spanish conversation, and A3 means the
+ * bot must not ask for what they have already given. Scope capture was built
+ * entirely from English verbs, so "necesito pintar mi casa por dentro"
+ * resolved to no project at all and the bot would have asked "¿Qué le
+ * gustaría pintar?" at somebody who had just said it.
+ *
+ * Accents optional throughout: phone keyboards produce "bano" and "habitacion"
+ * as often as the accented spellings.
+ */
+const WORK_WORD_ES =
+  /\b(?:re)?(?:pint\w*|te[ñn]\w*|sell\w*|lij\w*|barniz\w*|empapel\w*|resan\w*|estuc\w*|acabad\w*)\b/i;
+
+const SUBJECT_ES =
+  /\b(?:casas?|apartamentos?|departamentos?|condominios?|cocinas?|ba[ñn]os?|habitaci[oó]n(?:es)?|cuartos?|recamaras?|rec[aá]maras?|salas?|comedores?|pasillos?|s[oó]tanos?|garajes?|[aá]ticos?|techos?|paredes?|pared|puertas?|ventanas?|gabinetes?|escaleras?|oficinas?|closets?|fachadas?|zoclos?|molduras?)\b/i;
+
+/** "2 habitaciones", "tres cuartos", "150 metros" */
+const COUNTED_ES =
+  /\b\d+\s*(?:habitaciones?|cuartos?|recamaras?|rec[aá]maras?|ba[ñn]os?|pies|metros)\b|\b(?:dos|tres|cuatro|cinco|seis)\s+(?:habitaciones|cuartos|recamaras|rec[aá]maras|ba[ñn]os|paredes|puertas)\b/i;
+
 const WORK_WORD =
   // (?:re)? because "repaint" is one of the commonest openings there is and
   // \bpaint has no word boundary inside it — "Looking to repaint kitchen
@@ -206,9 +228,12 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length < MIN_SCOPE_CHARS || t.length > MAX_SCOPE_CHARS) return null;
   if (isPlaceholderScope(t)) return null;
-  if (!SUBJECT.test(t) && !COUNTED.test(t)) return null;
+  const subject = SUBJECT.test(t) || SUBJECT_ES.test(t);
+  const counted = COUNTED.test(t) || COUNTED_ES.test(t);
+  if (!subject && !counted) return null;
   // A verb, or measurements against a subject, which says the same thing.
-  if (!WORK_WORD.test(t) && !(DIMENSIONED.test(t) && SUBJECT.test(t))) return null;
+  const verb = WORK_WORD.test(t) || WORK_WORD_ES.test(t);
+  if (!verb && !(DIMENSIONED.test(t) && subject)) return null;
   return t;
 }
 

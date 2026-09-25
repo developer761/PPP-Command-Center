@@ -25,6 +25,7 @@ import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent } from "./render";
+import { conversationLanguage, type Language } from "./language";
 
 const MODEL = "claude-opus-5";
 
@@ -91,6 +92,27 @@ export function agentFailureIsTransient(res: { error: string; rejected?: string 
  * tier meaningful: change the office location for New York and this prompt
  * changes for every New York workspace without an edit.
  */
+/**
+ * A30, said to the model.
+ *
+ * The TEMPLATES carry the language, so most turns come out Spanish without
+ * the model doing anything at all. Rapport is the exception that matters:
+ * answer_question has no template of its own, so the model's own sentence IS
+ * the message, and an English one landing in a Spanish thread is the exact
+ * shape of the bug this rule exists for.
+ */
+function languagePrompt(language: Language): string {
+  if (language !== "es") return "";
+  return [
+    "",
+    "THIS CUSTOMER IS WRITING IN SPANISH.",
+    "Write every word of your rapport in Spanish, using usted. Keep it in Spanish",
+    "for the rest of the conversation even when they send a short reply like",
+    "\"ok\" — never switch back partway through.",
+    "Do NOT choose `transferred` because of the language. We answer Spanish now.",
+  ].join("\n");
+}
+
 export function buildSystemPrompt(
   cfg: AgentConfigForRun,
   hardNos: string[],
@@ -105,7 +127,9 @@ export function buildSystemPrompt(
    * her rater-only guidance cannot reach this function, because what arrives
    * here has already been through forPrompt, which never had it either.
    */
-  classARules?: string
+  classARules?: string,
+  /** A30 — which language this conversation is being held in. */
+  language: Language = "en",
 ): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
@@ -157,6 +181,7 @@ ${cfg.offsite_rules ?? "A job is quotable remotely when its scope is legible wit
 
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
+${languagePrompt(language)}
 
 ${cfg.office_location ? `Our office is in ${cfg.office_location}.` : ""}
 ${cfg.service_area_note ? `Where we serve: ${cfg.service_area_note}` : ""}
@@ -297,6 +322,20 @@ export async function runAgentTurn(
   // Reactions, emoji and photos become words before the model sees them.
   // Hatch cannot read any of these, which is why a thumbs-up derails it.
   const inbound = normalizeInbound(inboundRaw, opts.mediaCount ?? 0);
+
+  // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
+  // switch back to English on the next turn." Read from every customer
+  // message in the thread plus this one, not just the latest — somebody who
+  // opened in Spanish and then replies "ok" is still owed Spanish, and "ok"
+  // says nothing on its own.
+  //
+  // Derived ONCE and used for both the prompt and the render, so the language
+  // the model is told to write in cannot disagree with the table the message
+  // comes out of.
+  const language = conversationLanguage([
+    ...history.filter((t) => t.role === "customer").map((t) => t.text),
+    inbound.description,
+  ]);
   const reaction = reactionResponse(inbound, opts.lastAskedForInfo ?? false);
 
   // Their turns are quoted; ours are not. The asymmetry is the point: a
@@ -328,7 +367,7 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules, language),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
@@ -402,6 +441,11 @@ Choose the next action.`;
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
       customerText: inbound.description,
+      // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
+      // switch back to English on the next turn." So it reads every customer
+      // message in the thread plus this one, not just the latest — somebody
+      // who opened in Spanish and then replies "ok" is still owed Spanish.
+      language,
     };
     const rendered = renderMessage(renderInput);
 

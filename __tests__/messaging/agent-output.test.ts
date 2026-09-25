@@ -382,6 +382,55 @@ describe("validateAction — Kate's hard nos", () => {
   });
 });
 
+describe("A3 — asking is not collecting", () => {
+  const asked = ["ask_project_details", "ask_address", "ask_contact", "ask_availability"];
+  const ctx = (knownFields: Record<string, boolean>) => ({
+    knownFields, stage: 4, priorIntents: asked, customerText: "ok",
+  });
+
+  /**
+   * FOUND PLAYING A CUSTOMER WHO ANSWERS "ok" TO EVERYTHING.
+   *
+   * The A3 legs are satisfied by having ASKED, which is deliberate — it covers
+   * A41's refusal carve-out without having to detect a refusal. But it meant
+   * the bot could walk all four steps, collect nothing, and close as Success.
+   *
+   * Kate's definition of that outcome is "Details, address, contact and
+   * availability collected. Checking the schedule." A Success on an empty
+   * record tells the office a job is ready to book with nothing to book it
+   * against.
+   */
+  it("refuses to close as booked holding nothing", () => {
+    const r = validateAction(ok({ intent: "success", confidence: 0.97 }),
+      ctx({ name: false, phone: false, email: false, address: false, inquiryScope: false }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("details_never_collected");
+  });
+
+  it("refuses when only the address is missing", () => {
+    const r = validateAction(ok({ intent: "success", confidence: 0.97 }),
+      ctx({ name: true, phone: true, email: true, address: false, inquiryScope: true }));
+    expect(r.ok).toBe(false);
+  });
+
+  it("allows it once the record actually holds the job", () => {
+    expect(validateAction(ok({ intent: "success", confidence: 0.97 }),
+      ctx({ name: true, phone: true, email: true, address: true, inquiryScope: true })).ok).toBe(true);
+    // Either contact channel is enough; A3 asks for contact, not for both.
+    expect(validateAction(ok({ intent: "success", confidence: 0.97 }),
+      ctx({ name: true, phone: true, email: false, address: true, inquiryScope: true })).ok).toBe(true);
+  });
+
+  /**
+   * NOT phone_pricing. A3's carve-out is explicit: "where a street refusal has
+   * been honoured, a zip alone is acceptable on a phone pricing."
+   */
+  it("leaves the phone pricing carve-out alone", () => {
+    expect(validateAction(ok({ intent: "phone_pricing", confidence: 0.97 }),
+      ctx({ name: false, phone: true, email: false, address: false, inquiryScope: true })).ok).toBe(true);
+  });
+});
+
 describe("shouldEscalate", () => {
   it("escalates a consequential intent below the threshold", () => {
     // answer_question commits PPP to a statement about scope, so it stays on
