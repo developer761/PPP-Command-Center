@@ -32,6 +32,25 @@ export type AccountOverview = {
   //    no opps exist for the account. Tiles render "0" or "—" by
   //    checking for null vs 0 explicitly.
   open_opps_count?: number | null;
+  /**
+   * SUM of the raw bid_value_low/high columns, straight from the SQL view.
+   *
+   * INCOMPLETE ON PURPOSE, and do not "fix" it in the view. The create forms
+   * stopped collecting these — pricing lives on the proposal now — so a deal
+   * priced only on its proposal contributes nothing here. On 2026-09-25 that
+   * had three surfaces reading $2.11M for the same forty open bids the
+   * Pipeline report valued at $2.17M.
+   *
+   * The fix belongs in TypeScript, where `dealValueCents` already knows which
+   * proposal counts as current. Teaching the view that rule would put a second
+   * copy of it in SQL, and two copies of "which proposal is the live one" is a
+   * drift waiting to happen — the same shape as every other double-derivation
+   * bug in this codebase.
+   *
+   * So: use these ONLY for a genuine low≠high spread, which is the one thing
+   * the fallback cannot express. For a total, use `dealValueCents` with the
+   * current proposal total. All three account surfaces do this.
+   */
   total_active_bid_low_cents?: number | null;
   total_active_bid_high_cents?: number | null;
   won_opps_count?: number | null;
