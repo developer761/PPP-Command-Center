@@ -116,6 +116,23 @@ export type SalesTaxFilters = {
   accountId?: string;
   /** Only the exempt invoices with no certificate behind them. */
   uncertifiedOnly?: boolean;
+  /**
+   * Narrow to ONE of the two problems the report warns about, rather than both.
+   *
+   * `uncertifiedOnly` is `exempt && no certificate`, which is the union of
+   * them — and the page hung its "Show just those" link off that from a banner
+   * that named only one. Pressing it on "2 invoices are marked exempt with no
+   * certificate" returned five: the two it named plus the three from the
+   * banner above. A filter that returns more than the sentence beside it is
+   * worse than no filter, because the count you are checking against is the
+   * one you just read.
+   *
+   * "no_cert"  — someone claimed an exemption and the certificate is missing.
+   * "unmarked" — no tax was charged and nobody claimed an exemption at all.
+   *              In NY that is usually under-billing, not missing paperwork,
+   *              which is why the report keeps them apart.
+   */
+  exemptKind?: "no_cert" | "unmarked";
 };
 
 /**
@@ -128,8 +145,8 @@ export function summarizeSalesTax(
   nowMs = Date.now()
 ): SalesTaxReport {
   nowMs = safeNowMs(nowMs, "sales-tax");
-  const { fromYmd, toYmd, accountId, uncertifiedOnly } = filters;
-  const filtered = !!(fromYmd || toYmd || accountId || uncertifiedOnly);
+  const { fromYmd, toYmd, accountId, uncertifiedOnly, exemptKind } = filters;
+  const filtered = !!(fromYmd || toYmd || accountId || uncertifiedOnly || exemptKind);
 
   const rows = allRows.filter((r) => {
     if (fromYmd && r.issuedYmd < fromYmd) return false;
@@ -137,6 +154,7 @@ export function summarizeSalesTax(
     if (accountId && r.accountId !== accountId) return false
     ;
     if (uncertifiedOnly && !(r.exempt && !r.certNumber)) return false;
+    if (exemptKind && r.exemptKind !== exemptKind) return false;
     return true;
   });
 

@@ -37,7 +37,7 @@ const nameOf = (o: NameCols, account: string | null): string =>
   derivedOppName({ ...o, title: o.title ?? "" }, account);
 
 /** Anything named like the query — jobs, GCs, invoices. */
-export async function findRecords(query: string): Promise<string> {
+export async function findRecords(query: string, canSeeMoney = true): Promise<string> {
   const q = query.trim();
   if (q.length < 2) return "Give me at least two characters to search for.";
   const sb = commercialDb();
@@ -77,8 +77,13 @@ export async function findRecords(query: string): Promise<string> {
     lines.push(`GC: ${a.company_name} — /commercial/accounts/${a.id}`);
   }
   for (const i of invoices as Record<string, unknown>[]) {
+    // The finder still finds the invoice for someone who can't see money — it
+    // just doesn't read out the totals. Withholding the record entirely would
+    // make the assistant deny that a document the person is looking at exists.
     lines.push(
-      `INVOICE ${i.invoice_number}: ${money(Number(i.total_cents))} total, ${money(Number(i.paid_cents))} paid, ${money(Number(i.balance_cents))} outstanding (${i.status}) — /commercial/invoices/${i.id}`
+      canSeeMoney
+        ? `INVOICE ${i.invoice_number}: ${money(Number(i.total_cents))} total, ${money(Number(i.paid_cents))} paid, ${money(Number(i.balance_cents))} outstanding (${i.status}) — /commercial/invoices/${i.id}`
+        : `INVOICE ${i.invoice_number}: ${i.status} — /commercial/invoices/${i.id}`
     );
   }
   return lines.length ? lines.join("\n") : `Nothing matches "${q}".`;

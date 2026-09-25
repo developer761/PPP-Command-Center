@@ -97,18 +97,39 @@ describe("dealMargin", () => {
    */
   it("says how many crew hours are not costed yet", () => {
     const m = dealMargin({ ...base, totalCostCents: 12_000_00, laborUnratedHours: 37 });
-    expect(m.caveat).toMatch(/37 crew hours not costed yet/i);
+    expect(m.caveat).toMatch(/37 of the crew hours on this job are not costed yet/i);
     expect(m.caveat).toMatch(/payroll/i);
     // Never the old advice: setting a rate on a W-2 employee double-counts.
     expect(m.caveat).not.toMatch(/cost rate/i);
   });
 
+  /**
+   * "OF THE CREW HOURS ON THIS JOB", not a bare count.
+   *
+   * The deal header puts this caveat an inch from a Crew hours tile. On AIREF
+   * Building #1 that read "326 crew hours not costed yet" beside "CREW HOURS
+   * 400" — two crew-hour figures on one row with nothing saying the first is
+   * part of the second. It IS: 326 W-2 hours awaiting a rate, plus 74 from sub
+   * crews paid through a payout, is the 400 the Costs tool shows.
+   *
+   * Phrasing it as a part is what stops it being read as a rival total. The
+   * total itself is deliberately NOT stated here — dealMargin cannot see the
+   * attendance figure, and "326 of 400" would claim the two share a base.
+   */
+  it("names the hours as a PART of the job's crew hours, not a total", () => {
+    const m = dealMargin({ ...base, totalCostCents: 12_000_00, laborUnratedHours: 326 });
+    expect(m.caveat).toMatch(/of the crew hours on this job/i);
+    expect(
+      /^Margin reads high — 326 crew hours/.test(m.caveat ?? ""),
+      "a bare count reads as a second crew-hours total beside the tile",
+    ).toBe(false);
+  });
+
   it("keeps it singular for one hour", () => {
     // The old string read "1 crew hour have no cost rate" — singular noun,
-    // plural verb. The new one sidesteps the verb entirely.
+    // plural verb.
     const m = dealMargin({ ...base, totalCostCents: 1_00, laborUnratedHours: 1 });
-    expect(m.caveat).toMatch(/1 crew hour not costed yet/i);
-    expect(m.caveat).not.toMatch(/hours/i);
+    expect(m.caveat).toMatch(/1 of the crew hours on this job is not costed yet/i);
   });
 
   it("omits the contract line entirely when there is no contract", () => {

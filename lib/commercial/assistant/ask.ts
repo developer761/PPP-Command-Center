@@ -31,6 +31,29 @@ export function assistantAvailable(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
+/**
+ * WHICH TOOLS READ MONEY.
+ *
+ * The assistant answers in prose, from the same database the pages read — so
+ * it is a second door onto every screen, and it has to carry the same locks.
+ * These five return what `requireFinanceViewer` guards: the whole book's
+ * outstanding and past due, the AR sheet Mary sends Alex, the purchase
+ * register, and a job's billed/collected/cost-by-category.
+ *
+ * Its own docblock said it was "behind the same access check as every
+ * commercial page… it can read the company's money, so it is not open to
+ * anyone with the URL" — but the check it made was `assertCommercialAccess`,
+ * which is the check for using the platform at all, and every sales rep passes
+ * it. A rep could not open Accounting and could ask the assistant what was on
+ * it. A wrong gate is worse than a missing one: the comment above it reads as
+ * a decision that was made.
+ *
+ * `open_bids` and `crew_hours` stay open — bid values are on the rep's own
+ * pipeline, and hours are not pay. `find_records` stays open and drops the
+ * invoice totals instead, so it can still tell you a document exists.
+ */
+const MONEY_TOOLS = new Set(["job_summary", "money_overview", "vendor_spend", "ar_sheet"]);
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "find_records",
@@ -84,10 +107,21 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-async function runTool(name: string, input: Record<string, unknown>): Promise<string> {
+async function runTool(
+  name: string,
+  input: Record<string, unknown>,
+  canSeeMoney: boolean
+): Promise<string> {
+  // Belt as well as braces: the money tools are withheld from the tool LIST
+  // for a non-finance viewer, so the model cannot ask for one. This refuses it
+  // anyway, because a filtered list is a prompt-level control and the data is
+  // not.
+  if (!canSeeMoney && MONEY_TOOLS.has(name)) {
+    return "That figure is on a page this person cannot open. Do not state it. Say it is in Accounting, which is limited to the admin and accounting logins.";
+  }
   switch (name) {
     case "find_records":
-      return findRecords(String(input.query ?? ""));
+      return findRecords(String(input.query ?? ""), canSeeMoney);
     case "job_summary":
       return jobSummary(String(input.job ?? ""));
     case "money_overview":
@@ -105,7 +139,15 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
   }
 }
 
-function systemPrompt(): string {
+function systemPrompt(canSeeMoney: boolean): string {
+  const moneyRule = canSeeMoney
+    ? ""
+    : `
+
+WHAT THIS PERSON MAY NOT SEE
+This person is not on the accounting side. They cannot open Accounting, and you have no lookup for company money — no outstanding balance, no past due, no AR sheet, no purchase spend, and no job's billed / collected / cost. Do not state any such figure, do not estimate one, and do not repeat one from earlier in this conversation.
+
+Say so plainly and move on: "That's in Accounting, which is limited to the admin and accounting logins — Mary or Katie can pull it." Then answer whatever else they asked. Bid values on their own pipeline, hours on site, where a page is, and how something works are all fine.`;
   return `You are the assistant inside Precision Painting Plus's Commercial Command Center — the platform Tomco Painting run their commercial jobs on. You know it the way somebody does who has used it every day for years.
 
 Who asks you things: Alex (owner), Brendan (operations), Katie (admin), Mary (accounting), Stephanie, and the field team. They are busy and on their phones as often as not.
@@ -128,12 +170,19 @@ Things worth knowing about this business, so you do not give a confusing answer:
 - "Subcontract labor" is what Tomco use for paying crews. "Subcontractor" exists but they have never used it.
 
 STYLE
-Short. Two or three sentences usually does it. Plain words — you are talking to painters and bookkeepers, not developers. No preamble ("Great question!"), no restating what they asked. If something is genuinely uncertain, say which part and what you would check.`;
+Short. Two or three sentences usually does it. Plain words — you are talking to painters and bookkeepers, not developers. No preamble ("Great question!"), no restating what they asked. If something is genuinely uncertain, say which part and what you would check.${moneyRule}`;
 }
 
 export async function askAssistant(
   question: string,
-  history: { role: "user" | "assistant"; content: string }[] = []
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  /**
+   * Whether this viewer may see company money — admin or account manager, the
+   * same predicate the Accounting page enforces. Defaults to FALSE so a caller
+   * that forgets to pass it gets the safe answer; the route computes it from
+   * the signed-in profile.
+   */
+  canSeeMoney = false
 ): Promise<AskResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { ok: false, error: "No Anthropic API key is configured on this environment." };
@@ -157,8 +206,8 @@ export async function askAssistant(
         model: MODEL,
         max_tokens: 2_000,
         output_config: { effort: "low" },
-        system: systemPrompt(),
-        tools: TOOLS,
+        system: systemPrompt(canSeeMoney),
+        tools: canSeeMoney ? TOOLS : TOOLS.filter((t) => !MONEY_TOOLS.has(t.name)),
         messages,
       });
 
@@ -183,7 +232,7 @@ export async function askAssistant(
           toolUses.map(async (t) => ({
             type: "tool_result" as const,
             tool_use_id: t.id,
-            content: await runTool(t.name, (t.input ?? {}) as Record<string, unknown>),
+            content: await runTool(t.name, (t.input ?? {}) as Record<string, unknown>, canSeeMoney),
           }))
         ),
       });

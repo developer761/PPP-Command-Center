@@ -48,9 +48,23 @@ function Cell<R>({ col, row }: { col: ReportColumn<R>; row: R }) {
       }`}
     >
       {href ? (
-        <Link href={href} className="font-semibold text-cc-brand-700 hover:underline">
-          {body}
-        </Link>
+        col.newTab ? (
+          // A file, not a page. Plain <a>: Next's Link would try a client-side
+          // navigation to an API route, and following it in place loses your
+          // position in a list you are reading against paperwork.
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-cc-brand-700 hover:underline"
+          >
+            {body}
+          </a>
+        ) : (
+          <Link href={href} className="font-semibold text-cc-brand-700 hover:underline">
+            {body}
+          </Link>
+        )
       ) : (
         body
       )}

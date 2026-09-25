@@ -344,9 +344,10 @@ const MARY: RoleGuide = {
             { label: "Category", tourTarget: "purchase:category", kind: "field", does: "Materials, Equipment, Permit or Other. Defaults to Materials. Crew labor is not here — it goes on the Labor payments tab." },
             { label: "Reference", tourTarget: "purchase:description", kind: "field", does: "Receipt or invoice number." },
             { label: "Reimburse to", tourTarget: "purchase:reimburse_to", kind: "field", does: "Only fill this in when somebody paid out of pocket. It then shows on the Reimbursements tab until you mark it paid." },
-            { label: "Receipt", tourTarget: "purchase:receipt", kind: "field", does: "The receipt itself — a photo or a PDF. On a phone it opens the camera. Optional, but it is what the Receipt column in the list below is ticking." },
+            { label: "Receipt", tourTarget: "purchase:receipt", kind: "field", does: "The receipt itself — a photo or a PDF. On a phone it opens the camera. Optional, but it is what the Receipt column in the list below is filling in." },
             { label: "Record purchase", does: "Books it against the job's costs and adds it to the list below straight away." },
             { label: "The job name in the list", kind: "link", does: "Opens that job's costs tool, where you can add more against it. The back arrow there says Purchases and brings you straight back." },
+            { label: "View in the Receipt column", kind: "link", does: "Opens the receipt that was attached to that purchase, in a new tab. A dash means none was attached." },
           ],
           watchOut:
             "Category has no Labor option on purpose. Paying a crew is the Labor payments tab, which books it as a Subcontract cost — recording it here would put crew money in with materials.",
@@ -430,9 +431,10 @@ const MARY: RoleGuide = {
             { label: "Save", does: "Saves your changes to one carried-over line." },
             { label: "Remove", does: "Takes a line off this sheet only — do this once its certificate has been raised here. It deletes nothing on the job." },
             { label: "Export", does: "Downloads the AR sheet as a spreadsheet — the file that goes to Alex." },
+            { label: "Send receivables", does: "Not this sheet. It emails the RECEIVABLES sheet, from the other tab, to whoever is set up to get it. The AR sheet goes out through Export." },
           ],
           watchOut:
-            "Retention is held until close-out. It is not late, and it must never be chased as overdue. Only carried-over lines can be edited — a line generated from a certificate is changed on the job, not here.",
+            "Retention is held until close-out. It is not late, and it must never be chased as overdue. Only carried-over lines can be edited — a line generated from a certificate is changed on the job, not here. And the blue Send receivables button at the top does not send this sheet — it sends Receivables. Use Export for this one.",
         },
         {
           name: "Any tab › Print / PDF",
