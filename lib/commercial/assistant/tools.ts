@@ -171,14 +171,35 @@ export async function moneyOverview(): Promise<string> {
       )
     ).map((o) => o.id),
   );
+  /**
+   * PAST DUE HAS TO COUNT AIA TOO.
+   *
+   * The first cut of this added AIA to the outstanding TOTAL and left the
+   * past-due line reading invoices only — so "$799,323.63 outstanding, of
+   * which $171,067.92 is past due" was two figures on different books, in one
+   * sentence. Exactly the partial guard this file was fixed for.
+   *
+   * `aiaDueAtFrom` is the same ladder AR aging uses, so an application is
+   * late here on the same day it is late there.
+   */
+  const { aiaDueAtFrom } = await import("@/lib/commercial/aia/constants");
+  const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
+  const todayIso = new Date().toISOString().slice(0, 10);
   let aiaOwed = 0;
   let aiaCollected = 0;
   let aiaOpenCount = 0;
+  let aiaLateCents = 0;
+  let aiaLateCount = 0;
   for (const [, r] of aiaRolls) {
     aiaCollected += r.collectedCents;
     if (r.dueNowCents > 0) {
       aiaOwed += r.dueNowCents;
       aiaOpenCount += 1;
+      const dueAt = aiaDueAtFrom(r.latestIssuedFrozenAt, r.latestIssuedPeriodTo, DEFAULT_DUE_DAYS);
+      if (dueAt && String(dueAt).slice(0, 10) < todayIso) {
+        aiaLateCents += r.dueNowCents;
+        aiaLateCount += 1;
+      }
     }
   }
   const open = invoices.filter((i) => Number(i.balance_cents) > 0);
@@ -191,7 +212,7 @@ export async function moneyOverview(): Promise<string> {
 
   return [
     `Outstanding: ${money(owed)} across ${open.length + aiaOpenCount} open items (invoices + AIA applications).`,
-    `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0))} across ${late.length}.`,
+    `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaLateCents)} across ${late.length + aiaLateCount}.`,
     `Collected all time: ${money(collected)} over ${payments.length} payments.`,
     `Costs: ${[...byCat.entries()].map(([c, v]) => `${c} ${money(v)}`).join(", ")}.`,
     `Pages: /commercial/accounting?view=receivables and /commercial/accounting?view=aging`,

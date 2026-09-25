@@ -143,4 +143,24 @@ describe("the assistant's money tools count AIA", () => {
   it("ages dueNowCents, never the retainage-inclusive figure", () => {
     expect(/owed[^\n]*retainageHeldCents/.test(src)).toBe(false);
   });
+
+  /**
+   * The first cut of this fix added AIA to the outstanding TOTAL and left the
+   * past-due line on invoices alone — so one sentence carried two figures from
+   * two different books: "$799,323.63 outstanding, of which $171,067.92 is
+   * past due". A partial guard, in the commit that was fixing partial guards.
+   */
+  it("counts AIA in PAST DUE, not just in the total", () => {
+    expect(src).toContain("aiaLateCents");
+    expect(src).toContain("aiaDueAtFrom");
+  });
+
+  it("uses the same lateness ladder AR aging uses", () => {
+    // An application must be late here on the day it is late there.
+    const aging = stripComments(
+      readFileSync(join(ROOT, "lib/commercial/reports/ar-aging.ts"), "utf8"),
+    );
+    expect(aging).toContain("aiaDueAtFrom");
+    expect(src).toContain("aiaDueAtFrom");
+  });
 });
