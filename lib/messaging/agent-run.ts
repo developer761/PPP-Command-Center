@@ -24,7 +24,7 @@ import { jobRoute } from "./offsite";
 import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, type ResolvedService } from "./services";
-import { renderMessage, SILENT_INTENTS } from "./render";
+import { renderMessage, isSilent } from "./render";
 
 const MODEL = "claude-opus-5";
 
@@ -363,7 +363,7 @@ Choose the next action.`;
     });
     if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
 
-    const rendered = renderMessage({
+    const renderInput = {
       intent: v.action.intent,
       freeText: v.action.freeText,
       turn: history.length,
@@ -378,7 +378,8 @@ Choose the next action.`;
       // said, because that is where an answer to an availability question
       // lands. Only narrows an ask the model has already chosen to make.
       availabilityGap: availabilityGap(inbound.description),
-    });
+    };
+    const rendered = renderMessage(renderInput);
 
     // An intent that renders to nothing, and is not one of the intents that
     // deliberately says nothing, is a dropped turn: the customer asked
@@ -388,7 +389,7 @@ Choose the next action.`;
     // model's rapport IS the answer there — so rapport dropped by the tone
     // filter leaves nothing at all to send. Escalating hands it to a person,
     // which is the correct answer to "we have no idea what to say".
-    const saysNothing = !rendered && !SILENT_INTENTS.has(v.action.intent);
+    const saysNothing = !rendered && !isSilent(renderInput);
 
     return {
       ok: true,

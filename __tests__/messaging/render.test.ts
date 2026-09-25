@@ -162,6 +162,43 @@ describe("rendering an intent into words", () => {
   });
 
   /**
+   * DISCARD WAS SILENT FOR BOTH OF THE THINGS IT MEANS.
+   *
+   * Kate's outcome definition is "Not an estimate request, OR work we do not
+   * cover", and the configuration spells out what to do about the second:
+   * "say we cannot help with this project but will circle back if that is
+   * wrong". It said nothing. Found in the simulator — a homeowner asking
+   * "do you guys paint furniture?" got back "no message, action only", and
+   * only a 94% confidence sent it to a person at all. At 95% nobody sees it
+   * and nobody answers.
+   *
+   * A project on file is what tells the two apart: if an estimate was
+   * requested, the discard cannot be the "not an estimate request" branch.
+   */
+  it("answers a real customer whose project is work PPP does not cover", () => {
+    const known = { scope: "paint a standalone bookcase and a dresser black" };
+    for (const turn of [0, 1, 2, 3]) {
+      const out = renderMessage({ intent: "discard", turn, known });
+      expect(out.length, `turn ${turn}`).toBeGreaterThan(0);
+      // A9 — never restate the scope the customer just typed.
+      expect(out).not.toMatch(/bookcase|dresser/i);
+      // Kate: "Never suggest another company."
+      expect(out).not.toMatch(/another (?:company|contractor)|someone else|refer you/i);
+      // It has to leave a door open, because the bot may simply be wrong.
+      expect(out).toMatch(/let me know|tell me|misread|got that wrong/i);
+    }
+  });
+
+  it("stays silent on a discard with no project behind it, which is the spam case", () => {
+    // The other half of the same rule. Answering a wrong number or a
+    // solicitor is how a complaint starts, and agent-run escalates anything
+    // that renders nothing unintentionally — so getting this wrong would put
+    // every junk text on somebody's desk.
+    expect(renderMessage({ intent: "discard", turn: 0 })).toBe("");
+    expect(renderMessage({ intent: "discard", turn: 0, known: { scope: "" } })).toBe("");
+  });
+
+  /**
    * A22, WHICH WAS NOT ENFORCED ANYWHERE.
    *
    * one-ask.ts was written with ten tests of its own and never imported by a

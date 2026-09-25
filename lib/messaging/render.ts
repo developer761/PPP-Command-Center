@@ -38,8 +38,36 @@ import type { AvailabilityGap } from "./availability";
  *  Bot Suspected". Answered. The conversation still hands to a person either
  *  way; this is about whether they hear anything while they wait. */
 export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
-  "discard", "lost", "msg_liked_loved",
+  "lost", "msg_liked_loved",
 ]);
+
+/**
+ * DISCARD IS TWO DIFFERENT ENDINGS WEARING ONE NAME.
+ *
+ * Kate's own definition of the outcome says so: "Not an estimate request, OR
+ * work we do not cover." Silence is the right answer to the first — nobody
+ * wants a cheerful sign-off to a wrong number or a solicitor. It is the wrong
+ * answer to the second, and the configuration says so in as many words:
+ * "end the conversation as Discarded and say we cannot help with this project
+ * but will circle back if that is wrong."
+ *
+ * It was silent for both. A homeowner asking "do you paint furniture?" got
+ * nothing back, ever, and above the escalation threshold no person saw it
+ * either — while the geography ending, which is the same situation about a
+ * place instead of a thing, sends a polite sentence.
+ *
+ * The two are told apart by the definition itself, not by a guess: if there
+ * is a project on file then an estimate WAS requested, so the discard can
+ * only be the second branch.
+ *
+ * A function rather than a bigger set because agent-run escalates on
+ * "rendered nothing and was not meant to" — so if the two disagreed, every
+ * wrong number would land on somebody's desk.
+ */
+export function isSilent(input: { intent: Intent; known?: { scope?: string | null } | null }): boolean {
+  if (input.intent === "discard") return !input.known?.scope;
+  return SILENT_INTENTS.has(input.intent);
+}
 
 /**
  * Every intent, exhaustively. The Record type is the point: adding an intent
@@ -268,7 +296,12 @@ export const SAYS: Record<Intent, string[]> = {
   ],
 
   // — Silent —
-  discard: [""],
+  // Kate's wording, turned into a sentence: say we cannot help, invite the
+  // correction, and never point them at another company.
+  discard: [
+    "Thanks for reaching out! That isn't something we're able to take on. If I've misread the project, let me know and I'll take another look.",
+    "Appreciate you getting in touch. Unfortunately that isn't work we're able to help with. If I've got that wrong, just tell me a bit more about it.",
+  ],
   lost: [""],
   msg_liked_loved: [""],
 };
@@ -521,7 +554,7 @@ export function renderMessage(input: RenderInput): string {
     if (missing) return "";
   }
 
-  if (SILENT_INTENTS.has(input.intent)) return "";
+  if (isSilent(input)) return "";
 
   const rapport = (input.freeText ?? "").trim();
   const parts: string[] = [];
