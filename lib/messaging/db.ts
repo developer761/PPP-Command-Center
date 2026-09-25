@@ -27,95 +27,14 @@ import { selectAll, selectAllIn } from "./paging";
 // Re-exported so the many existing callers keep their import.
 export { selectAll, selectAllIn } from "./paging";
 
-export type InboxBucket = "needs_human" | "active" | "waiting" | "ended";
-
-/** The buckets the office actually triages by, in the order they matter.
- *  "Needs human" is first because an escalation nobody sees is an escalation
- *  that failed. */
-export const BUCKETS: { key: InboxBucket; label: string; short: string }[] = [
-  { key: "needs_human", label: "Needs human", short: "Needs you" },
-  { key: "active",      label: "AI working",  short: "AI" },
-  { key: "waiting",     label: "Awaiting customer", short: "Waiting" },
-  { key: "ended",       label: "Ended",       short: "Ended" },
-];
-
-export type InboxRow = {
-  id: string;
-  customer_phone: string;
-  customer_name: string | null;
-  state: string;
-  outcome: string | null;
-  owning_agent: string | null;
-  last_message_at: string | null;
-  workspace_name: string;
-};
-
-const STATE_FOR: Record<InboxBucket, string[]> = {
-  needs_human: ["human_active"],
-  active: ["ai_active"],
-  waiting: ["awaiting_customer"],
-  ended: ["ended"],
-};
-
-export async function loadInbox(bucket: InboxBucket, workspaceId?: string, search?: string) {
-  const sb = messagingDb();
-  let q = sb
-    .from("sms_conversations")
-    .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at, sms_sub_accounts(name)")
-    .in("state", STATE_FOR[bucket])
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .limit(100);
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  // Name or number. Someone hunting a conversation has one or the other in
-  // front of them — usually the number, off a missed call.
-  if (search?.trim()) {
-    const t = search.trim().replace(/[%,()]/g, "");
-    q = q.or(`customer_name.ilike.%${t}%,customer_phone.ilike.%${t}%`);
-  }
-  const { data, error } = await q;
-  if (error) return { rows: [] as InboxRow[], error: error.message };
-  const rows: InboxRow[] = (data ?? []).map((r) => {
-    const ws = r.sms_sub_accounts as unknown as { name: string } | null;
-    return {
-      id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
-      state: r.state, outcome: r.outcome, owning_agent: r.owning_agent,
-      last_message_at: r.last_message_at, workspace_name: ws?.name ?? "—",
-    };
-  });
-  return { rows, error: null as string | null };
-}
-
-/**
- * Counts per bucket, for the filter chips.
- *
- * This used to be one query that read every conversation and counted the
- * states in JavaScript — "one query, not four", which was true and was the
- * wrong trade. PostgREST caps that read at 1,000 rows, so at 1,001
- * conversations the chips would begin under-reporting with nothing to show
- * for it, and the chip that would undercount is "Needs human": the one whose
- * whole reason for sitting first is that an escalation nobody sees is an
- * escalation that failed.
- *
- * Four head requests instead. The database does the counting, the count is
- * exact at any table size, and no rows cross the wire at all — cheaper than
- * the single query it replaces, not dearer.
- */
-export async function bucketCounts(workspaceId?: string) {
-  const sb = messagingDb();
-  const pairs = await Promise.all(
-    BUCKETS.map(async (b) => {
-      let q = sb.from("sms_conversations")
-        .select("id", { count: "exact", head: true })
-        .in("state", STATE_FOR[b.key]);
-      if (workspaceId) q = q.eq("workspace_id", workspaceId);
-      const { count } = await q;
-      return [b.key, count ?? 0] as const;
-    })
-  );
-  const counts: Record<InboxBucket, number> = { needs_human: 0, active: 0, waiting: 0, ended: 0 };
-  for (const [k, n] of pairs) counts[k] = n;
-  return counts;
-}
+/* loadInbox, bucketCounts, InboxBucket, BUCKETS, STATE_FOR and InboxRow
+ * lived here and are gone. Nothing called either function — the board uses
+ * loadBoard and the list uses loadReport — and they had been dead long
+ * enough that I paged bucketCounts against the 1,000-row cap earlier today
+ * believing the Needs-human chip was undercounting. It was not rendering at
+ * all. The real undercount was in loadBoard, where the column headings
+ * counted the capped 200 rather than the database. Dead code that looks
+ * live costs more than the space it takes. */
 
 export async function activeWorkspaces() {
   const sb = messagingDb();
@@ -623,8 +542,35 @@ export type BoardCard = {
   direction: string | null;
 };
 
+/**
+ * THE CARDS ARE CAPPED. THE COUNTS MUST NOT BE.
+ *
+ * The board reads the 200 most recent conversations, which is right — nobody
+ * works a column of five thousand cards. But the number beside each column
+ * heading was the length of that capped bucket, so it was never "how many are
+ * in the inbox", it was "how many of the last 200 are". At ten conversations
+ * those are the same number. At PPP's own figure of 171 leads a day, "All
+ * workspaces" passes 200 in about two days and the Inbox count silently stops
+ * counting, understating the backlog on exactly the screen somebody opens to
+ * see how big it is.
+ *
+ * So the cards keep the cap and the counts come from the database, which does
+ * the counting and is never truncated. Field has no count because PPP has not
+ * said what puts a conversation in it; an invented number would be worse than
+ * the empty column it already shows.
+ */
 export async function loadBoard(workspaceId?: string) {
   const sb = messagingDb();
+  /** A head count, already scoped to the workspace when there is one. */
+  const counting = () => {
+    const q = sb.from("sms_conversations").select("id", { count: "exact", head: true });
+    return workspaceId ? q.eq("workspace_id", workspaceId) : q;
+  };
+  const [inboxRes, followupRes, soldRes] = await Promise.all([
+    counting().neq("state", "ended"),
+    counting().eq("state", "ended").eq("outcome", "schedule_follow_up"),
+    counting().eq("state", "ended").eq("outcome", "success"),
+  ]);
   let q = sb
     .from("sms_conversations")
     .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at")
@@ -664,7 +610,14 @@ export async function loadBoard(workspaceId?: string) {
     // columns than the four visible in the screenshot; those conversations are
     // not invented into a column they do not belong in.
   }
-  return columns;
+  const counts: Record<BoardColumnKey, number> = {
+    inbox: inboxRes.count ?? 0,
+    followup: followupRes.count ?? 0,
+    sold: soldRes.count ?? 0,
+    // Not derivable. The column says so on the page.
+    field: columns.field.length,
+  };
+  return { columns, counts };
 }
 
 /* ─────────────────────── human agent stats ───────────────────────── */

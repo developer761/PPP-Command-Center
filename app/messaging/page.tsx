@@ -36,11 +36,13 @@ export default async function ConversationsBoard({
   const active: BoardColumnKey = isCol(sp.col) ? sp.col : "inbox";
   const isList = sp.view === "list";
 
-  const [columns, workspaces, report] = await Promise.all([
+  const [board, workspaces, report] = await Promise.all([
     loadBoard(workspaceId),
     activeWorkspaces(),
     isList ? loadReport({ workspaceId, outcome: sp.outcome, page: Number(sp.page) || 1 }) : Promise.resolve(null),
   ]);
+  // The cards are the most recent 200; the counts are the real totals.
+  const { columns, counts } = board;
   const ws = workspaces.find((w) => w.id === workspaceId);
   const wsQ = workspaceId ? `&ws=${workspaceId}` : "";
   const href = (c: BoardColumnKey) => `/messaging?col=${c}${wsQ}`;
@@ -84,7 +86,7 @@ export default async function ConversationsBoard({
                   ].join(" ")}>
                   <span className="whitespace-nowrap">{c.label}</span>
                   <span className={`tabular-nums ${on ? "text-white/70" : "text-ppp-charcoal-400"}`}>
-                    {columns[c.key].length}
+                    {counts[c.key]}
                   </span>
                 </Link>
               );
