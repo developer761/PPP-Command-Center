@@ -1671,6 +1671,34 @@ export default async function AccountingPage({
               the rows it affects and easy to read as a label. */}
           <div data-print-hide className="flex items-center gap-2 flex-wrap">
             <ReceivablesFilterBar q={q} basePath={BASE} extraParams={{ view: "receivables" }} gcOptions={receivablesView.gcOptions} />
+            {/* THE STATEMENT, WHERE THE CHASING HAPPENS.
+                Katie's list asks for an open-invoice statement, and it exists —
+                but only on /commercial/invoices, behind picking a GC in the
+                account filter, as a small underlined link. Karan: "Mary's stuff
+                is all under the accounting page keep that in mind."
+
+                This is the tab she chases from. She rings LMJ about
+                $472,699.53, they ask her to send a statement, and from here
+                there was no way to produce one.
+
+                Only shown once a single GC is selected, because a statement is
+                per customer — there is no such thing as a statement for the
+                whole book. Same route the invoices page uses, so the two
+                cannot render different documents. */}
+            {q.accountId && (
+              <a
+                href={`/api/commercial/accounts/${q.accountId}/statement`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 rounded-lg border border-ppp-charcoal-200 bg-surface text-[12.5px] font-semibold text-ppp-charcoal-700 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[38px]"
+                title="Open-invoice statement for this GC — every unpaid item, as a PDF to send them."
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h5" />
+                </svg>
+                Statement
+              </a>
+            )}
             {canDraftNotes && silentRows > 0 && (
               <form action={draftNotesAction}>
                 <input type="hidden" name="back" value={href(view)} />
