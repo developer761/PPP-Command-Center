@@ -45,7 +45,8 @@ export default async function AttendanceReportPage({
       emptyHint="No hours in this window. Attendance appears here as soon as a crew's day is recorded against a job."
       footer={
         <p className="text-[12px] text-ppp-charcoal-500 rounded-lg border border-ppp-charcoal-100 bg-ppp-charcoal-50 px-3 py-2">
-          <strong className="text-ppp-charcoal">Hours, not cost.</strong> Tomco&rsquo;s crews are paid through labor
+          <strong className="text-ppp-charcoal">Hours, not cost.</strong>{" "}
+          Tomco&rsquo;s crews are paid through labor
           companies, and that money is already on each job as a Subcontract cost. Putting a rate on these hours as well
           would charge every job twice, so this report counts the work and the job&rsquo;s cost lines count the money.
         </p>
