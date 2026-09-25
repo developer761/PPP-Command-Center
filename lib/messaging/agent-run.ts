@@ -23,7 +23,7 @@ import { addressGap } from "./address";
 import { jobRoute } from "./offsite";
 import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
-import { servicesPrompt, type ResolvedService } from "./services";
+import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent } from "./render";
 
 const MODEL = "claude-opus-5";
@@ -237,6 +237,23 @@ function actionTool(track: Track): Anthropic.Tool {
   };
 }
 
+/**
+ * The covered services, short enough to text.
+ *
+ * Four is the cap: this appears in a message that already has to say no and
+ * ask a question, and a fifteen-item list reads as a brochure. Sorted the way
+ * the workspace sorted them, so the first four are the ones PPP leads with.
+ */
+export function coveredPhrase(services?: ResolvedService[]): string | null {
+  const covered = (services ?? []).filter((s) => s.covered).map((s) => s.label.toLowerCase());
+  if (!covered.length) return null;
+  // NOT listPhrase when it is truncated: that joins the last two with "and",
+  // so appending "and more" produced "lime washing and skim coating and more".
+  return covered.length > 4
+    ? `${covered.slice(0, 4).join(", ")} and more`
+    : listPhrase(covered);
+}
+
 export async function runAgentTurn(
   cfg: AgentConfigForRun,
   history: Turn[],
@@ -378,6 +395,10 @@ Choose the next action.`;
       // said, because that is where an answer to an availability question
       // lands. Only narrows an ask the model has already chosen to make.
       availabilityGap: availabilityGap(inbound.description),
+      // What we DO cover, for the one case that needs it: turning work down.
+      // Capped, because this goes out as a text message and the full list is
+      // fifteen rows long.
+      covers: coveredPhrase(opts.services),
     };
     const rendered = renderMessage(renderInput);
 

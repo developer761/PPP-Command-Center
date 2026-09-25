@@ -189,6 +189,43 @@ describe("rendering an intent into words", () => {
     }
   });
 
+  /**
+   * TURNING WORK DOWN SHOULD LEAVE A DOOR OPEN.
+   *
+   * Karan, on watching the furniture reply get blocked: "it shouldnt be
+   * blocked, it should answer with like We dont provide furniture painting in
+   * your area. We offer..."
+   *
+   * A18 forbids pointing at another COMPANY, not naming our own work. And A8
+   * is why it matters on this exact message: built-in bookcases and shelving
+   * ARE covered, only standalone furniture is not. "We don't do that" ends
+   * the conversation; naming what we cover lets the customer say "oh, mine
+   * are built in".
+   */
+  it("names what PPP does cover when it turns work down", () => {
+    const out = renderMessage({
+      intent: "discard", turn: 0,
+      known: { scope: "a standalone bookcase and a dresser" },
+      covers: "interior painting, exterior painting, cabinets and drywall",
+    });
+    expect(out).toMatch(/interior painting/);
+    expect(out).toMatch(/misread|let me know/i);
+    // A18 — never point at somebody else.
+    expect(out).not.toMatch(/another (?:company|contractor)|someone else|try .* who does/i);
+    // A9 — do not read their own words back at them.
+    expect(out).not.toMatch(/bookcase|dresser/i);
+    // A23 — and it must sound like the house.
+    expect(out).not.toMatch(/[—–]/);
+  });
+
+  it("still turns work down when no services are configured", () => {
+    // The list comes from the workspace, and a workspace can have none. The
+    // message must not disappear because the pivot is unavailable.
+    const out = renderMessage({ intent: "discard", turn: 0, known: { scope: "a dresser" }, covers: null });
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).toMatch(/misread|let me know/i);
+  });
+
   it("stays silent on a discard with no project behind it, which is the spam case", () => {
     // The other half of the same rule. Answering a wrong number or a
     // solicitor is how a complaint starts, and agent-run escalates anything

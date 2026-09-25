@@ -434,6 +434,16 @@ export type RenderInput = {
    * e.g. "you're not able to be at the property".
    */
   offsiteReason?: string | null;
+  /**
+   * What PPP DOES cover, said the way a person would: "interior and exterior
+   * painting, cabinets and drywall". Used only when turning work down, so the
+   * customer gets a door rather than a wall.
+   *
+   * Comes from the workspace's own service rows, never a list written here —
+   * a hardcoded one drifts from the configuration, which is the mistake that
+   * made the bot refuse flooring it actually sells.
+   */
+  covers?: string | null;
 };
 
 /**
@@ -555,6 +565,31 @@ export function renderMessage(input: RenderInput): string {
   }
 
   if (isSilent(input)) return "";
+
+  /**
+   * TURNING WORK DOWN SHOULD LEAVE A DOOR OPEN.
+   *
+   * Karan: "it shouldnt be blocked, it should answer with like We dont
+   * provide furniture painting in your area. We offer..."
+   *
+   * A18 forbids pointing at ANOTHER COMPANY — "say so plainly and stop
+   * there". Naming our OWN work is not that, and A8 is the reason it matters
+   * here: built-in bookcases and shelving ARE covered, only standalone
+   * furniture is not. A customer told "we don't do that" walks away; a
+   * customer told what we do cover can say "oh, mine are built in".
+   *
+   * The list is the workspace's own, so it cannot drift from what the bot
+   * was told it sells two paragraphs earlier in the same prompt.
+   */
+  if (input.intent === "discard" && input.covers) {
+    // No em dash. A23 bans it, and it is the one Kate names first — the
+    // house-voice test would have caught this in a template, but this string
+    // is built in code, so it would have gone out.
+    const opener = (input.turn ?? 0) % 2 === 0
+      ? "Thanks for reaching out! That isn't something we take on."
+      : "Appreciate you getting in touch. That isn't work we take on.";
+    return `${opener} We do cover ${input.covers}. If I've misread the project, let me know and I'll take another look.`;
+  }
 
   const rapport = (input.freeText ?? "").trim();
   const parts: string[] = [];
