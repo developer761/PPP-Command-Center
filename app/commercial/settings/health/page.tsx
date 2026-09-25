@@ -13,7 +13,7 @@ import HealthChecksView from "@/components/health-checks-view";
  * scoped to the Commercial CC dependency surface area. Pulls from
  * /api/admin/commercial-health which aggregates every Stage 0-3
  * wire-up: Supabase commercial tables, Resend commercial pool, daily
- * cron freshness, archive HMAC + bucket, migrations 018-037, Slack
+ * cron freshness, archive HMAC + bucket, the newest migrations probed by the column each adds, Slack
  * webhook configuration.
  *
  * Auto-refreshes every 30s when the tab is visible; pauses when
