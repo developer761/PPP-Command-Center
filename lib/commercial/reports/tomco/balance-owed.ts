@@ -76,10 +76,10 @@ export async function getBalanceOwedRows(): Promise<BalanceOwedRow[]> {
   const accountIds = [...new Set(opps.map((o) => o.account_id))];
 
   const [invoices, accounts, projects] = await Promise.all([
-    paginateAll<{ opportunity_id: string; total_cents: number; paid_cents: number; balance_cents: number }>(() =>
+    paginateAll<{ opportunity_id: string; status: string | null; total_cents: number; paid_cents: number; balance_cents: number }>(() =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, total_cents, paid_cents, balance_cents")
+        .select("opportunity_id, status, total_cents, paid_cents, balance_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -98,9 +98,34 @@ export async function getBalanceOwedRows(): Promise<BalanceOwedRow[]> {
     ),
   ]);
 
+  /**
+   * A DRAFT IS NOT BILLED, AND A VOID IS NOT OWED.
+   *
+   * This read no `status` at all, so every draft and every void counted
+   * towards customer charges, payments in and balance owed. `balance_cents` is
+   * a STORED generated column — voiding does not zero it — so a void row sits
+   * there with a live-looking balance forever.
+   *
+   * The sibling module that builds Scheduling and Open Sales had the same hole,
+   * and on LMJ- Galil Brands a $75,000 draft came out as $94,000 owed on a
+   * $75,000 contract. This one feeds the Balance Owed tab and its export: the
+   * list of finished jobs with money still out.
+   *
+   * The docblock above claims a to-the-cent reconcile against Salesforce on
+   * 2026-09-16. That held because those twelve jobs happened to carry no draft
+   * or void at the time — not because the arithmetic was right.
+   */
+  const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
   const money = new Map<string, { t: number; p: number; b: number }>();
   for (const i of invoices) {
+    const verdict = receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]);
+    if (verdict === "skip") continue;
     const e = money.get(i.opportunity_id) ?? { t: 0, p: 0, b: 0 };
+    // A draft is work that will be billed, not work that has been.
+    if (verdict === "uninvoiced") {
+      money.set(i.opportunity_id, e);
+      continue;
+    }
     e.t += Number(i.total_cents);
     e.p += Number(i.paid_cents);
     e.b += Number(i.balance_cents);

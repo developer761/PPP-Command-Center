@@ -122,6 +122,7 @@ import {
   type InvoiceStatus,
 } from "@/lib/commercial/invoices/constants";
 import { splitOpenBalance } from "@/lib/commercial/invoices/rollup";
+import { receivableVerdict } from "@/lib/commercial/reports/receivables";
 import {
   formatCentsCompact,
   formatCentsFull,
@@ -2379,8 +2380,17 @@ export default async function OpportunityDetailPage({
     .filter((p) => ["sent", "won", "lost"].includes(p.status) && p.sent_at)
     .sort((a, b) => String(b.sent_at).localeCompare(String(a.sent_at)));
   const latestSent = sentProposals[0];
+  // A balance alone is not "unpaid": `balance_cents` is a stored generated
+  // column, so a VOID keeps a live-looking balance forever and a draft carries
+  // one before anybody has been asked. Either could win this slot and date the
+  // chase-up banner from an invoice nobody owes.
   const oldestUnpaid = pathInvoices
-    .filter((inv) => (inv.balance_cents ?? 0) > 0 && inv.issued_at)
+    .filter(
+      (inv) =>
+        receivableVerdict(inv.status as InvoiceStatus) === "invoice" &&
+        (inv.balance_cents ?? 0) > 0 &&
+        inv.issued_at,
+    )
     .sort((a, b) => String(a.issued_at).localeCompare(String(b.issued_at)))[0];
   // ── Step 9 fix: ONE contract figure per page ─────────────────────────────
   //
@@ -2413,13 +2423,24 @@ export default async function OpportunityDetailPage({
     closeoutComplete: pathIsWon
       ? pathCloseouts.some((c) => !c.voided_at && c.status === "complete")
       : undefined,
-    // Retainage counts. A job with a zero balance and 5% still held is not
-    // clear — that money is exactly why close-out gets chased.
+    /**
+     * Retainage counts. A job with a zero balance and 5% still held is not
+     * clear — that money is exactly why close-out gets chased.
+     *
+     * BILLED INVOICES ONLY. This summed `balance_cents` over every live
+     * invoice, and `balance_cents` is a stored generated column that voiding
+     * does not zero — so one void, or one draft nobody ever sent, pinned the
+     * job on "Chase the last payment — Closeout is done, but money is still
+     * out" forever, and withheld "Mark it completed" with it. Nothing on the
+     * screen said which invoice, because neither is money anyone owes.
+     */
     moneyClear: pathIsWon
-      ? pathInvoices.reduce(
-          (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
-          0,
-        ) === 0 && pathRetainageCents === 0
+      ? pathInvoices
+          .filter((inv) => receivableVerdict(inv.status as InvoiceStatus) === "invoice")
+          .reduce(
+            (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
+            0,
+          ) === 0 && pathRetainageCents === 0
       : undefined,
     hasBilling: pathInvoices.length > 0,
     // Grace periods: a work order does not exist five minutes after a GC says
@@ -2487,8 +2508,21 @@ export default async function OpportunityDetailPage({
       { invoicedCents: number; collectedCents: number }
     >();
     for (const inv of pathInvoices) {
+      /**
+       * STATUS, not just a date.
+       *
+       * The only guard here was `issued_at`, and that is not the same
+       * question. `issued_at` is never cleared when an invoice is un-sent, and
+       * the status DAG allows sent → draft — so a draft that HAS been sent
+       * once keeps its date and slipped in. A void keeps its date too.
+       *
+       * The headline figures on these same cards come from
+       * `getProjectFinancials`, which does skip draft and void. So the number
+       * and the sparkline drawn underneath it disagreed, on the same card.
+       */
+      if (receivableVerdict(inv.status as InvoiceStatus) !== "invoice") continue;
       const ymd = etDateOf(inv.issued_at);
-      if (!ymd) continue; // a draft that never went out is not billing yet
+      if (!ymd) continue; // billed but with no date on it — nothing to plot
       const key = ymd.slice(0, 7);
       const cur = m.get(key) ?? { invoicedCents: 0, collectedCents: 0 };
       // Both pre-tax, matching the money chain's basis (6d972cf). `invoicedCents`

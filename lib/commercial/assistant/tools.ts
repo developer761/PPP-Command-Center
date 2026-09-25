@@ -109,8 +109,8 @@ export async function jobSummary(query: string): Promise<string> {
   const o = rows[0];
   const oppId = o.id as string;
   const [invoices, purchases, account] = await Promise.all([
-    paginateAll<{ total_cents: number; paid_cents: number; balance_cents: number }>(() =>
-      sb.from("commercial_invoices").select("total_cents, paid_cents, balance_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
+    paginateAll<{ status: string | null; total_cents: number; paid_cents: number; balance_cents: number }>(() =>
+      sb.from("commercial_invoices").select("status, total_cents, paid_cents, balance_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
     ),
     paginateAll<{ category: string; amount_cents: number }>(() =>
       sb.from("commercial_project_purchases").select("category, amount_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
@@ -132,9 +132,25 @@ export async function jobSummary(query: string): Promise<string> {
    * disagree. dueNowCents excludes retainage — held by agreement, not late.
    */
   const aia = (await aiaBillingRollupBulk([oppId])).get(oppId) ?? null;
-  const billed = invoices.reduce((n, i) => n + Number(i.total_cents), 0) + (aia?.billedCents ?? 0);
-  const paid = invoices.reduce((n, i) => n + Number(i.paid_cents), 0) + (aia?.collectedCents ?? 0);
-  const owed = invoices.reduce((n, i) => n + Number(i.balance_cents), 0) + (aia?.dueNowCents ?? 0);
+  /**
+   * A DRAFT IS NOT BILLED, AND A VOID IS NOT OWED — here too.
+   *
+   * `moneyOverview`, sixty lines below in this same file, was fixed to ask
+   * `receivableVerdict` earlier on 2026-09-25. This function was not, so the
+   * whole-book answer and the single-job answer used two different rules, and
+   * the one about a specific job — the one somebody acts on — was the wrong
+   * one. A partial guard, again, in the file where the last one was found.
+   *
+   * `balance_cents` is a stored generated column: voiding does not zero it, so
+   * a void row keeps a live-looking balance forever.
+   */
+  const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
+  const billable = invoices.filter(
+    (i) => receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]) === "invoice",
+  );
+  const billed = billable.reduce((n, i) => n + Number(i.total_cents), 0) + (aia?.billedCents ?? 0);
+  const paid = billable.reduce((n, i) => n + Number(i.paid_cents), 0) + (aia?.collectedCents ?? 0);
+  const owed = billable.reduce((n, i) => n + Number(i.balance_cents), 0) + (aia?.dueNowCents ?? 0);
   const cost = purchases.reduce((n, p) => n + Number(p.amount_cents), 0);
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
