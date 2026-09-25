@@ -30,6 +30,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LeadRecord } from "./rules";
 import { sweepExitsWith } from "./enrol-core";
+import { selectAllIn } from "./paging";
 
 /** Lead fields the seeded exit rules read, plus the link to the Opportunity. */
 export const EXIT_LEAD_FIELDS = [
@@ -156,11 +157,24 @@ export async function sweepExitsFor(
     return { ...empty, swept: true, why: "no live conversations" };
   }
 
-  const { data: links, error: linkErr } = await sb.from("sf_lead_inbound")
-    .select("conversation_id, sf_record_id")
-    .in("conversation_id", liveIds)
-    .eq("sf_object", "Lead");
-  if (linkErr) throw new Error(`could not match conversations to leads: ${linkErr.message}`);
+  // PAGED, BECAUSE .in() BOUNDS THE FILTER AND NOT THE RESULT.
+  //
+  // A thousand live conversations is a thousand matching rows, and PostgREST
+  // caps an unbounded select at 1,000 silently — a capped read looks exactly
+  // like a complete one. Every conversation past the cap would look to this
+  // sweep like it had no lead behind it at all.
+  const links = await selectAllIn<{ conversation_id: string; sf_record_id: string }>(
+    liveIds,
+    (chunk, from, to) => sb.from("sf_lead_inbound")
+      .select("conversation_id, sf_record_id")
+      .in("conversation_id", chunk)
+      .eq("sf_object", "Lead")
+      // selectAll needs a unique order or page two is not reliably the rows
+      // page one did not return.
+      .order("conversation_id")
+      .range(from, to),
+    "matching conversations to leads",
+  );
 
   const sfIds = [...new Set((links ?? []).map((l) => l.sf_record_id as string).filter(Boolean))];
   if (!sfIds.length) {

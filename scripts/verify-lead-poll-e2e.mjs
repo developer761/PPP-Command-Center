@@ -77,8 +77,14 @@ try {
   ok("it asks for the fields intake reads", /MobilePhone/.test(asked) && /RecordType\.Name/.test(asked));
   ok("all three are recorded", res.found === 3 && res.inserted === 3, JSON.stringify({ found: res.found, inserted: res.inserted }));
 
+  // Bounded explicitly. Only three ids here, but the checker reads the shape
+  // rather than the intent, and it is right to: .in() bounds the FILTER, not
+  // the RESULT, so this shape is a truncation waiting for a bigger batch.
   const { data: rows } = await sb.from("sf_lead_inbound")
-    .select("sf_record_id, status, triage_reason, workspace_id, phone_e164").in("sf_record_id", ids);
+    .select("sf_record_id, status, triage_reason, workspace_id, phone_e164")
+    .in("sf_record_id", ids)
+    .order("sf_record_id")
+    .range(0, ids.length - 1);
   const byId = Object.fromEntries(rows.map((r) => [r.sf_record_id, r]));
 
   ok("the lead with no phone goes to triage, saying so",
