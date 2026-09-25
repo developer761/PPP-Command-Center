@@ -237,6 +237,41 @@ describe("validateAction — never promise work PPP does not do", () => {
     }
   });
 
+  /**
+   * THE BOT COULD NOT SAY NO.
+   *
+   * Every out-of-scope list matched a bare mention, so "we do not do roofing"
+   * was refused as out_of_scope_work for containing the word roofing. The
+   * rule against PROMISING work PPP does not do also blocked DECLINING it —
+   * the one thing the configuration explicitly requires: "say we cannot help
+   * with this project but will circle back if that is wrong."
+   *
+   * Found in the simulator asking about furniture and watching the model's
+   * refusal get refused.
+   */
+  it("lets the bot turn work down in words", () => {
+    for (const t of [
+      "Unfortunately we do not paint furniture.",
+      "We do not do murals, sorry.",
+      "We cannot paint appliances.",
+      "We do not do roofing.",
+      "Sorry, we are not able to take on industrial equipment.",
+      "That is not something we are able to help with, we do not refinish bathtubs.",
+    ]) {
+      expect(validateAction(ok({ freeText: t })).ok, t).toBe(true);
+    }
+  });
+
+  /**
+   * CLAUSE BY CLAUSE. A decline earlier in the sentence must not license a
+   * promise later in it — "but" breaks the clause exactly as a full stop does.
+   */
+  it("still catches a promise that follows a decline in the same sentence", () => {
+    const r = validateAction(ok({ freeText: "We do not do murals, but we can paint your appliances." }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("out_of_scope_work");
+  });
+
   it("allows the work PPP actually does", () => {
     for (const t of [
       "We do interior and exterior painting.",

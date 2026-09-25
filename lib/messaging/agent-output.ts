@@ -435,6 +435,45 @@ const OUT_OF_SCOPE = new RegExp(
 );
 
 /**
+ * THE RULE IS AGAINST PROMISING IT, NOT AGAINST NAMING IT.
+ *
+ * Every list above matched a bare mention, so the bot could not say "we do
+ * not do roofing" — the sentence names roofing, and naming it was the whole
+ * test. It could not decline ANY out-of-scope job in words, which is the one
+ * thing the configuration explicitly tells it to do: "say we cannot help with
+ * this project but will circle back if that is wrong."
+ *
+ * Caught in the simulator playing a customer asking about furniture. The
+ * model tried to turn the work down and its reply was refused as
+ * out_of_scope_work for containing the word "furniture". Pre-existing —
+ * bathtubs, murals and roofing all behaved the same way — and adding
+ * furniture to the list is what made it visible, because declining furniture
+ * is a thing customers actually ask for.
+ *
+ * CLAUSE BY CLAUSE, not sentence by sentence. "We do not do murals, but we
+ * can paint your appliances" carries a decline AND a promise; taking the
+ * negation from anywhere in the sentence would wave the promise through, so
+ * "but" and "however" break a clause exactly as a full stop does.
+ */
+const DECLINING = /\b(?:not|never|cannot|can'?t|do(?:es)?\s?n'?t|wo\s?n'?t|unable|outside|beyond|unfortunately|sorry)\b/i;
+const CLAUSE_BREAK = /[.!?;]|\bbut\b|\bhowever\b|\bthough\b/gi;
+
+/** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
+export function promisesOutOfScopeWork(text: string): boolean {
+  // Where each clause starts, so a mention can be read with its own words only.
+  const breaks: number[] = [0];
+  for (let m; (m = CLAUSE_BREAK.exec(text)); ) breaks.push(m.index + m[0].length);
+  CLAUSE_BREAK.lastIndex = 0;
+
+  const finder = new RegExp(OUT_OF_SCOPE.source, "gi");
+  for (let m; (m = finder.exec(text)); ) {
+    const start = breaks.filter((b) => b <= m.index).pop() ?? 0;
+    if (!DECLINING.test(text.slice(start, m.index))) return true;
+  }
+  return false;
+}
+
+/**
  * Kate's tone rules, as code.
  *
  * These are graded differently from a price or an invented appointment, and
@@ -908,7 +947,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     if (PRICE.test(text)) {
       return { ok: false, reason: "quoted_a_price", detail: "free text quotes or implies a price; that is the estimator's job" };
     }
-    if (OUT_OF_SCOPE.test(text)) {
+    if (promisesOutOfScopeWork(text)) {
       const m = OUT_OF_SCOPE.exec(text);
       return { ok: false, reason: "out_of_scope_work", detail: `free text mentions "${m?.[0]}", which PPP does not do` };
     }
