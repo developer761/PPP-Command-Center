@@ -17,6 +17,7 @@
     "check:guide-pages": "node --loader ./scripts/app-module-loader.mjs scripts/check-guide-pagination.mjs",
     "check:receipt": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-receipt-path.mjs",
     "check:schema": "node scripts/check-schema-drift.mjs",
+    "check:delivery": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-delivery-flows.mjs",
     "check:form-seams": "node scripts/check-form-seams.mjs",
     "check:money": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-money-reconciles.mjs",
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
