@@ -30,6 +30,16 @@ rater to grade against.
 **What we need:** a RULES.csv that includes A45 and A46, or confirmation that
 the spec text is the final wording and we should create the rows ourselves.
 
+> **PARTLY CLOSED 2026-09-26.** The Iteration 1 Build Spec supplies **A46's
+> two approved strings verbatim**, described as "approved final text — build
+> against them byte for byte, straight apostrophes included". So A46 is no
+> longer blocked; only the rule ROW is missing from the CSV, which affects
+> the Rule Hub's "37 live rules" count, not the build.
+>
+> A45 is likewise fully specified in the spec, with delivery "deliberately
+> unspecified and not a blocker". Still blocked: nothing, for building.
+> Still needed: the two rows, so the Rule Hub shows 37 rather than 35.
+>
 > **Context from Hatch, 2026-09-26.** A46 is genuinely new — there is no AI
 > disclosure anywhere in Hatch's opener, prompt or FAQ. A45 ("pause/resume
 > calling") sits next to real voice features Hatch has and we do not: Call
@@ -237,7 +247,7 @@ without pricing risk.
 
 ---
 
-## 8. A44's cadence — the spec's rhythm, or Hatch's bespoke schedule?
+## 8. ~~A44's cadence~~ — ANSWERED by the Iteration 1 spec, 2026-09-26
 
 Found 2026-09-26 by reading Hatch's live campaign.
 
@@ -253,13 +263,18 @@ A44 is the second one. The Iteration 1 spec asks for **three follow-ups at 10
 AM / 3 PM / 6 PM customer-local**, which is neither: it is a regularised
 version of the campaign's times applied to the stall cadence.
 
-**What we need:** which behaviour she actually wants —
-- the spec's regular 10/3/6 rhythm, or
-- Hatch's one-attempt-after-5-hours stall rule, with the varied campaign
-  schedule kept separate?
-
-They produce noticeably different products. We have not built either yet, so
-this one genuinely is worth settling before we do.
+> **CLOSED.** The Iteration 1 Build Spec settles it: **three follow-ups at
+> 10 AM / 3 PM / 6 PM the customer's local time**, one a day, shifted by
+> A36's outbound hours, run as **a campaign of its own** — and explicitly:
+> "Not the campaign that already exists… leave those steps as they are."
+>
+> It also answers two things I had not asked: the ending change applies to
+> `schedule_follow_up` **only** (bailout keeps its closing line and gets its
+> own review against A17/A24), and **no closing line** goes to the customer
+> at the end — both current lines are removed rather than reworded.
+>
+> Hatch's "wait 5 hours / 1 attempt" is the OLD behaviour being replaced,
+> not a competing option. Nothing to ask.
 
 ---
 
