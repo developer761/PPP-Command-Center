@@ -622,10 +622,16 @@ export type RapportCheck = { ok: true } | { ok: false; why: string };
  * model does not. Running the reason check over templates would forbid the
  * exact sentence the rule requires.
  */
-export function checkTone(text: string, customerText?: string): RapportCheck {
+export function checkTone(text: string, customerText?: string, templateAsks = true): RapportCheck {
   // One question at a time. The template asks the question; rapport that also
   // asks one makes two, which is the rule Kate states first.
-  if (text.includes("?")) return { ok: false, why: "it asks a second question" };
+  //
+  // ONLY WHEN THE TEMPLATE ACTUALLY ASKS ONE. answer_question has no template
+  // — the model's sentence is the entire message — so a question there is the
+  // first, not the second, and dropping it leaves the customer's own question
+  // unanswered and the turn refused as question_left_unanswered. A22 is still
+  // enforced on the finished message by tooManyAsks either way.
+  if (templateAsks && text.includes("?")) return { ok: false, why: "it asks a second question" };
 
   for (const b of BANNED_STYLE) {
     if (b.re.test(text)) return { ok: false, why: `it uses ${b.why}` };
@@ -654,8 +660,8 @@ export function checkTone(text: string, customerText?: string): RapportCheck {
   return { ok: true };
 }
 
-export function checkRapport(text: string, customerText?: string): RapportCheck {
-  const tone = checkTone(text, customerText);
+export function checkRapport(text: string, customerText?: string, templateAsks = true): RapportCheck {
+  const tone = checkTone(text, customerText, templateAsks);
   if (!tone.ok) return tone;
 
   // A32: CUT THE REASON. The ask stands alone.
@@ -853,6 +859,14 @@ export type ValidateContext = {
   serviceArea?: "serviced" | "out_of_state" | "needs_a_person" | null;
   /** What the customer just said, so rapport can be checked for echoing it. */
   customerText?: string;
+  /**
+   * Does the template for a given intent already ask a question?
+   *
+   * A predicate rather than a flag, because the intent is not known until
+   * this function has parsed it. Supplied by the caller so the answer comes
+   * from the templates themselves and cannot drift from what is sent.
+   */
+  templateAsks?: (intent: string) => boolean;
   /** The customer reacted negatively to the previous message. */
   negativeReaction?: boolean;
   /** What we said last, so the same thing is not said straight back. */
@@ -1098,7 +1112,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   let rapport = text || undefined;
   let droppedRapport: string | undefined;
   if (rapport) {
-    const style = checkRapport(rapport, ctx.customerText);
+    const style = checkRapport(rapport, ctx.customerText, ctx.templateAsks?.(a.intent) ?? true);
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
   }
 

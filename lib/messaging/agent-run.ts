@@ -24,7 +24,8 @@ import { jobRoute, offsiteReasonFor } from "./offsite";
 import { availabilityGap } from "./availability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
-import { renderMessage, isSilent } from "./render";
+import { renderMessage, isSilent, templateAsks } from "./render";
+import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
 
 const MODEL = "claude-opus-5";
@@ -418,6 +419,8 @@ Choose the next action.`;
       // steps to keep in order.
       stage: track === "new_lead" ? opts.stage : undefined,
       customerText: ownWords,
+      // Whether the template for the chosen intent already asks something.
+      templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
       // The last thing WE said. Only meaningful when they reacted to it.
       lastIntent: opts.lastIntent,

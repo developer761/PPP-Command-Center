@@ -382,6 +382,40 @@ describe("validateAction — Kate's hard nos", () => {
   });
 });
 
+describe("a second question needs a first one", () => {
+  const asksNothing = () => false;   // e.g. answer_question: no template at all
+  const asksSomething = () => true;  // e.g. ask_address: the template asks
+
+  /**
+   * FOUND ON THE NURTURE TRACK: "does the price include the primer and prep
+   * work?" came back question_left_unanswered, because the model's answer was
+   * dropped for "asking a second question".
+   *
+   * There was no first question. answer_question has no template — the
+   * model's sentence IS the whole message — so the question in it is the only
+   * one there is. Dropping it left the customer's question unanswered and the
+   * turn refused, which is the rule firing on itself.
+   */
+  it("keeps an answer that ends in a question when nothing else asks one", () => {
+    const r = validateAction(
+      ok({ intent: "answer_question", freeText: "Yes, prep and primer are both included. Anything else you want covered?" }),
+      { customerText: "does the price include the primer and prep work?", templateAsks: asksNothing },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.action.freeText).toMatch(/included/);
+  });
+
+  /** And where the template DOES ask, rapport must still not add a second. */
+  it("still drops rapport that adds a question to a template that asks one", () => {
+    const r = validateAction(
+      ok({ intent: "ask_address", freeText: "Got it. Which one is it?" }),
+      { customerText: "we have two properties", templateAsks: asksSomething, stage: 1, knownFields: { inquiryScope: true } },
+    );
+    // Either refused outright or the rapport dropped — never sent with two.
+    if (r.ok) expect(r.action.freeText ?? "").not.toMatch(/\?/);
+  });
+});
+
 describe("A3 — asking is not collecting", () => {
   const asked = ["ask_project_details", "ask_address", "ask_contact", "ask_availability"];
   const ctx = (knownFields: Record<string, boolean>) => ({

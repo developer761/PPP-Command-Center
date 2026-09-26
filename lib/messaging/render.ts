@@ -562,6 +562,28 @@ const ASK_AVAILABILITY_GAP: Record<"window" | "day", string[]> = {
 const ASKED_FOR_A_CALL =
   /\b(?:call|llam\w*|telefone\w*)\b[^.?!]{0,24}\b(?:me|us|him|her|back|conmigo|me\s+llame)\b|\b(?:can|could|please|prefer|rather)\b[^.?!]{0,30}\b(?:call|speak|talk|phone)\b|\bhablar\s+por\s+tel[eé]fono\b|\bque\s+me\s+llamen\b/i;
 
+/**
+ * Does the TEMPLATE for this turn already ask something?
+ *
+ * The tone filter drops rapport containing "?" as "a second question". That
+ * is only true when the template asks the first one. answer_question has no
+ * template at all — the model's sentence IS the whole message — so a question
+ * in it is the only question there is, and dropping it left the customer's
+ * question unanswered and the turn refused.
+ *
+ * Seen on the nurture track: "does the price include the primer and prep
+ * work?" came back question_left_unanswered because the answer was dropped
+ * for asking a second question that did not exist.
+ *
+ * Read from the templates rather than from a list kept somewhere else, so it
+ * cannot drift from what is actually sent.
+ */
+export function templateAsks(intent: Intent, turn = 0): boolean {
+  const variants = SAYS[intent] ?? [""];
+  const pick = variants[turn % variants.length] ?? "";
+  return pick.includes("?");
+}
+
 export function renderMessage(input: RenderInput): string {
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
