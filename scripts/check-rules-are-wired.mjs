@@ -88,6 +88,34 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A44 — the stall cadence is queued, runs, and is reached by the cron",
+    why: "208 of 237 stalled conversations received NOTHING. A cadence nobody sweeps for reproduces that exactly, and the tick would still report ok",
+    links: [
+      ["lib/messaging/stalled.ts", /export function followUpSchedule/],
+      ["lib/messaging/stalled-db.ts", /export async function sweepStalled/],
+      // The cron is the only thing that runs it. Without this hop the sweep
+      // is a function nobody calls.
+      ["app/api/cron/messaging-tick/route.ts", /await sweepStalled\(/],
+      // And the scheduler has to know what to DO with a claimed row.
+      ["lib/messaging/scheduler.ts", /a\.action === "stall_followup"/],
+    ],
+  },
+  {
+    rule: "A45 — both signals reach the table, and resume fires off the third",
+    why: "the resume is keyed on stall_step, which the claim RPC returns only because it is RETURNS SETOF the table — if that ever becomes an explicit column list, onCadenceSpent silently never fires and nothing says so",
+    links: [
+      ["lib/messaging/call-signals.ts", /export function resumeAfterCadence/],
+      // pause, on the inbound path
+      ["lib/messaging/record-inbound.ts", /await pauseCallingFor\(/],
+      // resume, off the END of the cadence only
+      ["lib/messaging/scheduler.ts", /a\.stall_step === FOLLOW_UP_COUNT/],
+      ["lib/messaging/scheduler-db.ts", /async onCadenceSpent\(a\)/],
+      ["lib/messaging/stalled-db.ts", /export async function resumeCallingIfSpent/],
+      // THE HOP THAT WOULD FAIL SILENTLY: the claim must return every column.
+      ["supabase/migrations/183_sms_claim_due_actions.sql", /RETURNS SETOF public\.sms_scheduled_actions/],
+    ],
+  },
+  {
     rule: "A46 — the disclosure reaches the message, on the customer's clock",
     why: "approved final text that never gets prefixed is a rule that exists only in a constants file. And outOfHours resolved against the workspace would disclose to the wrong people every evening",
     links: [

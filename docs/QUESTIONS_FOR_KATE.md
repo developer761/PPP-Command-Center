@@ -8,6 +8,12 @@ shipped, chosen to be the safe or the conservative reading. Each entry says
 what we do today and what would change if she says otherwise, so she can
 answer fast and nothing has to wait on her.
 
+**Every question carries a recommendation.** Karan, 2026-09-26: each one
+should say what we think, not just what we are unsure about. So each item has
+a **→ Recommendation** line giving the answer we would pick and why. Where we
+have already shipped that answer, it says so — she is confirming a decision,
+not making one from scratch, which is faster for her and safer for us.
+
 Add to this file as more come up. Delete an item only once she has answered
 and the answer is in the code.
 
@@ -29,6 +35,11 @@ rater to grade against.
 
 **What we need:** a RULES.csv that includes A45 and A46, or confirmation that
 the spec text is the final wording and we should create the rows ourselves.
+
+**→ Recommendation:** send us the two rows. We are building A45 and A46 from
+the spec text either way, so nothing waits — but the Rule Hub's own acceptance
+criterion is "all 37 live rules are listed" and we can only show 35 until the
+rows exist. Two rows, and the screen matches the spec.
 
 > **PARTLY CLOSED 2026-09-26.** The Iteration 1 Build Spec supplies **A46's
 > two approved strings verbatim**, described as "approved final text — build
@@ -79,6 +90,11 @@ routing, so it wins on both counts — but it is a guess about which she meant.
 
 **If she says A3 wins:** "the tenants" starts routing onsite, and A6's
 never-treat-as-commercial list loses one word.
+
+**→ Recommendation:** keep A6. It is the more specific rule, it owns the
+routing, and Hatch's own prompt uses "tenant" residentially. If A3 is meant to
+win, the cheaper fix is deleting "the tenants" from A3's list rather than
+re-opening A6, because A6's sentence is doing real work elsewhere.
 
 > **Evidence from Hatch, 2026-09-26.** Its live prompt uses the word
 > residentially: *"waiting on my **spouse/tenant**"*, in the availability
@@ -137,6 +153,12 @@ own clock — only PPP's office window stands down.
 **If she means the stricter reading:** a customer texting at 8:30pm gets no
 answer until the next morning. One line changes, and four tests with it.
 
+**→ Recommendation:** confirm both as built. The customer-clock resolution is
+not optional — the old behaviour was a federal violation, not a preference —
+and reading A36 as governing contact PPP initiates keeps Karan's 2026-09-22
+after-hours decision intact. If she wants the stricter reading, that is a
+one-line change we will make on her word.
+
 ---
 
 ## 4. A25's corrective action contradicts her own later note · **stale column**
@@ -161,6 +183,11 @@ in.
 means something narrower than concealment (e.g. no carrier-visible system
 message) and the two are not actually in conflict.
 
+**→ Recommendation:** update the column. The rule card is dated and explicit
+and the corrective action is not, so the card is almost certainly current. We
+have built no concealment. This is a tidy-up so the rater does not grade
+against a line that contradicts the rule above it.
+
 ---
 
 ## 5. A40 — what to do when they park without naming a time
@@ -179,6 +206,14 @@ built, and this is the one decision inside it that is hers, not ours.
 
 **What we need:** a fallback interval, or a rule that says no-time parks are
 handed to a person rather than re-opened by the bot.
+
+**→ Recommendation:** three days, then one re-open, then treat it as a stall.
+Hatch simply ends with Schedule Follow Up and lets the cadence pick it up,
+which is a usable default — but it never comes back, which is the half the
+spec says has "never once happened". Three days is long enough not to nag
+somebody waiting on a spouse and short enough that the lead is still warm.
+**We have not built this and will not guess** — the spec says "do not pick
+one", so parking ships without the no-time branch until she answers.
 
 > **Hatch's answer, read 2026-09-26.** Its prompt already has A40 situation
 > (1) almost word for word — *"If the customer explicitly says they do not
@@ -222,6 +257,11 @@ sitting alongside them. Worth deciding the two together.
 Her wording turned into a sentence: say we cannot help, invite the correction,
 never point them at another company (A18).
 
+**→ Recommendation:** keep the discard line as it is, and REPLACE the
+bot_suspected one — A46 has already done that, since its approved in-hours
+string is now the answer to "are you a bot?". So this item is really just the
+discard line needing a nod.
+
 ---
 
 ## 7. A26 — is the photo ceiling still detection only?
@@ -244,6 +284,12 @@ photos"*.
 interpretation, and if so how far — naming the subject is a much smaller step
 than describing condition or implying scope, and only the first is safe
 without pricing risk.
+
+**→ Recommendation:** lift it to NAMING THE SUBJECT only — "looks like
+cabinets" — and nothing about condition, extent or price. That is what Karan
+asked for, it is a real improvement on "thanks, got the photos", and it cannot
+drift into quoting. Blocked on PPP's own open item: per-image billing has not
+been sized against volume, so detection ships first either way.
 
 ---
 
@@ -298,6 +344,11 @@ of the Spanish templates use. **They are mine, not approved.**
 **What we need:** her wording, or a nod to these. Swapping them is a
 two-line change.
 
+**→ Recommendation:** use ours unless she has a preference. They are faithful
+and in the usted register the rest of the Spanish templates use. The
+alternative — leaving Spanish speakers without a disclosure — is the one thing
+A46 forbids outright, so shipping ours beats waiting.
+
 ---
 
 ## 10. A44 — which closing lines come out?
@@ -323,6 +374,41 @@ stay, because removing them would silence A40 and A25 as well.
 
 **What we need:** confirmation that "both lines come out" means *at the end
 of a stalled cadence*, not *everywhere `schedule_follow_up` is used*.
+
+**→ Recommendation:** read it as the stall ending only. The cadence already
+ends with no customer-facing message, so we satisfy it either way; removing
+the templates outright would silence A40's park and A25's phone branch, where
+a line is correct and expected.
+
+---
+
+## 11. What does a stall follow-up actually say?
+
+A44 specifies the cadence exactly — three follow-ups, 10 AM / 3 PM / 6 PM
+customer-local — but supplies **no copy**. Hatch had named snippets for this
+("Follow-up Text #1/2/3", "Circling Back #1/2"), and the spec says the Hub
+cadence "replaces the manual follow-up chase Niro runs by hand today".
+
+Two ways to build it:
+
+- **(a) A template per step.** Predictable, reviewable, three fixed strings.
+  But it cannot mention what the conversation was actually about, so follow-up
+  #2 to someone who gave us their address reads the same as #2 to someone who
+  gave us nothing.
+- **(b) An agent turn using conversation memory.** The bot picks up at the
+  next outstanding thing — "still after that zip code when you get a chance" —
+  in the same constrained intent-and-template system everything else uses, so
+  it is not free text.
+
+**→ Recommendation: (b), and Karan agrees.** Conversation memory is capability
+one in the build order precisely because parking and stalling both "come back
+to a conversation later and have to remember it". A follow-up that has
+forgotten the conversation is the Hatch behaviour being replaced — it is the
+first of the three structural failures on the spec's own front page.
+
+**What we need:** a nod to (b), and whether the third follow-up should differ
+in tone from the first two, since it is the last one before the lead goes back
+to the phone team.
 
 ---
 

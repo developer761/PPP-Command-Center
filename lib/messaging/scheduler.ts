@@ -11,6 +11,7 @@
  */
 import type { E164 } from "./phone";
 import type { GateResult, GateWorkspace, SendRequest, GateDeps } from "./gate";
+import { FOLLOW_UP_COUNT } from "./stalled";
 
 /** After this many tries a row stops retrying and asks for a human. Five
  *  minute-ly attempts is enough to ride out a transient carrier blip; more
@@ -30,6 +31,8 @@ export type DueAction = {
   reply_intent?: string | null;
   reply_confidence?: number | null;
   answers_message_id?: string | null;
+  /** A44: which of the three stall follow-ups this is (1, 2 or 3). */
+  stall_step?: number | null;
 };
 
 export type ActionOutcome =
@@ -109,6 +112,16 @@ export type SchedulerDeps = {
    * since, send it through the gate otherwise, and file a draft if the gate
    * says no.
    */
+  /**
+   * A45: the cadence is spent. Fires ONLY off the third follow-up, and only
+   * from the branch that actually sent it — a cadence that was cancelled or
+   * refused never reached the customer, so handing the lead back would be
+   * claiming three attempts that did not happen.
+   *
+   * Optional, so every existing test and any worker that only drains campaign
+   * steps keeps working without supplying one.
+   */
+  onCadenceSpent?(a: DueAction): Promise<void>;
   sendHeldReply?(a: DueAction): Promise<
     | { kind: "sent"; providerId: string; body: string }
     | { kind: "drafted" }
@@ -243,6 +256,50 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
     const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
     await deps.reschedule(a, at, reason, "deferral");
     return { kind: "rescheduled", at, reason };
+  }
+
+  /**
+   * A44 — A STALL FOLLOW-UP IS AN AGENT TURN, NOT A TEMPLATE.
+   *
+   * Karan chose this on 2026-09-26, and it is the reason conversation memory
+   * is capability one in the build order: "parking and stalling both come
+   * back to a conversation later and have to remember it." A follow-up that
+   * has forgotten what was being discussed is the Hatch behaviour being
+   * replaced — the first of the three structural failures on the spec's own
+   * front page.
+   *
+   * So it runs the same constrained turn every reply runs: an intent plus a
+   * template, never free text. The only difference is what triggered it.
+   *
+   * It goes through `draftReply` exactly like agent_turn, which means the
+   * gate still decides whether it may go out, and A36's hours still bind —
+   * the run_at was computed inside them, but a workspace whose hours changed
+   * since should still be refused rather than sent late.
+   */
+  if (a.action === "stall_followup") {
+    if (!deps.draftReply) {
+      const reason = "this worker cannot run stall follow-ups";
+      await deps.cancel(a, reason);
+      return { kind: "cancelled", reason };
+    }
+    try {
+      const out = await deps.draftReply(a);
+      if (out.kind === "sent") {
+        await deps.markSent(a, out.providerId, out.body, "sms", out.intent);
+        // The LAST one hands the lead back to the phone team. A45's resume
+        // fires off the end of the cadence, and only from the end.
+        if (a.stall_step === FOLLOW_UP_COUNT) await deps.onCadenceSpent?.(a);
+        return { kind: "sent", providerId: out.providerId };
+      }
+      if (out.kind === "drafted") { await deps.markDone(a); return { kind: "drafted" }; }
+      if (out.kind === "held") { await deps.markDone(a); return { kind: "held", at: out.at }; }
+      await deps.cancel(a, out.reason);
+      return { kind: "cancelled", reason: out.reason };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      await deps.fail(a, reason);
+      return { kind: "failed", reason };
+    }
   }
 
   // An agent turn produces a REPLY, not a campaign step. While autosend is off

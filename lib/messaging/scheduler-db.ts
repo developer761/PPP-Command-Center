@@ -12,6 +12,8 @@ import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { sendingWindow } from "./sending-window";
+import { reportWarn } from "@/lib/observability";
+import { resumeCallingIfSpent } from "./stalled-db";
 import { customerZone } from "./customer-clock";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
@@ -71,6 +73,35 @@ export function schedulerDeps(): SchedulerDeps {
   const sb = messagingDb();
 
   return {
+    /**
+     * A45 — the cadence is spent, so hand the lead back to the phone team.
+     *
+     * Reached only from the branch that SENT the third follow-up. A cadence
+     * that was cancelled or refused never reached the customer, and claiming
+     * three attempts that did not happen would put the lead back on the
+     * phones having actually chased them once.
+     *
+     * Never throws into the scheduler: a signal that cannot be recorded must
+     * not fail the message that just went out. The call centre carries on as
+     * it was, which is the status quo rather than a new failure.
+     */
+    async onCadenceSpent(a) {
+      try {
+        const { data } = await sb.from("sms_conversations")
+          .select("sf_lead_id").eq("id", a.conversation_id).limit(1);
+        await resumeCallingIfSpent(sb, {
+          conversationId: a.conversation_id,
+          leadId: data?.[0]?.sf_lead_id ?? null,
+        });
+      } catch (err) {
+        reportWarn({
+          key: "call_signal_resume_failed", platform: "ppp_cc",
+          message: "could not record the resume-calling signal",
+          context: { conversationId: a.conversation_id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    },
+
     async claimDue(limit) {
       const { data, error } = await sb.rpc("sms_claim_due_actions", { p_limit: limit });
       if (error) throw new Error(`claim failed: ${error.message}`);

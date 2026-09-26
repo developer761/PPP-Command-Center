@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runDueActions } from "@/lib/messaging/scheduler";
+import { sweepStalled } from "@/lib/messaging/stalled-db";
 import { schedulerDeps, reclaimStale } from "@/lib/messaging/scheduler-db";
 import { reportError, reportWarn, reportInfo } from "@/lib/observability";
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
@@ -193,12 +194,43 @@ export async function GET(request: Request) {
     const reclaimed = await reclaimStale();
     const summary = await runDueActions(schedulerDeps());
 
+    /**
+     * A44 — QUEUE THE CADENCE FOR CONVERSATIONS THAT HAVE GONE QUIET.
+     *
+     * After the due actions, not before: a conversation that gets a reply
+     * this same tick is no longer stalled, and sweeping first would queue
+     * three follow-ups we would immediately have to cancel.
+     *
+     * In its own try. The baseline this beats is 208 of 237 stalled
+     * conversations receiving NOTHING, so a sweep that throws must not also
+     * take down the replies that were about to go out.
+     *
+     * Idempotent by construction — the unique index on
+     * (conversation_id, stall_step) means running it every minute cannot
+     * chase anybody twice.
+     */
+    let stalls: Awaited<ReturnType<typeof sweepStalled>> | { error: string } | null = null;
+    try {
+      stalls = await sweepStalled(messagingDb());
+      if (stalls.queued > 0) {
+        reportWarn({
+          key: "stall_cadence_queued", platform: "ppp_cc",
+          message: `${stalls.queued} stalled conversation(s) entered the follow-up cadence`,
+          // Flattened: the warn context takes scalars, and `skipped` is a map.
+          context: { scanned: stalls.scanned, queued: stalls.queued, skipped: JSON.stringify(stalls.skipped) },
+        });
+      }
+    } catch (err) {
+      stalls = { error: err instanceof Error ? err.message : String(err) };
+      reportError({ key: "stall_sweep_failed", platform: "ppp_cc", message: `stall sweep: ${stalls.error}` });
+    }
+
     // Assert on VOLUME, not just errors. A tick that processed nothing and a
     // tick where everything failed must not look alike to whatever is watching.
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
-    return NextResponse.json({ ok: true, reclaimed, ...summary, leads, exits, writeback, zips });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, stalls, leads, exits, writeback, zips });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });

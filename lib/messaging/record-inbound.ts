@@ -22,6 +22,7 @@ import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { customerZone } from "./customer-clock";
+import { pauseCallingFor } from "./stalled-db";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 import { trackForWorkspace } from "./track";
@@ -350,6 +351,41 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         ? { state: "ended", outcome: "discard", ended_at: new Date().toISOString() }
         : {}),
     }).eq("id", conversationId);
+
+    /**
+     * A45 — THE CUSTOMER REPLIED, SO STOP DIALLING THEM.
+     *
+     * "While a customer is actively in conversation with the Hub, the phone
+     * team is not dialling them — nobody is worked on two channels at once."
+     *
+     * One per conversation, not one per reply: the unique index answers that,
+     * so four messages arriving at once still produce one signal. A duplicate
+     * comes back false rather than throwing, because a duplicate is the
+     * constraint working.
+     *
+     * Never on an opt-out. Somebody who said STOP is suppressed, and handing
+     * the call centre a "they are in conversation" signal about them would be
+     * exactly wrong.
+     */
+    if (decision.keyword !== "opt_out") {
+      try {
+        const { data: c } = await sb.from("sms_conversations")
+          .select("sf_lead_id").eq("id", conversationId).limit(1);
+        await pauseCallingFor(sb, {
+          conversationId,
+          leadId: c?.[0]?.sf_lead_id ?? null,
+        });
+      } catch (e) {
+        // A signal that cannot be recorded must never break recording the
+        // customer's message. The call centre keeps dialling, which is the
+        // status quo rather than a new failure.
+        reportWarn({
+          key: "call_signal_pause_failed", platform: "ppp_cc",
+          message: "could not record the pause-calling signal",
+          context: { conversationId, error: e instanceof Error ? e.message : String(e) },
+        });
+      }
+    }
   }
 
   return { conversationId, unknownNumber: !ws?.id, isNew };
