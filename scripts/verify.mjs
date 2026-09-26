@@ -77,6 +77,12 @@ step("unit", "npx vitest run", {
   blind: "the database, the network, the rendered page",
 });
 
+step("rules are wired", "node scripts/check-rules-are-wired.mjs", {
+  catches:
+    "a correct rule with no consumer — A7's offsiteReason was computed and never passed, so a live critical rule never once fired. Proved on 2026-09-26: unwiring A25's callback leaves tsc green and all 5,289 unit tests passing",
+  blind: "whether the rule is RIGHT. It only checks that the value reaches the far end",
+});
+
 step("form fields", "node scripts/check-duplicate-form-fields.mjs", {
   catches:
     "one form field rendered twice across a phone/desktop layout swap — the hidden copy overwrote a Gusto cost Mary typed on her phone",

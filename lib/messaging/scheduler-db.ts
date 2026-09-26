@@ -395,6 +395,15 @@ export function schedulerDeps(): SchedulerDeps {
         serviceArea: service?.outcome ?? null,
         zip: (conv as { customer_zip?: string | null }).customer_zip ?? null,
         stateName: service?.outcome === "out_of_state" ? service.state : null,
+        // A25's phone branch. Kate, 2026-09-18: "Ending without capturing
+        // when to call is the defect" — so a call request only hands over
+        // once we hold a time, and asks for one when we do not. Read from
+        // the conversation because it is A44's stated constraint, which does
+        // not expire and does not need repeating.
+        callback: {
+          unreachableStartHour:
+            (conv as { unreachable_start_hour?: number | null }).unreachable_start_hour ?? null,
+        },
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
           // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were

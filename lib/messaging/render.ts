@@ -24,6 +24,8 @@ import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
+import { ASKED_FOR_A_CALL } from "./customer-asks";
+import { phoneBranch } from "./channel-preference";
 import type { Language } from "./language";
 
 /** Intents that END the conversation without sending anything. Sending a
@@ -524,6 +526,20 @@ export type RenderInput = {
   /** Which conversation this is. A few turns read differently once a quote
    *  has already been sent. See SAYS_NURTURE. */
   track?: "new_lead" | "nurture";
+  /**
+   * A25's phone branch: when to call, if we already know.
+   *
+   * Kate, 2026-09-18: "the bot must GATHER THEIR CALLBACK TIME PREFERENCE
+   * FIRST if it does not already have it. Ending without capturing when to
+   * call is the defect." So a call request with neither of these asks when
+   * before it promises anything.
+   */
+  callback?: {
+    /** From A44's reachability parser — "I'm at work until 5". */
+    unreachableStartHour?: number | null;
+    /** Availability already captured on the record. */
+    availability?: string | null;
+  };
 };
 
 /**
@@ -586,15 +602,8 @@ const ASK_AVAILABILITY_GAP: Record<"window" | "day", string[]> = {
   ],
 };
 
-/**
- * A customer asking to be phoned, in their own words.
- *
- * Deliberately narrow: "call" has to be aimed at US calling THEM. "I'll call
- * you tomorrow" and "call it a day" are not requests, and "give us a call"
- * on our own literature is not either.
- */
-const ASKED_FOR_A_CALL =
-  /\b(?:call|llam\w*|telefone\w*)\b[^.?!]{0,24}\b(?:me|us|him|her|back|conmigo|me\s+llame)\b|\b(?:can|could|please|prefer|rather)\b[^.?!]{0,30}\b(?:call|speak|talk|phone)\b|\bhablar\s+por\s+tel[eé]fono\b|\bque\s+me\s+llamen\b/i;
+// ASKED_FOR_A_CALL moved to customer-asks.ts: channel-preference.ts needs
+// the same question and importing render.ts from there would be a cycle.
 
 /**
  * Does the TEMPLATE for this turn already ask something?
@@ -730,6 +739,34 @@ export function renderMessage(input: RenderInput): string {
    */
   if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
     const es = input.language === "es";
+
+    /**
+     * A25 — CAPTURE WHEN TO CALL BEFORE ENDING.
+     *
+     * Kate, 2026-09-18: "The bot cannot make a call, so a customer who wants
+     * to speak is handed to a human — and the bot must GATHER THEIR CALLBACK
+     * TIME PREFERENCE FIRST if it does not already have it. Ending without
+     * capturing when to call is the defect."
+     *
+     * Before this the template promised a call and stopped, so a person
+     * picking the conversation up had a phone number and no idea when to use
+     * it. Asked only when we hold neither a stated reachability constraint
+     * nor captured availability — asking somebody who already told us would
+     * be an A11 redundant ask.
+     */
+    if (phoneBranch(input.callback ?? {}) === "ask_callback_time") {
+      const asks = es
+        ? [
+            "Claro que sí. ¿A qué hora le viene bien que lo llamemos?",
+            "Por supuesto. ¿Cuál es el mejor momento para llamarle?",
+          ]
+        : [
+            "No problem at all. What's a good time to reach you?",
+            "Of course. When's the best time to give you a call?",
+          ];
+      return asks[(input.turn ?? 0) % asks.length];
+    }
+
     const variants = es
       ? [
           "Claro que sí. Le pido a alguien de la oficina que lo llame.",

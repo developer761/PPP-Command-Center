@@ -22,6 +22,7 @@ import { quoteCustomer, UNTRUSTED_NOTE } from "./untrusted";
 import { addressGap } from "./address";
 import { jobRoute, offsiteReasonFor } from "./offsite";
 import { availabilityGap } from "./availability";
+import { statedConstraint } from "./reachability";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent, templateAsks } from "./render";
@@ -327,6 +328,14 @@ export async function runAgentTurn(
     /** Kate's Class A rules, already rendered by forPrompt. A string, so the
      *  type that carries her rater-only guidance can never arrive here. */
     classARules?: string;
+    /**
+     * A25's phone branch: when we may call them, if we already know.
+     *
+     * Kate, 2026-09-18: "Ending without capturing when to call is the
+     * defect." Supplied by the caller from the conversation row, because
+     * reading it needs a database and this stays testable without one.
+     */
+    callback?: { unreachableStartHour?: number | null; availability?: string | null };
   } = {}
 ): Promise<RunResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -492,6 +501,13 @@ Choose the next action.`;
       // who opened in Spanish and then replies "ok" is still owed Spanish.
       language,
       track,
+      // A25: lets the phone branch tell "hand over now" from "ask when
+      // first". Falls back to whatever the customer just said, so a caller
+      // with no conversation row still gets the constraint they stated in
+      // this very message rather than being asked all over again.
+      callback: opts.callback ?? {
+        unreachableStartHour: statedConstraint(ownWords)?.startHour ?? null,
+      },
     };
     const rendered = renderMessage(renderInput);
 

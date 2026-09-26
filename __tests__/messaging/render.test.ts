@@ -337,17 +337,41 @@ describe("rendering an intent into words", () => {
    * later on", which is another text. The one thing they asked for was the
    * one thing it did not say.
    */
+  const ASKED_TO_BE_CALLED = [
+    "please have someone call me",
+    "can someone just call me instead? I'd rather talk than text",
+    "could I speak to someone on the phone",
+    "call me back please",
+  ];
+
   it("promises a call when a call is what they asked for", () => {
-    for (const t of [
-      "please have someone call me",
-      "can someone just call me instead? I'd rather talk than text",
-      "could I speak to someone on the phone",
-      "call me back please",
-    ]) {
-      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+    for (const t of ASKED_TO_BE_CALLED) {
+      // A25's phone branch may only promise once we know WHEN to call, so
+      // this case supplies a callback time. The branch that does not is the
+      // test below.
+      const out = renderMessage({
+        intent: "schedule_follow_up", turn: 0, customerText: t,
+        callback: { availability: "weekday mornings" },
+      });
       expect(out, t).toMatch(/call you|give you a call/i);
       // Still no time named: nothing here knows the schedule.
       expect(out, t).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b|tomorrow|monday/i);
+    }
+  });
+
+  /**
+   * A25, Kate 2026-09-18: "the bot must GATHER THEIR CALLBACK TIME PREFERENCE
+   * FIRST if it does not already have it. Ending without capturing when to
+   * call is the defect."
+   *
+   * Before this the bot promised a call and stopped, so whoever picked the
+   * conversation up had a phone number and no idea when to use it.
+   */
+  it("asks WHEN to call before promising one, when we hold no callback time", () => {
+    for (const t of ASKED_TO_BE_CALLED) {
+      const out = renderMessage({ intent: "schedule_follow_up", turn: 0, customerText: t });
+      expect(out, t).toMatch(/\?$/);
+      expect(out, t).toMatch(/good time|best time/i);
     }
   });
 

@@ -219,7 +219,7 @@ export const INTENT_GUIDE: Record<string, string> = {
 
   // Handing over and ending
   escalate: "you are not sure, or it needs a person for any other reason",
-  transferred: "hand straight to the office. Use this for a text-only preference, a request to meet at the office, or a language we cannot write. NOT for Spanish: we answer Spanish ourselves now (A30), so transferring a Spanish speaker is a defect",
+  transferred: "hand straight to the office. Use this for a request to meet at the office, or a language we cannot write. NOT for Spanish: we answer Spanish ourselves now (A30), so transferring a Spanish speaker is a defect. NOT for a text-only preference either: A25 says somebody who asks to be texted rather than called should keep being TEXTED, and handing them off is the defect that rule exists to stop",
   schedule_follow_up: "they asked to be CALLED, or to be contacted later. Stop texting and end here",
   bot_suspected: "they asked whether they are talking to a bot or a person",
   phone_pricing: "they want to talk money on the phone",
