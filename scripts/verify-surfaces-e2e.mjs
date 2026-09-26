@@ -169,5 +169,76 @@ for (const r of live) {
 }
 ok("and every rule's own count matches", ruleOff === 0, `${live.length} rules checked`);
 
+/* ── 5. Kate's shipped corpus, against the numbers the spec quotes ────── */
+
+/**
+ * THE SPEC QUOTES BASELINES. THEY HAVE TO STILL BE TRUE.
+ *
+ * The Iteration 1 Build Spec states figures as acceptance criteria — "A13
+ * opens to 192 defects and 77 good turns", "A44 carries 117 defects and 0
+ * good turns", "A35 carries none of either". Those are computed on KATE'S
+ * CORPUS: the 2,806 findings over 999 conversations imported 2026-09-24.
+ *
+ * `sms_example_findings` holds 3,002 findings over 1,055 conversations,
+ * because three earlier batches (2026-09-15, -16 and -22) added 196 findings
+ * from 56 OTHER conversations. Checked on 2026-09-26: those 56 do not overlap
+ * Kate's 999 at all, so they are extra conversations rather than a double
+ * import — nothing to clean up, but they must not be counted when the
+ * question being asked is "does this match what Kate shipped?".
+ *
+ * A13 is the only rule in the spec's list that appears in both, which is why
+ * it is the only one where the screen (206/107) and the spec (192/77)
+ * disagree. Scoped to Kate's batch every figure matches exactly, which is
+ * what proves the import faithful.
+ *
+ * Pinned here so a re-import, a stray insert or a changed `kind` mapping
+ * fails loudly instead of quietly moving a number the spec is written
+ * against.
+ */
+const findingsAll = [];
+for (let page = 0; ; page++) {
+  const { data, error } = await sb.from("sms_example_findings")
+    .select("code, kind, created_at, example_id").order("id").range(page * 1000, page * 1000 + 999);
+  if (error) throw new Error(error.message);
+  if (!data.length) break;
+  findingsAll.push(...data);
+  if (data.length < 1000) break;
+}
+const KATE_BATCH = "2026-09-24";
+const kate = findingsAll.filter((f) => (f.created_at ?? "").startsWith(KATE_BATCH));
+
+measured("findings in Kate's shipped batch", kate.length, 2000);
+ok("Kate's batch is the corpus the spec quotes: 999 conversations",
+   new Set(kate.map((f) => f.example_id)).size === 999,
+   `${new Set(kate.map((f) => f.example_id)).size}`);
+
+const tally = (code) => ({
+  d: kate.filter((f) => f.code === code && f.kind !== "did_well").length,
+  g: kate.filter((f) => f.code === code && f.kind === "did_well").length,
+});
+for (const [code, wantD, wantG] of [
+  ["A13", 192, 77],   // the spec's worked example
+  ["A44", 117, 0],    // a degenerate shape the spec names
+  ["A40", 3, 61],
+  ["A35", 0, 0],      // never exercised — must render, not error
+  ["A45", 0, 0],      // Hatch had no such capability
+]) {
+  const t = tally(code);
+  ok(`${code} matches the spec's baseline`, t.d === wantD && t.g === wantG,
+     `spec ${wantD}/${wantG} · Kate's batch ${t.d}/${t.g}`);
+}
+
+/**
+ * AND THE SCREEN KNOWS IT IS SHOWING MORE THAN THAT.
+ *
+ * Not a failure — the extra conversations are real. It is reported so nobody
+ * reads a screen figure as the spec's figure. The Rule Hub has no corpus
+ * filter yet; when it gets one, this is the number it should default to.
+ */
+const extra = findingsAll.length - kate.length;
+console.log(`  i  the rules screen counts ${findingsAll.length} findings over ` +
+  `${new Set(findingsAll.map((f) => f.example_id)).size} conversations — ` +
+  `${extra} more than Kate's corpus, from ${new Set(findingsAll.filter((f) => !(f.created_at ?? "").startsWith(KATE_BATCH)).map((f) => f.example_id)).size} other conversations`);
+
 console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 process.exit(fail === 0 ? 0 : 1);
