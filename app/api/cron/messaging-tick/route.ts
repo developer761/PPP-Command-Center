@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runDueActions } from "@/lib/messaging/scheduler";
 import { sweepStalled } from "@/lib/messaging/stalled-db";
+import { sweepUnrated } from "@/lib/messaging/rater-db";
 import { schedulerDeps, reclaimStale } from "@/lib/messaging/scheduler-db";
 import { reportError, reportWarn, reportInfo } from "@/lib/observability";
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
@@ -241,6 +242,33 @@ export async function GET(request: Request) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
     /**
+     * THE AUTO-RATER. Spec: "Every Hub conversation is rated as it finishes,
+     * so review starts from a rating instead of from nothing."
+     *
+     * Capped per tick because every rating is a model call — see
+     * RATINGS_PER_TICK. Off entirely without an API key, and off behind
+     * AUTO_RATER_DISABLED so it can be stopped without a deploy.
+     *
+     * In its own try, like the others: rating is bookkeeping, and a rater
+     * that throws must never take down the replies that were about to go out.
+     */
+    let ratings: Awaited<ReturnType<typeof sweepUnrated>> | { error: string } | null = null;
+    if (process.env.AUTO_RATER_DISABLED !== "true" && process.env.ANTHROPIC_API_KEY) {
+      try {
+        ratings = await sweepUnrated(messagingDb());
+        if (ratings.failed > 0) {
+          reportError({
+            key: "auto_rater_failed", platform: "ppp_cc",
+            message: `${ratings.failed} conversation(s) could not be rated — ${JSON.stringify(ratings.skipped)}`,
+          });
+        }
+      } catch (err) {
+        ratings = { error: err instanceof Error ? err.message : String(err) };
+        reportError({ key: "auto_rater_threw", platform: "ppp_cc", message: `auto-rater: ${ratings.error}` });
+      }
+    }
+
+    /**
      * A HEARTBEAT, BECAUSE "NOTHING HAPPENED" AND "NOTHING RAN" LOOK ALIKE.
      *
      * With no active campaigns and an empty queue, a tick running every
@@ -269,12 +297,14 @@ export async function GET(request: Request) {
         // Recorded in the heartbeat too: "queued 0, failed 3" is a very
         // different state from "queued 0", and only one of them is fine.
         stallsFailed: stalls && !("error" in stalls) ? stalls.failed : null,
+        rated: ratings && !("error" in ratings) ? ratings.rated : null,
+        ratingsFailed: ratings && !("error" in ratings) ? ratings.failed : null,
       }, null);
     } catch (err) {
       console.warn("[cron/messaging-tick] heartbeat write failed:", err);
     }
 
-    return NextResponse.json({ ok: true, reclaimed, ...summary, stalls, leads, exits, writeback, zips });
+    return NextResponse.json({ ok: true, reclaimed, ...summary, stalls, ratings, leads, exits, writeback, zips });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ ok: false, error: "tick_failed" }, { status: 500 });
