@@ -15,7 +15,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { runAction } from "../lib/messaging/scheduler.ts";
 import { schedulerDeps } from "../lib/messaging/scheduler-db.ts";
-import { withinQuietHours } from "../lib/messaging/compliance.ts";
+import { withinQuietHours, FEDERAL_BOUND } from "../lib/messaging/compliance.ts";
 import { clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
 
 if (process.env.SMS_LIVE_SENDING === "true") {
@@ -103,7 +103,24 @@ try {
   const body = "Thanks! What is the street address for the project?";
   const heldA = await holdReply(a.convId, a.msgId, body);
   ok("a held reply is accepted", !!heldA.id);
-  const open = withinQuietHours(new Date(), ws.time_zone, { startHour: ws.quiet_hours_start, endHour: ws.quiet_hours_end });
+  /**
+   * THE FEDERAL WINDOW, NOT THE WORKSPACE'S.
+   *
+   * A held reply always answers an inbound — that is what answers_message_id
+   * means — so gatedSend is called with answersInbound and the workspace's
+   * narrower hours give way to the federal 8am-9pm bound. It is what lets a
+   * reply reach somebody who texted at half past eight.
+   *
+   * This branched on the WORKSPACE hours (9-20 here), so between 8pm and 9pm
+   * local it expected a draft and correctly got a send. One hour every
+   * evening where a green suite would go red for no reason, which nobody
+   * would have believed a second time.
+   *
+   * Caught the first evening the suppression list existed: until then the
+   * port rail refused every send, so this branch never sent anything and the
+   * assertion was never tested.
+   */
+  const open = withinQuietHours(new Date(), ws.time_zone, FEDERAL_BOUND);
   const outA = await runAction(heldA, schedulerDeps());
   if (open) {
     ok("it is sent through the real gate", outA.kind === "sent", JSON.stringify(outA));

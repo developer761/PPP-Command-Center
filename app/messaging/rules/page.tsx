@@ -68,16 +68,23 @@ export default async function RulesPage() {
                     critical
                   </span>
                 )}
-                <span className="text-[13.5px] font-medium text-ppp-charcoal leading-snug">
-                  {r.shortName ?? r.statement}
-                </span>
-              </div>
-
-              {r.shortName && (
-                <p className="mt-1 text-[12.5px] text-ppp-charcoal-500 leading-relaxed line-clamp-2">
+                {/* THE STATEMENT IS THE TITLE, because it is the rule.
+                    short_name is a CATEGORY, not a name: "Tone",
+                    "Disposition", "Misc Awkward", "Intent". Twelve of the 35
+                    live rules share one with another rule, so titling by it
+                    put two different rules called "Tone" and two called
+                    "Disposition" on this screen, while rules with no category
+                    were correctly titled by their statement. Same list, two
+                    kinds of heading, and the duplicates named nothing. */}
+                <span className="text-[13.5px] font-medium text-ppp-charcoal leading-snug line-clamp-2">
                   {r.statement}
-                </p>
-              )}
+                </span>
+                {r.shortName && (
+                  <span className="shrink-0 rounded-full bg-ppp-charcoal-50 px-2 py-0.5 text-[10px] font-medium text-ppp-charcoal-500">
+                    {r.shortName}
+                  </span>
+                )}
+              </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] font-mono">
                 {/* The number worth acting on comes first and is the only one
