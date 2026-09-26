@@ -60,6 +60,13 @@ try {
 
 const noEnv = { reason: "no .env.local", ...{} };
 
+/** One probe, so the server-dependent step can skip instead of failing. */
+let serverUp = false;
+try {
+  const res = await fetch("http://localhost:3000/", { signal: AbortSignal.timeout(2500) });
+  serverUp = !!res;
+} catch { serverUp = false; }
+
 step("types", "npx tsc --noEmit", {
   catches: "signature drift, missing fields, bad imports",
   blind: "anything the database or the browser decides — a CHECK constraint is invisible here",
@@ -80,6 +87,99 @@ step("db enums", "node scripts/check-db-enums.mjs", {
   catches: "a picker offering a value Postgres rejects — this once left a table with zero rows for months",
   blind: "everything else about the database",
   skipIf: Object.assign(() => !existsSync(".env.local"), noEnv),
+});
+
+/**
+ * THIRTEEN CHECKS THAT EXISTED AND THE GATE NEVER RAN.
+ *
+ * Every one of these was written for a bug that had already happened, and
+ * every one was reachable only by somebody remembering to type it. Twelve
+ * passed the moment they were run. A check nobody runs is a comment.
+ *
+ * Ordered cheapest first, so a static mistake fails before anything pays for
+ * a round trip to the database.
+ */
+const ENV = Object.assign(() => !existsSync(".env.local"), noEnv);
+
+step("schema drift", "node scripts/check-schema-drift.mjs", {
+  catches: "a migration in the repo that the live database does not have, and the reverse",
+  blind: "whether the schema it agrees on is the RIGHT one",
+});
+
+step("form seams", "node scripts/check-form-seams.mjs", {
+  catches: "a form field the action that reads it does not accept — the seam between them",
+  blind: "what the action does with a field once it has it",
+});
+
+step("soft-delete uniques", "node scripts/check-soft-delete-uniques.mjs", {
+  catches: "a unique index that counts soft-deleted rows, so deleting and recreating fails",
+  blind: "every other kind of index",
+});
+
+step("selected columns", "node --env-file=.env.local scripts/check-selected-columns.mjs", {
+  catches: "a .select() naming a column the table does not have",
+  blind: "a column that exists and holds the wrong thing",
+  skipIf: ENV,
+});
+
+step("report folders", "node --env-file=.env.local scripts/check-report-folders.mjs", {
+  catches: "a report filed under a folder nothing renders",
+  blind: "whether the report itself is right",
+  skipIf: ENV,
+});
+
+step("upload limit", "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/check-upload-limit.mjs", {
+  catches: "an upload ceiling the storage bucket will not actually accept",
+  blind: "what happens to a file once it is in",
+  skipIf: ENV,
+});
+
+step("salesforce fields", "node scripts/check-sf-fields.mjs", {
+  catches: "a field this code reads that Salesforce does not expose",
+  blind: "the VALUES in those fields",
+});
+
+step("salesforce picklists", "node --import ./scripts/ts-resolve-register.mjs scripts/check-sf-picklists.mjs", {
+  catches: "a picklist value Salesforce will reject on write",
+  blind: "anything not a picklist",
+});
+
+step("money reconciles", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-money-reconciles.mjs", {
+  catches: "the four money measures disagreeing with each other on real rows",
+  blind: "whether the figures match what Square actually settled",
+  skipIf: ENV,
+});
+
+step("delivery flows", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-delivery-flows.mjs", {
+  catches: "a document flow that cannot reach its recipient",
+  blind: "whether the recipient reads it",
+  skipIf: ENV,
+});
+
+step("one-off flow", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-one-off-flow.mjs", {
+  catches: "the one-off job path breaking end to end",
+  blind: "the recurring path",
+  skipIf: ENV,
+});
+
+step("receipt path", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-receipt-path.mjs", {
+  catches: "a receipt that cannot be produced for a real payment",
+  blind: "what the receipt says",
+  skipIf: ENV,
+});
+
+/**
+ * NEEDS A DEV SERVER, so it is skipped rather than failed when none is up.
+ * It passed here only because one happened to be running, which is the sort
+ * of pass that teaches people to trust a check that was not looking.
+ */
+step("tour targets", "node scripts/check-tour-targets.mjs", {
+  catches: "a walkthrough step pointing at an element that is not on the page it opens",
+  blind: "everything about the page except that one element being present",
+  skipIf: Object.assign(
+    () => !serverUp,
+    { reason: "no dev server on localhost:3000" },
+  ),
 });
 
 if (full) {
