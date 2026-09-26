@@ -103,6 +103,10 @@ export async function sweepStalled(
     const zone = customerZone({ phone: c.customer_phone }).timeZone;
     const at = followUpSchedule({
       from: new Date(c.last_message_at ?? now.toISOString()),
+      // A conversation that has been quiet for weeks still gets its cadence
+      // from TODAY. Without this the three instants are all historical, land
+      // immediately due, and go out together on the next tick.
+      notBefore: now,
       customerZone: zone,
       officeZone: opts.officeZoneFor?.(c.workspace_id),
       unreachable: c.unreachable_start_hour === null ? null : {

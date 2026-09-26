@@ -136,6 +136,49 @@ describe("A44 — three follow-ups at 10, 3 and 6 on the CUSTOMER's clock", () =
   });
 });
 
+describe("A44 — a long-dead conversation is chased from TODAY, not from when it died", () => {
+  /**
+   * THE DEFECT THIS CAUGHT, before it reached anybody.
+   *
+   * Dry-running the sweep against production on 2026-09-26 found six live
+   * conversations that had gone quiet twenty-five days earlier. "The day
+   * after it went quiet" was the 1st of September, so all nine follow-ups
+   * came out dated in the past — immediately due, claimed on the next tick,
+   * and three agent turns per conversation would have gone out back to back
+   * in one minute. The feature would have looked like it was working.
+   */
+  const quietLongAgo = new Date("2026-09-01T20:00:00Z");
+  const today = new Date("2026-09-26T14:00:00Z");
+
+  it("puts every follow-up in the future", () => {
+    const s = followUpSchedule({ from: quietLongAgo, customerZone: NY, notBefore: today });
+    expect(s).toHaveLength(3);
+    for (const at of s) expect(at.getTime()).toBeGreaterThan(today.getTime());
+  });
+
+  it("and still spreads them one a day", () => {
+    const s = followUpSchedule({ from: quietLongAgo, customerZone: NY, notBefore: today });
+    const days = s.map((d) => new Intl.DateTimeFormat("en-CA", { timeZone: NY, day: "2-digit" }).format(d));
+    expect(new Set(days).size).toBe(3);
+    expect(s.map((d) => hourIn(d, NY))).toEqual([...FOLLOW_UP_HOURS]);
+  });
+
+  it("without notBefore it still produces the past dates, so the guard is doing the work", () => {
+    // Proves the fix is the thing keeping them in the future, rather than
+    // some other property of these inputs.
+    const s = followUpSchedule({ from: quietLongAgo, customerZone: NY });
+    expect(s.every((at) => at.getTime() < today.getTime())).toBe(true);
+  });
+
+  it("leaves a conversation that just went quiet alone", () => {
+    // notBefore is earlier than from, so the anchor is unchanged.
+    const justNow = new Date("2026-09-28T20:00:00Z");
+    const a = followUpSchedule({ from: justNow, customerZone: NY });
+    const b = followUpSchedule({ from: justNow, customerZone: NY, notBefore: new Date("2026-09-28T10:00:00Z") });
+    expect(b.map((d) => d.toISOString())).toEqual(a.map((d) => d.toISOString()));
+  });
+});
+
 describe("A44 — shiftIntoWindow looks backwards before forwards", () => {
   it("leaves an already-allowed instant alone", () => {
     const at = new Date("2026-09-29T15:00:00Z");      // 11am ET

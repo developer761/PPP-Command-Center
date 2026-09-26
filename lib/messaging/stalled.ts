@@ -174,10 +174,31 @@ export function followUpSchedule(input: {
   customerZone: string;
   officeZone?: string;
   unreachable?: UnreachableWindow | null;
+  /**
+   * THE CADENCE RUNS FORWARD FROM HERE, WHATEVER `from` SAYS.
+   *
+   * Caught on 2026-09-26 by dry-running the sweep against production before
+   * the deploy landed. Six live conversations had gone quiet twenty-five days
+   * earlier, so "the day after it went quiet" was the 1st of September — and
+   * all NINE follow-ups came out dated in the past. Every one would have been
+   * immediately due, the scheduler would have claimed them on the next tick,
+   * and three agent turns per conversation would have gone out back to back
+   * in a single minute. Exactly what "one a day" exists to prevent, and it
+   * would have looked like the feature working.
+   *
+   * `from` still anchors the LOCAL DAY so a conversation that went quiet this
+   * afternoon is not chased this evening. This only stops the anchor being
+   * historical. Defaults to `from`, which is the old behaviour, so a caller
+   * that genuinely wants a backdated cadence can still ask for one.
+   */
+  notBefore?: Date;
 }): Date[] {
+  const anchor = input.notBefore && input.notBefore.getTime() > input.from.getTime()
+    ? input.notBefore
+    : input.from;
   const out: Date[] = [];
   for (let day = 1; day <= FOLLOW_UP_COUNT; day++) {
-    const target = atLocalHour(input.from, input.customerZone, day, FOLLOW_UP_HOURS[day - 1]);
+    const target = atLocalHour(anchor, input.customerZone, day, FOLLOW_UP_HOURS[day - 1]);
     if (!target) continue;
     const placed = shiftIntoWindow({
       target, customerZone: input.customerZone,
