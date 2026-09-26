@@ -386,6 +386,45 @@ describe("rendering an intent into words", () => {
     expect(renderMessage({ intent: "defer_to_estimator", turn: 0, track: "new_lead" })).toMatch(/what days/i);
   });
 
+  /**
+   * THE SAME SENTENCE TWICE.
+   *
+   * Nine of the thirty templates share four or more words in a row with the
+   * rapport a model naturally writes for that turn, and several are exact:
+   * "Got it, thank you." in front of a template that says "Got it, thank
+   * you.", "Let me get someone from our team on this." in front of "Let me
+   * get one of our team on this."
+   *
+   * The old check only fired on a BARE acknowledgement in front of a template
+   * that opened with one, so everything substantive went straight through.
+   */
+  it("does not send the same sentence twice", () => {
+    const twice = [
+      { intent: "escalate", freeText: "Let me get someone from our team on this." },
+      { intent: "acknowledge", freeText: "Got it, thank you." },
+      { intent: "success", freeText: "Someone from the office will reach out to you." },
+    ] as const;
+    for (const t of twice) {
+      const out = renderMessage({ ...t, turn: 0 });
+      /**
+       * Counted, not position-checked. acknowledge's template IS "Got it,
+       * thank you.", so the output correctly STARTS with those words even
+       * though the rapport was dropped — asserting on the start called a
+       * working case a failure.
+       */
+      const first = t.freeText.split(/\s+/).slice(0, 4).join(" ").toLowerCase();
+      const hits = out.toLowerCase().split(first).length - 1;
+      expect(hits, `${t.intent} said it ${hits} times: ${out}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("still keeps rapport that says something the template does not", () => {
+    expect(renderMessage({ intent: "ask_address", turn: 0, freeText: "Kitchen cabinets, got it." }))
+      .toContain("Kitchen cabinets");
+    expect(renderMessage({ intent: "answer_question", turn: 0, freeText: "Yes, we do cabinet refinishing." }))
+      .toContain("cabinet refinishing");
+  });
+
   /** Every template, on its own, must already satisfy the rule. */
   it("has no template that asks for too much by itself", () => {
     for (const intent of ALL) {

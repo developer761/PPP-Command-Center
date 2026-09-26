@@ -550,7 +550,7 @@ const BANNED_STYLE: { re: RegExp; why: string }[] = [
 ];
 
 /** Longest run of words appearing verbatim in both strings. */
-function longestSharedRun(a: string, b: string): number {
+export function longestSharedRun(a: string, b: string): number {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
   const x = norm(a), y = norm(b);
   if (!x.length || !y.length) return 0;

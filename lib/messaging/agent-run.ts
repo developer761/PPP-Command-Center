@@ -249,7 +249,21 @@ function actionTool(track: Track): Anthropic.Tool {
       freeText: {
         type: "string",
         description:
-          "Short rapport only, or empty. Never a price, never a specific time, never a commitment.",
+          "Short rapport only, or empty. Never a price, never a specific time, never a commitment. "
+          // THE SYSTEM WRITES THE REST OF THE MESSAGE. Nine of the thirty
+          // templates share a stock phrase with the rapport a model naturally
+          // writes, and one seen live said the same thing twice in
+          // consecutive sentences: "I'll have the estimator confirm exactly
+          // what's included. The estimator will confirm that with you
+          // directly." The verbatim case is dropped by rapportIsRedundant; a
+          // paraphrase like that one can only be stopped here, because the
+          // remedy after the fact is deleting the half that carried the
+          // answer.
+          + "A sentence is added after yours that asks the next question and names "
+          + "who follows up, so do not ask a question, do not say an estimator or "
+          + "the office will be in touch, and do not repeat what you are about to "
+          + "be followed by. Add only what that sentence will not say: the answer "
+          + "to what they asked, or nothing at all.",
       },
       confidence: {
         type: "number",

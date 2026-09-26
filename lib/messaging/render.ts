@@ -19,7 +19,7 @@
  * better." Selection is deterministic on the turn number rather than random —
  * same conversation, same words, so a regression test can assert output.
  */
-import { BARE_ACKNOWLEDGEMENT, type Intent , mentionsWorkWeDoNotDo } from "./agent-output";
+import { BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
@@ -415,10 +415,41 @@ const OPENS_WITH_ACKNOWLEDGEMENT =
  * treating it as one let the bot ignore a direct question while appearing to
  * respond.
  */
+/**
+ * How much verbatim overlap makes the rapport a repeat of the template.
+ *
+ * Four words. Measured against the rapport the model actually writes for
+ * these turns: nine of the thirty intents have a template that shares four
+ * or more words in a row with a stock opener, and several are exact —
+ * "Got it, thank you." in front of a template that says "Got it, thank you.",
+ * and "Let me get someone from our team on this." in front of "Let me get one
+ * of our team on this."
+ *
+ * One below the customer-echo threshold on purpose. Repeating OUR OWN
+ * sentence back to back in one message is more obviously wrong than sharing a
+ * phrase with something the customer said, and costs only a warmer opener.
+ */
+const TEMPLATE_ECHO_WORDS = 4;
+
 export function rapportIsRedundant(rapport: string, template: string): boolean {
-  if (!rapport.trim()) return true;
-  if (!BARE_ACKNOWLEDGEMENT.test(rapport.trim())) return false;
-  return OPENS_WITH_ACKNOWLEDGEMENT.test(template.trim());
+  const said = rapport.trim();
+  if (!said) return true;
+  // A bare acknowledgement in front of a template that already opens with one.
+  if (BARE_ACKNOWLEDGEMENT.test(said) && OPENS_WITH_ACKNOWLEDGEMENT.test(template.trim())) return true;
+
+  /**
+   * AND THE SUBSTANTIVE CASE, WHICH THIS USED TO MISS ENTIRELY.
+   *
+   * The old test only ever fired on a bare "Got it". Seen in the simulator on
+   * the nurture track: "I'll have the estimator confirm exactly what's
+   * included." glued to "The estimator will confirm that with you directly."
+   * Neither half is an acknowledgement, so nothing caught it, and the
+   * customer was told the same thing twice in consecutive sentences.
+   *
+   * The template wins, because it is the part that goes on to ask the next
+   * question and the part nobody can accidentally change.
+   */
+  return longestSharedRun(said, template) >= TEMPLATE_ECHO_WORDS;
 }
 
 /**
