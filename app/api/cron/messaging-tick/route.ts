@@ -230,6 +230,37 @@ export async function GET(request: Request) {
     if (summary.failed > 0) {
       reportWarn({ key: "messaging_tick_actions_failed", platform: "ppp_cc", message: `${summary.failed} scheduled action(s) failed`, context: summary });
     }
+    /**
+     * A HEARTBEAT, BECAUSE "NOTHING HAPPENED" AND "NOTHING RAN" LOOK ALIKE.
+     *
+     * With no active campaigns and an empty queue, a tick running every
+     * minute and correctly doing nothing leaves exactly the same trace in the
+     * database as a tick that never fired: none. On 2026-09-26 the only place
+     * that could answer "is this alive?" was Vercel's cron panel, and I got
+     * the answer wrong twice before looking at it.
+     *
+     * Written on EVERY run including the empty ones — an empty run is the
+     * thing this exists to make visible. Reuses commercial_settings rather
+     * than adding a table, the same way commercial-daily does, so there is
+     * one heartbeat mechanism rather than two.
+     *
+     * Never fails the tick over its own bookkeeping.
+     */
+    try {
+      const { setCommercialSetting } = await import("@/lib/commercial/settings");
+      await setCommercialSetting("messaging_tick_last_run", {
+        at: new Date().toISOString(),
+        reclaimed,
+        claimed: summary.claimed,
+        drafted: summary.drafted,
+        sent: summary.sent,
+        failed: summary.failed,
+        stallsQueued: stalls && !("error" in stalls) ? stalls.queued : null,
+      }, null);
+    } catch (err) {
+      console.warn("[cron/messaging-tick] heartbeat write failed:", err);
+    }
+
     return NextResponse.json({ ok: true, reclaimed, ...summary, stalls, leads, exits, writeback, zips });
   } catch (err) {
     reportError({ key: "messaging_tick_failed", platform: "ppp_cc", message: err instanceof Error ? err.message : String(err) });

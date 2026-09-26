@@ -193,5 +193,36 @@ ok("measured something: instants the window called open", openCount >= 1, `${ope
 ok("NOTHING the window permits falls outside the federal 8am-9pm on the customer's clock",
    violations === 0, `${violations} violations across ${openCount} permitted instants`);
 
+/* ── Is the scheduler actually alive? ─────────────────────────────────── */
+
+/**
+ * EVERY RULE ABOVE IS MOOT IF THE TICK NEVER RUNS.
+ *
+ * A44's cadence, held replies and campaign steps all reach the customer
+ * through /api/cron/messaging-tick. With no active campaigns the queue stays
+ * empty whether that fires every minute or never fires at all — so on
+ * 2026-09-26 nothing in the database could tell the two apart, and I gave
+ * Karan the wrong answer twice before looking at Vercel's cron panel.
+ *
+ * The tick now writes a heartbeat on EVERY run, including the empty ones.
+ * Reported rather than failed: a stale heartbeat on a local run just means
+ * production has not ticked since the last deploy, which is not a defect in
+ * the code this script is checking.
+ */
+try {
+  const { data: hb } = await sb.from("commercial_settings")
+    .select("value").eq("key", "messaging_tick_last_run").maybeSingle();
+  const at = hb?.value?.at ?? null;
+  if (!at) {
+    console.log(`  –  the messaging tick has NOT written a heartbeat yet. Either it has not run since the heartbeat shipped, or it is not running at all — check Vercel's Cron Jobs panel, which is the other place that answers this.`);
+  } else {
+    const mins = Math.round((Date.now() - Date.parse(at)) / 60000);
+    const fresh = mins <= 10;
+    console.log(`  ${fresh ? "✓" : "i"}  messaging tick last ran ${mins} min ago${fresh ? "" : " — stale; it runs every minute in production, so anything over ~10 min means it is not firing"}`);
+  }
+} catch (e) {
+  console.log(`  –  could not read the tick heartbeat: ${e.message.slice(0, 80)}`);
+}
+
 console.log(`\n${fail === 0 ? "ALL PASS" : "FAILURES"} — ${pass + fail} checks\n`);
 process.exit(fail === 0 ? 0 : 1);

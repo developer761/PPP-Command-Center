@@ -212,7 +212,23 @@ export async function readinessChecks() {
     sb.from("sms_sub_accounts").select("phone_e164").eq("is_active", true),
   ]);
   const missingNumbers = (numbered ?? []).filter((w) => !w.phone_e164).length;
+  /**
+   * IS THE TICK ALIVE?
+   *
+   * cronSecret being set says it COULD run; this says it DID. With no active
+   * campaigns the queue stays empty either way, so every other figure on this
+   * screen is identical whether the cron fires every minute or never fires at
+   * all. Written by the tick on every run, including the ones that do nothing.
+   */
+  let tickLastRun: string | null = null;
+  try {
+    const { getCommercialSetting } = await import("@/lib/commercial/settings");
+    const hb = await getCommercialSetting<{ at?: string } | null>("messaging_tick_last_run", null);
+    tickLastRun = hb?.at ?? null;
+  } catch { tickLastRun = null; }
+
   return {
+    tickLastRun,
     optOuts: (optOutPhones ?? 0) + (optOutEmails ?? 0),
     optOutPhones: optOutPhones ?? 0,
     optOutEmails: optOutEmails ?? 0,
