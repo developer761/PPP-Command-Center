@@ -133,7 +133,7 @@ export async function rateConversation(
 /* ────────────────────────  Running it for real  ──────────────────────── */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { scrubContacts } from "./class-a-rules";
+import { scrub, residualPii } from "./pii";
 import { RATER_SCHEMA } from "./rater";
 
 const RATER_MODEL = "claude-opus-5";
@@ -219,14 +219,34 @@ export async function sweepUnrated(
        * PII IS STRIPPED BEFORE THE TRANSCRIPT IS STORED OR SENT.
        *
        * 184's own column comment: "PII must be stripped before any of this
-       * reaches a model." scrubContacts is the same function Kate's rule
-       * import uses, so there is one definition of what a phone number and
-       * an address look like rather than two that drift.
+       * reaches a model."
+       *
+       * USES pii.scrub, NOT scrubContacts. The first version used the latter,
+       * which is Kate's rule-import scrubber and only handles phones and
+       * emails — so the first four live ratings stored customer ADDRESSES in
+       * their transcripts, and verify:pii caught it within the hour. There
+       * were two scrubbers and I reached for the weaker one; pii.ts is the
+       * one written for exactly this job, and it covers names, addresses,
+       * zips, phones and emails.
        */
-      const scrubbed = turns.map((t) => ({ ...t, text: scrubContacts(t.text) ?? t.text }));
+      const scrubbed = turns.map((t) => ({ ...t, text: scrub(t.text).text }));
       const transcript = scrubbed
         .map((t) => `[turn ${t.ordinal}] ${t.role === "bot" ? "BOT" : "CUSTOMER"}: ${t.text}`)
         .join("\n");
+
+      /**
+       * AND CHECK, rather than trust the scrubber.
+       *
+       * A transcript that still carries personal data must not be stored or
+       * sent, whatever the scrubber thought. Counted as a failure so it is
+       * visible rather than quietly skipped.
+       */
+      const residual = residualPii(transcript);
+      if (residual.length) {
+        note(`residual PII after scrubbing: ${residual.join(", ")}`);
+        failed++;
+        continue;
+      }
 
       const { data: ex, error: exErr } = await sb.from("sms_training_examples").insert({
         source: "live",
