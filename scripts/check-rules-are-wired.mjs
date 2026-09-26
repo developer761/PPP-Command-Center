@@ -108,6 +108,12 @@ const CHAINS = [
       ["app/api/cron/messaging-tick/route.ts", /await sweepStalled\(/],
       // And the scheduler has to know what to DO with a claimed row.
       ["lib/messaging/scheduler.ts", /a\.action === "stall_followup"/],
+      // THE CARVE-OUT THAT MAKES THE FOLLOW-UP PRODUCE ANYTHING.
+      // draftReply skips when the latest inbound is already answered, which
+      // is ALWAYS true of a stalled conversation — the last turn is ours by
+      // definition. Without this, all three follow-ups fire and all three
+      // skip, and the tick reports a clean run.
+      ["lib/messaging/scheduler-db.ts", /!isStallFollowUp && latestInboundIsAnswered/],
     ],
   },
   {

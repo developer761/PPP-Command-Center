@@ -259,7 +259,22 @@ export function schedulerDeps(): SchedulerDeps {
       // because releasing to 'awaiting_customer' neither re-queues nor cancels.
       // Without this the bot answers a message a person answered an hour ago,
       // and the slice below strips their reply out of the transcript first.
-      if (latestInboundIsAnswered(msgs ?? [])) {
+      /**
+       * A44's FOLLOW-UP IS THE ONE TURN THAT MAY SPEAK AFTER OURSELVES.
+       *
+       * This guard is right for an ordinary agent_turn: do not answer a
+       * message somebody already answered. But a STALLED conversation is
+       * defined by the last turn being ours — so the latest inbound is always
+       * answered, and without this carve-out every stall follow-up skips with
+       * "somebody has already answered the customer".
+       *
+       * Caught on 2026-09-26 before the first cadence fired. It would have
+       * queued nine rows, run them all, skipped all nine, and reported a
+       * healthy tick — the same silent-nothing as the constraint bug an hour
+       * earlier, and just as invisible.
+       */
+      const isStallFollowUp = a.action === "stall_followup";
+      if (!isStallFollowUp && latestInboundIsAnswered(msgs ?? [])) {
         return { kind: "skipped" as const, reason: "somebody has already answered the customer" };
       }
 
@@ -270,7 +285,7 @@ export function schedulerDeps(): SchedulerDeps {
       const { data: held } = await sb.from("sms_scheduled_actions")
         .select("id, answers_message_id")
         .eq("conversation_id", conv.id).eq("action", "send_reply").in("state", ["pending", "claimed"]);
-      if ((held ?? []).some((h) => h.answers_message_id === lastInbound.id)) {
+      if (!isStallFollowUp && (held ?? []).some((h) => h.answers_message_id === lastInbound.id)) {
         return { kind: "skipped" as const, reason: "a reply to the latest message is already on its way" };
       }
       const stale = (held ?? []).map((h) => h.id);
