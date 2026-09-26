@@ -90,15 +90,24 @@ saying "3 works" could be read as 3 AM by anything downstream.
 We have no detection for this. Without it the bot can be pulled into a loop
 where it asks for availability and the customer keeps asking back.
 
-### ❌ 6. Multiple properties, one at a time
+### ⚠️ 6. Multiple properties — GUARDED 2026-09-26, not fully tracked
 
 > "Multiple properties: gather info for each property one at a time. Complete
 > the full flow for the first, then repeat for the next. Contact info can be
 > reused if it applies to both."
 
-Nothing in our flow handles a second property. Our stage machine assumes one
-job per conversation. **This is the largest structural gap on the list** and
-is not a template change.
+**BUILT:** the bot notices a second property, may ask for its address without
+tripping the A13 held-field guard, and **cannot close as `success`** while a
+property it was told about has no address.
+
+**NOT BUILT:** per-property state. The record holds one address and one scope,
+so "which of the two is this zip for" is not answerable from the schema. Doing
+it properly needs a properties table and a stage machine that knows which one
+it is on — a schema change, and an Iteration 2 shape.
+
+That split is deliberate. The failure prevented is the expensive one: closing
+a two-property job having collected one, which is lost silently because the
+conversation looks complete. Asking twice is merely untidy.
 
 ### ✅ 7. The returning-customer carve-out — BUILT 2026-09-26
 

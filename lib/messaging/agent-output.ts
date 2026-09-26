@@ -20,6 +20,7 @@ import type { AddressGap } from "./address";
 import type { JobRoute } from "./offsite";
 import { parkKind, isAsk, conversationWasDeferred } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
+import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -289,7 +290,8 @@ export type RejectReason =
   | "details_never_collected"
   | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
   | "parked_a_field_then_quit"    // A40 (1): ended having gathered nothing
-  | "availability_stand_off";     // they asked US for times twice; no calendar to answer with
+  | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
+  | "second_property_uncollected";// closing a two-property job having collected one
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -850,6 +852,11 @@ export type ValidateContext = {
    * the latest message alone cannot answer this.
    */
   customerMessages?: readonly string[];
+  /**
+   * Every address the conversation has collected, for the multi-property
+   * check. One entry is the ordinary case.
+   */
+  addressesHeld?: readonly (string | null | undefined)[];
   /** Below this the action escalates instead of sending. */
   confidenceThreshold?: number;
   /** Which vocabulary applies. Defaults to new_lead, which is what every
@@ -976,6 +983,31 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // THE OFF-SITE PATH DOES NOT RELEASE THIS. "Even when an off-site quote is
   // suggested or required, you must still collect Project Details, Full
   // Address and Contact Information."
+  /**
+   * A SECOND PROPERTY IS A SECOND JOB, AND CLOSING LOSES IT SILENTLY.
+   *
+   * Hatch: "Multiple properties: gather info for each property one at a
+   * time. Complete the full flow for the first, then repeat for the next."
+   *
+   * Our flow is linear and the record holds one address, so nothing stopped
+   * the bot finishing a two-property conversation having collected one. The
+   * conversation then LOOKS complete, which is exactly why nobody goes
+   * looking for the second job.
+   *
+   * Only `success`. A deferral or a decline may close over it, because the
+   * customer has said something that ends the collection obligation.
+   */
+  if (a.intent === "success" && ctx.customerMessages) {
+    const said = [...ctx.customerMessages, ctx.customerText ?? ""].filter(Boolean);
+    if (secondPropertyOutstanding({ customerMessages: said, addressesHeld: ctx.addressesHeld ?? [] })) {
+      return {
+        ok: false, reason: "second_property_uncollected",
+        detail: "they mentioned more than one property and only one address is held — " +
+          "a second property is a second job, and closing here loses it without anybody noticing",
+      };
+    }
+  }
+
   /**
    * THEY HAVE ASKED US FOR OUR TIMES TWICE — STOP ASKING BACK.
    *
@@ -1153,7 +1185,21 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     // address, so the ask survives here and the renderer narrows it to the
     // gap. Only a complete address supersedes the ask.
     const partial = a.intent === "ask_address" && ctx.addressGap != null && ctx.addressGap !== undefined;
-    if (!partial) {
+    /**
+     * AND A SECOND PROPERTY IS NOT A REDUNDANT ASK.
+     *
+     * Hatch: "Complete the full flow for the first, then repeat for the
+     * next." Holding one address is the whole point of asking for the
+     * second, so the guard that normally stops an A13 nag is the guard that
+     * would stop the second property being collected at all.
+     *
+     * Deliberately narrow: only ask_address, and only where the customer has
+     * actually said there is another place. A second CONTACT is never
+     * carved out — "contact info can be reused if it applies to both".
+     */
+    const secondProperty = a.intent === "ask_address"
+      && threadMentionsSecondProperty([...(ctx.customerMessages ?? []), ctx.customerText ?? ""]);
+    if (!partial && !secondProperty) {
       const names = supersededBy.join(" and ");
       return {
         ok: false, reason: "unknown_intent",

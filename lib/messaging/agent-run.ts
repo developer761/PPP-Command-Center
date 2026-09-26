@@ -457,6 +457,10 @@ Choose the next action.`;
       // still stops the bot pressing this turn. The whole thread, because a
       // park does not have to be repeated to still be true.
       customerMessages: history.filter((t) => t.role === "customer").map((t) => t.text),
+      // Parity gap 6: every address the conversation holds, so `success`
+      // cannot close over a second property the customer told us about.
+      // One entry is the ordinary case.
+      addressesHeld: kf.address ? [kf.address] : [],
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",

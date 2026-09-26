@@ -201,6 +201,17 @@ const CHAINS = [
     ],
   },
   {
+    rule: "Parity 6 — a second property cannot be closed over",
+    why: "a second property is a second JOB, lost silently because the conversation looks complete. The guard needs addressesHeld threaded from agent-run or it can never fire",
+    links: [
+      ["lib/messaging/multi-property.ts", /export function secondPropertyOutstanding/],
+      ["lib/messaging/agent-output.ts", /reason: "second_property_uncollected"/],
+      ["lib/messaging/agent-run.ts", /addressesHeld: kf\.address/],
+      // and asking for the second address must not trip the A13 guard
+      ["lib/messaging/agent-output.ts", /const secondProperty = a\.intent === "ask_address"/],
+    ],
+  },
+  {
     rule: "A15 — a requested time is held, never confirmed",
     why: "the likeliest A15 breach in the system. A customer says 'Tuesday at 2?' and the natural reply confirms it, inventing an appointment nobody booked. The validator refuses that; this is the right thing to say instead, and a parser nothing calls leaves the model choosing again",
     links: [
