@@ -31,10 +31,27 @@
 -- may share submittal_number 1 as long as they are different revisions of it;
 -- two rows may never share both.
 --
--- Dropped by COLUMNS rather than by name. The name here is short enough not to
--- be truncated, but `IF EXISTS` on a name that turns out not to match is a
--- SILENT no-op, and this repo has already shipped one migration that reported
--- success while the constraint it meant to drop went on enforcing.
+-- HOW THE OLD INDEX IS DROPPED
+--
+-- Two ways, belt and braces, and neither compares arrays.
+--
+-- The first cut matched the index by aggregating its column names and
+-- comparing to array['opportunity_id','submittal_number']. `pg_attribute.attname`
+-- is of type `name`, so that aggregate is `name[]` and Postgres refused it:
+--
+--     ERROR: 42883: operator does not exist: name[] = text[]
+--
+-- 1. BY NAME. Safe here because 041 names this index explicitly and the name is
+--    38 characters — well under the 63 at which Postgres truncates. The earlier
+--    lesson about never dropping by a guessed name applies to names Postgres
+--    GENERATES, which is not this.
+--
+-- 2. BY DEFINITION, as a net for any environment where it was created under a
+--    different name. `pg_get_indexdef` renders the column list at the end of
+--    the statement, so a plain LIKE on that ending is enough — no casts, no
+--    array comparison, and the new three-column index cannot match it.
+
+drop index if exists public.commercial_opp_submittals_opp_num_uniq;
 
 do $$
 declare
@@ -49,12 +66,7 @@ begin
      where n.nspname = 'public'
        and t.relname = 'commercial_opp_submittals'
        and x.indisunique
-       and (
-         select array_agg(a.attname order by a.attname)
-           from unnest(x.indkey) as k(attnum)
-           join pg_attribute a
-             on a.attrelid = t.oid and a.attnum = k.attnum
-       ) = array['opportunity_id','submittal_number']
+       and pg_get_indexdef(x.indexrelid) like '%(opportunity_id, submittal_number)'
   loop
     execute format('drop index if exists public.%I', ix.idxname);
     raise notice 'dropped unique index % on (opportunity_id, submittal_number)', ix.idxname;
@@ -65,6 +77,4 @@ create unique index if not exists commercial_opp_submittals_opp_num_rev_uniq
   on public.commercial_opp_submittals (opportunity_id, submittal_number, revision_number);
 
 comment on index public.commercial_opp_submittals_opp_num_rev_uniq is
-  'One row per package REVISION. A revision deliberately reuses its parent''s '
-  'submittal_number (the GC keeps the package ID), so revision_number has to be '
-  'part of the key or "+ Create revision" collides with its own parent.';
+  'One row per package REVISION. A revision reuses its parent submittal_number (the GC keeps the package ID), so revision_number has to be part of the key or Create revision collides with its own parent.';

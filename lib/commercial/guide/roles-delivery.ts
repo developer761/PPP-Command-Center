@@ -350,7 +350,7 @@ export const STEPHANIE: RoleGuide = {
             { label: "Mark as sent to GC", does: "Records that it has gone. It does NOT email the GC — you send the PDF." },
             { label: "Mark received by GC", does: "Moves it from Submitted to Under Review." },
             { label: "Record approved as submitted", does: "Their answer, recorded. There are four: approved as submitted, approved as noted, revise & resubmit, rejected." },
-            { label: "+ Create revision", does: "After a revise or reject — starts the next round, numbered Rev 2." },
+            { label: "+ Create revision", does: "After a revise or reject — starts the next round. It keeps the package number and adds Rev 1, so SUB-002 becomes SUB-002 Rev 1. The items come across so you do not retype them; the attachments do not, because a revision usually has a new PDF." },
             { label: "Close submittal", does: "Ends it once approved." },
             { label: "Void submittal", does: "Kills one raised in error." },
           ],
