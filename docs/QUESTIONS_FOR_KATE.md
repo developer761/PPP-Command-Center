@@ -470,6 +470,26 @@ to the phone team.
 
 ---
 
+## 12. Two rules carry a date with no change type · **data fix, not a question**
+
+`A28` and `A38` both have `Last modified = 2026-09-11` and an empty
+`Change type` in the shipped export.
+
+The spec says these two are written together: *"Last modified and Change type
+are written together by the same call on every edit to rule text, so they
+cannot disagree."* In the export, twice, they do.
+
+**What we do today:** the Rule Hub drops **both** halves for those two rules,
+which is the *"or neither"* the criterion allows. A date with no change type
+cannot say whether a rated batch went stale, so showing it alone would invite
+somebody to read a meaning that is not there.
+
+**→ Recommendation:** fill in the change type for A28 and A38 in the next
+export and they will start showing their stamp. Nothing is broken meanwhile;
+those two simply show no date.
+
+---
+
 ## Separately, for Katie (not Kate)
 
 - **A25's call-cadence write.** Both no-call branches ask for the customer to

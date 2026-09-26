@@ -77,6 +77,12 @@ step("unit", "npx vitest run", {
   blind: "the database, the network, the rendered page",
 });
 
+step("iteration 1 acceptance", "npm run verify:iteration-1 --silent", {
+  catches:
+    "a capability that is built and tested but is not what the SPEC ASKED FOR. Every check quotes the DONE WHEN line it is checking, so a disagreement between the quote and the code means the code is wrong",
+  blind: "anything the spec does not state as an acceptance criterion",
+});
+
 step("lint budget", "node scripts/check-lint-budget.mjs", {
   catches:
     "a NEW lint error. 153 errors sat outside the gate for months, neither enforced nor acknowledged; 48 were mechanical and are fixed, the rest are counted per rule so a new one cannot hide among them",

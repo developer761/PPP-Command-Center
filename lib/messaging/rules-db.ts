@@ -37,6 +37,16 @@ type FindingRow = {
   example_id: string;
 };
 
+/**
+ * Both halves of the change stamp, or neither. See the note at its use.
+ */
+function stampOrNothing(lastModified: string | null, changeType: string | null): {
+  lastModified: string | null; changeType: string | null;
+} {
+  if (!lastModified || !changeType) return { lastModified: null, changeType: null };
+  return { lastModified, changeType };
+}
+
 const asRule = (r: Record<string, unknown>): ClassARule & { shortName: string | null } => ({
   code: r.code as string,
   statement: r.statement as string,
@@ -48,8 +58,23 @@ const asRule = (r: Record<string, unknown>): ClassARule & { shortName: string | 
   binds: r.binds !== false,
   source: (r.source as string | null) ?? null,
   measuredBreaches: (r.measured_breaches as string | null) ?? null,
-  changeType: (r.change_type as string | null) ?? null,
-  lastModified: (r.last_modified as string | null) ?? null,
+  /**
+   * THE STAMP IS BOTH HALVES OR NEITHER.
+   *
+   * Spec: "Render both the date and the change type, or neither. Last
+   * modified and Change type are written together by the same call on every
+   * edit to rule text, so they cannot disagree. The stamp is not decoration:
+   * BINDING is what tells us which rated batches have gone stale under a rule
+   * change, and it means nothing without its date."
+   *
+   * In Kate's shipped export they DO disagree, twice: A28 and A38 carry a
+   * last_modified of 2026-09-11 and no change_type. A date with no change
+   * type cannot say whether a batch went stale, so showing it invites
+   * somebody to read a meaning that is not there. Both halves are dropped
+   * together, which is the "or neither" the criterion allows, and the two
+   * rows are logged for Kate.
+   */
+  ...stampOrNothing(r.last_modified as string | null, r.change_type as string | null),
   lastReRated: (r.last_re_rated as string | null) ?? null,
   shortName: (r.short_name as string | null) ?? null,
 });
