@@ -338,7 +338,8 @@ export async function ChangeOrdersPanel({
                 project?" She was already in the right place; what was missing
                 was anyone telling her the shape of the job. Spell it out. */}
             <p>
-              <strong className="text-ppp-charcoal-700">How it works:</strong> add it below &rarr; send it to the GC for written approval &rarr; record their answer. It only counts toward the contract sum once it&rsquo;s approved, and then it bills on its own invoice.
+              <strong className="text-ppp-charcoal-700">How it works:</strong>{" "}
+              add it below &rarr; send it to the GC for written approval &rarr; record their answer. It only counts toward the contract sum once it&rsquo;s approved, and then it bills on its own invoice.
             </p>
           </div>
         )}
