@@ -455,6 +455,9 @@ export function schedulerDeps(): SchedulerDeps {
           unreachableStartHour:
             (conv as { unreachable_start_hour?: number | null }).unreachable_start_hour ?? null,
         },
+        // Their zone, for the week-aware availability ask and anything else
+        // that needs to know what day it is where they are.
+        customerZone: customerZone({ phone: conv.customer_phone }).timeZone,
         // A46: out of hours ON THE CUSTOMER'S OWN CLOCK, not the workspace's.
         // Same function the gate uses, so the disclosure and the send window
         // can never disagree about whether we are open.

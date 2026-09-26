@@ -188,6 +188,19 @@ const CHAINS = [
     ],
   },
   {
+    rule: "Parity 1/5/7 — week-aware ask, stand-off, returning customer",
+    why: "the week-aware ask needs the CUSTOMER's zone threaded from the scheduler; without it every ask silently falls back to the generic wording and looks fine",
+    links: [
+      ["lib/messaging/availability-ask.ts", /export function weekToOffer/],
+      ["lib/messaging/render.ts", /weekToOffer\(input\.now, input\.customerZone\)/],
+      // the hop that would fail silently
+      ["lib/messaging/agent-run.ts", /customerZone: opts\.customerZone/],
+      ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
+      ["lib/messaging/agent-output.ts", /reason: "availability_stand_off"/],
+      ["lib/messaging/render.ts", /returningCustomerDeclining\(input\.customerText\)/],
+    ],
+  },
+  {
     rule: "A15 — a requested time is held, never confirmed",
     why: "the likeliest A15 breach in the system. A customer says 'Tuesday at 2?' and the natural reply confirms it, inventing an appointment nobody booked. The validator refuses that; this is the right thing to say instead, and a parser nothing calls leaves the model choosing again",
     links: [

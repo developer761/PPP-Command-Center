@@ -19,6 +19,7 @@
 import type { AddressGap } from "./address";
 import type { JobRoute } from "./offsite";
 import { parkKind, isAsk, conversationWasDeferred } from "./parking";
+import { isAvailabilityStandOff } from "./availability-ask";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -287,7 +288,8 @@ export type RejectReason =
   | "question_left_unanswered"
   | "details_never_collected"
   | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
-  | "parked_a_field_then_quit";   // A40 (1): ended having gathered nothing
+  | "parked_a_field_then_quit"    // A40 (1): ended having gathered nothing
+  | "availability_stand_off";     // they asked US for times twice; no calendar to answer with
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -974,6 +976,31 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // THE OFF-SITE PATH DOES NOT RELEASE THIS. "Even when an off-site quote is
   // suggested or required, you must still collect Project Details, Full
   // Address and Contact Information."
+  /**
+   * THEY HAVE ASKED US FOR OUR TIMES TWICE — STOP ASKING BACK.
+   *
+   * Hatch: "If they insist on knowing our availability before providing
+   * theirs, End: Schedule Follow Up."
+   *
+   * Without this the question goes back and forth: we ask when suits them,
+   * they ask what we have, we ask again. The bot CANNOT answer — it has no
+   * calendar, and A15 forbids inventing one — so asking a third time is the
+   * bot losing an argument it cannot win. A person calls with real times.
+   *
+   * "Insist", not "ask": once is reasonable and a person would answer it.
+   * Twice, after we have already put the question back, is the stand-off.
+   */
+  if (a.intent === "ask_availability" && ctx.customerMessages) {
+    const said = [...ctx.customerMessages, ctx.customerText ?? ""].filter(Boolean);
+    if (isAvailabilityStandOff(said)) {
+      return {
+        ok: false, reason: "availability_stand_off",
+        detail: "they have asked twice what times we have; the bot has no calendar to answer with, " +
+          "so this needs a person who can give real times rather than a third ask",
+      };
+    }
+  }
+
   /**
    * A40 (2) — DO NOT KEEP COLLECTING AGAINST A CONVERSATION THEY MOVED.
    *

@@ -337,6 +337,8 @@ export async function runAgentTurn(
      * reading it needs a database and this stays testable without one.
      */
     callback?: { unreachableStartHour?: number | null; availability?: string | null };
+    /** The recipient's IANA zone, for the week-aware availability ask. */
+    customerZone?: string;
     /**
      * A46: is it outside THIS CUSTOMER's callable window right now?
      *
@@ -518,6 +520,11 @@ Choose the next action.`;
       // first". Falls back to whatever the customer just said, so a caller
       // with no conversation row still gets the constraint they stated in
       // this very message rather than being asked all over again.
+      // The day-dependent availability ask needs to know which side of the
+      // CUSTOMER's Thursday we are on. Without both of these it falls back to
+      // the generic wording rather than guessing a week.
+      now: new Date(),
+      customerZone: opts.customerZone,
       callback: opts.callback ?? {
         unreachableStartHour: statedConstraint(ownWords)?.startHour ?? null,
       },

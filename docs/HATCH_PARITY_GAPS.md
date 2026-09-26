@@ -39,7 +39,7 @@ reason to replace them.
 
 ## Behaviours Hatch has that we do NOT — ordered by how much they matter
 
-### ❌ 1. Availability phrasing is day-dependent
+### ✅ 1. Availability phrasing is day-dependent — BUILT 2026-09-26
 
 > Sunday–Wednesday: *"We have a few openings **this week** to meet with you,
 > what would work best for you?"*
@@ -82,7 +82,7 @@ settles it (QUESTIONS_FOR_KATE item 3).
 A bare "2" or "10" is ambiguous. Hatch resolves it. We do not, so a customer
 saying "3 works" could be read as 3 AM by anything downstream.
 
-### ❌ 5. Insisting on our availability first ends the conversation
+### ✅ 5. Insisting on our availability first ends the conversation — BUILT 2026-09-26
 
 > "If they insist on knowing our availability before providing theirs → End:
 > Schedule Follow Up"
@@ -100,7 +100,7 @@ Nothing in our flow handles a second property. Our stage machine assumes one
 job per conversation. **This is the largest structural gap on the list** and
 is not a template change.
 
-### ❌ 7. The returning-customer carve-out
+### ✅ 7. The returning-customer carve-out — BUILT 2026-09-26
 
 > "If they don't want to provide their information since they have worked
 > with us before, thank them for considering us for their new project and let

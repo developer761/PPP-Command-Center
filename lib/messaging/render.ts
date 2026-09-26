@@ -28,6 +28,8 @@ import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch } from "./channel-preference";
 import { replyToRequestedTime } from "./appointment-time";
+import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
+import { returningCustomerDeclining, returningCustomerReply, returningCustomerReplyEs } from "./returning-customer";
 import type { Language } from "./language";
 
 /** Intents that END the conversation without sending anything. Sending a
@@ -566,6 +568,16 @@ export type RenderInput = {
     /** Availability already captured on the record. */
     availability?: string | null;
   };
+  /**
+   * When it is where the CUSTOMER is, for the availability ask.
+   *
+   * Hatch offers "this week" Sunday-Wednesday and "next week"
+   * Thursday-Saturday. Which side of that cut we are on is their Thursday,
+   * not the server's. Absent, the ask falls back to the generic wording
+   * rather than guessing a week.
+   */
+  now?: Date;
+  customerZone?: string;
 };
 
 /**
@@ -780,9 +792,45 @@ export function renderMessage(input: RenderInput): string {
    * their time", "Don't thank them" — because repeating it back reads as
    * agreement.
    */
+  /**
+   * A RETURNING CUSTOMER WHO WOULD RATHER NOT REPEAT THEMSELVES.
+   *
+   * Hatch: thank them for the NEW project, say why we ask, then ONE ask —
+   * "but move on if they don't provide it." A bot that keeps asking is the
+   * A11/A13 nag aimed at the customer most likely to buy again.
+   *
+   * On the collecting turns only, and only when they have said both that
+   * they have used PPP before AND that they would rather not repeat
+   * themselves. Merely mentioning a past job is not a refusal.
+   */
+  if (
+    (input.intent === "ask_address" || input.intent === "ask_contact" || input.intent === "confirm_address")
+    && returningCustomerDeclining(input.customerText)
+  ) {
+    return es ? returningCustomerReplyEs() : returningCustomerReply();
+  }
+
   if (input.intent === "ask_availability" || input.intent === "checking_availability") {
     const timed = replyToRequestedTime(input.customerText);
     if (timed) return timed.reply;
+  }
+
+  /**
+   * THE AVAILABILITY ASK NAMES A WEEK.
+   *
+   * Hatch: "this week" Sunday-Wednesday, "next week" Thursday-Saturday. Ours
+   * asked "What days generally work best for you?", an open question that
+   * invites "sometime next month".
+   *
+   * Only when the gap is the whole question — availabilityGap narrows a
+   * PARTIAL answer ("Tuesday, but what time?") and that wording is already
+   * right. And only with a zone and a clock: without them we cannot know
+   * which side of their Thursday we are on, and the generic ask is the
+   * honest fallback.
+   */
+  if (input.intent === "ask_availability" && !availGap && input.now && input.customerZone) {
+    const week = weekToOffer(input.now, input.customerZone);
+    if (week) return es ? askAvailabilityEs(week) : askAvailability(week);
   }
 
   if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
