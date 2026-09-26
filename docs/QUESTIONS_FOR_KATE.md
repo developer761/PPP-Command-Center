@@ -8,6 +8,24 @@ shipped, chosen to be the safe or the conservative reading. Each entry says
 what we do today and what would change if she says otherwise, so she can
 answer fast and nothing has to wait on her.
 
+## The five that actually need her
+
+Eleven were raised; the Iteration 1 spec closed five of them and one turned
+out to be PPP's commercial call, not a rules question. What is genuinely left:
+
+| # | Question | Weight |
+|---|---|---|
+| **5** | **What a park defaults to when no time is named** | **BLOCKING** — the spec says "do not pick one", so parking cannot ship without it |
+| 2 | A3 and A6 contradict each other on "tenant" | Real conflict between two live rules; it changes routing |
+| 9 | A46's approved strings are English only | A30 says we answer Spanish; A46 says never deny being a bot |
+| 10 | Which closing lines come out of A44 | `schedule_follow_up` is also A40's park and A25's phone branch |
+| 4 | A25's corrective_action contradicts her own rule card | Data tidy-up; it is what the rater grades against |
+
+Only **5** stops work. The other four have a shipped default and can be
+answered whenever.
+
+---
+
 **Every question carries a recommendation.** Karan, 2026-09-26: each one
 should say what we think, not just what we are unsure about. So each item has
 a **→ Recommendation** line giving the answer we would pick and why. Where we
@@ -19,7 +37,13 @@ and the answer is in the code.
 
 ---
 
-## 1. A45 and A46 are not in the rules file · **needs a file from her**
+## 1. ~~A45 and A46 are not in the rules file~~ — CLOSED, no need to ask
+
+> **Closed 2026-09-26.** We created both rows from the spec's own text; the Rule Hub now lists **37 live rules**, which is its acceptance criterion. Her file overwriting ours later is a tidy-up, not a question.
+
+<details><summary>original question, kept for the record</summary>
+
+
 
 The export she sent (`2026-09-25 hatch RULES.csv`) stops at A44. Confirmed
 against the database: 44 rules, A1 to A44, nothing above it.
@@ -58,6 +82,8 @@ rows exist. Two rows, and the screen matches the spec.
 > and one of the three AI agent types is **Inbound Calls**. Worth confirming
 > whether A45 means the Salesforce call cadence or Hatch's own call handling,
 > because the second one has nowhere to live in Connect Hub today.
+
+</details>
 
 ---
 
@@ -102,7 +128,13 @@ re-opening A6, because A6's sentence is doing real work elsewhere.
 
 ---
 
-## 3. A36 — whose clock, and does it cover replies? · **two parts**
+## 3. ~~A36 — whose clock, and does it cover replies?~~ — CLOSED, no need to ask
+
+> **Closed by the Iteration 1 spec.** It settles both halves: *"In hours is per customer, not per clock… Resolve against the recipient's own callable window"*, and SETTLED 25 SEP: *"The bot is not held back out of hours. It answers in a different voice."* That is what we built.
+
+<details><summary>original question, kept for the record</summary>
+
+
 
 > **Updated 2026-09-26 after reading Hatch.** Hatch configures business hours
 > **per workspace** (CA LA Leads: Mon–Fri 9:00 AM–7:00 PM, Sat/Sun 9:30
@@ -158,6 +190,8 @@ not optional — the old behaviour was a federal violation, not a preference —
 and reading A36 as governing contact PPP initiates keeps Karan's 2026-09-22
 after-hours decision intact. If she wants the stricter reading, that is a
 one-line change we will make on her word.
+
+</details>
 
 ---
 
@@ -264,7 +298,13 @@ discard line needing a nod.
 
 ---
 
-## 7. A26 — is the photo ceiling still detection only?
+## 7. ~~A26 — is the photo ceiling still detection only?~~ — CLOSED, no need to ask
+
+> **Not Kate's.** The spec files it under *OURS · COMMERCIAL*: reading images is metered spend and has never been sized against PPP's volume. It is Karan and PPP's decision, not a rules question.
+
+<details><summary>original question, kept for the record</summary>
+
+
 
 A26 today: "Detection is a build requirement; interpretation is not.
 ACKNOWLEDGING IS ALL THIS RULE ASKS… Do not describe or price from it (the
@@ -291,9 +331,17 @@ asked for, it is a real improvement on "thanks, got the photos", and it cannot
 drift into quoting. Blocked on PPP's own open item: per-image billing has not
 been sized against volume, so detection ships first either way.
 
+</details>
+
 ---
 
-## 8. ~~A44's cadence~~ — ANSWERED by the Iteration 1 spec, 2026-09-26
+## 8. ~~A44's cadence~~ — CLOSED, no need to ask
+
+> **Closed by the spec** — 10 AM / 3 PM / 6 PM customer-local, its own campaign. Already recorded below.
+
+<details><summary>original question, kept for the record</summary>
+
+
 
 Found 2026-09-26 by reading Hatch's live campaign.
 
@@ -321,6 +369,8 @@ version of the campaign's times applied to the stall cadence.
 >
 > Hatch's "wait 5 hours / 1 attempt" is the OLD behaviour being replaced,
 > not a competing option. Nothing to ask.
+
+</details>
 
 ---
 
@@ -382,7 +432,13 @@ a line is correct and expected.
 
 ---
 
-## 11. What does a stall follow-up actually say?
+## 11. ~~What does a stall follow-up actually say?~~ — CLOSED, no need to ask
+
+> **Closed.** The spec supplies no copy and leaves build detail to us; Karan chose an agent turn using conversation memory, which is what memory-first exists for. Built that way. Worth a sentence in the next update, not a question.
+
+<details><summary>original question, kept for the record</summary>
+
+
 
 A44 specifies the cadence exactly — three follow-ups, 10 AM / 3 PM / 6 PM
 customer-local — but supplies **no copy**. Hatch had named snippets for this
@@ -409,6 +465,8 @@ first of the three structural failures on the spec's own front page.
 **What we need:** a nod to (b), and whether the third follow-up should differ
 in tone from the first two, since it is the last one before the lead goes back
 to the phone team.
+
+</details>
 
 ---
 
