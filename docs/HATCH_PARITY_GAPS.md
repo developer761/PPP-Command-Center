@@ -143,7 +143,7 @@ plus the services table only. A question outside that gets `escalate`.
 
 | Gap | Note |
 |---|---|
-| ⚠️ **Voice** | **Call forwarding BUILT 2026-09-26** — Kate moved it into Iteration 1. Voicemail greetings and inbound-call AI agents are still absent and were not asked for. |
+| ⚠️ **Voice** | **Call forwarding BUILT and EXERCISED 2026-09-26** — Kate moved it into Iteration 1. Signed request dials the call centre with the customer as caller ID; unsigned gets a spoken fallback, not a 403. Hatch forwards every workspace to (877) 645-3563 (checked on CA LA, CA San Diego, CO Denver), so `call_forward_to` stays NULL and the fallback matches. Voicemail greetings and inbound-call AI agents are still absent and were not asked for. |
 | ❌ Containment / Bookable-to-Booked metrics | columns exist in Hatch (unpopulated), absent in ours |
 | ❌ Snippet library | reusable named responses for reps |
 | ❌ `[[[[Next Open Time]]]]` merge field | ours is static after-hours text |

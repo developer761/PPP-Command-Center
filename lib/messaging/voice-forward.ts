@@ -36,8 +36,15 @@
 /**
  * PPP's main line, the fallback when a workspace has no number of its own.
  *
- * Read from Hatch's own Call Forwarding setting on 2026-09-26, where every
- * workspace forwards here. It is also the number on PPP's marketing email.
+ * Read from Hatch's own Call Forwarding setting on 2026-09-26. CHECKED ON
+ * THREE WORKSPACES IN DIFFERENT REGIONS — CA LA Leads, CA San Diego Leads and
+ * CO Denver Leads — and all three forward here. It is also the number on
+ * PPP's marketing email.
+ *
+ * So call_forward_to is deliberately left NULL on all fifteen workspaces.
+ * Writing the same constant into fifteen rows creates fifteen places for it
+ * to drift, and the fallback already produces the behaviour Hatch has. The
+ * column exists for the day a region genuinely wants its own line.
  */
 export const MAIN_LINE = "+18776453563";
 
