@@ -32,5 +32,21 @@ export async function resolve(specifier, context, next) {
     const fixed = withExt(decodeURIComponent(base.pathname));
     return next(pathToFileURL(fixed).href, context);
   }
-  return next(specifier, context);
+  /**
+   * `next/server`, `next/headers`, `next/cache` … resolve under the bundler and
+   * not under Node, which wants the `.js` that Next's own error message names.
+   * A script that imports one report module transitively picks up a dozen of
+   * these and dies on the import rather than on what it came to check.
+   *
+   * Only attempted AFTER the normal resolution fails, so nothing that already
+   * works changes shape.
+   */
+  try {
+    return await next(specifier, context);
+  } catch (err) {
+    if (/^next\/[a-z-]+$/.test(specifier)) {
+      return next(`${specifier}.js`, context);
+    }
+    throw err;
+  }
 }
