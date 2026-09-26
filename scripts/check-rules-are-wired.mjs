@@ -29,6 +29,16 @@
  */
 import { readFileSync } from "node:fs";
 
+
+/**
+ * Strip comments so a forbidden pattern tests what the file DOES, not what it
+ * says about itself. Deliberately crude — it does not understand a `//` inside
+ * a string literal — which is fine here because it only ever makes a forbidden
+ * check MORE likely to miss, never more likely to fire falsely.
+ */
+const stripComments = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
 const read = (p) => {
   try { return readFileSync(p, "utf8"); } catch { return null; }
 };
@@ -136,6 +146,22 @@ const CHAINS = [
     ],
   },
   {
+    rule: "Auto-rater — guidance reaches the rater and NO bot prompt",
+    why: "Kate's heading is \'RATER ONLY — NEVER give this to a bot\'. The spec makes it an acceptance criterion and says PROVABLY, so the separation is checked in both directions rather than assumed",
+    links: [
+      ["lib/messaging/rater.ts", /HOW TO RATE THIS: \$\{r\.ratingGuidance\}/],
+      // The ONLY module that asks for both halves.
+      ["lib/messaging/rater-db.ts", /sms_class_a_rule_notes/],
+    ],
+    forbidden: [
+      // The bot-facing loader must not know the notes table exists, and the
+      // bot prompt builder must never render the guidance.
+      ["lib/messaging/class-a-rules-db.ts", /sms_class_a_rule_notes|rating_guidance/],
+      ["lib/messaging/agent-run.ts", /ratingGuidance|rating_guidance/],
+      ["lib/messaging/rater.ts", /export function forPrompt/],
+    ],
+  },
+  {
     rule: "A36 — the sending window reads the CUSTOMER's clock",
     why: "the gate read ws.time_zone, so at 9:30am Eastern it permitted a text to California at 6:30 in the morning — under the federal 8am floor",
     links: [
@@ -171,7 +197,14 @@ for (const chain of CHAINS) {
   }
   for (const [file, pattern] of chain.forbidden ?? []) {
     const src = read(file);
-    if (src !== null && pattern.test(src)) broken.push(`${file} STILL matches ${pattern} — the regression is back`);
+    // COMMENTS ARE NOT CODE, and a forbidden pattern means "the code must not
+    // do this". Caught twice: once on render-es.ts, where the phrase was
+    // legitimate under a different intent, and once on class-a-rules-db.ts,
+    // whose header explains that it does NOT know the notes table exists —
+    // the sentence describing the guarantee tripped the check for it.
+    if (src !== null && pattern.test(stripComments(src))) {
+      broken.push(`${file} STILL matches ${pattern} in CODE — the regression is back`);
+    }
   }
   ok(chain.rule, broken.length === 0, broken.join("\n       ") + (broken.length ? `\n       why it matters: ${chain.why}` : ""));
 }
