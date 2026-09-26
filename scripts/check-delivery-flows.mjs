@@ -214,6 +214,27 @@ try {
 
     const listed = await listOpportunitySubmittals(oppId);
     check("both appear on the job", (listed ?? []).length === 2, `${(listed ?? []).length} listed`);
+
+    /*
+     * READ IT BACK FROM THE TABLE, not from what the function handed us.
+     *
+     * Every assertion above trusts the row `changeSubmittalStatus` returned.
+     * That row does come from the database — the function updates and selects
+     * — but it is still the writer reporting on its own work. If a later
+     * trigger, rule or RLS policy quietly changed or rejected the row, the
+     * returned object would not know.
+     *
+     * So the last word goes to a plain select, through a different client,
+     * with no application code between it and the table.
+     */
+    const { data: onDisk } = await sb
+      .from("commercial_opp_submittals")
+      .select("status, sent_at, revision_number, submittal_number")
+      .eq("id", sid)
+      .maybeSingle();
+    check("the status really persisted, read straight from the table",
+      onDisk?.status === "revise_and_resubmit", `on disk: ${onDisk?.status}`);
+    check("and so did the sent timestamp", !!onDisk?.sent_at, String(onDisk?.sent_at));
   }
 
   // ══ 2. CHANGE ORDERS ═════════════════════════════════════════════════════
