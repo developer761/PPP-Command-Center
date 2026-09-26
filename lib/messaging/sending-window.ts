@@ -120,7 +120,7 @@ export function sendingWindow(input: {
   // still obeys the federal 8am-9pm ON THE RECIPIENT'S CLOCK, so the thing
   // this file exists to prevent is unaffected.
   //
-  // ── OPEN WITH KATE ──────────────────────────────────────────────────
+  // ── OPEN WITH KATE — docs/QUESTIONS_FOR_KATE.md, item 3b ────────────
   // Worth her confirming: does A36's window cover replies to an inbound
   // message, or only outbound PPP starts? This reads it as the latter. If she
   // means the former, delete this early return and the four tests change.

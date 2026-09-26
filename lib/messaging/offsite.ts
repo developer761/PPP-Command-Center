@@ -171,7 +171,8 @@ export function roomCount(text: string): number | null {
  * commercial signals". A condo owner painting their own living room is a
  * residential interior job.
  *
- * KATE, THIS IS THE ONE THING I COULD NOT RECONCILE. A3 lists "the tenants"
+ * KATE, THIS IS THE ONE THING I COULD NOT RECONCILE.
+ * (docs/QUESTIONS_FOR_KATE.md, item 2.) A3 lists "the tenants"
  * among the phrases that establish commercial; A6 names "tenant" among the
  * words that must never fire it. They cannot both hold, so this follows A6,
  * because A6 owns the gate and states its half as a never. Worth a line in

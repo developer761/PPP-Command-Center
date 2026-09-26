@@ -154,6 +154,7 @@ export function phoneBranch(input: {
  * survives somebody reading only the code.
  *
  * ── AN INCONSISTENCY IN KATE'S OWN TEXT, FOR HER TO SETTLE ──────────────
+ * (docs/QUESTIONS_FOR_KATE.md, item 4.)
  * A25's corrective_action column still reads "made a silent transfer to a
  * human", which predates the 2026-09-18 note above and contradicts it. The
  * rule card is treated as current here because it is dated and explicit.
