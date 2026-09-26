@@ -24,7 +24,7 @@ interface XRPose {
 interface XRSpace {
   readonly __xrSpaceBrand?: never;
 }
-interface XRReferenceSpace extends XRSpace {}
+type XRReferenceSpace = XRSpace;
 interface XRHitTestResult {
   getPose(baseSpace: XRSpace): XRPose | null | undefined;
 }

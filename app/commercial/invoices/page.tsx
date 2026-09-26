@@ -1078,13 +1078,13 @@ export default async function CommercialInvoicesPage({ searchParams }: { searchP
                   {accountIdFilter ? (
                     <>
                       <div>
-                        {accountFilter?.company_name ?? "This customer"} has no Won opportunities yet. Invoices attach to an opportunity that's been marked <strong>Won</strong>.
+                        {accountFilter?.company_name ?? "This customer"} has no Won opportunities yet. Invoices attach to an opportunity that&apos;s been marked <strong>Won</strong>.
                       </div>
                       <Link
                         href={`/commercial/accounts/${accountIdFilter}?tab=deals`}
                         className="inline-flex items-center gap-1 text-ppp-blue-700 font-semibold hover:underline"
                       >
-                        Open {accountFilter?.company_name ?? "this customer"}'s deals →
+                        Open {accountFilter?.company_name ?? "this customer"}&apos;s deals →
                       </Link>
                     </>
                   ) : (
@@ -2012,13 +2012,13 @@ function FullDetailByOpp({
         ) : (
           <>
             <p className="mt-1 text-sm text-ppp-charcoal-500">
-              An invoice attaches to an opportunity marked <strong>Won</strong>. Win one of this GC's opportunities first.
+              An invoice attaches to an opportunity marked <strong>Won</strong>. Win one of this GC&apos;s opportunities first.
             </p>
             <Link
               href={`/commercial/accounts/${accountId}?tab=deals`}
               className="inline-flex items-center justify-center gap-1.5 mt-5 px-4 py-2.5 rounded-lg bg-ppp-blue-600 text-white text-sm font-semibold hover:bg-ppp-blue-700 min-h-[44px] shadow-sm shadow-ppp-blue-600/30"
             >
-              Open this customer's deals
+              Open this customer&apos;s deals
             </Link>
           </>
         )}

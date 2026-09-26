@@ -440,7 +440,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             </>
           ) : dataSourceReason === "sf_returned_empty" ? (
             <>
-              <strong>Salesforce sandbox has no rep activity yet.</strong> Showing demo data so the dashboard renders. Ask Katie to load test data into the sandbox, or switch to production once that's wired.
+              <strong>Salesforce sandbox has no rep activity yet.</strong> Showing demo data so the dashboard renders. Ask Katie to load test data into the sandbox, or switch to production once that&apos;s wired.
             </>
           ) : (
             <>

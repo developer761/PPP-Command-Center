@@ -338,7 +338,7 @@ export default async function NewProductPage({
             className="w-full px-3.5 py-2.5 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 focus:border-cc-brand-600 hover:border-ppp-charcoal-300 min-h-[44px] transition-colors"
           />
           <span className="block mt-1 text-[11px] text-ppp-charcoal-500">
-            Required when a parent is picked. Shows as "{'{parent name}'} ({'{label}'})" in the picker.
+            Required when a parent is picked. Shows as &quot;{'{parent name}'} ({'{label}'})&quot; in the picker.
           </span>
         </label>
         <label className="block">

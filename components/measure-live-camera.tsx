@@ -162,7 +162,7 @@ export default function MeasureLiveCamera({
                 </svg>
               </div>
               <p className="absolute top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/60 text-white text-[11px] font-medium max-w-[92%] text-center pointer-events-none">
-                Get a door, window or outlet in shot — that's what gives the scale
+                Get a door, window or outlet in shot — that&apos;s what gives the scale
               </p>
             </>
           )}

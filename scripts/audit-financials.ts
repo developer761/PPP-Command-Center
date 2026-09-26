@@ -90,7 +90,7 @@ async function main() {
   const aging = await conn.query<{ aging: number | null; sum: number; cnt: number }>(
     `SELECT Final_Balance_Aging__c aging, SUM(BalanceOwed__c) sum, COUNT(Id) cnt FROM WorkOrder WHERE BalanceOwed__c > 0 GROUP BY Final_Balance_Aging__c ORDER BY Final_Balance_Aging__c NULLS FIRST`
   );
-  let buckets = { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0 };
+  const buckets = { current: 0, days30: 0, days60: 0, days90: 0, days90Plus: 0, total: 0 };
   for (const row of aging.records) {
     const age = row.aging ?? 0;
     buckets.total += row.sum;

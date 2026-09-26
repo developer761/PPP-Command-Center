@@ -108,7 +108,8 @@ export function AiaApplicationDetail({
   const selfHref = `${basePath}${basePath.includes("?") ? "&" : "?"}app=${application.id}`;
   const pct = g702.percentCompleteBps != null ? (g702.percentCompleteBps / 100).toFixed(1) : null;
   // Every form carries the account + deal ids the server actions redirect with.
-  const Ctx = () => (
+  // An ELEMENT, not a component — see the note in closeout-tool.tsx.
+  const ctx = (
     <>
       <input type="hidden" name="account_id" value={accountId} />
       <input type="hidden" name="opp_id" value={dealId} />
@@ -169,7 +170,7 @@ export function AiaApplicationDetail({
       {showSovDrift && (
         <div className="rounded-lg px-4 py-3 text-[12.5px] bg-amber-50 border border-amber-200 text-amber-800">
           <span className="font-semibold">Schedule of values is off by {formatCentsFull(Math.abs(sovDriftCents))}.</span>{" "}
-          The scheduled-value total doesn't match the Contract Sum to Date (contract + approved change orders) — likely a change order approved after this application was created. Add a line for it below so the G702 and G703 foot to the same number before you send.
+          The scheduled-value total doesn&apos;t match the Contract Sum to Date (contract + approved change orders) — likely a change order approved after this application was created. Add a line for it below so the G702 and G703 foot to the same number before you send.
         </div>
       )}
 
@@ -237,7 +238,7 @@ export function AiaApplicationDetail({
           {(["draft", "submitted", "paid"] as AiaApplicationStatus[]).map((s) => (
             <form action={setStatusAction} key={s}>
               <input type="hidden" name="app_id" value={application.id} />
-                <Ctx />
+                {ctx}
               <input type="hidden" name="status" value={s} />
               <PendingSubmitButton
                 pendingLabel="…"
@@ -376,7 +377,7 @@ export function AiaApplicationDetail({
         {editable && (
         <form action={upsertLineAction} className="mt-3 rounded-lg border border-dashed border-cc-brand-200 p-3">
           <input type="hidden" name="app_id" value={application.id} />
-                <Ctx />
+                {ctx}
           <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
             <label className="sm:col-span-1 block">
               <span className="block text-[9px] font-bold uppercase tracking-wide text-ppp-charcoal-400">Item</span>

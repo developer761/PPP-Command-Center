@@ -1120,7 +1120,7 @@ export async function createDealInvoiceAction(formData: FormData) {
 
   // Build the line items (+ milestone drafts, if any) that define the invoice.
   let lineItems: Array<{ description: string; quantity: number; unit_price_cents: number }>;
-  let milestones: MilestoneDraft[] = [];
+  const milestones: MilestoneDraft[] = [];
   // Which form-row each milestone draft came from — so the ms_waiver_<row> file
   // pairs to the right created milestone even when blank rows are skipped.
   const milestoneRowIndex: number[] = [];

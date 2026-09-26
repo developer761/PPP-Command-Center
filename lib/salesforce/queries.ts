@@ -1795,7 +1795,7 @@ export async function loadSalesforceSnapshot(
     let woNumberField: string | null = null;
     let woOppLookup: string | null = null;
     let woOppRelName: string | null = null;
-    let workOrderRecords: Array<Record<string, unknown>> = [];
+    const workOrderRecords: Array<Record<string, unknown>> = [];
 
     try {
       // Speed pass 2026-06-29: module-cached describe (cachedWoDescribe).

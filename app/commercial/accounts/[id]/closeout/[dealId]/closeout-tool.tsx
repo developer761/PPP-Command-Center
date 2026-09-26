@@ -469,7 +469,16 @@ export async function CloseoutTool({
   const progress = closeoutProgressPct(items);
   const warrantyEnd = activePkg ? computeWarrantyEndDate(activePkg.substantial_completion_date, activePkg.warranty_years) : null;
 
-  const Ctx = () => (
+  /**
+   * An ELEMENT, not a component.
+   *
+   * It was `const Ctx = () => (...)`, which declares a new component type on
+   * every render — React then unmounts and remounts it, losing any state
+   * inside. Nothing was breaking here (server component, no state), but a
+   * shared fragment of markup is what this actually is, so it is built once
+   * and referenced rather than re-declared.
+   */
+  const ctx = (
     <>
       <input type="hidden" name="account_id" value={id} />
       <input type="hidden" name="opp_id" value={dealId} />
@@ -567,7 +576,7 @@ export async function CloseoutTool({
             <div className="flex items-center gap-1.5 flex-wrap">
               {ALLOWED_CLOSEOUT_TRANSITIONS[activePkg.status].map((to) => (
                 <form key={to} action={changeStatusAction}>
-                  <Ctx />
+                  {ctx}
                   <input type="hidden" name="to" value={to} />
                   <PendingSubmitButton
                     className={`inline-flex items-center px-3 py-1.5 rounded-lg text-[12px] font-semibold min-h-[44px] ${to === "voided" ? "border border-rose-300 text-rose-700 hover:bg-rose-50" : "bg-cc-brand-600 text-white hover:bg-cc-brand-700"}`}
@@ -621,7 +630,7 @@ export async function CloseoutTool({
               </div>
               {activePkg.status !== "voided" && (
                 <form action={issueWarrantyAction}>
-                  <Ctx />
+                  {ctx}
                   <input type="hidden" name="pkg_id" value={activePkg.id} />
                   <ConfirmSubmitButton
                     className={`inline-flex items-center px-3.5 py-2 rounded-lg text-[12.5px] font-semibold min-h-[44px] shrink-0 ${
@@ -673,7 +682,7 @@ export async function CloseoutTool({
                   )}
                   {editable && (
                     <form action={deleteItemAction} className="mt-1 text-right">
-                      <Ctx /><input type="hidden" name="item_id" value={it.id} />
+                      {ctx}<input type="hidden" name="item_id" value={it.id} />
                       <ConfirmSubmitButton className="text-[11px] text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[32px] inline-flex items-center" message="Remove this item?" pendingLabel="…">Remove</ConfirmSubmitButton>
                     </form>
                   )}
@@ -685,7 +694,7 @@ export async function CloseoutTool({
               <details className="mt-3 group">
                 <summary className="list-none cursor-pointer text-[12px] font-semibold text-cc-brand-700 min-h-[44px] sm:min-h-[36px] inline-flex items-center gap-1">+ Add item</summary>
                 <form action={upsertItemAction} className="mt-2 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
-                  <Ctx />
+                  {ctx}
                   <label className="block"><span className={LABEL_CLS}>Kind</span>
                     <select name="kind" className={SELECT_CLS} style={SELECT_BG_STYLE} defaultValue="other">
                       {/* Katie: COI comes off the close-out cover letter. It stays in
@@ -705,7 +714,7 @@ export async function CloseoutTool({
           {/* Cover / transmittal */}
           {editable ? (
             <AutosaveForm action={autosaveCoverAction} formClassName="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 space-y-3">
-              <Ctx />
+              {ctx}
               <h2 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2"><span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />Transmittal cover + warranty</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block"><span className={LABEL_CLS}>To (GC company)</span><input name="to_company" defaultValue={activePkg.to_company ?? account.company_name ?? ""} className={INPUT_CLS} /></label>
@@ -750,7 +759,7 @@ export async function CloseoutTool({
 
           {activePkg.status === "draft" && (
             <form action={deletePackageAction} className="text-right">
-              <Ctx />
+              {ctx}
               <ConfirmSubmitButton className="text-[12px] text-ppp-charcoal-400 hover:text-rose-700 min-h-[44px] sm:min-h-[36px] inline-flex items-center" message="Delete this draft package?" pendingLabel="Deleting…">Delete draft package</ConfirmSubmitButton>
             </form>
           )}

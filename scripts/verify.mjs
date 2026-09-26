@@ -77,6 +77,12 @@ step("unit", "npx vitest run", {
   blind: "the database, the network, the rendered page",
 });
 
+step("lint budget", "node scripts/check-lint-budget.mjs", {
+  catches:
+    "a NEW lint error. 153 errors sat outside the gate for months, neither enforced nor acknowledged; 48 were mechanical and are fixed, the rest are counted per rule so a new one cannot hide among them",
+  blind: "the 105 still on the books — they are held, not fixed. See the header of that script for what each family is and why",
+});
+
 step("rules are wired", "node scripts/check-rules-are-wired.mjs", {
   catches:
     "a correct rule with no consumer — A7's offsiteReason was computed and never passed, so a live critical rule never once fired. Proved on 2026-09-26: unwiring A25's callback leaves tsc green and all 5,289 unit tests passing",

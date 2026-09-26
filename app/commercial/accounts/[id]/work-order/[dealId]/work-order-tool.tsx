@@ -505,7 +505,7 @@ export async function WorkOrderTool({
       )}
       {spv.emailfail && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-[13px] text-amber-800" role="status">
-          Sent + filed, but the crew email didn't go through — check the crew email address, or download the PDF above and send it manually.
+          Sent + filed, but the crew email didn&apos;t go through — check the crew email address, or download the PDF above and send it manually.
         </div>
       )}
 
@@ -513,7 +513,7 @@ export async function WorkOrderTool({
         <div className="text-center py-12 px-4 bg-surface border border-dashed border-ppp-charcoal-200 rounded-xl">
           <p className="text-sm font-semibold text-ppp-charcoal">No work order yet</p>
           <p className="text-[12px] text-ppp-charcoal-500 mt-1 max-w-sm mx-auto">
-            Create one to generate the crew's sheet — it autofills the scope from the accepted proposal and the room-finish schedule. You add crew notes, then send it.
+            Create one to generate the crew&apos;s sheet — it autofills the scope from the accepted proposal and the room-finish schedule. You add crew notes, then send it.
           </p>
           <form action={createWorkOrderAction} className="mt-4">
             <input type="hidden" name="account_id" value={id} />

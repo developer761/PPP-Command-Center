@@ -8,14 +8,14 @@ import { initialGesture, pointerDown, pointerMove, pointerUp } from "@/lib/measu
  */
 describe("pan and pinch bookkeeping", () => {
   it("pans by the pointer delta", () => {
-    let s = pointerDown(initialGesture(), 1, { x: 100, y: 100 });
+    const s = pointerDown(initialGesture(), 1, { x: 100, y: 100 });
     const r = pointerMove(s, 1, { x: 130, y: 80 });
     expect(r.effect).toEqual({ kind: "pan", dx: 30, dy: -20 });
   });
 
   it("accumulates across successive moves rather than re-basing", () => {
     let s = pointerDown(initialGesture(), 1, { x: 0, y: 0 });
-    let total = { x: 0, y: 0 };
+    const total = { x: 0, y: 0 };
     for (const p of [{ x: 10, y: 5 }, { x: 25, y: 15 }, { x: 20, y: 40 }]) {
       const r = pointerMove(s, 1, p);
       s = r.state;

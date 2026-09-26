@@ -85,6 +85,21 @@ async function saveAction(formData: FormData) {
   redirect(`${BASE}?ok=1`);
 }
 
+/**
+ * Hoisted to module scope rather than declared inside the page.
+ *
+ * A component created during render is a NEW component type on every render,
+ * so React unmounts and remounts it and any state inside is lost. This one is
+ * in a server component and closes over nothing local, so nothing was
+ * actually breaking — but the rule is right and the fix is free.
+ */
+const Field = ({ id, label, value, placeholder, type = "text", full = false }: { id: string; label: string; value: string | null; placeholder?: string; type?: string; full?: boolean }) => (
+  <div className={full ? "sm:col-span-2" : ""}>
+    <label htmlFor={id} className={LABEL_CLS}>{label}</label>
+    <input id={id} name={id} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={INPUT_CLS} />
+  </div>
+);
+
 export default async function OperatingCompanyPage({
   searchParams,
 }: {
@@ -93,13 +108,6 @@ export default async function OperatingCompanyPage({
   await requireCommercialUser();
   const sp = await searchParams;
   const c = await getOperatingCompany();
-
-  const Field = ({ id, label, value, placeholder, type = "text", full = false }: { id: string; label: string; value: string | null; placeholder?: string; type?: string; full?: boolean }) => (
-    <div className={full ? "sm:col-span-2" : ""}>
-      <label htmlFor={id} className={LABEL_CLS}>{label}</label>
-      <input id={id} name={id} type={type} defaultValue={value ?? ""} placeholder={placeholder} className={INPUT_CLS} />
-    </div>
-  );
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-5">
