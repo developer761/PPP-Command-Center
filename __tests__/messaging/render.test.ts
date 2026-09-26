@@ -362,6 +362,30 @@ describe("rendering an intent into words", () => {
     }
   });
 
+  /**
+   * A QUOTE HAS ALREADY BEEN SENT, SO STOP ASKING WHEN TO VISIT.
+   *
+   * defer_to_estimator is legal on both tracks, and its new-lead wording ends
+   * "in the meantime, what days generally work best on your end?" — the right
+   * next question for somebody who has not been visited, and the wrong one
+   * for somebody holding a quote from an estimator who already came.
+   *
+   * Seen in the simulator: "does the quote include the primer and prep work?"
+   * answered by asking for appointment days.
+   */
+  it("does not ask a nurture customer for appointment days", () => {
+    for (const language of [undefined, "es"] as const) {
+      const out = renderMessage({ intent: "defer_to_estimator", turn: 0, track: "nurture", language });
+      expect(out, String(language)).not.toMatch(/what days|qué días|availability/i);
+      // A33 still binds: it has to leave the conversation open.
+      expect(out, String(language)).toMatch(/\?/);
+    }
+  });
+
+  it("still asks a new lead for days, which is the right next question there", () => {
+    expect(renderMessage({ intent: "defer_to_estimator", turn: 0, track: "new_lead" })).toMatch(/what days/i);
+  });
+
   /** Every template, on its own, must already satisfy the rule. */
   it("has no template that asks for too much by itself", () => {
     for (const intent of ALL) {

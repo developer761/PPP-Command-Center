@@ -477,6 +477,7 @@ Choose the next action.`;
       // message in the thread plus this one, not just the latest — somebody
       // who opened in Spanish and then replies "ok" is still owed Spanish.
       language,
+      track,
     };
     const rendered = renderMessage(renderInput);
 

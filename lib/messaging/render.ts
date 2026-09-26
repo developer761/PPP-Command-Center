@@ -490,6 +490,9 @@ export type RenderInput = {
   customerText?: string | null;
   /** A30 — the language of the CONVERSATION, not of the latest message. */
   language?: Language;
+  /** Which conversation this is. A few turns read differently once a quote
+   *  has already been sent. See SAYS_NURTURE. */
+  track?: "new_lead" | "nurture";
 };
 
 /**
@@ -578,6 +581,35 @@ const ASKED_FOR_A_CALL =
  * Read from the templates rather than from a list kept somewhere else, so it
  * cannot drift from what is actually sent.
  */
+/**
+ * WHERE THE NURTURE TRACK NEEDS DIFFERENT WORDS.
+ *
+ * Most intents read the same on both tracks. defer_to_estimator does not: its
+ * new-lead wording ends "in the meantime, what days generally work best on
+ * your end?", which is the right next question for somebody who has not been
+ * visited yet and the wrong one for somebody holding a quote from an
+ * estimator who already came.
+ *
+ * Seen in the simulator on the nurture track, answering "does the quote
+ * include the primer and prep work?" by asking for appointment days.
+ *
+ * A33 still binds: answer what can be answered, name who answers the rest,
+ * and leave the conversation open on a question.
+ */
+const SAYS_NURTURE: Partial<Record<Intent, string[]>> = {
+  defer_to_estimator: [
+    "The estimator will confirm that with you directly. Would you like me to have them give you a call?",
+    "That's one for the estimator, and they can go through it with you. Shall I ask them to reach out?",
+  ],
+};
+
+const SAYS_NURTURE_ES: Partial<Record<Intent, string[]>> = {
+  defer_to_estimator: [
+    "El estimador se lo confirmará directamente. ¿Le pido que lo llame?",
+    "Eso lo ve el estimador y puede repasarlo con usted. ¿Quiere que se comunique con usted?",
+  ],
+};
+
 export function templateAsks(intent: Intent, turn = 0): boolean {
   const variants = SAYS[intent] ?? [""];
   const pick = variants[turn % variants.length] ?? "";
@@ -605,7 +637,11 @@ export function renderMessage(input: RenderInput): string {
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap
       ? (es ? ASK_AVAILABILITY_GAP_ES : ASK_AVAILABILITY_GAP)[availGap]
-      : (es ? SAYS_ES : SAYS)[input.intent] ?? [""];
+      : (input.track === "nurture"
+          ? (es ? SAYS_NURTURE_ES : SAYS_NURTURE)[input.intent]
+          : undefined)
+        ?? (es ? SAYS_ES : SAYS)[input.intent]
+        ?? [""];
   let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
 
   // Substitute verified values. A template whose value is missing must not go
