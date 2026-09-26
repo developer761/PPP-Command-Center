@@ -23,7 +23,7 @@
  * replyDueAt: a moment drawn from the range, measured from the customer's
  * message, less one tick so the tick that picks it up still lands inside it.
  */
-import { withinQuietHours, type QuietHours } from "./compliance";
+import { sendingWindow } from "./sending-window";
 
 /** Same bound the database CHECK enforces. Thirty minutes. */
 export const MAX_DELAY_SECONDS = 1800;
@@ -95,11 +95,13 @@ export function pickDelaySeconds(c: DelayConfig, rand: () => number = Math.rando
 export function delayedRunAt(input: {
   now: Date;
   config: DelayConfig;
+  /** PPP's own zone, for the office side of A36. */
   timeZone: string;
-  quietHours: QuietHours;
+  /** The RECIPIENT's zone, which is the one the legal window is read in. */
+  customerZone: string;
   rand?: () => number;
 }): Date {
-  const { now, config, timeZone, quietHours } = input;
+  const { now, config, timeZone, customerZone } = input;
   if (isDelayOff(config)) return now;
 
   const seconds = pickDelaySeconds(config, input.rand);
@@ -107,9 +109,23 @@ export function delayedRunAt(input: {
 
   const candidate = new Date(now.getTime() + seconds * 1000);
 
-  const canSendNow = withinQuietHours(now, timeZone, quietHours);
-  const canSendThen = withinQuietHours(candidate, timeZone, quietHours);
-  if (canSendNow && !canSendThen) return now;
+  // ASKED OF THE SAME FUNCTION THE GATE WILL ASK.
+  //
+  // This used to call withinQuietHours against the WORKSPACE's timezone and
+  // the WORKSPACE's 9-8 hours. The gate sends a held reply with
+  // answersInbound, which means the federal 8am-9pm on the CUSTOMER's clock —
+  // so the boundary being protected here was not the boundary that would
+  // actually refuse the message.
+  //
+  // It failed in the direction that costs a lead: somebody texting at 8:58pm
+  // reads as out-of-hours on the workspace's 9-8, so the delay was applied,
+  // the send was attempted at 9:03pm, the gate refused it against the federal
+  // 9pm, and a lead who texted just before nine was answered the next
+  // morning. Precisely what this function exists to prevent, one hour later.
+  const open = (at: Date) => sendingWindow({
+    now: at, customerZone, officeZone: timeZone, answersInbound: true,
+  }).open;
+  if (open(now) && !open(candidate)) return now;
 
   return candidate;
 }
@@ -125,7 +141,7 @@ export function replyDueAt(input: {
   receivedAt: Date;
   config: DelayConfig;
   timeZone: string;
-  quietHours: QuietHours;
+  customerZone: string;
   rand?: () => number;
 }): Date {
   const { config } = input;
@@ -135,7 +151,7 @@ export function replyDueAt(input: {
     now: input.receivedAt,
     config: { minSeconds: config.minSeconds, maxSeconds: top },
     timeZone: input.timeZone,
-    quietHours: input.quietHours,
+    customerZone: input.customerZone,
     rand: input.rand,
   });
 }

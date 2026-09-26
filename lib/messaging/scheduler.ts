@@ -130,6 +130,9 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
     case "quiet_hours":
     case "weekend":
     case "daily_cap":
+    // A36's office window. PPP is not working right now and will be later —
+    // the same kind of answer as a weekend, not a broken message.
+    case "office_closed":
       // Legal or permitted later; the gate already said when.
       return "reschedule";
     case "suppression_list_empty":

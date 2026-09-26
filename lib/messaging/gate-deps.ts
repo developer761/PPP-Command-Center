@@ -12,6 +12,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GateDeps, SendChannel } from "./gate";
 import type { E164 } from "./phone";
 import { selectAll } from "./paging";
+import { addressParts } from "./address";
+import { zoneForState } from "./customer-clock";
 
 /**
  * Whether there is a suppression list at all, cached briefly.
@@ -87,6 +89,60 @@ export function gateDeps(sb: SupabaseClient): GateDeps {
       const loaded = !error && (count ?? 0) > 0;
       listState = { loaded, at: now };
       return loaded;
+    },
+
+    /**
+     * WHOSE CLOCK. Resolved from the most authoritative thing PPP holds about
+     * where this person is, in descending order of trust:
+     *
+     *   1. sms_conversations.customer_zip through sms_service_zips, PPP's own
+     *      curated territory table
+     *   2. a zip inside customer_address, which is free text the customer
+     *      typed ("4821 Oak Lane, Dallas TX 75201") and is what is actually
+     *      populated today — customer_zip is NULL on every live conversation
+     *   3. a state abbreviation in that same address
+     *
+     * Null on anything unclear. The gate then uses the area code, and failing
+     * that the most restrictive zone. A WRONG state is worse than no state,
+     * because it is what authorises an early send, so every step here is
+     * exact-match and nothing is inferred from a city name.
+     *
+     * Read-only, and a failure returns null rather than throwing: not knowing
+     * where somebody is makes the window STRICTER, so failing closed here
+     * needs no special handling.
+     */
+    async customerState(to: E164) {
+      const { data, error } = await sb
+        .from("sms_conversations")
+        .select("customer_zip, customer_address, last_message_at")
+        .eq("customer_phone", to)
+        // Most recent first: somebody who moved is where they last said.
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (error || !data?.length) return null;
+      const row = data[0] as { customer_zip: string | null; customer_address: string | null };
+
+      // addressParts, not a second zip regex — the one in address.ts already
+      // drops plus-four and refuses a square-footage number.
+      const zip = (row.customer_zip ?? "").trim()
+        || addressParts(row.customer_address).zip
+        || null;
+
+      if (zip) {
+        const { data: z } = await sb
+          .from("sms_service_zips").select("state").eq("zip", zip).limit(1);
+        const state = z?.[0]?.state?.trim().toUpperCase();
+        if (state) return state;
+      }
+
+      // A state written into the address. Anchored to a comma or a zip so
+      // "OR" in "paint OR stain" and "IN" in "the trim IN the hallway" cannot
+      // be read as Oregon and Indiana.
+      const addr = row.customer_address ?? "";
+      const m = /(?:,\s*|\s)([A-Z]{2})\s*(?:\d{5}(?:-\d{4})?)?\s*$/.exec(addr.trim())
+        ?? /,\s*([A-Z]{2})\b/.exec(addr);
+      const guess = m?.[1]?.toUpperCase();
+      return guess && zoneForState(guess) ? guess : null;
     },
 
     async isSuppressed(target: { phone: E164 | null; email: string | null }, channel: SendChannel) {

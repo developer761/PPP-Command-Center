@@ -195,36 +195,96 @@ export function clampToFederal(h: QuietHours): QuietHours {
  * handle rather than a crash.
  */
 export function localHour(now: Date, timeZone: string): number | null {
+  const m = localMinutes(now, timeZone);
+  return m === null ? null : Math.floor(m / 60);
+}
+
+/**
+ * Minutes since local midnight in an IANA timezone.
+ *
+ * Exists because A36's weekend close is 5:30 PM, not 5 PM — and an hours-only
+ * window cannot say "half past". `localHour` is derived from this rather than
+ * duplicating the Intl call, so there is one place where a timezone is read.
+ */
+export function localMinutes(now: Date, timeZone: string): number | null {
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = new Intl.DateTimeFormat("en-US", {
-      timeZone, hour: "numeric", hour12: false,
+      timeZone, hour: "numeric", minute: "numeric", hour12: false,
     }).formatToParts(now);
   } catch {
     return null;
   }
   const h = parts.find((p) => p.type === "hour")?.value;
-  if (h === undefined) return null;
-  const n = Number(h);
-  if (!Number.isFinite(n)) return null;
+  const min = parts.find((p) => p.type === "minute")?.value;
+  if (h === undefined || min === undefined) return null;
+  const nh = Number(h), nm = Number(min);
+  if (!Number.isFinite(nh) || !Number.isFinite(nm)) return null;
   // Intl renders midnight as "24" in some ICU versions; normalise to 0.
-  return n % 24;
+  return (nh % 24) * 60 + nm;
 }
 
-/** Is `now` inside the sending window for this workspace? */
+/**
+ * Is it a weekend in this timezone?
+ *
+ * Lives here, with the other clock questions, because it had grown two
+ * implementations — one in gate.ts and one in sending-window.ts — and "two
+ * copies of a rule that must agree" is the most common root cause in this
+ * codebase, four separate drifts before this one.
+ *
+ * An unusable timezone answers TRUE. Every caller uses this to NARROW a
+ * window (no weekend sending, A36's 5:30pm weekend close), so the safe answer
+ * when we cannot tell what day it is somewhere is the more restrictive one.
+ * The copy in gate.ts let Intl's RangeError out instead, which turned one
+ * typo in a workspace's time_zone into an unexplained exception on every send
+ * for that workspace.
+ */
+export function isWeekendIn(now: Date, timeZone: string): boolean {
+  let name: string;
+  try {
+    name = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(now);
+  } catch {
+    return true;
+  }
+  return name === "Sat" || name === "Sun";
+}
+
+/**
+ * Is `now` inside the sending window, in THIS timezone?
+ *
+ * WHOSE timezone is the caller's decision and it is the whole ballgame — see
+ * customer-clock.ts. For a legal window it must be the RECIPIENT's.
+ */
 export function withinQuietHours(
   now: Date,
   timeZone: string,
   hours: QuietHours = DEFAULT_QUIET_HOURS
 ): boolean {
   const { startHour, endHour } = clampToFederal(hours);
-  const h = localHour(now, timeZone);
+  return withinMinuteWindow(now, timeZone, startHour * 60, endHour * 60);
+}
+
+/**
+ * The same window test to the minute, and the one implementation underneath
+ * `withinQuietHours`. Two copies of this rule is how the scheduler and the
+ * simulator drifted apart four times.
+ *
+ * NOT clamped to federal — the caller clamps, because this is also used for
+ * PPP's own office window, which is a business rule and not a legal one.
+ */
+export function withinMinuteWindow(
+  now: Date,
+  timeZone: string,
+  startMinute: number,
+  endMinute: number
+): boolean {
+  const m = localMinutes(now, timeZone);
   // No usable timezone means we cannot know whether this is a legal hour to
   // text somebody. That is a refusal, not a guess.
-  if (h === null) return false;
-  // Inclusive of the opening hour, exclusive of the closing one: at endHour
+  if (m === null) return false;
+  // Inclusive of the opening minute, exclusive of the closing one: at endHour
   // exactly, the window is shut. 20:00 is not "still 8pm-ish".
-  return h >= startHour && h < endHour;
+  return m >= startMinute && m < endMinute;
 }
 
 /**

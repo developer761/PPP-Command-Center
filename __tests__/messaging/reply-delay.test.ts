@@ -6,7 +6,6 @@ import {
 import fs from "node:fs";
 
 const TZ = "America/New_York";
-const HOURS = { startHour: 9, endHour: 20 };
 const at = (iso: string) => new Date(iso);
 
 /**
@@ -25,7 +24,7 @@ describe("Emily answers 30 seconds to a minute and a half after the text", () =>
 
   it("every reply lands inside 30-90s even when the tick picks it up a full tick late", () => {
     for (let i = 0; i < 2000; i++) {
-      const due = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS });
+      const due = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, customerZone: TZ });
       const earliest = (due.getTime() - noon.getTime()) / 1000;
       const latest = earliest + TICK_SECONDS;
       expect(earliest).toBeGreaterThanOrEqual(30);
@@ -34,8 +33,8 @@ describe("Emily answers 30 seconds to a minute and a half after the text", () =>
   });
 
   it("can land at both ends, so the range is the range somebody set", () => {
-    const lo = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS, rand: () => 0 });
-    const hi = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS, rand: () => 0.999999 });
+    const lo = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, customerZone: TZ, rand: () => 0 });
+    const hi = replyDueAt({ receivedAt: noon, config: DEFAULT_DELAY, timeZone: TZ, customerZone: TZ, rand: () => 0.999999 });
     expect((lo.getTime() - noon.getTime()) / 1000).toBe(30);
     expect((hi.getTime() - noon.getTime()) / 1000 + TICK_SECONDS).toBe(90);
   });
@@ -52,7 +51,7 @@ describe("Emily answers 30 seconds to a minute and a half after the text", () =>
   it("arrives 30-90s after the text wherever the text lands in the minute", () => {
     const WRITE_SECONDS = 8; // a generous allowance for the model
     const due = (replyDueAt({
-      receivedAt: new Date(0), config: DEFAULT_DELAY, timeZone: TZ, quietHours: HOURS,
+      receivedAt: new Date(0), config: DEFAULT_DELAY, timeZone: TZ, customerZone: TZ,
     }).getTime()) / 1000;
     for (let offset = 1; offset <= TICK_SECONDS; offset++) {
       // The text lands `offset` seconds before the next tick.
@@ -72,7 +71,7 @@ describe("Emily answers 30 seconds to a minute and a half after the text", () =>
 
   it("still never carries a reply past the evening cut-off", () => {
     const late = at("2026-09-16T00:59:30Z"); // 8:59:30pm in New York
-    const due = replyDueAt({ receivedAt: late, config: DEFAULT_DELAY, timeZone: TZ, quietHours: { startHour: 9, endHour: 21 } });
+    const due = replyDueAt({ receivedAt: late, config: DEFAULT_DELAY, timeZone: TZ, customerZone: TZ });
     expect(due.getTime()).toBe(late.getTime());
   });
 
@@ -89,7 +88,7 @@ describe("zero is off", () => {
 
   it("off means the turn runs now, unchanged", () => {
     const now = at("2026-09-14T18:00:00Z"); // 2pm ET, well inside the window
-    const out = delayedRunAt({ now, config: { minSeconds: 0, maxSeconds: 0 }, timeZone: TZ, quietHours: HOURS });
+    const out = delayedRunAt({ now, config: { minSeconds: 0, maxSeconds: 0 }, timeZone: TZ, customerZone: TZ });
     expect(out.getTime()).toBe(now.getTime());
   });
 });
@@ -135,23 +134,50 @@ describe("the draw", () => {
 
 describe("the delay never pushes a reply into tomorrow", () => {
   it("drops the delay when it would cross the quiet-hours boundary", () => {
-    // 8:58pm ET, window closes at 8pm... so use a time just inside a 9pm close.
+    // 8:58pm ET. The boundary is the federal 9pm on the CUSTOMER's clock,
+    // which is the one the gate applies to a held reply (answersInbound).
     const now = at("2026-09-15T00:58:00Z"); // 8:58pm ET on the 14th
     const out = delayedRunAt({
       now,
       config: { minSeconds: 300, maxSeconds: 300 },
       timeZone: TZ,
-      quietHours: { startHour: 9, endHour: 21 }, // closes 9pm
+      customerZone: TZ,   // federal 9pm close, on the customer's clock
     });
     // 9:03pm would be refused by the gate and answered at 9am tomorrow. A reply
     // now is both lawful and eleven hours sooner.
     expect(out.getTime()).toBe(now.getTime());
   });
 
+  /**
+   * THE BUG THIS FOUND.
+   *
+   * delayedRunAt used to ask withinQuietHours against the WORKSPACE's
+   * timezone and the WORKSPACE's 9-8 window. The gate sends a held reply with
+   * answersInbound, which is the federal 8am-9pm on the CUSTOMER's clock — so
+   * the boundary being guarded was not the boundary that would refuse.
+   *
+   * A California lead texting at 8:58pm their time reads as 11:58pm on an
+   * Eastern workspace's clock, so the guard did not fire, the delay was
+   * applied, and the gate then refused 9:03pm Pacific against the federal
+   * ceiling. The lead was answered the next morning.
+   */
+  it("guards the CUSTOMER's evening, not the workspace's", () => {
+    // 8:58pm in San Diego, 11:58pm in New York. One instant.
+    const now = at("2026-09-16T03:58:00Z");
+    const out = delayedRunAt({
+      now,
+      config: { minSeconds: 300, maxSeconds: 300 },
+      timeZone: TZ,                              // PPP is in New York
+      customerZone: "America/Los_Angeles",       // the lead is not
+    });
+    // Answering now is lawful and eleven hours sooner than tomorrow morning.
+    expect(out.getTime()).toBe(now.getTime());
+  });
+
   it("applies the delay normally in the middle of the day", () => {
     const now = at("2026-09-14T18:00:00Z"); // 2pm ET
     const out = delayedRunAt({
-      now, config: { minSeconds: 300, maxSeconds: 300 }, timeZone: TZ, quietHours: HOURS,
+      now, config: { minSeconds: 300, maxSeconds: 300 }, timeZone: TZ, customerZone: TZ,
     });
     expect(out.getTime()).toBe(now.getTime() + 300_000);
   });
@@ -161,7 +187,7 @@ describe("the delay never pushes a reply into tomorrow", () => {
     // it can help by returning now.
     const now = at("2026-09-14T07:00:00Z");
     const out = delayedRunAt({
-      now, config: { minSeconds: 300, maxSeconds: 300 }, timeZone: TZ, quietHours: HOURS,
+      now, config: { minSeconds: 300, maxSeconds: 300 }, timeZone: TZ, customerZone: TZ,
     });
     expect(out.getTime()).toBe(now.getTime() + 300_000);
   });

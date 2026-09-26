@@ -104,12 +104,34 @@ describe("gatedSend — deferrals say when, so nothing is silently dropped", () 
   });
 });
 
-describe("gatedSend — timezone is the workspace's, not the server's", () => {
-  it("the same instant sends for San Diego and defers for Nassau", async () => {
+describe("gatedSend — timezone is the CUSTOMER's, not the workspace's", () => {
+  // THIS TEST USED TO ASSERT THE BUG.
+  //
+  // It sent to CUSTOMER — a 516 number, which is Nassau County, New York —
+  // from a San Diego workspace at 10:30pm Eastern, and expected ok. It passed
+  // because the gate read the WORKSPACE's clock, saw 7:30pm in California and
+  // allowed it. The person holding that handset was in New York at half past
+  // ten at night, past the federal 9pm ceiling.
+  //
+  // Its old name was "the workspace's, not the server's" — true, and a step
+  // up from the server's clock, but still the wrong clock. See
+  // customer-clock.ts and sending-window.ts.
+  const sd: GateWorkspace = { ...NASSAU, name: "CA San Diego Leads", time_zone: "America/Los_Angeles", phone_e164: "+18587790696" };
+  const SAN_DIEGO_CUSTOMER = "+16195550147" as E164;
+
+  it("refuses a New York customer at 10:30pm even when the workspace is in California", async () => {
     const at = utc("2026-07-16T02:30:00Z"); // 10:30pm EDT / 7:30pm PDT
-    const sd: GateWorkspace = { ...NASSAU, name: "CA San Diego Leads", time_zone: "America/Los_Angeles", phone_e164: "+18587790696" };
-    const east = await gatedSend(req({ now: at }), deps());
-    const west = await gatedSend(req({ now: at, workspace: sd }), deps());
+    const r = await gatedSend(req({ now: at, workspace: sd }), deps());
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("quiet_hours");
+  });
+
+  it("the same instant defers for a Nassau customer and sends for a San Diego one", async () => {
+    // One instant: 9:30pm in New York, 6:30pm in San Diego. Same workspace,
+    // same clock tick, two customers, two answers.
+    const at = utc("2026-07-16T01:30:00Z");
+    const east = await gatedSend(req({ now: at, workspace: sd }), deps());
+    const west = await gatedSend(req({ now: at, workspace: sd, to: SAN_DIEGO_CUSTOMER }), deps());
     expect(east.ok).toBe(false);
     expect(west.ok).toBe(true);
   });

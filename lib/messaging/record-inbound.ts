@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
+import { customerZone } from "./customer-clock";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 import { trackForWorkspace } from "./track";
@@ -321,10 +322,9 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
               maxSeconds: ws?.reply_delay_max_seconds ?? 0,
             },
             timeZone: ws?.time_zone ?? "America/New_York",
-            quietHours: {
-              startHour: ws?.quiet_hours_start ?? 9,
-              endHour: ws?.quiet_hours_end ?? 20,
-            },
+            // Whose evening cut-off the delay must not carry the reply past.
+            // The customer's, because that is the one the gate will enforce.
+            customerZone: customerZone({ phone: decision.from }).timeZone,
           })
         : null;
 

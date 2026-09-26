@@ -19,9 +19,11 @@ import { activeTransport, type MessageTransport } from "./transport";
 import { hasUnresolved } from "./merge-fields";
 import { emailAddressesFor } from "./reply-to";
 import {
-  withinQuietHours, nextSendableTime, withinDailyCap,
+  withinQuietHours, nextSendableTime, withinDailyCap, isWeekendIn,
   DEFAULT_DAILY_CAP, FEDERAL_BOUND, type QuietHours,
 } from "./compliance";
+import { customerZone } from "./customer-clock";
+import { sendingWindow, nextWindowOpen } from "./sending-window";
 
 /** The subset of a workspace row the gate needs. */
 export type GateWorkspace = {
@@ -114,6 +116,20 @@ export type GateDeps = {
    * every existing test and the simulator working.
    */
   suppressionListLoaded?(): Promise<boolean>;
+  /**
+   * Which US state this handset's owner is in, when the database knows.
+   *
+   * Decides whose clock the sending window is read against — see
+   * customer-clock.ts and sending-window.ts. A dep rather than something each
+   * caller passes, because there are four call sites and not all of them hold
+   * a conversation: plumbing it through each is exactly how a rule ends up
+   * written and never wired, which has happened repeatedly in this codebase.
+   *
+   * Optional, and null is a fine answer. Without it the zone comes from the
+   * area code, and failing that from the most restrictive zone PPP serves —
+   * never from the workspace's own clock, which is the bug this replaced.
+   */
+  customerState?(to: E164): Promise<string | null>;
   /** Supplied only by tests. App callers never hold a transport — the gate
    *  resolves its own — so there is no object to pass around that could be
    *  used to send around this function. */
@@ -161,6 +177,15 @@ export type SendRequest = {
    * It does NOT make the message unconditional. It makes it answerable.
    */
   answersInbound?: boolean;
+  /**
+   * The customer's state, when the caller knows it — from their zip through
+   * sms_service_zips, which is the most authoritative thing PPP holds.
+   *
+   * Optional and usually absent: 0 of the 10 live conversations carry a zip,
+   * so in practice the zone is resolved from the area code of `to`. Supplying
+   * it only ever makes the answer more accurate. See customer-clock.ts.
+   */
+  toState?: string | null;
   now?: Date;
 };
 
@@ -190,6 +215,7 @@ export type GateRefusal =
   | "channel_not_supported"   // an email step reaching an SMS-only transport;
   | "suppression_list_empty"  // nothing loaded to check against — see GateDeps
   | "too_long"                // a text nobody meant to send — see MAX_SMS_CHARS
+  | "office_closed"           // A36: PPP is not working. Deferrable.
 
 export type GateResult =
   /** `body` is what was ACTUALLY sent, which may differ from what was asked:
@@ -266,18 +292,52 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     ? { ...FEDERAL_BOUND }
     : { startHour: ws.quiet_hours_start, endHour: ws.quiet_hours_end };
 
-  // 2. Quiet hours, in the WORKSPACE's timezone, never the server's.
+  // 2. A36 — THE CALLABLE WINDOW, ON THE RECIPIENT'S CLOCK.
+  //
+  //    This used to read ws.time_zone for both halves, which is the workspace's
+  //    clock and not the customer's. At 9:30am Eastern it let a text go to a
+  //    California number at 6:30 in the morning — under the federal 8am floor,
+  //    so a violation and not merely outside Kate's preference.
+  //
   //    Applied to EMAIL as well as SMS. Quiet hours are a TCPA bound on texts
   //    and email is CAN-SPAM, which has no such rule — but PPP's own campaign
   //    emails already sit inside the window (09:00, and 15 minutes after a
   //    launch text), so enforcing it cannot delay anything they scheduled, and
   //    it removes any path to an email leaving at 3am.
-  if (!withinQuietHours(now, ws.time_zone, hours)) {
-    return { ok: false, reason: "quiet_hours", retryAt: nextSendableTime(now, ws.time_zone, hours) };
+  // The caller's own answer wins when it has one; otherwise ask the database.
+  // A dep that throws must not take the send with it — an unknown state is
+  // handled (the restrictive zone), an exception is not.
+  let toState = req.toState ?? null;
+  if (!toState && deps.customerState && to) {
+    try { toState = await deps.customerState(to); } catch { toState = null; }
+  }
+  const zone = customerZone({ zipState: toState, phone: to ?? null });
+  const window = sendingWindow({
+    now,
+    customerZone: zone.timeZone,
+    officeZone: ws.time_zone,
+    officeHours: hours,
+    answersInbound: req.answersInbound,
+  });
+  if (!window.open) {
+    const retryAt = nextWindowOpen({
+      now, customerZone: zone.timeZone, officeZone: ws.time_zone,
+      officeHours: hours, answersInbound: req.answersInbound,
+    });
+    // office_closed is PPP's own policy and quiet_hours is the legal bound.
+    // Kept as separate refusals because they mean different things to whoever
+    // reads the log: one is a setting, the other is a near miss.
+    return {
+      ok: false,
+      reason: window.why === "office_closed" ? "office_closed" : "quiet_hours",
+      ...(retryAt ? { retryAt } : {}),
+    };
   }
 
   // 3. Weekend policy. PPP's own setting, not a legal bound — so it defers to
-  //    the next open weekday rather than refusing outright.
+  //    the next open weekday rather than refusing outright. Narrower than
+  //    A36's weekend half-day above, and applied after it, so whichever is
+  //    stricter wins.
   if (!ws.send_on_weekends && isWeekendIn(now, ws.time_zone)) {
     return { ok: false, reason: "weekend", retryAt: nextWeekdayOpen(now, ws.time_zone, hours) };
   }
@@ -338,15 +398,10 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
 
 /* ── helpers, all timezone-aware for the same reason as the rest ── */
 
-function weekdayIn(now: Date, timeZone: string): number {
-  const name = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(now);
-  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(name);
-}
-
-export function isWeekendIn(now: Date, timeZone: string): boolean {
-  const d = weekdayIn(now, timeZone);
-  return d === 0 || d === 6;
-}
+// isWeekendIn lived here and in sending-window.ts, two implementations of one
+// question. Now one, in compliance.ts with the other clock rules, re-exported
+// so the files that import it from the gate keep working.
+export { isWeekendIn } from "./compliance";
 
 function startOfNextDay(now: Date, timeZone: string): Date {
   // Step forward in hours until the local calendar day changes, rather than
