@@ -149,6 +149,44 @@ export type ReportRow = {
 
 export const REPORT_PAGE_SIZE = 25;
 
+/**
+ * How many numbers and addresses are suppressed right now.
+ *
+ * LIVES HERE, NOT IN THE ACTIONS FILE. optout-import-write.ts is
+ * "use server", so every export in it is reachable from the browser and the
+ * suite rightly refuses an exported function there that does not check
+ * permission. I put this there first and the test caught it.
+ *
+ * suppressionCount() in that file keeps the permission check and calls this.
+ * It needs a request scope, so nothing outside the app could
+ * call it — and the cross-surface check has to run the SAME code the screen
+ * runs or it is just a second opinion. Splitting it is what lets
+ * verify:surfaces hold this figure against the dashboard's own, which is how
+ * two different wrong answers to one question went unnoticed: this one capped
+ * at 1,000 rows, the dashboard's counted people who had opted back in.
+ */
+export async function suppressionCounts(
+  sb: ReturnType<typeof messagingDb>,
+): Promise<{ sms: number; email: number }> {
+  /**
+   * COUNTED BY THE DATABASE, NOT BY READING EVERY ROW.
+   *
+   * This pulled the whole table and counted in JS. PostgREST caps an
+   * unbounded select at 1,000 rows silently, so the moment Katie's Salesforce
+   * list landed — 31,601 suppressions — this screen would have reported
+   * exactly 1,000 and looked plausible doing it.
+   *
+   * The table was under the cap until today, which is why it never showed.
+   */
+  const [sms, email] = await Promise.all([
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("phone_e164", "is", null).is("opted_in_at", null),
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("email", "is", null).is("opted_in_at", null),
+  ]);
+  return { sms: sms.count ?? 0, email: email.count ?? 0 };
+}
+
 export async function readinessChecks() {
   const sb = messagingDb();
   const [{ count: optOutPhones }, { count: optOutEmails }, { count: workspaces }, { count: campaigns }, { data: numbered }] = await Promise.all([
