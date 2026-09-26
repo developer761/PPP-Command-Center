@@ -300,6 +300,32 @@ two-line change.
 
 ---
 
+## 10. A44 — which closing lines come out?
+
+The spec says: "Apply the ending change to `schedule_follow_up` only… No
+closing line is sent to the customer at the end — **both lines in use today
+come out, removed rather than reworded**."
+
+`schedule_follow_up` has exactly two lines today, which is presumably the
+pair meant:
+
+> "No problem at all. I'll check back in with you later on."
+> "Understood. I'll follow up with you down the line."
+
+But that intent is **not only** the stall ending. It is also A40's park
+ending and A25's phone branch, and in both of those a line is correct — the
+customer said something and deserves an answer.
+
+**What we do today:** the stall cadence ends with **no customer-facing
+message at all** — only the resume-calling signal to the call centre, which
+satisfies "no closing line" whichever reading is right. The two templates
+stay, because removing them would silence A40 and A25 as well.
+
+**What we need:** confirmation that "both lines come out" means *at the end
+of a stalled cadence*, not *everywhere `schedule_follow_up` is used*.
+
+---
+
 ## Separately, for Katie (not Kate)
 
 - **A25's call-cadence write.** Both no-call branches ask for the customer to
