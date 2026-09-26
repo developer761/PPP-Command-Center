@@ -199,9 +199,15 @@ try {
       check("the revision keeps the package id",
         rev.submittal.submittal_number === made.submittal.submittal_number,
         `#${rev.submittal.submittal_number} vs #${made.submittal.submittal_number}`);
+      /*
+       * The ORIGINAL is revision 0 and renders with no Rev label at all; the
+       * first revision is 1 and renders "Rev 1". That is the construction
+       * convention and it is what the screen does — her handbook said "Rev 2"
+       * until this line printed the real number and I read it.
+       */
       check("and increments the revision number",
-        rev.submittal.revision_number === made.submittal.revision_number + 1,
-        `rev ${rev.submittal.revision_number}`);
+        made.submittal.revision_number === 0 && rev.submittal.revision_number === 1,
+        `original rev ${made.submittal.revision_number} -> revision rev ${rev.submittal.revision_number}`);
       check("the items come forward so she does not retype them",
         ((await sb.from("commercial_opp_submittal_items").select("id").eq("submittal_id", rev.submittal.id)).data ?? []).length === 1);
     }
