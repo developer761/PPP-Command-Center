@@ -1,4 +1,5 @@
 import type { Intent } from "./agent-output";
+import { DISCLOSURE_IN_HOURS_ES } from "./disclosure";
 
 /**
  * Emily in Spanish.
@@ -143,10 +144,9 @@ export const SAYS_ES: Record<Intent, string[]> = {
     "Tengo {zip} como código postal, y lamentablemente no damos servicio en el estado de {state}. ¿El proyecto queda fuera de {state}?",
     "El código postal que tengo es {zip}, y lamentablemente no damos servicio en {state}. ¿El proyecto está en otro lugar?",
   ],
-  bot_suspected: [
-    "Buena pregunta. Permítame pasarlo con alguien de nuestro equipo.",
-    "Pregunta justa. Le paso con una persona de nuestro equipo para que continúe.",
-  ],
+  // A46. The old pair handed off and disclosed nothing, so a Spanish speaker
+  // asking "are you a bot?" got the one answer the rule forbids.
+  bot_suspected: [DISCLOSURE_IN_HOURS_ES],
   discard: [
     "¡Gracias por comunicarse! Eso no es algo que nosotros hagamos. Si entendí mal el proyecto, avíseme y lo reviso de nuevo.",
     "Le agradezco que nos escriba. Lamentablemente ese no es un trabajo que hagamos. Si me equivoqué, cuénteme un poco más.",

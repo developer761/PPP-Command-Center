@@ -88,6 +88,26 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A46 — the disclosure reaches the message, on the customer's clock",
+    why: "approved final text that never gets prefixed is a rule that exists only in a constants file. And outOfHours resolved against the workspace would disclose to the wrong people every evening",
+    links: [
+      ["lib/messaging/disclosure.ts", /export const DISCLOSURE_OUT_OF_HOURS =/],
+      ["lib/messaging/agent-run.ts", /applyDisclosure\(move, rendered/],
+      ["lib/messaging/scheduler-db.ts", /outOfHours: !sendingWindow\(/],
+      ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
+      // bot_suspected must stay a CONTINUE intent, not an ending.
+      ["lib/messaging/agent-output.ts", /"bot_suspected",\n\] as const;|"bot_suspected",/],
+    ],
+    forbidden: [
+      // The retired instruction, and the retired hand-off template.
+      ["lib/messaging/render.ts", /I am a real person|real person!/i],
+      // Narrowed after a first run: the same phrase is CORRECT under
+      // `escalate`, where a hand-off really is happening. Only bot_suspected
+      // is forbidden from carrying it.
+      ["lib/messaging/render-es.ts", /bot_suspected:\s*\[\s*"Buena pregunta/i],
+    ],
+  },
+  {
     rule: "A36 — the sending window reads the CUSTOMER's clock",
     why: "the gate read ws.time_zone, so at 9:30am Eastern it permitted a text to California at 6:30 in the morning — under the federal 8am floor",
     links: [

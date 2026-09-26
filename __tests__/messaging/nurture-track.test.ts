@@ -79,6 +79,10 @@ describe("nurture is a different conversation, not a different tone", () => {
   it("has words for every nurture intent it can choose", () => {
     for (const intent of NURTURE_CONTINUE_INTENTS) {
       if (intent === "answer_question") continue; // the rapport IS the answer
+      // escalate is DELIBERATELY silent: the Iteration 1 spec's Human
+      // takeover says "the bot sends nothing on the way out — no sign-off,
+      // no handover line". A person answers next, not the bot announcing one.
+      if (intent === "escalate") continue;
       expect(renderMessage({ intent }).length, intent).toBeGreaterThan(0);
     }
   });

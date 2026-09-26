@@ -278,6 +278,28 @@ version of the campaign's times applied to the stall cadence.
 
 ---
 
+## 9. A46's Spanish wording needs sign-off
+
+A46 supplies two approved strings in English. A30 says we answer Spanish
+ourselves, and A46 says the bot "never denies being a bot, **in any state**"
+— so a Spanish speaker asking cannot be the one case that gets something
+else.
+
+**What we do today:** faithful translations, in the usted register the rest
+of the Spanish templates use. **They are mine, not approved.**
+
+> In hours: "Soy un asistente de inteligencia artificial, pero puedo tomar
+> los detalles de su proyecto y coordinarle una cita con un estimador.
+> ¿Prefiere hablar con alguien de nuestro equipo?"
+>
+> Out of hours: "Soy un asistente de inteligencia artificial, pero puedo
+> tomar los detalles de su proyecto y pasarlos cuando abramos."
+
+**What we need:** her wording, or a nod to these. Swapping them is a
+two-line change.
+
+---
+
 ## Separately, for Katie (not Kate)
 
 - **A25's call-cadence write.** Both no-call branches ask for the customer to

@@ -25,6 +25,7 @@ import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
+import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch } from "./channel-preference";
 import type { Language } from "./language";
 
@@ -60,6 +61,25 @@ import type { Language } from "./language";
  */
 export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
   "msg_liked_loved",
+  /**
+   * ESCALATE SAYS NOTHING, AND THAT IS THE WHOLE POINT OF IT.
+   *
+   * Iteration 1 spec, Human takeover: "the bot pings the agent, and the agent
+   * enters the conversation and answers the customer directly. THE BOT SENDS
+   * NO HANDOVER MESSAGE OF ITS OWN." Done when: "The bot sends nothing on the
+   * way out — no sign-off, no handover line, nothing that reads as an
+   * ending." And: "There is no handover message because we do not want one."
+   *
+   * It used to render "Let me get one of our team on this. Someone will
+   * follow up with you shortly.", which went into the draft body — so a
+   * reviewer approving that draft sent the customer the exact seam the spec
+   * says to remove. Caught 2026-09-26 while wiring A46.
+   *
+   * The conversation still moves to human_active with a reason; that is the
+   * ping. What changes is that the customer hears from a person next, not
+   * from the bot announcing a person.
+   */
+  "escalate",
 ]);
 
 /**
@@ -326,10 +346,15 @@ export const SAYS: Record<Intent, string[]> = {
    * that ends up in a screenshot. It also must not stall: the conversation is
    * already handing to a person, so it says that and stops.
    */
-  bot_suspected: [
-    "Good question. Let me get someone from our team to pick this up with you.",
-    "Fair question. I am getting one of our team to take it from here.",
-  ],
+  /**
+   * A46 — APPROVED FINAL TEXT, byte for byte.
+   *
+   * One variant, not two: this is approved copy and rotating it would mean
+   * sending something that was never approved. The old pair handed the
+   * conversation to a person and ended it, which threw away a live lead for
+   * asking a fair question — and neither line answered the question.
+   */
+  bot_suspected: [DISCLOSURE_IN_HOURS],
 
   // — Silent —
   // Kate's wording, turned into a sentence: say we cannot help, invite the

@@ -23,6 +23,7 @@ import { addressGap } from "./address";
 import { jobRoute, offsiteReasonFor } from "./offsite";
 import { availabilityGap } from "./availability";
 import { statedConstraint } from "./reachability";
+import { disclosureMove, applyDisclosure, alreadyDisclosed } from "./disclosure";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent, templateAsks } from "./render";
@@ -336,6 +337,14 @@ export async function runAgentTurn(
      * reading it needs a database and this stays testable without one.
      */
     callback?: { unreachableStartHour?: number | null; availability?: string | null };
+    /**
+     * A46: is it outside THIS CUSTOMER's callable window right now?
+     *
+     * Resolved by the caller through sendingWindow(), because it needs a
+     * clock and this stays testable without one. Absent means "do not
+     * disclose", which is the quiet direction to fail in.
+     */
+    outOfHours?: boolean;
   } = {}
 ): Promise<RunResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -513,7 +522,31 @@ Choose the next action.`;
         unreachableStartHour: statedConstraint(ownWords)?.startHour ?? null,
       },
     };
-    const rendered = renderMessage(renderInput);
+    let rendered = renderMessage(renderInput);
+
+    /**
+     * A46 — the out-of-hours disclosure, on the FIRST reply only.
+     *
+     * Prefixed to the message already being sent rather than sent on its own,
+     * so it contributes no ask of its own (A22). `bot_suspected` is handled
+     * by its own template and needs nothing here — the approved in-hours
+     * string IS that template.
+     *
+     * Whether we are out of hours is the CUSTOMER's question, not the
+     * workspace's: opts.outOfHours is resolved by the caller against their
+     * own callable window. Absent, nothing is prefixed, which is the quiet
+     * direction to fail in.
+     */
+    if (v.action.intent !== "bot_suspected") {
+      const move = disclosureMove({
+        askedIfBot: false,
+        outOfHours: opts.outOfHours ?? false,
+        alreadyDisclosed: alreadyDisclosed(
+          history.filter((t) => t.role === "assistant").map((t) => t.text)
+        ),
+      });
+      rendered = applyDisclosure(move, rendered, language === "es");
+    }
 
     // An intent that renders to nothing, and is not one of the intents that
     // deliberately says nothing, is a dropped turn: the customer asked

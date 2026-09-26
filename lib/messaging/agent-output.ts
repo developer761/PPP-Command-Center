@@ -23,7 +23,7 @@ import { parkKind, isAsk, conversationWasDeferred } from "./parking";
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
   "success", "discard", "schedule_follow_up", "lost", "bailout",
-  "phone_pricing", "transferred", "bot_suspected", "msg_liked_loved",
+  "phone_pricing", "transferred", "msg_liked_loved",
   // A2's SECOND script, and the only one that ends anything. It is reached
   // only when the project really is in a state PPP does not cover.
   "area_not_serviced",
@@ -38,6 +38,11 @@ export const CONTINUE_INTENTS = [
   // sentences, different situations." One intent could only ever say one of
   // them, so every turn of the other kind was a breach.
   "acknowledge", "answer_question", "present_offsite_quote", "offer_offsite_quote", "escalate",
+  // A46 MOVED IT HERE. "Asked directly in hours, the in-hours string is sent
+  // verbatim, and the conversation carries on in the same thread — the
+  // question is not an ending." It used to end the conversation and hand off,
+  // which threw away a live lead for asking a fair question.
+  "bot_suspected",
   // A33: DEFER, AND KEEP GOING. "Defer a question you genuinely cannot answer
   // to the estimator — and keep the conversation going. Deflecting is
   // correct; ENDING the conversation in order to deflect is not."
@@ -222,7 +227,7 @@ export const INTENT_GUIDE: Record<string, string> = {
   escalate: "you are not sure, or it needs a person for any other reason",
   transferred: "hand straight to the office. Use this for a request to meet at the office, or a language we cannot write. NOT for Spanish: we answer Spanish ourselves now (A30), so transferring a Spanish speaker is a defect. NOT for a text-only preference either: A25 says somebody who asks to be texted rather than called should keep being TEXTED, and handing them off is the defect that rule exists to stop",
   schedule_follow_up: "they asked to be CALLED, or to be contacted later. Stop texting and end here",
-  bot_suspected: "they asked whether they are talking to a bot or a person",
+  bot_suspected: "they asked whether they are talking to a bot or a person. Answer honestly and KEEP GOING — this is not an ending, and the bot never denies being a bot (A46)",
   phone_pricing: "they want to talk money on the phone",
   area_not_serviced: "the zip on file is somewhere PPP does not cover",
   bailout: "they have said they are not going ahead",

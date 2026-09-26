@@ -11,6 +11,8 @@ import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
+import { sendingWindow } from "./sending-window";
+import { customerZone } from "./customer-clock";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
 import { knownFromThread } from "./known-from-thread";
@@ -404,6 +406,14 @@ export function schedulerDeps(): SchedulerDeps {
           unreachableStartHour:
             (conv as { unreachable_start_hour?: number | null }).unreachable_start_hour ?? null,
         },
+        // A46: out of hours ON THE CUSTOMER'S OWN CLOCK, not the workspace's.
+        // Same function the gate uses, so the disclosure and the send window
+        // can never disagree about whether we are open.
+        outOfHours: !sendingWindow({
+          now: new Date(),
+          customerZone: customerZone({ phone: conv.customer_phone }).timeZone,
+          officeZone: ws.time_zone,
+        }).open,
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
           // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were
