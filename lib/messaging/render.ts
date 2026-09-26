@@ -27,6 +27,7 @@ import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-e
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch } from "./channel-preference";
+import { replyToRequestedTime } from "./appointment-time";
 import type { Language } from "./language";
 
 /** Intents that END the conversation without sending anything. Sending a
@@ -762,6 +763,28 @@ export function renderMessage(input: RenderInput): string {
    * Read from their own words, never guessed: no call is promised unless they
    * asked for one. No time is named, because nothing here knows the schedule.
    */
+  /**
+   * THEY NAMED A TIME — HOLD IT, NEVER CONFIRM IT.
+   *
+   * Hatch parity gap 2, and the likeliest A15 breach in the system. A
+   * customer says "Tuesday at 2?" and the natural, helpful reply is "Tuesday
+   * at 2 works!" — which invents an appointment nobody booked. A15 already
+   * REFUSES that at the validator; what was missing was the right thing to
+   * say instead, so the model was left choosing.
+   *
+   * Placed on the availability turns only. A time mentioned while giving an
+   * address is not a request to be booked, and answering one there would
+   * derail the flow.
+   *
+   * Never restates the time. Hatch says it twice — "Do not restate or confirm
+   * their time", "Don't thank them" — because repeating it back reads as
+   * agreement.
+   */
+  if (input.intent === "ask_availability" || input.intent === "checking_availability") {
+    const timed = replyToRequestedTime(input.customerText);
+    if (timed) return timed.reply;
+  }
+
   if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
     const es = input.language === "es";
 

@@ -188,6 +188,18 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A15 — a requested time is held, never confirmed",
+    why: "the likeliest A15 breach in the system. A customer says 'Tuesday at 2?' and the natural reply confirms it, inventing an appointment nobody booked. The validator refuses that; this is the right thing to say instead, and a parser nothing calls leaves the model choosing again",
+    links: [
+      ["lib/messaging/appointment-time.ts", /export function replyToRequestedTime/],
+      ["lib/messaging/render.ts", /replyToRequestedTime\(input\.customerText\)/],
+    ],
+    forbidden: [
+      // The holding line must never grow into a confirmation.
+      ["lib/messaging/appointment-time.ts", /that (?:time )?works\b|see you (?:then|at)/i],
+    ],
+  },
+  {
     rule: "A36 — the sending window reads the CUSTOMER's clock",
     why: "the gate read ws.time_zone, so at 9:30am Eastern it permitted a text to California at 6:30 in the morning — under the federal 8am floor",
     links: [

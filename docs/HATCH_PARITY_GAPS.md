@@ -10,6 +10,12 @@ so the day's findings run in seconds forever instead of evaporating.
 
 Legend: ✅ we do it · ⚠️ partial · ❌ missing · 🟩 we are deliberately better
 
+> **2026-09-26: gaps 2, 3 and 4 are built** — the three most likely to produce
+> a visibly wrong message. The wording for 3 is OURS, not Hatch's, because
+> Hatch contradicts itself on the hours (prompt says the latest slot is 5 PM,
+> its own FAQ says 6 PM). `FIRST_SLOT_HOUR` and `LAST_SLOT_HOUR` are named
+> constants in one place, so Kate's answer is a one-line edit.
+
 ---
 
 ## Correctness and compliance — we are ahead
@@ -49,7 +55,7 @@ a template change plus a day-of-week read, so it is cheap.
 Note it is approved copy that names a *rough* window without naming a time,
 which stays inside A15 and our `invented_availability` guard.
 
-### ❌ 2. A specific in-hours time gets a holding answer
+### ✅ 2. A specific in-hours time gets a holding answer — BUILT 2026-09-26
 
 > If they ask for a specific time within business hours → do not restate or
 > confirm their time → reply **"I'll check the calendar for that time."** →
@@ -59,7 +65,7 @@ We have no equivalent. A customer who says "how about Tuesday at 2?" currently
 gets whatever the model picks. This is the single most likely place for an
 A15 breach, because the natural reply is to confirm the time.
 
-### ❌ 3. Out-of-hours appointment requests get a specific redirect
+### ✅ 3. Out-of-hours appointment requests get a specific redirect — BUILT 2026-09-26
 
 > Before hours: *"Our earliest slot is usually 10 AM, but if you need
 > something earlier or on Saturday, I can check for you. What works best?"*
@@ -71,7 +77,7 @@ Missing entirely. Note the FAQ contradicts the prompt here — the FAQ says
 latest is **6 PM**, the prompt says **5 PM**. Do not copy either until Kate
 settles it (QUESTIONS_FOR_KATE item 3).
 
-### ❌ 4. "Assume times between 8 and 11 are AM and 12 to 7 are PM"
+### ✅ 4. AM/PM disambiguation — BUILT 2026-09-26
 
 A bare "2" or "10" is ambiguous. Hatch resolves it. We do not, so a customer
 saying "3 works" could be read as 3 AM by anything downstream.
