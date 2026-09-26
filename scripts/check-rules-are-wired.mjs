@@ -75,6 +75,19 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A40 — parking reaches the validator, and sees the whole thread",
+    why: "Kate's two situations have OPPOSITE failures: a field park that ends having gathered nothing, and a conversation park the bot keeps pressing. A detector nothing calls produces both",
+    links: [
+      ["lib/messaging/parking.ts", /export function parkKind/],
+      ["lib/messaging/agent-output.ts", /reason: "pressed_after_deferral"/],
+      ["lib/messaging/agent-output.ts", /reason: "parked_a_field_then_quit"/],
+      // The thread, not just the latest message — the pressing happens the
+      // turn AFTER the deferral, so a guard reading only customerText is
+      // wired but useless.
+      ["lib/messaging/agent-run.ts", /customerMessages: history\.filter/],
+    ],
+  },
+  {
     rule: "A36 — the sending window reads the CUSTOMER's clock",
     why: "the gate read ws.time_zone, so at 9:30am Eastern it permitted a text to California at 6:30 in the morning — under the federal 8am floor",
     links: [

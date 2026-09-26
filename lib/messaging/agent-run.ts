@@ -442,6 +442,10 @@ Choose the next action.`;
       // steps to keep in order.
       stage: track === "new_lead" ? opts.stage : undefined,
       customerText: ownWords,
+      // A40: every earlier customer message, so a deferral made last turn
+      // still stops the bot pressing this turn. The whole thread, because a
+      // park does not have to be repeated to still be true.
+      customerMessages: history.filter((t) => t.role === "customer").map((t) => t.text),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",

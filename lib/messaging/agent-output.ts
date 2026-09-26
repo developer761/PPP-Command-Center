@@ -18,6 +18,7 @@
  */
 import type { AddressGap } from "./address";
 import type { JobRoute } from "./offsite";
+import { parkKind, isAsk, conversationWasDeferred } from "./parking";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -279,7 +280,9 @@ export type RejectReason =
   | "wrong_offsite_rule"      // presented what should be offered, or the reverse
   | "coverage_not_established"
   | "question_left_unanswered"
-  | "details_never_collected";    // presented what should be offered, or the reverse
+  | "details_never_collected"
+  | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
+  | "parked_a_field_then_quit";   // A40 (1): ended having gathered nothing
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -801,6 +804,20 @@ const A3_LEGS: { label: string; satisfiedBy: readonly string[] }[] = [
 const CLAIMS_THE_FLOW_FINISHED = new Set<string>(["success", "phone_pricing"]);
 
 /**
+ * Endings that PARK rather than close — A40's "come back to us later".
+ *
+ * Separate from CLAIMS_THE_FLOW_FINISHED on purpose: these carry no A3 debt
+ * (Kate's carve-out — "a customer who DECLINES (A17) or DEFERS (A40) ends the
+ * collection obligation at that turn"), but they are exactly the intents a
+ * bot reaches for when it gives up on a field it could have worked around.
+ *
+ * bailout and lost are absent: those are A17 declines, not parks, and the
+ * boundary matters — "wrong one and you either nag someone who said no, or
+ * abandon someone who said later".
+ */
+const DEFERRAL_ENDINGS = new Set<string>(["schedule_follow_up"]);
+
+/**
  * Intents that promise PPP will do the work.
  *
  * Booking, quoting and closing all say we cover this address. Asking for
@@ -818,6 +835,14 @@ export type ValidateContext = {
   verifiedSlots?: Record<string, unknown>;
   /** Kate's hard nos, as phrase lists. */
   hardNoPhrases?: string[];
+  /**
+   * Every message the CUSTOMER has sent, oldest first, for A40.
+   *
+   * A deferral does not have to be repeated to still be true, and the turn
+   * AFTER "I'll get back to you" is exactly where the pressing happens — so
+   * the latest message alone cannot answer this.
+   */
+  customerMessages?: readonly string[];
   /** Below this the action escalates instead of sending. */
   confidenceThreshold?: number;
   /** Which vocabulary applies. Defaults to new_lead, which is what every
@@ -944,6 +969,54 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // THE OFF-SITE PATH DOES NOT RELEASE THIS. "Even when an off-site quote is
   // suggested or required, you must still collect Project Details, Full
   // Address and Contact Information."
+  /**
+   * A40 (2) — DO NOT KEEP COLLECTING AGAINST A CONVERSATION THEY MOVED.
+   *
+   * Kate: "STOP ASKING. Do not continue trying to collect information from
+   * them." The named failure is "carrying on collecting after they have said
+   * they will come back to us - and pressing, 'I really can't move forward
+   * without it.'" And 2026-09-11: when they move the booking to another time
+   * or channel, stop gathering "CONTACT AND AVAILABILITY ALIKE".
+   *
+   * Enforced here rather than asked for in the prompt, because this is the
+   * turn where a model that has a flow to finish will reach for one more
+   * question. Reads the whole thread: the deferral was probably last turn.
+   */
+  if (isAsk(a.intent)) {
+    const said = [...(ctx.customerMessages ?? []), ctx.customerText ?? ""].filter(Boolean);
+    if (conversationWasDeferred(said)) {
+      return {
+        ok: false, reason: "pressed_after_deferral",
+        detail: "they have moved the booking conversation to another time or channel, " +
+          `so collection stops — ${a.intent} presses them for something they already deferred`,
+      };
+    }
+  }
+
+  /**
+   * A40 (1) — A FIELD THEY CANNOT FILL IS NOT A REASON TO GIVE UP.
+   *
+   * The mirror image, and Kate names it as the opposite failure: "The failure
+   * in (1) is closing having gathered NOTHING." Somebody who says "I'm
+   * available in March but need to talk with my wife" has parked ONE field;
+   * the address and contact are still there to collect.
+   *
+   * Only fires when the flow has genuinely produced nothing yet, so a bot
+   * that collected everything else and then deferred — which is exactly what
+   * Hatch does and what Kate asks for — is untouched.
+   */
+  if (ctx.priorIntents && DEFERRAL_ENDINGS.has(a.intent) && parkKind(ctx.customerText) === "field") {
+    const seen = new Set([...ctx.priorIntents, a.intent]);
+    const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
+    if (missing.length === A3_LEGS.length) {
+      return {
+        ok: false, reason: "parked_a_field_then_quit",
+        detail: "they cannot fill one field right now, which parks that field and not the " +
+          "conversation — collect the rest rather than closing having gathered nothing",
+      };
+    }
+  }
+
   if (ctx.priorIntents && CLAIMS_THE_FLOW_FINISHED.has(a.intent)) {
     const seen = new Set([...ctx.priorIntents, a.intent]);
     const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
