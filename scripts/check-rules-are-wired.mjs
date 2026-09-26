@@ -212,6 +212,22 @@ const CHAINS = [
     ],
   },
   {
+    rule: "Call forwarding — a call on a texting number reaches a human",
+    why: "Kate moved this into Iteration 1: customers ring the number we text them on. A route that exists but is not signed, or one that 403s, means a customer hears a failed call and concludes PPP does not answer its phone",
+    links: [
+      ["lib/messaging/voice-forward.ts", /export function forwardTwiml/],
+      ["app/api/webhooks/twilio-voice/route.ts", /verifyTwilioSignature/],
+      ["app/api/webhooks/twilio-voice/route.ts", /call_forward_to/],
+    ],
+    forbidden: [
+      // Kate asked for forwarding. Recording is a two-party-consent question
+      // nobody has asked, and a greeting nobody recorded is not a feature.
+      ["lib/messaging/voice-forward.ts", /<Record|<Play|record=/],
+      // A refused call is worse than no call. Never 403 a caller.
+      ["app/api/webhooks/twilio-voice/route.ts", /status: 403/],
+    ],
+  },
+  {
     rule: "A15 — a requested time is held, never confirmed",
     why: "the likeliest A15 breach in the system. A customer says 'Tuesday at 2?' and the natural reply confirms it, inventing an appointment nobody booked. The validator refuses that; this is the right thing to say instead, and a parser nothing calls leaves the model choosing again",
     links: [
