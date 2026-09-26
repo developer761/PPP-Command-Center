@@ -53,7 +53,7 @@ type ConversationRow = {
 export async function sweepStalled(
   sb: SupabaseClient,
   opts: { now?: Date; officeZoneFor?: (workspaceId: string) => string } = {}
-): Promise<{ scanned: number; queued: number; skipped: Record<string, number> }> {
+): Promise<{ scanned: number; queued: number; failed: number; skipped: Record<string, number> }> {
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - QUIET_HOURS_BEFORE_STALL * 3600_000).toISOString();
 
@@ -72,6 +72,8 @@ export async function sweepStalled(
   const skipped: Record<string, number> = {};
   const note = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   let queued = 0;
+  /** Conversations that SHOULD have been queued and could not be. */
+  let failed = 0;
 
   for (const c of convs) {
     // The last turn has to be OURS. Read from the messages table rather than
@@ -126,12 +128,24 @@ export async function sweepStalled(
     );
     // 23505 is the unique index refusing a second cadence, which is the
     // outcome we wanted. Anything else is reported rather than swallowed.
-    if (error && error.code !== "23505") { note(`insert failed ${error.code}`); continue; }
+    // A FAILED INSERT IS NOT A SKIP, AND MUST NOT READ LIKE ONE.
+    //
+    // On 2026-09-26 the action CHECK rejected every stall_followup (23514,
+    // because a migration dropped the wrong constraint name). The sweep
+    // reported `queued: 0` — which is also what a healthy idle sweep
+    // reports — and ran every minute for as long as it took somebody to run
+    // it by hand and print the skipped map. Counted separately so the
+    // difference is visible from the outside.
+    if (error && error.code !== "23505") {
+      note(`insert failed ${error.code}`);
+      failed++;
+      continue;
+    }
     if (error) { note("cadence already queued"); continue; }
     queued++;
   }
 
-  return { scanned: convs.length, queued, skipped };
+  return { scanned: convs.length, queued, failed, skipped };
 }
 
 /**
@@ -216,20 +230,20 @@ export async function resumeCallingIfSpent(
   });
   if (!signal) return false;
 
-  const recorded = await recordSignal(sb, signal);
-  if (recorded) {
-    /**
-     * The ending is recorded in OUR record only. Spec: "the Hub records the
-     * ending as Stalled conversation, and Salesforce is untouched."
-     *
-     * The conversation is NOT closed — A44 says never end it. Only the
-     * outcome is stamped, so the board can show what happened while the
-     * thread stays open for a person or a later reply.
-     */
-    await sb.from("sms_conversations")
-      .update({ outcome: "stalled" })
-      .eq("id", input.conversationId)
-      .is("outcome", null);
-  }
-  return recorded;
+  /**
+   * NO OUTCOME IS STAMPED, AND THAT IS DELIBERATE.
+   *
+   * The first version wrote outcome='stalled' here, to satisfy "the Hub
+   * records the ending as Stalled conversation". It could never have worked:
+   * sms_conversations_ended_shape holds that a conversation is ended IF AND
+   * ONLY IF it carries an outcome, and A44 is explicit that a stalled
+   * conversation is never ended. The update failed 23514 against an invariant
+   * that is right.
+   *
+   * The record IS the sms_call_signals row written just above — it carries
+   * the conversation, the lead, the reason, and it is what the call centre
+   * acts on. A board showing "stalled" derives it from that rather than
+   * keeping a second source of truth that can disagree with the first.
+   */
+  return recordSignal(sb, signal);
 }

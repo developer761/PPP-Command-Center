@@ -212,6 +212,16 @@ export async function GET(request: Request) {
     let stalls: Awaited<ReturnType<typeof sweepStalled>> | { error: string } | null = null;
     try {
       stalls = await sweepStalled(messagingDb());
+      /**
+       * A conversation the sweep WANTED to queue and could not is an alarm,
+       * not a statistic. It went unnoticed for a full deploy cycle once.
+       */
+      if (stalls.failed > 0) {
+        reportError({
+          key: "stall_cadence_insert_failed", platform: "ppp_cc",
+          message: `${stalls.failed} stalled conversation(s) could not be queued — ${JSON.stringify(stalls.skipped)}`,
+        });
+      }
       if (stalls.queued > 0) {
         reportWarn({
           key: "stall_cadence_queued", platform: "ppp_cc",
@@ -256,6 +266,9 @@ export async function GET(request: Request) {
         sent: summary.sent,
         failed: summary.failed,
         stallsQueued: stalls && !("error" in stalls) ? stalls.queued : null,
+        // Recorded in the heartbeat too: "queued 0, failed 3" is a very
+        // different state from "queued 0", and only one of them is fine.
+        stallsFailed: stalls && !("error" in stalls) ? stalls.failed : null,
       }, null);
     } catch (err) {
       console.warn("[cron/messaging-tick] heartbeat write failed:", err);
