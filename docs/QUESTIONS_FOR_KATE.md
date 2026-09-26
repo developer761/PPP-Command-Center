@@ -30,6 +30,14 @@ rater to grade against.
 **What we need:** a RULES.csv that includes A45 and A46, or confirmation that
 the spec text is the final wording and we should create the rows ourselves.
 
+> **Context from Hatch, 2026-09-26.** A46 is genuinely new — there is no AI
+> disclosure anywhere in Hatch's opener, prompt or FAQ. A45 ("pause/resume
+> calling") sits next to real voice features Hatch has and we do not: Call
+> Forwarding is ON to (877) 645-3563, voicemail greetings are configurable,
+> and one of the three AI agent types is **Inbound Calls**. Worth confirming
+> whether A45 means the Salesforce call cadence or Hatch's own call handling,
+> because the second one has nowhere to live in Connect Hub today.
+
 ---
 
 ## 2. A3 and A6 contradict each other on the word "tenant" · **real conflict**
@@ -62,9 +70,27 @@ routing, so it wins on both counts — but it is a guess about which she meant.
 **If she says A3 wins:** "the tenants" starts routing onsite, and A6's
 never-treat-as-commercial list loses one word.
 
+> **Evidence from Hatch, 2026-09-26.** Its live prompt uses the word
+> residentially: *"waiting on my **spouse/tenant**"*, in the availability
+> branch. That supports A6's reading.
+
 ---
 
 ## 3. A36 — whose clock, and does it cover replies? · **two parts**
+
+> **Updated 2026-09-26 after reading Hatch.** Hatch configures business hours
+> **per workspace** (CA LA Leads: Mon–Fri 9:00 AM–7:00 PM, Sat/Sun 9:30
+> AM–4:30 PM), and its workspaces are geographic — so the workspace clock and
+> the customer's region are usually the same thing there. A36's "9 AM–8 PM
+> Eastern" looks like the **Eastern workspaces' setting**, not a global rule.
+>
+> Six different sets of hours now exist across Hatch and Kate's rules: callback
+> 8 AM–6 PM, slots 10 AM–5 PM, bot-question 9–5 M–F/9–3 Sat, FAQ 10 AM–6 PM,
+> A36's 9–8/9–5:30, and the per-workspace settings — which are the only ones
+> actually enforced. **The sharper question is now: should A36 be read as
+> per-workspace hours plus a customer-local floor?** That is what we
+> implement, and it matches how Hatch is actually configured.
+> See `HATCH_LIVE_PROMPT_2026_09_26.md`.
 
 ### 3a. Confirm the window resolves against the CUSTOMER's zone
 
@@ -144,6 +170,15 @@ built, and this is the one decision inside it that is hers, not ours.
 **What we need:** a fallback interval, or a rule that says no-time parks are
 handed to a person rather than re-opened by the bot.
 
+> **Hatch's answer, read 2026-09-26.** Its prompt already has A40 situation
+> (1) almost word for word — *"If the customer explicitly says they do not
+> know their availability or are waiting on someone else … Confirm their
+> project details, full address, and contact info as usual. Skip asking
+> availability. After confirming … → End: Schedule Follow Up."*
+>
+> So Hatch **ends with Schedule Follow Up and lets the cadence pick it up** —
+> it does not hold a park open. That is a usable default if she wants one.
+
 ---
 
 ## 6. Sign-off on two pieces of wording
@@ -154,6 +189,13 @@ rules — we wrote them from her descriptions.
 ### bot_suspected — "are you a bot?"
 
 > "Good question. Let me get someone from our team to pick this up with you."
+
+> **What Hatch answers today**, from its FAQ "Who am I talking to?":
+> **"This is Emily with Precision Painting Plus."** No AI disclosure at all,
+> and it reads as a person. Its prompt also splits the bot question into
+> during- and outside-business-hours branches that **both do the same thing**,
+> so a behaviour was either lost or never existed. This is precisely the gap
+> A46 exists to close.
 
 Deliberately neither confirms nor denies. Somebody told "yes, a real person"
 has been deceived, and it is the sort of thing that ends up in a screenshot.
@@ -184,10 +226,40 @@ photos"*.
 
 **What we do today:** acknowledgement only, per the rule as written.
 
+> **Hatch agrees with the ceiling.** Its prompt: *"If they want to send
+> photos: they may send them and you will forward them to the estimator once
+> the appointment is booked."* Acknowledge and forward, never interpret.
+
 **What we need:** whether she wants the ceiling lifted to light
 interpretation, and if so how far — naming the subject is a much smaller step
 than describing condition or implying scope, and only the first is safe
 without pricing risk.
+
+---
+
+## 8. A44's cadence — the spec's rhythm, or Hatch's bespoke schedule?
+
+Found 2026-09-26 by reading Hatch's live campaign.
+
+Hatch runs **two separate cadences**, and they must not be merged:
+
+1. **The campaign sequence** — outbound nurture, hand-tuned per day:
+   Launch (SMS, then email 15 min later) · Day 2 SMS **10:00 am** and **6:30
+   pm** · Day 3 email **9:00 am** and SMS **11:15 am** · Day 4 SMS · Day 5 SMS
+2. **The Conversation Rule** — the bot's stall follow-up: **"Wait 5 hours / 1
+   attempt / Stalled / Only in business hours"**
+
+A44 is the second one. The Iteration 1 spec asks for **three follow-ups at 10
+AM / 3 PM / 6 PM customer-local**, which is neither: it is a regularised
+version of the campaign's times applied to the stall cadence.
+
+**What we need:** which behaviour she actually wants —
+- the spec's regular 10/3/6 rhythm, or
+- Hatch's one-attempt-after-5-hours stall rule, with the varied campaign
+  schedule kept separate?
+
+They produce noticeably different products. We have not built either yet, so
+this one genuinely is worth settling before we do.
 
 ---
 
