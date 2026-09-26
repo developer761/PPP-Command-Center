@@ -22,7 +22,8 @@ import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { customerZone } from "./customer-clock";
-import { pauseCallingFor } from "./stalled-db";
+import { pauseCallingFor, setParkReminder } from "./stalled-db";
+import { parkKind } from "./parking";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 import { trackForWorkspace } from "./track";
@@ -370,18 +371,43 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     if (decision.keyword !== "opt_out") {
       try {
         const { data: c } = await sb.from("sms_conversations")
-          .select("sf_lead_id").eq("id", conversationId).limit(1);
+          .select("sf_lead_id, unreachable_start_hour, unreachable_end_hour")
+          .eq("id", conversationId).limit(1);
         await pauseCallingFor(sb, {
           conversationId,
           leadId: c?.[0]?.sf_lead_id ?? null,
         });
+
+        /**
+         * A40 — IF THEY PARKED AND NAMED A TIME, SET THE REMINDER.
+         *
+         * Done here because a park is something the customer SAID; there is
+         * no later moment at which it becomes true. Only a CONVERSATION park
+         * counts — a field park ("not sure on dates") means carry on now, not
+         * come back later, and parkKind is what tells the two apart.
+         *
+         * No time named is the ordinary case and not a failure: the spec
+         * leaves that default to PPP — "do not pick one" — so the park simply
+         * has no reminder and a person picks it up, exactly as today.
+         */
+        if (parkKind(decision.body) === "conversation") {
+          const row = c?.[0] as { unreachable_start_hour?: number | null; unreachable_end_hour?: number | null } | undefined;
+          await setParkReminder(sb, {
+            conversationId,
+            customerText: decision.body,
+            customerPhone: decision.from,
+            unreachable: typeof row?.unreachable_start_hour === "number"
+              ? { startHour: row.unreachable_start_hour, endHour: row.unreachable_end_hour ?? row.unreachable_start_hour }
+              : null,
+          });
+        }
       } catch (e) {
         // A signal that cannot be recorded must never break recording the
         // customer's message. The call centre keeps dialling, which is the
         // status quo rather than a new failure.
         reportWarn({
           key: "call_signal_pause_failed", platform: "ppp_cc",
-          message: "could not record the pause-calling signal",
+          message: "could not record the pause-calling signal or the park reminder",
           context: { conversationId, error: e instanceof Error ? e.message : String(e) },
         });
       }

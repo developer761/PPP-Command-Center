@@ -247,3 +247,71 @@ export async function resumeCallingIfSpent(
    */
   return recordSignal(sb, signal);
 }
+
+/* ──────────────────  A40: the bot comes back  ────────────────── */
+
+import { parkReopenAt } from "./park-time";
+
+/**
+ * Set the reminder when a customer parks the conversation with a time.
+ *
+ * Called from the inbound path, because the park is a thing the customer
+ * said — there is no later moment when it becomes true.
+ *
+ * Returns the instant it will re-open at, or null when no time was named.
+ * NULL IS THE ORDINARY CASE AND NOT A FAILURE: the spec leaves the no-time
+ * default to PPP ("do not pick one"), so a park without a date simply has no
+ * reminder and a person picks it up, exactly as today.
+ */
+export async function setParkReminder(
+  sb: SupabaseClient,
+  input: {
+    conversationId: string;
+    customerText: string;
+    customerPhone: string;
+    now?: Date;
+    unreachable?: { startHour: number; endHour: number } | null;
+    officeZone?: string;
+  }
+): Promise<Date | null> {
+  const now = input.now ?? new Date();
+  const zone = customerZone({ phone: input.customerPhone }).timeZone;
+
+  // The customer's own calendar day, so "the 15th" means their month.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const get = (k: string) => Number(parts.find((p) => p.type === k)?.value);
+  const today = { year: get("year"), month: get("month"), day: get("day") };
+
+  const at = parkReopenAt({
+    text: input.customerText, today, customerZone: zone,
+    officeZone: input.officeZone, unreachable: input.unreachable, notBefore: now,
+  });
+  if (!at) return null;
+
+  /**
+   * A SECOND PARK REPLACES THE FIRST.
+   *
+   * "After the 15th", then on the 15th "actually make it the 20th". Without
+   * this the bot comes back twice, and the second time reads as a bot that
+   * forgot it had already asked — which is the A40 failure delivered by A40's
+   * own mechanism.
+   */
+  await sb.from("sms_scheduled_actions")
+    .update({ state: "cancelled", cancelled_reason: "the customer named a new time" })
+    .eq("conversation_id", input.conversationId)
+    .eq("action", "park_reopen")
+    .eq("state", "pending");
+
+  const { error } = await sb.from("sms_scheduled_actions").insert({
+    conversation_id: input.conversationId,
+    action: "park_reopen",
+    run_at: at.toISOString(),
+  });
+  // 23505 means one is already set for this instant — the outcome we wanted.
+  if (error && error.code !== "23505") {
+    throw new Error(`could not set the park reminder: ${error.code} ${error.message}`);
+  }
+  return at;
+}

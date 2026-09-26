@@ -273,7 +273,10 @@ export function schedulerDeps(): SchedulerDeps {
        * healthy tick — the same silent-nothing as the constraint bug an hour
        * earlier, and just as invisible.
        */
-      const isStallFollowUp = a.action === "stall_followup";
+      // A park re-open speaks after ourselves for the same reason a stall
+      // follow-up does: the bot acknowledged the park, so the latest inbound
+      // is always already answered.
+      const isStallFollowUp = a.action === "stall_followup" || a.action === "park_reopen";
       if (!isStallFollowUp && latestInboundIsAnswered(msgs ?? [])) {
         return { kind: "skipped" as const, reason: "somebody has already answered the customer" };
       }

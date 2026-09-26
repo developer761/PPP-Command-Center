@@ -98,6 +98,26 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A40 — the bot actually comes back at the time they named",
+    why: "the spec: 'What has never once happened is the bot coming back.' A parser with nothing calling it reproduces exactly that, and every park would look correctly recognised",
+    links: [
+      ["lib/messaging/park-time.ts", /export function parkReopenAt/],
+      // The reminder is written when the customer parks — there is no later
+      // moment at which a park becomes true.
+      ["lib/messaging/record-inbound.ts", /await setParkReminder\(/],
+      ["lib/messaging/stalled-db.ts", /action: "park_reopen"/],
+      // And something has to RUN it.
+      ["lib/messaging/scheduler.ts", /a\.action === "park_reopen"/],
+      // Same carve-out as the stall cadence: a park re-open speaks after
+      // ourselves, so the already-answered guard must not refuse it.
+      ["lib/messaging/scheduler-db.ts", /a\.action === "park_reopen"/],
+    ],
+    forbidden: [
+      // A park must never trigger A45's hand-back: it is not a cadence.
+      ["lib/messaging/scheduler.ts", /park_reopen[\s\S]{0,200}onCadenceSpent/],
+    ],
+  },
+  {
     rule: "A44 — the stall cadence is queued, runs, and is reached by the cron",
     why: "208 of 237 stalled conversations received NOTHING. A cadence nobody sweeps for reproduces that exactly, and the tick would still report ok",
     links: [

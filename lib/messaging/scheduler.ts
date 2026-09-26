@@ -276,9 +276,22 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
    * the run_at was computed inside them, but a workspace whose hours changed
    * since should still be refused rather than sent late.
    */
-  if (a.action === "stall_followup") {
+  /**
+   * A40 — THE BOT COMING BACK, at the time the customer named.
+   *
+   * Runs the same constrained turn a stall follow-up runs, and for the same
+   * reason: it must resume "in the same thread and with full context", which
+   * is what conversation memory is for. The only difference is what put the
+   * row in the queue — a date the customer gave us, rather than silence.
+   *
+   * Shares the stall branch because the behaviour is identical: draft or send
+   * through the gate, so A36's hours still bind at the moment it fires. What
+   * it does NOT share is the cadence ending — a park has no third step and no
+   * resume signal, so onCadenceSpent is never reached from here.
+   */
+  if (a.action === "stall_followup" || a.action === "park_reopen") {
     if (!deps.draftReply) {
-      const reason = "this worker cannot run stall follow-ups";
+      const reason = `this worker cannot run ${a.action}`;
       await deps.cancel(a, reason);
       return { kind: "cancelled", reason };
     }
@@ -288,7 +301,11 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
         await deps.markSent(a, out.providerId, out.body, "sms", out.intent);
         // The LAST one hands the lead back to the phone team. A45's resume
         // fires off the end of the cadence, and only from the end.
-        if (a.stall_step === FOLLOW_UP_COUNT) await deps.onCadenceSpent?.(a);
+        // Only A44's LAST follow-up hands the lead back. A park re-open is
+        // not a cadence and never triggers a resume.
+        if (a.action === "stall_followup" && a.stall_step === FOLLOW_UP_COUNT) {
+          await deps.onCadenceSpent?.(a);
+        }
         return { kind: "sent", providerId: out.providerId };
       }
       if (out.kind === "drafted") { await deps.markDone(a); return { kind: "drafted" }; }
