@@ -29,7 +29,7 @@ import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent, templateAsks } from "./render";
 import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
-import { addressesInThread, secondPropertyOutstanding } from "./multi-property";
+import { addressesInThread, secondPropertyAskDue } from "./multi-property";
 
 const MODEL = "claude-opus-5";
 
@@ -463,7 +463,15 @@ Choose the next action.`;
       ownWords,
     ];
     const addressesHeld = addressesInThread({ customerMessages: customerSaid, onFile: kf.address });
-    const wantsSecondAddress = secondPropertyOutstanding({
+    /**
+     * WHICH ONE AM I ASKING ABOUT — not "is anything outstanding".
+     *
+     * validateAction answers the second question itself from addressesHeld, to
+     * block the close. This one only LABELS the ask, and it is due once the
+     * first address is in. Running them together asked a customer for "the
+     * address for the second property" before we had the first.
+     */
+    const wantsSecondAddress = secondPropertyAskDue({
       customerMessages: customerSaid,
       addressesHeld,
     });

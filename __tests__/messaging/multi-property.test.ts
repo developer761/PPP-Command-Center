@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   mentionsSecondProperty, threadMentionsSecondProperty,
   addressesCollected, secondPropertyOutstanding, addressesInThread,
-  askSecondPropertyAddress,
+  askSecondPropertyAddress, secondPropertyAskDue,
   CONTACT_IS_SHARED_ACROSS_PROPERTIES,
 } from "@/lib/messaging/multi-property";
 import { renderMessage } from "@/lib/messaging/render";
@@ -273,5 +273,60 @@ describe("the ask names which property", () => {
     });
     expect(out).toMatch(/zip/i);
     expect(out).not.toMatch(/second property/i);
+  });
+});
+
+/**
+ * "WHICH ONE AM I ASKING ABOUT" IS NOT "IS ANYTHING OUTSTANDING".
+ *
+ * Caught in the simulator, three turns into a real two-property conversation:
+ *
+ *   customer  "I have two rental properties, one in Garden City and one in
+ *              Hempstead"
+ *   customer  "both need the interiors done, 3 bedrooms each"
+ *   BOT       "Got it. And what's the address for the SECOND property?"
+ *
+ * We had no address at all. "Fewer than two" is true of zero, so the OPENING
+ * address ask was labelled as the second one. Hatch's rule is a sequence —
+ * "complete the full flow for the FIRST, then repeat for the next" — so the
+ * ask is due only once exactly one address is held.
+ *
+ * Every test above seeded an address by hand, so none of them could see it.
+ */
+describe("the second-property ask waits for the first address", () => {
+  const thread = ["I have two rentals, one in Garden City and one in Hempstead"];
+
+  it("is NOT due when we hold no address yet", () => {
+    expect(secondPropertyAskDue({ customerMessages: thread, addressesHeld: [] })).toBe(false);
+  });
+
+  it("is due once exactly one is held", () => {
+    expect(secondPropertyAskDue({ customerMessages: thread, addressesHeld: ["12 Oak St, 11530"] })).toBe(true);
+  });
+
+  it("is done once both are held", () => {
+    expect(secondPropertyAskDue({
+      customerMessages: thread, addressesHeld: ["12 Oak St, 11530", "44 Elm Ave, 11550"],
+    })).toBe(false);
+  });
+
+  it("never fires on a single-property conversation", () => {
+    expect(secondPropertyAskDue({
+      customerMessages: ["paint my living room"], addressesHeld: ["12 Oak St, 11530"],
+    })).toBe(false);
+  });
+
+  /**
+   * The two questions genuinely differ at zero addresses, which is the whole
+   * bug: the close must stay blocked while the ask is not yet due.
+   */
+  it("differs from the close check exactly where it broke", () => {
+    const at = (addressesHeld: string[]) => ({
+      ask: secondPropertyAskDue({ customerMessages: thread, addressesHeld }),
+      blocked: secondPropertyOutstanding({ customerMessages: thread, addressesHeld }),
+    });
+    expect(at([])).toEqual({ ask: false, blocked: true });
+    expect(at(["12 Oak St, 11530"])).toEqual({ ask: true, blocked: true });
+    expect(at(["12 Oak St, 11530", "44 Elm Ave, 11550"])).toEqual({ ask: false, blocked: false });
   });
 });

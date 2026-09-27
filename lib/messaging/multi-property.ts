@@ -164,6 +164,37 @@ export function secondPropertyOutstanding(input: {
 }
 
 /**
+ * IS THE SECOND-PROPERTY ASK DUE *YET*?
+ *
+ * Not the same question as secondPropertyOutstanding, and conflating them put
+ * a wrong sentence in front of a customer on the very first ask. Caught in the
+ * simulator on 2026-09-27, three turns into a two-property conversation:
+ *
+ *   customer  "I have two rental properties, one in Garden City and one in
+ *              Hempstead"
+ *   customer  "both need the interiors done, 3 bedrooms each"
+ *   BOT       "Got it. And what's the address for the SECOND property?"
+ *
+ * We did not have the FIRST address. "Fewer than two" is true of zero, so the
+ * opening address ask was labelled as the second one — asking for property two
+ * before property one exists, which reads as the bot having lost track.
+ *
+ * Hatch's rule is a sequence: "Complete the full flow for the FIRST, then
+ * repeat for the next." So the ask is due only once exactly one address is
+ * held. The CLOSE is still blocked at fewer than two — that question is
+ * "is anything outstanding", this one is "which one am I asking about".
+ *
+ * Every unit test missed it because they all seeded an address in `known`.
+ */
+export function secondPropertyAskDue(input: {
+  customerMessages: readonly string[];
+  addressesHeld: readonly (string | null | undefined)[];
+}): boolean {
+  if (!threadMentionsSecondProperty(input.customerMessages)) return false;
+  return addressesCollected(input.addressesHeld) === 1;
+}
+
+/**
  * Hatch's own guidance, as the line to send.
  *
  * "Complete the full flow for the first, then repeat for the next." So the
