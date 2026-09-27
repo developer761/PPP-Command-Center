@@ -30,6 +30,54 @@ type Defaults = {
   zip?: string;
 };
 
+/**
+ * `loading=async` MEANS onload IS TOO EARLY.
+ *
+ * Google's `loading=async` flag (added 2026-09-25 to silence its
+ * suboptimal-loading warning) changes when the libraries exist. The bootstrap
+ * script fires `onload` as soon as IT has arrived, and `google.maps.places` is
+ * still being fetched behind it. The attach effect then ran, found
+ * `google.maps.places` undefined, and returned — silently, because a missing
+ * library is indistinguishable there from a field that is not ready yet. It
+ * never re-ran, because `scriptStatus` had already reached "ready".
+ *
+ * The result on production: the badge said "Autofill on", Google was loaded,
+ * the Places API answered `OK` with five predictions when asked directly — and
+ * typing a real address into the field produced nothing, because the widget had
+ * never been attached to it. Found by typing "1600 Pennsylvania Ave" into the
+ * work-order form and watching zero `.pac-container` elements appear.
+ *
+ * So "ready" now means the LIBRARY is there, not the script tag. Polled rather
+ * than awaited so this stays a plain callback with no extra Google API surface,
+ * and bounded so a library that never arrives falls back to plain typing
+ * instead of spinning forever.
+ */
+function whenPlacesReady(onReady: () => void, onGiveUp: () => void): () => void {
+  const started = Date.now();
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const done = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+  };
+  const check = () => {
+    const g = (window as unknown as { google?: { maps?: { places?: unknown } } }).google;
+    if (g?.maps?.places) {
+      done();
+      onReady();
+      return;
+    }
+    // 10s is far longer than the library takes on any real connection; past
+    // that something is wrong and the field should stop promising autofill.
+    if (Date.now() - started > 10_000) {
+      done();
+      onGiveUp();
+    }
+  };
+  check();
+  if (!timer) timer = setInterval(check, 120);
+  return done;
+}
+
 export default function CommercialAddressFields({
   prefix,
   defaults,
@@ -100,7 +148,13 @@ export default function CommercialAddressFields({
         if ((window as unknown as { google?: { maps?: { places?: unknown } } }).google?.maps?.places) {
           setScriptStatus("ready");
         } else {
-          existing.addEventListener("load", () => setScriptStatus("ready"));
+          // Same trap on the reuse path: the other instance's script may have
+          // fired `load` already (so this listener never runs) or may fire it
+          // before the library lands. Poll for the library itself instead.
+          whenPlacesReady(
+            () => setScriptStatus("ready"),
+            () => setScriptStatus("key-rejected"),
+          );
         }
         return;
       }
@@ -138,7 +192,14 @@ export default function CommercialAddressFields({
       script.async = true;
       script.defer = true;
       script.dataset.commercialGmaps = "1";
-      script.onload = () => setScriptStatus("ready");
+      // NOT ready yet — see whenPlacesReady. onload only means the bootstrap
+      // arrived; the places library is still in flight behind it.
+      script.onload = () => {
+        whenPlacesReady(
+          () => setScriptStatus("ready"),
+          () => setScriptStatus("key-rejected"),
+        );
+      };
       script.onerror = () => setScriptStatus("no-key"); // fall back if blocked
       document.head.appendChild(script);
     };
