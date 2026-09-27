@@ -63,14 +63,57 @@ export function knownFromThread(input: {
   const { onFile, messages, stage } = input;
   const latest = messages[messages.length - 1];
 
-  // Scope and the stage floor come from the newest message, because that is
-  // the one the stage is being decided for.
-  const scope = scopeAndStage({
+  /**
+   * The stage floor comes from the NEWEST message — that is the turn being
+   * decided. The SCOPE does not, and reading it from the newest message alone
+   * was a bug.
+   *
+   * WHAT IT DID. A customer says "how much for a 12x14 bedroom?", the bot
+   * routes the job and asks a question, they answer "text is fine" — and the
+   * scope evaporated, because the newest message has no project in it. Stage
+   * fell back to 0, A13's held-field guard had nothing to guard, and the bot
+   * asked "What are you hoping to have painted?" about the bedroom it had
+   * just quoted. Caught in the simulator on 2026-09-27; "ok" and "yes please"
+   * do it too, which is most second messages a customer sends.
+   *
+   * The file already knew better one line down: the ADDRESS is scanned across
+   * the whole thread because it "can have arrived at ANY point". A project
+   * description is exactly as durable — it does not stop being true because
+   * the next message was "ok".
+   *
+   * Production was shielded by accident: scheduler-db persists inquiry_scope
+   * to the conversation row, so `onFile` carries it on later turns. The
+   * SIMULATOR has no row, so it diverged — and this file exists precisely
+   * because those two drifting apart is the recurring failure here.
+   *
+   * THE OLDEST match wins, not the newest, to match how production stores it:
+   * `.update({ inquiry_scope }).is("inquiry_scope", null)` writes once and
+   * never overwrites. A sandbox that preferred the newest would disagree with
+   * the row every time a customer described the job twice.
+   */
+  const fromLatest = scopeAndStage({
     stage,
     onFile: onFile.inquiryScope,
     rawInbound: latest?.body ?? "",
     mediaCount: latest?.mediaCount ?? 0,
   });
+  let scope = fromLatest;
+  if (!fromLatest.scope) {
+    for (const m of messages.slice(0, -1)) {
+      const earlier = scopeAndStage({
+        stage,
+        onFile: onFile.inquiryScope,
+        rawInbound: m.body,
+        mediaCount: m.mediaCount ?? 0,
+      });
+      if (earlier.scope) {
+        // The stage never goes BACKWARDS: whichever floor is higher wins, so
+        // recovering a scope cannot undo progress the intents already made.
+        scope = { ...earlier, stage: Math.max(earlier.stage, fromLatest.stage) };
+        break;
+      }
+    }
+  }
 
   // The address can have arrived at ANY point. The live path gets that for
   // free because the conversation row remembers; the sandbox has to look.

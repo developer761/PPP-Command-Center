@@ -149,6 +149,17 @@ const SCENARIOS = [
     known: { inquiryScope: "repaint the upstairs hallway and two bedrooms" },
     wants: "ask_address", saysMatch: /still accurate/ },
 
+  /**
+   * A13, FOUND IN THE SIMULATOR. The scope was read from the NEWEST message
+   * only, so "text is fine" wiped the bedroom the bot had just quoted and it
+   * asked "What are you hoping to have painted?" about it.
+   */
+  { name: "described the job, then replied with something that has no job in it",
+    history: ["just give me a ballpark, how much for a 12x14 bedroom? I don't want an appointment"],
+    text: "text is fine",
+    priorIntents: ["present_offsite_quote"],
+    wants: "ask_address", refuses: "ask_project_details" },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },
