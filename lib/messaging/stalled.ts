@@ -66,9 +66,40 @@ const PROPER_ENDINGS = new Set<string>([
   "area_not_serviced",  // A2 — the zip failed the service-area check
   "success",            // the flow completed
   "phone_pricing",      // off-site quote, flow completed
-  "schedule_follow_up", // A40 park, or A25's phone branch
   "transferred",        // a person has it
 ]);
+
+/**
+ * AN ENDING THAT PROMISES A FOLLOW-UP AND SCHEDULES NOTHING IS NOT AN ENDING.
+ *
+ * `schedule_follow_up` used to sit in the set above, and that reproduced the
+ * exact defect A40 was built to fix. Kate: "What has never once happened is
+ * the bot coming back."
+ *
+ * Traced 2026-09-27. A customer who parks WITHOUT naming a time —
+ * "let me check with my wife and get back to you", "I'll reach out when I'm
+ * ready" — gets:
+ *
+ *   parkReopenAt(...) → null, because no day was named, so NO reminder row
+ *   isStalled(...)    → false, because schedule_follow_up was a proper ending
+ *
+ * Neither path owns it, so nobody ever comes back. Naming a day worked fine;
+ * it is precisely the customers who name none — the ones A40 is about — who
+ * fell through. Verified against parkKind, parkReopenAt and isStalled together
+ * rather than each on its own, which is why unit tests never saw it: each
+ * function was behaving exactly as written.
+ *
+ * So it is now conditional. The caller answers one question: is anything
+ * actually scheduled? A park that named a day has its re-open and is left
+ * alone. One that scheduled nothing is chased by the cadence that already
+ * exists, already obeys A36's hours and already honours A24.
+ *
+ * Hatch does the same thing by a different route: its no-time park ends as
+ * Schedule Follow Up and falls to the Conversation Rule — "Wait 5 hours /
+ * 1 attempt / Stalled / Only in business hours". One mechanism, not a second
+ * timer invented for this case.
+ */
+const PROMISES_A_FOLLOW_UP = "schedule_follow_up";
 
 /**
  * Is this conversation stalled?
@@ -83,11 +114,22 @@ export function isStalled(input: {
   lastIntent?: string | null;
   /** Already suppressed — never chase somebody who opted out (A24). */
   suppressed?: boolean;
+  /**
+   * True when the conversation ended promising a follow-up and NOTHING is
+   * queued to deliver it — no park re-open, no cadence. Only consulted for
+   * `schedule_follow_up`; see PROMISES_A_FOLLOW_UP.
+   */
+  nothingScheduled?: boolean;
 }): boolean {
   if (input.suppressed) return false;
   if (!input.lastTurnWasBot) return false;
   if (input.everHadHuman) return false;
   if (input.lastIntent && PROPER_ENDINGS.has(input.lastIntent)) return false;
+  /**
+   * The park branch. Left alone when something IS scheduled — the re-open owns
+   * it — and chased when nothing is, because then no other mechanism will.
+   */
+  if (input.lastIntent === PROMISES_A_FOLLOW_UP) return !input.nothingScheduled ? false : true;
   return true;
 }
 

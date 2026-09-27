@@ -189,7 +189,10 @@ const COMMERCIAL_OURS = /\b(?:our|the)\s+(?:building|facility|premises|property\
 
 /**
  * Words that describe where somebody LIVES and must not route anything.
- * Named explicitly so a future edit cannot quietly add them to the list above.
+ *
+ * A6 [6], verbatim: co-op, condo, tenant and apartment "DO NOT fire this gate
+ * and must never be treated as commercial signals — they describe where someone
+ * lives."
  */
 const NOT_COMMERCIAL = /\b(?:co-?ops?|condos?|condominiums?|tenants?|apartments?|apt)\b/i;
 
@@ -197,11 +200,29 @@ export function isCommercial(scope: string | null | undefined): boolean {
   const t = (scope ?? "").trim();
   if (!t) return false;
   // A named shared space fires even in a residential building — that is the
-  // whole point of the multi-unit clause.
+  // whole point of the multi-unit clause, and it beats everything below.
   if (COMMERCIAL_SPACE.test(t)) return true;
   // "home office" is a room in a house, not an office building.
   const withoutHomeOffice = t.replace(/\bhome\s+offices?\b/gi, " ");
-  return COMMERCIAL_PROPERTY.test(withoutHomeOffice) || COMMERCIAL_OURS.test(withoutHomeOffice);
+  // An explicit commercial PROPERTY word is decisive: "the tenants of our
+  // dental office" is a dental office.
+  if (COMMERCIAL_PROPERTY.test(withoutHomeOffice)) return true;
+  /**
+   * AND NOW THE VETO, WHICH USED TO BE DECLARED AND NEVER READ.
+   *
+   * NOT_COMMERCIAL sat in this file as a bare const whose own comment claimed
+   * it existed "so a future edit cannot quietly add them to the list above" —
+   * and it was referenced NOWHERE, so it enforced nothing at all. A6 states its
+   * half as a never, and a never deserves a branch rather than a note.
+   *
+   * It applies only to the possessive branch below, and only after a named
+   * shared space and an explicit property word have had their say. The case it
+   * changes: a landlord writing "the tenants in our building are complaining"
+   * matched "our building" and routed the job commercial — on the strength of
+   * two words A6 names as describing where somebody lives.
+   */
+  if (NOT_COMMERCIAL.test(withoutHomeOffice)) return false;
+  return COMMERCIAL_OURS.test(withoutHomeOffice);
 }
 
 /** Wallpaper: one wall or less is off-site, more than one wall is not. */

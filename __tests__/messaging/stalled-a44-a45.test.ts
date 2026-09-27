@@ -260,3 +260,63 @@ describe("A45 — a signal is not a verdict on the lead", () => {
     expect(Object.keys(s).sort()).toEqual(["conversationId", "kind", "leadId", "note"]);
   });
 });
+
+/**
+ * A40, TRACED END TO END ON 2026-09-27 — THE BOT NEVER CAME BACK.
+ *
+ * Kate's complaint about A40 is exactly: "What has never once happened is the
+ * bot coming back." We reproduced it, in the feature built to fix it.
+ *
+ * A customer who parks WITHOUT naming a day gets parkReopenAt() === null, so
+ * no re-open row is written. And `schedule_follow_up` was a PROPER ENDING, so
+ * the stall sweep skipped it too. Neither path owned the conversation.
+ *
+ * Naming a day worked. It is precisely the customers who name none — the ones
+ * A40 is about — who fell through. No unit test saw it because each function
+ * behaved exactly as written; the hole was between them.
+ */
+describe("a park that scheduled nothing is not a proper ending", () => {
+  const parked = (nothingScheduled: boolean) => isStalled({
+    lastTurnWasBot: true, everHadHuman: false,
+    lastIntent: "schedule_follow_up", nothingScheduled,
+  });
+
+  it("is chased when nothing at all is queued", () => {
+    expect(parked(true)).toBe(true);
+  });
+
+  it("is left alone when the re-open owns it", () => {
+    // "give me a call next Tuesday" — parkReopenAt returns a date, a
+    // park_reopen row exists, and chasing it as well would text somebody twice.
+    expect(parked(false)).toBe(false);
+  });
+
+  it("defaults to the old behaviour when the caller does not say", () => {
+    // Every other caller keeps working: silence means "something is scheduled",
+    // which is the conservative direction — it never invents a chase.
+    expect(isStalled({ lastTurnWasBot: true, everHadHuman: false, lastIntent: "schedule_follow_up" })).toBe(false);
+  });
+
+  it("never overrides the endings that really are endings", () => {
+    for (const intent of ["success", "lost", "discard", "bailout", "transferred", "phone_pricing", "area_not_serviced"]) {
+      expect(isStalled({
+        lastTurnWasBot: true, everHadHuman: false, lastIntent: intent, nothingScheduled: true,
+      })).toBe(false);
+    }
+  });
+
+  it("and still never chases somebody who opted out", () => {
+    // A24 outranks all of this.
+    expect(isStalled({
+      lastTurnWasBot: true, everHadHuman: false,
+      lastIntent: "schedule_follow_up", nothingScheduled: true, suppressed: true,
+    })).toBe(false);
+  });
+
+  it("or a conversation a person has taken over", () => {
+    expect(isStalled({
+      lastTurnWasBot: true, everHadHuman: true,
+      lastIntent: "schedule_follow_up", nothingScheduled: true,
+    })).toBe(false);
+  });
+});

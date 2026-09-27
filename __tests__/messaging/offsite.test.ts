@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { jobRoute, roomCount } from "@/lib/messaging/offsite";
+import { jobRoute, roomCount, isCommercial } from "@/lib/messaging/offsite";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
 
@@ -269,5 +269,54 @@ describe("A6 as rewritten 2026-09-25", () => {
   it("reads a job the customer described as a repaint", () => {
     expect(route("repaint the whole house exterior")).toBe("onsite");
     expect(route("repaint one bedroom")).toBe("offsite");
+  });
+});
+
+/**
+ * A6 [6] IS A NEVER, AND IT NOW HAS A BRANCH.
+ *
+ * Found while answering Kate's question 2 from her own rule text rather than
+ * asking her. NOT_COMMERCIAL was declared in offsite.ts and referenced NOWHERE
+ * — a guard whose comment claimed it stopped a future edit from adding
+ * residential words to the commercial list, enforcing nothing.
+ *
+ * A6 [6], verbatim: co-op, condo, tenant and apartment "DO NOT fire this gate
+ * and must never be treated as commercial signals — they describe where someone
+ * lives. Only a NAMED SHARED SPACE does."
+ */
+describe("the words that describe where somebody lives never route a job", () => {
+  it("does not route a landlord's own building commercial on 'tenants'", () => {
+    // Matched COMMERCIAL_OURS on "our building" and went commercial — on the
+    // strength of two words A6 names as residential.
+    expect(isCommercial("the tenants in our building are complaining")).toBe(false);
+  });
+
+  it("but an explicit commercial property word is still decisive", () => {
+    expect(isCommercial("the tenants of our dental office")).toBe(true);
+  });
+
+  it("and a NAMED SHARED SPACE beats the veto, which is the multi-unit clause", () => {
+    // A6 [5]: common areas of a residential building are commercial.
+    expect(isCommercial("our building's lobby and corridors")).toBe(true);
+    expect(isCommercial("the lobby of our condo building")).toBe(true);
+  });
+
+  it("leaves a condo owner's own room residential", () => {
+    expect(isCommercial("my condo living room")).toBe(false);
+    expect(isCommercial("repaint my apartment bedroom")).toBe(false);
+  });
+
+  /**
+   * DELIBERATELY UNCHANGED, AND FLAGGED FOR KATE (question 2).
+   *
+   * "our building" with no residential word and no named space still routes
+   * commercial. A3 [3] lists "our building" among the phrases that establish
+   * commercial; A6 [6] says the trigger is the space and never the building.
+   * They disagree, and the two errors are not symmetrical: reading it as
+   * commercial costs an estimator visit, while reading it as residential can
+   * send a commercial job down a path A6 says must never price it.
+   */
+  it("still treats a bare 'our building' as commercial, on the safe side", () => {
+    expect(isCommercial("we need our building painted")).toBe(true);
   });
 });

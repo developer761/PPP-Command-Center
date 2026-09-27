@@ -86,11 +86,33 @@ export async function sweepStalled(
     const lastMsg = last?.[0];
     if (!lastMsg) { note("no messages"); continue; }
 
+    /**
+     * A40: DID THE PARK ACTUALLY SCHEDULE ANYTHING?
+     *
+     * `schedule_follow_up` is only a proper ending when something is queued to
+     * deliver the follow-up it promises. A customer who parked without naming
+     * a day gets no re-open row — parkReopenAt returns null — so without this
+     * the conversation belonged to nobody and the bot never came back, which
+     * is the defect A40 exists to fix.
+     *
+     * Asked only for that intent, so the ordinary sweep costs no extra query.
+     */
+    let nothingScheduled = false;
+    if (lastMsg.agent_intent === "schedule_follow_up") {
+      const { count: pending } = await sb.from("sms_scheduled_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", c.id)
+        .in("action", ["park_reopen", "stall_followup"])
+        .neq("state", "cancelled");
+      nothingScheduled = (pending ?? 0) === 0;
+    }
+
     if (!isStalled({
       lastTurnWasBot: lastMsg.direction === "outbound",
       everHadHuman: Boolean(c.takeover_at) || c.state === "human_active",
       lastIntent: lastMsg.agent_intent,
       suppressed: false,   // the gate refuses a suppressed send anyway
+      nothingScheduled,
     })) { note("not stalled"); continue; }
 
     // Already has a cadence? The unique index would refuse anyway; asking

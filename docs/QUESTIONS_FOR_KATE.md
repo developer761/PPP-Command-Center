@@ -87,46 +87,41 @@ rows exist. Two rows, and the screen matches the spec.
 
 ---
 
-## 2. A3 and A6 contradict each other on the word "tenant" · **real conflict**
+## 2. ~~A3 and A6 contradict each other on "tenant"~~ — ANSWERED FROM HER OWN TEXT
 
-This is the one that could not be reconciled from the text. Both rules are
-live, and they say opposite things about the same word.
+> **MOSTLY CLOSED 2026-09-27.** The precedence is settled inside the rules;
+> one narrower sub-case is flagged below with a safe default already built.
 
-**A3** lists it as establishing commercial:
+The clash is real and both cards are dated the same day, 2026-09-25:
 
-> "…it is USUALLY PLAIN FROM WHAT THE CUSTOMER ALREADY SAID… 'We're a
-> dentist's office', 'our store', **'the tenants'**, 'our building', 'the
-> office', 'the restaurant' all establish it"
+- **A3** [3]: *"'We're a dentist's office', 'our store', **'the tenants'**,
+  'our building' … all establish it"*
+- **A6** [6]: *"The words 'co-op', 'condo', **'tenant'** and 'apartment' DO NOT
+  fire this gate and **must never** be treated as commercial signals — they
+  describe where someone lives. Only a NAMED SHARED SPACE does."*
 
-**A6** forbids exactly that:
+**A3's own 2026-09-25 revision resolves it.** Its card gained: *"PROJECT
+DETAILS MEANS WHAT A6 NEEDS TO ROUTE THE JOB … the moment the lookup CAN be
+resolved, **A6 takes over**."* A3 subordinates itself to A6 on routing, and A6
+states its half as a never. So **A6 wins** and "the tenants" in A3's list is a
+drafting leftover. That is what is built.
 
-> "THE TRIGGER IS THE SPACE, NEVER THE BUILDING. The words 'co-op', 'condo',
-> **'tenant'** and 'apartment' DO NOT fire this gate and must never be
-> treated as commercial signals — they describe where someone lives. Only a
-> NAMED SHARED SPACE does: the lobby, the common areas, the corridors, the
-> stairwells, the whole floor."
+**What tracing it turned up.** `NOT_COMMERCIAL` — the regex naming exactly
+those residential words — was declared in `offsite.ts` and **referenced
+nowhere**, so A6's "never" enforced nothing. A landlord writing *"the tenants
+in our building are complaining"* matched "our building" and routed the job
+commercial. Now a real branch, with a named shared space still winning over it
+("our building's lobby" is commercial; "my condo living room" is not).
 
-**It matters because A6 routes commercial work onsite.** Reading "the tenants"
-as commercial sends a residential job to an onsite visit it does not need.
+**The one sub-case left, and we have NOT guessed.** A bare *"our building"*,
+with no residential word and no named space, still routes commercial. A3 lists
+it, A6's "never the building" excludes it, and the two errors are not
+symmetrical: reading it as commercial costs an estimator visit, reading it as
+residential can send a commercial job down a path A6 says must never price it.
+We kept the safe side.
 
-**What we do today:** we follow **A6**. `NOT_COMMERCIAL` in `offsite.ts`
-excludes co-op, condo, tenant and apartment, and only a named shared space
-fires the gate. A6 is the more specific rule and it is the one that owns the
-routing, so it wins on both counts — but it is a guess about which she meant.
-
-**If she says A3 wins:** "the tenants" starts routing onsite, and A6's
-never-treat-as-commercial list loses one word.
-
-**→ Recommendation:** keep A6. It is the more specific rule, it owns the
-routing, and Hatch's own prompt uses "tenant" residentially. If A3 is meant to
-win, the cheaper fix is deleting "the tenants" from A3's list rather than
-re-opening A6, because A6's sentence is doing real work elsewhere.
-
-> **Evidence from Hatch, 2026-09-26.** Its live prompt uses the word
-> residentially: *"waiting on my **spouse/tenant**"*, in the availability
-> branch. That supports A6's reading.
-
----
+**→ Confirm only this:** should a bare "our building" route commercial? We say
+yes, on the cost of being wrong. Everything else in item 2 is settled.
 
 ## 3. ~~A36 — whose clock, and does it cover replies?~~ — CLOSED, no need to ask
 
@@ -224,41 +219,38 @@ against a line that contradicts the rule above it.
 
 ---
 
-## 5. A40 — what to do when they park without naming a time
+## 5. ~~A40 — what to park without naming a time~~ — ANSWERED OURSELVES
 
-A40's parking branch: the customer defers the conversation itself and we stop
-asking and wait for them.
+> **CLOSED 2026-09-27**, from Hatch's own configuration plus a defect we found
+> tracing it. Kept here because the behaviour changed.
 
-Where they name a time ("call me after the 15th"), the thread re-opens then.
+**What Hatch actually does**, read from its live prompt and Conversation Rule:
+a no-time park ends as **Schedule Follow Up** and falls to the generic rule —
+*"Wait 5 hours / 1 attempt / Stalled / Only in business hours."* It does not
+invent a park-specific timer. One mechanism, not two.
 
-**Open:** what happens when they park and name **no** time. Waiting forever
-means the lead dies silently; picking a number ourselves invents a cadence she
-did not ask for, and A44 explicitly says a park is not a stall.
+**AND WE HAD REPRODUCED THE EXACT DEFECT A40 EXISTS TO FIX.** Tracing the
+three functions together rather than separately:
 
-**What we do today:** not built. A40's parking branch is the next thing being
-built, and this is the one decision inside it that is hers, not ours.
+| customer says | re-open scheduled | chased as stalled |
+|---|---|---|
+| "call me next Tuesday" | yes | no — the re-open owns it |
+| "let me check with my wife" | **no** | **no** |
+| "I'll reach out when I'm ready" | **no** | **no** |
 
-**What we need:** a fallback interval, or a rule that says no-time parks are
-handed to a person rather than re-opened by the bot.
+`parkReopenAt` returns null when no day is named, so no reminder row is
+written — and `schedule_follow_up` was in the stall sweep's PROPER_ENDINGS, so
+the cadence skipped it too. Neither path owned the conversation. Kate's own
+words for this: *"What has never once happened is the bot coming back."*
 
-**→ Recommendation:** three days, then one re-open, then treat it as a stall.
-Hatch simply ends with Schedule Follow Up and lets the cadence pick it up,
-which is a usable default — but it never comes back, which is the half the
-spec says has "never once happened". Three days is long enough not to nag
-somebody waiting on a spouse and short enough that the lead is still warm.
-**We have not built this and will not guess** — the spec says "do not pick
-one", so parking ships without the no-time branch until she answers.
+**What we do now:** an ending that promises a follow-up and schedules nothing
+is not a proper ending. A park that named a day keeps its re-open; one that
+scheduled nothing is picked up by the A44 cadence, which already exists,
+already obeys A36's hours and already honours A24. No new timer, and the same
+shape as Hatch.
 
-> **Hatch's answer, read 2026-09-26.** Its prompt already has A40 situation
-> (1) almost word for word — *"If the customer explicitly says they do not
-> know their availability or are waiting on someone else … Confirm their
-> project details, full address, and contact info as usual. Skip asking
-> availability. After confirming … → End: Schedule Follow Up."*
->
-> So Hatch **ends with Schedule Follow Up and lets the cadence pick it up** —
-> it does not hold a park open. That is a usable default if she wants one.
-
----
+**→ Nothing needed from her** unless she wants the no-time park to reach a
+person instead of the cadence. Worth one line of confirmation, not a blocker.
 
 ## 6. Sign-off on two pieces of wording
 
@@ -470,25 +462,30 @@ to the phone team.
 
 ---
 
-## 12. Two rules carry a date with no change type · **data fix, not a question**
+## 12. ~~Two rules carry a date with no change type~~ — ANSWERED OURSELVES
 
-`A28` and `A38` both have `Last modified = 2026-09-11` and an empty
-`Change type` in the shipped export.
+> **CLOSED 2026-09-27** by reading the rules table. It is not a data-entry
+> slip, and it is **three** rules, not two — my own note undercounted.
 
-The spec says these two are written together: *"Last modified and Change type
-are written together by the same call on every edit to rule text, so they
-cannot disagree."* In the export, twice, they do.
+Every rule dated **2026-09-11** has no change type. Every rule dated
+**2026-09-17 or later** has one. Forty-three to three, with no exceptions
+either way:
 
-**What we do today:** the Rule Hub drops **both** halves for those two rules,
-which is the *"or neither"* the criterion allows. A date with no change type
-cannot say whether a rated batch went stale, so showing it alone would invite
-somebody to read a meaning that is not there.
+| last_modified | rules | change type |
+|---|---|---|
+| 2026-09-11 | A28, A37, A38 | **none** |
+| 2026-09-17 → 2026-09-25 | the other 43 | BINDING ×40, WORDING ×3 |
 
-**→ Recommendation:** fill in the change type for A28 and A38 in the next
-export and they will start showing their stamp. Nothing is broken meanwhile;
-those two simply show no date.
+So `change_type` began with the 2026-09-17 pass. The three rules untouched
+since 09-11 predate the column — there is no missing value to supply.
 
----
+And **A37 is not a live rule at all**: `status: retired`, statement *"BURNED
+2026-09-10 — never use this id."* A tombstone kept visible so the id is never
+reused. It cannot have a change type.
+
+**→ Nothing to ask.** The Rule Hub showing a date with no type for exactly
+those rules is correct. If anything is worth doing it is ours: label them
+"predates change tracking" so they do not read as missing data.
 
 ## 13. Parity 7 — after one refusal, does "move on" mean stop asking?
 
