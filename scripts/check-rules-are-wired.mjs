@@ -228,6 +228,27 @@ const CHAINS = [
     ],
   },
   {
+    rule: "Parity 9 — the workspace FAQ reaches the prompt, and only safe rows do",
+    why: "these are BOT-FACING. An answer carrying a price launders a quote past the validator, which sees a question answered rather than a price invented",
+    links: [
+      ["lib/messaging/workspace-faq.ts", /export function faqsForPrompt/],
+      ["lib/messaging/workspace-faq-db.ts", /usableFaqs\(/],
+      ["lib/messaging/scheduler-db.ts", /faqsForPrompt\(await loadWorkspaceFaqs/],
+      ["lib/messaging/agent-run.ts", /\$\{workspaceFaqs \? /],
+      // The prompt section must keep telling the model not to volunteer.
+      // Without it a knowledge base becomes a script and every turn grows a
+      // second ask. A LINK, not a forbidden — "must contain" is the positive
+      // form, and the first attempt wrote it as a negative lookahead that
+      // only ever examined the first line of the file.
+      ["lib/messaging/workspace-faq.ts", /ONLY WHEN ASKED/],
+      // AND IT MUST NOT THROW. This loader is on the per-turn hot path, where a
+      // failed read takes the whole draft down and costs the customer their
+      // reply — over a knowledge base whose absence is simply yesterday's
+      // behaviour. The one read in this system that fails OPEN.
+      ["lib/messaging/workspace-faq-db.ts", /\} catch \(e\) \{/],
+    ],
+  },
+  {
     rule: "A15 — a requested time is held, never confirmed",
     why: "the likeliest A15 breach in the system. A customer says 'Tuesday at 2?' and the natural reply confirms it, inventing an appointment nobody booked. The validator refuses that; this is the right thing to say instead, and a parser nothing calls leaves the model choosing again",
     links: [

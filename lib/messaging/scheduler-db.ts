@@ -12,6 +12,8 @@ import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
 import { sendingWindow } from "./sending-window";
+import { loadWorkspaceFaqs } from "./workspace-faq-db";
+import { faqsForPrompt } from "./workspace-faq";
 import { reportWarn } from "@/lib/observability";
 import { resumeCallingIfSpent } from "./stalled-db";
 import { customerZone } from "./customer-clock";
@@ -422,6 +424,10 @@ export function schedulerDeps(): SchedulerDeps {
       // against. Rendered by forPrompt, which never sees her rater-only
       // column because it is not in the table this loader reads.
       const classARules = forPrompt(await loadClassARules());
+      // Parity gap 9: this workspace's standing answers. Empty string when it
+      // has none, which is every workspace today — the section simply does
+      // not appear rather than a heading over nothing.
+      const workspaceFaqs = faqsForPrompt(await loadWorkspaceFaqs(sb, conv.workspace_id));
 
       // A2 MID-CONVERSATION. The zip on the lead goes stale — one of Kate's
       // findings is a customer giving a New Jersey address while FL 33308 sat
@@ -437,6 +443,7 @@ export function schedulerDeps(): SchedulerDeps {
       const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
         hardNos: cfg.hardNos,
         classARules,
+        workspaceFaqs,
         track,
         stage,
         lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,

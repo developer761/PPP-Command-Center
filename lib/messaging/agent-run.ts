@@ -131,6 +131,7 @@ export function buildSystemPrompt(
    * here has already been through forPrompt, which never had it either.
    */
   classARules?: string,
+  workspaceFaqs?: string,
   /** A30 — which language this conversation is being held in. */
   language: Language = "en",
 ): string {
@@ -199,7 +200,7 @@ what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
-${classARules ? `\n${classARules}\n` : ""}
+${classARules ? `\n${classARules}\n` : ""}${workspaceFaqs ? `\n${workspaceFaqs}\n` : ""}
 WHEN THEY ASK YOU SOMETHING, ANSWER IT. At any point, not only near the end.
 Put the answer in freeText and choose the intent for the next step, so one
 message answers them and moves forward. Never let a direct question go by.
@@ -329,6 +330,8 @@ export async function runAgentTurn(
     /** Kate's Class A rules, already rendered by forPrompt. A string, so the
      *  type that carries her rater-only guidance can never arrive here. */
     classARules?: string;
+    /** Parity gap 9: this workspace's standing answers, already rendered. */
+    workspaceFaqs?: string;
     /**
      * A25's phone branch: when we may call them, if we already know.
      *
@@ -426,7 +429,7 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules, language),
+      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules, opts.workspaceFaqs, language),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
