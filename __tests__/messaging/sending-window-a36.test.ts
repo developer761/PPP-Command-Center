@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { gatedSend, type GateWorkspace, type SendRequest } from "@/lib/messaging/gate";
 import { LoggingTransport } from "@/lib/messaging/transport";
 import { customerZone, stateForAreaCode, FALLBACK_ZONE } from "@/lib/messaging/customer-clock";
-import { sendingWindow, nextWindowOpen, OFFICE_ZONE } from "@/lib/messaging/sending-window";
+import { sendingWindow, nextWindowOpen, OFFICE_ZONE, officeIsOpen } from "@/lib/messaging/sending-window";
 import type { E164 } from "@/lib/messaging/phone";
 
 const NASSAU: GateWorkspace = {
@@ -202,5 +202,67 @@ describe("nextWindowOpen — the retry time answers the same rule", () => {
       officeHours: { startHour: 8, endHour: 9 },   // shut before Pacific wakes
     });
     expect(at).toBeNull();
+  });
+});
+
+/**
+ * IS PPP OPEN, AS OPPOSED TO "COULD WE HAVE SENT PROACTIVELY".
+ *
+ * Found in the persona hunt. A46's out-of-hours line promises to "pass them
+ * along ONCE WE OPEN" — a claim about the OFFICE. The scheduler resolved it
+ * from `!sendingWindow(...).open`, which is false when EITHER window is shut,
+ * so it also fired when it was merely too early on the CUSTOMER's clock.
+ *
+ * The two come apart for one hour a day for anybody west of Eastern, and never
+ * for an Eastern customer — which is why reading the code did not show it.
+ */
+describe("the office window, with the customer's clock out of it", () => {
+  // A Tuesday. 8:30 AM in Los Angeles is 11:30 AM Eastern.
+  const laEarlyMorning = new Date("2026-09-29T15:30:00Z");
+
+  it("says the office is OPEN at 11:30 AM Eastern", () => {
+    expect(officeIsOpen({ now: laEarlyMorning, officeZone: "America/New_York" })).toBe(true);
+  });
+
+  it("while the send window is shut for that same customer — 8:30 AM their time", () => {
+    // Both are correct. The customer may not be texted yet; the office is open.
+    // Conflating them is what put "once we open" in front of a Los Angeles
+    // customer at half past eight in the morning.
+    expect(sendingWindow({
+      now: laEarlyMorning, customerZone: "America/Los_Angeles", officeZone: "America/New_York",
+    }).open).toBe(false);
+  });
+
+  it("and an Eastern customer at 8:30 AM is out of hours on BOTH — which is why this hid", () => {
+    const nyEarlyMorning = new Date("2026-09-29T12:30:00Z");
+    expect(officeIsOpen({ now: nyEarlyMorning, officeZone: "America/New_York" })).toBe(false);
+    expect(sendingWindow({
+      now: nyEarlyMorning, customerZone: "America/New_York", officeZone: "America/New_York",
+    }).open).toBe(false);
+  });
+
+  it("is shut in the evening, when 'once we open' is the true thing to say", () => {
+    // 7:30 PM in Los Angeles is 10:30 PM Eastern, past the 8 PM close.
+    expect(officeIsOpen({ now: new Date("2026-09-30T02:30:00Z"), officeZone: "America/New_York" })).toBe(false);
+  });
+
+  it("honours a workspace that has narrowed its own hours, never widened them", () => {
+    // 9:30 AM Eastern, inside A36's 9-8 but outside a workspace's 10-5.
+    const at930 = new Date("2026-09-29T13:30:00Z");
+    expect(officeIsOpen({ now: at930, officeZone: "America/New_York" })).toBe(true);
+    expect(officeIsOpen({
+      now: at930, officeZone: "America/New_York", officeHours: { startHour: 10, endHour: 17 },
+    })).toBe(false);
+    // And a workspace claiming 6am-11pm cannot open earlier than A36 allows.
+    expect(officeIsOpen({
+      now: new Date("2026-09-29T11:30:00Z"), officeZone: "America/New_York",
+      officeHours: { startHour: 6, endHour: 23 },
+    })).toBe(false);
+  });
+
+  it("closes at 5:30 PM on a Saturday, like the weekend window", () => {
+    // Saturday 2026-10-03. 5:45 PM Eastern.
+    expect(officeIsOpen({ now: new Date("2026-10-03T21:45:00Z"), officeZone: "America/New_York" })).toBe(false);
+    expect(officeIsOpen({ now: new Date("2026-10-03T21:00:00Z"), officeZone: "America/New_York" })).toBe(true);
   });
 });

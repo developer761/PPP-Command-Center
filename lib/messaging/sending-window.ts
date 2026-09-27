@@ -140,6 +140,41 @@ export function sendingWindow(input: {
 }
 
 /**
+ * IS PPP ITSELF OPEN? Only the office side, with the customer's clock out of it.
+ *
+ * A46's out-of-hours disclosure says "I can take your project details and pass
+ * them along ONCE WE OPEN", which is a claim about PPP's office and nothing
+ * else. The caller resolved it from `!sendingWindow(...).open`, which is false
+ * when EITHER window is shut — so it conflated "we are closed" with "it is too
+ * early where the customer is".
+ *
+ * Those come apart for every customer west of Eastern, for exactly one hour a
+ * day. A Los Angeles customer texting at 8:30 AM is outside the 9-7 outbound
+ * window on their own clock, so outOfHours read true and they were told we
+ * would pass their details along once we open — at 11:30 in the morning
+ * Eastern, with the office open and a person sitting there. Approved compliance
+ * copy, stating something false. It affects the CA and CO workspaces every day
+ * and CANNOT happen to an Eastern customer, which is why reading the code did
+ * not show it: at 8:30 AM Eastern the office really is shut.
+ *
+ * The customer's clock still governs whether we may SEND — that is
+ * sendingWindow's job and it is unchanged. This answers only the question the
+ * sentence actually asks.
+ */
+export function officeIsOpen(input: {
+  now: Date;
+  officeZone?: string;
+  officeHours?: QuietHours;
+}): boolean {
+  const officeZone = input.officeZone ?? OFFICE_ZONE;
+  const base = isWeekendIn(input.now, officeZone) ? OFFICE_WEEKEND : OFFICE_WEEKDAY;
+  const configured = input.officeHours;
+  const start = configured ? Math.max(base.start, configured.startHour * 60) : base.start;
+  const end = configured ? Math.min(base.end, configured.endHour * 60) : base.end;
+  return withinMinuteWindow(input.now, officeZone, start, end);
+}
+
+/**
  * The next instant both windows are open, or null when there is no such
  * instant inside a week.
  *

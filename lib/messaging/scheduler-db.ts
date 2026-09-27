@@ -11,7 +11,7 @@ import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
-import { sendingWindow } from "./sending-window";
+import { officeIsOpen } from "./sending-window";
 import { loadWorkspaceFaqs } from "./workspace-faq-db";
 import { faqsForPrompt } from "./workspace-faq";
 import { reportWarn } from "@/lib/observability";
@@ -465,14 +465,26 @@ export function schedulerDeps(): SchedulerDeps {
         // Their zone, for the week-aware availability ask and anything else
         // that needs to know what day it is where they are.
         customerZone: customerZone({ phone: conv.customer_phone }).timeZone,
-        // A46: out of hours ON THE CUSTOMER'S OWN CLOCK, not the workspace's.
-        // Same function the gate uses, so the disclosure and the send window
-        // can never disagree about whether we are open.
-        outOfHours: !sendingWindow({
-          now: new Date(),
-          customerZone: customerZone({ phone: conv.customer_phone }).timeZone,
-          officeZone: ws.time_zone,
-        }).open,
+        /**
+         * A46: IS PPP OPEN? Not "could we have sent proactively right now".
+         *
+         * The disclosure's approved text is "I can take your project details
+         * and pass them along ONCE WE OPEN", which is a claim about the office.
+         * This used to be `!sendingWindow(...).open`, which is false when
+         * EITHER window is shut — including when it is merely too early on the
+         * CUSTOMER's clock.
+         *
+         * Those come apart for one hour every day for anybody west of Eastern.
+         * A Los Angeles customer texting at 8:30 AM was told we would pass
+         * their details along once we open, at 11:30 AM Eastern with the office
+         * open. Daily, on the CA and CO workspaces, in approved compliance
+         * copy. Impossible to hit from an Eastern customer, which is why it
+         * survived: at 8:30 Eastern the office genuinely is shut.
+         *
+         * The customer's clock still decides whether we may SEND — the gate is
+         * unchanged and still refuses a 6:30 AM text.
+         */
+        outOfHours: !officeIsOpen({ now: new Date(), officeZone: ws.time_zone }),
         known: {
           name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
           // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were

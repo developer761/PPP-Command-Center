@@ -152,17 +152,30 @@ const CHAINS = [
     ],
   },
   {
-    rule: "A46 — the disclosure reaches the message, on the customer's clock",
-    why: "approved final text that never gets prefixed is a rule that exists only in a constants file. And outOfHours resolved against the workspace would disclose to the wrong people every evening",
+    rule: "A46 — the disclosure reaches the message, and 'once we open' means the OFFICE",
+    why: "approved final text that never gets prefixed is a rule that exists only in a constants file. And 'pass them along once we open' is a claim about the OFFICE: resolved from !sendingWindow().open it also fired when it was merely too early on the CUSTOMER's clock, so a Los Angeles customer texting at 8:30 AM was told we would pass their details along once we open, at 11:30 AM Eastern with the office open",
     links: [
       ["lib/messaging/disclosure.ts", /export const DISCLOSURE_OUT_OF_HOURS =/],
       ["lib/messaging/agent-run.ts", /applyDisclosure\(move, rendered/],
-      ["lib/messaging/scheduler-db.ts", /outOfHours: !sendingWindow\(/],
+      /**
+       * THE OFFICE QUESTION, NOT THE SEND-WINDOW QUESTION.
+       *
+       * This link used to require `outOfHours: !sendingWindow(` — the THIRD
+       * chain in this file to hold a defect in place by asserting the shape of
+       * the call that caused it. Parity 6 and Parity 1/5/7 were the others, both
+       * found the same morning. Asserting that a value is threaded cannot tell a
+       * wired rule from a wired bug; where the old shape was the bug it is now
+       * `forbidden` as well.
+       */
+      ["lib/messaging/sending-window.ts", /export function officeIsOpen/],
+      ["lib/messaging/scheduler-db.ts", /outOfHours: !officeIsOpen\(/],
       ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
       // bot_suspected must stay a CONTINUE intent, not an ending.
       ["lib/messaging/agent-output.ts", /"bot_suspected",\n\] as const;|"bot_suspected",/],
     ],
     forbidden: [
+      // The conflation: two different questions, and this asked the wrong one.
+      ["lib/messaging/scheduler-db.ts", /outOfHours: !sendingWindow\(/],
       // The retired instruction, and the retired hand-off template.
       ["lib/messaging/render.ts", /I am a real person|real person!/i],
       // Narrowed after a first run: the same phrase is CORRECT under
