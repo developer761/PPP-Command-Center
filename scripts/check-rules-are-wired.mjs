@@ -197,6 +197,25 @@ const CHAINS = [
       ["lib/messaging/agent-run.ts", /customerZone: opts\.customerZone/],
       ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
       ["lib/messaging/agent-output.ts", /reason: "availability_stand_off"/],
+      /**
+       * PARITY 7 IS READ OVER THE THREAD, NOT OVER THE LATEST MESSAGE.
+       *
+       * This link used to assert `returningCustomerDeclining(input.customerText)`
+       * — the single-message call that was the defect. The second chain in this
+       * file to pin a bug in place by asserting its shape: both halves of the
+       * rule have to be in one message for that call to fire, and a real
+       * customer splits them across turns, so the acknowledgement never fired
+       * at all.
+       */
+      ["lib/messaging/render.ts", /returningCustomerDecliningInThread\(\{/],
+      ["lib/messaging/agent-run.ts", /customerMessages: history\.filter\(\(t\) => t\.role === "customer"\)/],
+      // "BUT MOVE ON IF THEY DON'T PROVIDE IT" — capped at one ask, which
+      // needs to know what we already said.
+      ["lib/messaging/render.ts", /!alreadyAskedToConfirm\(/],
+      ["lib/messaging/agent-run.ts", /botMessages: history\.filter/],
+    ],
+    forbidden: [
+      // The single-message call, which could not see a thread.
       ["lib/messaging/render.ts", /returningCustomerDeclining\(input\.customerText\)/],
     ],
   },

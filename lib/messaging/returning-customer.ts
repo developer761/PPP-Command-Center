@@ -53,6 +53,47 @@ export function returningCustomerDeclining(text: string | null | undefined): boo
 }
 
 /**
+ * THE SAME RULE, OVER THE THREAD — WHICH IS THE ONLY PLACE IT IS TRUE.
+ *
+ * Requiring both halves in ONE message is why this never fired. A real
+ * conversation splits them across turns, because the two facts belong to
+ * different moments:
+ *
+ *   turn 1  "we used you guys a couple years back for the upstairs"
+ *   turn 2  → we ask what the project is
+ *   turn 3  → we ask for the address
+ *   turn 4  "you already have it"
+ *
+ * Neither message contains both halves, so the single-message check is false
+ * on every turn and the acknowledgement Hatch requires was never sent. The bot
+ * just asked again — at the customer most likely to buy again, which is the
+ * exact nag this rule exists to prevent. mentionsSecondProperty already reads
+ * the whole thread for this reason; this did not.
+ *
+ * THE TWO HALVES ARE SCOPED DIFFERENTLY, ON PURPOSE:
+ *
+ *   HAVING WORKED WITH US is a durable fact about the customer. Said once, it
+ *   stays true, so it is read from the whole thread.
+ *
+ *   NOT WANTING TO REPEAT THEMSELVES is a reaction to the question we just
+ *   asked. It is read from the LATEST message only, so an old "again?" cannot
+ *   make every later turn read as a refusal — which is the loose direction the
+ *   header warns about, and it would suppress collection on a returning
+ *   customer who is happily answering.
+ */
+export function returningCustomerDecliningInThread(input: {
+  /** Earlier customer messages, oldest first. */
+  earlier: readonly string[];
+  /** What they just said. The refusal has to be here. */
+  latest: string | null | undefined;
+}): boolean {
+  const latest = (input.latest ?? "").trim();
+  if (!RATHER_NOT_REPEAT.test(latest)) return false;
+  return WORKED_WITH_US_BEFORE.test(latest)
+    || input.earlier.some((m) => WORKED_WITH_US_BEFORE.test((m ?? "").trim()));
+}
+
+/**
  * Hatch's response, in our voice.
  *
  * Three beats, in its order: thank them for the NEW project, say why we ask
@@ -77,7 +118,19 @@ export function alreadyAskedToConfirm(
   customerMessages: readonly string[],
   botMessages: readonly string[]
 ): boolean {
-  const declined = customerMessages.some((m) => returningCustomerDeclining(m));
+  /**
+   * THREAD-SCOPED, for the same reason as returningCustomerDecliningInThread —
+   * and this function had the bug too, which is why capping the acknowledgement
+   * at one did not work the first time I wired it. `.some(returningCustomer-
+   * Declining)` needs BOTH halves in a single message, and the whole point of
+   * the surrounding rule is that they arrive turns apart. So `declined` was
+   * false on every real thread and the cap never engaged.
+   */
+  const declined = customerMessages.some((m, i) => returningCustomerDecliningInThread({
+    earlier: customerMessages.slice(0, i),
+    latest: m,
+  }));
   if (!declined) return false;
+  // The only record that we sent it is the sentence itself.
   return botMessages.some((m) => m.includes("still accurate") || m.includes("siga correcto"));
 }

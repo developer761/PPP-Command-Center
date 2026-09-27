@@ -563,6 +563,13 @@ Choose the next action.`;
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
       customerText: ownWords,
+      // Parity 7: having worked with PPP before is said ONCE, several turns
+      // before the refusal it explains. A check reading only customerText
+      // never sees both halves, which is why the acknowledgement never fired.
+      customerMessages: history.filter((t) => t.role === "customer").map((t) => t.text),
+      // And Parity 7 caps that acknowledgement at ONE. The only record of
+      // having sent it is what we sent.
+      botMessages: history.filter((t) => t.role === "assistant").map((t) => t.text),
       // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
       // switch back to English on the next turn." So it reads every customer
       // message in the thread plus this one, not just the latest — somebody

@@ -105,6 +105,8 @@ export function waysThrough(scenario) {
     covers: COVERS,
     language,
     secondProperty: wantsSecondAddress,
+    // Parity 7 needs the thread: the two halves arrive turns apart.
+    customerMessages: history,
   });
 
   const open = [];

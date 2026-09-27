@@ -14,6 +14,7 @@ import {
 } from "@/lib/messaging/availability-ask";
 import {
   returningCustomerDeclining, alreadyAskedToConfirm, returningCustomerReply,
+  returningCustomerDecliningInThread,
 } from "@/lib/messaging/returning-customer";
 import { renderMessage } from "@/lib/messaging/render";
 import { validateAction } from "@/lib/messaging/agent-output";
@@ -157,5 +158,103 @@ describe("gap 7 — the returning customer", () => {
 
   it("does not fire for somebody who never declined", () => {
     expect(alreadyAskedToConfirm(["4821 Oak Lane"], [returningCustomerReply()])).toBe(false);
+  });
+});
+
+/**
+ * PARITY 7, FOUND IN THE PERSONA HUNT: THE ACKNOWLEDGEMENT NEVER FIRED.
+ *
+ * returningCustomerDeclining requires BOTH halves in ONE message, and render
+ * only ever passed it the latest one. A real thread splits them:
+ *
+ *   turn 1  "we used you guys a couple years back for the upstairs"
+ *   turn 3  → we ask for the address
+ *   turn 4  "you already have it"
+ *
+ * Neither message carries both, so the check was false on every turn of every
+ * real conversation and the bot just asked again — at the customer most likely
+ * to buy again, which is the nag this rule exists to prevent.
+ *
+ * mentionsSecondProperty reads the whole thread for precisely this reason. This
+ * did not, and 5,533 tests passed because every one of them put both halves in
+ * the same string.
+ */
+describe("a returning customer says it over two turns, not one", () => {
+  const before = "we used you guys a couple years back for the upstairs";
+  const refuse = "you already have it";
+
+  it("fires when the two halves arrive turns apart", () => {
+    expect(returningCustomerDecliningInThread({ earlier: [before], latest: refuse })).toBe(true);
+  });
+
+  it("and the old single-message check could NOT see it", () => {
+    // The regression, stated as the thing that used to happen.
+    expect(returningCustomerDeclining(refuse)).toBe(false);
+    expect(returningCustomerDeclining(before)).toBe(false);
+  });
+
+  it("still needs a refusal IN THE LATEST MESSAGE", () => {
+    // Otherwise one old "again?" makes every later turn read as a refusal and
+    // suppresses collection on somebody who is happily answering.
+    expect(returningCustomerDecliningInThread({
+      earlier: [before, refuse], latest: "sure, it's 12 Oak St, Garden City NY 11530",
+    })).toBe(false);
+  });
+
+  it("never fires on somebody merely mentioning a past job", () => {
+    expect(returningCustomerDecliningInThread({
+      earlier: ["you painted my kitchen last year"], latest: "now I need the deck done",
+    })).toBe(false);
+  });
+
+  it("reaches the renderer through the thread", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 3, customerText: refuse, customerMessages: [before],
+    });
+    expect(out).toMatch(/still accurate/);
+  });
+});
+
+/**
+ * "BUT MOVE ON IF THEY DON'T PROVIDE IT." — Hatch, verbatim.
+ *
+ * ONCE. alreadyAskedToConfirm was written for this and had NO CALLER, so a
+ * customer who refused twice got the same apologetic paragraph twice — the nag,
+ * delivered in the words of an apology for nagging.
+ *
+ * It also carried the SAME single-message scope bug, which is why capping it
+ * did not work the first time: `.some(returningCustomerDeclining)` is false on
+ * every real thread, so the cap never engaged.
+ */
+describe("the acknowledgement is sent once, not every turn", () => {
+  const ACK = returningCustomerReply();
+  const before = "we used you guys a couple years back for the upstairs";
+
+  it("knows it has already been sent, over a real thread", () => {
+    expect(alreadyAskedToConfirm([before, "you already have it"], [ACK])).toBe(true);
+  });
+
+  it("is false before we have sent it", () => {
+    expect(alreadyAskedToConfirm([before, "you already have it"], ["What's the address for the project?"])).toBe(false);
+  });
+
+  it("so the second refusal gets a plain ask, not the paragraph again", () => {
+    const second = renderMessage({
+      intent: "ask_address", turn: 4,
+      customerText: "I'm not typing it out again, you already have it",
+      customerMessages: [before, "you already have it"],
+      botMessages: ["What's the address for the project?", ACK],
+    });
+    expect(second).not.toBe(ACK);
+    expect(second).not.toMatch(/still accurate/);
+    expect(second.length).toBeGreaterThan(0);
+  });
+
+  it("and the FIRST refusal still gets it", () => {
+    const first = renderMessage({
+      intent: "ask_address", turn: 3, customerText: "you already have it",
+      customerMessages: [before], botMessages: ["What's the address for the project?"],
+    });
+    expect(first).toBe(ACK);
   });
 });

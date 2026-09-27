@@ -29,7 +29,7 @@ import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch } from "./channel-preference";
 import { replyToRequestedTime } from "./appointment-time";
 import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
-import { returningCustomerDeclining, returningCustomerReply, returningCustomerReplyEs } from "./returning-customer";
+import { returningCustomerDecliningInThread, returningCustomerReply, returningCustomerReplyEs, alreadyAskedToConfirm } from "./returning-customer";
 import { askSecondPropertyAddress, askSecondPropertyAddressEs } from "./multi-property";
 import type { Language } from "./language";
 
@@ -564,6 +564,22 @@ export type RenderInput = {
   covers?: string | null;
   /** What the customer just said, for the one decision that needs it. */
   customerText?: string | null;
+  /**
+   * Their EARLIER messages, oldest first.
+   *
+   * Only for the questions whose answer depends on something said several
+   * turns ago rather than in the latest message. Parity 7 is the case: having
+   * worked with PPP before is stated once and stays true, so a check reading
+   * only customerText never sees it and the acknowledgement never fires.
+   */
+  customerMessages?: readonly string[];
+  /**
+   * What WE have already said, oldest first.
+   *
+   * Only for "have we asked this already". Parity 7 caps its acknowledgement at
+   * one, and the only record of having sent it is the outbound message itself.
+   */
+  botMessages?: readonly string[];
   /** A30 — the language of the CONVERSATION, not of the latest message. */
   language?: Language;
   /** Which conversation this is. A few turns read differently once a quote
@@ -831,7 +847,34 @@ export function renderMessage(input: RenderInput): string {
    */
   if (
     (input.intent === "ask_address" || input.intent === "ask_contact" || input.intent === "confirm_address")
-    && returningCustomerDeclining(input.customerText)
+    /**
+     * OVER THE THREAD, not over the latest message. Both halves in one message
+     * is why this never fired: a real customer says "we used you before" on one
+     * turn and "you already have it" three turns later, and neither message
+     * carries both. See returningCustomerDecliningInThread.
+     */
+    && returningCustomerDecliningInThread({
+      earlier: input.customerMessages ?? [],
+      latest: input.customerText,
+    })
+    /**
+     * "ASK IF THEY'D MIND CONFIRMING THEIR ADDRESS, BUT MOVE ON IF THEY DON'T
+     * PROVIDE IT." — Hatch, verbatim.
+     *
+     * ONCE. A customer who refuses twice was getting this same paragraph twice,
+     * which is the nag the rule exists to prevent, delivered in the words of an
+     * apology for nagging. alreadyAskedToConfirm was written for exactly this
+     * and had no caller anywhere, so nothing enforced the "once".
+     *
+     * Second time through it falls to the ordinary template — one plain ask,
+     * which is what A3 requires of the leg. Whether the flow should instead be
+     * forced PAST the address leg entirely is a change to what the bot
+     * collects, so it is a question for Kate rather than a guess here.
+     */
+    && !alreadyAskedToConfirm(
+      [...(input.customerMessages ?? []), input.customerText ?? ""],
+      input.botMessages ?? []
+    )
   ) {
     return es ? returningCustomerReplyEs() : returningCustomerReply();
   }

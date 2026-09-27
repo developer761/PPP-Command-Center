@@ -134,6 +134,21 @@ const SCENARIOS = [
   { name: "refuses to give the street", text: "I would rather not give my address over text",
     priorIntents: ["ask_project_details", "ask_address"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "acknowledge_negative" },
 
+  /**
+   * PARITY 7, FOUND IN THE PERSONA HUNT. The acknowledgement never fired,
+   * because both halves had to be in ONE message and a real customer splits
+   * them across turns. The bot just asked again.
+   */
+  { name: "returning customer refuses, having said so two turns earlier",
+    history: [
+      "we used you guys a couple years back for the upstairs",
+      "the upstairs hallway and two bedrooms need redoing",
+    ],
+    text: "you already have it",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "repaint the upstairs hallway and two bedrooms" },
+    wants: "ask_address", saysMatch: /still accurate/ },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

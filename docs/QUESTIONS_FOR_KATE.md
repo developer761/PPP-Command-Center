@@ -490,6 +490,34 @@ those two simply show no date.
 
 ---
 
+## 13. Parity 7 — after one refusal, does "move on" mean stop asking?
+
+**OPEN.** Raised by the persona hunt on 2026-09-27, not by Kate.
+
+Hatch's own wording is *"Ask if they'd mind confirming their address, BUT MOVE
+ON IF THEY DON'T PROVIDE IT."*
+
+**What we do today:** the acknowledgement is sent **once**. A second refusal
+gets the ordinary one-line ask instead of the same apologetic paragraph again
+— which was the bug: it repeated every turn, nagging in the words of an
+apology for nagging.
+
+The open half is what "move on" means for the FLOW. Two readings:
+
+1. **Ask once more, plainly** (what we do). A3 wants the leg asked, and its
+   legs are satisfied by having asked rather than by holding a value, so the
+   conversation still completes.
+2. **Stop asking for that field entirely** and go straight to the next leg.
+   Closer to the literal wording, but it changes what the bot collects, and on
+   a returning customer whose address HAS changed we would book an estimator to
+   the old one.
+
+**→ Recommendation:** reading 1, which is what is built. It is the reversible
+one, and the risk in reading 2 lands on the customer's driveway. Confirm and we
+leave it; say otherwise and it is a one-line change in the validator.
+
+---
+
 ## Separately, for Katie (not Kate)
 
 - **A25's call-cadence write.** Both no-call branches ask for the customer to
