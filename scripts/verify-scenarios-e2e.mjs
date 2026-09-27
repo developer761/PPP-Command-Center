@@ -23,133 +23,18 @@
  * No model. It probes the gate the model's answer has to pass, which is where
  * all four of those failures actually happened.
  */
-import { validateAction, intentsForTrack, stageFromIntents } from "../lib/messaging/agent-output.ts";
-import { renderMessage, isSilent } from "../lib/messaging/render.ts";
-import { knownFromThread } from "../lib/messaging/known-from-thread.ts";
-import { conversationLanguage } from "../lib/messaging/language.ts";
-import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
 import { classifyInbound } from "../lib/messaging/compliance.ts";
-import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
-import { addressGap } from "../lib/messaging/address.ts";
+import { waysThrough } from "./scenario-engine.mjs";
 
 /**
- * WHAT THIS CANNOT SEE.
- *
- * It builds the validate context and the render input the way agent-run does,
- * which means it holds a SECOND COPY of that wiring. So it proves the gate
- * and the templates behave, and it cannot prove agent-run still passes them
- * what it should — remove offsiteReason from agent-run and this stays green.
- *
- * That is the same two-copies problem this codebase keeps producing, and the
- * honest fix is to lift the render-input construction into one function both
- * call. Until then: this catches what the rules do, not what the caller
- * forgets.
+ * WHAT THIS CANNOT SEE: see scenario-engine.mjs. It proves what the RULES do,
+ * not what agent-run remembers to pass them.
  */
 let pass = 0, fail = 0;
 const ok = (label, cond, extra = "") => {
   if (cond) { pass++; console.log(`  ✓  ${label}${extra ? "  " + extra : ""}`); }
   else { fail++; console.log(`  ✗  ${label}${extra ? "  " + extra : ""}`); }
 };
-
-/** Rapport the model plausibly writes, including the shapes that broke things. */
-const RAPPORTS = [
-  "",
-  "Got it, thank you.",
-  "Happy to help.",
-];
-
-const COVERS = "interior painting, exterior painting, cabinets and drywall";
-
-/**
- * Every intent the model could legally choose here, that also produces words.
- *
- * "Produces words" matters as much as "is allowed": an intent that validates
- * and then renders nothing is the bot going silent, which is how three
- * endings behaved this morning.
- */
-function waysThrough(scenario) {
-  const { history = [], text, mediaCount = 0, track = "new_lead", known = {} } = scenario;
-  const priorIntents = scenario.priorIntents ?? [];
-  const messages = [
-    ...history.map((h) => ({ body: h })),
-    { body: text, mediaCount },
-  ];
-  const derived = knownFromThread({
-    onFile: { inquiryScope: known.inquiryScope, address: known.address },
-    messages,
-    stage: stageFromIntents(priorIntents),
-  });
-  const language = conversationLanguage(messages.map((m) => m.body));
-  // EXACTLY WHAT agent-run PASSES. The rules read the customer's own words,
-  // not the description, because a reaction quotes our sentence back — and a
-  // harness that gets this wrong reproduces bugs that are already fixed.
-  const ownWords = normalizeInbound(text, mediaCount).text ?? "";
-  const ctx = {
-    track,
-    knownFields: {
-      name: !!known.name,
-      phone: !!known.phone,
-      email: !!known.email,
-      address: !!derived.address,
-      inquiryScope: !!derived.inquiryScope,
-    },
-    stage: track === "new_lead" ? derived.stage : undefined,
-    priorIntents,
-    // A11: WHICH HALF is missing. agent-run passes this, and without it a
-    // partial address reads as a complete one and blocks the ask.
-    addressGap: derived.address ? addressGap(derived.address) : undefined,
-    customerText: ownWords,
-  };
-
-  const open = [];
-  for (const intent of intentsForTrack(track)) {
-    for (const freeText of RAPPORTS) {
-      const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
-      if (!v.ok) continue;
-      const rendered = renderMessage({
-        intent,
-        freeText: v.action.freeText,
-        turn: history.length,
-        photos: mediaCount,
-        known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
-        customerText: ownWords,
-        offsiteReason: offsiteReasonFor(ownWords),
-        covers: COVERS,
-        language,
-      });
-      const silent = isSilent({ intent, known: { scope: derived.inquiryScope }, customerText: ownWords });
-      if (rendered || silent) { open.push(intent); break; }
-    }
-  }
-  return { open: [...new Set(open)], derived, language, ctx, probe: (intent) => {
-    // Why was this one not available? Report the first real refusal, or say
-    // it validated and then rendered nothing, which is the other failure.
-    let lastReason = null;
-    for (const freeText of RAPPORTS) {
-      const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
-      if (!v.ok) { lastReason = `${v.reason}: ${v.detail}`; continue; }
-      const rendered = renderMessage({
-        intent, freeText: v.action.freeText, turn: history.length, photos: mediaCount,
-        known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
-        customerText: ownWords, offsiteReason: offsiteReasonFor(ownWords), covers: COVERS, language,
-      });
-      if (!rendered) return "validates but renders nothing";
-    }
-    return lastReason ?? "available";
-  }, say: (intent) => {
-    for (const freeText of RAPPORTS) {
-      const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
-      if (!v.ok) continue;
-      const out = renderMessage({
-        intent, freeText: v.action.freeText, turn: history.length, photos: mediaCount,
-        known: { address: derived.address, scope: derived.inquiryScope, phone: known.phone, email: known.email, zip: known.zip, state: known.state },
-        customerText: ownWords, offsiteReason: offsiteReasonFor(ownWords), covers: COVERS, language,
-      });
-      if (out) return out;
-    }
-    return "";
-  } };
-}
 
 /**
  * THE SCENARIOS. One row per thing a customer actually does.
@@ -182,6 +67,43 @@ const SCENARIOS = [
     // not [complete], because it does not say how many rooms."
     known: { inquiryScope: "interior painting, 3 bedrooms and the hallway", address: "12 Oak St, 11530", email: "tom@example.com", phone: "999-784-6046", name: "Tom" }, wants: "success" },
   { name: "has two properties", text: "I have two rental properties I need quoted, one in Garden City and one in Hempstead", wants: "ask_project_details" },
+
+  /**
+   * PARITY 6, FOUND IN THE PERSONA HUNT. `success` was refused for the LIFE of
+   * a two-property conversation, because addressesHeld was built from the one
+   * address column and so could never reach two. Nothing looked broken — the
+   * bot kept talking and the lead ended as a follow-up instead of a booked
+   * estimate. The old "has two properties" row above could not see it: it never
+   * gets far enough to try to close.
+   */
+  { name: "two properties, BOTH addresses given, ready to close",
+    history: [
+      "I have two rental properties I need quoted, one in Garden City and one in Hempstead",
+      "both need the interiors done, 3 bedrooms each",
+      "first one is 12 Oak St, Garden City NY 11530",
+      "the other is 44 Elm Ave, Hempstead NY 11550",
+      "tom@example.com",
+    ],
+    text: "weekday mornings work best",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "interior painting, 3 bedrooms in each of two rentals",
+      address: "12 Oak St, Garden City NY 11530", email: "tom@example.com",
+      phone: "999-784-6046", name: "Tom" },
+    wants: "success" },
+
+  { name: "two properties, only ONE address given, must not close",
+    history: [
+      "I have two rental properties I need quoted, one in Garden City and one in Hempstead",
+      "both need the interiors done, 3 bedrooms each",
+      "first one is 12 Oak St, Garden City NY 11530",
+      "tom@example.com",
+    ],
+    text: "weekday mornings work best",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "interior painting, 3 bedrooms in each of two rentals",
+      address: "12 Oak St, Garden City NY 11530", email: "tom@example.com",
+      phone: "999-784-6046", name: "Tom" },
+    wants: "ask_address", refuses: "success", saysMatch: /second property/i },
   { name: "asks a direct question mid-flow", text: "do you do the prep work too?", priorIntents: ["ask_project_details"], wants: "answer_question" },
   { name: "quote already sent, goes quiet", track: "nurture", text: "still thinking about it", wants: "ask_for_decision" },
   { name: "quote already sent, accepts", track: "nurture", text: "yes lets go ahead with it", wants: "accepted" },
@@ -259,6 +181,17 @@ for (const s of SCENARIOS) {
      * green: "is there a way through" was never asking what the way through
      * actually SAID.
      */
+    if (s.refuses) {
+      // A rule that can never be satisfied is as wrong as one that never
+      // fires, so the scenarios assert BOTH directions.
+      const blocked = !open.includes(s.refuses);
+      ok(`  …and "${s.refuses}" is correctly refused [${s.name}]`, blocked,
+         blocked ? probe(s.refuses) : "AVAILABLE WHEN IT SHOULD NOT BE");
+    }
+    if (have && s.saysMatch) {
+      const said = say(s.wants);
+      ok(`  …and it says the right thing [${s.name}]`, s.saysMatch.test(said), JSON.stringify(said));
+    }
     if (have && s.speaks) {
       const said = say(s.wants);
       const wrongLanguage = s.speaks === "es"

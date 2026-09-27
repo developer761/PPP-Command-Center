@@ -201,17 +201,6 @@ const CHAINS = [
     ],
   },
   {
-    rule: "Parity 6 — a second property cannot be closed over",
-    why: "a second property is a second JOB, lost silently because the conversation looks complete. The guard needs addressesHeld threaded from agent-run or it can never fire",
-    links: [
-      ["lib/messaging/multi-property.ts", /export function secondPropertyOutstanding/],
-      ["lib/messaging/agent-output.ts", /reason: "second_property_uncollected"/],
-      ["lib/messaging/agent-run.ts", /addressesHeld: kf\.address/],
-      // and asking for the second address must not trip the A13 guard
-      ["lib/messaging/agent-output.ts", /const secondProperty = a\.intent === "ask_address"/],
-    ],
-  },
-  {
     rule: "Call forwarding — a call on a texting number reaches a human",
     why: "Kate moved this into Iteration 1: customers ring the number we text them on. A route that exists but is not signed, or one that 403s, means a customer hears a failed call and concludes PPP does not answer its phone",
     links: [
@@ -225,6 +214,36 @@ const CHAINS = [
       ["lib/messaging/voice-forward.ts", /<Record|<Play|record=/],
       // A refused call is worse than no call. Never 403 a caller.
       ["app/api/webhooks/twilio-voice/route.ts", /status: 403/],
+    ],
+  },
+  {
+    rule: "Parity 6 — a second property can be ASKED for, and can be CLOSED",
+    why: "the close was refused for the life of a two-property conversation because addressesHeld came from the single address column and could never reach two, while the sentence asking for the second address had no caller at all. Nothing looked broken: the bot kept talking and the lead ended as a follow-up instead of a booked estimate",
+    links: [
+      ["lib/messaging/multi-property.ts", /export function secondPropertyOutstanding/],
+      ["lib/messaging/agent-output.ts", /reason: "second_property_uncollected"/],
+      // Asking for the second address must not trip the A13 held-field guard.
+      ["lib/messaging/agent-output.ts", /const secondProperty = a\.intent === "ask_address"/],
+      /**
+       * THE COUNT MUST COME FROM THE THREAD.
+       *
+       * The chain this replaces asserted `addressesHeld: kf.address` as a
+       * required link — it pinned the defect in place. A list built from one
+       * column can never hold two, so the rule requiring two could never be
+       * satisfied, and the check called that correctly wired.
+       */
+      ["lib/messaging/agent-run.ts", /addressesInThread\(\{/],
+      ["lib/messaging/agent-run.ts", /addressesHeld,/],
+      // AND something must ask the question that unblocks the close.
+      ["lib/messaging/render.ts", /askSecondPropertyAddress\(\)/],
+      ["lib/messaging/agent-run.ts", /secondProperty: wantsSecondAddress/],
+    ],
+    forbidden: [
+      /**
+       * THE EXACT LINE THAT CAUSED IT. A list built from one field cannot hold
+       * two, so a rule that requires two can never be satisfied.
+       */
+      ["lib/messaging/agent-run.ts", /addressesHeld: kf\.address \? \[kf\.address\] : \[\]/],
     ],
   },
   {

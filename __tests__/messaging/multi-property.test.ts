@@ -8,9 +8,11 @@
 import { describe, it, expect } from "vitest";
 import {
   mentionsSecondProperty, threadMentionsSecondProperty,
-  addressesCollected, secondPropertyOutstanding,
+  addressesCollected, secondPropertyOutstanding, addressesInThread,
+  askSecondPropertyAddress,
   CONTACT_IS_SHARED_ACROSS_PROPERTIES,
 } from "@/lib/messaging/multi-property";
+import { renderMessage } from "@/lib/messaging/render";
 import { validateAction } from "@/lib/messaging/agent-output";
 
 describe("noticing a second property", () => {
@@ -158,5 +160,118 @@ describe("asking for the second address is not a redundant ask", () => {
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.detail).toMatch(/already on file/i);
+  });
+});
+
+/**
+ * THE DEFECT ALL OF THE ABOVE MISSED, FOUND IN THE PERSONA HUNT.
+ *
+ * Every test in this file passed `addressesHeld` by hand, so every one of them
+ * could reach two. The REAL caller built that list from the conversation's
+ * single address column — `kf.address ? [kf.address] : []` — which can never
+ * hold more than one. So `addressesCollected(...) < 2` was permanently true
+ * from the moment somebody said "two rentals", and `success` was refused for
+ * the entire life of the conversation, no matter how many addresses they typed.
+ *
+ * Nothing looked broken. Twenty other intents stayed available, so the bot kept
+ * talking and the lead ended as a follow-up instead of a booked estimate: a
+ * class of lead that could not convert, with no error anywhere. 5,522 tests
+ * were green over it.
+ *
+ * These tests work from the THREAD, the way the caller now does, because that
+ * is the only shape in which the bug is visible.
+ */
+describe("every address the thread holds, not the one column", () => {
+  const thread = [
+    "I have two rental properties I need quoted, one in Garden City and one in Hempstead",
+    "both need the interiors done, 3 bedrooms each",
+    "first one is 12 Oak St, Garden City NY 11530",
+    "the other is 44 Elm Ave, Hempstead NY 11550",
+    "tom@example.com",
+  ];
+
+  it("finds both addresses the customer typed", () => {
+    expect(addressesInThread({ customerMessages: thread })).toHaveLength(2);
+  });
+
+  it("so the conversation can finally close", () => {
+    const addressesHeld = addressesInThread({ customerMessages: thread, onFile: "12 Oak St, 11530" });
+    expect(secondPropertyOutstanding({ customerMessages: thread, addressesHeld })).toBe(false);
+  });
+
+  it("AND THE OLD SHAPE COULD NOT — one column can never reach two", () => {
+    // The regression, stated as the thing that used to happen. This is what
+    // every turn of every two-property conversation looked like.
+    const onlyTheColumn = ["12 Oak St, 11530"];
+    expect(secondPropertyOutstanding({ customerMessages: thread, addressesHeld: onlyTheColumn })).toBe(true);
+  });
+
+  it("still refuses to close when a second address genuinely never arrived", () => {
+    const short = thread.filter((m) => !m.includes("44 Elm"));
+    const addressesHeld = addressesInThread({ customerMessages: short, onFile: "12 Oak St, 11530" });
+    expect(addressesHeld).toHaveLength(1);
+    expect(secondPropertyOutstanding({ customerMessages: short, addressesHeld })).toBe(true);
+  });
+
+  it("keeps the record's address first — it is the office's version", () => {
+    const out = addressesInThread({ customerMessages: thread, onFile: "99 Office Rd, 11530" });
+    expect(out[0]).toBe("99 Office Rd, 11530");
+  });
+
+  /**
+   * The near-duplicate, which fails the OTHER way: counting one property twice
+   * would satisfy the check with one address collected and close over the very
+   * job this exists to protect.
+   */
+  it("does not count one property twice because they reworded it", () => {
+    const reworded = [...thread.filter((m) => !m.includes("44 Elm")), "sorry, 12 Oak Street, Garden City NY 11530"];
+    expect(addressesInThread({ customerMessages: reworded })).toHaveLength(1);
+  });
+
+  it("counts two different houses at the same number as two", () => {
+    expect(addressesCollected(["12 Oak St, 11530", "12 Elm Ave, 11550"])).toBe(2);
+  });
+});
+
+/**
+ * AND SOMETHING HAS TO ASK THE QUESTION.
+ *
+ * askSecondPropertyAddress() had NO CALLER anywhere in lib or app. The
+ * validator refused the close and nothing ever asked for the thing that would
+ * unblock it, so the bot repeated "What's the address for the project?" to
+ * somebody who had already given one.
+ */
+describe("the ask names which property", () => {
+  const ask = (extra = {}) => renderMessage({
+    intent: "ask_address", turn: 3, known: { address: "12 Oak St, 11530" },
+    secondProperty: true, ...extra,
+  });
+
+  it("asks for the SECOND one, not for 'the project'", () => {
+    expect(ask()).toBe(askSecondPropertyAddress());
+    expect(ask()).toMatch(/second property/i);
+  });
+
+  it("in Spanish too", () => {
+    expect(ask({ language: "es" })).toMatch(/segunda propiedad/i);
+  });
+
+  it("is the ordinary ask when there is no second property", () => {
+    expect(renderMessage({ intent: "ask_address", turn: 3 })).not.toMatch(/second property/i);
+  });
+
+  /**
+   * A11 STILL WINS. Somebody who gave "44 Elm Ave" with no zip is asked for
+   * the zip — asking "what's the address for the second property?" when we
+   * already hold half of it is the exact breach gap-narrowing exists to stop,
+   * and it was Kate's most-broken rule at 287 breaches.
+   */
+  it("never overrides the A11 gap ask", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 3, addressGap: "zip",
+      known: { address: "44 Elm Ave" }, secondProperty: true,
+    });
+    expect(out).toMatch(/zip/i);
+    expect(out).not.toMatch(/second property/i);
   });
 });

@@ -30,6 +30,7 @@ import { phoneBranch } from "./channel-preference";
 import { replyToRequestedTime } from "./appointment-time";
 import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
 import { returningCustomerDeclining, returningCustomerReply, returningCustomerReplyEs } from "./returning-customer";
+import { askSecondPropertyAddress, askSecondPropertyAddressEs } from "./multi-property";
 import type { Language } from "./language";
 
 /** Intents that END the conversation without sending anything. Sending a
@@ -527,6 +528,20 @@ export type RenderInput = {
   /** What is missing from a partial address. Narrows ask_address to the gap,
    *  which is what A11 requires. See ASK_ADDRESS_GAP below. */
   addressGap?: AddressGap;
+  /**
+   * Parity gap 6: this ask is about the SECOND property, not the first.
+   *
+   * Hatch: "Complete the full flow for the first, then repeat for the next."
+   * So the ask must name which one, or a customer who has already given one
+   * address reads "What's the address for the project?" as us having lost it.
+   *
+   * The system knows there is a second property and the model does not, so
+   * this is a flag rather than another intent — the same reasoning as
+   * addressGap. Without it askSecondPropertyAddress() had no caller at all:
+   * the validator blocked the close and nothing ever asked the question that
+   * would unblock it.
+   */
+  secondProperty?: boolean;
   /** What is missing from a partial availability. Narrows ask_availability,
    *  which is A4's own remedy. See ASK_AVAILABILITY_GAP below. */
   availabilityGap?: AvailabilityGap;
@@ -711,7 +726,18 @@ export function renderMessage(input: RenderInput): string {
   // failure that started this: "Hola! Con gusto le ayudo. What are you
   // looking to have painted?"
   const es = input.language === "es";
-  const variants = gap
+  /**
+   * Parity gap 6. A second-property ask names which property, and it beats the
+   * ordinary ask_address wording — but NOT the A11 gap wording, which is why
+   * this is checked after `gap`: somebody who gave "44 Elm Ave" with no zip is
+   * asked for the zip, second property or not. Asking "what's the address for
+   * the second property?" when we already have half of it is the A11 breach
+   * that gap narrowing exists to prevent.
+   */
+  const secondProperty = input.intent === "ask_address" && !gap && !!input.secondProperty;
+  const variants = secondProperty
+    ? [es ? askSecondPropertyAddressEs() : askSecondPropertyAddress()]
+    : gap
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap
       ? (es ? ASK_AVAILABILITY_GAP_ES : ASK_AVAILABILITY_GAP)[availGap]

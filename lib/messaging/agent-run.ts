@@ -29,6 +29,7 @@ import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent, templateAsks } from "./render";
 import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
+import { addressesInThread, secondPropertyOutstanding } from "./multi-property";
 
 const MODEL = "claude-opus-5";
 
@@ -447,6 +448,26 @@ Choose the next action.`;
     // differs between models.
     const parsed: unknown = call.input;
 
+    /**
+     * WHAT THE CUSTOMER HAS SAID, AND EVERY ADDRESS IT CONTAINS.
+     *
+     * Computed once because the validator and the renderer must agree: one
+     * refuses `success` while a second property has no address, the other asks
+     * the question that fixes it. Two copies of this expression would let them
+     * drift, and the failure would be the bot asking for an address it is
+     * about to accept — or worse, refusing to close for a reason nothing asks
+     * about.
+     */
+    const customerSaid = [
+      ...history.filter((t) => t.role === "customer").map((t) => t.text),
+      ownWords,
+    ];
+    const addressesHeld = addressesInThread({ customerMessages: customerSaid, onFile: kf.address });
+    const wantsSecondAddress = secondPropertyOutstanding({
+      customerMessages: customerSaid,
+      addressesHeld,
+    });
+
     // The post-filter. Even with a constrained schema, freeText is free text.
     const v = validateAction(parsed, {
       confidenceThreshold: cfg.confidence_threshold,
@@ -460,10 +481,25 @@ Choose the next action.`;
       // still stops the bot pressing this turn. The whole thread, because a
       // park does not have to be repeated to still be true.
       customerMessages: history.filter((t) => t.role === "customer").map((t) => t.text),
-      // Parity gap 6: every address the conversation holds, so `success`
-      // cannot close over a second property the customer told us about.
-      // One entry is the ordinary case.
-      addressesHeld: kf.address ? [kf.address] : [],
+      /**
+       * Parity gap 6: every address the conversation holds, so `success`
+       * cannot close over a second property the customer told us about.
+       *
+       * READ FROM THE THREAD, not from the one address column. This line used
+       * to be `kf.address ? [kf.address] : []`, which can never hold more than
+       * ONE — so `addressesCollected(...) < 2` was permanently true from the
+       * moment somebody said "two rentals", and `success` was refused for the
+       * whole life of the conversation however many addresses they typed. A
+       * class of lead that could not convert, and nothing looked wrong: the
+       * other intents stayed open, so the bot kept talking and the lead ended
+       * as a follow-up instead of a booked estimate.
+       *
+       * The record still wins for the first — it is the office's version — and
+       * the rest come out of what the customer actually wrote, INCLUDING this
+       * turn, because the second address usually arrives in the message that
+       * is being validated right now.
+       */
+      addressesHeld,
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
@@ -502,6 +538,16 @@ Choose the next action.`;
       },
       // Narrows ask_address to the part we are actually missing.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
+      /**
+       * Parity gap 6: name WHICH property the ask is about.
+       *
+       * The same condition the validator uses to refuse `success`, so the
+       * question that unblocks the close is the one the customer gets asked.
+       * Without this the validator blocked and nothing ever asked — the bot
+       * repeated "What's the address for the project?" to somebody who had
+       * already given one.
+       */
+      secondProperty: wantsSecondAddress,
       // A4: and the same for availability. Read from what the customer just
       // said, because that is where an answer to an availability question
       // lands. Only narrows an ask the model has already chosen to make.

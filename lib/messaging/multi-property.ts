@@ -32,6 +32,8 @@
  * Pure.
  */
 
+import { addressFromCustomer } from "./address";
+
 /**
  * Words that mean a PLACE, not a part of one.
  *
@@ -76,14 +78,73 @@ export function threadMentionsSecondProperty(customerMessages: readonly string[]
  *
  * Counted from what was CONFIRMED rather than from what was asked, because
  * asking twice and receiving once is the shape this exists to catch.
+ *
+ * ── DEDUPED ON HOUSE NUMBER AND ZIP, NOT ON THE STRING ──────────────────
+ *
+ * Because a customer repeats an address in different words. "12 Oak St,
+ * 11530" and "12 Oak Street, 11530" are one property, and a string compare
+ * calls them two — which would satisfy the second-property check with one
+ * property and close over the very job this is here to protect. The house
+ * number and the zip together identify a property closely enough for that
+ * question, and two genuinely different places almost never share both.
  */
+function addressKey(raw: string): string {
+  const norm = raw.trim().toLowerCase().replace(/[.,]/g, "");
+  const number = /^\s*(\d+[a-z]?)\b/.exec(norm)?.[1];
+  const zip = /\b(\d{5})\b/.exec(norm)?.[1];
+  // Both halves present is the ordinary case, and the only one where a key
+  // narrower than the whole string is safe.
+  return number && zip ? `${number}|${zip}` : norm;
+}
+
 export function addressesCollected(addresses: readonly (string | null | undefined)[]): number {
   const seen = new Set(
     addresses
-      .map((a) => (a ?? "").trim().toLowerCase().replace(/[.,]/g, ""))
+      .map((a) => (a ?? "").trim())
       .filter((a) => a.length > 0)
+      .map(addressKey)
   );
   return seen.size;
+}
+
+/**
+ * EVERY ADDRESS THE THREAD HOLDS — which is the whole point, and was the bug.
+ *
+ * The caller used to build this from the single `customer_address` field, so
+ * the list could never have more than ONE entry. `addressesCollected(...) < 2`
+ * was therefore permanently true from the moment a second property was
+ * mentioned, and `success` was refused for the life of the conversation — on
+ * every turn, for ever, no matter how many addresses the customer typed.
+ *
+ * Nothing looked broken: twenty other intents stayed available, so the bot
+ * kept talking and the lead simply ended as a follow-up instead of a booked
+ * estimate. A whole class of lead that could not convert, with no error
+ * anywhere. The "silent nothing" shape again.
+ *
+ * The record still WINS for the first address — it is the office's version —
+ * but the thread is read for the others, because the schema has one column and
+ * a customer with two houses types two addresses into the chat. Per-property
+ * state is still Iteration 2 (see the header); counting them is not.
+ */
+export function addressesInThread(input: {
+  /** Every customer message in the thread, oldest first, including the latest. */
+  customerMessages: readonly string[];
+  /** The address on the record, if any. Kept first: the office's version. */
+  onFile?: string | null;
+}): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (a: string | null | undefined) => {
+    const v = (a ?? "").trim();
+    if (!v) return;
+    const key = addressKey(v);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(v);
+  };
+  add(input.onFile);
+  for (const m of input.customerMessages) add(addressFromCustomer(m));
+  return out;
 }
 
 /**
