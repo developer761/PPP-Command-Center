@@ -601,3 +601,19 @@ leave it; say otherwise and it is a one-line change in the validator.
   manual step.
 - `SF_OPTOUT_WRITEBACK` still off, pending her approval.
 - Twilio environment variables still outstanding.
+- **Is downtown Denver really outside the Denver territory?** The service map
+  holds 2,191 zips: NY 544, FL 401, NJ 379, CA 363, CT 145, TX 118, CO 88,
+  LA 82, VA 36, NC 31, PA 2, MD 1, and one row with no state at all (59901,
+  Kalispell MT). Colorado's 88 include 80206 and 80108 (both "CO Denver",
+  active) but **not 80202**, which is downtown Denver.
+
+  Nothing is broken by this — an unmatched zip answers `needs_a_person`, so
+  the bot hands to a human rather than turning the customer away, which is
+  the safe direction. But it means every downtown-Denver lead goes to a
+  person, permanently, and it looks more like a gap in the import than a
+  deliberate boundary.
+
+  Two things to confirm: whether the CO list is complete, and what the
+  state-less Kalispell row is doing there — Montana is not a state PPP
+  serves, and with no state on the row it cannot be recognised as
+  out-of-state either.
