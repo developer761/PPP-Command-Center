@@ -124,3 +124,55 @@ describe("the sandbox is given the same context as production", () => {
     }
   });
 });
+
+/**
+ * ── THE SANDBOX MUST NOT DENY A COMPLIANCE BEHAVIOUR WE HAVE ────────────
+ *
+ * It said, of HELP: "(No reply is sent. The carrier answers HELP itself.)"
+ *
+ * That is the reasoning help-reply.ts exists to correct. Its header quotes
+ * this exact sentence from simulator.ts and explains why it is wrong here —
+ * Twilio answers HELP automatically only for a number with no handler of its
+ * own, and ours has one. Production sends the reply from record-inbound.ts,
+ * and not answering HELP is a CTIA violation carriers check at verification.
+ *
+ * So the one screen used to check compliance stated the opposite of what
+ * ships, on the rule most likely to be audited. It also survived the whole
+ * ctx-parity pass above, because HELP is decided before runAgentTurn is
+ * reached and none of those fields touch it.
+ *
+ * Opt-out is the genuine case of sending nothing, and stays that way.
+ */
+describe("the sandbox answers HELP, because production does", () => {
+  const raw = () => readFileSync("lib/messaging/simulator.ts", "utf8");
+  /**
+   * Comments stripped, the same way simulator-safety.test.ts does it and for
+   * the same reason: the comment explaining why "the carrier answers HELP"
+   * was WRONG has to quote it, and a raw match fails on the explanation. That
+   * is a false positive which teaches people to water down the comment
+   * instead of fixing the code.
+   */
+  const code = () => raw()
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("does not claim the carrier handles HELP", () => {
+    expect(code()).not.toMatch(/carrier answers HELP/i);
+  });
+
+  it("keeps the explanation of why that claim was wrong", () => {
+    // The comment is the reason written down. Losing it is how the next
+    // person re-introduces the line.
+    expect(raw()).toMatch(/carrier answers HELP/i);
+  });
+
+  it("renders the real reply, from the same function production calls", () => {
+    // Not a copy of the words — the function, so the two cannot drift.
+    expect(code()).toMatch(/helpReply\(/);
+  });
+
+  it("still says nothing at all for an opt-out", () => {
+    // The carrier does answer STOP, and adding to it is the breach.
+    expect(code()).toMatch(/number is suppressed and nothing further can go out/i);
+  });
+});

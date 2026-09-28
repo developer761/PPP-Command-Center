@@ -14,6 +14,7 @@
 import { messagingDb } from "./db";
 import { officeIsOpen } from "./sending-window";
 import { classifyInbound } from "./compliance";
+import { helpReply } from "./help-reply";
 import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
 import { agentConfigFor } from "./agent-config-for";
@@ -69,6 +70,21 @@ export async function simulatorStatus(): Promise<{ ready: boolean; reason?: stri
   const cfg = await agentConfigFor();
   if (!cfg) return { ready: false, reason: "No agent configuration has been seeded yet — run migration 185." };
   return { ready: true };
+}
+
+/**
+ * The number a HELP reply tells them to call.
+ *
+ * Per workspace, because the live reply is: somebody who texted the 516
+ * number is told to call the 516 number. Null when no workspace is selected,
+ * which helpReply handles by leaving the callback sentence out rather than
+ * saying "call null".
+ */
+async function workspacePhone(workspaceId?: string): Promise<string | null> {
+  if (!workspaceId) return null;
+  const { data } = await messagingDb()
+    .from("sms_sub_accounts").select("phone_e164").eq("id", workspaceId).maybeSingle();
+  return (data as { phone_e164?: string | null } | null)?.phone_e164 ?? null;
 }
 
 export async function runSimTurn(input: {
@@ -166,6 +182,28 @@ export async function runSimTurn(input: {
   const keyword = classifyInbound(input.customerText);
   if (keyword === "opt_out" || keyword === "help") {
     const ordinal = input.history.length + 1;
+    /**
+     * HELP IS ANSWERED, AND THE SANDBOX USED TO SAY IT WAS NOT.
+     *
+     * This line read "(No reply is sent. The carrier answers HELP itself.)",
+     * which is the reasoning help-reply.ts was written to correct — its own
+     * header quotes this file saying it and then explains why it is wrong
+     * here: Twilio answers HELP automatically only when the number has no
+     * handler of its own, and ours does. Production sends the reply from
+     * record-inbound.ts, and NOT answering HELP is a CTIA violation that
+     * carriers check during verification.
+     *
+     * So the one screen used to check compliance behaviour was stating the
+     * opposite of what ships, on the rule most likely to be audited. Found
+     * 2026-09-28 while sweeping every surface, and it had survived the whole
+     * ctx-parity pass because it is decided before runAgentTurn is reached.
+     *
+     * Opt-out is unchanged and genuinely sends nothing: the carrier answers
+     * STOP, and adding to it is the breach.
+     */
+    const helpBody = keyword === "help"
+      ? helpReply(await workspacePhone(input.workspaceId))
+      : null;
     return {
       ok: true,
       turn: {
@@ -173,11 +211,8 @@ export async function runSimTurn(input: {
         customerText: input.customerText,
         intent: keyword === "opt_out" ? "opted_out" : "help",
         confidence: 1,
-        // The carrier answers both of these. The bot must not add to it, and
-        // must never send to this handset again.
-        message: keyword === "opt_out"
-          ? "(No reply is sent. The number is suppressed and nothing further can go out to it.)"
-          : "(No reply is sent. The carrier answers HELP itself.)",
+        message: helpBody
+          ?? "(No reply is sent. The number is suppressed and nothing further can go out to it.)",
         escalate: false,
       },
     };
