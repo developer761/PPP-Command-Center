@@ -186,3 +186,49 @@ describe("a close needs a bookable availability, not just a day", () => {
     expect(validateAction({ ...success, intent: "ask_availability" }, ctx("window")).ok).toBe(true);
   });
 });
+
+/**
+ * THE RISK THE CLOSE GUARD CREATED, held down deliberately.
+ *
+ * Refusing `success` on a partial availability means ANY phrasing the detector
+ * does not understand now blocks a legitimate close. That is the safer
+ * direction — the bot asks again rather than telling the office a job is
+ * bookable when it is not — but it is only safe while the detector actually
+ * recognises the ways people answer "what days work best for you?".
+ *
+ * So this is a sweep rather than an example: every one of these is a real
+ * shape of answer, and the first column is the one that would cost a booking.
+ */
+describe("the close guard does not block answers a person could book", () => {
+  it("lets every complete answer through", () => {
+    const blocked: string[] = [];
+    for (const t of [
+      "Wednesday morning", "Tuesday after 2pm", "weekday mornings work best",
+      "anytime", "I'm flexible", "whenever works for you", "any time is fine",
+      "Monday or Tuesday, mornings preferred", "Thursday afternoon",
+      "sat morning", "tomorrow morning", "this week in the afternoon",
+      "mornings on Monday Wednesday or Friday", "9am Tuesday",
+    ]) {
+      const gap = availabilityGap(t);
+      if (gap) blocked.push(`${JSON.stringify(t)} → ${gap}`);
+    }
+    expect(blocked, blocked.join("\n")).toEqual([]);
+  });
+
+  it("and still stops the ones an estimator cannot be booked against", () => {
+    for (const t of ["Wednesday", "Wednesday or Friday", "mornings", "afternoons", "after 3pm", "weekends"]) {
+      expect(availabilityGap(t), t).not.toBeNull();
+    }
+  });
+
+  /**
+   * "Flexible availability counts as RECEIVED" — the parity doc says so, and
+   * it is the case most likely to be broken by a guard like this, because
+   * "anytime" names neither a day nor a window.
+   */
+  it("treats flexibility as an answer, not as a gap", () => {
+    for (const t of ["anytime works", "I'm flexible", "whenever suits you", "any day is fine"]) {
+      expect(availabilityGap(t), t).toBeNull();
+    }
+  });
+});
