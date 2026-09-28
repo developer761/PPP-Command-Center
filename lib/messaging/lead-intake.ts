@@ -82,6 +82,19 @@ export type IntakeContext = {
   territoryFor?: (postalCode: string | null) => import("./territory").TerritoryVerdict | null;
 };
 
+/**
+ * Why a number could not be texted, without reproducing it.
+ *
+ * Exported so the wording can be held to "no digits reach the string" by a
+ * test rather than by trusting the call site.
+ */
+export function describeUntextableNumber(raw: string | null | undefined): string {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (!digits) return "no phone on the record";
+  const plus = /^\s*\+/.test(raw ?? "") ? ", given with a country code" : "";
+  return `a ${digits.length}-digit number${plus}, which is not one we can text`;
+}
+
 export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDecision {
   const phone = toE164(lead.phone ?? null);
 
@@ -93,9 +106,20 @@ export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDeci
     return {
       action: "triage",
       reason: "no_contactable_phone",
-      detail: lead.phone
-        ? `"${lead.phone}" is not a number we can text`
-        : "no phone on the record",
+      /**
+       * THE SHAPE, NOT THE NUMBER.
+       *
+       * This used to quote lead.phone verbatim — `"352621635520" is not a
+       * number we can text` — and triage_reason is rendered on the Reports
+       * screen, so a customer's phone number was printed there. The PII sweep
+       * flags it as customer data in a text column, correctly.
+       *
+       * The diagnostic value was never the digits: somebody triaging wants to
+       * know WHY it was refused, and "12 digits" says a malformed or foreign
+       * number while "10 digits" says a landline or a typo. That is the whole
+       * of what the person looking needs, and it carries nothing personal.
+       */
+      detail: describeUntextableNumber(lead.phone),
     };
   }
 

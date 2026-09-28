@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decideIntake, speedToLeadSeconds } from "@/lib/messaging/lead-intake";
+import { decideIntake, speedToLeadSeconds, describeUntextableNumber } from "@/lib/messaging/lead-intake";
 import type { RoutableWorkspace } from "@/lib/messaging/routing";
 import type { E164 } from "@/lib/messaging/phone";
 
@@ -44,14 +44,51 @@ describe("decideIntake — a lead with no usable phone is triage, not a routing 
     }
   });
 
-  it("triages a phone we cannot text, quoting what arrived", () => {
-    // Whoever works the queue needs to see the bad value, not just be told
-    // something was wrong with it.
+  /**
+   * THIS TEST USED TO REQUIRE THE OPPOSITE, and the reason it gave was good:
+   * "Whoever works the queue needs to see the bad value, not just be told
+   * something was wrong with it."
+   *
+   * It was quoting a customer's phone number into triage_reason, which the
+   * Reports screen renders — so a real number was printed on that page, and
+   * the PII sweep flagged it as customer data in a text column. It was right
+   * to: the sweep is the check that stops personal data spreading into
+   * columns nobody remembers are personal.
+   *
+   * The original need survives without the digits. The SHAPE is the
+   * diagnosis — "12 digits" is a foreign or malformed number, "7 digits" is a
+   * typo — and the triage row carries the Salesforce record id, so the actual
+   * value is one click away in the system that owns it. Copying it here added
+   * nothing the person could not already get, and put it on a screen.
+   */
+  it("triages a phone we cannot text, describing its shape and not its digits", () => {
     const d = decideIntake({ sfRecordId: "00Q4", phone: "555-1234", state: "NY" }, ctx);
     if (d.action === "triage") {
       expect(d.reason).toBe("no_contactable_phone");
-      expect(d.detail).toContain("555-1234");
+      expect(d.detail).toContain("7-digit");
+      expect(d.detail).not.toContain("555-1234");
+      expect(d.detail).not.toMatch(/\d{4,}/);
     } else throw new Error("expected triage");
+  });
+
+  /**
+   * The helper directly, because a well-formed international number PASSES
+   * toE164 and never reaches the untextable branch — the first version of this
+   * test asserted a path that cannot happen and failed on the territory
+   * message instead, which is the test being wrong rather than the code.
+   */
+  it("says when a country code was given, without the digits", () => {
+    const out = describeUntextableNumber("+44 7700 9");
+    expect(out).toMatch(/country code/i);
+    expect(out).not.toMatch(/7700/);
+    expect(out).toMatch(/7-digit/);
+  });
+
+  it("never lets a long digit run into the reason, whatever arrives", () => {
+    for (const phone of ["352621635520", "00 44 7700 900123", "(516) 344-8418 ext 22"]) {
+      const d = decideIntake({ sfRecordId: "00QA", phone, state: "NY" }, ctx);
+      if (d.action === "triage") expect(d.detail, phone).not.toMatch(/\d{4,}/);
+    }
   });
 
   it("triages a number in the reserved 555-01XX block", () => {
