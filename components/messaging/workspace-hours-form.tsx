@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CUSTOMER_OUTBOUND } from "@/lib/messaging/sending-window";
 import { useRouter } from "next/navigation";
 import { saveWorkspaceHours } from "@/lib/messaging/workspace-settings";
 import { describeDelay, validateDelay, DEFAULT_DELAY } from "@/lib/messaging/reply-delay";
@@ -121,6 +122,27 @@ export default function WorkspaceHoursForm({
         The list stops at {clock(bound.startHour)} and {clock(bound.endHour)}{" "}
         because federal law does, and that bound is applied when the message is
         sent rather than when this is saved.
+      </p>
+      {/*
+        THE WINDOW ABOVE IS NOT THE WHOLE STORY, and saying only half of it made
+        this screen assert something untrue.
+
+        A workspace set to 9:00 AM–8:00 PM was described as "sends 9:00 AM to
+        8:00 PM", and a message PPP starts actually stops at 7:00 PM, because
+        CUSTOMER_OUTBOUND caps it on the CUSTOMER's clock. The same applies at
+        the other end: 8:00 AM is offered here and unreachable. An hour of
+        configured window that does nothing, with nothing on screen to say so.
+
+        Read from the constants rather than typed, so this cannot drift from
+        the gate the way the sentence above it did.
+      */}
+      <p className="text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+        Two other bounds apply and neither is a setting. A message{" "}
+        <strong>we start</strong> also obeys the customer&apos;s own clock,{" "}
+        {clock(CUSTOMER_OUTBOUND.startHour)} to {clock(CUSTOMER_OUTBOUND.endHour)}{" "}
+        where <em>they</em> are, so a window wider than that does nothing for
+        those. A <strong>reply</strong> to somebody who has just texted may go
+        up to {clock(bound.endHour)}, which is why the two are not the same.
       </p>
 
       <label className="block">
