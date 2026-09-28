@@ -6,6 +6,8 @@
  * one as a time puts a wrong appointment in front of a person.
  */
 import { describe, it, expect } from "vitest";
+import { renderMessage } from "@/lib/messaging/render";
+import { tooManyAsks } from "@/lib/messaging/one-ask";
 import {
   resolveBareHour, requestedTime, slotVerdict, replyToRequestedTime,
   FIRST_SLOT_HOUR, LAST_SLOT_HOUR,
@@ -167,5 +169,100 @@ describe("what the bot says back", () => {
     const offered = "Saturday at 2 works, I have an opening then.";
     expect(offered).toMatch(/\b(?:satur)day\b[^.?!]{0,12}\b\d{1,2}\s*(?::\d{2})?\s*(?:am|pm)?\b/i);
     expect(offered).toMatch(/\bI have\b/i);
+  });
+});
+
+/**
+ * THE NAMED TIME IS ACKNOWLEDGED, THEN THE FLOW CARRIES ON.
+ *
+ * Played in the simulator on 2026-09-27:
+ *
+ *   customer  "I need the kitchen and two bedrooms painted. Can you come
+ *              Tuesday at 2?"
+ *   BOT       "What's the address for the project?"
+ *
+ * A15 was satisfied — nothing was confirmed, which is the expensive half — but
+ * the customer asked a direct question and got nothing back. replyToRequested-
+ * Time existed for exactly this and only fired when the model happened to pick
+ * an availability intent; its own comment says "the flow carries on after".
+ */
+describe("a time named on a collecting turn is not ignored", () => {
+  const asked = "I need the kitchen and two bedrooms painted. Can you come Tuesday at 2?";
+
+  it("leads with the calendar line, then asks the flow's question", () => {
+    const out = renderMessage({ intent: "ask_address", turn: 1, customerText: asked });
+    expect(out).toMatch(/check the calendar/i);
+    expect(out).toMatch(/address|property/i);
+  });
+
+  it("never promises the time", () => {
+    const out = renderMessage({ intent: "ask_address", turn: 1, customerText: asked });
+    // A15: no day, no hour, nothing that reads as a booking.
+    expect(out).not.toMatch(/\btuesday\b/i);
+    expect(out).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b/i);
+    expect(out).not.toMatch(/\bbooked\b|\bconfirmed\b|\bsee you\b/i);
+  });
+
+  it("still asks for only one thing", () => {
+    for (const intent of ["ask_address", "ask_contact"] as const) {
+      const out = renderMessage({ intent, turn: 1, customerText: asked });
+      expect(tooManyAsks(out), out).toBeNull();
+      expect((out.match(/\?/g) ?? []).length).toBe(1);
+    }
+  });
+
+  /**
+   * A22 OUTRANKS THE COURTESY. Checked by running tooManyAsks over the RESULT
+   * rather than by reasoning about which intents are safe — and that is what
+   * caught a false positive in tooManyAsks itself, which counted "calendar"
+   * and "project" out of a sentence describing our own next step and called a
+   * single question three asks.
+   *
+   * The invariant is the point, not any one intent: adding the line must never
+   * take a message over the limit, on any turn, for any of them.
+   */
+  it("never takes a message over the one-ask limit", () => {
+    const known = { address: "12 Oak St, 11530", scope: "the kitchen and two bedrooms", phone: "999-784-6046", email: "t@x.com" };
+    for (const intent of [
+      "ask_project_details", "ask_address", "ask_contact",
+      "confirm_scope", "confirm_address", "confirm_contact",
+    ] as const) {
+      for (const turn of [0, 1, 2, 3]) {
+        const out = renderMessage({ intent, turn, customerText: asked, known });
+        if (!out) continue;
+        expect(tooManyAsks(out), `${intent} turn ${turn}: ${out}`).toBeNull();
+      }
+    }
+  });
+
+  it("keeps the acknowledgement on a read-back, which is still one ask", () => {
+    const out = renderMessage({
+      intent: "confirm_address", turn: 1, customerText: asked,
+      known: { address: "12 Oak St, 11530" },
+    });
+    expect(out).toMatch(/check the calendar/i);
+    expect(tooManyAsks(out), out).toBeNull();
+  });
+
+  it("says nothing extra when no time was named", () => {
+    const out = renderMessage({ intent: "ask_address", turn: 1, customerText: "paint my kitchen" });
+    expect(out).not.toMatch(/calendar/i);
+  });
+
+  /**
+   * too_early and too_late carry their OWN question, so prefixing one to an
+   * ask would put two questions in a message. They get their full answer when
+   * the flow reaches the availability turn.
+   */
+  it("leaves the out-of-hours variants to the availability turn", () => {
+    const early = renderMessage({ intent: "ask_address", turn: 1, customerText: "can you come at 7am?" });
+    expect(early).not.toMatch(/earliest/i);
+    expect(renderMessage({ intent: "ask_availability", turn: 1, customerText: "can you come at 7am?" }))
+      .toMatch(/earliest/i);
+  });
+
+  it("the availability turn still answers in full, unprefixed", () => {
+    expect(renderMessage({ intent: "ask_availability", turn: 1, customerText: asked }))
+      .toBe("I'll check the calendar for that time.");
   });
 });

@@ -21,6 +21,7 @@ import type { JobRoute } from "./offsite";
 import { parkKind, isAsk, conversationWasDeferred } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
+import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -1367,7 +1368,19 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // question is the shape A29 exists to catch, and accepting any rapport at
   // all let it straight through.
   const saysSomething = !!rapport && !BARE_ACKNOWLEDGEMENT.test(rapport.trim());
-  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || saysSomething;
+  /**
+   * AND THE TEMPLATE ITSELF CAN BE THE ANSWER.
+   *
+   * A customer who asks "can you come Tuesday at 2?" is answered by the
+   * collecting turns, because render leads them with "I'll check the calendar
+   * for that time." before the next question. This guard runs BEFORE the
+   * renderer, so without knowing that it refused a turn that does answer —
+   * which is how "Can you come Tuesday at 2?" ended up with the bot asking for
+   * an address and nothing else, the shape A29 exists to catch.
+   */
+  const templateAnswersTheTime =
+    TIME_IS_ACKNOWLEDGED_BY.has(a.intent) && !!requestedTime(ctx.customerText);
+  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || saysSomething || templateAnswersTheTime;
   if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
     return {
       ok: false, reason: "question_left_unanswered",

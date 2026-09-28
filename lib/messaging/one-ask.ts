@@ -62,6 +62,39 @@ const PRODUCED_FIELD: { field: string; re: RegExp }[] = [
 const YES_NO =
   /\b(?:is|are|was|were|do|does|did|would|will|can|could|should|have|has|want|shall)\b[^.?!]*\?/gi;
 
+/**
+ * Verbs that REQUEST without a question mark. "Let me know your name and
+ * email" is an ask; so is "I'll need your address".
+ */
+const REQUESTING =
+  /\b(?:need|send|give|tell|let me know|provide|share|confirm|grab|put|reach you|best way)\b/i;
+
+/**
+ * ONLY THE PARTS THAT ACTUALLY ASK.
+ *
+ * VOLUME counts what the customer must PRODUCE, and a sentence that neither
+ * asks nor requests cannot make them produce anything. This scanned the whole
+ * message, so a statement about what WE will do counted against the limit:
+ *
+ *   "I'll check the calendar for that time. What's the address for the
+ *    project?"
+ *
+ * was reported as "3 things at once (address, availability, scope)" — one
+ * question, plus "calendar/time" read as an availability ask and "project"
+ * read as a scope ask, both out of a sentence describing our own next step.
+ * Found on 2026-09-27 when that false positive suppressed an acknowledgement
+ * the A15 work had just added, and only on even-numbered turns, because the
+ * template variant on odd turns happened to word it differently.
+ *
+ * A sentence counts when it is a question OR carries a requesting verb.
+ */
+function asking(text: string): string {
+  return text
+    .split(/(?<=[.?!])\s+/)
+    .filter((sentence) => sentence.includes("?") || REQUESTING.test(sentence))
+    .join(" ");
+}
+
 export const MAX_PRODUCED_FIELDS = 2;
 
 /**
@@ -78,7 +111,7 @@ export function tooManyAsks(text: string | null | undefined): string | null {
   SLOT.lastIndex = 0;
 
   if (!readsBackAValue) {
-    const fields = PRODUCED_FIELD.filter((f) => f.re.test(requested)).map((f) => f.field);
+    const fields = PRODUCED_FIELD.filter((f) => f.re.test(asking(requested))).map((f) => f.field);
     if (fields.length > MAX_PRODUCED_FIELDS) {
       return `asks the customer to produce ${fields.length} things at once (${fields.join(", ")}), and two is the most one message may ask for`;
     }

@@ -176,6 +176,15 @@ const SCENARIOS = [
     priorIntents: ["ask_address", "ask_contact", "ask_availability"],
     wants: "escalate", refuses: "success" },
 
+  /**
+   * A15, FOUND IN THE SIMULATOR. The bot answered "Can you come Tuesday at 2?"
+   * with "What's the address for the project?" — correct in that it promised
+   * nothing, and silent on the thing they actually asked.
+   */
+  { name: "names a time while the flow still needs an address",
+    text: "I need the kitchen and two bedrooms painted. Can you come Tuesday at 2?",
+    wants: "ask_address", saysMatch: /check the calendar/i },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

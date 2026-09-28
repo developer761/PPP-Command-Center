@@ -183,3 +183,19 @@ function hour12(h: number): string {
   const n = h % 12 === 0 ? 12 : h % 12;
   return `${n} ${suffix}`;
 }
+
+/**
+ * THE INTENTS WHOSE TEMPLATE LEADS WITH THE CALENDAR LINE.
+ *
+ * Lives here, not in render.ts, because BOTH sides need it and they must not
+ * drift: render uses it to decide whether to prefix the acknowledgement, and
+ * the A29 guard in agent-output uses it to know that the reply WILL answer a
+ * time question — the validator runs before the renderer and would otherwise
+ * refuse a turn that does answer.
+ *
+ * agent-output importing render would be a cycle; this module imports nothing.
+ */
+export const TIME_IS_ACKNOWLEDGED_BY: ReadonlySet<string> = new Set([
+  "ask_project_details", "ask_address", "ask_contact",
+  "confirm_scope", "confirm_address", "confirm_contact",
+]);

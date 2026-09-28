@@ -15,7 +15,7 @@
  * make in passing.
  */
 import { validateAction, intentsForTrack, stageFromIntents } from "../lib/messaging/agent-output.ts";
-import { renderMessage, isSilent } from "../lib/messaging/render.ts";
+import { renderMessage, isSilent, templateAsks } from "../lib/messaging/render.ts";
 import { knownFromThread } from "../lib/messaging/known-from-thread.ts";
 import { conversationLanguage } from "../lib/messaging/language.ts";
 import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
@@ -89,6 +89,16 @@ export function waysThrough(scenario) {
      */
     customerMessages: history,
     addressesHeld,
+    /**
+     * A THIRD FIELD agent-run PASSES AND THIS DID NOT (agent-run.ts:512).
+     *
+     * Without it the "did this turn answer their question" guard reads a
+     * different world here than in production, so a scenario could pass or
+     * fail for a reason the live bot would never hit. Found when a new A15
+     * scenario refused ask_address in the harness while the deployed bot
+     * allowed it.
+     */
+    templateAsks: (intent) => templateAsks(intent, history.length),
   };
 
   const renderFor = (intent, freeText) => renderMessage({

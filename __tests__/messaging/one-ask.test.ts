@@ -104,3 +104,44 @@ describe("what it leaves alone", () => {
     expect(tooManyAsks("Are you open to an in-person appointment? Just let me know when you're available.")).toBeNull();
   });
 });
+
+/**
+ * VOLUME COUNTS WHAT THE CUSTOMER MUST PRODUCE, SO A STATEMENT CANNOT COUNT.
+ *
+ * This scanned the whole message, so a sentence about what WE will do counted
+ * against the limit:
+ *
+ *   "I'll check the calendar for that time. What's the address for the
+ *    project?"
+ *
+ * came back "3 things at once (address, availability, scope)" — one question,
+ * with "calendar/time" read as an availability ask and "project" as a scope
+ * ask, both out of the declarative half. Found on 2026-09-27 when the false
+ * positive suppressed an acknowledgement A15 had just added, and only on
+ * even-numbered turns, because the odd-turn template variant is worded
+ * differently.
+ */
+describe("a sentence that does not ask cannot be an ask", () => {
+  it("allows a statement about our next step in front of one question", () => {
+    expect(tooManyAsks("I'll check the calendar for that time. What's the address for the project?")).toBeNull();
+  });
+
+  it("still counts a requesting sentence with no question mark", () => {
+    // "Let me know" and "I'll need" are asks whatever the punctuation.
+    expect(tooManyAsks("Let me know your name, your email and your phone number.")).toMatch(/3 things/);
+    expect(tooManyAsks("I'll need your name, email and phone.")).toMatch(/3 things/);
+  });
+
+  it("still catches a genuine three-field question", () => {
+    expect(tooManyAsks("What's your name, and your email, and the best phone number to reach you?"))
+      .toMatch(/3 things/);
+  });
+
+  it("still catches two yes/no questions", () => {
+    expect(tooManyAsks("Is 12 Oak St right? Are you free Tuesday?")).toMatch(/2 separate yes or no/);
+  });
+
+  it("two produced fields in one question is still fine", () => {
+    expect(tooManyAsks("And what's the best name and email for the estimate?")).toBeNull();
+  });
+});

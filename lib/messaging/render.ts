@@ -27,7 +27,7 @@ import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-e
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch } from "./channel-preference";
-import { replyToRequestedTime } from "./appointment-time";
+import { replyToRequestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
 import { returningCustomerDecliningInThread, returningCustomerReply, returningCustomerReplyEs, alreadyAskedToConfirm } from "./returning-customer";
 import { askSecondPropertyAddress, askSecondPropertyAddressEs } from "./multi-property";
@@ -725,7 +725,95 @@ export function templateAsks(intent: Intent, turn = 0): boolean {
   return pick.includes("?");
 }
 
+/**
+ * A NAMED TIME IS ACKNOWLEDGED, THEN THE FLOW CARRIES ON.
+ *
+ * A15's remedy already existed and only fired when the model happened to pick
+ * an availability intent. Played in the simulator:
+ *
+ *   customer  "I need the kitchen and two bedrooms painted. Can you come
+ *              Tuesday at 2?"
+ *   BOT       "What's the address for the project?"
+ *
+ * A15 is satisfied — nothing was confirmed, which is the half that costs money
+ * — but the customer asked a direct question and got nothing back at all. They
+ * will ask again, and a bot that ignores the thing you actually asked about is
+ * the complaint A29 is made of.
+ *
+ * replyToRequestedTime's own comment says what should happen: "Holds the
+ * moment without promising it. THE FLOW CARRIES ON AFTER." So it leads, and
+ * the collecting question follows in the same message.
+ *
+ * ONLY THE in_hours LINE, which is a statement. too_early and too_late carry
+ * their own question, and prefixing one of those to an ask would put two
+ * questions in a message — the A22 breach this codebase already fights. Those
+ * still get their full answer when the flow reaches the availability turn.
+ */
+/**
+ * WHAT confirm_scope MAY READ BACK.
+ *
+ * The scope is the customer's own typing, kept whole — so a first message like
+ * "I need the kitchen and two bedrooms painted. Can you come Tuesday at 2?"
+ * became, verbatim:
+ *
+ *   "Just to confirm, you're looking for: I need the kitchen and two bedrooms
+ *    painted. Can you come Tuesday at 2?. Is that right?"
+ *
+ * "Just to confirm" sitting next to "Tuesday at 2" is how a customer concludes
+ * the appointment is booked, which is the exact harm A15 exists to prevent —
+ * and the bot never agreed to anything. Caught by the scenario sweep's "no
+ * reply names a day" check on a scenario added the same afternoon.
+ *
+ * Clauses naming a DAY or a CLOCK TIME are dropped, and nothing else is
+ * touched: the project words are the customer's and they should hear their own
+ * description back. Returns "" when that leaves nothing to confirm, which
+ * renders no message and hands the turn to a person — the right outcome when
+ * the only thing we could read back is an appointment request.
+ */
+const NAMES_A_DAY_OR_TIME =
+  /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:at|around)\s+\d{1,2}(?::\d{2})?\b/i;
+
+export function scopeForReadback(scope: string | null | undefined): string {
+  const t = (scope ?? "").trim();
+  if (!t) return "";
+  const kept = t
+    .split(/(?<=[.?!])\s+/)
+    .filter((sentence) => sentence.trim() && !NAMES_A_DAY_OR_TIME.test(sentence))
+    .join(" ")
+    .trim();
+  return kept;
+}
+
+/** Shared with the A29 guard — see TIME_IS_ACKNOWLEDGED_BY. */
+const ACKNOWLEDGES_A_TIME = TIME_IS_ACKNOWLEDGED_BY;
+
+/** MINE, NOT KATE'S — an unapproved translation, like A46's Spanish. See
+ *  docs/QUESTIONS_FOR_KATE.md item 9. */
+const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
+
 export function renderMessage(input: RenderInput): string {
+  const body = renderBody(input);
+  if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
+  const timed = replyToRequestedTime(input.customerText);
+  if (!timed || timed.verdict !== "in_hours") return body;
+  const lead = input.language === "es" ? CHECKING_THE_CALENDAR_ES : timed.reply;
+  // Already talking about the calendar? Do not say it twice.
+  if (/calendar|calendario/i.test(body)) return body;
+  const withLead = `${lead} ${body}`;
+  /**
+   * A22 OUTRANKS THE COURTESY. confirm_address reads back an address and asks
+   * about it; adding a sentence about the calendar tipped it over the one-ask
+   * limit — "asks the customer to produce 3 things at once (address,
+   * availability, scope)". Caught by running tooManyAsks over the result
+   * rather than by reasoning about which intents were safe.
+   *
+   * An acknowledgement that breaks a rule is worse than no acknowledgement:
+   * the time still gets its full answer at the availability turn.
+   */
+  return tooManyAsks(withLead) ? body : withLead;
+}
+
+function renderBody(input: RenderInput): string {
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
@@ -774,7 +862,15 @@ export function renderMessage(input: RenderInput): string {
       address: clip(input.known?.address, 120),
       phone: input.known?.phone,
       email: input.known?.email,
-      scope: clip(input.known?.scope),
+      /**
+       * READ BACK WITHOUT THE APPOINTMENT REQUEST. See scopeForReadback: the
+       * scope is the customer's whole message, so "…painted. Can you come
+       * Tuesday at 2?" was being confirmed back at them under the words "Just
+       * to confirm". Empty leaves the slot unfilled, which makes the template
+       * refuse to render and hands the turn to a person — correct when the
+       * only thing left to confirm was a time we never agreed to.
+       */
+      scope: clip(scopeForReadback(input.known?.scope)) || null,
       // A7's mandated reason, from the qualifier the SYSTEM matched. Never
       // model text: a reason the bot invented for departing from the normal
       // route is worse than no reason at all. A missing one makes the whole
