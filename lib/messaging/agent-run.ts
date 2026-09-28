@@ -136,8 +136,56 @@ export function buildSystemPrompt(
   workspaceFaqs?: string,
   /** A30 — which language this conversation is being held in. */
   language: Language = "en",
+  /**
+   * A2 — WHAT OUR OWN LOOKUP SAYS, which the model was never told.
+   *
+   * The paragraph below instructs it to choose `area_not_serviced` "when the
+   * state itself is one we do not serve", and then never says which states
+   * those are: SERVICED lives in service-zip.ts and stopped at the validator.
+   * So the one fact needed to make that choice was computed every turn and
+   * shown to nobody.
+   *
+   * The model did the right thing without it — the same paragraph says never
+   * to call a place unserved off its own judgement, so a Texas address got
+   * `checking_availability` and a handover. Safe, and the wrong script: A2's
+   * out-of-state message names the zip and asks whether the project is
+   * somewhere else, and it could essentially never fire. The same shape as
+   * A7's offsiteReason, which was computed and never passed, so a live
+   * critical rule never once ran.
+   *
+   * This is our records talking, not the model guessing, which is exactly the
+   * distinction the paragraph is trying to enforce.
+   */
+  areaVerdict?: {
+    outcome: "serviced" | "out_of_state" | "needs_a_person";
+    zip?: string | null;
+    state?: string | null;
+  } | null,
 ): string {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
+
+  /**
+   * The lookup's answer in words, or nothing at all when there is no zip to
+   * look up. Silence is the right default: the paragraph's standing
+   * instruction is already "do not decide this yourself".
+   */
+  const areaLine = (() => {
+    if (!areaVerdict) return "";
+    const zip = areaVerdict.zip ? ` (${areaVerdict.zip})` : "";
+    if (areaVerdict.outcome === "serviced") {
+      return `OUR RECORDS SAY the zip we hold${zip} is inside our service area. ` +
+        `Coverage is settled — do not raise it as a question.`;
+    }
+    if (areaVerdict.outcome === "out_of_state") {
+      const state = areaVerdict.state ? ` in ${areaVerdict.state},` : "";
+      return `OUR RECORDS SAY the zip we hold${zip} is${state} which is a state PPP ` +
+        `does not serve. This is our own lookup, not your judgement, so the ` +
+        `condition in the paragraph above is met: choose "area_not_serviced".`;
+    }
+    return `OUR RECORDS SAY the zip we hold${zip} could not be matched to a ` +
+      `territory. That is not the same as being outside our area — choose ` +
+      `"checking_availability" so a person checks.`;
+  })();
 
   // Nurture is talking to somebody who has already had an estimator in their
   // home. Everything the new-lead prompt exists to collect, they have already
@@ -174,6 +222,7 @@ hands to a person, who checks. Only choose "area_not_serviced" when the state
 itself is one we do not serve, and that message names the zip we hold and
 asks whether the project is somewhere else, because the zip on file is often
 out of date.
+${areaLine}
 
 OFFSITE QUOTES. There are two of these and they are not the same move:
 present_offsite_quote  the JOB is small and clearly defined, so a quick quote
@@ -457,7 +506,16 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services, opts.classARules, opts.workspaceFaqs, language),
+      system: buildSystemPrompt(
+        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
+        opts.classARules, opts.workspaceFaqs, language,
+        // A2: the verdict the caller already looked up. It reached the
+        // validator and stopped there, so the model was asked to apply a rule
+        // whose one input it could not see.
+        opts.serviceArea
+          ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
+          : null,
+      ),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model

@@ -417,6 +417,35 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A2 — the lookup's verdict reaches the MODEL, not only the validator",
+    why:
+      "the prompt says to choose area_not_serviced 'when the state itself is one we do not " +
+      "serve' and never says which states those are — SERVICED lives in service-zip.ts and " +
+      "serviceArea stopped at the validate context. Confirmed live with a Texas address: the " +
+      "bot chose checking_availability, which is correct without the fact and means A2's " +
+      "out-of-state script could essentially never fire. Same shape as A7's offsiteReason",
+    links: [
+      ["lib/messaging/agent-run.ts", /areaVerdict/],
+      ["lib/messaging/agent-run.ts", /OUR RECORDS SAY/],
+      // It has to be PASSED, not merely accepted as a parameter.
+      ["lib/messaging/agent-run.ts", /outcome: opts\.serviceArea/],
+      // ...and the validator still has it, because the prompt is guidance and
+      // the guard is the thing that cannot be talked round.
+      ["lib/messaging/agent-output.ts", /ctx\.serviceArea !== "serviced"/],
+      /**
+       * The standing instruction must SURVIVE the fact being added. The line
+       * qualifies that paragraph; it does not replace it, and without it a
+       * model that mistrusts the lookup has nothing telling it not to decide
+       * coverage itself.
+       *
+       * A positive link, not a `forbidden` with a negative lookahead — this
+       * check has been written that way before and it does not work, because
+       * `.` does not span newlines and the file is one long string.
+       */
+      ["lib/messaging/agent-run.ts", /never say a place is outside our area off your own judgement/],
+    ],
+  },
+  {
     rule: "the email the customer typed is KEPT, and is what the quote is sent to",
     why:
       "the bot asks for it by name and customer_email was written once at enrolment and " +

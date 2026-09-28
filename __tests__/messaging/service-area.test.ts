@@ -3,6 +3,7 @@ import { validateAction } from "@/lib/messaging/agent-output";
 import { territoryFor, SERVICED_STATES } from "@/lib/messaging/territory";
 import { renderMessage, SAYS } from "@/lib/messaging/render";
 import { shouldEscalate } from "@/lib/messaging/agent-output";
+import { buildSystemPrompt } from "@/lib/messaging/agent-run";
 
 /**
  * A2, 37 breaches, critical: "Validate the zip against the service area
@@ -193,5 +194,66 @@ describe("the bot may not end on geography unless the LOOKUP says so", () => {
     for (const intent of ["ask_availability", "success", "present_offsite_quote"]) {
       expect(validateAction({ ...act, intent }, ctx("out_of_state")).ok).toBe(false);
     }
+  });
+});
+
+/**
+ * ── THE VERDICT HAS TO REACH THE MODEL, NOT ONLY THE VALIDATOR ──────────
+ *
+ * The prompt tells the model to choose `area_not_serviced` "when the state
+ * itself is one we do not serve", and then never says which states those are:
+ * SERVICED lives in service-zip.ts and `serviceArea` stopped at the validate
+ * context. So the one fact the instruction depends on was computed every turn
+ * and shown to nobody.
+ *
+ * Confirmed live on 2026-09-28 with a Texas address: the bot chose
+ * `checking_availability` and handed over. That is CORRECT without the fact —
+ * the same paragraph forbids calling a place unserved off its own judgement —
+ * and it means A2's out-of-state script, which names the zip and asks whether
+ * the project is somewhere else, could essentially never fire.
+ *
+ * Same shape as A7's offsiteReason: computed, never passed, so a live
+ * critical rule never once ran.
+ */
+describe("what our own lookup says reaches the prompt", () => {
+  const prompt = (areaVerdict: Parameters<typeof buildSystemPrompt>[9]) =>
+    buildSystemPrompt(
+      { required_flow: ["project_details", "address"] } as never,
+      [], "new_lead", undefined, undefined, undefined, undefined, undefined, "en",
+      areaVerdict
+    );
+
+  it("names the state when the zip is out of state", () => {
+    const p = prompt({ outcome: "out_of_state", zip: "75001", state: "Texas" });
+    expect(p).toContain("75001");
+    expect(p).toContain("Texas");
+    expect(p).toContain("area_not_serviced");
+  });
+
+  it("says coverage is settled when the zip is serviced", () => {
+    const p = prompt({ outcome: "serviced", zip: "11530", state: null });
+    expect(p).toContain("11530");
+    // ...and must not invite the out-of-state script for somebody we cover.
+    expect(p).toMatch(/inside our service area/);
+  });
+
+  it("distinguishes an unmatched zip from an unserved state", () => {
+    // The harm A2 exists to prevent is telling a customer we do not cover
+    // them because our own lookup failed.
+    const p = prompt({ outcome: "needs_a_person", zip: "19977", state: null });
+    expect(p).toContain("checking_availability");
+    expect(p).toMatch(/not the same as being outside our area/);
+  });
+
+  it("says nothing at all when there is no zip to look up", () => {
+    // Silence is the right default: the standing instruction is already
+    // "do not decide this yourself".
+    expect(prompt(null)).not.toContain("OUR RECORDS SAY");
+  });
+
+  it("still carries the standing instruction the line qualifies", () => {
+    // The line ADDS a fact; it must not replace the rule that governs it.
+    const p = prompt({ outcome: "out_of_state", zip: "75001", state: "Texas" });
+    expect(p).toMatch(/never say a place is outside our area off your own judgement/);
   });
 });
