@@ -108,7 +108,32 @@ rows exist. Two rows, and the screen matches the spec.
 
 ---
 
-## 2. ~~A3 and A6 contradict each other on "tenant"~~ — ANSWERED FROM HER OWN TEXT
+## 2. A3 and A6 contradict each other on "tenant" — **ANSWERED 2026-09-28**
+
+> **Kate, 2026-09-28:** *"Yes, follow A6 + remove 'tenants' from A3"*
+>
+> **The code was already right.** `offsite.ts` follows A6 and says so in a
+> comment — NOT_COMMERCIAL is a veto, so "the tenants in our building" does
+> not route commercial. Nothing to change there.
+>
+> **The rule text is not.** Both cards still reach the model in the same
+> prompt, every turn, so the bot reads a contradiction:
+>
+> - **A3**: *"…'our store', **'the tenants'**, 'our building'… all establish it"*
+> - **A6**: *"The words 'co-op', 'condo', **'tenant'** and 'apartment' DO NOT
+>   fire this gate and must never be treated as commercial signals"*
+>
+> **→ Karan: one statement to run**, in `docs/sql/2026-09-28-a3-remove-tenants.sql`.
+> Idempotent, targets the three-phrase fragment rather than the bare word, and
+> verified against the live row first — the quotes are straight, and the exact
+> substring matches.
+>
+> **It will not stick on its own.** The rules table is imported from Kate's
+> sheet and nothing in the app writes to it, so a re-import from a sheet that
+> still says "the tenants" reverts it. She needs to make the same edit in the
+> sheet.
+
+<details><summary>the original question, kept for the record</summary>
 
 > **MOSTLY CLOSED 2026-09-27.** The precedence is settled inside the rules;
 > one narrower sub-case is flagged below with a safe default already built.
@@ -143,6 +168,15 @@ We kept the safe side.
 
 **→ Confirm only this:** should a bare "our building" route commercial? We say
 yes, on the cost of being wrong. Everything else in item 2 is settled.
+
+</details>
+
+> **Still open after her 2026-09-28 answer:** the bare *"our building"*
+> sub-case above. She answered the tenant conflict and not this, which is fair
+> — it was a sub-question inside a longer item and easy to miss. We keep
+> routing it commercial, on the asymmetry: reading it as commercial costs an
+> estimator visit, reading it as residential can send a commercial job down a
+> path A6 says must never price it. Worth putting to her again on its own.
 
 ## 3. ~~A36 — whose clock, and does it cover replies?~~ — CLOSED, no need to ask
 
@@ -485,7 +519,34 @@ A46 forbids outright, so shipping ours beats waiting.
 
 ---
 
-## 10. A44 — which closing lines come out?
+## 10. A44 — which closing lines come out? — **ANSWERED 2026-09-28**
+
+> **Kate, 2026-09-28**, replacing the spec line quoted below:
+>
+> *"Once the three follow-ups are completed and the customer has not replied,
+> the call center gets a notification to resume the call cadence. The verbiage
+> used in the three follow-ups is following up on their request for their
+> [SCOPE IF WE HAVE IT] project. Will iron out the exact verbiage before
+> launch."*
+>
+> **Our ending is confirmed correct and nothing changes there.** The cadence
+> already finishes with no customer-facing message and only the resume-calling
+> signal to the call centre, which is exactly what she describes. The two
+> `schedule_follow_up` templates stay, because the reading that would have
+> removed them — "everywhere the intent is used" — is not the one she meant;
+> her sentence is about the end of the cadence.
+>
+> **One thing is new, and it is not built:** the three follow-ups should say
+> they are following up on the customer's request for their *[scope]* project.
+> Ours are an agent turn over the conversation (item 11), and the scope is
+> already in that prompt via `knownCustomerPrompt`, so the model *can* reach
+> it — whether it reliably says it is a behaviour question nobody has checked.
+>
+> **Deliberately not built yet.** She says the exact verbiage is still to be
+> ironed out before launch, and writing final copy against a line that is
+> about to change is churn. What is worth doing when the copy lands: pin it
+> with a wiring chain, because "the follow-up mentions the scope" is precisely
+> the kind of rule that is written once and quietly stops firing.
 
 The spec says: "Apply the ending change to `schedule_follow_up` only… No
 closing line is sent to the customer at the end — **both lines in use today
