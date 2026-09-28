@@ -150,6 +150,32 @@ plus the services table only. A question outside that gets `escalate`.
 | ❌ During/after-hours campaign copy | a step can carry two variants |
 | ❌ Account-level setting inheritance | 32 workspaces each edited individually here |
 | ⚠️ Campaign designer | theirs has a 30-day rail showing which days carry SMS vs email; ours is a list |
+| ❌ **The sequence itself is half as long** | see below — four touches against Hatch's eight |
+
+### The Leads Master Campaign stops on day 3; Hatch's runs to day 5
+
+Read off the Automations screen on 2026-09-27 and set against the live Hatch
+sequence captured in HATCH_LIVE_PROMPT_2026_09_26.md:
+
+| | Ours | Hatch (SF Leads Campaign, CA LA) |
+|---|---|---|
+| Launch | SMS, then email **30 min** later | SMS (1 min delay), email **15 min** later |
+| Day 2 | SMS 10:00 am | SMS **10:00 am**, SMS **6:30 pm** |
+| Day 3 | SMS 10:00 am | email **9:00 am**, SMS **11:15 am** |
+| Day 4 | — | SMS |
+| Day 5 | — | SMS |
+| Total | **4 touches** | **8 touches** |
+
+Not a code gap: the sequence is editable on the Automations screen, so this is
+a decision and a few minutes of typing. But it is worth deciding BEFORE launch
+rather than discovering it in the conversion numbers — a lead that would have
+answered on day 4 never hears from us, and that is invisible in every report
+because nothing was sent to measure.
+
+**→ For Karan and PPP:** does the Iteration 1 campaign intend Hatch's cadence
+or the shorter one? The spec's "10 AM / 3 PM / 6 PM" is about the STALL
+cadence, which is a different mechanism and already built — it does not settle
+this.
 
 ---
 
