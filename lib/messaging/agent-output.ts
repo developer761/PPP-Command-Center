@@ -1149,6 +1149,51 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     };
   }
 
+  /**
+   * A2, THE OTHER DIRECTION — AND IT WAS MISSING.
+   *
+   * The rule above stops anything PROMISING coverage before the zip says we
+   * have it. Nothing stopped the opposite: telling a customer we do NOT cover
+   * them while our own table says we do. A2's card names that as the harm it
+   * exists to prevent — "an unreadable map answers needs_a_person, never 'not
+   * serviced', because telling a customer we do not cover them on a failed
+   * lookup is the harm A2 exists to prevent."
+   *
+   * Found in the simulator on 2026-09-27. A customer wrote "I need my whole
+   * house exterior painted, I am at 4821 Oak Lane, Dallas TX 75201" and the
+   * model chose area_not_serviced — a TERMINAL outcome — at 82% from the text
+   * alone. Checked against the validator afterwards, it was allowed at every
+   * value of serviceArea INCLUDING "serviced".
+   *
+   * In production that is worse than in the sandbox, because the sandbox held
+   * no zip and the template rendered empty. A real conversation holds one, so
+   * a customer on a perfectly serviced Long Island zip who mentions a property
+   * in Texas could be told "The zip I have on file is 11530, and unfortunately
+   * we do not currently serve your area" — rejected, terminally, using the zip
+   * that proves the opposite.
+   *
+   * REFUSED ONLY WHEN THE LOOKUP POSITIVELY SAYS SERVICED. Unknown stays
+   * allowed: it renders a sentence only when a zip and state are actually
+   * held, and agent-run escalates on an intent that says nothing, which is the
+   * needs_a_person answer A2 asks for. And this does not strand a genuine
+   * out-of-area job — scheduler-db re-checks the zip EVERY turn, so once the
+   * customer confirms the project is elsewhere and that zip is what we hold,
+   * the lookup returns out_of_state and the ending is allowed.
+   */
+  if (a.intent === "area_not_serviced"
+      && (ctx.serviceArea === "serviced" || ctx.serviceArea === "needs_a_person")) {
+    return {
+      ok: false, reason: "coverage_not_established",
+      detail: ctx.serviceArea === "serviced"
+        ? "this tells the customer we do not cover them, but the zip on file is INSIDE the "
+          + "service area. Confirm where the project actually is before ending on geography "
+          + "— a wrongly rejected customer does not come back"
+        : "the service-area lookup could not answer for this zip, and A2 says an unreadable "
+          + "map is needs_a_person and NEVER 'not serviced'. Ending on geography because our "
+          + "own lookup failed is the harm the rule exists to prevent",
+    };
+  }
+
   // A6 vs A7: THE JOB DECIDES WHICH SENTENCE, NOT THE MODEL.
   //
   // "THE TEST IS THE JOB, NOT THE CUSTOMER. Read the JOB ROUTING LOOKUP: does

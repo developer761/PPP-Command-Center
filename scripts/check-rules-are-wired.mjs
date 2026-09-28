@@ -312,6 +312,17 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A2 — the bot cannot end on geography against its own lookup",
+    why: "the promising direction was guarded and the REJECTING one was not. A customer on a serviced zip who mentions a property in another state could be told 'the zip I have on file is 11530, and unfortunately we do not currently serve your area' — terminally, using the zip that proves the opposite",
+    links: [
+      ["lib/messaging/agent-output.ts", /a\.intent === "area_not_serviced"[\s\S]{0,120}ctx\.serviceArea === "serviced"/],
+      ["lib/messaging/agent-output.ts", /ctx\.serviceArea === "needs_a_person"/],
+      // And the lookup has to actually reach the validator.
+      ["lib/messaging/scheduler-db.ts", /serviceArea: service\?\.outcome/],
+      ["lib/messaging/agent-run.ts", /serviceArea: opts\.serviceArea/],
+    ],
+  },
+  {
     rule: "A36 — the sending window reads the CUSTOMER's clock",
     why: "the gate read ws.time_zone, so at 9:30am Eastern it permitted a text to California at 6:30 in the morning — under the federal 8am floor",
     links: [

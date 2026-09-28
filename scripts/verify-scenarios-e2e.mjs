@@ -160,6 +160,22 @@ const SCENARIOS = [
     priorIntents: ["present_offsite_quote"],
     wants: "ask_address", refuses: "ask_project_details" },
 
+  /**
+   * THE "OK" WALL. Played in the simulator: a customer who answers every
+   * question with "ok" and gives nothing. The stage advances on having ASKED
+   * (A3's legs are satisfied by the ask, so a refusal cannot jam the flow), so
+   * after four turns the bot is at stage 4 holding NOTHING. It must not be
+   * able to call that a success.
+   *
+   * Live, the bot chose `escalate` on the fourth "ok" — a person, and no
+   * handover message. This asserts the floor underneath that judgement.
+   */
+  { name: "says only ok, four times, and gives nothing",
+    history: ["Hola, necesito pintar mi casa por dentro. No hablo ingles", "ok", "ok", "ok"],
+    text: "ok",
+    priorIntents: ["ask_address", "ask_contact", "ask_availability"],
+    wants: "escalate", refuses: "success" },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

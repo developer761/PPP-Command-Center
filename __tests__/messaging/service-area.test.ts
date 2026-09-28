@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { validateAction } from "@/lib/messaging/agent-output";
 import { territoryFor, SERVICED_STATES } from "@/lib/messaging/territory";
 import { renderMessage, SAYS } from "@/lib/messaging/render";
 import { shouldEscalate } from "@/lib/messaging/agent-output";
@@ -129,5 +130,68 @@ describe("the check is never named to the customer", () => {
     expect(NAMES_THE_CHECK.test("Let me check that zip against our service area.")).toBe(true);
     expect(NAMES_THE_CHECK.test("Unfortunately that's outside the area we cover.")).toBe(true);
     expect(NAMES_THE_CHECK.test("Just a moment, I'm checking availability.")).toBe(false);
+  });
+});
+
+/**
+ * A2 IN THE REJECTING DIRECTION, WHICH NOTHING GUARDED.
+ *
+ * The validator already stopped anything PROMISING coverage before the zip
+ * said we had it. Nothing stopped the opposite — telling a customer we do NOT
+ * cover them while our own table said we do.
+ *
+ * Found in the simulator on 2026-09-27: a customer wrote "I need my whole
+ * house exterior painted, I am at 4821 Oak Lane, Dallas TX 75201" and the
+ * model chose area_not_serviced, a TERMINAL outcome, at 82% from the text
+ * alone. It was allowed at every value of serviceArea, "serviced" included.
+ *
+ * Production is more exposed than the sandbox was: the sandbox held no zip so
+ * the template rendered empty, but a real conversation holds one. A customer
+ * on a serviced Long Island zip who mentions a property in Texas could be
+ * told "The zip I have on file is 11530, and unfortunately we do not currently
+ * serve your area" — rejected for good, using the zip that proves otherwise.
+ */
+describe("the bot may not end on geography unless the LOOKUP says so", () => {
+  const act = { intent: "area_not_serviced", confidence: 0.97, freeText: "" };
+  const ctx = (serviceArea?: string | null) => ({
+    track: "new_lead" as const, stage: 1, priorIntents: ["ask_project_details"],
+    knownFields: { inquiryScope: true },
+    customerText: "I am at 4821 Oak Lane, Dallas TX 75201",
+    serviceArea: serviceArea as never,
+  });
+
+  it("REFUSES it when the zip on file is inside the service area", () => {
+    const v = validateAction(act, ctx("serviced"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toMatch(/INSIDE the service area/);
+  });
+
+  /**
+   * A2, verbatim: an unreadable map "answers needs_a_person, never 'not
+   * serviced', because telling a customer we do not cover them on a failed
+   * lookup is the harm A2 exists to prevent."
+   */
+  it("REFUSES it when our own lookup could not answer", () => {
+    const v = validateAction(act, ctx("needs_a_person"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toMatch(/never 'not serviced'|unreadable/);
+  });
+
+  it("ALLOWS it when the lookup says out of state — the one case it is for", () => {
+    expect(validateAction(act, ctx("out_of_state")).ok).toBe(true);
+  });
+
+  it("stays allowed for a caller that does not track the lookup at all", () => {
+    // Undefined means "we do not know", not "we do cover them". The template
+    // only speaks when a zip and state are held, and agent-run escalates on an
+    // intent that renders nothing — which is A2's needs_a_person answer.
+    expect(validateAction(act, ctx(undefined)).ok).toBe(true);
+    expect(validateAction(act, ctx(null)).ok).toBe(true);
+  });
+
+  it("does not disturb the promising direction it was already guarding", () => {
+    for (const intent of ["ask_availability", "success", "present_offsite_quote"]) {
+      expect(validateAction({ ...act, intent }, ctx("out_of_state")).ok).toBe(false);
+    }
   });
 });
