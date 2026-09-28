@@ -63,7 +63,19 @@ export type RunResult =
        *  surfaced rather than swallowed so grading can see it. */
       droppedRapport?: string;
     }
-  | { ok: false; error: string; rejected?: string };
+  | {
+      ok: false; error: string; rejected?: string;
+      /**
+       * What the model actually tried, when a rule refused it.
+       *
+       * A reason alone cannot tell two opposite failures apart — "no answer
+       * was written" and "an answer was written and a filter deleted it" both
+       * arrive as question_left_unanswered — and they need opposite fixes.
+       * Also what a grader needs: you cannot say what the bot should have
+       * done instead without seeing what it tried.
+       */
+      attempted?: { intent: string; freeText: string | null };
+    };
 
 /**
  * Is this failure worth trying again in a minute?
@@ -624,7 +636,34 @@ Choose the next action.`;
       serviceArea: opts.serviceArea ?? null,
       ...opts.ctx,
     });
-    if (!v.ok) return { ok: false, error: "The reply was rejected before sending.", rejected: `${v.reason}: ${v.detail}` };
+    /**
+     * A REJECTION HAS TO SAY WHAT WAS REJECTED.
+     *
+     * This returned the reason and threw the turn away, so the sandbox showed
+     * "question_left_unanswered: the customer asked something and this turn
+     * only asks the next question back" and nothing else — and that sentence
+     * is true of two completely different failures:
+     *
+     *   the model wrote no answer at all, or
+     *   the model wrote one and a style filter deleted it first
+     *
+     * Those need opposite fixes, and on 2026-09-28 I shipped two changes
+     * guessing between them because the screen could not tell me which. The
+     * model's own words are the evidence, and the grader needs them too: a
+     * person marking this turn "Wrong" cannot say what the bot should have
+     * done instead without seeing what it tried.
+     */
+    if (!v.ok) {
+      return {
+        ok: false,
+        error: "The reply was rejected before sending.",
+        rejected: `${v.reason}: ${v.detail}`,
+        attempted: {
+          intent: (parsed as { intent?: string })?.intent ?? "(none)",
+          freeText: (parsed as { freeText?: string })?.freeText ?? null,
+        },
+      };
+    }
 
     const renderInput = {
       intent: v.action.intent,

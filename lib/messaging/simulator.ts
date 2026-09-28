@@ -41,6 +41,11 @@ export type SimTurn = {
   escalate: boolean;
   error?: string;
   rejected?: string;
+  /** What the model tried, when a rule refused it. The reason alone cannot
+   *  tell "wrote no answer" from "wrote one and a filter deleted it", and
+   *  those need opposite fixes — nor can a grader say what the bot should
+   *  have done instead without seeing what it tried. */
+  attempted?: { intent: string; freeText: string | null };
   /** Rapport that broke a tone rule and was not sent, with the reason. Shown
    *  rather than swallowed: a reply that reads oddly terse is confusing until
    *  you know a sentence was removed from it, and that is exactly the kind of
@@ -380,7 +385,7 @@ export async function runSimTurn(input: {
         ordinal: input.history.length + 1,
         customerText: input.customerText,
         intent: null, confidence: null, message: "", escalate: true,
-        error: res.error, rejected: res.rejected,
+        error: res.error, rejected: res.rejected, attempted: res.attempted,
       },
     };
   }

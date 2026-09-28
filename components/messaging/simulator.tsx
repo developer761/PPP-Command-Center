@@ -454,6 +454,24 @@ export default function Simulator({
                         <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
                           Live, this hands the conversation to a person rather than replying. It is not silence.
                         </p>
+                        {/*
+                          WHAT IT TRIED, because the reason on its own is not
+                          enough to act on. "question_left_unanswered" is true
+                          both when the model wrote no answer and when it wrote
+                          one that a style filter deleted, and those need
+                          opposite fixes — two changes were shipped guessing
+                          between them before this line existed. A grader needs
+                          it for the same reason: you cannot say what the bot
+                          should have said instead without seeing what it said.
+                        */}
+                        {t.attempted && (
+                          <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
+                            It chose <span className="font-mono">{t.attempted.intent}</span>
+                            {t.attempted.freeText
+                              ? <> and wrote: “{t.attempted.freeText}”</>
+                              : <> and wrote nothing alongside it.</>}
+                          </p>
+                        )}
                       </>
                     )}
                     {t.saysNothing && (
