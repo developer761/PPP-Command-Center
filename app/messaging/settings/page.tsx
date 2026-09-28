@@ -4,6 +4,7 @@ import { federalBound } from "@/lib/messaging/workspace-settings";
 import { loadOptOutRates } from "@/lib/messaging/db";
 import { rank, formatRate } from "@/lib/messaging/optout-rate";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
+import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,32 @@ export default async function MessagingSettings({
             );
           })()}
           <WorkspaceHoursForm row={r} bound={bound} />
+        </section>
+      ))}
+
+      {/*
+        PARITY GAP 9. The standing answers this workspace can give without a
+        person. Per workspace and not one list, because the answers genuinely
+        differ by region — "Where are you located?" is a different sentence in
+        Nassau and in Los Angeles, and one list would make the bot
+        confidently wrong about geography.
+
+        Its own section rather than a row inside the workspace card: it is a
+        list that grows to roughly 25 entries in Hatch, and it belongs beside
+        the workspace whose answers they are.
+      */}
+      {rows.filter((r) => r.id === open).map((r) => (
+        <section key={`faq-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+            <h2 className="font-semibold text-ppp-charcoal text-[14px]">What it can answer on its own</h2>
+            <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+              Standing answers for {r.name}. Anything not here, and not in the rules or the
+              service list, hands to a person.
+            </p>
+          </div>
+          {/* Keyed, so switching workspace gives a fresh list rather than one
+              that has to reset itself. */}
+          <WorkspaceFaqs key={r.id} workspaceId={r.id} />
         </section>
       ))}
 
