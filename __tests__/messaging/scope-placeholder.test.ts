@@ -391,3 +391,79 @@ describe("a bounded area says what the job is", () => {
     expect(derive("I need the interior done").inquiryScope).toBeNull();
   });
 });
+
+/**
+ * CHANGING YOUR MIND KILLED THE TURN.
+ *
+ * Simulator, 2026-09-27 — about as ordinary as a conversation gets:
+ *
+ *   customer  "just my bedroom please"
+ *   BOT       "We can provide a quick quote for this project. Do you prefer
+ *              text or email?"
+ *   customer  "actually scratch that, we want the whole downstairs done,
+ *              kitchen living room and dining room"
+ *   BOT       rejected: out_of_order, ask_address belongs to step 2 but only
+ *             0 of the required information has been collected
+ *
+ * Three rooms named and a bounded area, and NO scope captured: "done" is not a
+ * work word and "downstairs" was not an area we knew. Stage fell back to 0, so
+ * the next step was out of order and the customer got nothing.
+ *
+ * Third verb-free case in this file, alongside DIMENSIONED ("12x14 bedroom")
+ * and WHOLE_AREA ("the whole interior").
+ */
+describe("expanding the job says what the job is", () => {
+  const derive = (body: string) =>
+    knownFromThread({ onFile: {}, messages: [{ body }], stage: 0 });
+
+  it("captures the message that killed the turn", () => {
+    const k = derive("actually scratch that, we want the whole downstairs done, kitchen living room and dining room");
+    expect(k.inquiryScope).toBeTruthy();
+    expect(k.stage).toBeGreaterThan(0);
+  });
+
+  it("takes several named rooms as the job, with no verb", () => {
+    expect(derive("kitchen living room and dining room").inquiryScope).toBeTruthy();
+  });
+
+  it("and a bounded floor, which names its own subject", () => {
+    for (const t of ["the whole downstairs done", "the whole upstairs"]) {
+      expect(derive(t).inquiryScope, t).toBeTruthy();
+    }
+  });
+
+  /**
+   * ONE room is not enough, and a QUESTION is never the job. An existing test
+   * in this file caught "Do you do kitchen cabinets?" being read as scope when
+   * this clause was first written without the guard — a question asks what we
+   * cover, it does not describe work. "Kitchen cabinets" is also ONE thing,
+   * not two rooms, which is the same carve-out offsite.ts makes.
+   */
+  it("never reads a VERB-FREE question about what we cover as the job", () => {
+    for (const t of [
+      "Do you do kitchen cabinets?",
+      "Are you able to do a living room and a dining room?",
+    ]) {
+      expect(derive(t).inquiryScope, t).toBeNull();
+    }
+  });
+
+  /**
+   * DELIBERATELY NOT ASSERTED THE OTHER WAY. "do you paint kitchens and
+   * bathrooms?" IS captured, and always has been, because it carries a work
+   * word — that is older behaviour than this clause and not mine to change
+   * here. Tightening it to exclude every question would also lose "can you
+   * paint my kitchen?", which is a customer stating their project in the form
+   * of a question, and losing that costs a real lead. Written down so the next
+   * person knows it was considered rather than missed.
+   */
+  it("still captures a project stated as a question, which is how people ask", () => {
+    expect(derive("can you paint my kitchen?").inquiryScope).toBeTruthy();
+  });
+
+  it("still ignores complaints and scheduling that happen to name a room", () => {
+    for (const t of ["I'm done with this house", "I'm at home all day", "Tuesday works for me"]) {
+      expect(derive(t).inquiryScope, t).toBeNull();
+    }
+  });
+});

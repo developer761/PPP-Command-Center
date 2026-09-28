@@ -204,14 +204,58 @@ const WORK_WORD =
  * are where the work is, and neither was a place this could recognise.
  */
 const SUBJECT_EXTRA =
-  /\b(?:dry\s?wall|sheet\s?rock|wall\s?paper|plaster|stucco|lobb(?:y|ies)|corridors?|common\s+areas?|floors?|patios?|sheds?|driveways?|gutters?|columns?|mantels?|wainscot\w*)\b/i;
+  /\b(?:downstairs|upstairs|dry\s?wall|sheet\s?rock|wall\s?paper|plaster|stucco|lobb(?:y|ies)|corridors?|common\s+areas?|floors?|patios?|sheds?|driveways?|gutters?|columns?|mantels?|wainscot\w*)\b/i;
 
 /**
  * "the whole interior", "the entire house" — an area with a boundary on it.
  * See scopeFromCustomer: this stands in for the verb, exactly as dimensions do.
  */
 const WHOLE_AREA =
-  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|floors?|place|property)\b/i;
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|floors?|place|property|downstairs|upstairs|basements?|attics?)\b/i;
+
+/**
+ * TWO OR MORE NAMED ROOMS SAY WHAT THE JOB IS, with no verb needed.
+ *
+ * The third verb-free case, alongside DIMENSIONED and WHOLE_AREA, and found
+ * the same way — a dead turn in the simulator when the customer CHANGED THEIR
+ * MIND, which is about as ordinary as a conversation gets:
+ *
+ *   customer  "just my bedroom please"
+ *   BOT       "We can provide a quick quote for this project..."
+ *   customer  "actually scratch that, we want the whole downstairs done,
+ *              kitchen living room and dining room"
+ *   BOT       rejected: out_of_order, ask_address belongs to step 2 but only
+ *             0 of the required information has been collected
+ *
+ * Three rooms named, and no scope captured, because "done" is not a work word
+ * and "downstairs" was not a bounded area. Stage fell to 0 and the turn died.
+ *
+ * ONE room is not enough — "I'm done with this house" names a house — so this
+ * needs two DISTINCT subjects, which no complaint or pleasantry produces.
+ */
+function namesSeveralRooms(t: string): boolean {
+  /**
+   * NOT A QUESTION. "Do you do kitchen cabinets?" asks what we cover; it does
+   * not say what the job is, and reading it as scope is the loose direction
+   * this file's header warns about. An existing test caught exactly that when
+   * this clause was first written without the guard.
+   */
+  if (/\?/.test(t) || /^\s*(?:do|does|are|is|can|could|would|will|have|has)\b/i.test(t)) return false;
+  /**
+   * A ROOM WORD ON A CABINET JOB IS NOT A SECOND ROOM — the same carve-out
+   * offsite.ts makes before it counts rooms. "Kitchen cabinets" is a cabinet
+   * job; the room word only says which cabinets.
+   */
+  const withoutCabinetRooms = t.replace(
+    /\b(?:kitchen|bath\s?room|bath|bed\s?room|laundry|garage|office)\s+(?:cabinets?|cabinetry)\b/gi,
+    " cabinets ",
+  );
+  const found = new Set(
+    (withoutCabinetRooms.match(new RegExp(SUBJECT.source, "gi")) ?? [])
+      .map((m) => m.toLowerCase().replace(/\s+/g, ""))
+  );
+  return found.size >= 2;
+}
 
 const SUBJECT =
   /\b(?:rooms?|bedrooms?|bathrooms?|bath|kitchens?|living\s?rooms?|dining\s?rooms?|hallways?|stairs?|stairwells?|closets?|basements?|garages?|attics?|ceilings?|walls?|trim|baseboards?|mouldings?|moldings?|cabinets?|doors?|windows?|shutters?|decks?|fences?|porch(?:es)?|sidings?|soffits?|railings?|houses?|homes?|apartments?|condos?|units?|offices?|interiors?|exteriors?|bd|br|ba)\b/i;
@@ -280,7 +324,14 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
    * that as a project is the loose direction this file warns about.
    */
   const bounded = WHOLE_AREA.test(t);
-  if (!verb && !(DIMENSIONED.test(t) && subject) && !(bounded && subject)) return null;
+  if (
+    !verb
+    && !(DIMENSIONED.test(t) && subject)
+    // A bounded area names its own subject — "the whole downstairs" needs no
+    // second noun to say what it is.
+    && !bounded
+    && !namesSeveralRooms(t)
+  ) return null;
   return t;
 }
 

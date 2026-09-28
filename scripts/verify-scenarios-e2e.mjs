@@ -223,6 +223,17 @@ const SCENARIOS = [
     text: "Need the whole interior done before we move in on the 30th",
     wants: "ask_address", refuses: "ask_project_details" },
 
+  /**
+   * CHANGING YOUR MIND, FOUND IN THE SIMULATOR. The reply was rejected
+   * out_of_order because three named rooms and a bounded floor captured no
+   * scope, so the stage fell back to 0 and the customer got nothing.
+   */
+  { name: "expands the job after the bot has already quoted the small version",
+    history: ["just my bedroom please"],
+    text: "actually scratch that, we want the whole downstairs done, kitchen living room and dining room",
+    priorIntents: ["present_offsite_quote"],
+    wants: "ask_address" },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },
