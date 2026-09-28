@@ -320,3 +320,70 @@ describe("the words that describe where somebody lives never route a job", () =>
     expect(isCommercial("we need our building painted")).toBe(true);
   });
 });
+
+/**
+ * ONE MISSING WORD TOOK OUT THREE RULES.
+ *
+ * Played in the simulator on 2026-09-27, a returning customer:
+ *
+ *   customer  "we used you guys a couple years back for the upstairs, now I
+ *              need the hallway and two bedrooms redone"
+ *   BOT       "Good to hear from you again! We can provide a quick quote for
+ *              this project. Do you prefer text or email?"
+ *
+ * A remote quote on a TWO-ROOM interior job, which A6 says must be seen in
+ * person, and whose converse forbids offering one at all.
+ *
+ * The cause was vocabulary. "redone" matched no work word, so:
+ *   · no scope was captured   → the stage never advanced and A13 had nothing
+ *                               to protect
+ *   · jobRoute returned null  → A6 could not route the job
+ *   · so the converse could not refuse the offer
+ *
+ * (?:re)?do\b cannot reach "redone": after "do" comes an "n", so there is no
+ * word boundary. "redo" matched and "redone" did not.
+ */
+describe("a job described without a painting verb still routes", () => {
+  it("routes two rooms on-site however the customer phrases it", () => {
+    for (const t of [
+      "the hallway and two bedrooms redone",
+      "two bedrooms redone",
+      "I need the hallway and two bedrooms done",
+      "three rooms redone",
+      "my kitchen and living room redone",
+      "paint two bedrooms",
+    ]) {
+      expect(jobRoute(t)?.route, t).toBe("onsite");
+    }
+  });
+
+  it("routes the nouns that only ever describe work", () => {
+    // Exterior walls are onsite always; cabinets are onsite outside Queens.
+    expect(jobRoute("the whole house exterior")?.route).toBe("onsite");
+    expect(jobRoute("kitchen cabinets")?.route).toBe("onsite");
+  });
+
+  it("and a single room is still off-site eligible", () => {
+    expect(jobRoute("paint my bedroom")?.route).toBe("offsite");
+    expect(jobRoute("just the ceiling")?.route).toBe("offsite");
+  });
+
+  /**
+   * THE GATE STILL REFUSES WHAT IT EXISTS TO REFUSE. Routing a scheduling
+   * message is "answering a question nobody asked", and these are the exact
+   * strings the corpus produced.
+   */
+  it("never routes scheduling or pleasantries", () => {
+    for (const t of [
+      "I'm home all day, please let me know before coming",
+      "Available Monday",
+      "it was Michael who came to my house the last time",
+      "sounds good thanks",
+      "Tuesday works",
+      "ok",
+      "call me at 3",
+    ]) {
+      expect(jobRoute(t), t).toBeNull();
+    }
+  });
+});

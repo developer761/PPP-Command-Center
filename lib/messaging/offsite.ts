@@ -103,7 +103,15 @@ const DESCRIBES_WORK =
   // wallpaper, repair, scraping and resurfacing joined the lookup on
   // 2026-09-25 — A6 gained rows for them, and a row cannot fire if the text
   // never gets past this gate.
-  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b/i;
+  //
+  // "redone" and "redoing" are spelled out because (?:re)?do\b cannot reach
+  // them — after "do" comes an "n", so there is no word boundary, and "redo"
+  // matched while "redone" did not. A customer writing "I need the hallway and
+  // two bedrooms redone" described no work at all, so nothing routed. Found in
+  // the simulator on 2026-09-27; see the room-count clause in jobRoute for the
+  // other half of that failure. do\w* is deliberately NOT used — it would
+  // swallow door, down, doubt and dog.
+  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\bre-?d(?:one|oing)\b|\b(?:refresh\w*|freshen\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b/i;
 
 const EXTERIOR = /\b(?:exterior|outside|outdoor)\b/i;
 const INTERIOR = /\b(?:interior|inside|indoor)\b/i;
@@ -279,7 +287,39 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
   // work. Routing those is answering a question nobody asked.
   // A named surface is a description of work even with no verb: "just the
   // ceiling" is scope, and A6 now routes it on the interior row.
-  if (!DESCRIBES_WORK.test(t) && !PARTIAL_ROOM.test(t)) return null;
+  /**
+   * A ROOM COUNT DESCRIBES WORK, exactly as a named surface does.
+   *
+   * The comment above already allows "just the ceiling" through with no verb.
+   * "two bedrooms" is the same kind of statement, and it is the one A6's
+   * interior row is built to count — so refusing to route it meant the row
+   * could never fire on the commonest phrasing there is.
+   *
+   * What that cost, seen in the simulator: "now I need the hallway and two
+   * bedrooms redone" routed to null, so A6's converse could not refuse
+   * present_offsite_quote, and the bot offered a remote quote on a two-room
+   * interior job that A6 says must be seen in person.
+   *
+   * Safe in the direction it can be wrong: a room count that is really
+   * scheduling ("I'll be at my two bedroom place Tuesday") routes ONSITE,
+   * which offers nothing and books nothing.
+   */
+  if (
+    !DESCRIBES_WORK.test(t)
+    && !PARTIAL_ROOM.test(t)
+    && roomCount(t) === null
+    /**
+     * And the two nouns that only ever describe work. "The whole house
+     * exterior" and "kitchen cabinets" name a job as plainly as any verb, and
+     * both route ONSITE — so failing the gate on them meant A6 could not
+     * refuse a remote quote for an exterior wall job, which the lookup says
+     * always needs a visit. Neither pattern is loose: HOME_WALLS is siding,
+     * stucco, clapboard and the whole-house forms, deliberately not the bare
+     * words "home" or "house" (see its own comment); CABINETS is cabinetry.
+     */
+    && !HOME_WALLS.test(t)
+    && !CABINETS.test(t)
+  ) return null;
 
   // THE GATE, ABOVE THE LOOKUP. Any scope, any size, no exceptions.
   if (isCommercial(t)) {

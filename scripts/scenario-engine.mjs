@@ -22,6 +22,7 @@ import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
 import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
 import { addressGap } from "../lib/messaging/address.ts";
 import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/multi-property.ts";
+import { jobRoute } from "../lib/messaging/offsite.ts";
 
 /** Rapport the model plausibly writes, including the shapes that broke things. */
 export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
@@ -99,6 +100,15 @@ export function waysThrough(scenario) {
      * allowed it.
      */
     templateAsks: (intent) => templateAsks(intent, history.length),
+    /**
+     * A FOURTH FIELD agent-run PASSES AND THIS DID NOT (agent-run.ts:531).
+     *
+     * Without it A6's converse — "when the job routes ONSITE and no A7 trigger
+     * has fired, do NOT offer a remote quote" — could not fire in the harness
+     * at all, so no scenario could ever catch the bot offering one. That is
+     * exactly the breach found in the simulator on 2026-09-27.
+     */
+    jobRoute: jobRoute(derived.inquiryScope, known.area ?? null)?.route ?? null,
   };
 
   const renderFor = (intent, freeText) => renderMessage({

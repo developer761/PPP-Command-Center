@@ -183,7 +183,14 @@ const WORK_WORD =
   // (?:re)? because "repaint" is one of the commonest openings there is and
   // \bpaint has no word boundary inside it — "Looking to repaint kitchen
   // cabinets" was not scope until this bracket.
-  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat(?:s|ing|ed)?|seal\w*|sand\w*|spray\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackl\w*|skim\s?coat\w*|wallpaper\w*|(?:pressure|power)[\s-]?wash\w*)\b/i;
+  //
+  // redo/redone/redoing, refresh and freshen joined on 2026-09-27. A customer
+  // wrote "now I need the hallway and two bedrooms redone" and NONE of this
+  // matched, so no scope was captured — which meant the stage never advanced,
+  // A13 had nothing to protect, and A6 had no route to refuse a remote quote
+  // with. The bot offered one on a two-room interior job. One missing word
+  // took out three rules at once.
+  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat(?:s|ing|ed)?|seal\w*|sand\w*|spray\w*)\b|\bre-?d(?:o|one|oing)\b|\b(?:refresh\w*|freshen\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackl\w*|skim\s?coat\w*|wallpaper\w*|(?:pressure|power)[\s-]?wash\w*)\b/i;
 
 /**
  * THE SERVICES ARE SUBJECTS TOO.
