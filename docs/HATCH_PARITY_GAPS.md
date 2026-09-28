@@ -131,11 +131,35 @@ already be tolerable, but the "move on" behaviour is not explicit.
 These live in Hatch's FAQ/Knowledge per workspace. We have no per-workspace
 FAQ store at all, which is also gap 9.
 
-### ❌ 9. No Knowledge/FAQ store
+### ✅ 9. Knowledge/FAQ store — CLOSED 2026-09-28
 
 Hatch has ~25 curated Q&As per workspace (All Zips, Services/Surfaces, EPA,
-payment terms, references, warranty, insurance…). Ours answers from the rules
-plus the services table only. A question outside that gets `escalate`.
+payment terms, references, warranty, insurance…). Ours answered from the rules
+plus the services table only, and a question outside that got `escalate`.
+
+**Built, and proven end to end in the sandbox.** Settings → the workspace →
+"What it can answer on its own". Each answer is checked on save against A1
+(never a price) and A18 (never name another company), by the same pure
+function the prompt build uses at read time.
+
+Watch out for two things:
+
+- **A save is not instant.** The prompt build caches for five minutes per
+  server process, so an edit reaches the bot within about that and not on the
+  next message. The screen says so; somebody testing thirty seconds later
+  would otherwise conclude it does not work.
+- **The sandbox must have the workspace selected** in "Answer as". With
+  "Default settings" there is no workspace, so there are no standing answers
+  and the bot escalates exactly as it did before. That is correct behaviour
+  and looks identical to the feature being broken.
+
+Verified: with the workspace selected, "do you guys have a minimum job size?"
+was answered from the stored row and the flow carried on to the next step; the
+same question with no workspace selected got "I'm not sure on that one".
+
+**Still empty.** The table holds nothing — the ~25 answers per workspace are
+Kate's to write, and there are 15 workspaces. That is the remaining work on
+this gap, and it is content rather than code.
 
 ---
 
