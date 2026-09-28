@@ -296,8 +296,26 @@ export default async function ReportingConsole({
                 </div>
                 {h.worstStage && (
                   <p className="mt-2.5 pt-2.5 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-600 leading-relaxed">
-                    Most stop at <strong>{h.worstStage.label.toLowerCase()}</strong> — {h.worstStage.droppedPct}% of
-                    those who got that far.
+                    {h.measured >= MIN_MEASURED ? (
+                      <>
+                        Most stop at <strong>{h.worstStage.label.toLowerCase()}</strong> — {h.worstStage.droppedPct}% of
+                        those who got that far.
+                      </>
+                    ) : (
+                      /*
+                        UNDER MIN_MEASURED THIS IS NOT A FINDING, and phrasing it
+                        as one printed "Most stop at project details — 100%" for
+                        ten workspaces at once, each off a single conversation.
+                        Ten of those in a column reads as a systemic problem at
+                        the first question. The number is still shown, with the
+                        n that makes it readable.
+                      */
+                      <>
+                        Stopped at <strong>{h.worstStage.label.toLowerCase()}</strong>{" "}
+                        in {h.measured === 1 ? "the one conversation" : `all ${h.measured} conversations`} measured
+                        {" "}— too few to read a pattern into.
+                      </>
+                    )}
                   </p>
                 )}
               </li>

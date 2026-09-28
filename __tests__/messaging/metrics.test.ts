@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
   takeoverBreakdown, median, percentile, humanSeconds, secondsBetween,
-  HATCH_POLL_SECONDS, type ConversationRow,
+  HATCH_POLL_SECONDS, MIN_MEASURED, type ConversationRow,
 } from "@/lib/messaging/metrics";
 
 const conv = (over: Partial<ConversationRow> = {}): ConversationRow => ({
@@ -221,5 +221,46 @@ describe("helpers", () => {
     expect(humanSeconds(7800)).toBe("2h 10m");
     expect(humanSeconds(180000)).toBe("2d");
     expect(humanSeconds(null)).toBe("—");
+  });
+});
+
+/**
+ * A FINDING NEEDS ENOUGH CONVERSATIONS TO BE ONE.
+ *
+ * The reporting screen printed "Most stop at project details — 100% of those
+ * who got that far" for TEN workspaces at once, each computed from a single
+ * conversation. Ten of those in a column reads as a systemic problem at the
+ * first question, and there is no problem — there is one conversation each.
+ *
+ * The funnel already carries its own n for exactly this reason, and says so in
+ * a comment: "'−100%' off ONE conversation was being shown in the same red as
+ * a real funnel collapse." The per-workspace line is the one PHRASED as a
+ * finding, and it was the one without the n.
+ */
+describe("the per-workspace summary carries its sample size", () => {
+  const row = (workspace: string, stage: number) => ({
+    workspace_name: workspace, state: "ended", outcome: "lost",
+    takeover_reason: null, created_at: "2026-09-01T12:00:00Z",
+    first_outbound_at: "2026-09-01T12:00:10Z", stage,
+  });
+
+  it("reports how many conversations each row is computed from", () => {
+    const health = workspaceHealth([row("NY NYC Leads", 1)] as never);
+    expect(health[0].measured).toBe(1);
+  });
+
+  it("counts every conversation in the workspace, not only the ended ones", () => {
+    const health = workspaceHealth([
+      row("NY NYC Leads", 1),
+      { ...row("NY NYC Leads", 1), state: "active" },
+    ] as never);
+    expect(health[0].measured).toBe(2);
+  });
+
+  it("is below the floor that lets the screen call something a pattern", () => {
+    // The screen phrases it as a finding only at or above MIN_MEASURED.
+    expect(MIN_MEASURED).toBeGreaterThan(1);
+    const health = workspaceHealth([row("NY NYC Leads", 1)] as never);
+    expect(health[0].measured).toBeLessThan(MIN_MEASURED);
   });
 });

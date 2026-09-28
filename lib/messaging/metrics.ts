@@ -95,6 +95,17 @@ export type WorkspaceHealth = {
   medianFirstReplySeconds: number | null;
   /** The stage most conversations died at. Names the question to rewrite. */
   worstStage: { label: string; droppedPct: number } | null;
+  /**
+   * How many conversations this row is computed from.
+   *
+   * The same reasoning as FunnelStep.total, one level up. "Most stop at
+   * project details — 100% of those who got that far" was printed for TEN
+   * workspaces at once, each off a single conversation, which reads as a
+   * systemic problem at the first question. The funnel already carries its n
+   * for exactly this; the per-workspace claim did not, and it is the one
+   * phrased as a finding.
+   */
+  measured: number;
 };
 
 export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
@@ -124,6 +135,7 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
           rs.map((r) => secondsBetween(r.created_at, r.first_outbound_at)).filter((n): n is number => n !== null)
         ),
         worstStage: worst ? { label: worst.label, droppedPct: worst.droppedHerePct } : null,
+        measured: rs.length,
       };
     })
     .sort((a, b) => b.completed - a.completed || a.workspace.localeCompare(b.workspace));
