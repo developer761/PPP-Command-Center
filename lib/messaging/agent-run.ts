@@ -125,6 +125,18 @@ function languagePrompt(language: Language): string {
     "",
     "THIS CUSTOMER IS WRITING IN SPANISH.",
     "Write every word of your rapport in Spanish, using usted. Keep it in Spanish",
+    /**
+     * Kate, 2026-09-28, relaying Mac and Jasmine: "the bot should not use the
+     * proper ¿ punctuation... they essentially said using that would be a
+     * flag that they're not talking to a spanish speaking individual."
+     *
+     * The templates no longer contain any, but rapport is the model's own
+     * sentence, so the rule has to be said here too or half the message
+     * follows it and half does not.
+     */
+    "Write it the way a person texts, not the way it is printed: no opening",
+    "¿ or ¡, ever. A question simply ends in ?. Correct inverted",
+    "punctuation reads as a translation rather than a person.",
     "for the rest of the conversation even when they send a short reply like",
     "\"ok\" — never switch back partway through.",
     "Do NOT choose `transferred` because of the language. We answer Spanish now.",

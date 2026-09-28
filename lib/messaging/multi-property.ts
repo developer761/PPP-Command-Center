@@ -206,7 +206,7 @@ export function askSecondPropertyAddress(): string {
 }
 
 export function askSecondPropertyAddressEs(): string {
-  return "Entendido. ¿Y cuál es la dirección de la segunda propiedad?";
+  return "Entendido. Y cuál es la dirección de la segunda propiedad?";
 }
 
 /**

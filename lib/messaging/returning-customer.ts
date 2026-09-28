@@ -104,7 +104,7 @@ export function returningCustomerReply(): string {
 }
 
 export function returningCustomerReplyEs(): string {
-  return "¡Gracias por contar con nosotros de nuevo! Solo nos gusta confirmar que todo siga correcto por si algo ha cambiado. ¿Le importaría confirmarme la dirección?";
+  return "Gracias por contar con nosotros de nuevo! Solo nos gusta confirmar que todo siga correcto por si algo ha cambiado. Le importaría confirmarme la dirección?";
 }
 
 /**

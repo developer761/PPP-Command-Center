@@ -804,8 +804,8 @@ const SAYS_NURTURE: Partial<Record<Intent, string[]>> = {
 
 const SAYS_NURTURE_ES: Partial<Record<Intent, string[]>> = {
   defer_to_estimator: [
-    "El estimador se lo confirmará directamente. ¿Le pido que lo llame?",
-    "Eso lo ve el estimador y puede repasarlo con usted. ¿Quiere que se comunique con usted?",
+    "El estimador se lo confirmará directamente. Le pido que lo llame?",
+    "Eso lo ve el estimador y puede repasarlo con usted. Quiere que se comunique con usted?",
   ],
 };
 
@@ -1184,8 +1184,8 @@ function renderBody(input: RenderInput): string {
     if (phoneBranch(input.callback ?? {}) === "ask_callback_time") {
       const asks = es
         ? [
-            "Claro que sí. ¿A qué hora le viene bien que lo llamemos?",
-            "Por supuesto. ¿Cuál es el mejor momento para llamarle?",
+            "Claro que sí. A qué hora le viene bien que lo llamemos?",
+            "Por supuesto. Cuál es el mejor momento para llamarle?",
           ]
         : [
             "No problem at all. What's a good time to reach you?",
@@ -1208,7 +1208,7 @@ function renderBody(input: RenderInput): string {
       const from = clockHour(CALLBACK_WINDOW.startHour, es);
       const to = clockHour(CALLBACK_WINDOW.endHour, es);
       return es
-        ? `Llamamos entre las ${from} y las ${to}. ¿Hay alguna hora dentro de ese horario que le venga bien?`
+        ? `Llamamos entre las ${from} y las ${to}. Hay alguna hora dentro de ese horario que le venga bien?`
         : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`;
     }
 

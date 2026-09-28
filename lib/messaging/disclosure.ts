@@ -77,7 +77,7 @@ export const DISCLOSURE_OUT_OF_HOURS =
  * wording, replace these byte for byte as with the English.
  */
 export const DISCLOSURE_IN_HOURS_ES =
-  "Soy un asistente de inteligencia artificial, pero puedo tomar los detalles de su proyecto y coordinarle una cita con un estimador. ¿Prefiere hablar con alguien de nuestro equipo?";
+  "Soy un asistente de inteligencia artificial, pero puedo tomar los detalles de su proyecto y coordinarle una cita con un estimador. Prefiere hablar con alguien de nuestro equipo?";
 
 export const DISCLOSURE_OUT_OF_HOURS_ES =
   "Soy un asistente de inteligencia artificial, pero puedo tomar los detalles de su proyecto y pasarlos cuando abramos.";

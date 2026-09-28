@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { languageOf, conversationLanguage } from "@/lib/messaging/language";
 import { renderMessage, SILENT_INTENTS } from "@/lib/messaging/render";
 import { SAYS_ES } from "@/lib/messaging/render-es";
@@ -156,5 +157,65 @@ describe("A30 — the Spanish templates", () => {
         expect(sentence, `${intent}/${turn}: ${out}`).not.toMatch(englishGiveaways);
       }
     }
+  });
+});
+
+/**
+ * ── NO INVERTED PUNCTUATION IN ANYTHING WE SEND ─────────────────────────
+ *
+ * Kate, 2026-09-28, relaying Mac and Jasmine on the A46 Spanish strings:
+ *
+ *   "the bot should not use the proper ¿ punctuation. This was a ruling we
+ *    used in Hatch that I didn't add to the new rules for the bot: 'use
+ *    informal, casual vocabulary, relaxed grammar and punctuation, no
+ *    inverted punctuation, in the language used'... they essentially said
+ *    using that would be a flag that they're not talking to a spanish
+ *    speaking individual."
+ *
+ * So it is not a typographic preference — correct inverted punctuation reads
+ * as machine translation to the people who would receive it, which is the one
+ * impression this whole programme is trying not to give.
+ *
+ * ── AND THE HALF THAT MUST NOT CHANGE ───────────────────────────────────
+ *
+ * ¿ and ¡ still have two jobs on the way IN, and both are untouched:
+ *
+ *   language.ts   SPANISH_LETTERS uses them to DETECT Spanish. A customer
+ *                 writing "¿Cuánto cuesta?" is how we know to answer in
+ *                 Spanish at all.
+ *   first-message.ts  the GSM charset allowlist, which decides whether a
+ *                 message costs one segment or three.
+ *
+ * Stripping either would be a real bug wearing this change's clothes, so the
+ * test asserts they are still there.
+ */
+describe("Spanish goes out without inverted punctuation", () => {
+  const OUTBOUND = [
+    "lib/messaging/render-es.ts",
+    "lib/messaging/render.ts",
+    "lib/messaging/disclosure.ts",
+    "lib/messaging/availability-ask.ts",
+    "lib/messaging/multi-property.ts",
+    "lib/messaging/returning-customer.ts",
+  ];
+
+  it.each(OUTBOUND)("has none left in %s", (path) => {
+    const src = readFileSync(path, "utf8");
+    const hits = src.split("\n")
+      .map((line, i) => ({ line, n: i + 1 }))
+      .filter((l) => /[¿¡]/.test(l.line));
+    expect(hits.map((h) => `${path}:${h.n} ${h.line.trim()}`)).toEqual([]);
+  });
+
+  it("still detects Spanish written WITH inverted punctuation", () => {
+    // The customer may use it; we simply do not. Dropping this would stop us
+    // recognising a Spanish speaker at all.
+    expect(conversationLanguage(["¿Cuánto cuesta pintar mi sala?"])).toBe("es");
+    expect(conversationLanguage(["¡Hola! Necesito pintar."])).toBe("es");
+  });
+
+  it("keeps the GSM charset allowlist intact", () => {
+    // Not a sentence — the set of characters that fit one SMS segment.
+    expect(readFileSync("lib/messaging/first-message.ts", "utf8")).toContain("¿");
   });
 });

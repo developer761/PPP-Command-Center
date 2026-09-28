@@ -95,8 +95,8 @@ export function askAvailability(week: "this" | "next"): string {
 
 export function askAvailabilityEs(week: "this" | "next"): string {
   return week === "this"
-    ? "¿Qué días le vienen mejor esta semana?"
-    : "¿Qué días le vienen mejor la próxima semana?";
+    ? "Qué días le vienen mejor esta semana?"
+    : "Qué días le vienen mejor la próxima semana?";
 }
 
 /**
