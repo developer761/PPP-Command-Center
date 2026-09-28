@@ -422,3 +422,45 @@ describe("no template asserts something the bot cannot know", () => {
     expect(isSilent({ intent: "escalate" })).toBe(true);
   });
 });
+
+/**
+ * A TEMPLATE MAY NOT ASK STEP FOUR'S QUESTION AT STEP ONE.
+ *
+ * Second time the same shape has appeared: a rule enforced per-INTENT, walked
+ * round by another intent's TEMPLATE. The first was the availability
+ * stand-off. This is the ORDER.
+ *
+ * Seen in the simulator on a customer's very first message:
+ *
+ *   customer  "my budget is about $2000 for the kitchen and two bedrooms…
+ *              does that work?"
+ *   BOT       "The estimator will confirm that with you directly. In the
+ *              meantime, what days generally work best on your end?"
+ *
+ * ask_availability asking that identical thing was refused the same turn —
+ * "belongs to step 4 but only 1 of the required information has been
+ * collected" — while defer_to_estimator carried it straight through.
+ */
+describe("the order rule survives templates that are not flow intents", () => {
+  const defer = { intent: "defer_to_estimator" as const, turn: 1, customerText: "does that work?" };
+
+  it("drops the trailing timing question before the availability step", () => {
+    for (const flowStage of [0, 1, 2]) {
+      const out = renderMessage({ ...defer, flowStage });
+      expect(out, `stage ${flowStage}`).not.toMatch(/what days|what sort of days/i);
+      expect(out.length, `stage ${flowStage}`).toBeGreaterThan(20);
+    }
+  });
+
+  it("asks it once the flow has got there", () => {
+    expect(renderMessage({ ...defer, flowStage: 3 })).toMatch(/what days/i);
+  });
+
+  it("leaves nurture alone, which has no collection flow", () => {
+    expect(renderMessage({ ...defer, track: "nurture", flowStage: 0 }).length).toBeGreaterThan(20);
+  });
+
+  it("says nothing different when the caller does not track a stage", () => {
+    expect(renderMessage({ ...defer })).toMatch(/what days/i);
+  });
+});

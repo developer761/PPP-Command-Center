@@ -467,3 +467,38 @@ describe("expanding the job says what the job is", () => {
     }
   });
 });
+
+/**
+ * A CUSTOMER CAN STATE A PROJECT AND ASK SOMETHING IN ONE BREATH.
+ *
+ * My own regression, found one fix later. The question guard added for
+ * "Do you do kitchen cabinets?" rejected the WHOLE message if a "?" appeared
+ * anywhere, so this captured nothing:
+ *
+ *   "my budget is about $2000 for the kitchen and two bedrooms, my neighbour
+ *    paid $1800 last year. does that work?"
+ *
+ * Two rooms, plainly stated, and the stage stayed at 0. Now only the
+ * interrogative sentences are dropped and what is left is read — the same
+ * treatment tooManyAsks uses.
+ */
+describe("a project stated alongside a question", () => {
+  const derive = (body: string) =>
+    knownFromThread({ onFile: {}, messages: [{ body }], stage: 0 });
+
+  it("captures the declarative half", () => {
+    const k = derive("my budget is about $2000 for the kitchen and two bedrooms, my neighbour paid $1800 last year. does that work?");
+    expect(k.inquiryScope).toBeTruthy();
+    expect(k.stage).toBeGreaterThan(0);
+  });
+
+  it("and for the ordinary shape of it too", () => {
+    expect(derive("I need the kitchen and dining room done. when can you come?").inquiryScope).toBeTruthy();
+  });
+
+  it("still captures nothing when the message is ONLY a question", () => {
+    for (const t of ["Do you do kitchen cabinets?", "Are you able to do a living room and a dining room?"]) {
+      expect(derive(t).inquiryScope, t).toBeNull();
+    }
+  });
+});

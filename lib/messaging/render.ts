@@ -636,6 +636,17 @@ export type RenderInput = {
    */
   availabilityStandOff?: boolean;
   /**
+   * How far the required flow has actually got, for the new-lead track.
+   *
+   * Used for one thing: a template that ends by asking about days must not do
+   * so before the flow has reached the availability step. The ORDER rule is
+   * enforced on flow intents, and defer_to_estimator is not one — so its
+   * trailing "what days generally work best on your end?" reached a customer
+   * at stage 0, before we had the address or a name, while ask_availability
+   * asking the identical thing was refused as out_of_order.
+   */
+  flowStage?: number;
+  /**
    * What WE have already said, oldest first.
    *
    * Only for "have we asked this already". Parity 7 caps its acknowledgement at
@@ -884,8 +895,25 @@ function withoutATimingQuestion(body: string): string {
   return kept || body;
 }
 
+/** Availability is the fourth leg, so it is due only once three are done. */
+const AVAILABILITY_STEP = 3;
+
 export function renderMessage(input: RenderInput): string {
-  const body = input.availabilityStandOff ? withoutATimingQuestion(renderBody(input)) : renderBody(input);
+  /**
+   * Two reasons to drop a trailing question about days, and they are the same
+   * defect seen twice: a rule enforced per-INTENT, walked round by another
+   * intent's TEMPLATE.
+   *
+   *   the stand-off — they have asked US twice, so nothing asks them again
+   *   the order     — availability is step four and this is not step four yet
+   */
+  const tooEarlyToAskAboutDays =
+    input.track !== "nurture"
+    && input.flowStage !== undefined
+    && input.flowStage < AVAILABILITY_STEP;
+  const body = input.availabilityStandOff || tooEarlyToAskAboutDays
+    ? withoutATimingQuestion(renderBody(input))
+    : renderBody(input);
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
   const timed = replyToRequestedTime(input.customerText);
   if (!timed || timed.verdict !== "in_hours") return body;

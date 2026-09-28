@@ -233,14 +233,32 @@ const WHOLE_AREA =
  * ONE room is not enough — "I'm done with this house" names a house — so this
  * needs two DISTINCT subjects, which no complaint or pleasantry produces.
  */
-function namesSeveralRooms(t: string): boolean {
+function namesSeveralRooms(input: string): boolean {
+  let t = input;
   /**
-   * NOT A QUESTION. "Do you do kitchen cabinets?" asks what we cover; it does
-   * not say what the job is, and reading it as scope is the loose direction
-   * this file's header warns about. An existing test caught exactly that when
-   * this clause was first written without the guard.
+   * ONLY THE PARTS THAT ARE NOT QUESTIONS.
+   *
+   * "Do you do kitchen cabinets?" asks what we cover and does not say what the
+   * job is. But the first version of this rejected the WHOLE message if it
+   * contained a "?" anywhere, and a customer who states a project and asks
+   * something in the same breath is completely ordinary:
+   *
+   *   "my budget is about $2000 for the kitchen and two bedrooms, my
+   *    neighbour paid $1800 last year. does that work?"
+   *
+   * Two rooms, plainly stated, and no scope captured — so the stage stayed at
+   * 0. Found in the simulator one fix after writing the guard.
+   *
+   * Same treatment as tooManyAsks: drop the interrogative sentences and read
+   * what is left. "Do you do kitchen cabinets?" leaves nothing.
    */
-  if (/\?/.test(t) || /^\s*(?:do|does|are|is|can|could|would|will|have|has)\b/i.test(t)) return false;
+  const declarative = t
+    .split(/(?<=[.?!])\s+/)
+    .filter((sentence) => !sentence.includes("?")
+      && !/^\s*(?:do|does|are|is|can|could|would|will|have|has)\b/i.test(sentence))
+    .join(" ");
+  if (!declarative.trim()) return false;
+  t = declarative;
   /**
    * A ROOM WORD ON A CABINET JOB IS NOT A SECOND ROOM — the same carve-out
    * offsite.ts makes before it counts rooms. "Kitchen cabinets" is a cabinet

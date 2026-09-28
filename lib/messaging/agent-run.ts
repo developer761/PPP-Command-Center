@@ -601,6 +601,8 @@ Choose the next action.`;
       // Hatch's stand-off: they have asked us for times twice, so no template
       // may ask them a third time, whichever intent the model picked.
       availabilityStandOff: isAvailabilityStandOff(customerSaid),
+      // So a template cannot ask step four's question at step one.
+      flowStage: track === "new_lead" ? opts.stage : undefined,
       // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
       // switch back to English on the next turn." So it reads every customer
       // message in the thread plus this one, not just the latest — somebody

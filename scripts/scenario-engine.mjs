@@ -173,6 +173,7 @@ export function waysThrough(scenario) {
     // Parity 7 needs the thread: the two halves arrive turns apart.
     customerMessages: history,
     availabilityStandOff: isAvailabilityStandOff(customerSaid),
+    flowStage: track === "new_lead" ? derived.stage : undefined,
   });
 
   const open = [];
