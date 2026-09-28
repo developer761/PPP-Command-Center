@@ -154,3 +154,33 @@ describe("what the grading screen says a transfer is", () => {
     expect(transferred?.label).toBe("Transferred");
   });
 });
+
+/**
+ * THE GUIDE THE MODEL READS AND THE DEFINITION THE OFFICE READS MUST AGREE.
+ *
+ * END_STATES says bailout covers "Wrong person, chose another company,
+ * something negative, or vulgar language". The INTENT_GUIDE said only "they
+ * have said they are not going ahead".
+ *
+ * Played in the simulator: "stop wasting my time you idiots, this is garbage"
+ * came back as `discard`, which the guide describes as "not a real lead" —
+ * a fair reading of what it was given. Both endings are silent and both hand
+ * to a person, so nothing visible went wrong. The OUTCOME LABEL was wrong,
+ * and "Ended in the right state" is one of the rules conversations are graded
+ * on, so a mislabelled ending is a wrong row in every outcome report.
+ */
+describe("the intent guide agrees with the outcome definitions", () => {
+  it("tells the model that abuse is a bailout", () => {
+    expect(INTENT_GUIDE.bailout).toMatch(/abusive|vulgar/i);
+  });
+
+  it("and the office's definition still says so too", () => {
+    const bailout = END_STATES.find((e) => e.key === "bailout");
+    expect(bailout?.when).toMatch(/vulgar/i);
+  });
+
+  it("keeps discard about what it is actually for", () => {
+    // "Not an estimate request, or work we do not cover" — not a tone.
+    expect(INTENT_GUIDE.discard).not.toMatch(/abusive|vulgar/i);
+  });
+});

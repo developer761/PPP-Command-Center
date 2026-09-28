@@ -233,7 +233,21 @@ export const INTENT_GUIDE: Record<string, string> = {
   bot_suspected: "they asked whether they are talking to a bot or a person. Answer honestly and KEEP GOING — this is not an ending, and the bot never denies being a bot (A46)",
   phone_pricing: "they want to talk money on the phone",
   area_not_serviced: "the zip on file is somewhere PPP does not cover",
-  bailout: "they have said they are not going ahead",
+  /**
+   * The guide said only "they have said they are not going ahead", and PPP's
+   * own definition of this outcome is wider: "Wrong person, chose another
+   * company, something NEGATIVE, or VULGAR LANGUAGE" (END_STATES, the list the
+   * office and the raters read).
+   *
+   * Played in the simulator, "stop wasting my time you idiots, this is
+   * garbage" came back as `discard` — reasonable from a guide that offers
+   * "not a real lead" and says nothing about abuse. Both endings are silent
+   * and both hand to a person, so nothing visible went wrong; the OUTCOME
+   * LABEL was wrong, and "Ended in the right state" is one of the rules
+   * conversations are graded on. A mislabelled ending is a wrong row in every
+   * report built on outcomes.
+   */
+  bailout: "they have said they are not going ahead, or the conversation has turned abusive or vulgar",
   success: "everything is collected and the office can take it",
   discard: "not a real lead",
   lost: "they have gone with somebody else",
