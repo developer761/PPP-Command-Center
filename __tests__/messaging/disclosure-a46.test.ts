@@ -168,3 +168,40 @@ describe("Human takeover — the bot sends nothing on the way out", () => {
     expect(isSilent({ intent: "escalate" })).toBe(true);
   });
 });
+
+/**
+ * THE SANDBOX COULD NOT SHOW A46 AT ALL.
+ *
+ * scheduler-db passes outOfHours into the turn; simulator.ts passed nothing,
+ * so disclosureMove always saw `false` and the out-of-hours PREFIX could never
+ * appear on the Try-the-bot screen.
+ *
+ * Checked live at 10 PM Eastern with the office shut: the simulator answered
+ * "Got it! What's the address for the project?" where production would have
+ * led with the approved line. The one screen somebody would use to confirm a
+ * compliance sentence was the one screen that could not produce it.
+ *
+ * These assert the DECISION both callers feed, which is the part that was
+ * asymmetric — the strings themselves are covered above.
+ */
+describe("the out-of-hours prefix is reachable from both callers", () => {
+  it("prefixes when the office is shut and nothing has been disclosed yet", () => {
+    expect(disclosureMove({ askedIfBot: false, outOfHours: true, alreadyDisclosed: false })).toBe("prefix");
+  });
+
+  it("says nothing when the office is open", () => {
+    expect(disclosureMove({ askedIfBot: false, outOfHours: false, alreadyDisclosed: false })).toBeNull();
+  });
+
+  it("does not repeat itself later in the same conversation", () => {
+    expect(disclosureMove({ askedIfBot: false, outOfHours: true, alreadyDisclosed: true })).toBeNull();
+  });
+
+  /**
+   * Being asked outright is answered whatever the clock says — the bot never
+   * denies being a bot, in any state.
+   */
+  it("answers a direct question even out of hours", () => {
+    expect(disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: true })).toBe("answer");
+  });
+});

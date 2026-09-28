@@ -12,6 +12,7 @@
  * other guard were removed.
  */
 import { messagingDb } from "./db";
+import { officeIsOpen } from "./sending-window";
 import { classifyInbound } from "./compliance";
 import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
@@ -163,6 +164,28 @@ export async function runSimTurn(input: {
 
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
+    /**
+     * A46, WHICH COULD NOT FIRE HERE AT ALL.
+     *
+     * scheduler-db passes `outOfHours: !officeIsOpen(...)`, and this passed
+     * nothing — so disclosureMove always saw `false` and the out-of-hours
+     * PREFIX never appeared in the sandbox. Checked at 10 PM Eastern with the
+     * office shut: the simulator replied "Got it! What's the address for the
+     * project?" where production would have led with "I'm an AI assistant, but
+     * I can take your project details and pass them along once we open."
+     *
+     * Approved compliance copy, invisible in the one screen somebody would
+     * use to check it — and the same divergence this file's own header warns
+     * about twice: "a bot that behaves differently in the sandbox than in
+     * production is a bot nobody has actually tested."
+     *
+     * The office zone is left at A36's default, which is Eastern because that
+     * is where PPP's office sits, and every workspace currently runs on
+     * America/New_York (Settings). A workspace in another zone would need its
+     * time_zone threaded here, and that is one more round trip than this is
+     * worth until one exists.
+     */
+    outOfHours: !officeIsOpen({ now: new Date() }),
     // THE SAME RULES THE LIVE PATH GETS. A bot that behaves differently in the
     // sandbox than in production is a bot nobody has actually tested, and this
     // file already carries that lesson twice.

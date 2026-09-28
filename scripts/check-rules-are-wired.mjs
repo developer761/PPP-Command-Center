@@ -179,6 +179,13 @@ const CHAINS = [
        */
       ["lib/messaging/sending-window.ts", /export function officeIsOpen/],
       ["lib/messaging/scheduler-db.ts", /outOfHours: !officeIsOpen\(/],
+      /**
+       * AND THE SANDBOX, which passed nothing and so could never show the
+       * prefix at all — checked live at 10 PM with the office shut. A rule
+       * that cannot appear on the screen somebody uses to verify it is a rule
+       * nobody can verify.
+       */
+      ["lib/messaging/simulator.ts", /outOfHours: !officeIsOpen\(/],
       ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
       // bot_suspected must stay a CONTINUE intent, not an ending.
       ["lib/messaging/agent-output.ts", /"bot_suspected",\n\] as const;|"bot_suspected",/],
