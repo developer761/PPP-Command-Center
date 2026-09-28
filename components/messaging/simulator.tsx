@@ -415,7 +415,23 @@ export default function Simulator({
                 {t.error ? (
                   <div className="rounded-xl bg-ppp-orange-50 px-3 py-2">
                     <p className="text-[12px] font-medium text-ppp-orange-700 leading-snug">{t.error}</p>
-                    {t.rejected && <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">Blocked before sending: {t.rejected}</p>}
+                    {t.rejected && (
+                      <>
+                        <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">Blocked before sending: {t.rejected}</p>
+                        {/*
+                          WITHOUT THIS LINE THE SANDBOX LIES ABOUT PRODUCTION.
+                          A refusal reads as the customer getting silence, and
+                          it is not: scheduler-db calls handToAPerson on a
+                          rejection, so the conversation lands in "Needs a
+                          person" and somebody reads the thread. The
+                          saysNothing case next door already said so; this one
+                          did not, and it is the commoner of the two.
+                        */}
+                        <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
+                          Live, this hands the conversation to a person rather than replying. It is not silence.
+                        </p>
+                      </>
+                    )}
                     {t.saysNothing && (
                       <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
                         It had nothing to say, so it handed to a person.
