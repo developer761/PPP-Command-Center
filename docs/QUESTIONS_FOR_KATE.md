@@ -523,6 +523,47 @@ reused. It cannot have a change type.
 those rules is correct. If anything is worth doing it is ours: label them
 "predates change tracking" so they do not read as missing data.
 
+## 14. "Don't text me, just call me" is suppressed and the lead is closed
+
+**OPEN.** Found in the simulator on 2026-09-27. Not a bug report — a policy
+question, because every step is behaving as written.
+
+    customer  "dont text me just call me"
+    BOT       opted_out, 100%
+              "(No reply is sent. The number is suppressed and nothing
+               further can go out to it.)"
+
+**Every part of that is correct on its own.** A24 says the opt-out wins even
+when other content is packed into the same message, and "don't text me" IS a
+revocation of consent for texts — suppressing is the legally safe reading, and
+the classifier is right to take it.
+
+**What happens next is the problem.** The number goes on the suppression list,
+the conversation is ended as `discard`, and the call-pause signal is
+deliberately skipped (correctly — you do not hand the call centre a "they are
+in conversation" flag about somebody who opted out). So:
+
+- nothing records that this customer asked to be **called**
+- the conversation is closed, so it appears in no queue
+- a person reviewing sees "opted out" and moves on
+
+A customer who asked us to phone them is filed as somebody who asked us to go
+away. These phrasings all land there — `"dont text me just call me"`,
+`"don't text me, just call me"`, `"stop texting me and call me instead"` —
+while `"please call me instead of texting"` is read correctly as A25.
+
+**It gets worse if `SF_OPTOUT_WRITEBACK` is ever switched on.** That would mark
+them opted-out in Salesforce, which is where the CALL cadence lives, so the one
+channel they asked for would be shut off too.
+
+**→ Recommendation:** keep the suppression exactly as it is, and stop closing
+the conversation silently. A text-stop that also asks for a call should reach a
+person — `customer_asked_human` already exists as a takeover reason and needs
+no schema change. NOT changed unilaterally: it is a compliance path, and the
+Salesforce interaction is Katie's call as much as yours.
+
+---
+
 ## 13. Parity 7 — after one refusal, does "move on" mean stop asking?
 
 **OPEN.** Raised by the persona hunt on 2026-09-27, not by Kate.
