@@ -351,7 +351,19 @@ against a line that contradicts the rule above it.
 > Pinned with a wiring chain, because two cadences that differ only in spacing
 > are exactly the kind of thing that reverts without anything looking broken.
 >
-> **Still to do, and neither is guessed at:**
+> **Built 2026-09-28, after her fuller answer and the updated sheet:** all
+> three park cases. Bare deferral 3/6/9 days; named event two weeks with A7
+> run first; "don't chase me" gets no cadence and the call centre is told,
+> with its own note rather than the cadence-spent one, which would have
+> claimed we chased somebody who asked us not to.
+>
+> **One thing she did not say, and we did not invent:** how many nudges an
+> EVENT park gets. She gives the wait ("TWO WEEKS") and not the count. Built
+> as three with the first at a fortnight, because her framing is "the wait
+> depends on WHY" — the alternative reading, three nudges a fortnight apart,
+> chases somebody for six weeks. Worth one line from her.
+>
+> **Superseded:**
 >
 > 1. **The named-event park at 2 weeks.** She says a rule already covers it,
 >    pointing at "the A7 note below" — we do not have that note, so we do not
