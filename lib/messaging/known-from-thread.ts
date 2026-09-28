@@ -119,17 +119,52 @@ export function knownFromThread(input: {
   // free because the conversation row remembers; the sandbox has to look.
   // Their own words only: a reaction quotes our sentence back, and an address
   // in it would be ours.
-  const said = onFile.address
+  /**
+   * ONE value, decided once, and used by BOTH the guard below and the return.
+   * Splitting them is what caused the bug documented there: the guard tested
+   * truthiness and the return used `??`, so "" behaved as absent in one and as
+   * present in the other. Whitespace counts as absent too — a column somebody
+   * cleared often holds " " rather than "" or NULL.
+   */
+  const onFileAddress = (onFile.address ?? "").trim() || null;
+
+  const said = onFileAddress
     ? null
     : messages
         .map((m) => addressFromCustomer(normalizeInbound(m.body, m.mediaCount ?? 0).text ?? ""))
         .find(Boolean) ?? null;
 
+  /**
+   * TRUTHINESS HERE TOO, NOT `??` — AND THE MISMATCH KILLED THE TURN.
+   *
+   * Three lines up, `said` is scanned only when onFile.address is FALSY. This
+   * returned `onFile.address ?? said`, and `??` falls through on null and
+   * undefined but NOT on "". So an empty-string address scanned the thread,
+   * found the address the customer had just typed, and then threw it away and
+   * returned "" anyway.
+   *
+   * What that looked like, in the simulator on 2026-09-27:
+   *
+   *   customer  "I need my living room painted. I'm Tom Smith,
+   *              tom@example.com, and the address is 12 Oak St, Garden City
+   *              NY 11530"
+   *   BOT       The reply was rejected before sending.
+   *             confirm_address needs a known address and there is none on file
+   *
+   * A DEAD TURN — the customer gave everything in one message and got nothing
+   * back. The model was right, the parser was right, and the value was
+   * discarded between them.
+   *
+   * An empty string rather than NULL is an ordinary shape for a text column
+   * somebody has edited and cleared, so this is not a sandbox-only concern:
+   * any conversation whose customer_address is "" can never register an
+   * address again, on any turn, for the life of the thread.
+   */
   return {
     inquiryScope: scope.scope,
     scopeFrom: scope.from,
-    address: onFile.address ?? said,
-    addressFromChat: !onFile.address && !!said,
+    address: onFileAddress ?? said,
+    addressFromChat: !onFileAddress && !!said,
     stage: scope.stage,
   };
 }

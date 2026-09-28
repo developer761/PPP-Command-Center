@@ -140,3 +140,52 @@ describe("a scope stated earlier in the thread is still held", () => {
     expect(k.stage).toBeGreaterThanOrEqual(3);
   });
 });
+
+/**
+ * AN EMPTY STRING ON THE RECORD MADE THE BOT BLIND TO THE ADDRESS.
+ *
+ * Found in the simulator on 2026-09-27. The customer gave everything in one
+ * message and got NOTHING back:
+ *
+ *   customer  "I need my living room painted. I'm Tom Smith,
+ *              tom@example.com, and the address is 12 Oak St, Garden City
+ *              NY 11530"
+ *   BOT       The reply was rejected before sending.
+ *             confirm_address needs a known address and there is none on file
+ *
+ * The model chose right, the parser found the address, and the value was
+ * dropped between them. The guard scanned the thread only when onFile.address
+ * was FALSY, and the return used `onFile.address ?? said` — `??` falls through
+ * on null and undefined but NOT on "". So the scan ran, found it, and the
+ * empty string was returned anyway.
+ *
+ * "" or " " instead of NULL is an ordinary shape for a text column somebody
+ * cleared, and it is permanent: such a conversation could never register an
+ * address again on any turn.
+ */
+describe("an empty address on the record does not hide a real one", () => {
+  const said = "I need my living room painted. I'm Tom Smith, tom@example.com, and the address is 12 Oak St, Garden City NY 11530";
+  const derive = (address?: string | null) =>
+    knownFromThread({ onFile: { address }, messages: [{ body: said }], stage: 0 });
+
+  it("finds the address whatever the empty form on file is", () => {
+    for (const empty of [undefined, null, "", "   "]) {
+      const k = derive(empty as string | null | undefined);
+      expect(k.address, `onFile.address = ${JSON.stringify(empty)}`).toBe("12 Oak St, 11530");
+      expect(k.addressFromChat).toBe(true);
+    }
+  });
+
+  it("and the record still WINS when it holds a real one", () => {
+    // The office's version is never overwritten by the chat.
+    const k = derive("99 Office Rd, 11530");
+    expect(k.address).toBe("99 Office Rd, 11530");
+    expect(k.addressFromChat).toBe(false);
+  });
+
+  it("reports nothing when the record is empty and nobody said one", () => {
+    const k = knownFromThread({ onFile: { address: "" }, messages: [{ body: "hi there" }], stage: 0 });
+    expect(k.address).toBeNull();
+    expect(k.addressFromChat).toBe(false);
+  });
+});
