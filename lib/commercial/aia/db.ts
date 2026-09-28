@@ -142,13 +142,37 @@ export async function getAiaApplication(id: string): Promise<AiaApplication | nu
   return (data as AiaApplication | null) ?? null;
 }
 
+/**
+ * THE G703 LINES, IN A STABLE ORDER.
+ *
+ * Stephanie, 2026-09-28: "the different line items have a habit of reordering
+ * themselves as you enter them regardless of what the line number is."
+ *
+ * `position` alone is not an order when rows TIE, and they tie constantly:
+ * the column is `NOT NULL DEFAULT 1000` — a constant, despite the schema
+ * comment describing sparse 1000/2000 ordering — and `upsertAiaLineItem` only
+ * sends a position when the caller supplies one, which the editor does not.
+ * So every line she adds lands on 1000. On production today 32 of 47 rows sit
+ * at 1000 and 7 of 24 applications have colliding positions.
+ *
+ * Postgres returns tied rows in whatever order it finds them, and an UPDATE
+ * physically relocates a row — so typing into one line visibly reshuffles the
+ * others. Exactly what she described, and it only shows up while editing,
+ * which is why it reads as haunted rather than broken.
+ *
+ * `created_at` then `id` breaks every tie deterministically and in the order
+ * she typed them. Both are needed: `created_at` can tie on a bulk seed insert,
+ * where they all share a timestamp, and `id` is the final arbiter.
+ */
 export async function listAiaLineItems(applicationId: string): Promise<AiaLineItem[]> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_aia_line_items")
     .select(COLS)
     .eq("application_id", applicationId)
-    .order("position", { ascending: true });
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
   return (data ?? []) as AiaLineItem[];
 }
 
@@ -1169,6 +1193,28 @@ export async function upsertAiaLineItem(
     // breakdown of a payment certificate — every change now leaves a trail.
     await logUpdate("commercial_aia_line_items", line.id, line, data, actorUserId ?? null);
     return { ok: true, value: data as AiaLineItem };
+  }
+  /*
+   * A NEW LINE GOES AFTER THE LAST ONE, not on top of it.
+   *
+   * The column defaults to a constant 1000, so without this every line on an
+   * application shares a position and the order is left to Postgres. The
+   * schema comment always described sparse 1000/2000 ordering; nothing ever
+   * assigned it.
+   *
+   * Sparse by 1000 so a future drag-to-reorder can drop a line between two
+   * others without rewriting its siblings — which is what the comment was for.
+   */
+  if (payload.position === undefined) {
+    const { data: last } = await sb
+      .from("commercial_aia_line_items")
+      .select("position")
+      .eq("application_id", applicationId)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const top = Number((last as { position?: number } | null)?.position ?? 0);
+    (payload as { position?: number }).position = (Number.isFinite(top) ? top : 0) + 1000;
   }
   const { data, error } = await sb
     .from("commercial_aia_line_items")

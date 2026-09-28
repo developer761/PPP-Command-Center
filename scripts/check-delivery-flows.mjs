@@ -272,7 +272,7 @@ try {
   }
 
   // ══ 3. AIA ═══════════════════════════════════════════════════════════════
-  const { createAiaApplication, upsertAiaLineItem, resolveG702, listAiaApplications } =
+  const { createAiaApplication, upsertAiaLineItem, resolveG702, listAiaApplications, listAiaLineItems } =
     await import("../lib/commercial/aia/db.ts");
 
   const app = await createAiaApplication({
@@ -291,6 +291,52 @@ try {
       this_period_cents: 100,
     });
     check("a schedule-of-values line can be added", line.ok, line.ok ? "" : line.error);
+
+    /*
+     * THE LINES STAY IN THE ORDER SHE TYPED THEM.
+     *
+     * Stephanie, 2026-09-28: "the different line items have a habit of
+     * reordering themselves as you enter them regardless of what the line
+     * number is."
+     *
+     * `position` is NOT NULL DEFAULT 1000 — a constant — and the hand-entry
+     * path only sent a position when the caller supplied one, which the editor
+     * does not. So every line landed on 1000, Postgres returned the ties in
+     * physical order, and an UPDATE relocates a row — so typing into one line
+     * reshuffled the others. Three lines added in order is the whole
+     * reproduction.
+     */
+    const second = await upsertAiaLineItem(appId, {
+      description: `${MARK} SECOND`, scheduled_value_cents: 0, this_period_cents: 0,
+    });
+    const third = await upsertAiaLineItem(appId, {
+      description: `${MARK} THIRD`, scheduled_value_cents: 0, this_period_cents: 0,
+    });
+    check("more lines can be added", second.ok && third.ok,
+      second.ok ? (third.ok ? "" : third.error) : second.error);
+
+    const ordered = await listAiaLineItems(appId);
+    const tags = ordered.map((l) => (l.description ?? "").replace(MARK, "").trim() || "FIRST");
+    check("they come back in the order they were entered",
+      tags.join(" > ") === "FIRST > SECOND > THIRD", tags.join(" > "));
+
+    const positions = ordered.map((l) => Number(l.position));
+    check("and each has its own position, not all the default 1000",
+      new Set(positions).size === positions.length, positions.join(", "));
+
+    /*
+     * The real symptom was that EDITING reshuffled them. Touch the first line
+     * and read the order back: an UPDATE moves the row in the heap, so a tie
+     * would surface here and nowhere else.
+     */
+    await upsertAiaLineItem(appId, {
+      id: ordered[0].id, description: `${MARK}`, scheduled_value_cents: CONTRACT,
+      this_period_cents: 100,
+    });
+    const afterEdit = await listAiaLineItems(appId);
+    const tagsAfter = afterEdit.map((l) => (l.description ?? "").replace(MARK, "").trim() || "FIRST");
+    check("and editing one does not reshuffle the others",
+      tagsAfter.join(" > ") === "FIRST > SECOND > THIRD", tagsAfter.join(" > "));
 
     const g = await resolveG702(appId);
     check("the G702 computes", !!g);
