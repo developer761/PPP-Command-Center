@@ -16,7 +16,7 @@ import {
   returningCustomerDeclining, alreadyAskedToConfirm, returningCustomerReply,
   returningCustomerDecliningInThread,
 } from "@/lib/messaging/returning-customer";
-import { renderMessage, SAYS } from "@/lib/messaging/render";
+import { renderMessage, SAYS, isSilent } from "@/lib/messaging/render";
 import { SAYS_ES } from "@/lib/messaging/render-es";
 import { validateAction } from "@/lib/messaging/agent-output";
 
@@ -369,5 +369,56 @@ describe("no template tells the customer what our calendar holds", () => {
       }
     }
     expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+});
+
+/**
+ * EVERY TEMPLATE, AGAINST EVERY CLAIM THE BOT CANNOT BACK.
+ *
+ * The availability claim got in because it was nobody's idea of a bug: it was
+ * Hatch's own sentence, copied for parity, and it named no day and no price so
+ * neither existing sweep saw it. This one is written from the general shape —
+ * a template must not assert anything the bot has no way to know.
+ *
+ * SILENT intents are skipped and that matters: SAYS.escalate still holds "Let
+ * me get one of our team on this. Someone will follow up with you shortly.",
+ * the handover line the Iteration 1 spec says must never be sent. It is
+ * unreachable — renderMessage returns "" for escalate — and the test below
+ * asserts that rather than trusting it.
+ */
+describe("no template asserts something the bot cannot know", () => {
+  const RISKS: [string, RegExp][] = [
+    ["claims our availability", /\b(?:we|i)\s+(?:have|ve got|do have)\b[^.?!]{0,40}\b(?:opening|openings|availability|slots?|spaces?)\b/i],
+    ["promises a timeframe", /\b(?:today|tomorrow|within (?:the )?(?:hour|24|48)|this afternoon|right away|shortly|by (?:the )?end of (?:the )?day)\b/i],
+    ["quotes a price", /\$|\b\d+\s*(?:dollars|usd)\b/i],
+    ["names a weekday", /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i],
+    ["guarantees", /\b(?:guarantee\w*|definitely)\b/i],
+  ];
+
+  it("holds for every sendable template in both languages", () => {
+    const offenders: string[] = [];
+    for (const [table, name] of [[SAYS, "SAYS"], [SAYS_ES, "SAYS_ES"]] as const) {
+      for (const [intent, variants] of Object.entries(table)) {
+        // A silent intent never reaches a customer; asserted separately below.
+        if (isSilent({ intent: intent as never })) continue;
+        for (const v of (variants as string[] | undefined) ?? []) {
+          for (const [why, re] of RISKS) {
+            if (re.test(v)) offenders.push(`${name}.${intent} ${why}: ${v}`);
+          }
+        }
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  /**
+   * The spec: "The bot sends nothing on the way out — no sign-off, no handover
+   * line, nothing that reads as an ending." Its template still carries one, so
+   * the guarantee is that it cannot render, not that the words are gone.
+   */
+  it("and the handover line escalate still holds can never render", () => {
+    expect(SAYS.escalate.join(" ")).toMatch(/follow up with you shortly/i);
+    expect(renderMessage({ intent: "escalate", turn: 1, customerText: "get me a person" })).toBe("");
+    expect(isSilent({ intent: "escalate" })).toBe(true);
   });
 });
