@@ -10,13 +10,14 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  weekToOffer, askAvailability, asksOurAvailability, isAvailabilityStandOff,
+  weekToOffer, askAvailability, askAvailabilityEs, asksOurAvailability, isAvailabilityStandOff,
 } from "@/lib/messaging/availability-ask";
 import {
   returningCustomerDeclining, alreadyAskedToConfirm, returningCustomerReply,
   returningCustomerDecliningInThread,
 } from "@/lib/messaging/returning-customer";
-import { renderMessage } from "@/lib/messaging/render";
+import { renderMessage, SAYS } from "@/lib/messaging/render";
+import { SAYS_ES } from "@/lib/messaging/render-es";
 import { validateAction } from "@/lib/messaging/agent-output";
 
 const NY = "America/New_York";
@@ -314,5 +315,59 @@ describe("once they have asked us twice, nothing asks them a third time", () => 
       availabilityStandOff: true,
     });
     expect(out.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * NO TEMPLATE MAY CLAIM WE HAVE AVAILABILITY.
+ *
+ * askAvailability was Hatch's sentence verbatim — "We have a few openings THIS
+ * WEEK to meet with you, what would work best for you?" — and the bot has no
+ * calendar to know that. The system prompt says it outright: "You never quote
+ * a price and you never offer an appointment time. The office does both."
+ *
+ * The contradiction was total: our own validator refuses the MODEL for writing
+ * that exact sentence (invented_availability, "names 'this week' with no
+ * verified availability behind it"), while the TEMPLATE sent it, because
+ * templates do not go through the rapport check.
+ *
+ * Found by reading an imported Hatch thread and recognising our own wording in
+ * it. Every test passed while it was there, which is why this sweep exists.
+ */
+const CLAIMS_AVAILABILITY =
+  /\b(?:we|i)\s+(?:have|have got|ve got|do have)\b[^.?!]{0,40}\b(?:opening|openings|availability|slots?|spaces?|times?)\b|\bwe\s+(?:are|re)\s+(?:free|available)\b/i;
+
+describe("no template tells the customer what our calendar holds", () => {
+  it("the week-aware ask names the week and claims nothing", () => {
+    for (const week of ["this", "next"] as const) {
+      const out = askAvailability(week);
+      expect(out, out).not.toMatch(CLAIMS_AVAILABILITY);
+      expect(out).toMatch(new RegExp(`${week} week`, "i"));
+      expect(out).toMatch(/\?$/);
+    }
+  });
+
+  it("and so does the Spanish one", () => {
+    for (const week of ["this", "next"] as const) {
+      const out = askAvailabilityEs(week);
+      expect(out, out).not.toMatch(/\btenemos\b[^.?!]{0,40}\b(?:espacios|disponibilidad|citas)\b/i);
+      expect(out).toMatch(/semana/i);
+    }
+  });
+
+  /**
+   * The sweep, over every template in the system rather than the one that was
+   * wrong. A claim about our calendar is the same defect wherever it appears.
+   */
+  it("no template anywhere claims an opening", () => {
+    const offenders: string[] = [];
+    for (const table of [SAYS, SAYS_ES]) {
+      for (const [intent, variants] of Object.entries(table)) {
+        for (const v of (variants as string[] | undefined) ?? []) {
+          if (CLAIMS_AVAILABILITY.test(v)) offenders.push(`${intent}: ${v}`);
+        }
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
   });
 });

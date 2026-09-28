@@ -62,14 +62,41 @@ export function weekToOffer(now: Date, timeZone: string): "this" | "next" | null
 }
 
 /** Hatch's approved wording, with the week filled in. */
+/**
+ * NAMES THE WEEK, CLAIMS NOTHING.
+ *
+ * This used to be Hatch's sentence verbatim: "We have a few openings THIS WEEK
+ * to meet with you, what would work best for you?" — and it asserts something
+ * the bot cannot know. It has no calendar; the office owns it, and the system
+ * prompt says so in as many words: "You never quote a price and you never
+ * offer an appointment time. The office does both."
+ *
+ * OUR OWN VALIDATOR REFUSES THE MODEL FOR WRITING THIS EXACT SENTENCE:
+ *
+ *   validateAction(... freeText: "We have a few openings this week to meet
+ *   with you, what would work best for you?")
+ *   → invented_availability: free text names "this week" with no verified
+ *     availability behind it
+ *
+ * So the model was forbidden from saying it and the template said it anyway,
+ * because templates do not go through the rapport check. Found on 2026-09-27
+ * by reading an imported Hatch thread and recognising our own wording in it.
+ *
+ * The week anchor is the part worth keeping — parity gap 1 exists because
+ * "What days generally work best for you?" is an open question that drifts. So
+ * the week stays and the claim goes: this asks about THEIR days, inside a week
+ * we named, and promises nothing about ours.
+ *
+ * Kate should still see the new wording — docs/QUESTIONS_FOR_KATE.md item 6.
+ */
 export function askAvailability(week: "this" | "next"): string {
-  return `We have a few openings ${week} week to meet with you, what would work best for you?`;
+  return `What days work best for you ${week} week?`;
 }
 
 export function askAvailabilityEs(week: "this" | "next"): string {
   return week === "this"
-    ? "Tenemos algunos espacios disponibles esta semana para reunirnos con usted. ¿Qué le viene mejor?"
-    : "Tenemos algunos espacios disponibles la próxima semana para reunirnos con usted. ¿Qué le viene mejor?";
+    ? "¿Qué días le vienen mejor esta semana?"
+    : "¿Qué días le vienen mejor la próxima semana?";
 }
 
 /**

@@ -290,6 +290,42 @@ discard line needing a nod.
 
 ---
 
+## 6b. The availability ask no longer claims we have openings
+
+**CHANGED 2026-09-27, and worth your eye on the wording.**
+
+Parity gap 1 copied Hatch's sentence verbatim:
+
+> "We have a few openings **this week** to meet with you, what would work best
+> for you?"
+
+It asserts something the bot cannot know. It has no calendar — the office owns
+it, and the system prompt says so: *"You never quote a price and you never
+offer an appointment time. The office does both."*
+
+**The contradiction was total.** Our own validator refuses the MODEL for
+writing that exact sentence:
+
+```
+invented_availability: free text names "this week" with no verified
+availability behind it
+```
+
+The template sent it anyway, because templates do not go through the rapport
+check. Found by reading an imported Hatch thread and recognising our own
+wording inside it.
+
+**Now:** "What days work best for you **this week**?" — the week anchor is the
+part worth keeping, since parity gap 1 exists because the old open question
+drifted. The week stays; the claim goes. Spanish likewise: *"¿Qué días le
+vienen mejor esta semana?"*
+
+**→ Recommendation:** keep the new wording. If PPP genuinely wants to offer
+openings, that needs a real calendar behind it, which is an Iteration 2 shape.
+A sweep now asserts that no template in either language claims an opening.
+
+---
+
 ## 7. ~~A26 — is the photo ceiling still detection only?~~ — CLOSED, no need to ask
 
 > **Not Kate's.** The spec files it under *OURS · COMMERCIAL*: reading images is metered spend and has never been sized against PPP's volume. It is Karan and PPP's decision, not a rules question.
