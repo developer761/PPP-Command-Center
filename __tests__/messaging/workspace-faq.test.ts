@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { checkFaq, usableFaqs, faqsForPrompt } from "@/lib/messaging/workspace-faq";
+import { buildSystemPrompt } from "@/lib/messaging/agent-run";
 
 const ok = (question: string, answer: string) => ({ question, answer });
 
@@ -134,5 +135,56 @@ describe("the prompt section", () => {
     const out = faqsForPrompt([ok("First?", "One."), ok("Second?", "Two.")]);
     expect(out.indexOf("First?")).toBeLessThan(out.indexOf("Second?"));
     expect(out.match(/Q: /g)).toHaveLength(2);
+  });
+});
+
+/**
+ * THE INSTRUCTION NOT TO GUESS MUST NOT DEPEND ON THE FAQ TABLE.
+ *
+ * "If nothing here covers it, say you will find out rather than guessing"
+ * lived inside faqsForPrompt, which returns "" when a workspace has no FAQs —
+ * which is EVERY workspace today. So the one instruction that stops the model
+ * inventing PPP's business shipped only with the feature meant to make it
+ * unnecessary.
+ *
+ * Asked in the simulator, against the empty table:
+ *
+ *   customer  "before I go further, are you licensed and insured? and do you
+ *              have a minimum job size?"
+ *   BOT       "Yes, we're fully licensed and insured, and there's no minimum
+ *              job size."
+ *
+ * A business policy, invented. "Do you have a minimum?" is one of the answers
+ * Hatch curates precisely because it is real and varies.
+ */
+describe("the model is told what it does not know, FAQs or not", () => {
+  const cfg = {
+    persona_name: "Emily", persona_role: "an estimator coordinator",
+    required_flow: ["project details", "full address", "contact information", "appointment availability"],
+    services_included: "Interior and exterior painting.", services_excluded: "Anything that is not painting.",
+    offsite_rules: null, tone_rules: null, office_location: null,
+    service_area_note: null, confidence_threshold: 0.95,
+  };
+
+  it("says so even when the workspace has no FAQs at all", () => {
+    const prompt = buildSystemPrompt(cfg, [], "new_lead");
+    expect(prompt).toMatch(/WHAT YOU DO NOT KNOW/);
+    expect(prompt).toMatch(/find out rather than answering/i);
+  });
+
+  it("names the facts it would otherwise guess", () => {
+    const prompt = buildSystemPrompt(cfg, [], "new_lead");
+    for (const fact of [/insured/i, /minimum job size/i, /warrant/i, /payment terms/i]) {
+      expect(prompt, String(fact)).toMatch(fact);
+    }
+  });
+
+  it("is there on the nurture track too", () => {
+    expect(buildSystemPrompt(cfg, [], "nurture")).toMatch(/WHAT YOU DO NOT KNOW/);
+  });
+
+  it("and the FAQ section still adds its own version when there ARE answers", () => {
+    expect(faqsForPrompt([{ question: "Are you insured?", answer: "Yes, fully licensed and insured." }]))
+      .toMatch(/find out rather than guessing/i);
   });
 });

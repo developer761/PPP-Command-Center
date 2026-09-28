@@ -319,6 +319,21 @@ const CHAINS = [
       // form, and the first attempt wrote it as a negative lookahead that
       // only ever examined the first line of the file.
       ["lib/messaging/workspace-faq.ts", /ONLY WHEN ASKED/],
+      /**
+       * AND THE INSTRUCTION NOT TO GUESS IS UNCONDITIONAL.
+       *
+       * "If nothing here covers it, say you will find out rather than
+       * guessing" lived INSIDE faqsForPrompt, which returns "" when a
+       * workspace has no FAQs — which is every workspace today. So the one
+       * instruction that stops the model inventing PPP's business shipped only
+       * with the feature that was supposed to make it unnecessary.
+       *
+       * Asked "are you licensed and insured? and do you have a minimum job
+       * size?" against an empty table, the bot replied "Yes, we're fully
+       * licensed and insured, and there's no minimum job size." It invented a
+       * business policy.
+       */
+      ["lib/messaging/agent-run.ts", /WHAT YOU DO NOT KNOW/],
       // AND IT MUST NOT THROW. This loader is on the per-turn hot path, where a
       // failed read takes the whole draft down and costs the customer their
       // reply — over a knowledge base whose absence is simply yesterday's
