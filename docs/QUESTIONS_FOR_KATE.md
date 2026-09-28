@@ -6,16 +6,22 @@
 > **2** (follow A6, drop "tenants" from A3), **10** (the A44 ending), and
 > **4** (A25's callback cadence, change type WORDING).
 >
-> **Two say only "Checking with Mac/Jasmine", and I could not tell which
-> items they belong to.** The summary table below is stale — it still lists 5
-> as blocking and 5 was closed by us before the list went out — so position in
-> her reply does not identify them. Worth confirming with her, but nothing
-> waits on it.
+> **The two "Checking with Mac/Jasmine" replies landed later the same day**,
+> and were items **5** (the park default — the one she called blocking) and
+> **9** (A46's Spanish). Both are now answered and both are built:
 >
-> **A46's Spanish wording (9) is settled anyway.** Karan, 2026-09-28: *"the
-> spanish we cna keep it doesnt hurt"* — we keep what is shipped. It is an
-> approved-copy sign-off we would like, not a correctness question, and
-> nothing changes either way.
+> - **5** — parks get their own cadence, 3/6/9 days rather than the stall's
+>   1/2/3. Two of her three park cases are still open and are written up on
+>   the item; neither is guessed at.
+> - **9** — Mac and Jasmine asked for **no inverted punctuation** in Spanish.
+>   Not a typographic preference: they said `¿` reads as a flag that the
+>   customer is not talking to a Spanish speaker. Stripped from every outbound
+>   string and from the prompt, with the inbound detection left alone — a
+>   customer writing "¿Cuánto cuesta?" is still how we know to answer in
+>   Spanish.
+>
+> This supersedes Karan's earlier "the spanish we cna keep it doesnt hurt":
+> that was about the register, before Mac and Jasmine's specific note arrived.
 >
 > Separate threads: **Voice** — answered Saturday. **Photos** — roughly 125 a
 > month, tracked only since the start of June, so that is one quarter's
@@ -29,21 +35,24 @@ shipped, chosen to be the safe or the conservative reading. Each entry says
 what we do today and what would change if she says otherwise, so she can
 answer fast and nothing has to wait on her.
 
-## The five that actually need her
+## What is actually left — updated 2026-09-28
 
-Eleven were raised; the Iteration 1 spec closed five of them and one turned
-out to be PPP's commercial call, not a rules question. What is genuinely left:
+All five she was asked are **answered**, and the answers are built. This table
+was stale for a day and cost real time working out which reply belonged to
+which item, so it is now kept current rather than as a record of the original
+ask.
 
-| # | Question | Weight |
+| # | Question | State |
 |---|---|---|
-| **5** | **What a park defaults to when no time is named** | **BLOCKING** — the spec says "do not pick one", so parking cannot ship without it |
-| 2 | A3 and A6 contradict each other on "tenant" | Real conflict between two live rules; it changes routing |
-| 9 | A46's approved strings are English only | A30 says we answer Spanish; A46 says never deny being a bot |
-| 10 | Which closing lines come out of A44 | `schedule_follow_up` is also A40's park and A25's phone branch |
-| 4 | A25's corrective_action contradicts her own rule card | Data tidy-up; it is what the rater grades against |
+| 5 | What a park defaults to when no time is named | **ANSWERED** — park cadence built; two sub-cases still open, see the item |
+| 2 | A3 and A6 contradict each other on "tenant" | **ANSWERED** — code was already right; one SQL statement for Karan, and Kate must edit her sheet |
+| 9 | A46's approved strings are English only | **ANSWERED** — no inverted punctuation; built |
+| 10 | Which closing lines come out of A44 | **ANSWERED** — our ending confirmed; follow-up wording waits on her copy |
+| 4 | A25's corrective_action contradicts her own rule card | **ANSWERED** — we had the handoff backwards; rebuilt |
 
-Only **5** stops work. The other four have a shipped default and can be
-answered whenever.
+**Open, and waiting on her:** the A7 note behind the two-week event park (5),
+the final follow-up verbiage (10), the bare "our building" — now answered,
+see item 2 — plus 13 and 14, which were never in this five.
 
 ---
 
@@ -171,12 +180,16 @@ yes, on the cost of being wrong. Everything else in item 2 is settled.
 
 </details>
 
-> **Still open after her 2026-09-28 answer:** the bare *"our building"*
-> sub-case above. She answered the tenant conflict and not this, which is fair
-> — it was a sub-question inside a longer item and easy to miss. We keep
-> routing it commercial, on the asymmetry: reading it as commercial costs an
-> estimator visit, reading it as residential can send a commercial job down a
-> path A6 says must never price it. Worth putting to her again on its own.
+> **The bare "our building" sub-case is ANSWERED too**, 2026-09-28:
+>
+> *"Yes, I'd say that's a good indicator for commercial or a project the guys
+> should see in person!"*
+>
+> Which is what we built, and her phrasing is worth keeping: the outcome she
+> cares about is **someone seeing it in person**, with "commercial" being one
+> route to that rather than the point in itself. `isCommercial` returning true
+> sends it onsite, so the label and the outcome agree here — but if the two
+> ever come apart, in person is the half to preserve.
 
 ## 3. ~~A36 — whose clock, and does it cover replies?~~ — CLOSED, no need to ask
 
@@ -309,7 +322,50 @@ against a line that contradicts the rule above it.
 
 ---
 
-## 5. ~~A40 — what to park without naming a time~~ — ANSWERED OURSELVES
+## 5. A40 — what to park without naming a time — **ANSWERED 2026-09-28**
+
+> **Kate, 2026-09-28.** This was the one item she called blocking.
+>
+> *"I think a parking cadence would make sense here because the CC has a
+> varied approach and the stalled convo cadence wouldn't kick in on these."*
+>
+> She then splits parks into three, which we had been treating as one:
+>
+> | park | what she wants | built? |
+> |---|---|---|
+> | **Bare deferral** — "I'll get back to you", "once I've spoken to my wife", "not ready yet", "still deciding on scope" | follow up at **2-3 days, three times**, then tell the call centre it may resume calling | **YES, 2026-09-28** |
+> | **Blocked on a named event** — moving, closing, insurance, no power, travelling | **2 weeks**; she notes this "is already covered by a rule you have" | **not yet** — see below |
+> | **Explicitly asks us to stop chasing** | hand to the call centre | **not yet** |
+>
+> And on our proposal: *"Your 3 days was right for the first nudge; the change
+> is not declaring a stall straight after it."*
+>
+> **What was wrong.** Both a stall and a park went down the same cadence —
+> chased the next morning, then daily. Somebody who said "let me speak to my
+> wife" got a nudge the following day, which is the rudeness A40 exists to
+> prevent. The ending was already right: three messages, then the resume
+> signal. Only the spacing was wrong.
+>
+> **Now:** a park is chased on day 3, 6 and 9 of the customer's calendar,
+> against the stall's 1, 2, 3. Same three messages, same hours, same ending.
+> Pinned with a wiring chain, because two cadences that differ only in spacing
+> are exactly the kind of thing that reverts without anything looking broken.
+>
+> **Still to do, and neither is guessed at:**
+>
+> 1. **The named-event park at 2 weeks.** She says a rule already covers it,
+>    pointing at "the A7 note below" — we do not have that note, so we do not
+>    know which rule she means. `parkReopenAt` already schedules a re-open
+>    when a customer names a *day*, and MAX_PARK_DAYS is 120, so the mechanism
+>    exists; what is missing is recognising "we're closing on the 14th" or
+>    "once the insurance pays out" as a two-week park rather than a bare
+>    deferral. **Ask her for the A7 note before building it.**
+> 2. **"Stop chasing" → the call centre.** Today that reads as A17 and ends
+>    the conversation rather than handing it on. Small, but it changes who
+>    owns the lead, so it wants confirming alongside item 14, which is the
+>    same question about a different phrasing.
+
+<details><summary>our earlier reasoning, kept for the record</summary>
 
 > **CLOSED 2026-09-27**, from Hatch's own configuration plus a defect we found
 > tracing it. Kept here because the behaviour changed.
@@ -341,6 +397,8 @@ shape as Hatch.
 
 **→ Nothing needed from her** unless she wants the no-time park to reach a
 person instead of the cadence. Worth one line of confirmation, not a blocker.
+
+</details>
 
 ## 6. Sign-off on two pieces of wording
 

@@ -54,6 +54,43 @@ export const FOLLOW_UP_HOURS = [10, 15, 18] as const;
 export const FOLLOW_UP_COUNT = FOLLOW_UP_HOURS.length;
 
 /**
+ * A STALL AND A PARK ARE NOT THE SAME SILENCE, AND GET DIFFERENT CADENCES.
+ *
+ * Kate, 2026-09-28, answering the one question that was blocking:
+ *
+ *   "I think a parking cadence would make sense here because the CC has a
+ *    varied approach and the stalled convo cadence wouldn't kick in on
+ *    these... Bare deferral — 'I'll get back to you', 'once I've spoken to
+ *    my wife', 'not ready yet', 'still deciding on scope'. Follow up at 2-3
+ *    days, three times, then notify the call centre it can resume calling.
+ *    Your 3 days was right for the first nudge; the change is not declaring
+ *    a stall straight after it."
+ *
+ * A stall is somebody who went quiet mid-answer: chase tomorrow, then daily.
+ * A park is somebody who TOLD us they need time, and chasing them tomorrow is
+ * the rudeness A40 exists to prevent.
+ *
+ * ── WHY THESE NUMBERS AND NOT [3, 6, 9] ─────────────────────────────────
+ *
+ * These are days after the SWEEP picks the conversation up, and the sweep
+ * only sees it once it has been quiet for QUIET_HOURS_BEFORE_STALL — a day.
+ * So on the customer's calendar:
+ *
+ *   day 0  they park
+ *   day 1  the sweep sees it and queues the cadence
+ *   day 3  first nudge      ← Kate's "3 days was right for the first nudge"
+ *   day 6  second
+ *   day 9  third, then the call centre is told it may resume calling
+ *
+ * Writing [3, 6, 9] here would put the first nudge on day four. The offset
+ * belongs in the arithmetic rather than in a comment apologising for it.
+ */
+export const PARK_FOLLOW_UP_DAYS = [2, 5, 8] as const;
+
+/** A stall is chased on consecutive days: tomorrow, then the two after. */
+export const STALL_FOLLOW_UP_DAYS = [1, 2, 3] as const;
+
+/**
  * Endings that mean the conversation finished rather than went quiet.
  *
  * Read as INTENTS rather than from the customer's words, because Kate's own
@@ -234,13 +271,24 @@ export function followUpSchedule(input: {
    * that genuinely wants a backdated cadence can still ask for one.
    */
   notBefore?: Date;
+  /**
+   * How many days after the anchor each follow-up lands.
+   *
+   * Defaults to the stall cadence. A park passes PARK_FOLLOW_UP_DAYS, which
+   * is the whole difference between the two — same three messages, same
+   * hours, same ending, spaced for somebody who asked for time rather than
+   * somebody who went quiet.
+   */
+  days?: readonly number[];
 }): Date[] {
   const anchor = input.notBefore && input.notBefore.getTime() > input.from.getTime()
     ? input.notBefore
     : input.from;
+  const days = input.days ?? STALL_FOLLOW_UP_DAYS;
   const out: Date[] = [];
-  for (let day = 1; day <= FOLLOW_UP_COUNT; day++) {
-    const target = atLocalHour(anchor, input.customerZone, day, FOLLOW_UP_HOURS[day - 1]);
+  for (let i = 0; i < days.length; i++) {
+    const day = days[i];
+    const target = atLocalHour(anchor, input.customerZone, day, FOLLOW_UP_HOURS[i]);
     if (!target) continue;
     const placed = shiftIntoWindow({
       target, customerZone: input.customerZone,

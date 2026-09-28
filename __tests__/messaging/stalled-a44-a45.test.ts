@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isStalled, followUpSchedule, shiftIntoWindow, FOLLOW_UP_HOURS, FOLLOW_UP_COUNT,
+  PARK_FOLLOW_UP_DAYS,
 } from "@/lib/messaging/stalled";
 import {
   pauseOnReply, resumeAfterCadence, readsAsADisposition,
@@ -318,5 +319,76 @@ describe("a park that scheduled nothing is not a proper ending", () => {
       lastTurnWasBot: true, everHadHuman: true,
       lastIntent: "schedule_follow_up", nothingScheduled: true,
     })).toBe(false);
+  });
+});
+
+/**
+ * ── A PARK IS NOT A STALL, AND IS NOT CHASED LIKE ONE ───────────────────
+ *
+ * Kate, 2026-09-28, answering the one question that was blocking:
+ *
+ *   "I think a parking cadence would make sense here because the CC has a
+ *    varied approach and the stalled convo cadence wouldn't kick in on
+ *    these... Bare deferral — 'I'll get back to you', 'once I've spoken to
+ *    my wife'... Follow up at 2-3 days, three times, then notify the call
+ *    centre it can resume calling. Your 3 days was right for the first
+ *    nudge; the change is not declaring a stall straight after it."
+ *
+ * Before this both went down the stall cadence: chased tomorrow, then daily.
+ * Somebody who said "let me speak to my wife" got a nudge the next morning.
+ */
+describe("the park cadence", () => {
+  const zone = "America/New_York";
+  const parkedAt = new Date("2026-09-01T15:00:00Z");
+  // The sweep sees it a day later, which is what QUIET_HOURS_BEFORE_STALL means.
+  const sweptAt = new Date("2026-09-02T15:00:00Z");
+
+  const daysBetween = (a: Date, b: Date) =>
+    Math.round((b.getTime() - a.getTime()) / 86_400_000);
+
+  it("still sends three, like a stall", () => {
+    const at = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
+    });
+    expect(at).toHaveLength(3);
+  });
+
+  it("puts the first nudge about three days after they parked", () => {
+    const at = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
+    });
+    // Kate: "Your 3 days was right for the first nudge."
+    const d = daysBetween(parkedAt, at[0]);
+    expect(d).toBeGreaterThanOrEqual(2);
+    expect(d).toBeLessThanOrEqual(4);
+  });
+
+  it("leaves two to three days between nudges, not one", () => {
+    const at = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
+    });
+    for (let i = 1; i < at.length; i++) {
+      const gap = daysBetween(at[i - 1], at[i]);
+      expect(gap, `gap ${i}`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("is slower than the stall cadence it used to share", () => {
+    // The regression this exists to prevent: a park quietly falling back to
+    // being chased tomorrow.
+    const park = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
+    });
+    const stall = followUpSchedule({ from: parkedAt, notBefore: sweptAt, customerZone: zone });
+    expect(park[0].getTime()).toBeGreaterThan(stall[0].getTime());
+    expect(stall).toHaveLength(3);
+  });
+
+  it("a stall is still chased on consecutive days", () => {
+    // The other half must not have moved.
+    const at = followUpSchedule({ from: parkedAt, notBefore: sweptAt, customerZone: zone });
+    for (let i = 1; i < at.length; i++) {
+      expect(daysBetween(at[i - 1], at[i]), `gap ${i}`).toBeLessThanOrEqual(2);
+    }
   });
 });

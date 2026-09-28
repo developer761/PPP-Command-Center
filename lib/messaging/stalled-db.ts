@@ -22,7 +22,7 @@
  * untouched by every path in this file.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isStalled, followUpSchedule, FOLLOW_UP_COUNT } from "./stalled";
+import { isStalled, followUpSchedule, FOLLOW_UP_COUNT, PARK_FOLLOW_UP_DAYS } from "./stalled";
 import { pauseOnReply, resumeAfterCadence, type CallSignal } from "./call-signals";
 import { customerZone } from "./customer-clock";
 import { selectAll } from "./paging";
@@ -125,7 +125,21 @@ export async function sweepStalled(
     if ((existing ?? 0) > 0) { note("cadence already queued"); continue; }
 
     const zone = customerZone({ phone: c.customer_phone }).timeZone;
+    /**
+     * A PARK GETS THE PARK CADENCE.
+     *
+     * Kate, 2026-09-28: "a parking cadence would make sense here because the
+     * CC has a varied approach and the stalled convo cadence wouldn't kick in
+     * on these."
+     *
+     * `nothingScheduled` already IS this conversation: the last thing we said
+     * was schedule_follow_up and no re-open was queued behind it, so the
+     * customer told us they need time and named none. Chasing them tomorrow,
+     * which the stall cadence does, is the rudeness A40 exists to prevent.
+     */
+    const parked = lastMsg.agent_intent === "schedule_follow_up" && nothingScheduled;
     const at = followUpSchedule({
+      days: parked ? PARK_FOLLOW_UP_DAYS : undefined,
       from: new Date(c.last_message_at ?? now.toISOString()),
       // A conversation that has been quiet for weeks still gets its cadence
       // from TODAY. Without this the three instants are all historical, land

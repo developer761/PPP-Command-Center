@@ -446,6 +446,25 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A40 — a park is chased on the PARK cadence, not the stall one",
+    why:
+      "Kate, 2026-09-28: 'a parking cadence would make sense here because the CC has a varied " +
+      "approach and the stalled convo cadence wouldn't kick in on these.' Both used to go down " +
+      "the stall cadence, so somebody who said 'let me speak to my wife' was nudged the next " +
+      "morning, which is the rudeness A40 exists to prevent. The two differ only in spacing — " +
+      "exactly the kind of difference that reverts without anything looking broken",
+    links: [
+      ["lib/messaging/stalled.ts", /PARK_FOLLOW_UP_DAYS/],
+      ["lib/messaging/stalled.ts", /days\?: readonly number\[\]/],
+      // It has to be CHOSEN at the sweep, not merely defined.
+      ["lib/messaging/stalled-db.ts", /days: parked \? PARK_FOLLOW_UP_DAYS/],
+      // ...and `parked` has to mean a park: schedule_follow_up with nothing
+      // queued behind it. Keyed on the intent alone this would also catch a
+      // park that DID name a day and already has its re-open.
+      ["lib/messaging/stalled-db.ts", /const parked =[\s\S]{0,120}nothingScheduled/],
+    ],
+  },
+  {
     rule: "A2 — the lookup's verdict reaches the MODEL, not only the validator",
     why:
       "the prompt says to choose area_not_serviced 'when the state itself is one we do not " +
