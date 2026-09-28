@@ -119,6 +119,36 @@ export function resumeAfterCadence(input: {
 }
 
 /**
+ * HANDING IT BACK WITHOUT HAVING CHASED AT ALL.
+ *
+ * A40, Kate 2026-09-28: "A CUSTOMER WHO ASKS NOT TO BE CHASED GETS NO
+ * CADENCE. Hand the conversation to the call centre and leave it. Following
+ * up is the breach."
+ *
+ * The same kind of signal as the one above, and a different sentence, because
+ * that one says "our three follow-ups went unanswered" and here none was
+ * sent. Reusing it would tell the call centre we had chased somebody who
+ * asked us not to — and this note is the only record of why the conversation
+ * moved, so being wrong about what happened is worse than saying nothing.
+ *
+ * It also says what the request covered. Somebody who asked not to be chased
+ * by TEXT has not asked the call centre to stay away, and the note must not
+ * let anyone read it that way.
+ */
+export function resumeWithoutChasing(input: {
+  conversationId: string;
+  leadId: string | null;
+}): CallSignal {
+  return {
+    kind: "resume_calling",
+    leadId: input.leadId,
+    conversationId: input.conversationId,
+    note: "The customer asked us not to follow up, so no follow-ups were sent and the "
+      + "conversation is back with you. That was about the texting, not about calls.",
+  };
+}
+
+/**
  * A note that reads as a verdict on the lead is the failure the spec names.
  * Exported so the wording can be tested rather than trusted.
  */

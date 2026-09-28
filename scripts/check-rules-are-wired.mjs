@@ -456,12 +456,34 @@ const CHAINS = [
     links: [
       ["lib/messaging/stalled.ts", /PARK_FOLLOW_UP_DAYS/],
       ["lib/messaging/stalled.ts", /days\?: readonly number\[\]/],
-      // It has to be CHOSEN at the sweep, not merely defined.
-      ["lib/messaging/stalled-db.ts", /days: parked \? PARK_FOLLOW_UP_DAYS/],
+      // It has to be CHOSEN at the sweep, not merely defined. Linked on the
+      // value reaching followUpSchedule rather than on the ternary that
+      // happened to carry it — this chain already went red once because the
+      // branch grew a third case and the punctuation moved.
+      ["lib/messaging/stalled-db.ts", /days: parkDays/],
+      ["lib/messaging/stalled-db.ts", /parkDays = [\s\S]{0,80}PARK_FOLLOW_UP_DAYS/],
       // ...and `parked` has to mean a park: schedule_follow_up with nothing
       // queued behind it. Keyed on the intent alone this would also catch a
       // park that DID name a day and already has its re-open.
       ["lib/messaging/stalled-db.ts", /const parked =[\s\S]{0,120}nothingScheduled/],
+      /**
+       * A40's other two cases, 2026-09-28. Both are absences — one sends
+       * nothing, the other waits a fortnight — and an absence is exactly what
+       * stops working without anything looking wrong.
+       */
+      ["lib/messaging/stalled-db.ts", /asksNotToBeChased\(said\)/],
+      ["lib/messaging/stalled-db.ts", /resumeWithoutChasing\(/],
+      ["lib/messaging/stalled-db.ts", /parkIsBlockedOnEvent\(said\)/],
+      ["lib/messaging/stalled.ts", /EVENT_PARK_FOLLOW_UP_DAYS/],
+    ],
+    forbidden: [
+      /**
+       * "Following up is the breach", so the no-chase path must not reuse the
+       * cadence-spent note — it says "our three follow-ups went unanswered",
+       * which would be a false account of what happened, in the only record
+       * of why the conversation moved.
+       */
+      ["lib/messaging/call-signals.ts", /resumeWithoutChasing[\s\S]{0,400}three follow-ups went unanswered/],
     ],
   },
   {

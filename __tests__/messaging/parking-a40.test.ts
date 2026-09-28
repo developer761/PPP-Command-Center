@@ -11,7 +11,7 @@
  * abandons the person who just did not know one answer.
  */
 import { describe, it, expect } from "vitest";
-import { parkKind, conversationWasDeferred, isAsk } from "@/lib/messaging/parking";
+import { parkKind, conversationWasDeferred, isAsk , asksNotToBeChased, parkIsBlockedOnEvent } from "@/lib/messaging/parking";
 import { validateAction } from "@/lib/messaging/agent-output";
 
 const act = (intent: string, over: Record<string, unknown> = {}) =>
@@ -189,5 +189,70 @@ describe("isAsk covers every collecting intent", () => {
     for (const i of ["schedule_follow_up", "acknowledge", "success", "bailout"]) {
       expect(isAsk(i), i).toBe(false);
     }
+  });
+});
+
+/**
+ * ── WHY THEY PARKED DECIDES THE WAIT ────────────────────────────────────
+ *
+ * A40, Kate 2026-09-28, splitting one case into three:
+ *
+ *   bare deferral      2-3 days, three times, then the call centre resumes
+ *   named event        two weeks, and run A7 first
+ *   "don't chase me"   no cadence at all — "following up is the breach"
+ */
+describe("a customer who asks not to be chased", () => {
+  it.each([
+    "please don't follow up, I'll come to you",
+    "no need to chase me",
+    "no follow ups please",
+    "stop checking in, I'll let you know",
+    "don't keep checking in on this",
+    "leave it with me",
+  ])("recognises %j", (t) => {
+    expect(asksNotToBeChased(t)).toBe(true);
+  });
+
+  /**
+   * The line that matters: an ordinary deferral is on Kate's bare-deferral
+   * list and DOES get three nudges. Reading it as "don't chase" would drop a
+   * lead she expects us to follow up.
+   */
+  it.each([
+    "I'll get back to you",
+    "once I've spoken to my wife",
+    "not ready yet",
+    "still deciding on scope",
+    "let me check with my husband and I'll let you know",
+  ])("does NOT read the ordinary deferral %j as it", (t) => {
+    expect(asksNotToBeChased(t)).toBe(false);
+  });
+
+  it("is not doing opt-out's job", () => {
+    // "Stop texting me" is A24 and is decided before the model is asked.
+    // This is somebody who still wants the work.
+    expect(asksNotToBeChased("")).toBe(false);
+  });
+});
+
+describe("a park blocked on a named event", () => {
+  it.each([
+    "we're moving in next month, can't do anything til then",
+    "waiting on the insurance to pay out",
+    "we close on the house in two weeks",
+    "there's no power at the property yet",
+    "I'm travelling at the moment",
+    "we're out of town until the 20th",
+  ])("recognises %j", (t) => {
+    expect(parkIsBlockedOnEvent(t)).toBe(true);
+  });
+
+  it.each([
+    "I'll get back to you",
+    "once I've spoken to my wife",
+    "not ready yet",
+    "still deciding on scope",
+  ])("does NOT read the bare deferral %j as an event", (t) => {
+    expect(parkIsBlockedOnEvent(t)).toBe(false);
   });
 });

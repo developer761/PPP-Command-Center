@@ -137,6 +137,22 @@ function languagePrompt(language: Language): string {
     "Write it the way a person texts, not the way it is printed: no opening",
     "¿ or ¡, ever. A question simply ends in ?. Correct inverted",
     "punctuation reads as a translation rather than a person.",
+    /**
+     * A21 as Kate reissued it on 2026-09-28: "THIS RULE BINDS IN EVERY
+     * LANGUAGE, NOT ONLY ENGLISH... Use informal, casual vocabulary and
+     * relaxed grammar in that language, the way a person texting would write
+     * it. Correct-but-formal prose reads as a template or a translation,
+     * which is the same persona failure that formal English is."
+     *
+     * Said to the model rather than rewritten into the templates, for the
+     * register itself. Which words are casual in Spanish is a native
+     * speaker's judgement, and the templates were written by one; guessing at
+     * replacements would be the "translation" failure this rule names,
+     * arriving by a different route.
+     */
+    "Same for the words themselves: casual and everyday, the way somebody",
+    "texts, not the way a letter is written. Keep usted, which is courtesy",
+    "rather than stiffness, but drop the formal furniture around it.",
     "for the rest of the conversation even when they send a short reply like",
     "\"ok\" — never switch back partway through.",
     "Do NOT choose `transferred` because of the language. We answer Spanish now.",
@@ -267,6 +283,14 @@ estimator is, whether we can start next week — you do NOT know, however
 confidently you could guess it. Say you will find out rather than answering.
 A wrong answer about PPP's business is worse than a short wait, because the
 customer will hold us to it.
+
+WAITING ON SOMETHING WITH A DATE OF ITS OWN. If what is blocking them is an
+EVENT rather than a decision — moving in, a closing, an insurance payout, no
+power at the property yet, travelling — do NOT park it straight away. Offer
+the visit for WHEN THEY WILL have access first. Only if they will not wait
+does the quick quote come up, and only if they turn both down is it parked.
+Somebody who says "we move in on the 14th" is telling you when they are
+ready, not asking you to go away.
 
 MORE THAN ONE PROPERTY. If they mention a second place, take them ONE AT A
 TIME: finish the whole flow for the first property, then start again for the

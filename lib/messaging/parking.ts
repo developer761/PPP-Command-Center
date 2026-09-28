@@ -109,6 +109,80 @@ const WAITING_ON_SOMEBODY =
   /\b(?:waiting\s+on|talk\s+(?:to|with)|check\s+with|speak\s+(?:to|with)|ask|run\s+it\s+by|confirm\s+with)\b[^.?!]{0,20}\b(?:my|our|the)\s+(?:wife|husband|spouse|partner|landlord|tenants?|board|hoa|manager|boss|family|son|daughter|mother|father|mom|dad|roommate|co-?owner)\b/i;
 
 /**
+ * "DON'T CHASE ME" — A PARK THAT GETS NO CADENCE AT ALL.
+ *
+ * A40, Kate 2026-09-28: "A CUSTOMER WHO ASKS NOT TO BE CHASED GETS NO
+ * CADENCE. Hand the conversation to the call centre and leave it. Following
+ * up is the breach."
+ *
+ * So this is not a gentler park. It is the one case where the follow-ups
+ * themselves are the defect, and it has to be told apart from the ordinary
+ * deferral that DOES get chased — "I'll get back to you" is on her list of
+ * bare deferrals and gets three nudges.
+ *
+ * The line is an explicit instruction not to follow up. Somebody saying they
+ * will come back to us has said what THEY will do; somebody saying "no need
+ * to chase me" has said what WE must not. Only the second is here, which is
+ * why this wants a negation or a "no need" rather than the verb alone.
+ *
+ * NOT an opt-out, and it does not try to be. "Stop texting me" is A24 and is
+ * decided before the model is asked at all — see compliance.ts. This is
+ * somebody who still wants the work and does not want to be nudged about it.
+ */
+const ASKS_NOT_TO_BE_CHASED = new RegExp(
+  [
+    String.raw`\b(?:do\s*n[o']?t|dont|don['’]t|no\s+need\s+to|there['’]?s\s+no\s+need\s+to)\b[^.?!]{0,25}\b(?:chase|chasing|follow\s*up|following\s*up|check\s*in|checking\s*in|remind|reach\s+out|contact\s+me|message\s+me)\b`,
+    String.raw`\bno\s+(?:more\s+)?(?:follow[\s-]*ups?|reminders?|chasing)\b`,
+    String.raw`\bstop\s+(?:chasing|following\s*up|checking\s*in)\b`,
+    String.raw`\bleave\s+it\s+with\s+me\b`,
+  ].join("|"),
+  "i"
+);
+
+/**
+ * Did they ask us not to follow up?
+ *
+ * Separate from parkKind because it changes nothing about what the TURN
+ * says — it changes what happens afterwards, which is nothing at all. The
+ * sweep reads this before queueing a cadence.
+ */
+export function asksNotToBeChased(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return ASKS_NOT_TO_BE_CHASED.test(t);
+}
+
+/**
+ * BLOCKED ON A NAMED EVENT, which waits two weeks rather than two days.
+ *
+ * A40, Kate 2026-09-28: "BLOCKED ON A NAMED EVENT - moving, a closing, an
+ * insurance payout, no power at the property, travelling. TWO WEEKS."
+ *
+ * The distinction from a bare deferral is whether the thing in the way has a
+ * name and a clock of its own. "I'm not ready yet" is a state of mind and is
+ * chased in days; "we close on the house in a fortnight" is an event, and
+ * nudging that customer on Thursday achieves nothing.
+ */
+const BLOCKED_ON_AN_EVENT = new RegExp(
+  [
+    String.raw`\bmov(?:e|es|ing|ed)\b[^.?!]{0,20}\b(?:in|out|house|home|place|apartment|there)\b`,
+    String.raw`\bclos(?:e|ing)\b[^.?!]{0,20}\b(?:on\s+the\s+)?(?:house|home|property|place)\b`,
+    String.raw`\b(?:insurance|adjuster|claim)\b[^.?!]{0,30}\b(?:pay|payout|pays|settle|settles|approve|approves|come\s+through|process)\w*\b`,
+    String.raw`\bwaiting\s+on\s+(?:the\s+)?(?:insurance|adjuster|closing|settlement|claim)\b`,
+    String.raw`\bno\s+(?:power|electric|electricity|water)\b`,
+    String.raw`\b(?:travelling|traveling|out\s+of\s+town|on\s+holiday|on\s+vacation|abroad)\b`,
+  ].join("|"),
+  "i"
+);
+
+/** Is this park waiting on a named event rather than on the customer? */
+export function parkIsBlockedOnEvent(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return BLOCKED_ON_AN_EVENT.test(t);
+}
+
+/**
  * Which kind of park this message is, or null when it is neither.
  *
  * Order is the rule. A decline wins over everything (A17 owns it); a

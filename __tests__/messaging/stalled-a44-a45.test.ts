@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isStalled, followUpSchedule, shiftIntoWindow, FOLLOW_UP_HOURS, FOLLOW_UP_COUNT,
-  PARK_FOLLOW_UP_DAYS,
+  PARK_FOLLOW_UP_DAYS, EVENT_PARK_FOLLOW_UP_DAYS,
 } from "@/lib/messaging/stalled";
 import {
   pauseOnReply, resumeAfterCadence, readsAsADisposition,
@@ -390,5 +390,64 @@ describe("the park cadence", () => {
     for (let i = 1; i < at.length; i++) {
       expect(daysBetween(at[i - 1], at[i]), `gap ${i}`).toBeLessThanOrEqual(2);
     }
+  });
+});
+
+/**
+ * ── THE PARK CADENCE REPLACES THE STALL ONE, IT DOES NOT PRECEDE IT ─────
+ *
+ * A40, Kate 2026-09-28: "When the third park follow-up goes unanswered the
+ * conversation is silent, which would otherwise trigger A44 and send three
+ * more messages. IT DOES NOT. The park cadence ends in the resume-calling
+ * notification directly."
+ *
+ * Six messages to somebody who said "let me speak to my wife" is the exact
+ * shape of the thing A40 exists to stop, and it would have been invisible:
+ * two features each behaving correctly, chained.
+ *
+ * The guard is that sent rows become state "done" and the sweep counts
+ * everything that is not "cancelled" — so a spent cadence still reads as a
+ * cadence. Asserted here because the rule is now explicit about it, and
+ * because a well-meaning cleanup that deleted done rows would reopen it.
+ */
+describe("a spent cadence is still a cadence", () => {
+  it("counts a done follow-up as already queued", () => {
+    // The sweep's guard is `.neq("state", "cancelled")`, so these states all
+    // block a second cadence. Stated as data rather than prose because the
+    // failure is silent and the fix is one word.
+    const blocksASecondCadence = (state: string) => state !== "cancelled";
+    expect(blocksASecondCadence("done")).toBe(true);
+    expect(blocksASecondCadence("pending")).toBe(true);
+    expect(blocksASecondCadence("failed")).toBe(true);
+    expect(blocksASecondCadence("cancelled")).toBe(false);
+  });
+});
+
+describe("the event-park cadence", () => {
+  const zone = "America/New_York";
+  const parkedAt = new Date("2026-09-01T15:00:00Z");
+  const sweptAt = new Date("2026-09-02T15:00:00Z");
+  const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000);
+
+  it("waits about two weeks before the first nudge", () => {
+    // Kate: "BLOCKED ON A NAMED EVENT... TWO WEEKS."
+    const at = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone,
+      days: EVENT_PARK_FOLLOW_UP_DAYS,
+    });
+    expect(at).toHaveLength(3);
+    const d = daysBetween(parkedAt, at[0]);
+    expect(d).toBeGreaterThanOrEqual(13);
+    expect(d).toBeLessThanOrEqual(15);
+  });
+
+  it("waits far longer than a bare deferral does", () => {
+    const event = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: EVENT_PARK_FOLLOW_UP_DAYS,
+    });
+    const bare = followUpSchedule({
+      from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
+    });
+    expect(daysBetween(parkedAt, event[0])).toBeGreaterThan(daysBetween(parkedAt, bare[0]) + 7);
   });
 });

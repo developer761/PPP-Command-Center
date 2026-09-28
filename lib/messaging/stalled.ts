@@ -91,6 +91,29 @@ export const PARK_FOLLOW_UP_DAYS = [2, 5, 8] as const;
 export const STALL_FOLLOW_UP_DAYS = [1, 2, 3] as const;
 
 /**
+ * A PARK BLOCKED ON A NAMED EVENT WAITS TWO WEEKS FIRST.
+ *
+ * Kate, 2026-09-28: "BLOCKED ON A NAMED EVENT - moving, a closing, an
+ * insurance payout, no power at the property, travelling. TWO WEEKS."
+ *
+ * ── THE READING, AND THE BIT SHE DID NOT SAY ────────────────────────────
+ *
+ * She gives the WAIT and not the count, and her framing is "the wait depends
+ * on WHY" — so what changes is how long we leave it, not how many times we
+ * come back. This keeps her three nudges and moves the first to a fortnight,
+ * then falls back to the bare-deferral spacing once the event has passed.
+ *
+ * The alternative reading is three nudges a fortnight apart, which would
+ * chase somebody for six weeks. That is a long time to keep a thread open on
+ * an inference, so the shorter reading is built and the question is written
+ * down in QUESTIONS_FOR_KATE rather than settled here.
+ *
+ * Offsets are from the sweep, which sees the conversation a day after the
+ * park — same convention as PARK_FOLLOW_UP_DAYS, so 13 lands on day 14.
+ */
+export const EVENT_PARK_FOLLOW_UP_DAYS = [13, 16, 19] as const;
+
+/**
  * Endings that mean the conversation finished rather than went quiet.
  *
  * Read as INTENTS rather than from the customer's words, because Kate's own

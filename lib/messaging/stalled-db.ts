@@ -22,8 +22,12 @@
  * untouched by every path in this file.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isStalled, followUpSchedule, FOLLOW_UP_COUNT, PARK_FOLLOW_UP_DAYS } from "./stalled";
-import { pauseOnReply, resumeAfterCadence, type CallSignal } from "./call-signals";
+import {
+  isStalled, followUpSchedule, FOLLOW_UP_COUNT,
+  PARK_FOLLOW_UP_DAYS, EVENT_PARK_FOLLOW_UP_DAYS,
+} from "./stalled";
+import { asksNotToBeChased, parkIsBlockedOnEvent } from "./parking";
+import { pauseOnReply, resumeAfterCadence, resumeWithoutChasing, type CallSignal } from "./call-signals";
 import { customerZone } from "./customer-clock";
 import { selectAll } from "./paging";
 
@@ -138,8 +142,50 @@ export async function sweepStalled(
      * which the stall cadence does, is the rudeness A40 exists to prevent.
      */
     const parked = lastMsg.agent_intent === "schedule_follow_up" && nothingScheduled;
+
+    /**
+     * WHY they parked decides the wait, and one answer is "do not wait, do
+     * not chase at all".
+     *
+     * Read from the customer's own last words, which the sweep does not
+     * otherwise hold — it reads the last MESSAGE, and on a stalled thread
+     * that is ours. One extra query, and only for a park, so the ordinary
+     * sweep is unchanged.
+     */
+    let parkDays: readonly number[] | undefined;
+    if (parked) {
+      const { data: lastIn } = await sb.from("sms_messages")
+        .select("body")
+        .eq("conversation_id", c.id)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const said = (lastIn?.[0]?.body as string | undefined) ?? "";
+
+      /**
+       * A40: "A CUSTOMER WHO ASKS NOT TO BE CHASED GETS NO CADENCE. Hand the
+       * conversation to the call centre and leave it. FOLLOWING UP IS THE
+       * BREACH."
+       *
+       * So this is not a shorter cadence — it is none, and the resume signal
+       * goes straight out. Queueing three messages here would be the defect
+       * the rule names.
+       */
+      if (asksNotToBeChased(said)) {
+        await recordSignal(sb, resumeWithoutChasing({
+          conversationId: c.id, leadId: c.sf_lead_id,
+        }));
+        note("asked not to be chased — handed to the call centre");
+        continue;
+      }
+
+      parkDays = parkIsBlockedOnEvent(said)
+        ? EVENT_PARK_FOLLOW_UP_DAYS
+        : PARK_FOLLOW_UP_DAYS;
+    }
+
     const at = followUpSchedule({
-      days: parked ? PARK_FOLLOW_UP_DAYS : undefined,
+      days: parkDays,
       from: new Date(c.last_message_at ?? now.toISOString()),
       // A conversation that has been quiet for weeks still gets its cadence
       // from TODAY. Without this the three instants are all historical, land
