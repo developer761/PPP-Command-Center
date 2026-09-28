@@ -209,3 +209,35 @@ ends both branches, which Kate calls the defect.
 
 Gaps 2, 3 and 4 are the ones most likely to produce a visibly wrong message
 to a real customer, so they go first.
+
+---
+
+## Gap 10 — the customer's NAME is still kept nowhere (open, 2026-09-28)
+
+`sms_conversations.customer_name` is written once at enrolment and never
+again — the same hole `inquiry_scope`, `customer_address` and (as of
+2026-09-28) `customer_email` each had. All three of those are now captured
+from the thread. **The name is not**, deliberately.
+
+The bot asks for both at once — *"Can I grab your name and email for the
+quote?"* — so a customer answering "Tom Smith, tom@example.com" now has the
+email kept and the name dropped.
+
+**Why it was left:** an email is unambiguous and machine-checkable; a name is
+a judgement. "Tom Smith, tom@example.com" is easy, but "it's for my mother
+Jane", "Tom at number 12" and "Mrs. Rodriguez — her son is calling" are not,
+and a wrong name is worse than no name: it goes into `Hi {{customer_name}}`
+and the customer is greeted as somebody else on every later message.
+
+**What it costs today:** the merge field falls back, so greetings stay
+generic. It does NOT block the close — A3's contact leg reads email or phone,
+and the phone is always held.
+
+**The decision needed:** either
+(a) capture only the high-confidence shape — a name immediately beside the
+    email in a reply to `ask_contact`, nothing else — and leave the rest to a
+    person; or
+(b) have the office fill it, and accept generic greetings from the bot.
+
+Kate's call, because it is about what a customer gets called. Worth putting
+to her alongside items 6 and 9.
