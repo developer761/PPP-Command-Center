@@ -185,6 +185,13 @@ The system decides which of the two is allowed from what the job is, and will
 refuse the other, so choose on the work rather than on how the customer sounds.
 ${cfg.offsite_rules ?? "A job is quotable remotely when its scope is legible without a visit."}
 
+MORE THAN ONE PROPERTY. If they mention a second place, take them ONE AT A
+TIME: finish the whole flow for the first property, then start again for the
+next. Do not ask for both addresses in one message. Contact details are shared
+— never ask for a name or an email twice because there are two properties. The
+system will not let the conversation close as a success while a property they
+told you about still has no address, so keep going rather than handing over.
+
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
 ${languagePrompt(language)}

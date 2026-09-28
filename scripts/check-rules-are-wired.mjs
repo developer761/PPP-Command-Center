@@ -268,6 +268,16 @@ const CHAINS = [
       ["lib/messaging/agent-run.ts", /addressesHeld,/],
       // AND something must ask the question that unblocks the close.
       ["lib/messaging/render.ts", /askSecondPropertyAddress\(\)/],
+      /**
+       * AND THE MODEL HAS TO BE TOLD THE POLICY.
+       *
+       * Every part of parity 6 was enforcement — the close refusal, the A13
+       * carve-out, the ask sentence — and the prompt never mentioned a second
+       * property at all. Played in the simulator, a two-property opener scored
+       * 50% and then 45% and escalated both times: the model had no
+       * instruction, so it was right to be unsure, and the feature never ran.
+       */
+      ["lib/messaging/agent-run.ts", /MORE THAN ONE PROPERTY/],
       ["lib/messaging/agent-run.ts", /secondProperty: wantsSecondAddress/],
     ],
     forbidden: [
