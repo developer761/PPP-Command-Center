@@ -128,7 +128,27 @@ export function AiaApplicationDetail({
   const sovTotalCents = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
   const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
   const hasDrift = Math.abs(sovDriftCents) > 1;
-  const showSovDrift = editable && hasDrift;
+  /*
+   * THE WARNING WAS HIDDEN ON EXACTLY THE DOCUMENTS THAT NEEDED IT.
+   *
+   * This was `editable && hasDrift`, so a certificate that does not foot said
+   * so only while it was still a DRAFT — the one state where it is harmless,
+   * because nothing has been sent. The moment it was submitted or paid the
+   * warning disappeared, and those are the copies a GC is holding.
+   *
+   * On production today 7 of 26 applications do not foot, and four of them are
+   * past draft: two submitted and two PAID, off by $37,500, $37,500, $18,250
+   * and $8,383. Every one of them rendered a clean screen.
+   *
+   * `sovVarianceCents` in the G702 carries the same number and its docblock
+   * says it "is reported rather than quietly tolerated" — which was true of
+   * drafts and false of everything else.
+   *
+   * It shows on every status now. What changes is the ADVICE: a draft can be
+   * fixed in place, an issued certificate cannot, and telling somebody to "add
+   * a line below" on a locked document is advice they cannot take.
+   */
+  const showSovDrift = hasDrift;
 
   // Is this certificate frozen as issued, or still recomputing?
   const isFrozen = !editable && application.frozen_at != null;
@@ -168,9 +188,31 @@ export function AiaApplicationDetail({
       )}
 
       {showSovDrift && (
-        <div className="rounded-lg px-4 py-3 text-[12.5px] bg-amber-50 border border-amber-200 text-amber-800">
-          <span className="font-semibold">Schedule of values is off by {formatCentsFull(Math.abs(sovDriftCents))}.</span>{" "}
-          The scheduled-value total doesn&apos;t match the Contract Sum to Date (contract + approved change orders) — likely a change order approved after this application was created. Add a line for it below so the G702 and G703 foot to the same number before you send.
+        <div
+          className={`rounded-lg px-4 py-3 text-[12.5px] border ${
+            editable
+              ? "bg-amber-50 border-amber-200 text-amber-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          <span className="font-semibold">
+            Schedule of values is off by {formatCentsFull(Math.abs(sovDriftCents))}.
+          </span>{" "}
+          The scheduled-value total doesn&apos;t match the Contract Sum to Date
+          (contract + approved change orders), so the G702 and the G703 do not foot to
+          the same number — a GC&apos;s accounts-payable system can reject a certificate
+          for this.{" "}
+          {editable ? (
+            <>Likely a change order approved after this application was created. Add a line for it below so both sheets agree before you send.</>
+          ) : (
+            <>
+              This application is{" "}
+              <strong>{AIA_STATUS_META[application.status].label.toLowerCase()}</strong> and
+              cannot be edited, so the copy the GC holds is already out by this amount.
+              Check it against what was sent, and correct it on the next application
+              rather than restating one they have.
+            </>
+          )}
         </div>
       )}
 
