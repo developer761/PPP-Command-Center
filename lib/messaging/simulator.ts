@@ -25,6 +25,11 @@ import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type Turn } from "./agent-run";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
+import { loadWorkspaceFaqs } from "./workspace-faq-db";
+import { faqsForPrompt } from "./workspace-faq";
+import { addressParts } from "./address";
+import { serviceZipCheck } from "./service-zip";
+import { customerZone } from "./customer-clock";
 import { assertMessagingAccess } from "./auth";
 
 export type SimTurn = {
@@ -75,6 +80,34 @@ export async function runSimTurn(input: {
   track?: Track;
   /** How much of the required flow is already done. */
   stage?: number;
+  /**
+   * Every intent this conversation has used, oldest first.
+   *
+   * THE STAGE IS NOT A SUBSTITUTE FOR THIS, which is why the sandbox let a
+   * close through that production refuses. `stage` is a number and answers
+   * "how far along are we"; four guards in validateAction ask a different
+   * question — "what was actually asked and confirmed" — and every one of
+   * them is written `if (ctx.priorIntents && ...)`, so an absent field skips
+   * the check rather than failing it:
+   *
+   *   A3 legs      `success` when a step was never asked for at all
+   *   the record   `success` holding nothing, after a customer answered "ok"
+   *                to all four questions
+   *   A4           `success` on "Weekdays are better" — a day with no window,
+   *                which Kate says is NOT availability collected
+   *   A40          closing the conversation over a field the customer parked
+   *
+   * Seen 2026-09-28 in the sandbox: the full onsite flow, then "Weekdays are
+   * better", and the bot replied "Perfect, you're all set. Someone from the
+   * office will confirm the details with you." Production refuses that turn.
+   * The sandbox is where Kate and Karan GRADE the bot, so it was showing them
+   * a more permissive bot than the one that ships — and a reply marked "Good"
+   * there becomes an example the next model imitates.
+   *
+   * The caller already has the array: the panel renders an intent chip per
+   * turn and collapses the same list into `stage` on the line above.
+   */
+  priorIntents?: readonly string[];
   /** What the bot said last, so a negative reaction is not answered with it. */
   lastIntent?: string;
   /** What the system already holds about this customer. Kate asked for this
@@ -89,10 +122,25 @@ export async function runSimTurn(input: {
   // config lookup and the corpus load one after the other before the model was
   // even asked anything.
   const inboundShape = normalizeInbound(input.customerText, input.mediaCount ?? 0);
-  const [resolved, corpus, svc] = await Promise.all([
+  const [resolved, corpus, svc, faqs] = await Promise.all([
     agentConfigFor(input.workspaceId, track),
     loadRetrievalCorpus(),
     loadWorkspaceServices(input.workspaceId),
+    /**
+     * Parity gap 9: this workspace's standing answers.
+     *
+     * scheduler-db loads these every live turn and the sandbox loaded none, so
+     * the FAQ store could not be exercised in the one screen built for
+     * exercising the bot: a workspace could have an answer configured, the
+     * tester could ask the exact question it answers, and the sandbox would
+     * escalate — while production answers it.
+     *
+     * Only when a workspace is actually selected. "All workspaces" is a
+     * sandbox-only state with no counterpart in production, and standing
+     * answers belong to one workspace; loading nothing there is correct rather
+     * than a gap.
+     */
+    input.workspaceId ? loadWorkspaceFaqs(messagingDb(), input.workspaceId) : Promise.resolve([]),
   ]);
   if (!resolved) {
     return { ok: false, error: track === "nurture"
@@ -162,6 +210,30 @@ export async function runSimTurn(input: {
   const resolvedScope = derived.inquiryScope;
   const saidAddress = derived.address;
 
+  /**
+   * A2, WHICH THE SANDBOX COULD NOT TEST AT ALL.
+   *
+   * scheduler-db re-runs the zip check every live turn and passes the verdict;
+   * nothing passed it here, so `serviceArea` was permanently null and every
+   * rule hanging off it was inert in the one screen built to exercise them:
+   *
+   *   - the guard that refuses `area_not_serviced` when the zip IS serviced
+   *     never fired, so the sandbox could show a tester the bot turning away a
+   *     customer we cover — a reply production refuses to send;
+   *   - the out-of-state message had no state to name, so A2's second script
+   *     could not be checked;
+   *   - `needs_a_person` — an unreadable map — could not be reproduced.
+   *
+   * Read from the address we hold, which is the record's when there is one and
+   * the thread's otherwise, exactly as the rest of this function resolves it.
+   * Only when a zip is actually present: production leaves the verdict null
+   * when the conversation carries no zip, and a bare serviceZipCheck(null)
+   * answers "needs_a_person", which would hand over conversations that should
+   * simply carry on asking.
+   */
+  const heldZip = addressParts(input.known?.address || saidAddress).zip;
+  const service = heldZip ? await serviceZipCheck(messagingDb(), heldZip) : null;
+
   const res = await runAgentTurn(resolved.cfg, input.history, input.customerText, {
     hardNos: resolved.hardNos,
     /**
@@ -190,6 +262,8 @@ export async function runSimTurn(input: {
     // sandbox than in production is a bot nobody has actually tested, and this
     // file already carries that lesson twice.
     classARules: forPrompt(await loadClassARules()),
+    // Parity gap 9: the same standing answers the live path gets.
+    workspaceFaqs: faqsForPrompt(faqs),
     lastAskedForInfo: input.lastAskedForInfo,
     mediaCount: input.mediaCount,
     track,
@@ -214,7 +288,29 @@ export async function runSimTurn(input: {
     },
     services: resolveServices(svc.services, svc.exceptions),
     stage,
+    // The ORDER and the CLOSE are two different rules and need two different
+    // fields. `stage` above enforces the first; this enforces the second.
+    priorIntents: input.priorIntents,
     lastIntent: input.lastIntent,
+    // A2's verdict, and the two fields its out-of-state script needs to name
+    // where they actually are. See the block above.
+    serviceArea: service?.outcome ?? null,
+    zip: heldZip,
+    stateName: service?.outcome === "out_of_state" ? service.state : null,
+    /**
+     * THE CUSTOMER'S CLOCK, for the week-aware availability ask.
+     *
+     * agent-run: "the day-dependent availability ask needs to know which side
+     * of the CUSTOMER's Thursday we are on. Without both of these it falls
+     * back to the generic wording" — so an absent zone did not fail, it
+     * quietly rendered a different sentence than production would. The same
+     * field, missing in the same way, already hid a wording bug in the
+     * scenario harness.
+     *
+     * Resolved from the handset the tester filled in, and customerZone falls
+     * back on its own when there is none, so this is safe with an empty panel.
+     */
+    customerZone: customerZone({ phone: input.known?.phone ?? null }).timeZone,
     // The whole point of the corpus. Selected per turn, because which rule is
     // live depends on where the conversation has got to.
     examples: selectExamples(corpus, {

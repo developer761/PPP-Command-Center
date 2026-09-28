@@ -170,6 +170,13 @@ export default function Simulator({
         // simulator that lets the bot skip a step is testing a bot we will
         // never run.
         stage: stageFromIntents(turns.map((t) => t.intent)),
+        // And the intents THEMSELVES, not only the stage they collapse to.
+        // A3 is satisfied by events — what was actually asked and confirmed —
+        // so the four guards that refuse a close read this list, not the
+        // number. Without it the sandbox closed a conversation as booked on
+        // "Weekdays are better", which production refuses: a day is not a
+        // window (A4), and the estimator cannot be booked against it.
+        priorIntents: turns.map((t) => t.intent).filter((i): i is string => !!i),
         lastIntent: [...turns].reverse().find((t) => t.intent)?.intent ?? undefined,
       });
       if (res.ok) { setTurns((t) => [...t, res.turn]); setDraft(""); setPhotos(0); }
