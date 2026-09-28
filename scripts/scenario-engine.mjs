@@ -140,6 +140,15 @@ export function waysThrough(scenario) {
       phone: known.phone, email: known.email, zip: known.zip, state: known.state,
     },
     customerText: ownWords,
+    /**
+     * A SIXTH FIELD THE RENDERER NEVER GOT. The ctx above passes addressGap to
+     * the VALIDATOR and this did not pass it to the RENDERER, so A11's gap
+     * wording — "And what's the zip code there?" — could not appear in any
+     * scenario. agent-run passes it to both (agent-run.ts). A11 is the most
+     * broken rule in Kate's grading at 287 breaches, and its remedy was
+     * untestable here.
+     */
+    addressGap: derived.address ? addressGap(derived.address) : undefined,
     offsiteReason: offsiteReasonFor(ownWords),
     covers: COVERS,
     language,

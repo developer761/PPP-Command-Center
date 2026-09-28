@@ -127,6 +127,15 @@ const SCENARIOS = [
   { name: "shared space in a building", text: "we need the lobby and corridors of our condo building painted", wants: "ask_address" },
 
   // ── A11 and A41: partial and refused addresses ────────────────────────
+  /**
+   * A11, FOUND IN THE SIMULATOR. The gap ask was built and the model went
+   * round it: "Is 482 Marchmont Ave the correct address for the estimate?" —
+   * a yes to that banks a street with no zip as the confirmed address.
+   */
+  { name: "gives a street but no zip, all in the first message",
+    text: "I need the kitchen and two bedrooms painted, its 482 Marchmont Ave",
+    wants: "ask_address", refuses: "confirm_address", saysMatch: /zip/i },
+
   { name: "gives a street but no zip", text: "its 482 Marchmont Ave",
     priorIntents: ["ask_project_details", "ask_address"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "ask_address" },
   { name: "gives a zip but no street", text: "11530",

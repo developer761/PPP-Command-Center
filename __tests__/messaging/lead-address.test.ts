@@ -127,3 +127,57 @@ describe("what it looked like before", () => {
     expect(renderMessage({ intent: "confirm_address", turn: 0, known: { address: none.address } })).toBe("");
   });
 });
+
+/**
+ * A11 — A HALF ADDRESS MAY NOT BE CONFIRMED AS A WHOLE ONE.
+ *
+ * A11 is the most broken rule in Kate's grading at 287 breaches, and its
+ * remedy was already built: ask_address narrows to the missing half. Nothing
+ * stopped the model walking round it. Played in the simulator:
+ *
+ *   customer  "I need the kitchen and two bedrooms painted, its 482
+ *              Marchmont Ave"
+ *   BOT       "Is 482 Marchmont Ave the correct address for the estimate?"
+ *
+ * A yes to that banks a street with no zip as the CONFIRMED address. A3 is
+ * explicit — "FULL ADDRESS MEANS street number + street name + zip" — and A2
+ * needs the zip to check the service area at all, so the conversation carries
+ * on over a hole nothing later reopens.
+ */
+describe("confirming a partial address", () => {
+  const ctx = (gap: "zip" | "street" | "both" | null) => ({
+    track: "new_lead" as const, stage: 1, priorIntents: ["ask_project_details"],
+    knownFields: { inquiryScope: true, address: true },
+    addressGap: gap as never,
+    customerText: "its 482 Marchmont Ave",
+  });
+  const confirm = { intent: "confirm_address", confidence: 0.97, freeText: "" };
+
+  it("is refused when the zip is missing", () => {
+    const v = validateAction(confirm, ctx("zip"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toMatch(/missing its zip/);
+  });
+
+  it("is refused when the street is missing, and when both are", () => {
+    expect(validateAction(confirm, ctx("street")).ok).toBe(false);
+    const both = validateAction(confirm, ctx("both"));
+    expect(both.ok).toBe(false);
+    if (!both.ok) expect(both.detail).toMatch(/street and zip/);
+  });
+
+  it("is ALLOWED once the address is whole", () => {
+    // The confirm turn is A13's remedy and must survive — the point is to read
+    // a complete address back rather than make them retype it.
+    expect(validateAction(confirm, ctx(null)).ok).toBe(true);
+  });
+
+  it("leaves the gap ask available, so the turn still has somewhere to go", () => {
+    const v = validateAction({ ...confirm, intent: "ask_address" }, ctx("zip"));
+    expect(v.ok).toBe(true);
+    expect(renderMessage({
+      intent: "ask_address", turn: 0, addressGap: "zip",
+      known: { address: "482 Marchmont Ave" },
+    })).toMatch(/zip/i);
+  });
+});

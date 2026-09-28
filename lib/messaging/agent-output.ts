@@ -980,6 +980,33 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (needs && ctx.knownFields && !ctx.knownFields[needs]) {
     return { ok: false, reason: "unknown_intent", detail: `${a.intent} needs a known ${needs} and there is none on file` };
   }
+  /**
+   * A11 — A HALF ADDRESS MAY NOT BE CONFIRMED AS A WHOLE ONE.
+   *
+   * A11 is the most broken rule in Kate's grading at 287 breaches, and its
+   * remedy is already built: ask_address narrows to the missing half and says
+   * "And what's the zip code there?". Nothing stopped the model going round
+   * it. Played in the simulator:
+   *
+   *   customer  "I need the kitchen and two bedrooms painted, its 482
+   *              Marchmont Ave"
+   *   BOT       "Is 482 Marchmont Ave the correct address for the estimate?"
+   *
+   * A yes to that banks a street with no zip as the confirmed address. A3 is
+   * explicit — "FULL ADDRESS MEANS street number + street name + zip" — and
+   * A2 needs the zip to check the service area at all, so the conversation
+   * carries on over a hole that nothing later reopens.
+   *
+   * Refusing leaves ask_address available, which renders the gap question, so
+   * the turn still has somewhere to go.
+   */
+  if (a.intent === "confirm_address" && ctx.addressGap) {
+    return {
+      ok: false, reason: "unknown_intent",
+      detail: `the address on file is missing its ${ctx.addressGap === "both" ? "street and zip" : ctx.addressGap}, `
+        + "so confirming it would bank a half address as a whole one. Ask for the missing part instead (A11)",
+    };
+  }
   // Asking for something we already hold. Kate: "asked customer for phone
   // number + to type out phone number" — the reason that reached her was a
   // prompt instruction, which the model ignored. This is not an instruction.
