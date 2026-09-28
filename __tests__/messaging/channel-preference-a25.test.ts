@@ -8,6 +8,7 @@
  * handoff IS the defect.
  */
 import { describe, it, expect } from "vitest";
+import { END_STATES } from "@/lib/messaging/db";
 import {
   statedChannelPreference, phoneBranch, holdsCallbackTime,
 } from "@/lib/messaging/channel-preference";
@@ -108,5 +109,48 @@ describe("A25 — the intent guide no longer contradicts the rule", () => {
   it("says plainly that a text-only preference keeps texting", () => {
     expect(INTENT_GUIDE.transferred).toMatch(/text-only/i);
     expect(INTENT_GUIDE.transferred).toMatch(/A25/);
+  });
+});
+
+/**
+ * THE SCREEN A RATER READS HAD THE OLD RULE ON IT.
+ *
+ * agent-output's intent guide was corrected when Kate ruled that a text-only
+ * preference is NOT a handoff, and check-rules-are-wired forbids the old
+ * wording there. END_STATES — the list shown on the Chatbot screen, which is
+ * what somebody GRADING a conversation reads — still said:
+ *
+ *   Transferred: "Text-only preference, another language, or asked to meet at
+ *                 the office."
+ *
+ * Both halves stopped being true. A25's correction covers the first; A30
+ * covers the second, and the system prompt says it outright: "Do NOT choose
+ * `transferred` because of the language."
+ *
+ * A rater reading that would expect a handoff for Spanish and mark a correct
+ * answer wrong — the grading equivalent of a bug in the bot.
+ */
+describe("what the grading screen says a transfer is", () => {
+  const transferred = END_STATES.find((e) => e.key === "transferred");
+
+  it("no longer OPENS by listing a text-only preference as a cause", () => {
+    // The old string began "Text-only preference, another language, ...". The
+    // new one may still say the words — it has to, to say they are NOT causes
+    // — so the assertion is about the claim, not the vocabulary.
+    expect(transferred?.when).not.toMatch(/^Text-only preference/i);
+    expect(transferred?.when).not.toMatch(/Text-only preference, another language/i);
+  });
+
+  it("no longer says another language is a cause", () => {
+    expect(transferred?.when).not.toMatch(/,\s*another language/i);
+  });
+
+  it("says plainly that neither one is", () => {
+    expect(transferred?.when).toMatch(/NOT a text-only preference/i);
+    expect(transferred?.when).toMatch(/spanish/i);
+  });
+
+  it("keeps Hatch's label, which is what makes a parallel run comparable", () => {
+    expect(transferred?.label).toBe("Transferred");
   });
 });

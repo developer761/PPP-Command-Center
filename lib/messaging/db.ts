@@ -544,13 +544,32 @@ export async function loadAgentConfig(workspaceId?: string, track: string = "new
   };
 }
 
-/** Every terminal state Emily can reach, with what each one means. Verbatim
- *  from PPP's prompt so the screen uses the office's own words. */
+/**
+ * Every terminal state Emily can reach, with what each one means.
+ *
+ * The LABELS are Hatch's, kept exactly so a parallel run is comparable without
+ * a mapping. The DESCRIPTIONS were Hatch's too, and two of them stopped being
+ * true of this system — which matters more than it looks, because this screen
+ * is what somebody grading a conversation reads:
+ *
+ *   "Text-only preference" — Kate, 2026-09-18: a text-only preference is NOT
+ *   a handoff. "'Without the customer knowing' was a HATCH guard, not a
+ *   business rule." The bot carries on by text. agent-output.ts already had
+ *   this corrected, and check-rules-are-wired FORBIDS the old wording there —
+ *   it just never looked here.
+ *
+ *   "another language" — A30: we answer Spanish ourselves. The system prompt
+ *   says it outright: "Do NOT choose `transferred` because of the language."
+ *
+ * So a rater reading this screen would have expected a transfer for both, and
+ * marked a correct Spanish answer wrong. Found on the Chatbot screen
+ * 2026-09-27.
+ */
 export const END_STATES: { key: string; label: string; when: string }[] = [
   { key: "success", label: "Success", when: "Details, address, contact and availability collected. Checking the schedule." },
   { key: "phone_pricing", label: "Phone Pricing", when: "Qualifies for an off-site quote and everything needed is collected." },
   { key: "schedule_follow_up", label: "Schedule Follow-up", when: "Asked for a call, cannot talk now, or does not know their availability yet." },
-  { key: "transferred", label: "Transferred", when: "Text-only preference, another language, or asked to meet at the office." },
+  { key: "transferred", label: "Transferred", when: "Asked to meet at the office, or handed to a person for something the bot cannot do. NOT a text-only preference, and not Spanish: the bot keeps texting, and answers Spanish itself." },
   { key: "lost", label: "Lost", when: "Not moving forward." },
   { key: "bailout", label: "Bailout", when: "Wrong person, chose another company, something negative, or vulgar language." },
   { key: "discard", label: "Discard", when: "Not an estimate request, or work we do not cover." },

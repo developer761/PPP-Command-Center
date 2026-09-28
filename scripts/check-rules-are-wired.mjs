@@ -82,6 +82,16 @@ const CHAINS = [
     ],
     forbidden: [
       ["lib/messaging/agent-output.ts", /Use this for a text-only preference/i],
+      /**
+       * AND THE SAME STALE SENTENCE ON THE SCREEN.
+       *
+       * END_STATES is what somebody GRADING a conversation reads, and it still
+       * said Transferred meant "Text-only preference, another language". Both
+       * stopped being true — A25's correction and A30 — so a rater would have
+       * expected a handoff for Spanish and marked a correct answer wrong. The
+       * chain checked the intent guide and never looked at the screen.
+       */
+      ["lib/messaging/db.ts", /Text-only preference, another language/i],
     ],
   },
   {
