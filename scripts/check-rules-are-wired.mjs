@@ -387,6 +387,51 @@ const CHAINS = [
       ["lib/messaging/record-inbound.ts", /customerZone:\s*customerZone\(/],
     ],
   },
+  {
+    rule: "A3 — the customer who describes the job themselves can be CLOSED",
+    why:
+      "the project-details leg is satisfied by an intent, and for that customer neither " +
+      "satisfier may legally fire — asking repeats what they said, and confirm_scope would " +
+      "echo their own words back. So success was refused for the life of the conversation " +
+      "and the refusal is terminal, handing the best lead there is to a person instead of " +
+      "closing. scope.ts settled the same deadlock one layer earlier, at ask_address",
+    links: [
+      // The leg must consult something other than the intent list...
+      ["lib/messaging/agent-output.ts", /alsoSatisfiedBy/],
+      ["lib/messaging/agent-output.ts", /scopeFromCustomer/],
+      // ...and the fact has to reach it from BOTH callers. knownFromThread
+      // resolves it; a caller that does not pass it gets the old deadlock.
+      ["lib/messaging/known-from-thread.ts", /scopeFrom:\s*"record"\s*\|\s*"customer"/],
+      ["lib/messaging/agent-run.ts", /scopeFromCustomer:\s*opts\.scopeFromCustomer/],
+      ["lib/messaging/scheduler-db.ts", /scopeFromCustomer:\s*resolved\.scopeFrom === "customer"/],
+      ["lib/messaging/simulator.ts", /scopeFromCustomer:\s*derived\.scopeFrom === "customer"/],
+    ],
+    forbidden: [
+      /**
+       * The carve-out is the PROJECT leg alone, and it turns on where the
+       * scope came from. A version keyed on merely holding one would delete
+       * Kate's "HOLDING IS NOT CONFIRMING": a lead-form scope nobody has
+       * mentioned still owes a confirmation before the conversation ends.
+       */
+      ["lib/messaging/agent-output.ts", /alsoSatisfiedBy:\s*\(ctx\)\s*=>\s*ctx\.knownFields/],
+    ],
+  },
+  {
+    rule: "the sandbox is handed the same context production is",
+    why:
+      "every guard is written `if (ctx.field && ...)`, so a field the simulator forgets does " +
+      "not fail — it silently never runs. priorIntents was missing, which disabled all four " +
+      "close guards, and the sandbox closed a conversation as booked on 'Weekdays are better'. " +
+      "The sandbox is where the bot is GRADED, so it was showing a more permissive bot than " +
+      "the one that ships",
+    links: [
+      ["lib/messaging/simulator.ts", /priorIntents:\s*input\.priorIntents/],
+      ["components/messaging/simulator.tsx", /priorIntents:\s*turns\.map/],
+      ["lib/messaging/simulator.ts", /serviceArea:\s*service\?\.outcome/],
+      ["lib/messaging/simulator.ts", /workspaceFaqs:\s*faqsForPrompt\(/],
+      ["lib/messaging/simulator.ts", /customerZone:\s*customerZone\(/],
+    ],
+  },
 ];
 
 console.log("\nWRITTEN, OR ACTUALLY WIRED?\n");

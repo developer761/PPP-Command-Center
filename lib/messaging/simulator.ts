@@ -291,6 +291,9 @@ export async function runSimTurn(input: {
     // The ORDER and the CLOSE are two different rules and need two different
     // fields. `stage` above enforces the first; this enforces the second.
     priorIntents: input.priorIntents,
+    // The project-details leg, for the customer who described the job
+    // themselves. The same derivation the live path runs. See A3_LEGS.
+    scopeFromCustomer: derived.scopeFrom === "customer",
     lastIntent: input.lastIntent,
     // A2's verdict, and the two fields its out-of-state script needs to name
     // where they actually are. See the block above.

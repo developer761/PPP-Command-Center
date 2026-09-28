@@ -157,3 +157,59 @@ describe("the check is reachable and scoped", () => {
     expect(close("success", ["ask_project_details", "ask_address", "ask_contact"]).ok).toBe(true);
   });
 });
+
+/**
+ * ── THE CUSTOMER WHO TELLS YOU EVERYTHING IN MESSAGE ONE ────────────────
+ *
+ * "Hi, I need the living room, dining room and two bedrooms painted."
+ *
+ * The project-details leg is satisfied by an intent, and for this customer
+ * NEITHER satisfier may legally fire: the prompt forbids asking for what they
+ * have already given, and confirm_scope is "read the job back from the RECORD
+ * for a yes. Never for something they just typed" — quoting their own sentence
+ * at them is the echo Kate bans, not a confirmation.
+ *
+ * So `success` was refused for the life of every such conversation, and a
+ * refusal is terminal: it hands the lead to a person instead of closing. The
+ * best lead there is was the one that could not convert. Found in the sandbox
+ * on 2026-09-28, present in production on the same path.
+ *
+ * scope.ts settled the same deadlock one layer earlier, at ask_address: "what
+ * they told us IS the scope. AND IT COUNTS AS COLLECTED." That fixed the stage
+ * machine and left this check still demanding an intent.
+ */
+const closeWithScope = (priorIntents: string[], scopeFromCustomer: boolean) =>
+  validateAction(
+    { intent: "success", confidence: 0.9 } as never,
+    { priorIntents, scopeFromCustomer } as never
+  );
+
+describe("the customer described the job themselves", () => {
+  const NEVER_ASKED_FOR_THE_JOB = ["ask_address", "ask_contact"];
+
+  it("closes, because saying it IS the event A3 asks for", () => {
+    expect(closeWithScope(NEVER_ASKED_FOR_THE_JOB, true).ok).toBe(true);
+  });
+
+  it("still refuses when the scope only sits on the record", () => {
+    // Kate: "HOLDING IS NOT CONFIRMING. Where the record already holds [it]
+    // ... confirm them once with the customer before the conversation ends."
+    // A lead-form scope nobody has mentioned still owes that confirmation.
+    const v = closeWithScope(NEVER_ASKED_FOR_THE_JOB, false);
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.detail).toContain("project details");
+  });
+
+  it("does not excuse the other two legs", () => {
+    // The carve-out is the project leg alone. Having described the job says
+    // nothing about the address or how to reach them.
+    const v = closeWithScope(["ask_contact"], true);
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.detail).toContain("the full address");
+  });
+
+  it("does not fire when the caller does not track it", () => {
+    // Absent means "unknown", which must behave as it did before.
+    expect(close("success", NEVER_ASKED_FOR_THE_JOB).ok).toBe(false);
+  });
+});

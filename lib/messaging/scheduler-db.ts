@@ -450,6 +450,9 @@ export function schedulerDeps(): SchedulerDeps {
         // A3 is satisfied by events, so the check needs the whole list
         // rather than just the last one.
         priorIntents,
+        // The project-details leg, for the customer who described the job
+        // themselves — no intent may legally fire for them. See A3_LEGS.
+        scopeFromCustomer: resolved.scopeFrom === "customer",
         serviceArea: service?.outcome ?? null,
         zip: (conv as { customer_zip?: string | null }).customer_zip ?? null,
         stateName: service?.outcome === "out_of_state" ? service.state : null,

@@ -801,11 +801,56 @@ export function asksSomething(text: string | null | undefined): boolean {
  * (A41), ask_address still happened, so this stays satisfied and the refusal
  * is governed by its own rule rather than by this one.
  */
-const A3_LEGS: { label: string; satisfiedBy: readonly string[] }[] = [
-  { label: "project details", satisfiedBy: ["ask_project_details", "confirm_scope"] },
+/**
+ * ── THE ONE LEG THAT NO INTENT CAN SATISFY ──────────────────────────────
+ *
+ * A customer who opens with "I need the living room, dining room and two
+ * bedrooms painted" has told us the job. Neither satisfier can legally fire
+ * for them, and both refusals are correct:
+ *
+ *   ask_project_details  the prompt says never ask for what they have already
+ *                        given, so the model will not — and should not
+ *   confirm_scope        "read the job back from the RECORD for a yes. Never
+ *                        for something they just typed." Quoting a customer's
+ *                        own sentence at them is the echo Kate bans, not a
+ *                        confirmation
+ *
+ * So `success` was refused for the life of every such conversation, and a
+ * refusal here is terminal — it hands the lead to a person instead of
+ * closing. The customer who tells you everything in message one is the best
+ * lead there is, and they were the one that could not convert.
+ *
+ * scope.ts hit the SAME deadlock one layer earlier, at ask_address, and
+ * settled it: "what they told us IS the scope. AND IT COUNTS AS COLLECTED."
+ * That fixed the stage machine and left this check still asking for an intent.
+ *
+ * This is not a softening of "HOLDING IS NOT CONFIRMING". Kate's rule is about
+ * a record that quietly holds something nobody has mentioned — that still owes
+ * a confirmation, and a record-sourced scope still requires confirm_scope. A
+ * customer SAYING it in this conversation is the event she asks for. scopeFrom
+ * already tells the two apart; nothing else changes.
+ */
+const A3_LEGS: {
+  label: string;
+  satisfiedBy: readonly string[];
+  /** Satisfied without an intent, when no intent may legally fire. */
+  alsoSatisfiedBy?: (ctx: ValidateContext) => boolean;
+}[] = [
+  {
+    label: "project details",
+    satisfiedBy: ["ask_project_details", "confirm_scope"],
+    alsoSatisfiedBy: (ctx) => ctx.scopeFromCustomer === true,
+  },
   { label: "the full address", satisfiedBy: ["ask_address", "confirm_address"] },
   { label: "contact details", satisfiedBy: ["ask_contact", "confirm_contact"] },
 ];
+
+/** The legs still outstanding, given what was asked and what was said. */
+function missingLegs(seen: Set<string>, ctx: ValidateContext) {
+  return A3_LEGS.filter(
+    (leg) => !leg.satisfiedBy.some((i) => seen.has(i)) && !leg.alsoSatisfiedBy?.(ctx)
+  );
+}
 
 /**
  * Endings that CLAIM the flow finished, and so owe all three.
@@ -881,6 +926,16 @@ export type ValidateContext = {
   /** Which known fields we hold. Drives both directions: confirm_* needs the
    *  value to exist, and ask_* is refused once it does. */
   knownFields?: Partial<Record<KnownField, boolean>>;
+  /**
+   * Did the customer describe the job IN THIS CONVERSATION, rather than it
+   * arriving on the record from the lead form?
+   *
+   * knownFields cannot answer this, and the difference decides an A3 leg: a
+   * record that quietly holds a scope still owes a confirmation, while a
+   * customer who just said it has already supplied the event Kate asks for.
+   * `scopeFrom` on knownFromThread is where this comes from. See A3_LEGS.
+   */
+  scopeFromCustomer?: boolean;
   /**
    * What is still missing from a PARTIAL address, when one is held.
    *
@@ -1123,7 +1178,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    */
   if (ctx.priorIntents && DEFERRAL_ENDINGS.has(a.intent) && parkKind(ctx.customerText) === "field") {
     const seen = new Set([...ctx.priorIntents, a.intent]);
-    const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
+    const missing = missingLegs(seen, ctx);
     if (missing.length === A3_LEGS.length) {
       return {
         ok: false, reason: "parked_a_field_then_quit",
@@ -1135,7 +1190,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
 
   if (ctx.priorIntents && CLAIMS_THE_FLOW_FINISHED.has(a.intent)) {
     const seen = new Set([...ctx.priorIntents, a.intent]);
-    const missing = A3_LEGS.filter((leg) => !leg.satisfiedBy.some((i) => seen.has(i)));
+    const missing = missingLegs(seen, ctx);
     if (missing.length) {
       return {
         ok: false, reason: "details_never_collected",

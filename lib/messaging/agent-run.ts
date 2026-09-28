@@ -334,6 +334,16 @@ export async function runAgentTurn(
      *  by events rather than by the state of the record, so closing the
      *  conversation needs to know what was actually asked and confirmed. */
     priorIntents?: readonly string[];
+    /**
+     * Did the customer describe the job in THIS conversation?
+     *
+     * A3's project-details leg is satisfied by an intent, and for this
+     * customer no intent may legally fire — asking repeats what they just
+     * said, and confirm_scope would echo their own words back at them.
+     * Supplied by the caller from knownFromThread's `scopeFrom`, because
+     * resolving it needs the thread. See A3_LEGS in agent-output.ts.
+     */
+    scopeFromCustomer?: boolean;
     /** A2's verdict on the zip we are holding. The caller runs the lookup
      *  because it needs a database; this only carries the answer. */
     serviceArea?: "serviced" | "out_of_state" | "needs_a_person" | null;
@@ -540,6 +550,9 @@ Choose the next action.`;
       // A3: what has actually been asked and confirmed, so a turn that closes
       // the conversation can be refused when a leg was skipped.
       priorIntents: opts.priorIntents,
+      // ...and the one leg no intent can satisfy, for the customer who
+      // described the job themselves. See A3_LEGS.
+      scopeFromCustomer: opts.scopeFromCustomer,
       // A11: which HALF of the address is missing, not whether one exists.
       // Undefined when we hold nothing, so the ordinary ask applies.
       addressGap: kf.address ? addressGap(kf.address) : undefined,
