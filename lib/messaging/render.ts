@@ -435,8 +435,21 @@ const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]
  */
 
 /** Does this template already open by acknowledging something? */
+/**
+ * The optional lead-in matters more than it looks. "That's great news" and
+ * "That's great to hear!" both open with an acknowledgement, and without
+ * seeing past "That's" neither registered as one — so the customer who
+ * accepted a quote was told:
+ *
+ *   "That's great news, thanks for the go ahead. That's great to hear!
+ *    I'll let the office know so they can get you booked in."
+ *
+ * The same sentiment twice, in consecutive sentences. Found in the simulator
+ * on 2026-09-27. longestSharedRun did not catch it either: "That's great" is
+ * two words and the echo threshold is four.
+ */
 const OPENS_WITH_ACKNOWLEDGEMENT =
-  /^(?:got it|perfect|great|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help)\b/i;
+  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help)\b/i;
 
 /**
  * True when the rapport adds nothing the template is not already saying.
@@ -467,6 +480,14 @@ export function rapportIsRedundant(rapport: string, template: string): boolean {
   if (!said) return true;
   // A bare acknowledgement in front of a template that already opens with one.
   if (BARE_ACKNOWLEDGEMENT.test(said) && OPENS_WITH_ACKNOWLEDGEMENT.test(template.trim())) return true;
+
+  /**
+   * AND TWO ACKNOWLEDGEMENT OPENERS IN A ROW, whether or not either is bare.
+   * The template wins for the reason it always does: it is the half that goes
+   * on to say what happens next. freeText is documented as "short rapport
+   * only, or empty", so what is lost is the pleasantry, not the substance.
+   */
+  if (OPENS_WITH_ACKNOWLEDGEMENT.test(said) && OPENS_WITH_ACKNOWLEDGEMENT.test(template.trim())) return true;
 
   /**
    * AND THE SUBSTANTIVE CASE, WHICH THIS USED TO MISS ENTIRELY.

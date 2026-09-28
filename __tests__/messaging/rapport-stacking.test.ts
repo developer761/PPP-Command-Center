@@ -165,3 +165,57 @@ describe("a template that only acknowledges, after rapport that already did", ()
     expect(out).toMatch(/\?$/);
   });
 });
+
+/**
+ * TWO ACKNOWLEDGEMENT OPENERS, NEITHER OF THEM BARE.
+ *
+ * The nurture customer who accepted a quote, in the simulator on 2026-09-27:
+ *
+ *   customer  "no need for a call, lets just go ahead with it, when can you
+ *              start"
+ *   BOT       "That's great news, thanks for the go ahead. That's great to
+ *              hear! I'll let the office know so they can get you booked in."
+ *
+ * The same sentiment twice in consecutive sentences. Neither half is a BARE
+ * acknowledgement, so the first guard missed it; "That's great" is two words
+ * and the echo threshold is four, so the second missed it too. And the opener
+ * pattern could not see past "That's" to the word that makes it one.
+ */
+describe("the same enthusiasm twice", () => {
+  it("keeps one acknowledgement, not two", () => {
+    const out = renderMessage({
+      intent: "accepted", turn: 1, track: "nurture",
+      freeText: "That's great news, thanks for the go ahead.",
+      customerText: "lets just go ahead with it",
+    });
+    expect(out).not.toMatch(/that's great news/i);
+    expect((out.match(/great|wonderful|excellent|fantastic/gi) ?? []).length).toBeLessThanOrEqual(1);
+  });
+
+  it("still says what happens next", () => {
+    const out = renderMessage({
+      intent: "accepted", turn: 1, track: "nurture",
+      freeText: "That's great news, thanks for the go ahead.",
+      customerText: "lets just go ahead with it",
+    });
+    expect(out).toMatch(/office|schedule|booked/i);
+  });
+
+  it("does not promise a start date", () => {
+    // They asked "when can you start". The office owns the calendar.
+    const out = renderMessage({
+      intent: "accepted", turn: 1, track: "nurture",
+      freeText: "That's great news.", customerText: "when can you start",
+    });
+    expect(out).not.toMatch(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i);
+    expect(out).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b/i);
+  });
+
+  it("leaves rapport that actually says something", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 1,
+      freeText: "I can see this is a big job.", customerText: "paint my house",
+    });
+    expect(out).toMatch(/I can see this is a big job\./);
+  });
+});
