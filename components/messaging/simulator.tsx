@@ -6,7 +6,7 @@ import { runSimTurn, saveScenario, type SimTurn } from "@/lib/messaging/simulato
 import { exportScenarioToTraining, scenarioAsSheet } from "@/lib/messaging/scenario-export";
 import type { AuditSheet } from "@/lib/messaging/audit-sheet";
 import { scopeAndStage } from "@/lib/messaging/scope";
-import { addressFromCustomer } from "@/lib/messaging/address";
+import { addressFromCustomer, addressIsComplete } from "@/lib/messaging/address";
 import { availabilityIsBookable } from "@/lib/messaging/availability";
 
 type Graded = SimTurn & {
@@ -97,7 +97,24 @@ export default function Simulator({
   const customerSaid = turns.map((t) => t.customerText);
   const heldScope = !!known.inquiryScope.trim()
     || customerSaid.some((t) => scopeAndStage({ stage: 0, onFile: null, rawInbound: t }).from === "customer");
-  const heldAddress = !!known.address.trim() || customerSaid.some((t) => !!addressFromCustomer(t));
+  /**
+   * COMPLETE, not merely present — the tick says "we actually hold it".
+   *
+   * This asked whether an address could be FOUND, and addressFromCustomer
+   * returns partials on purpose, because A11 needs the half it has. So "zip is
+   * 11530" ticked "Full address" while the bot was asking "And what's the
+   * street address?" in the same view — the panel contradicting the
+   * conversation two inches below it.
+   *
+   * A3 is explicit: "FULL ADDRESS MEANS street number + street name + zip."
+   * The other three legs already test completeness rather than presence —
+   * availability uses availabilityIsBookable — and this was the one that did
+   * not. It matters because this panel exists to be EVIDENCE: Karan asked for
+   * it after "it's not even doing this... how do I trust it", and a tick that
+   * is not true is worse than no tick.
+   */
+  const heldAddress = addressIsComplete(known.address)
+    || customerSaid.some((t) => addressIsComplete(addressFromCustomer(t)));
   const heldContact = !!known.email.trim() || !!known.phone.trim()
     || customerSaid.some((t) => /[\w.+-]+@[\w-]+\.[\w.]+/.test(t));
   const heldAvailability = customerSaid.some((t) => availabilityIsBookable(t));
