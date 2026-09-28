@@ -110,3 +110,44 @@ describe("the bot must not ask for what it already has", () => {
     expect(p).toMatch(/confirm their contact details/i);
   });
 });
+
+/**
+ * ── A HALF ADDRESS MUST NOT BE OFFERED UP FOR CONFIRMING ────────────────
+ *
+ * The prompt lists what we hold and then says "confirm these, never ask for
+ * them again", with a worked example of confirming an address. For a street
+ * with no zip that is the one thing the validator refuses — confirming half
+ * an address records it as a whole one, and A11 says ask for the missing
+ * part instead.
+ *
+ * So the prompt was telling the model to do what the guard exists to stop,
+ * and a refusal is terminal: seen in the sandbox on 2026-09-28, a customer
+ * gave "482 Marchmont Ave" and the conversation went to a person rather than
+ * being asked for the zip. On the rule Kate's grading calls the most
+ * breached critical one.
+ */
+describe("what the model is told about a partial address", () => {
+  const promptFor = (address: string) =>
+    knownCustomerPrompt({ address, phone: "+15165550147" } as never);
+
+  it("says a street with no zip is incomplete, and names what is missing", () => {
+    const p = promptFor("482 Marchmont Ave");
+    expect(p).toMatch(/INCOMPLETE/);
+    expect(p).toMatch(/ZIP/i);
+    expect(p).toMatch(/do NOT read this back/i);
+  });
+
+  it("says a bare zip is missing the street", () => {
+    const p = promptFor("11530");
+    expect(p).toMatch(/INCOMPLETE/);
+    expect(p).toMatch(/house number and street/i);
+  });
+
+  it("leaves a complete address alone, so confirming it stays correct", () => {
+    // The other half of the rule: an address we hold IN FULL is read back,
+    // not asked for again.
+    const p = promptFor("12 Oak St, Garden City NY 11530");
+    expect(p).toMatch(/The property address: 12 Oak St/);
+    expect(p).not.toMatch(/INCOMPLETE/);
+  });
+});

@@ -23,6 +23,7 @@
  */
 import { toE164, formatUs } from "./phone";
 import { usableScope } from "./scope";
+import { addressGap } from "./address";
 
 export type KnownCustomer = {
   name?: string | null;
@@ -101,7 +102,39 @@ export function knownCustomerPrompt(k: KnownCustomer | undefined): string {
   const f = knownFields(k);
   const have: string[] = [];
   if (f.name) have.push(`Their name: ${f.name}`);
-  if (f.address) have.push(`The property address: ${f.address}`);
+  /**
+   * A HALF ADDRESS IS NOT AN ADDRESS, AND THE MODEL HAS TO BE TOLD.
+   *
+   * This listed the address plainly, and the paragraph below then says
+   * "confirm these, never ask for them again" with a worked example of
+   * confirming an address. For "482 Marchmont Ave" with no zip that is the
+   * one thing the validator refuses: confirming half an address records it as
+   * a whole one, and A11 says ask for the missing part instead.
+   *
+   * So the prompt was instructing the model to do what the guard exists to
+   * stop, and a refusal is terminal — the customer gave a street and the
+   * conversation went to a person rather than being asked for the zip. Seen
+   * in the sandbox 2026-09-28, on what Kate's grading calls the most breached
+   * critical rule.
+   *
+   * Third time today for this shape: a fact computed, handed to the
+   * validator, and withheld from the model that has to act on it. addressGap
+   * already reached the validator and the renderer.
+   */
+  const gap = f.address ? addressGap(f.address) : null;
+  if (f.address && gap) {
+    const missing = gap === "zip" ? "the ZIP code"
+      : gap === "street" ? "the house number and street name"
+      : "most of it";
+    have.push(
+      `PART of the property address: ${f.address} — INCOMPLETE, ${missing} is `
+      + `missing. Do NOT read this back for a yes: confirming half an address `
+      + `records it as a whole one. Ask for the missing piece by name, and only `
+      + `that piece, because they have already given you the rest.`
+    );
+  } else if (f.address) {
+    have.push(`The property address: ${f.address}`);
+  }
   if (f.email) have.push(`Their email: ${f.email}`);
   // Only ever their ACTUAL words. A form label quoted here as "their own
   // words" is a lie the model then acts on.
