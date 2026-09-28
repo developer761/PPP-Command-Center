@@ -45,7 +45,7 @@ ask.
 | # | Question | State |
 |---|---|---|
 | 5 | What a park defaults to when no time is named | **ANSWERED** — park cadence built; two sub-cases still open, see the item |
-| 2 | A3 and A6 contradict each other on "tenant" | **ANSWERED** — code was already right; one SQL statement for Karan, and Kate must edit her sheet |
+| 2 | A3 and A6 contradict each other on "tenant" | **ANSWERED and DONE** — her reissued sheet fixed it at source; imported 2026-09-28 |
 | 9 | A46's approved strings are English only | **ANSWERED** — no inverted punctuation; built |
 | 10 | Which closing lines come out of A44 | **ANSWERED** — our ending confirmed; follow-up wording waits on her copy |
 | 4 | A25's corrective_action contradicts her own rule card | **ANSWERED** — we had the handoff backwards; rebuilt |
@@ -132,15 +132,19 @@ rows exist. Two rows, and the screen matches the spec.
 > - **A6**: *"The words 'co-op', 'condo', **'tenant'** and 'apartment' DO NOT
 >   fire this gate and must never be treated as commercial signals"*
 >
-> **→ Karan: one statement to run**, in `docs/sql/2026-09-28-a3-remove-tenants.sql`.
-> Idempotent, targets the three-phrase fragment rather than the bare word, and
-> verified against the live row first — the quotes are straight, and the exact
-> substring matches.
+> **DONE — and not the way this originally said.** There was a SQL statement
+> here for Karan to run. It is deleted and must not be run: Kate reissued the
+> sheet the same evening, and her A3 does more than remove the phrase. It adds
+> what a REPLACE could never have written:
 >
-> **It will not stick on its own.** The rules table is imported from Kate's
-> sheet and nothing in the app writes to it, so a re-import from a sheet that
-> still says "the tenants" reverts it. She needs to make the same edit in the
-> sheet.
+> *"THE WORD 'TENANT' DOES NOT ESTABLISH IT and must never be read as a
+> commercial signal here - a landlord describing work in a tenant's unit is
+> residential. A6 holds the full carve-out; read this list as consistent with
+> it, never against it."*
+>
+> Imported 2026-09-28 with `npm run import:rules`. The contradiction is gone
+> at source rather than patched, and because it came from her sheet it will
+> survive the next re-import — which the hand-written patch would not have.
 
 <details><summary>the original question, kept for the record</summary>
 
