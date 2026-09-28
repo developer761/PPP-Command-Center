@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderMessage } from "@/lib/messaging/render";
+import { renderMessage, rapportIsRedundant } from "@/lib/messaging/render";
 import { validateAction, BARE_ACKNOWLEDGEMENT } from "@/lib/messaging/agent-output";
 
 /**
@@ -217,5 +217,56 @@ describe("the same enthusiasm twice", () => {
       freeText: "I can see this is a big job.", customerText: "paint my house",
     });
     expect(out).toMatch(/I can see this is a big job\./);
+  });
+});
+
+/**
+ * THE SAME ANSWER IN DIFFERENT WORDS — the fourth stacking shape.
+ *
+ * Replaying a real thread Hatch had ABANDONED (Marisol Vega, NY LI Nassau:
+ * she asked for a ballpark and Hatch never replied), our bot answered — and
+ * answered twice:
+ *
+ *   customer  "And what's the ballpark on something like that?"
+ *   BOT       "Pricing comes from our estimator once they've looked over the
+ *              details. That's one for the estimator, and they'll go through
+ *              it with you. What days suit you best?"
+ *
+ * A1 satisfied, no price, the question answered — and the same fact stated
+ * twice. Neither half is a bare acknowledgement, and the longest shared run is
+ * "the estimator": two words against a threshold of four.
+ *
+ * Our templates are built around very few nouns — estimator, office, calendar,
+ * pricing, quote. Rapport naming the SAME one is answering a question the
+ * template already answers.
+ */
+describe("rapport that answers what the template already answers", () => {
+  it("drops the duplicate, keeping the template", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 1,
+      freeText: "Pricing comes from our estimator once they've looked over the details.",
+      customerText: "And what's the ballpark on something like that?",
+    });
+    expect(out).not.toMatch(/pricing comes from/i);
+    expect(out).toMatch(/estimator/i);
+    expect((out.match(/estimator/gi) ?? []).length).toBe(1);
+  });
+
+  it("still quotes no price", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 1,
+      freeText: "Pricing comes from our estimator once they've looked over the details.",
+      customerText: "And what's the ballpark on something like that?",
+    });
+    expect(out).not.toMatch(/\$|\b\d+\s*(?:dollars|usd)\b/i);
+  });
+
+  /**
+   * NARROW ON PURPOSE. It needs the SAME noun in both halves — two different
+   * subjects are two different things and both survive.
+   */
+  it("keeps rapport about a different subject", () => {
+    expect(rapportIsRedundant("I'll let the office know.", "I'll check the calendar for that time.")).toBe(false);
+    expect(rapportIsRedundant("That sounds like a big job.", "What's the address for the project?")).toBe(false);
   });
 });

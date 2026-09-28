@@ -501,7 +501,42 @@ export function rapportIsRedundant(rapport: string, template: string): boolean {
    * The template wins, because it is the part that goes on to ask the next
    * question and the part nobody can accidentally change.
    */
-  return longestSharedRun(said, template) >= TEMPLATE_ECHO_WORDS;
+  if (longestSharedRun(said, template) >= TEMPLATE_ECHO_WORDS) return true;
+
+  /**
+   * AND THE SAME ANSWER IN DIFFERENT WORDS.
+   *
+   * Replaying a thread Hatch had abandoned, the customer asked for a ballpark
+   * and got:
+   *
+   *   "Pricing comes from our estimator once they've looked over the details.
+   *    That's one for the estimator, and they'll go through it with you."
+   *
+   * Two sentences, one fact. Neither is a bare acknowledgement and the longest
+   * shared run is "the estimator" — two words, against a threshold of four —
+   * so every existing check passed it.
+   *
+   * Our templates are built around a very small number of nouns: the
+   * estimator, the office, the calendar, the quote. When the model's rapport
+   * names the SAME one the template does, it is answering a question the
+   * template is already answering. The template wins, as everywhere else,
+   * because it is the half that goes on to ask the next question.
+   *
+   * Narrow on purpose: it needs the same noun in both halves. Rapport about
+   * the office in front of a template about the calendar is two different
+   * things and survives.
+   */
+  const SUBJECTS_OUR_TEMPLATES_OWN =
+    /\b(estimators?|office|calendar|pricing|quotes?)\b/gi;
+  const nounsIn = (text: string) =>
+    new Set((text.toLowerCase().match(SUBJECTS_OUR_TEMPLATES_OWN) ?? []).map((n) => n.replace(/s$/, "")));
+  const inRapport = nounsIn(said);
+  if (inRapport.size) {
+    for (const noun of nounsIn(template)) {
+      if (inRapport.has(noun)) return true;
+    }
+  }
+  return false;
 }
 
 /**
