@@ -114,7 +114,19 @@ export function statedChannelPreference(
 export function holdsCallbackTime(input: {
   unreachableStartHour?: number | null;
   availability?: string | null;
+  requestedHour?: number | null;
 }): boolean {
+  /**
+   * AND AN HOUR THEY NAMED OUTRIGHT, which is the most direct answer of the
+   * three and was the one this did not count.
+   *
+   * "Call me at 6" left holdsCallbackTime false, so the branch asked "what's
+   * a good time to reach you?" — asking for the thing they had just said,
+   * which is the A11 redundant ask this function exists to prevent. Caught
+   * by walking the branch rather than by a test: the two named inputs were
+   * both present and correct, and the new one was simply not consulted.
+   */
+  if (typeof input.requestedHour === "number") return true;
   if (typeof input.unreachableStartHour === "number") return true;
   return Boolean((input.availability ?? "").trim());
 }
@@ -122,8 +134,42 @@ export function holdsCallbackTime(input: {
 export type PhoneBranch =
   /** Ask when to call, then hand over on the next turn. */
   | "ask_callback_time"
+  /** They named a time nobody is there for. Say the hours, ask for one inside. */
+  | "callback_outside_hours"
   /** We know when. Notify a person and let them take it. */
   | "hand_to_human";
+
+/**
+ * THE HOURS SOMEBODY IS ACTUALLY THERE TO PLACE THE CALL.
+ *
+ * A36's weekday office window, and deliberately that one rather than the
+ * weekend's narrower 9-5:30: a bare "call me at 6" names no day, so the wider
+ * window is the one that can be stated without ruling out a time the customer
+ * could in fact have had.
+ *
+ * ── THE ZONE, SAID PLAINLY RATHER THAN APPROXIMATED ─────────────────────
+ *
+ * This compares the hour the customer NAMED against the office's window, and
+ * a bare "6pm" carries no date, so there is nothing to convert with. Every
+ * workspace currently runs America/New_York and the call centre is Eastern,
+ * so the two coincide today. They would not for a Pacific customer on a
+ * Pacific workspace — their "6pm" is 9pm here — and the fix then is to
+ * resolve the stated hour against customerZone, not to guess a date. Written
+ * down rather than silently got wrong.
+ */
+export const CALLBACK_WINDOW = { startHour: 9, endHour: 20 } as const;
+
+/**
+ * Is a named callback hour one we could place a call in?
+ *
+ * `null` when they named no hour, which is NOT the same as "outside": it
+ * means there is nothing to check, and the caller must not turn a missing
+ * answer into a correction.
+ */
+export function callbackIsInHours(hour: number | null | undefined): boolean | null {
+  if (typeof hour !== "number" || !Number.isFinite(hour)) return null;
+  return hour >= CALLBACK_WINDOW.startHour && hour < CALLBACK_WINDOW.endHour;
+}
 
 /**
  * What the phone branch should do this turn.
@@ -132,11 +178,23 @@ export type PhoneBranch =
  * speak is handed to a human — and the bot must GATHER THEIR CALLBACK TIME
  * PREFERENCE FIRST if it does not already have it. Ending without capturing
  * when to call is the defect."
+ *
+ * And 2026-09-28, spelling the cadence out: "if call back time is within
+ * business hours, state 'we will reach out then', if call back time is
+ * outside of business hours, state business hours + ask if there is a time
+ * that works for them within that timeframe."
+ *
+ * So a time we cannot act on is its own branch, checked BEFORE the handover:
+ * holding "call me at 11pm" is holding a time, and handing that to a person
+ * as though it were bookable is the same defect as capturing nothing.
  */
 export function phoneBranch(input: {
   unreachableStartHour?: number | null;
   availability?: string | null;
+  /** The clock hour they asked to be called at, 0-23, if they named one. */
+  requestedHour?: number | null;
 }): PhoneBranch {
+  if (callbackIsInHours(input.requestedHour) === false) return "callback_outside_hours";
   return holdsCallbackTime(input) ? "hand_to_human" : "ask_callback_time";
 }
 

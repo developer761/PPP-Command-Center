@@ -23,6 +23,7 @@ import { addressGap } from "./address";
 import { jobRoute, offsiteReasonFor } from "./offsite";
 import { availabilityGap } from "./availability";
 import { statedConstraint } from "./reachability";
+import { requestedTime } from "./appointment-time";
 import { disclosureMove, applyDisclosure, alreadyDisclosed } from "./disclosure";
 import { examplesPrompt, type Selection } from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
@@ -751,8 +752,20 @@ Choose the next action.`;
       // the generic wording rather than guessing a week.
       now: new Date(),
       customerZone: opts.customerZone,
-      callback: opts.callback ?? {
-        unreachableStartHour: statedConstraint(ownWords)?.startHour ?? null,
+      callback: {
+        ...(opts.callback ?? {
+          unreachableStartHour: statedConstraint(ownWords)?.startHour ?? null,
+        }),
+        /**
+         * A25, Kate 2026-09-28: the hour they asked to be called at, so a
+         * time outside the office window is answered with the hours rather
+         * than handed to a person as though it were bookable.
+         *
+         * Always read from THIS message, even when the caller supplied a
+         * callback object: the record remembers a time captured turns ago,
+         * and the correction is about the one they just named.
+         */
+        requestedHour: requestedTime(ownWords)?.hour ?? null,
       },
     };
     let rendered = renderMessage(renderInput);

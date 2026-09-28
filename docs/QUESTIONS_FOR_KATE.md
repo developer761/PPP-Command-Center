@@ -1,5 +1,26 @@
 # Questions for Kate — ask all at once
 
+> ## Her answers, 2026-09-28
+>
+> Three name their subject unmistakably and are recorded on the items below —
+> **2** (follow A6, drop "tenants" from A3), **10** (the A44 ending), and
+> **4** (A25's callback cadence, change type WORDING).
+>
+> **Two say only "Checking with Mac/Jasmine", and I could not tell which
+> items they belong to.** The summary table below is stale — it still lists 5
+> as blocking and 5 was closed by us before the list went out — so position in
+> her reply does not identify them. Worth confirming with her, but nothing
+> waits on it.
+>
+> **A46's Spanish wording (9) is settled anyway.** Karan, 2026-09-28: *"the
+> spanish we cna keep it doesnt hurt"* — we keep what is shipped. It is an
+> approved-copy sign-off we would like, not a correctness question, and
+> nothing changes either way.
+>
+> Separate threads: **Voice** — answered Saturday. **Photos** — roughly 125 a
+> month, tracked only since the start of June, so that is one quarter's
+> evidence rather than a year's.
+
 Karan's call, 2026-09-26: hold these and put them to Kate in one go rather
 than one at a time.
 
@@ -190,7 +211,40 @@ one-line change we will make on her word.
 
 ---
 
-## 4. A25's corrective action contradicts her own later note · **stale column**
+## 4. A25's corrective action contradicts her own later note — **ANSWERED 2026-09-28**
+
+> **Kate, 2026-09-28**, change type **WORDING**:
+>
+> *"the silent transfer aspect is to ensure the cadence is: customer states
+> they want to continue booking convo via call rather than text/email > bot
+> captures the call back time > if call back time is within business hours,
+> state 'we will reach out then', if call back time is outside of business
+> hours, state business hours + ask if there is a time that works for them
+> within that timeframe. Once call back time is captured, a reply to the
+> customer is valid stating 'We will reach out then' or something similar,
+> then transfer the conversation to a human to place the call. Silent transfer
+> is not the right term, we essentially don't want the bot to say 'I'll have a
+> colleague/human reach out then'. We want it to be a seamless transition."*
+>
+> **This is the opposite of what we had built, and our recommendation below
+> was wrong.** We read "concealing the handoff is not required" as licence to
+> narrate it, and shipped *"I'll have someone from the office give you a
+> call."* She is not asking us to conceal anything — she is asking the bot to
+> speak as PPP rather than as a bot handing off. "We will reach out then" is
+> the business talking; "I'll get someone on our team to call you" exposes a
+> seam the customer has no use for.
+>
+> Two changes follow, and the second is new behaviour rather than wording:
+>
+> 1. the two phone-branch variants stop naming a someone;
+> 2. the captured callback time is checked against the office window — inside
+>    it, "we will reach out then"; outside it, state the hours and ask for a
+>    time within them.
+>
+> Both shipped 2026-09-28. The rule card and the corrective_action column are
+> no longer in conflict once read her way: not concealment, just one voice.
+
+<details><summary>the original question, kept for the record</summary>
 
 The rule card, dated:
 
@@ -216,6 +270,8 @@ message) and the two are not actually in conflict.
 and the corrective action is not, so the card is almost certainly current. We
 have built no concealment. This is a tidy-up so the rater does not grade
 against a line that contradicts the rule above it.
+
+</details>
 
 ---
 

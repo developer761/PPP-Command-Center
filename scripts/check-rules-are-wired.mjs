@@ -70,8 +70,37 @@ const CHAINS = [
     links: [
       ["lib/messaging/channel-preference.ts", /export function phoneBranch/],
       ["lib/messaging/render.ts", /phoneBranch\(input\.callback/],
-      ["lib/messaging/agent-run.ts", /callback:\s*opts\.callback/],
+      /**
+       * The caller's callback has to REACH render. This read
+       * `/callback:\s*opts\.callback/` and went red when the object gained a
+       * field and became a spread — the value still arrived, only the
+       * spelling changed. That is the brittleness this file has been caught
+       * by before: link the value, not the punctuation around it.
+       */
+      ["lib/messaging/agent-run.ts", /opts\.callback/],
       ["lib/messaging/scheduler-db.ts", /unreachable_start_hour/],
+      /**
+       * A25, Kate 2026-09-28: "if call back time is outside of business
+       * hours, state business hours + ask if there is a time that works for
+       * them within that timeframe."
+       *
+       * The hour they named has to reach the branch, or the whole
+       * out-of-hours arm is unreachable and holding "call me at 11pm" hands
+       * a person a time nobody can call in.
+       */
+      ["lib/messaging/agent-run.ts", /requestedHour:\s*requestedTime\(/],
+      ["lib/messaging/channel-preference.ts", /callbackIsInHours\(input\.requestedHour\)/],
+      ["lib/messaging/render.ts", /callback_outside_hours/],
+      // ...and the stated hours come from the window that was tested, so the
+      // sentence cannot drift from the rule.
+      ["lib/messaging/render.ts", /clockHour\(CALLBACK_WINDOW\.startHour/],
+    ],
+    forbidden: [
+      /**
+       * The narrated handoff. Kate, 2026-09-28: "we essentially don't want
+       * the bot to say 'I'll have a colleague/human reach out then'."
+       */
+      ["lib/messaging/render.ts", /I'll have someone from the office|I'll get someone on our team/i],
     ],
   },
   {

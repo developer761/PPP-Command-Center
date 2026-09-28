@@ -11,6 +11,7 @@ import { describe, it, expect } from "vitest";
 import { END_STATES } from "@/lib/messaging/db";
 import {
   statedChannelPreference, phoneBranch, holdsCallbackTime,
+  callbackIsInHours, CALLBACK_WINDOW,
 } from "@/lib/messaging/channel-preference";
 import { INTENT_GUIDE } from "@/lib/messaging/agent-output";
 
@@ -182,5 +183,53 @@ describe("the intent guide agrees with the outcome definitions", () => {
   it("keeps discard about what it is actually for", () => {
     // "Not an estimate request, or work we do not cover" — not a tone.
     expect(INTENT_GUIDE.discard).not.toMatch(/abusive|vulgar/i);
+  });
+});
+
+/**
+ * ── A TIME NOBODY IS THERE FOR IS NOT A CAPTURED TIME ───────────────────
+ *
+ * Kate, 2026-09-28, spelling the cadence out:
+ *
+ *   "customer states they want to continue booking convo via call rather
+ *    than text/email > bot captures the call back time > if call back time
+ *    is within business hours, state 'we will reach out then', if call back
+ *    time is outside of business hours, state business hours + ask if there
+ *    is a time that works for them within that timeframe."
+ *
+ * So holding "call me at 11pm" is holding a time, and handing that to a
+ * person as though it were bookable is the same defect as capturing nothing.
+ */
+describe("a callback time outside the office window", () => {
+  it("asks for one inside the hours, rather than handing over", () => {
+    expect(phoneBranch({ requestedHour: 23 })).toBe("callback_outside_hours");
+    expect(phoneBranch({ requestedHour: 7 })).toBe("callback_outside_hours");
+  });
+
+  it("hands over when the hour is one we could call in", () => {
+    expect(phoneBranch({ requestedHour: 9 })).toBe("hand_to_human");
+    expect(phoneBranch({ requestedHour: 18 })).toBe("hand_to_human");
+  });
+
+  it("treats a named hour as a captured time, so it does not ask twice", () => {
+    // "Call me at 6" used to leave holdsCallbackTime false, so the branch
+    // asked "what's a good time to reach you?" — the A11 redundant ask this
+    // whole branch exists to avoid.
+    expect(holdsCallbackTime({ requestedHour: 18 })).toBe(true);
+    expect(phoneBranch({ requestedHour: 18 })).not.toBe("ask_callback_time");
+  });
+
+  it("still asks when they named no hour at all", () => {
+    // null is "nothing to check", NOT "outside". A missing answer must not
+    // become a correction.
+    expect(callbackIsInHours(null)).toBeNull();
+    expect(callbackIsInHours(undefined)).toBeNull();
+    expect(phoneBranch({})).toBe("ask_callback_time");
+  });
+
+  it("closes the window at the hour the office shuts", () => {
+    // 8pm is when it ends, so a call placed at 8pm is not one we can promise.
+    expect(callbackIsInHours(CALLBACK_WINDOW.endHour)).toBe(false);
+    expect(callbackIsInHours(CALLBACK_WINDOW.startHour)).toBe(true);
   });
 });

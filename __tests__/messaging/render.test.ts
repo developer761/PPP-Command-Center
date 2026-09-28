@@ -344,18 +344,36 @@ describe("rendering an intent into words", () => {
     "call me back please",
   ];
 
-  it("promises a call when a call is what they asked for", () => {
+  /**
+   * Kate, 2026-09-28: "Once call back time is captured, a reply to the
+   * customer is valid stating 'We will reach out then' or something
+   * similar... we essentially don't want the bot to say 'I'll have a
+   * colleague/human reach out then'. We want it to be a seamless
+   * transition."
+   *
+   * This asserted /call you|give you a call/, which was stricter than her
+   * rule — "We'll reach out then" is the sentence she names first and does
+   * not contain the word "call". What matters is the pair below: it confirms
+   * contact at the time they gave, and it does not narrate the handoff.
+   */
+  it("confirms contact at the time they gave, in one voice", () => {
     for (const t of ASKED_TO_BE_CALLED) {
       // A25's phone branch may only promise once we know WHEN to call, so
       // this case supplies a callback time. The branch that does not is the
-      // test below.
-      const out = renderMessage({
-        intent: "schedule_follow_up", turn: 0, customerText: t,
-        callback: { availability: "weekday mornings" },
-      });
-      expect(out, t).toMatch(/call you|give you a call/i);
-      // Still no time named: nothing here knows the schedule.
-      expect(out, t).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b|tomorrow|monday/i);
+      // test below. Both turns, because the variants alternate and only one
+      // of them carried the old wording.
+      for (const turn of [0, 1]) {
+        const out = renderMessage({
+          intent: "schedule_follow_up", turn, customerText: t,
+          callback: { availability: "weekday mornings" },
+        });
+        expect(out, t).toMatch(/we'?ll (?:reach out|give you a call)/i);
+        // NOT "I'll have someone from the office give you a call." The
+        // business answers; the bot does not describe its own plumbing.
+        expect(out, t).not.toMatch(/someone|somebody|colleague|our team|a person|an agent/i);
+        // Still no time named: nothing here knows the schedule.
+        expect(out, t).not.toMatch(/\b\d{1,2}\s*(?:am|pm)\b|tomorrow|monday/i);
+      }
     }
   });
 

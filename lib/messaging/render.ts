@@ -26,7 +26,21 @@ import type { AvailabilityGap } from "./availability";
 import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
-import { phoneBranch } from "./channel-preference";
+import { phoneBranch, CALLBACK_WINDOW } from "./channel-preference";
+
+/**
+ * A whole hour as a customer would read it. 9 → "9am", 20 → "8pm".
+ *
+ * Spanish says the hour on a 24-hour clock in writing, which is how a
+ * business states opening times there, so it is not the same string with the
+ * suffix translated.
+ */
+function clockHour(hour: number, es: boolean): string {
+  if (es) return `${hour}:00`;
+  const suffix = hour >= 12 ? "pm" : "am";
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h}${suffix}`;
+}
 import { replyToRequestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
 import { returningCustomerDecliningInThread, returningCustomerReply, returningCustomerReplyEs, alreadyAskedToConfirm } from "./returning-customer";
@@ -671,6 +685,9 @@ export type RenderInput = {
     unreachableStartHour?: number | null;
     /** Availability already captured on the record. */
     availability?: string | null;
+    /** The clock hour they asked to be called at, if they named one — so a
+     *  time nobody is there for can be answered with the hours instead. */
+    requestedHour?: number | null;
   };
   /**
    * When it is where the CUSTOMER is, for the availability ask.
@@ -1149,14 +1166,50 @@ function renderBody(input: RenderInput): string {
       return asks[(input.turn ?? 0) % asks.length];
     }
 
+    /**
+     * A TIME NOBODY IS THERE FOR IS NOT A CAPTURED TIME.
+     *
+     * Kate, 2026-09-28: "if call back time is outside of business hours,
+     * state business hours + ask if there is a time that works for them
+     * within that timeframe."
+     *
+     * The hours come from CALLBACK_WINDOW rather than being typed in, so this
+     * sentence cannot drift from the window the branch actually tests.
+     */
+    if (phoneBranch(input.callback ?? {}) === "callback_outside_hours") {
+      const from = clockHour(CALLBACK_WINDOW.startHour, es);
+      const to = clockHour(CALLBACK_WINDOW.endHour, es);
+      return es
+        ? `Llamamos entre las ${from} y las ${to}. ¿Hay alguna hora dentro de ese horario que le venga bien?`
+        : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`;
+    }
+
+    /**
+     * ONE VOICE, NOT A NARRATED HANDOFF.
+     *
+     * These read "I'll have someone from the office give you a call" and
+     * "I'll get someone on our team to call you instead."
+     *
+     * Kate, 2026-09-28: "we essentially don't want the bot to say 'I'll have
+     * a colleague/human reach out then'. We want it to be a seamless
+     * transition" — and the valid reply is "'We will reach out then' or
+     * something similar."
+     *
+     * This is NOT the concealment HANDOFF_MAY_BE_VISIBLE rules out. Nothing
+     * here hides that a person takes over, and a person openly does. It is
+     * the difference between the business answering and the bot describing
+     * its own plumbing, which is a seam the customer has no use for. We read
+     * "concealing is not required" as licence to narrate it; that was our
+     * mistake rather than hers.
+     */
     const variants = es
       ? [
-          "Claro que sí. Le pido a alguien de la oficina que lo llame.",
-          "Por supuesto. Hago que alguien de nuestro equipo se comunique con usted por teléfono.",
+          "Claro que sí. Lo llamamos entonces.",
+          "Por supuesto. Nos comunicamos con usted a esa hora.",
         ]
       : [
-          "No problem at all. I'll have someone from the office give you a call.",
-          "Of course. I'll get someone on our team to call you instead.",
+          "No problem at all. We'll reach out then.",
+          "Of course. We'll give you a call then.",
         ];
     return variants[(input.turn ?? 0) % variants.length];
   }
