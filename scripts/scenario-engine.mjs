@@ -21,6 +21,7 @@ import { conversationLanguage } from "../lib/messaging/language.ts";
 import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
 import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
 import { addressGap } from "../lib/messaging/address.ts";
+import { availabilityGap } from "../lib/messaging/availability.ts";
 import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/multi-property.ts";
 import { jobRoute } from "../lib/messaging/offsite.ts";
 import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
@@ -71,7 +72,8 @@ export function waysThrough(scenario) {
   // EXACTLY WHAT agent-run PASSES. The rules read the customer's own words,
   // not the description, because a reaction quotes our sentence back — and a
   // harness that gets this wrong reproduces bugs that are already fixed.
-  const ownWords = normalizeInbound(text, mediaCount).text ?? "";
+  const inbound = normalizeInbound(text, mediaCount);
+  const ownWords = inbound.text ?? "";
   // EXACTLY AS agent-run BUILDS THEM (agent-run.ts). Every address the thread
   // holds, not the one stored column — the single-column version could never
   // reach two, so `success` was refused for the life of a two-property
@@ -119,6 +121,8 @@ export function waysThrough(scenario) {
      * allowed it.
      */
     templateAsks: (intent) => templateAsks(intent, history.length),
+    // A4, for the close as well as the ask.
+    availabilityGap: availabilityGap(inbound.description),
     /**
      * A FOURTH FIELD agent-run PASSES AND THIS DID NOT (agent-run.ts:531).
      *
@@ -149,6 +153,17 @@ export function waysThrough(scenario) {
      * untestable here.
      */
     addressGap: derived.address ? addressGap(derived.address) : undefined,
+    /**
+     * A SEVENTH FIELD, and the same shape as addressGap: agent-run passes it
+     * (agent-run.ts) and this did not, so A4's gap wording could not render in
+     * any scenario. Kate: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed
+     * & Friday this week works best' is NOT availability collected."
+     *
+     * From the DESCRIPTION, exactly as agent-run reads it — a reaction or a
+     * photo arrives described rather than quoted, and reading the raw text
+     * would scan our own sentence.
+     */
+    availabilityGap: availabilityGap(inbound.description),
     offsiteReason: offsiteReasonFor(ownWords),
     covers: COVERS,
     language,

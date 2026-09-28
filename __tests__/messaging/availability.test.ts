@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { validateAction } from "@/lib/messaging/agent-output";
 import { availabilityGap, availabilityIsBookable } from "@/lib/messaging/availability";
 import { renderMessage } from "@/lib/messaging/render";
 
@@ -138,5 +139,50 @@ describe("the narrowing is genuinely conditional", () => {
       renderMessage({ intent: "ask_availability", availabilityGap: g, turn: 0 })
     );
     expect(new Set(words).size).toBe(3);
+  });
+});
+
+/**
+ * A4 GUARDS THE CLOSE, NOT ONLY THE ASK.
+ *
+ * Kate: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed & Friday this week
+ * works best' is NOT availability collected — the estimator cannot be booked
+ * against it. THE TEST: could a person reply 'you're booked for X' without
+ * asking anything further?"
+ *
+ * The renderer already knew this and asked "And roughly what time of day suits
+ * you then?". The VALIDATOR was never given the same fact — availabilityGap
+ * reached the render input and not the validate context — so `success` was
+ * available on "Wednesday or Friday works best". That tells the office a job
+ * is ready to book against two days and no time. Found in the simulator.
+ */
+describe("a close needs a bookable availability, not just a day", () => {
+  const ctx = (gap: "window" | "day" | "both" | null) => ({
+    track: "new_lead" as const,
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    knownFields: { inquiryScope: true, address: true, email: true, name: true },
+    availabilityGap: gap as never,
+    customerText: "Wednesday or Friday works best",
+  });
+  const success = { intent: "success", confidence: 0.97, freeText: "" };
+
+  it("refuses success when they named days but no window", () => {
+    const v = validateAction(success, ctx("window"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toMatch(/no time of day/i);
+  });
+
+  it("refuses it the other way round too", () => {
+    const v = validateAction(success, ctx("day"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toMatch(/no day/i);
+  });
+
+  it("ALLOWS success once the availability is whole", () => {
+    expect(validateAction(success, ctx(null)).ok).toBe(true);
+  });
+
+  it("leaves the ask available, so the turn still has somewhere to go", () => {
+    expect(validateAction({ ...success, intent: "ask_availability" }, ctx("window")).ok).toBe(true);
   });
 });

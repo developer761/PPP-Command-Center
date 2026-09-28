@@ -243,6 +243,20 @@ const SCENARIOS = [
     priorIntents: ["present_offsite_quote"],
     wants: "ask_address" },
 
+  /**
+   * A4 — A DAY IS NOT A WINDOW. Kate: "'Wed & Friday this week works best' is
+   * NOT availability collected — the estimator cannot be booked against it.
+   * THE TEST: could a person reply 'you're booked for X' without asking
+   * anything further?" The remedy is to ask for the missing half.
+   */
+  { name: "names days but no time window",
+    history: ["paint the kitchen and two bedrooms", "12 Oak St, Garden City NY 11530", "tom@example.com"],
+    text: "Wednesday or Friday works best",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "paint the kitchen and two bedrooms", address: "12 Oak St, 11530",
+      email: "tom@example.com", name: "Tom", phone: "999-784-6046" },
+    wants: "ask_availability", refuses: "success", saysMatch: /time|window|morning|afternoon/i },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

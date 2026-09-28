@@ -17,6 +17,7 @@
  * Pure: validation and rendering only. Nothing here calls a model or a network.
  */
 import type { AddressGap } from "./address";
+import type { AvailabilityGap } from "./availability";
 import type { JobRoute } from "./offsite";
 import { parkKind, isAsk, conversationWasDeferred } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
@@ -891,6 +892,15 @@ export type ValidateContext = {
    */
   addressGap?: AddressGap;
   /**
+   * What is missing from a PARTIAL availability, when the customer has just
+   * given one. A4: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED."
+   *
+   * Reaches the renderer already, so the gap can be ASKED for. It did not
+   * reach here, so nothing stopped the conversation CLOSING over the same
+   * hole — see the success check below.
+   */
+  availabilityGap?: AvailabilityGap;
+  /**
    * Where the JOB routes, from the lookup in offsite.ts. Decides whether the
    * quick quote is PRESENTED (A6, no reason) or OFFERED (A7, reason
    * mandatory). Undefined when the scope is not known well enough to say,
@@ -1165,6 +1175,33 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
         return {
           ok: false, reason: "details_never_collected",
           detail: `this closes the conversation as booked, but we do not hold ${empty.join(" or ")}`,
+        };
+      }
+      /**
+       * AND THE FOURTH LEG, which the list above does not cover because
+       * knownFields has no slot for availability.
+       *
+       * A4, Kate: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed &
+       * Friday this week works best' is NOT availability collected — the
+       * estimator cannot be booked against it. THE TEST: could a person reply
+       * 'you're booked for X' without asking anything further?"
+       *
+       * Seen in the simulator: the customer answered "Wednesday or Friday
+       * works best" and `success` was available. That tells the office a job
+       * is ready to book against two days and no time. The renderer already
+       * knew — it asks "And roughly what time of day suits you then?" — and
+       * the validator was never given the same fact.
+       *
+       * Only when the customer has JUST given a partial one, which is what
+       * availabilityGap describes. It does not re-litigate a conversation
+       * whose availability was collected earlier.
+       */
+      if (ctx.availabilityGap) {
+        return {
+          ok: false, reason: "details_never_collected",
+          detail: ctx.availabilityGap === "window"
+            ? "they named days but no time of day, and an estimator cannot be booked against a day alone (A4)"
+            : "they named a time but no day, and an estimator cannot be booked against a time alone (A4)",
         };
       }
     }

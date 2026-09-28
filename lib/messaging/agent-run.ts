@@ -516,6 +516,9 @@ Choose the next action.`;
        * is being validated right now.
        */
       addressesHeld,
+      // A4: the same gap the renderer uses to ASK for the missing half, so the
+      // close cannot happen over it either.
+      availabilityGap: availabilityGap(inbound.description),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
