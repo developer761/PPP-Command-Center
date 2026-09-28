@@ -98,7 +98,21 @@ try {
   check("a punch is open on disk", !!openPunch && !openPunch.clock_out_at);
   check("and it is against the right job", openPunch?.job_id === jobId);
 
-  const today = new Date().toISOString().slice(0, 10);
+  /*
+   * ET, NOT UTC.
+   *
+   * The platform books a punch against its EASTERN date — `etDate` in
+   * clock.ts. This line used `toISOString().slice(0,10)`, which is UTC, so
+   * every evening between 8pm ET and midnight ET the two disagreed and the
+   * check looked for the punch on tomorrow's date and found nothing. It went
+   * red at 20:14 ET tonight for exactly that reason, on a flow that had
+   * passed an hour earlier.
+   *
+   * A check that fails by the clock teaches people to re-run it rather than
+   * read it, which is how a real failure gets waved through.
+   */
+  const { etTodayIso } = await import("../lib/date-et.ts");
+  const today = etTodayIso();
   const day = await getEmployeeDay(empId, today);
   check("their day shows them clocked in", !!day?.openPunch, JSON.stringify(day?.openPunch ?? null).slice(0, 60));
 
