@@ -16,6 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import { runAction } from "../lib/messaging/scheduler.ts";
 import { schedulerDeps } from "../lib/messaging/scheduler-db.ts";
 import { withinQuietHours, FEDERAL_BOUND } from "../lib/messaging/compliance.ts";
+import { customerZone } from "../lib/messaging/customer-clock.ts";
 import { clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
 
 if (process.env.SMS_LIVE_SENDING === "true") {
@@ -43,8 +44,11 @@ let nextPhone = 140;
 const phone = () => `+1999222${String(nextPhone++).padStart(4, "0")}`;
 
 async function thread(ws, state = "ai_active") {
+  // Kept so a caller can predict the gate's decision on the RECIPIENT's clock,
+  // which is the clock the gate actually uses.
+  const customerPhone = phone();
   const { data: conv, error } = await sb.from("sms_conversations").insert({
-    workspace_id: ws.id, customer_phone: phone(), state, consent_basis: "inquiry",
+    workspace_id: ws.id, customer_phone: customerPhone, state, consent_basis: "inquiry",
   }).select("id").single();
   if (error) throw new Error(`conversation: ${error.message}`);
   conversations.push(conv.id);
@@ -52,7 +56,7 @@ async function thread(ws, state = "ai_active") {
     conversation_id: conv.id, direction: "inbound", channel: "sms",
     body: "Hi, I need two bedrooms painted", provider_id: `e2e-held-${conv.id}`,
   }).select("id").single();
-  return { convId: conv.id, msgId: msg.id };
+  return { convId: conv.id, msgId: msg.id, phone: customerPhone };
 }
 
 async function holdReply(convId, msgId, body) {
@@ -119,8 +123,30 @@ try {
    * Caught the first evening the suppression list existed: until then the
    * port rail refused every send, so this branch never sent anything and the
    * assertion was never tested.
+   *
+   * ── AND THE ZONE, WHICH THE FIX ABOVE DID NOT COVER ────────────────
+   *
+   * That fix moved from the workspace's HOURS to the federal bound and kept
+   * reading the workspace's CLOCK. The gate does not: it resolves the
+   * RECIPIENT's zone, which is the whole point of customer-clock.ts and the
+   * reason sending-window.ts exists.
+   *
+   * These threads use area code 999 — reserved, assigned to nobody — so no
+   * state resolves and the zone falls back to Pacific. Between 9 PM and
+   * midnight Eastern the two clocks disagree: the workspace is past the
+   * federal bound and the customer is not, so this predicted a draft and the
+   * gate correctly sent. Three hours every evening where a green suite goes
+   * red, and it reads exactly like a compliance bug, which is the worst way
+   * for a test to be wrong.
+   *
+   * Predicted through the same function the gate uses, so the two cannot
+   * drift again.
    */
-  const open = withinQuietHours(new Date(), ws.time_zone, FEDERAL_BOUND);
+  const open = withinQuietHours(
+    new Date(),
+    customerZone({ phone: a.phone }).timeZone,
+    FEDERAL_BOUND,
+  );
   const outA = await runAction(heldA, schedulerDeps());
   if (open) {
     ok("it is sent through the real gate", outA.kind === "sent", JSON.stringify(outA));
