@@ -772,12 +772,61 @@ const BARE_QUESTION =
  * by a test. Every test asserted the right words were present, and they were.
  */
 export const BARE_ACKNOWLEDGEMENT =
-  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
 
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
   return QUESTION_WORD.test(t) || BARE_QUESTION.test(t);
+}
+
+/**
+ * "Will somebody come and look at it?" — asked as a yes/no.
+ *
+ * DELIBERATELY NOT "any yes/no question", and the difference is what the
+ * answer would be claiming.
+ *
+ * "Do you do cabinets as well?" is also a yes/no, and "Sure." is NOT an
+ * acceptable answer to it: whether we do cabinets depends on the workspace's
+ * service list, so an affirmative is a capability claim that can be false.
+ * rapport-stacking.test.ts holds that line and it is right to.
+ *
+ * Whether somebody can come out is not a claim of that kind. It is what the
+ * whole flow exists to arrange, it is true in every workspace, and the next
+ * template asks for the address in order to do it. So "Absolutely." is a
+ * complete and honest answer — it is Kate's own model answer, quoted in the
+ * A29 guard below.
+ *
+ * Leading wh-words disqualify it: "what days can you come out?" is asking
+ * WHICH, and an affirmative does not answer it.
+ */
+const LEADING_WH = /^\s*(?:what|when|where|which|who|why|how)\b/i;
+const ASKS_TO_BE_SEEN =
+  /(?:^|[.!?]\s*)(?:can|could|will|would|does|do|is|are|any chance)\b[^?]{0,80}?\b(?:come (?:out|by|over|and |to )|stop by|swing by|send (?:someone|somebody|a\b)|come take a look|take a look at|look at (?:my|the|it)|visit|come see|see the (?:job|place|house|room)|estimate in person|in person)\b[^?]*\?/i;
+
+export function isYesNoQuestion(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t || LEADING_WH.test(t)) return false;
+  return ASKS_TO_BE_SEEN.test(t);
+}
+
+/**
+ * A plain affirmative — the complete answer to a yes/no question.
+ *
+ * DELIBERATELY NARROWER THAN BARE_ACKNOWLEDGEMENT, which it overlaps. "Sure"
+ * and "Absolutely" appear in both, and that is the point: the same word is an
+ * answer to "can you come out?" and a politeness in front of "how much is
+ * it?". Which one it is depends on the QUESTION, so the two are read
+ * together rather than one overriding the other.
+ *
+ * "Got it", "okay", "thanks", "no problem" are NOT here. A customer reading
+ * "Ok. What's the address?" has been acknowledged, not answered.
+ */
+const AFFIRMATIVE =
+  /^(?:(?:yes|yep|yeah|yup|absolutely|of course|certainly|definitely|for sure|sure(?: thing)?|we can|we do|we sure do|that'?s right|that'?s correct)\b[\s,.!—-]*)+/i;
+
+export function isAffirmative(text: string | null | undefined): boolean {
+  return AFFIRMATIVE.test((text ?? "").trim());
 }
 
 /**
@@ -1513,7 +1562,36 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    */
   const templateAnswersTheTime =
     TIME_IS_ACKNOWLEDGED_BY.has(a.intent) && !!requestedTime(ctx.customerText);
-  const answersIt = ANSWERS_A_QUESTION.has(a.intent) || saysSomething || templateAnswersTheTime;
+  /**
+   * AND "YES" IS A WHOLE ANSWER TO A YES/NO QUESTION.
+   *
+   * Kate's own model answer, quoted in the comment above, is "Absolutely.
+   * What time works best for you?" — and this guard refused exactly that,
+   * because "absolutely" is in BARE_ACKNOWLEDGEMENT.
+   *
+   * Seen live on 2026-09-28. "Can someone come out and look at my living
+   * room?" — one of the commonest openings a painting lead has — was handed
+   * to a person on turn one, every time, and no wording could save it:
+   *
+   *   "Absolutely." / "Of course."   read as a bare acknowledgement
+   *   "Yes, an estimator can come
+   *    out and look at it."          dropped: "it repeats the customer's
+   *                                  own words back"
+   *
+   * Answering a yes/no question naturally reuses the verb it was asked with,
+   * so the echo rule removes the answer, and then this guard sees no answer
+   * and escalates. Two correct rules with no legal move between them, which
+   * is this codebase's signature bug and always costs the same customer: the
+   * one who said plainly what they wanted.
+   *
+   * Narrow on purpose. It applies ONLY when the question can be answered yes,
+   * so "How much will it cost?" met with "Absolutely" is still the
+   * politeness-shaped non-answer A29 exists to catch.
+   */
+  const affirmsAYesNo =
+    !!rapport && isYesNoQuestion(ctx.customerText) && isAffirmative(rapport);
+  const answersIt =
+    ANSWERS_A_QUESTION.has(a.intent) || saysSomething || templateAnswersTheTime || affirmsAYesNo;
   if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
     return {
       ok: false, reason: "question_left_unanswered",

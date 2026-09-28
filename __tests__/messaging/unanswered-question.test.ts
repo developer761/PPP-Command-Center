@@ -153,3 +153,110 @@ describe("the check is genuinely reachable", () => {
     expect(ask("ask_address", ctx, "We do.").ok).toBe(true);
   });
 });
+
+/**
+ * ── "YES" IS A WHOLE ANSWER TO A YES/NO QUESTION ────────────────────────
+ *
+ * Seen live on 2026-09-28. "Can someone come out and look at my living room?"
+ * — one of the commonest openings a painting lead has — was handed to a
+ * person on turn one, every time, and no wording could rescue it:
+ *
+ *   "Absolutely." / "Of course."   read as a bare acknowledgement, because
+ *                                  both words are in BARE_ACKNOWLEDGEMENT
+ *   "Yes, an estimator can come
+ *    out and look at it."          dropped by the echo rule — "it repeats
+ *                                  the customer's own words back"
+ *
+ * Answering a yes/no question naturally reuses the verb it was asked with, so
+ * the echo rule removes the answer; then this guard sees no answer and
+ * escalates. Two correct rules with no legal move between them.
+ *
+ * And the guard's own comment cites Kate's model answer — "Absolutely. What
+ * time works best for you?" — which is precisely the sentence it refused.
+ */
+describe("a yes/no question is answered by yes", () => {
+  const turn = (customerText: string, freeText?: string) =>
+    validateAction(
+      { intent: "ask_address", confidence: 0.9, ...(freeText ? { freeText } : {}) } as never,
+      { customerText, knownFields: { inquiryScope: true }, stage: 1 } as never
+    );
+
+  const CAN_YOU = "Can someone come out and look at my living room?";
+  const HOW_MUCH = "How much will it cost to paint my living room?";
+  const CABINETS = "Do you do cabinets as well?";
+
+  it.each(["Absolutely.", "Of course.", "Yes.", "Sure thing.", "For sure."])(
+    "accepts %j as the answer to a yes/no question", (rapport) => {
+      expect(turn(CAN_YOU, rapport).ok).toBe(true);
+    }
+  );
+
+  it.each([undefined, "Got it.", "Okay.", "Thanks!", "No worries."])(
+    "still refuses %j, which acknowledges rather than answers", (rapport) => {
+      const v = turn(CAN_YOU, rapport);
+      expect(v.ok).toBe(false);
+      expect(v.ok === false && v.reason).toBe("question_left_unanswered");
+    }
+  );
+
+  /**
+   * THE CARVE-OUT MUST NOT LEAK TO OPEN QUESTIONS. "How much will it cost?"
+   * met with "Absolutely" is the politeness-shaped non-answer A29 exists to
+   * catch, and it stays caught.
+   */
+  it.each(["Absolutely.", "Of course.", "Sure thing.", "For sure.", "Got it."])(
+    "refuses %j as the answer to an open question", (rapport) => {
+      expect(turn(HOW_MUCH, rapport).ok).toBe(false);
+    }
+  );
+
+  it("still accepts a real answer to an open question", () => {
+    expect(turn(HOW_MUCH, "Pricing comes from the estimator after they see it.").ok).toBe(true);
+  });
+
+  it("does not treat a wh-question as yes/no just for containing a modal", () => {
+    // "What days can you come?" opens with a wh-word. An affirmative alone
+    // does not answer it.
+    expect(turn("What days can you come out?", "Absolutely.").ok).toBe(false);
+  });
+});
+
+/**
+ * AND THE LINE THIS CARVE-OUT MUST NOT CROSS.
+ *
+ * "Do you do cabinets as well?" is a yes/no question too, and "Sure." is NOT
+ * an acceptable answer: whether we do cabinets depends on the workspace's
+ * service list, so an affirmative there is a capability claim that can be
+ * false. Whether somebody can come out is not a claim of that kind — it is
+ * what the flow exists to arrange and it is true in every workspace.
+ *
+ * rapport-stacking.test.ts holds that line from the other side; this states
+ * it here too, because the two are one decision and a future edit to either
+ * regex should have to break both.
+ */
+describe("affirming a VISIT is not affirming a CAPABILITY", () => {
+  const turn = (customerText: string, freeText: string) =>
+    validateAction(
+      { intent: "ask_address", confidence: 0.9, freeText } as never,
+      { customerText, knownFields: { inquiryScope: true }, stage: 1 } as never
+    );
+
+  it.each([
+    "Can someone come out and look at my living room?",
+    "Could you stop by next week?",
+    "Can you send someone to take a look?",
+    "Would somebody come see the job first?",
+  ])("accepts a plain yes to %j", (q) => {
+    expect(turn(q, "Absolutely.").ok).toBe(true);
+  });
+
+  it.each([
+    "Do you do cabinets as well?",
+    "Do you handle exterior work?",
+    "Can you paint kitchen cabinets?",
+  ])("still demands a real answer to %j", (q) => {
+    const v = turn(q, "Sure.");
+    expect(v.ok).toBe(false);
+    expect(v.ok === false && v.reason).toBe("question_left_unanswered");
+  });
+});
