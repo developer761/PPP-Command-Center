@@ -76,7 +76,11 @@ const HOME_WALLS = new RegExp(
   [
     String.raw`\b(?:siding|stucco|clapboard)\b`,
     String.raw`\bexterior\s+(?:walls?|of\s+(?:the|my|our)\s+(?:home|house))\b`,
-    String.raw`\b(?:whole|full|entire)\s+(?:home|house|exterior)\b`,
+    // Not "the entire house inside", which is an interior job. The last
+    // alternative already guards the verb form; this one did not, so a whole
+    // interior came back as "exterior home walls" — the right route by luck
+    // and the wrong reason on the record.
+    String.raw`\b(?:whole|full|entire)\s+(?:home|house|exterior)\b(?!\s+(?:inside|interior))`,
     String.raw`\bbody\s+of\s+the\s+(?:home|house)\b`,
     String.raw`\b(?:home|house)\s+exterior\b`,
     // "paint my home office" is a ROOM, and this matched it as the exterior
@@ -112,6 +116,13 @@ const DESCRIBES_WORK =
   // other half of that failure. do\w* is deliberately NOT used — it would
   // swallow door, down, doubt and dog.
   /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\bre-?d(?:one|oing)\b|\b(?:refresh\w*|freshen\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b/i;
+
+/** "the whole interior", "the entire place" — an area with a boundary on it. */
+const WHOLE_INTERIOR =
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|houses?|homes?|apartments?|condos?|places?)\b/i;
+/** The same, plus the exterior forms, for the gate. */
+const BOUNDED_AREA =
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|places?|propert(?:y|ies))\b/i;
 
 const EXTERIOR = /\b(?:exterior|outside|outdoor)\b/i;
 const INTERIOR = /\b(?:interior|inside|indoor)\b/i;
@@ -319,6 +330,10 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
      */
     && !HOME_WALLS.test(t)
     && !CABINETS.test(t)
+    // "the whole interior done" — bounded, and a description of the job even
+    // with no painting verb in it. Same reasoning as scope.ts's WHOLE_AREA,
+    // and the real draft that found it said exactly that.
+    && !BOUNDED_AREA.test(t)
   ) return null;
 
   // THE GATE, ABOVE THE LOOKUP. Any scope, any size, no exceptions.
@@ -379,7 +394,18 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
 
   // Interior is only its own component when something other than the rows
   // above says so — otherwise "kitchen cabinets" would count a kitchen.
-  const rooms = roomCount(withoutCabinetRooms);
+  /**
+   * "THE WHOLE INTERIOR" IS TWO OR MORE ROOMS, BY DEFINITION.
+   *
+   * Without this the lookup returned unknown and the bot asked how many rooms
+   * — which A3 says is exactly the question not to ask: "'Paint the whole
+   * interior' is COMPLETE." A3 called the scope finished and A6 called it
+   * unresolved, so the customer got a redundant question about a job they had
+   * already bounded. Whole-house exterior is handled by HOME_WALLS above.
+   */
+  const rooms = WHOLE_INTERIOR.test(withoutCabinetRooms)
+    ? Math.max(roomCount(withoutCabinetRooms) ?? 0, 2)
+    : roomCount(withoutCabinetRooms);
   const partial = PARTIAL_ROOM.test(t);
   const interiorNamed = INTERIOR.test(withoutCabinetRooms) || rooms !== null || partial;
   if (interiorNamed && !(parts.length && rooms === null && !partial && !INTERIOR.test(withoutCabinetRooms))) {

@@ -206,6 +206,13 @@ const WORK_WORD =
 const SUBJECT_EXTRA =
   /\b(?:dry\s?wall|sheet\s?rock|wall\s?paper|plaster|stucco|lobb(?:y|ies)|corridors?|common\s+areas?|floors?|patios?|sheds?|driveways?|gutters?|columns?|mantels?|wainscot\w*)\b/i;
 
+/**
+ * "the whole interior", "the entire house" — an area with a boundary on it.
+ * See scopeFromCustomer: this stands in for the verb, exactly as dimensions do.
+ */
+const WHOLE_AREA =
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|floors?|place|property)\b/i;
+
 const SUBJECT =
   /\b(?:rooms?|bedrooms?|bathrooms?|bath|kitchens?|living\s?rooms?|dining\s?rooms?|hallways?|stairs?|stairwells?|closets?|basements?|garages?|attics?|ceilings?|walls?|trim|baseboards?|mouldings?|moldings?|cabinets?|doors?|windows?|shutters?|decks?|fences?|porch(?:es)?|sidings?|soffits?|railings?|houses?|homes?|apartments?|condos?|units?|offices?|interiors?|exteriors?|bd|br|ba)\b/i;
 
@@ -254,7 +261,26 @@ export function scopeFromCustomer(text: string | null | undefined): string | nul
   if (!subject && !counted) return null;
   // A verb, or measurements against a subject, which says the same thing.
   const verb = WORK_WORD.test(t) || WORK_WORD_ES.test(t);
-  if (!verb && !(DIMENSIONED.test(t) && subject)) return null;
+  /**
+   * OR A BOUNDED AREA, which A3 names as complete in its own words:
+   * "'Paint the whole interior' is complete. 'Interior paint' is not, because
+   * it does not say how many rooms." The boundedness is what completes it, and
+   * a customer who bounds the job that way often uses no painting verb at all.
+   *
+   * Found in a REAL DRAFT waiting for approval on 2026-09-27. The customer had
+   * written "Need the whole interior done before we move in on the 30th" and
+   * the queued reply was "What are you looking to have painted?" — A13, about
+   * to go to a person who had already answered it. "done" is not a work word,
+   * so no scope was captured, the stage stayed at 0, and the held-field guard
+   * had nothing to guard.
+   *
+   * Same shape as the DIMENSIONED clause above: a subject plus something that
+   * bounds it says what the job is without naming the verb. Deliberately NOT
+   * bare "done" — "I'm done with this house" has a subject too, and reading
+   * that as a project is the loose direction this file warns about.
+   */
+  const bounded = WHOLE_AREA.test(t);
+  if (!verb && !(DIMENSIONED.test(t) && subject) && !(bounded && subject)) return null;
   return t;
 }
 

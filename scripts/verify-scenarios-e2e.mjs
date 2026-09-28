@@ -213,6 +213,16 @@ const SCENARIOS = [
     wants: "defer_to_estimator", refuses: "ask_availability",
     saysMatch: /^(?!.*what (?:days|times|sort of days)).*$/i },
 
+  /**
+   * FROM A REAL DRAFT IN THE APPROVAL QUEUE, 2026-09-27. The customer wrote
+   * "Need the whole interior done before we move in on the 30th" and the
+   * queued reply was "What are you looking to have painted?" — A13, waiting
+   * for a person to approve it.
+   */
+  { name: "bounded the job without a painting verb",
+    text: "Need the whole interior done before we move in on the 30th",
+    wants: "ask_address", refuses: "ask_project_details" },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

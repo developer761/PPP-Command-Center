@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { knownFromThread } from "@/lib/messaging/known-from-thread";
 import { isPlaceholderScope, usableScope, scopeFromCustomer, resolveScope, scopeAndStage } from "@/lib/messaging/scope";
 import { knownFields, knownCustomerPrompt } from "@/lib/messaging/known-customer";
 import { validateAction } from "@/lib/messaging/agent-output";
@@ -336,5 +337,57 @@ describe("scopeAndStage — the rule the scheduler and the simulator share", () 
     });
     expect(r.from).toBe("record");
     expect(r.scope).toBe("Interior repaint, 3 bedrooms");
+  });
+});
+
+/**
+ * A BOUNDED AREA IS COMPLETE SCOPE, WITH OR WITHOUT A PAINTING VERB.
+ *
+ * FOUND IN A REAL DRAFT WAITING FOR APPROVAL, 2026-09-27:
+ *
+ *   BOT       "Thanks for requesting a free estimate! Could you share details
+ *              about your project…"
+ *   customer  "Need the whole interior done before we move in on the 30th"
+ *   BOT       "Okay! What's the full address and zip?"
+ *   BOT       (follow-up) "Just checking in to see if you're still
+ *              interested…"
+ *   DRAFT     "What are you looking to have painted?"     ← A13
+ *
+ * The customer had answered that in their first message. "done" is not a work
+ * word, so no scope was captured, the stage stayed at 0, and the held-field
+ * guard had nothing to guard. A3 is explicit that this scope is finished:
+ * "'Paint the whole interior' is COMPLETE."
+ */
+describe("a bounded area says what the job is", () => {
+  const derive = (body: string) =>
+    knownFromThread({ onFile: {}, messages: [{ body }], stage: 0 });
+
+  it("captures the real customer message that produced a bad draft", () => {
+    const k = derive("Need the whole interior done before we move in on the 30th");
+    expect(k.inquiryScope).toBeTruthy();
+    expect(k.stage).toBeGreaterThan(0);
+  });
+
+  it("captures the bounded forms generally", () => {
+    for (const t of ["the whole interior done", "whole interior", "the entire house inside"]) {
+      expect(derive(t).inquiryScope, t).toBeTruthy();
+    }
+  });
+
+  /**
+   * THE LOOSE DIRECTION, which this file exists to guard. "done" alone is not
+   * a project, however many subjects are in the sentence — reading an annoyed
+   * customer as a scope is worse than missing one.
+   */
+  it("never reads a bare 'done' as a project", () => {
+    for (const t of ["I'm done with this house", "we are done talking", "I'm all done thanks"]) {
+      expect(derive(t).inquiryScope, t).toBeNull();
+    }
+  });
+
+  it("leaves an UNBOUNDED interior incomplete, as A3 requires", () => {
+    // "Interior paint is not [complete], because it does not say how many
+    // rooms." No boundary, so it stays a question.
+    expect(derive("I need the interior done").inquiryScope).toBeNull();
   });
 });
