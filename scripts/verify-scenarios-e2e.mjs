@@ -197,6 +197,22 @@ const SCENARIOS = [
     text: "we used you guys a couple years back for the upstairs, now I need the hallway and two bedrooms redone",
     wants: "ask_address", refuses: "present_offsite_quote" },
 
+  /**
+   * THE STAND-OFF, FOUND IN THE SIMULATOR. They asked twice what times we
+   * have; the bot deferred to the estimator, correctly, and then asked them a
+   * THIRD time in the same breath.
+   */
+  { name: "asked us for times twice, so nothing asks them again",
+    history: [
+      "we are a dentists office and need the waiting room painted, just the one room",
+      "12 Oak St, Garden City NY 11530. What times do you have available this week?",
+    ],
+    text: "no, just tell me what times you have and I'll pick one",
+    priorIntents: ["ask_address", "ask_contact"],
+    known: { inquiryScope: "dentist office waiting room", address: "12 Oak St, 11530" },
+    wants: "defer_to_estimator", refuses: "ask_availability",
+    saysMatch: /^(?!.*what (?:days|times|sort of days)).*$/i },
+
   // ── A40: parking, which is not declining ──────────────────────────────
   { name: "has to check with someone first", text: "let me check with my wife and get back to you",
     priorIntents: ["ask_project_details"], known: { inquiryScope: "paint the kitchen and two bedrooms" }, wants: "schedule_follow_up" },

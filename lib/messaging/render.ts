@@ -574,6 +574,12 @@ export type RenderInput = {
    */
   customerMessages?: readonly string[];
   /**
+   * They have asked US for times twice, and we have no calendar to answer
+   * with. Suppresses a trailing "what days work for you?" on the turns that
+   * are otherwise correct — see withoutATimingQuestion.
+   */
+  availabilityStandOff?: boolean;
+  /**
    * What WE have already said, oldest first.
    *
    * Only for "have we asked this already". Parity 7 caps its acknowledgement at
@@ -791,8 +797,39 @@ const ACKNOWLEDGES_A_TIME = TIME_IS_ACKNOWLEDGED_BY;
  *  docs/QUESTIONS_FOR_KATE.md item 9. */
 const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
 
+/**
+ * A THIRD ASK, AFTER THEY HAVE TWICE ASKED US.
+ *
+ * Hatch: "If they insist on knowing our availability before providing theirs,
+ * End: Schedule Follow Up." The validator refuses ask_availability once
+ * isAvailabilityStandOff is true — but the QUESTION leaks through other
+ * templates. Seen in the simulator on 2026-09-27, after the customer had
+ * asked twice:
+ *
+ *   BOT  "That's one for the estimator, and they'll go through it with you.
+ *         What days suit you best?"
+ *
+ * defer_to_estimator is the RIGHT intent — the estimator does own the
+ * calendar, and refusing it would strand the turn — so the intent stays and
+ * the trailing ask goes. What is left still answers them.
+ *
+ * Only a trailing question, and only one about days or times: the rest of the
+ * message is the answer and must survive. If stripping would leave nothing,
+ * the original stands, because a silent turn is worse than a third ask.
+ */
+const ASKS_ABOUT_TIMING =
+  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i;
+
+function withoutATimingQuestion(body: string): string {
+  const sentences = body.split(/(?<=[.?!])\s+/);
+  const last = sentences[sentences.length - 1] ?? "";
+  if (!last.includes("?") || !ASKS_ABOUT_TIMING.test(last)) return body;
+  const kept = sentences.slice(0, -1).join(" ").trim();
+  return kept || body;
+}
+
 export function renderMessage(input: RenderInput): string {
-  const body = renderBody(input);
+  const body = input.availabilityStandOff ? withoutATimingQuestion(renderBody(input)) : renderBody(input);
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
   const timed = replyToRequestedTime(input.customerText);
   if (!timed || timed.verdict !== "in_hours") return body;

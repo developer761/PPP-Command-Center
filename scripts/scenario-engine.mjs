@@ -23,6 +23,7 @@ import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
 import { addressGap } from "../lib/messaging/address.ts";
 import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/multi-property.ts";
 import { jobRoute } from "../lib/messaging/offsite.ts";
+import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
 
 /** Rapport the model plausibly writes, including the shapes that broke things. */
 export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
@@ -127,6 +128,7 @@ export function waysThrough(scenario) {
     secondProperty: wantsSecondAddress,
     // Parity 7 needs the thread: the two halves arrive turns apart.
     customerMessages: history,
+    availabilityStandOff: isAvailabilityStandOff(customerSaid),
   });
 
   const open = [];

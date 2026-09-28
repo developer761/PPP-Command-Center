@@ -258,3 +258,61 @@ describe("the acknowledgement is sent once, not every turn", () => {
     expect(first).toBe(ACK);
   });
 });
+
+/**
+ * THE STAND-OFF LEAKED THROUGH THE OTHER TEMPLATES.
+ *
+ * Hatch: "If they insist on knowing our availability before providing theirs,
+ * End: Schedule Follow Up." The validator refuses ask_availability once the
+ * stand-off is true — but the QUESTION is what the rule is about, and other
+ * templates still carried one. Seen in the simulator after the customer had
+ * asked twice:
+ *
+ *   BOT  "That's one for the estimator, and they'll go through it with you.
+ *         What days suit you best?"
+ *
+ * defer_to_estimator is the RIGHT intent — the estimator does own the calendar
+ * — so the intent stays and the trailing ask goes.
+ */
+describe("once they have asked us twice, nothing asks them a third time", () => {
+  const asked = {
+    intent: "defer_to_estimator" as const, turn: 1,
+    customerText: "no, just tell me what times you have and I'll pick one",
+  };
+
+  it("drops the trailing timing question", () => {
+    const out = renderMessage({ ...asked, availabilityStandOff: true });
+    expect(out).not.toMatch(/\?\s*$/);
+    expect(out).not.toMatch(/what (?:days|times|sort of days)/i);
+  });
+
+  it("but still answers them — it never goes silent", () => {
+    const out = renderMessage({ ...asked, availabilityStandOff: true });
+    expect(out.length).toBeGreaterThan(20);
+    expect(out).toMatch(/estimator|office/i);
+  });
+
+  it("leaves the ordinary turn alone when there is no stand-off", () => {
+    const out = renderMessage(asked);
+    expect(out).toMatch(/\?\s*$/);
+  });
+
+  it("never strips a question that is not about timing", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 1, customerText: "what times do you have?",
+      availabilityStandOff: true,
+    });
+    expect(out).toMatch(/\?\s*$/);
+    expect(out).toMatch(/address|property/i);
+  });
+
+  it("keeps the message rather than emptying it", () => {
+    // A turn whose ONLY sentence is a timing question keeps it: a silent turn
+    // is worse than a third ask.
+    const out = renderMessage({
+      intent: "ask_availability", turn: 1, customerText: "ok",
+      availabilityStandOff: true,
+    });
+    expect(out.length).toBeGreaterThan(0);
+  });
+});

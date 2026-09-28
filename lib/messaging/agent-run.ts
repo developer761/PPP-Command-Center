@@ -30,6 +30,7 @@ import { renderMessage, isSilent, templateAsks } from "./render";
 import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
 import { addressesInThread, secondPropertyAskDue } from "./multi-property";
+import { isAvailabilityStandOff } from "./availability-ask";
 
 const MODEL = "claude-opus-5";
 
@@ -578,6 +579,9 @@ Choose the next action.`;
       // And Parity 7 caps that acknowledgement at ONE. The only record of
       // having sent it is what we sent.
       botMessages: history.filter((t) => t.role === "assistant").map((t) => t.text),
+      // Hatch's stand-off: they have asked us for times twice, so no template
+      // may ask them a third time, whichever intent the model picked.
+      availabilityStandOff: isAvailabilityStandOff(customerSaid),
       // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
       // switch back to English on the next turn." So it reads every customer
       // message in the thread plus this one, not just the latest — somebody
