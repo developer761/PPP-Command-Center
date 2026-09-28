@@ -331,7 +331,30 @@ function actionTool(track: Track): Anthropic.Tool {
       freeText: {
         type: "string",
         description:
-          "Short rapport only, or empty. Never a price, never a specific time, never a commitment. "
+          /**
+           * "NEVER A COMMITMENT" WAS WIDER THAN THE RULE IT DESCRIBED, AND IT
+           * SILENCED THE ANSWER.
+           *
+           * The validator's commitment_in_free_text is a specific DAY, TIME or
+           * PRICE — TIME_COMMITMENT is a list of clock times and weekdays. It
+           * has never banned confirming something PPP always does.
+           *
+           * The description did. "Can someone come out and look at my living
+           * room?" has one honest answer — yes, somebody can come out — and
+           * that reads exactly like a commitment, so the model wrote nothing
+           * and A29 then refused the turn for carrying no answer. Every time,
+           * on one of the commonest openings a painting lead has.
+           *
+           * Established by making the sandbox print the attempted action:
+           * "It chose ask_project_details and wrote nothing alongside it."
+           * Two earlier guesses at this had both been wrong.
+           */
+          "Short rapport only, or empty. Never a price. Never a specific day or time — "
+          + "there is no calendar here, so naming one is always wrong. But saying YES to "
+          + "something we always do is an ANSWER, not a commitment: if they ask whether "
+          + "somebody can come out, whether you can take a look, or anything else that a "
+          + "plain yes answers, say yes here in a few words. Leaving it out is the one "
+          + "thing you may not do. "
           // THE SYSTEM WRITES THE REST OF THE MESSAGE. Nine of the thirty
           // templates share a stock phrase with the rapport a model naturally
           // writes, and one seen live said the same thing twice in
