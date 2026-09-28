@@ -1,5 +1,6 @@
 import { scopeAndStage } from "./scope";
 import { addressFromCustomer } from "./address";
+import { emailFromCustomer } from "./email-from-customer";
 import { normalizeInbound } from "./inbound-normalize";
 
 /**
@@ -34,6 +35,8 @@ import { normalizeInbound } from "./inbound-normalize";
 export type OnFile = {
   inquiryScope?: string | null;
   address?: string | null;
+  /** What the office holds. Never overwritten by anything read from a text. */
+  email?: string | null;
 };
 
 /** One inbound, exactly as it arrived. */
@@ -49,6 +52,10 @@ export type KnownFromThread = {
   address: string | null;
   /** True when the address came from the chat, so the caller knows to store it. */
   addressFromChat: boolean;
+  /** The email to use this turn, from the record or from their own words. */
+  email: string | null;
+  /** True when the email came from the chat, so the caller knows to store it. */
+  emailFromChat: boolean;
   /** The flow stage, raised when the customer has already described the job. */
   stage: number;
 };
@@ -160,11 +167,34 @@ export function knownFromThread(input: {
    * any conversation whose customer_address is "" can never register an
    * address again, on any turn, for the life of the thread.
    */
+  /**
+   * THE EMAIL, WHICH NOTHING WAS KEEPING EITHER — the third of these, and the
+   * one that costs the most.
+   *
+   * The bot asks for it by name ("Can I grab your name and email for the
+   * quote?"), the customer answers, and customer_email was written once at
+   * enrolment and never again. So the answer went nowhere, and on the
+   * off-site route the quote is supposed to GO to it (A6, A7).
+   *
+   * Same shape as the two above: the record wins, whitespace counts as
+   * absent, and the thread is only scanned when we hold nothing. What the
+   * office has is never overwritten by something read out of a text message.
+   */
+  const onFileEmail = (onFile.email ?? "").trim().toLowerCase() || null;
+
+  const saidEmail = onFileEmail
+    ? null
+    : messages
+        .map((m) => emailFromCustomer(normalizeInbound(m.body, m.mediaCount ?? 0).text ?? ""))
+        .find(Boolean) ?? null;
+
   return {
     inquiryScope: scope.scope,
     scopeFrom: scope.from,
     address: onFileAddress ?? said,
     addressFromChat: !onFileAddress && !!said,
+    email: onFileEmail ?? saidEmail,
+    emailFromChat: !onFileEmail && !!saidEmail,
     stage: scope.stage,
   };
 }

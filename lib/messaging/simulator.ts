@@ -199,7 +199,11 @@ export async function runSimTurn(input: {
   // The SAME derivation the live path runs. See known-from-thread.ts: these
   // two drifted apart four times in a day before it existed.
   const derived = knownFromThread({
-    onFile: { inquiryScope: input.known?.inquiryScope, address: input.known?.address },
+    onFile: {
+      inquiryScope: input.known?.inquiryScope,
+      address: input.known?.address,
+      email: input.known?.email,
+    },
     messages: [
       ...input.history.filter((t) => t.role === "customer").map((t) => ({ body: t.text })),
       { body: input.customerText, mediaCount: input.mediaCount ?? 0 },
@@ -231,6 +235,17 @@ export async function runSimTurn(input: {
    * answers "needs_a_person", which would hand over conversations that should
    * simply carry on asking.
    */
+  /**
+   * The handset, which production always has and the sandbox did not.
+   *
+   * One constant because two things read it and they must agree: what we
+   * HOLD about the customer, and which clock their window is measured on.
+   * Area code 999 is the reserved test range, so it can never be a real
+   * person; it resolves to the fallback zone, exactly as an unrecognised area
+   * code does in production.
+   */
+  const customerPhone = input.known?.phone || "+19995550100";
+
   const heldZip = addressParts(input.known?.address || saidAddress).zip;
   const service = heldZip ? await serviceZipCheck(messagingDb(), heldZip) : null;
 
@@ -285,6 +300,27 @@ export async function runSimTurn(input: {
       // Read across the whole thread, not just this message: production reads
       // it from the conversation row, which remembers.
       address: input.known?.address || saidAddress || undefined,
+      /**
+       * AND A HANDSET, because a text conversation cannot exist without one.
+       *
+       * Production reads customer_phone off the conversation row and it is
+       * never null — it is the key the thread is identified by. The sandbox
+       * had one only if the tester typed it into the panel, and a blank panel
+       * made `knownFields.phone` false, which is a state production cannot be
+       * in. That is not a harmless difference: the close checks "we hold no
+       * contact details at all" as `!email && !phone`, so the sandbox refused
+       * a conversation as having no way to reach the customer while the live
+       * path, holding the number it is texting, closes it.
+       *
+       * Area code 999 is the reserved test range, so this can never be a real
+       * person's number. The simulator has no send path regardless — this is
+       * belt and braces on a file that already cannot reach a carrier.
+       */
+      phone: customerPhone,
+      // AND THE EMAIL, the third field the thread knows and the panel does
+      // not. Production persists one the customer typed and reads it back off
+      // the conversation; here the derivation IS the memory.
+      email: input.known?.email || derived.email || undefined,
     },
     services: resolveServices(svc.services, svc.exceptions),
     stage,
@@ -313,7 +349,7 @@ export async function runSimTurn(input: {
      * Resolved from the handset the tester filled in, and customerZone falls
      * back on its own when there is none, so this is safe with an empty panel.
      */
-    customerZone: customerZone({ phone: input.known?.phone ?? null }).timeZone,
+    customerZone: customerZone({ phone: customerPhone }).timeZone,
     // The whole point of the corpus. Selected per turn, because which rule is
     // live depends on where the conversation has got to.
     examples: selectExamples(corpus, {

@@ -417,6 +417,31 @@ const CHAINS = [
     ],
   },
   {
+    rule: "the email the customer typed is KEPT, and is what the quote is sent to",
+    why:
+      "the bot asks for it by name and customer_email was written once at enrolment and " +
+      "never again, so the answer went nowhere — and on the off-site route that column is " +
+      "the address the quote is SENT to. Third field with this hole, after inquiry_scope " +
+      "and customer_address",
+    links: [
+      ["lib/messaging/email-from-customer.ts", /export function emailFromCustomer/],
+      ["lib/messaging/known-from-thread.ts", /emailFromChat/],
+      // Persisted, because production scans only the LAST inbound and relies
+      // on the record to remember what earlier turns were told.
+      ["lib/messaging/scheduler-db.ts", /update\(\{ customer_email: resolved\.email \}\)/],
+      ["lib/messaging/scheduler-db.ts", /\.is\("customer_email", null\)/],
+      // ...and read back as what we HOLD, or the turn that stores it still
+      // believes we have nothing.
+      ["lib/messaging/scheduler-db.ts", /email: resolved\.email/],
+      ["lib/messaging/simulator.ts", /email: input\.known\?\.email \|\| derived\.email/],
+    ],
+    forbidden: [
+      // The write must stay guarded. Without `.is(..., null)` it would
+      // overwrite the office's version with something read out of a text.
+      ["lib/messaging/scheduler-db.ts", /update\(\{ customer_email[^}]*\}\)\s*\.eq\([^)]*\)\s*;/],
+    ],
+  },
+  {
     rule: "the sandbox is handed the same context production is",
     why:
       "every guard is written `if (ctx.field && ...)`, so a field the simulator forgets does " +

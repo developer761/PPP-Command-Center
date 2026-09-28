@@ -373,6 +373,7 @@ export function schedulerDeps(): SchedulerDeps {
         onFile: {
           inquiryScope: (conv as { inquiry_scope?: string | null }).inquiry_scope,
           address: (conv as { customer_address?: string | null }).customer_address,
+          email: (conv as { customer_email?: string | null }).customer_email,
         },
         messages: [{
           body: lastInbound.body,
@@ -418,6 +419,29 @@ export function schedulerDeps(): SchedulerDeps {
           .is("customer_address", null);
         // Not fatal. The turn still runs on the value just derived.
         if (addrErr) console.warn(`could not store the address: ${addrErr.message}`);
+      }
+
+      /**
+       * AND THE EMAIL, WHICH COST THE MOST TO LOSE.
+       *
+       * The bot asks for it by name and the answer was kept nowhere:
+       * customer_email is written at enrolment and never again. On the
+       * off-site route this column is what the quote is SENT to
+       * (`toEmail: data.customer_email`), so the bot collected the one thing
+       * the route needs and then dropped it.
+       *
+       * emailFromCustomer refuses anything ambiguous — two addresses in one
+       * message, or one of ours — so this only ever writes a value nobody has
+       * to adjudicate. Guarded on the column being empty for the same reason
+       * as the two above: what PPP holds on the lead is the office's version.
+       */
+      if (resolved.emailFromChat && resolved.email) {
+        const { error: emailErr } = await sb.from("sms_conversations")
+          .update({ customer_email: resolved.email })
+          .eq("id", conv.id)
+          .is("customer_email", null);
+        // Not fatal. The turn still runs on the value just derived.
+        if (emailErr) console.warn(`could not store the email: ${emailErr.message}`);
       }
 
       // Kate 44 Class A rules, the standard this reply will be graded
@@ -489,7 +513,10 @@ export function schedulerDeps(): SchedulerDeps {
          */
         outOfHours: !officeIsOpen({ now: new Date(), officeZone: ws.time_zone }),
         known: {
-          name: conv.customer_name, phone: conv.customer_phone, email: conv.customer_email,
+          name: conv.customer_name, phone: conv.customer_phone,
+          // The RESOLVED email, not just the column — the one they typed this
+          // turn counts before the write above has been read back.
+          email: resolved.email,
           // THE FIELDS THE RULES ACTUALLY READ. Until 2026-09-23 these were
           // never passed, so kf.address and kf.inquiryScope were always null
           // and every rule built on them was code that could not fire: A11's
