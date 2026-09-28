@@ -1098,7 +1098,27 @@ function renderBody(input: RenderInput): string {
     parts.push(rapport);
     rapportAt = parts.length - 1;
   }
-  if (pick) parts.push(pick);
+  /**
+   * AND THE MIRROR CASE: A BARE TEMPLATE AFTER SUBSTANTIVE RAPPORT.
+   *
+   * rapportIsRedundant catches a bare "Got it" in front of a template that
+   * already opens with one. It could not catch the reverse, and the reverse is
+   * what a customer actually saw when they parked:
+   *
+   *   "No rush at all, take your time with that. Got it, thank you."
+   *
+   * The rapport carries the whole message and the template repeats it as an
+   * afterthought. Same shape as "Text works. Sure thing." on the off-site
+   * turn. Two acknowledgements stacked is the tell of a machine.
+   *
+   * The template usually wins — it is the half that goes on to ask the next
+   * question and the half nobody can accidentally change. A bare
+   * acknowledgement does neither, so here the rapport wins. Rapport is already
+   * post-filtered for prices, times and commitments, and it only reaches this
+   * branch when it is NOT itself a bare acknowledgement.
+   */
+  const templateAddsNothing = rapportAt >= 0 && BARE_ACKNOWLEDGEMENT.test(pick.trim());
+  if (pick && !templateAddsNothing) parts.push(pick);
 
   let body = parts.join(" ").replace(/\s+/g, " ").trim();
 

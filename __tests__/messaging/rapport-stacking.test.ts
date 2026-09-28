@@ -111,3 +111,57 @@ describe("what counts as bare", () => {
     expect(BARE_ACKNOWLEDGEMENT.test(t.trim())).toBe(false);
   });
 });
+
+/**
+ * THE MIRROR CASE: A BARE TEMPLATE AFTER SUBSTANTIVE RAPPORT.
+ *
+ * Played in the simulator on 2026-09-27. The customer parked:
+ *
+ *   customer  "I want the upstairs hallway and 2 bedrooms done, but let me
+ *              check with my wife and get back to you"
+ *   BOT       "No rush at all, take your time with that. Got it, thank you."
+ *
+ * A40 was honoured — it did not press for another field, which is the rule
+ * that matters. But the rapport carried the whole message and the template
+ * repeated it as an afterthought. The same shape appeared on the off-site
+ * turn: "Text works. Sure thing. What are you hoping to have painted?"
+ *
+ * rapportIsRedundant caught a bare "Got it" in FRONT of an acknowledging
+ * template and could not catch the reverse.
+ */
+describe("a template that only acknowledges, after rapport that already did", () => {
+  const park = "let me check with my wife and get back to you";
+
+  it("keeps the rapport and drops the bare template", () => {
+    const out = renderMessage({
+      intent: "acknowledge", turn: 1,
+      freeText: "No rush at all, take your time with that.", customerText: park,
+    });
+    expect(out).toBe("No rush at all, take your time with that.");
+    expect(out).not.toMatch(/got it|thanks/i);
+  });
+
+  it("never goes silent — with no rapport the template still speaks", () => {
+    const out = renderMessage({ intent: "acknowledge", turn: 1, freeText: "", customerText: park });
+    expect(out.length).toBeGreaterThan(0);
+  });
+
+  it("still drops a BARE rapport in front of an acknowledging template", () => {
+    const out = renderMessage({ intent: "acknowledge", turn: 1, freeText: "Got it.", customerText: park });
+    expect(out.startsWith("Got it. ")).toBe(false);
+  });
+
+  /**
+   * The template wins everywhere it does real work. Only a bare
+   * acknowledgement loses, because it neither asks the next question nor says
+   * anything the rapport has not.
+   */
+  it("never drops a template that asks something", () => {
+    const out = renderMessage({
+      intent: "ask_address", turn: 1,
+      freeText: "That sounds like a great project.", customerText: "paint my kitchen",
+    });
+    expect(out).toMatch(/That sounds like a great project\./);
+    expect(out).toMatch(/\?$/);
+  });
+});
