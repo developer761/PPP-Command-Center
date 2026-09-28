@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAction, asksSomething } from "@/lib/messaging/agent-output";
+import { validateAction, asksSomething, checkTone } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
 
 /**
@@ -258,5 +258,54 @@ describe("affirming a VISIT is not affirming a CAPABILITY", () => {
     const v = turn(q, "Sure.");
     expect(v.ok).toBe(false);
     expect(v.ok === false && v.reason).toBe("question_left_unanswered");
+  });
+});
+
+/**
+ * THE ECHO RULE MUST LET THE ANSWER THROUGH TOO.
+ *
+ * Fixing the A29 guard alone changed nothing live, because the answer never
+ * reached it: the model wrote one, and checkTone dropped it for repeating the
+ * customer's own words. "Yes, an estimator can come out and look at it"
+ * shares five words with "Can someone come out and look at my living room?" —
+ * because those five words ARE the question.
+ *
+ * That is the same three-guard pileup the `refusingWorkWeDoNotDo` carve-out
+ * documents one case over: "each guard was written for a bot trying to SELL;
+ * none of them expected it to say no." None expected it to say yes either.
+ */
+describe("answering a visit question may reuse the words it was asked with", () => {
+  const VISIT = "Can someone come out and look at my living room?";
+  const SCOPE = "I need my living room and hallway painted, walls and ceilings";
+
+  it.each([
+    "Yes, an estimator can come out and look at it.",
+    "Absolutely, someone can come out and look at it.",
+    "Yes, we can come out and take a look.",
+  ])("keeps %j", (t) => {
+    expect(checkTone(t, VISIT).ok).toBe(true);
+  });
+
+  it("still blocks reading the customer's SCOPE back at them", () => {
+    // A9's actual target: the fake confirmation that quotes their description.
+    expect(checkTone("Got it, your living room and hallway painted, walls and ceilings.", SCOPE).ok)
+      .toBe(false);
+  });
+
+  it("still blocks an echo that does not open with an affirmative", () => {
+    // Both halves are required. Reusing the verb is only defensible as part
+    // of saying yes.
+    expect(checkTone("Someone can come out and look at it, no problem.", VISIT).ok).toBe(false);
+  });
+
+  it("carries the answer all the way through validate, not just checkTone", () => {
+    // The end-to-end shape: the answer survives the style filter AND satisfies
+    // A29, so the turn sends instead of handing to a person.
+    const v = validateAction(
+      { intent: "ask_address", confidence: 0.9, freeText: "Yes, an estimator can come out and look at it." } as never,
+      { customerText: VISIT, knownFields: { inquiryScope: true }, stage: 1 } as never
+    );
+    expect(v.ok).toBe(true);
+    expect(v.ok === true && v.droppedRapport).toBeUndefined();
   });
 });

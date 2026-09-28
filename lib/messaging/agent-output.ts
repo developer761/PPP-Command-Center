@@ -682,7 +682,32 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
    */
   const refusingWorkWeDoNotDo = DECLINING.test(text) && OUT_OF_SCOPE.test(text);
 
-  if (!refusingWorkWeDoNotDo && customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
+  /**
+   * AND SAYING YES TO BEING SEEN, FOR THE SAME REASON ONE CASE OVER.
+   *
+   * The comment above says it: each guard was written for a bot trying to
+   * SELL, and none of them expected it to say no. None expected it to say YES
+   * either.
+   *
+   * "Can someone come out and look at my living room?" is answered by "Yes, an
+   * estimator can come out and look at it" — which shares five words with the
+   * question, because those five words ARE the question. A9 stops the bot
+   * reading the customer's SCOPE back at them as a fake confirmation; it was
+   * never meant to stop it using the verb it was asked with.
+   *
+   * With the answer dropped the turn was then refused as
+   * question_left_unanswered and handed to a person: the identical
+   * three-guard pileup described above, on one of the commonest openings a
+   * painting lead has. Verified live on 2026-09-28.
+   *
+   * Narrow. The customer must have asked to be SEEN, and the reply must open
+   * with a plain affirmative. Neither alone is enough, so this cannot be used
+   * to read a scope back.
+   */
+  const sayingYesToBeingSeen = isYesNoQuestion(customerText) && isAffirmative(text);
+
+  if (!refusingWorkWeDoNotDo && !sayingYesToBeingSeen
+      && customerText && longestSharedRun(text, customerText) >= ECHO_WORDS) {
     return { ok: false, why: "it repeats the customer's own words back" };
   }
   return { ok: true };
