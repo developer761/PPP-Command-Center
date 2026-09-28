@@ -31,6 +31,24 @@ export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
 export const COVERS = "interior painting, exterior painting, cabinets and drywall";
 
 /**
+ * A FIXED CLOCK AND ZONE, so the week-aware ask actually renders here.
+ *
+ * agent-run passes `now: new Date()` and the customer's zone (agent-run.ts).
+ * This passed NEITHER, so askAvailability's week-aware wording never rendered
+ * in the harness — and that is the template that carried "We have a few
+ * openings this week to meet with you" for weeks, in both languages, with
+ * every check green. A sweep cannot catch a sentence it never reaches.
+ *
+ * Fixed rather than `new Date()` because weekToOffer answers differently on a
+ * Thursday than on a Monday, and a harness whose output depends on the day it
+ * is run is one nobody can read a diff of. Monday, so the ask says "this
+ * week"; the Thursday-to-Saturday side is covered by availability-ask's own
+ * unit tests.
+ */
+export const HARNESS_NOW = new Date("2026-09-28T15:00:00Z");
+export const HARNESS_ZONE = "America/New_York";
+
+/**
  * Every intent the model could legally choose here, that also produces words.
  *
  * "Produces words" matters as much as "is allowed": an intent that validates
@@ -125,6 +143,8 @@ export function waysThrough(scenario) {
     offsiteReason: offsiteReasonFor(ownWords),
     covers: COVERS,
     language,
+    now: HARNESS_NOW,
+    customerZone: HARNESS_ZONE,
     secondProperty: wantsSecondAddress,
     // Parity 7 needs the thread: the two halves arrive turns apart.
     customerMessages: history,

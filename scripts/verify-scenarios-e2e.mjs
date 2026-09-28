@@ -311,9 +311,21 @@ for (const s of SCENARIOS) {
     if (/\b\d{1,2}\s*(?:am|pm)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|jueves|viernes)\b/i.test(said)) {
       unsafe++; console.log(`     time in ${s.name}/${intent}: ${said}`);
     }
+    /**
+     * AND A CLAIM ABOUT OUR OWN CALENDAR, which is neither a price nor a named
+     * day and so slipped past both checks above.
+     *
+     * askAvailability said "We have a few openings this week to meet with you"
+     * — Hatch's sentence, copied verbatim into parity gap 1 — on every lead
+     * that reached step four, in both languages, while the validator refused
+     * the MODEL for writing the same words. Every test in the suite was green.
+     */
+    if (/\b(?:we|i)\s+(?:have|have got|ve got|do have)\b[^.?!]{0,40}\b(?:opening|openings|availability|slots?|spaces?|times?)\b|\bwe\s+(?:are|re)\s+(?:free|available)\b|\btenemos\b[^.?!]{0,40}\b(?:espacios|disponibilidad|citas)\b/i.test(said)) {
+      unsafe++; console.log(`     claims our availability in ${s.name}/${intent}: ${said}`);
+    }
   }
 }
-ok("no reply reachable from any scenario quotes a price or names a day", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
+ok("no reply reachable from any scenario quotes a price, names a day, or claims an opening", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
 
 // The opt-out path, checked from the other side.
 console.log("");
