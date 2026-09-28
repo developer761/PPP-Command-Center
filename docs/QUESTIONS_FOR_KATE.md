@@ -850,3 +850,49 @@ wiring chain pinning the narrow condition so a later edit cannot widen it.
 
 **Frequency note:** naming a callback time is a normal thing for a good lead
 to do, so this is not an edge case — it is the middle of A25's happy path.
+
+---
+
+## 16. A second property is asked for its availability as if it were the first
+
+**OPEN — Kate's call, it is a product question.** Found 2026-09-28 running the
+two-property flow end to end in the sandbox for the first time.
+
+    customer  two rental properties, both the living room and hallway
+    BOT       address? -> 12 Oak St
+    BOT       name and email? -> Tom Smith, tom@example.com
+    BOT       what days work best? -> Wednesday afternoon works
+    BOT       "Got it. And what's the address for the second property?"   ← correct
+    customer  45 Pine St
+    BOT       "What days work best for you this week?"                    ← the problem
+
+**Parity 6 itself works and this is not that.** The close was correctly
+refused while only one address was held, and the bot asked for the second by
+name — the pairing that was broken for the life of every two-property
+conversation until it was fixed. That half is verified.
+
+**The problem is everything AFTER the second address.** `secondProperty` is
+applied to `ask_address` only, and by that turn both addresses are held so the
+flag is already false. So the second round of questions renders in the
+first-time wording, and "What days work best for you this week?" — to somebody
+who answered that question two messages ago — reads as exactly the redundant
+ask A11 is about.
+
+**And it is not a wording fix.** The conversation holds ONE `customer_address`
+and one availability. The CLOSE can see two addresses because it reads them
+out of the thread, but there is nowhere to put a second appointment time. So
+asking the question a second time would collect an answer with nowhere to go.
+
+**→ Two questions for Kate, and we have not guessed at either:**
+
+1. Does a second property need its own appointment, or does one visit cover
+   both when they are the same customer? Her A40 guidance says "finish the
+   whole flow for the first property, then start again for the next", which
+   implies its own — but it also says contact details are shared, so the line
+   is somewhere in between.
+2. If it does need its own, that is a data-model change rather than a
+   template one, and worth scoping as its own piece.
+
+**What we do today:** ask again, in the first-time wording, and hold one
+availability. Safe in the sense that nothing wrong is sent, and confusing to
+the customer.
