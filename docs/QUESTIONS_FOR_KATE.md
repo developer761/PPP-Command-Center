@@ -734,3 +734,45 @@ leave it; say otherwise and it is a one-line change in the validator.
   state-less Kalispell row is doing there — Montana is not a state PPP
   serves, and with no state on the row it cannot be recognised as
   out-of-state either.
+
+---
+
+## 15. "Call me at 2pm" escalates, because the model repeats the time back
+
+**OPEN — for Karan, not Kate.** Found in Chrome 2026-09-28 while testing the
+new A25 cadence. **Pre-existing, not caused by that change**, and every step
+is behaving as written.
+
+    customer  "can you call me instead of texting? 2pm is good"
+    BOT       rejected: invented_availability
+              it chose schedule_follow_up and wrote: "Of course, 2pm works."
+
+2pm is inside the callback window, so this is the *happy* path Kate just
+specified — the template alone would have said **"No problem at all. We'll
+reach out then."**, which is correct, complete and names no time. Instead the
+model added the time in rapport, the guard refused the whole turn, and a good
+lead went to a person.
+
+**The guard is right and I have not touched it.** "A time is only allowed if
+the system supplied it. The model offering one is how a customer ends up
+waiting for an estimator who was never booked." That reasoning is about
+INVENTING a slot. Here the model is echoing back the time the customer
+themselves just named — which is not an invention, but the check cannot tell
+the two apart, and every number a customer sees is supposed to come from a
+template.
+
+**Why I did not fix it unilaterally.** The obvious remedy is to DROP the
+offending rapport rather than refuse the turn, exactly as a tone violation is
+dropped today — the template underneath is already correct. But that is a
+real loosening of a core safety property, on the one guard that stops the bot
+promising appointments, and the current failure is safe: a handover, not a
+wrong promise.
+
+**→ Recommendation:** drop-not-refuse, narrowed to the case where the time in
+the rapport is one the CUSTOMER named in the message being answered. That
+keeps the guard fatal for an invented slot and merely silences an echo. It
+needs Karan's yes because it changes what a safety check does, and it wants a
+wiring chain pinning the narrow condition so a later edit cannot widen it.
+
+**Frequency note:** naming a callback time is a normal thing for a good lead
+to do, so this is not an edge case — it is the middle of A25's happy path.
