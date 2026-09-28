@@ -482,3 +482,71 @@ describe("rendering an intent into words", () => {
     }
   });
 });
+
+/**
+ * ── "WHEN MAY WE PHONE YOU" IS NOT THE AVAILABILITY ASK ─────────────────
+ *
+ * Two guards strip a trailing question about days or times: the availability
+ * stand-off, and availability being the fourth leg when the flow has not
+ * reached it. Both exist to stop the bot asking for APPOINTMENT availability
+ * early or twice.
+ *
+ * A25's callback question has the same vocabulary and is a different
+ * question. It asks when to place a CALL, it is required the moment somebody
+ * asks to be phoned, and it does not care where the booking flow has got to.
+ *
+ * Caught live on 2026-09-28, not by a test. "Could you please call me instead
+ * of texting, around 11pm works" on turn one rendered only
+ *
+ *   "We make calls between 9am and 8pm."
+ *
+ * because flowStage was 0 and the second sentence says "time" — leaving the
+ * customer holding our opening hours with nothing asked of them, which is
+ * half of what Kate specified: "state business hours + ask if there is a time
+ * that works for them within that timeframe."
+ */
+describe("the callback question survives the timing-question guards", () => {
+  const ASKED = "could you please call me instead of texting, around 11pm works";
+  const outOfHours = { requestedHour: 23 };
+
+  it.each([0, 1, 2, 3])("keeps the ask at flowStage %i", (flowStage) => {
+    const out = renderMessage({
+      intent: "schedule_follow_up", turn: 0, customerText: ASKED,
+      flowStage, callback: outOfHours,
+    } as never);
+    expect(out).toMatch(/between .* and /i);
+    expect(out, "the ask is the half that makes it actionable").toMatch(/\?$/);
+  });
+
+  it("keeps it under the availability stand-off too", () => {
+    const out = renderMessage({
+      intent: "schedule_follow_up", turn: 0, customerText: ASKED,
+      flowStage: 0, availabilityStandOff: true, callback: outOfHours,
+    } as never);
+    expect(out).toMatch(/\?$/);
+  });
+
+  /**
+   * The sibling branch escaped by luck rather than design: it is a single
+   * sentence, so stripping it would leave nothing and the fallback put it
+   * back. Asserted so a future edit that adds a second sentence does not
+   * silently lose the question.
+   */
+  it("keeps the plain callback ask, which was only ever saved by a fallback", () => {
+    const out = renderMessage({
+      intent: "schedule_follow_up", turn: 0, customerText: "please call me instead",
+      flowStage: 0, callback: {},
+    } as never);
+    expect(out).toMatch(/\?$/);
+  });
+
+  it("still strips a genuine availability ask that is too early", () => {
+    // The guard must keep biting where it was meant to, or this carve-out
+    // has quietly disabled it.
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 0, customerText: "how much will it cost?",
+      flowStage: 0,
+    } as never);
+    expect(out).not.toMatch(/\?$/);
+  });
+});

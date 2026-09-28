@@ -928,7 +928,35 @@ export function renderMessage(input: RenderInput): string {
     input.track !== "nurture"
     && input.flowStage !== undefined
     && input.flowStage < AVAILABILITY_STEP;
-  const body = input.availabilityStandOff || tooEarlyToAskAboutDays
+  /**
+   * EXCEPT WHEN THE QUESTION IS "WHEN MAY WE PHONE YOU", WHICH IS NOT THIS.
+   *
+   * Both guards above exist to stop the bot asking for APPOINTMENT
+   * availability — the fourth leg — too early or too often. A25's callback
+   * question is a different question with the same vocabulary: it asks when
+   * to place a CALL, it is required the moment somebody asks to be phoned,
+   * and it has nothing to do with where the booking flow has got to.
+   *
+   * Caught live, not by a test. "Could you please call me instead of
+   * texting, around 11pm works" on turn one rendered
+   *
+   *   "We make calls between 9am and 8pm. Is there a time in there that
+   *    works for you?"
+   *
+   * and the stripper took the second sentence, because flowStage was 0 and
+   * the sentence says "time". That leaves the customer holding our opening
+   * hours with nothing asked of them — exactly half of what Kate specified:
+   * "state business hours + ask if there is a time that works for them
+   * within that timeframe."
+   *
+   * The sibling branch escaped by luck rather than design: "What's a good
+   * time to reach you?" is a single sentence, so stripping it would leave
+   * nothing and the fallback puts it back.
+   */
+  const isCallbackQuestion =
+    input.intent === "schedule_follow_up"
+    && ASKED_FOR_A_CALL.test(input.customerText ?? "");
+  const body = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion
     ? withoutATimingQuestion(renderBody(input))
     : renderBody(input);
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
