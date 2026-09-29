@@ -27,6 +27,8 @@ import { formatCents } from "@/lib/payments/schedule";
 export type SfTransactionInput = {
   recordTypeId: string;
   workOrderId: string;
+  /** WorkOrder.Opportunity__c, linked on the record the same way Katie's Stripe job links it. */
+  opportunityId?: string | null;
   workOrderNumber: string;
   milestoneLabel: string;
   method: "card" | "ach";
@@ -57,6 +59,7 @@ export function buildSfTransaction(i: SfTransactionInput): Record<string, string
   return {
     RecordTypeId: i.recordTypeId,
     WorkOrder__c: i.workOrderId,
+    ...(i.opportunityId ? { Opportunity__c: i.opportunityId } : {}),
     Amount__c: i.baseCents / 100,
     Date__c: i.paidDateEt,
     Method__c: "Stripe",

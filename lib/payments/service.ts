@@ -28,6 +28,7 @@ import {
 } from "@/lib/payments/session-status";
 import {
   createSalesforceTransaction,
+  findTransactionByReference,
   getPaymentInRecordTypeId,
   getWorkOrderPaymentStateById,
   isClosedForPayment,
@@ -607,9 +608,11 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
   let sfId: string | null = null;
 
   try {
+    const wo = await getWorkOrderPaymentStateById(p.work_order_id);
     const fields = buildSfTransaction({
       recordTypeId: await getPaymentInRecordTypeId(),
       workOrderId: p.work_order_id,
+      opportunityId: wo?.opportunityId ?? null,
       workOrderNumber: p.work_order_number,
       milestoneLabel: p.milestone_label,
       method: p.method,
@@ -621,7 +624,6 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
     });
     // Which Payment Terms this payment completes, read live so a term already
     // marked paid (by an earlier online payment) isn't written twice.
-    const wo = await getWorkOrderPaymentStateById(p.work_order_id);
     // What the customer's payment covered, captured when they paid (Stripe
     // metadata) — for a full-balance payment this is NOT "every open term".
     let covers: string[] | null = null;
@@ -639,9 +641,15 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
     payload = { transaction: fields, paymentTerms: termUpdates };
 
     if (shouldWriteToSalesforce(cfg, p.livemode)) {
-      sfId = await createSalesforceTransaction(fields);
+      const already = p.payment_intent_id ? await findTransactionByReference(p.payment_intent_id) : null;
+      if (already) {
+        sfId = already;
+        detail = `Already booked as Transaction__c ${already} (same Stripe reference) — not created again.`;
+      } else {
+        sfId = await createSalesforceTransaction(fields);
+        detail = `Created Transaction__c ${sfId}.`;
+      }
       status = "written";
-      detail = `Created Transaction__c ${sfId}.`;
       // The money is booked; a term that fails to update is a label problem, not
       // a money problem. Say so in the detail rather than marking the whole
       // write failed — a retry would book the payment twice.

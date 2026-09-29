@@ -21,6 +21,8 @@ export type WorkOrderPaymentState = {
   balanceOwed: number | null;
   totalCharges: number | null;
   totalPaymentsIn: number | null;
+  /** WorkOrder.Opportunity__c — linked on the Payment In, as Katie's Stripe job does. */
+  opportunityId: string | null;
   contactName: string | null;
   contactEmail: string | null;
   street: string | null;
@@ -43,6 +45,7 @@ type WoRow = {
   BalanceOwed__c: number | null;
   TotalCustomerCharges__c: number | null;
   TotalPaymentsIn__c: number | null;
+  Opportunity__c: string | null;
   Street: string | null;
   City: string | null;
   State: string | null;
@@ -66,7 +69,7 @@ const WO_NUMBER_RE = /^\d{1,10}$/;
 async function loadWorkOrder(where: string): Promise<WorkOrderPaymentState | null> {
   const conn = await getSalesforceClient();
   const wo = await conn.query<WoRow>(
-    `SELECT Id, WorkOrderNumber, Status, BalanceOwed__c, TotalCustomerCharges__c, TotalPaymentsIn__c, Street, City, State, PostalCode, Contact.Name, Contact.Email FROM WorkOrder WHERE ${where} LIMIT 1`,
+    `SELECT Id, WorkOrderNumber, Status, BalanceOwed__c, TotalCustomerCharges__c, TotalPaymentsIn__c, Opportunity__c, Street, City, State, PostalCode, Contact.Name, Contact.Email FROM WorkOrder WHERE ${where} LIMIT 1`,
   );
   const w = wo.records[0];
   if (!w) return null;
@@ -82,6 +85,7 @@ async function loadWorkOrder(where: string): Promise<WorkOrderPaymentState | nul
     balanceOwed: w.BalanceOwed__c,
     totalCharges: w.TotalCustomerCharges__c,
     totalPaymentsIn: w.TotalPaymentsIn__c,
+    opportunityId: w.Opportunity__c,
     contactName: w.Contact?.Name ?? null,
     contactEmail: w.Contact?.Email ?? null,
     street: w.Street,
@@ -120,6 +124,22 @@ export async function getPaymentInRecordTypeId(): Promise<string> {
   const rt = infos.find((r) => r.developerName === "Payment_In");
   if (!rt?.recordTypeId) throw new Error("Transaction__c has no Payment_In record type");
   return rt.recordTypeId;
+}
+
+/**
+ * An existing Transaction__c for this Stripe payment, if anyone already booked
+ * it. Two systems can write Stripe payments into Salesforce — this one, and
+ * Katie's daily Stripe finance job (planned) — and both use ReferenceId__c =
+ * the pi_… id. Whoever writes second finds the first and stops, so one
+ * payment is never booked twice.
+ */
+export async function findTransactionByReference(paymentIntentId: string): Promise<string | null> {
+  if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntentId)) return null;
+  const conn = await getSalesforceClient();
+  const r = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Transaction__c WHERE ReferenceId__c = '${paymentIntentId}' LIMIT 1`,
+  );
+  return r.records[0]?.Id ?? null;
 }
 
 export async function createSalesforceTransaction(

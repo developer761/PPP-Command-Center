@@ -120,6 +120,13 @@ describe("buildSfTransaction", () => {
     expect(f.Description__c).not.toMatch(/fee/);
   });
 
+  it("links the Opportunity when the Work Order has one, and leaves the field off when not", () => {
+    expect(buildSfTransaction({ ...base, method: "ach", feeCents: 0, opportunityId: "006Wj000001abcDEF" }).Opportunity__c).toBe(
+      "006Wj000001abcDEF",
+    );
+    expect("Opportunity__c" in buildSfTransaction({ ...base, method: "ach", feeCents: 0, opportunityId: null })).toBe(false);
+  });
+
   it("names the card type, so a fee (or none) explains itself", () => {
     expect(buildSfTransaction({ ...base, method: "card", cardFunding: "debit", feeCents: 0 }).Description__c).toMatch(
       /^Online debit card payment · Deposit/,
