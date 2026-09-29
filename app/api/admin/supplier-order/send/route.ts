@@ -64,6 +64,8 @@ export async function POST(request: Request) {
   let body: {
     workOrderId?: string;
     workOrderNumber?: string | null;
+    /** Salesforce account name — its last name is part of the PO. */
+    customerName?: string | null;
     supplierAccountId?: string;
     supplierName?: string;
     poNumber?: string;
@@ -264,7 +266,8 @@ export async function POST(request: Request) {
         // order nobody can quote.
         const freshPo = await nextPoNumber(
           body.workOrderId!,
-          body.workOrderNumber || body.workOrderId!.slice(-6)
+          body.workOrderNumber || body.workOrderId!.slice(-6),
+          body.customerName
         );
         console.warn(
           `[supplier-order/send] PO ${body.poNumber} was taken; retrying as ${freshPo}`

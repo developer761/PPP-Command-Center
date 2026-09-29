@@ -385,6 +385,10 @@ export default function OrderFulfillmentView({
         body: JSON.stringify({
           workOrderId,
           workOrderNumber,
+          // The PO carries the client's last name (Jason 2026-09-24). If the
+          // send has to re-allocate one after a collision it must rebuild the
+          // same shape, or the row stores a PO the email never mentioned.
+          customerName,
           supplierAccountId,
           supplierName,
           poNumber: draft.poNumber,

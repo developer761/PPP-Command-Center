@@ -1232,15 +1232,21 @@ export default function OrderBuilderView({
                               if (dims) measure = dims;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft`;
                             } else if (kind === "walls") {
-                              // A MEASURED wall area is what the gallons used —
-                              // the estimator prefers Wall_Surface_Area__c over
-                              // the room's shape and ignores the perimeter
-                              // entirely. Showing dimensions there would put a
-                              // number beside the quantity that did not produce
-                              // it. Dimensions only when the walls really were
-                              // derived from the room.
-                              if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
-                              else if (dims) measure = dims;
+                              // Dimensions first here too (Jason, testing with
+                              // Adler and Ido 2026-09-24: "instead of listing
+                              // the surface area calculation please list the
+                              // room dimensions like it's listed above").
+                              //
+                              // This branch used to lead with the MEASURED wall
+                              // area, because that is the number the gallons
+                              // were computed from when Salesforce carries
+                              // Wall_Surface_Area__c. That is a reason to keep
+                              // the figure on the backend, not a reason to show
+                              // it to the person reading the room: a estimator
+                              // recognises "16 × 20 × 9 ft" as the room in
+                              // front of them and "648 sq ft wall" as arithmetic.
+                              if (dims) measure = dims;
+                              else if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
                               else if (src.sqft > 0) measure = `${src.sqft.toLocaleString()} sq ft floor`;
                             } else if (kind === "trim") {
                               // A DOOR is not the room's perimeter. classifySurface

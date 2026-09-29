@@ -77,7 +77,10 @@ export const DEFAULT_SUPPLIER_TEMPLATE: SupplierEmailTemplate = {
     // A pickup still needs its date, so it gets one in its own words.
     "{{#is_delivery}}Deliver on: {{required_by_date}}, by {{delivery_time}}\n{{/is_delivery}}" +
     "{{^is_delivery}}Needed by: {{required_by_date}}\n{{/is_delivery}}" +
-    "Fulfillment: {{fulfillment_block}}\n" +
+    // Jason, testing with Adler and Ido (2026-09-24): "loose the wording
+    // fulfilment". The block says DELIVERY or PICKUP in its own words, so the
+    // label was a heading for a sentence that already had one.
+    "{{fulfillment_block}}\n" +
     "{{#customer_name}}\nThis order is for {{customer_name}}.\n{{/customer_name}}",
   // R4.28: "All replies route to our Command Center inbox." removed — it's an
   // internal detail the vendor has no use for, and it read like a warning.

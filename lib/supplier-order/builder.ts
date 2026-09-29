@@ -6,6 +6,7 @@ import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQ
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
+import { poBaseFor } from "@/lib/supplier-order/client-last-name";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractMachineColorLines } from "@/lib/customer-form/notes";
 import { denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
@@ -366,16 +367,25 @@ export type SupplierOrderDraft = {
  * actually taken, and two concurrent sends compute the same count. So read the
  * numbers in use — every status — and take the first free slot.
  */
-export async function nextPoNumber(workOrderId: string, woNumber: string): Promise<string> {
+export async function nextPoNumber(
+  workOrderId: string,
+  woNumber: string,
+  /** The Salesforce account name — its last name joins the PO (Jason
+   *  2026-09-24). Omitted, the PO is the bare work order number as before. */
+  accountName?: string | null
+): Promise<string> {
   // Katie item 15/16, 2026-09-08: "list it under PO number only, not PPP-WO,
   // just the string of numbers", and "PO should = WO Number". So the PO IS the
-  // work order number, bare.
-  const base = woNumber;
-  // Orders placed under the OLD `PPP-WO…` format still hold their numbers, and
-  // they are the same job. Both spellings count as taken, so a second order on
-  // a work order that already has one becomes -2 rather than restarting at the
-  // bare number and reading like the first.
-  const legacyBase = `PPP-WO${woNumber}`;
+  // work order number — plus the client's last name since Jason's testing
+  // (2026-09-24), because a vendor's counter finds a job by name.
+  const base = poBaseFor(woNumber, accountName);
+  // Every OLDER spelling of this work order's PO counts as taken, so a second
+  // order becomes -2 rather than restarting and reading like the first:
+  //   · `PPP-WO00318847` — the format before 2026-09-08;
+  //   · `00318847` — the bare number, before the client's name was added.
+  // Without the second, a work order that already had an order would compute a
+  // brand-new-looking base and lose the -2 convention entirely.
+  const legacyBases = [`PPP-WO${woNumber}`, woNumber].filter((b) => b !== base);
   try {
     const sb = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -392,12 +402,12 @@ export async function nextPoNumber(workOrderId: string, woNumber: string): Promi
           .map((r) => (r.po_number ?? "").trim())
           .filter(Boolean)
       );
-      if (!taken.has(base) && !taken.has(legacyBase)) return base;
+      if (!taken.has(base) && !legacyBases.some((b) => taken.has(b))) return base;
       // Suffix upward past every number this WO has ever used. Bounded so a
       // corrupt table can't spin; the timestamp fallback below covers it.
       for (let n = 2; n <= 500; n++) {
         const candidate = `${base}-${n}`;
-        if (!taken.has(candidate) && !taken.has(`${legacyBase}-${n}`)) return candidate;
+        if (!taken.has(candidate) && !legacyBases.some((b) => taken.has(`${b}-${n}`))) return candidate;
       }
     }
     if (error) console.warn("[supplier-order] PO lookup failed:", error.message);
@@ -782,11 +792,15 @@ function resolveDeliveryAddress(input: BuildSupplierOrderInput): DeliveryAddress
   // addressee. It also must not read "(unknown customer)", which is what a work
   // order with no Account resolved used to print on the label. Fall back to the
   // work order, which is the reference PPP and the vendor already share.
+  //
+  // The fallback no longer repeats the work-order number. It used to read
+  // "Precision Painting Plus — WO #00318847" directly under "PO Number:
+  // 00318847", which Jason flagged in testing (2026-09-24): "we do not need
+  // the work order (po number) listed twice". The PO line is the reference the
+  // vendor quotes back, and it now carries the client's name as well, so the
+  // ship-to does not need to identify the job a second time.
   const customerName =
-    input.customerAccount?.name?.trim() ||
-    (input.workOrder.workOrderNumber
-      ? `Precision Painting Plus — WO #${input.workOrder.workOrderNumber}`
-      : "Precision Painting Plus");
+    input.customerAccount?.name?.trim() || "Precision Painting Plus";
 
   // An address is only usable by a supplier if it has street + city + (state or
   // zip). A street-only / city-less address would ship a half address that
@@ -1288,7 +1302,8 @@ export async function buildSupplierOrderDraft(
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);
   const poNumber = await nextPoNumber(
     input.workOrder.id,
-    input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6)
+    input.workOrder.workOrderNumber ?? input.workOrder.id.slice(-6),
+    input.customerAccount?.name ?? input.workOrder.accountName
   );
 
   // EMPTY, not "(unknown customer)". The template wraps every use in a
