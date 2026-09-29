@@ -855,15 +855,41 @@ export async function updateAiaApplication(
   // document already sent to the GC (and, via the line-6 carry-forward, a
   // downstream certificate too). Only a status-only patch is allowed on a
   // non-draft app.
-  const isStatusOnly =
-    patch.status !== undefined &&
-    patch.period_from === undefined &&
-    patch.period_to === undefined &&
-    patch.original_contract_cents === undefined &&
-    patch.retainage_pct === undefined &&
-    patch.application_number === undefined &&
-    patch.notes === undefined;
-  if (!isStatusOnly && before.status !== "draft") {
+  /*
+   * THE NUMBER IS A LABEL, NOT A FIGURE — so it stays editable after issuing.
+   *
+   * Everything else here restates the document: period, contract sum,
+   * retainage and notes are what the GC is looking at, and moving one under a
+   * certificate already sent is the thing this guard exists to stop.
+   *
+   * `application_number` is not one of them. No G702 line is computed from it;
+   * it is how the GC FILES the certificate, and that is exactly the thing most
+   * likely to be wrong on a job that was already running when it arrived here.
+   * Stephanie 2026-09-24: "we didn't start invoicing building 1 until AIA
+   * number 3 ... I need to be able to change the application numbers."
+   *
+   * Renumbering shipped for drafts only, and 34 of the 38 live certificates
+   * are submitted or paid — so in practice the wall was still there and she
+   * reported it again on 09-29. A certificate is issued the moment it goes to
+   * the GC, which is precisely when you discover their number and yours
+   * disagree; draft-only renumbering answers the case that never comes up.
+   *
+   * What it DOES affect is ordering: `laterApplication` and the line-6
+   * carry-forward pick the previous certificate by application_number. Shifting
+   * a whole series (ours 1,2,3 -> theirs 3,4,5) preserves the relative order
+   * and so the chain, which is the case being asked for. The collision check
+   * below still refuses a number already on the job.
+   */
+  const restatesTheDocument =
+    patch.period_from !== undefined ||
+    patch.period_to !== undefined ||
+    patch.original_contract_cents !== undefined ||
+    patch.retainage_pct !== undefined ||
+    patch.notes !== undefined;
+  const isLabelOnly =
+    !restatesTheDocument &&
+    (patch.status !== undefined || patch.application_number !== undefined);
+  if (!isLabelOnly && before.status !== "draft") {
     return { ok: false, error: "This application has been issued — reopen it to Draft before editing." };
   }
   // Block a status DOWNGRADE when a later application carries this one forward:

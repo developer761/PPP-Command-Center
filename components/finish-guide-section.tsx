@@ -1,12 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import {
-  INTERIOR_FINISHES,
-  EXTERIOR_FINISHES,
-  SHEEN_MAX,
-  type FinishGuideRow,
-} from "@/lib/customer-form/finish-guide";
+import { FINISH_QUICK_REFERENCE } from "@/lib/customer-form/finish-guide";
 
 /**
  * "Recommended finishes by area or surface" — the collapsible reference
@@ -15,8 +10,12 @@ import {
  * Kate, 2026-09-29: this REPLACES the line that appeared under a bathroom's
  * finish dropdown ("PPP recommends Satin in a bathroom…"). One table the
  * customer can read once beats a nudge repeated on every surface of every
- * room, and it covers finishes the form never had an opinion about — Pearl,
- * Gloss, stucco.
+ * room.
+ *
+ * The table is PPP's Finish Quick Reference, at her word: "I just want it to
+ * be simple like this, and it's much more compact." Three columns, seven rows.
+ * The first pass carried the long Interior/Exterior version with a sheen bar
+ * on every row; this is the one she asked for.
  *
  * Open by default for a CUSTOMER, who has probably never chosen a sheen and is
  * exactly who it is for; the arrow is there for everyone else ("with a
@@ -26,8 +25,7 @@ import {
  * that screen in round 2 — an AM does not need somewhere to browse colors —
  * and this is the one piece of that panel that is different: the AM filling
  * the form in is usually on the phone with the customer, and "what is the
- * difference between eggshell and satin" is the question they get asked. It
- * costs them one closed row and answers it.
+ * difference between eggshell and satin" is the question they get asked.
  */
 export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -56,83 +54,33 @@ export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen
         </button>
       </h3>
 
-      {/* The doc's own title AND subtitle are left out — "you can leave out
-          the title and subtitle" (Kate, 2026-09-29). The subtitle was here on
-          the first pass because it explains the sheen scale the bars are drawn
-          from; her instruction is the one that counts, and the section's own
-          heading plus the "ordered from least light reflected to most" caption
-          carry that idea anyway. */}
-      <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5 sm:pb-6 -mt-1">
-        <FinishTable
-          title="Interior"
-          caption="Ordered from least light reflected to most"
-          rows={INTERIOR_FINISHES}
-        />
-        <FinishTable
-          title="Exterior"
-          caption="Two of these names you won't see indoors"
-          rows={EXTERIOR_FINISHES}
-        />
+      <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5">
+        {/* Column headings only where there ARE columns. Each row stacks on a
+            phone, and "Finish / Typical Use / General Characteristics" over the
+            top of a stack labels nothing. */}
+        <div className="hidden sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 pb-1.5 border-b border-ppp-charcoal-100">
+          {["Finish", "Typical Use", "General Characteristics"].map((h) => (
+            <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+              {h}
+            </span>
+          ))}
+        </div>
+
+        <ul className="divide-y divide-ppp-charcoal-100">
+          {FINISH_QUICK_REFERENCE.map((r) => (
+            <li
+              key={r.finish}
+              className="py-2 sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:items-baseline"
+            >
+              <span className="block font-semibold text-ppp-charcoal text-sm">{r.finish}</span>
+              <span className="block text-xs sm:text-sm text-ppp-charcoal-600">{r.typicalUse}</span>
+              <span className="block text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
+                {r.characteristics}
+              </span>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
-  );
-}
-
-function FinishTable({
-  title,
-  caption,
-  rows,
-}: {
-  title: string;
-  caption: string;
-  rows: readonly FinishGuideRow[];
-}) {
-  return (
-    <div className="mt-5">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap border-b border-ppp-charcoal-100 pb-1.5">
-        <h4 className="font-condensed text-base font-bold text-ppp-navy">{title}</h4>
-        <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">{caption}</span>
-      </div>
-
-      <ul className="divide-y divide-ppp-charcoal-100">
-        {rows.map((r) => (
-          <li
-            key={`${title}-${r.finish}`}
-            // Stacks on a phone and lines up in columns from `sm` — a real
-            // <table> cannot reflow, and this is read on a phone more often
-            // than not.
-            className="py-3 sm:grid sm:grid-cols-[5.5rem_7rem_1fr] sm:gap-4 sm:items-baseline"
-          >
-            <span className="flex items-center gap-2 sm:block">
-              <SheenBar level={r.sheen} finish={r.finish} />
-            </span>
-            <span className="block font-semibold text-ppp-charcoal text-sm mt-1.5 sm:mt-0">
-              {r.finish}
-            </span>
-            <span className="block text-xs sm:text-sm text-ppp-charcoal-600 leading-relaxed mt-0.5 sm:mt-0">
-              {r.looksLike && <>{r.looksLike} </>}
-              {r.place && <strong className="font-semibold text-ppp-charcoal">{r.place} </strong>}
-              {r.where}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** How much light this finish throws back, as a bar. Decorative — the finish
- *  name and the words beside it carry the meaning, so it is hidden from
- *  screen readers rather than read out as a number nobody asked for. */
-function SheenBar({ level, finish }: { level: number; finish: string }) {
-  const pct = Math.round((level / SHEEN_MAX) * 100);
-  return (
-    <span
-      className="inline-block w-[5rem] h-1.5 rounded-full bg-ppp-charcoal-100 overflow-hidden align-middle"
-      aria-hidden
-      title={`${finish} — sheen ${level} of ${SHEEN_MAX}`}
-    >
-      <span className="block h-full rounded-full bg-ppp-blue" style={{ width: `${pct}%` }} />
-    </span>
   );
 }

@@ -245,6 +245,40 @@ async function saveSettingsAutosaveAction(formData: FormData): Promise<{ ok: boo
   return { ok: true };
 }
 
+/**
+ * Renumber an ISSUED certificate — the number alone, nothing else.
+ *
+ * A separate action rather than opening the settings panel, because that panel
+ * autosaves every field it holds: one keystroke in it would carry the period,
+ * contract sum and retainage along too, and `updateAiaApplication` refuses
+ * exactly that on an issued certificate. Sending the number by itself is what
+ * makes this safe to expose after the document has gone to the GC.
+ */
+async function renumberApplicationAction(formData: FormData) {
+  "use server";
+  const userId = await requireCommercialUser();
+  const id = String(formData.get("account_id") ?? "");
+  const dealId = String(formData.get("opp_id") ?? "");
+  const back = String(formData.get("back") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+  const from = String(formData.get("from") ?? "");
+  const appId = String(formData.get("app_id") ?? "");
+  if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
+  if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
+  const wanted = appNumberFrom(formData);
+  // Blank or nonsense changes nothing, rather than reporting a success that
+  // renumbered nothing or an error for a box she simply cleared.
+  if (wanted == null) {
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+  }
+  const result = await updateAiaApplication(appId, { application_number: wanted }, userId);
+  if (!result.ok) {
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
+  }
+  revalidateAia(id, dealId);
+  redirect(`${base(id, dealId, origin, from)}&app=${appId}${backQ(back)}`);
+}
+
 async function setStatusAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -684,6 +718,50 @@ export async function AiaTool({
                   </ConfirmSubmitButton>
                 </form>
               </details>
+              )}
+              {/* ISSUED — the number, and only the number.
+
+                  Everything above is draft-only because it would restate a
+                  document the GC already has. The application number is the
+                  exception: it is how they FILE that document, and a job that
+                  was already running when it arrived here starts at 1 while
+                  their copies say 3. Stephanie asked for renumbering on
+                  09-24, got it for drafts, and reported it again on 09-29 —
+                  because 34 of the 38 live certificates are submitted or paid,
+                  so the field she needed was never on screen.
+
+                  One field, its own action, so none of the frozen figures can
+                  travel with it. */}
+              {application.status !== "draft" && (
+                <form
+                  action={renumberApplicationAction}
+                  className="bg-surface border border-ppp-charcoal-100 rounded-xl px-4 py-3 flex flex-wrap items-end gap-3"
+                >
+                  {ctx}
+                  <input type="hidden" name="app_id" value={selectedAppId} />
+                  <label className="block">
+                    <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">
+                      Application No.
+                    </span>
+                    <input
+                      name="application_number"
+                      inputMode="numeric"
+                      defaultValue={String(application.application_number)}
+                      aria-label="Application number"
+                      className={`${INPUT} max-w-[7rem]`}
+                    />
+                  </label>
+                  <PendingSubmitButton
+                    pendingLabel="Saving…"
+                    className="inline-flex items-center px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+                  >
+                    Change number
+                  </PendingSubmitButton>
+                  <p className="text-[11px] text-ppp-charcoal-400 basis-full sm:basis-auto sm:flex-1 sm:min-w-[14rem]">
+                    How the GC files this certificate. Everything else is locked
+                    once it has been sent.
+                  </p>
+                </form>
               )}
             </>
           );
