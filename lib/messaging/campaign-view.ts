@@ -18,6 +18,7 @@
 import type { Rule } from "./rules";
 import type { CampaignStep } from "./campaign-schedule";
 import { unresolvedFields, isKnownMergeField } from "./merge-fields";
+import { needsDisclosure } from "./first-message";
 
 /* ─────────────────────────── the audience ─────────────────────────── */
 
@@ -177,11 +178,34 @@ export function campaignWarnings(steps: CampaignStep[], opts: {
     }
   }
 
+  /**
+   * ── ONE TEST FOR THE OPT-OUT LINE, NOT TWO ──────────────────────────
+   *
+   * This had its own regex and it was narrower than the real one: it lacked
+   * `to unsubscribe` and the optional quote that first-message.ts allows. So
+   * a perfectly good opener ending "Text HELP for help, STOP to unsubscribe"
+   * passed the editor's checklist and was flagged on this panel at the same
+   * time. Two screens disagreeing about a compliance line is how somebody
+   * learns to ignore both.
+   *
+   * needsDisclosure is what the editor checks and what the gate's append
+   * decides on, so all three now agree by construction.
+   */
   const firstSms = steps.find((s) => s.channel === "sms");
-  if (firstSms && !/\b(reply|text|send)\s+(stop|end|quit|cancel|unsubscribe)\b|\bopt[- ]?out\b/i.test(firstSms.body)) {
+  if (firstSms && needsDisclosure(firstSms.body)) {
     out.push({
       severity: "worth_checking", ordinal: firstSms.ordinal,
-      message: "Does not say how to opt out. The gate adds it automatically, so it will be a little longer than it looks here.",
+      /**
+       * NOT "the gate adds it automatically", which is what this said and is
+       * only sometimes true. The append is conditional on hasEverSent(to) —
+       * "has PPP ever texted this handset, in ANY workspace" — not "is this
+       * the first message of this campaign". A lead texted six months ago
+       * comes back true and nothing is appended. The old wording reassured
+       * somebody out of fixing a compliance line on the opener.
+       */
+      message: "Does not say how to opt out. The gate only appends it for a number PPP has "
+        + "never texted before, so a lead who has heard from us in the past would get this "
+        + "without it.",
     });
   }
 

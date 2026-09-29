@@ -129,3 +129,48 @@ describe("what is wrong with a campaign, before anybody turns it on", () => {
     expect(campaignWarnings([step({ ordinal: 1 })], { workspaceCount: 12 })).toEqual([]);
   });
 });
+
+/**
+ * ── THE OPT-OUT WARNING, AFTER TWO AUDITS DISAGREED WITH IT ─────────────
+ *
+ * Two things were wrong with this warning and both were found by reviewing a
+ * feature that was then abandoned, which is the main reason to keep them:
+ *
+ *   1. This panel had its OWN opt-out regex, narrower than the one the editor
+ *      checklist and the gate's append use. "STOP to unsubscribe" passed one
+ *      screen and was flagged by the other, simultaneously.
+ *   2. It said the gate "adds it automatically". The append is conditional on
+ *      hasEverSent(to) — has PPP ever texted this handset, in ANY workspace —
+ *      so a returning lead gets no appended disclosure. The sentence talked
+ *      somebody out of fixing a compliance line on the opener.
+ */
+describe("the opt-out warning agrees with every other screen", () => {
+  const step = (body: string) => ({
+    ordinal: 1, scheduleMode: "at_launch" as const, delayMinutes: null,
+    dayOffset: null, timeOfDay: null, channel: "sms" as const, body, subject: null,
+  });
+  const msgs = (body: string) =>
+    campaignWarnings([step(body)], { workspaceCount: 1 }).map((w) => w.message);
+
+  it.each([
+    "Hi, it's Emily at Precision Painting Plus. Reply STOP to opt out.",
+    // The one the two screens used to disagree about.
+    "Hi, it's Emily at Precision Painting Plus. Text HELP for help, STOP to unsubscribe.",
+    'Hi, it\'s Emily at Precision Painting Plus. Reply "STOP" to opt out.',
+  ])("accepts %j, the same as the editor checklist does", (body) => {
+    expect(msgs(body).some((m) => /opt out/i.test(m))).toBe(false);
+  });
+
+  it("still flags an opener that says nothing about stopping", () => {
+    expect(msgs("Hi, it's Emily at Precision Painting Plus.").some((m) => /opt out/i.test(m)))
+      .toBe(true);
+  });
+
+  it("does not claim the gate always appends it", () => {
+    // It only appends for a number PPP has never texted. Saying otherwise on
+    // a compliance warning is worse than saying nothing.
+    const warning = msgs("Hi, it's Emily at Precision Painting Plus.").find((m) => /opt out/i.test(m));
+    expect(warning).not.toMatch(/adds it automatically/i);
+    expect(warning).toMatch(/never texted before/i);
+  });
+});

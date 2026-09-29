@@ -205,7 +205,7 @@ water-based or oil-based?" on the word `based`).
 | ❌ Containment / Bookable-to-Booked metrics | columns exist in Hatch (unpopulated), absent in ours |
 | ❌ Snippet library | reusable named responses for reps |
 | ✅ `[[[[Next Open Time]]]]` merge field | **BUILT 2026-09-29.** `{{next_open}}` in an after-hours message resolves to "9 AM tomorrow" / "Monday at 9 AM". Resolved through `nextWindowOpen` — the same function the gate enforces — so the promised hour cannot drift from the hour the system acts on. Rendered on the CUSTOMER's clock, since that is when their phone actually buzzes; an unresolved zone falls back to the office zone and labels the hour (EDT/EST). An unresolvable time REFUSES the whole reply rather than sending a token, a blank, or a guess. Hatch's own `[[[[Next Open Time]]]]` spelling is accepted too, because the migration story is pasting their message in. `lib/messaging/next-open.ts`. |
-| ❌ During/after-hours campaign copy | a step can carry two variants |
+| 🟩 During/after-hours campaign copy | **NOT APPLICABLE — investigated and abandoned 2026-09-29.** Hatch needs a second body because Hatch sends at 6:30 PM on a Saturday. We do not send then at all: A36's window covers texts, so the gate refuses every campaign send while the office is closed, and a workspace's configured hours are bounded to be a SUBSET of that window. So "office closed" (which is when a variant would be chosen) strictly implies "the gate refuses" — the message defers to the next open window, the body is re-resolved, and the daytime copy sends. Measured over a week on the live Eastern workspaces: a variant would be selected at 384 instants and the gate would permit the send at **zero** of them. The feature was built, proved inert, and reverted. See below. |
 | ⚠️ Account-level setting inheritance | Still true for SETTINGS. For standing answers there is now a shared tier (2026-09-29): an answer saved once with `workspace_id IS NULL` is read by every workspace, and a workspace's own row overrides it. Location-bound questions AND answers are refused from the shared tier — see `isLocationBound`. |
 | ⚠️ Campaign designer | theirs has a 30-day rail showing which days carry SMS vs email; ours is a list |
 | ❌ **The sequence itself is half as long** | see below — four touches against Hatch's eight |
@@ -267,6 +267,53 @@ ends both branches, which Kate calls the defect.
 
 Gaps 2, 3 and 4 are the ones most likely to produce a visibly wrong message
 to a real customer, so they go first.
+
+---
+
+## The after-hours campaign variant, and why there is no such thing here
+
+Built 2026-09-29 as `body_after_hours` on `sms_campaign_steps`, with the copy
+chosen at send time, validation on both bodies, and an editor field. Then
+reverted, because an audit showed it could never fire.
+
+**The argument.** A36 says the callable window covers texts, not just calls,
+so `gatedSend` refuses a campaign send whenever PPP's office window is shut.
+Migration 178 bounds a workspace's configured hours to [8,20] and [9,21], and
+the office base window opens at 9 — so the gate's window is always a subset of
+the window an after-hours check would test. Therefore:
+
+    variant chosen  ⟹  office window closed  ⟹  gate refuses  ⟹  deferred
+                    ⟹  re-resolved in the morning  ⟹  daytime copy sends
+
+**Measured, not argued:** stepping a full week at 15-minute intervals, the
+variant is selected at 384 instants and `sendingWindow` is open at 0 of them
+for an Eastern workspace. Every currently active workspace is Eastern.
+
+**This is the shape this project keeps producing** — two individually correct
+rules with no legal move between them. It is the same family as the
+unsatisfiable-close bugs: nothing errors, the tests pass, the screen looks
+right, and the behaviour cannot occur.
+
+**What closing this gap would actually require** is a decision, not code:
+either campaign sends become permitted outside the office window (which A36
+forbids and which nobody has asked for), or email steps stop being bound by a
+window written for texts — a real question, since an email at 9 PM is not a
+compliance problem the way a text is, but one that touches the gate and
+belongs to Kate and Karan rather than to a parity sweep.
+
+**Two real bugs were found underneath it and kept**, since neither depends on
+the variant:
+
+- `campaignWarnings` carried its own opt-out regex, narrower than
+  `first-message.ts`'s — it lacked `to unsubscribe`, so an opener ending
+  "STOP to unsubscribe" passed the editor's checklist and was flagged on the
+  publish panel at the same time. Two screens disagreeing about a compliance
+  line is how somebody learns to ignore both. It now calls `needsDisclosure`.
+- That warning said the gate "adds it automatically". The append is
+  conditional on `hasEverSent(to)` — *has PPP ever texted this handset, in any
+  workspace* — not *is this the campaign's first message*. A lead texted six
+  months ago comes back true and nothing is appended, so the reassurance was
+  false exactly when it mattered.
 
 ---
 
