@@ -33,6 +33,12 @@ export type Viewer = {
   /** Account Manager: all-WO access + enters colors, but no ordering/Settings. */
   isAccountManager: boolean;
 
+  /** PROXY LOGIN (Katie 2026-09-29). When an admin is logged in AS somebody
+   *  else, this is who they really are. Everything else on this Viewer — role,
+   *  capabilities, name, scope — belongs to the person being proxied, which is
+   *  the point: the screen has to be theirs. Null when not proxying. */
+  proxiedByEmail: string | null;
+
   /** When admin is impersonating: the rep's SF User Id. Else null. */
   viewAsUserId: string | null;
   /** When admin is impersonating: the rep's display name. */

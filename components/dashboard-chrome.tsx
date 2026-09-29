@@ -7,6 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import Sidebar from "@/components/sidebar";
 import Topbar from "@/components/topbar";
 import ImpersonationBanner from "@/components/impersonation-banner";
+import ProxyBanner from "@/components/proxy-banner";
 import { ViewerProvider } from "@/lib/auth/viewer-context";
 import type { Viewer } from "@/lib/auth/viewer";
 import { capabilitiesFor, normalizeRole, type UserRole } from "@/lib/auth/roles";
@@ -39,6 +40,8 @@ type Props = {
     isAccountManager?: boolean;
     sfUserId: string | null;
     sfUserName: string | null;
+    /** Set when this screen is somebody else's, seen through a proxy login. */
+    proxiedByEmail?: string | null;
   };
   searchIndex?: SearchableSnapshot | null;
   /** Phase 0 New Platform — true when the viewer also has New Platform
@@ -121,6 +124,7 @@ export default function DashboardChrome({
       role,
       isAdmin,
       isAccountManager,
+      proxiedByEmail: profile.proxiedByEmail ?? null,
       viewAsUserId,
       viewAsName: null,
       scope,
@@ -161,6 +165,11 @@ export default function DashboardChrome({
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
+          {/* Proxy login sits above View As and outranks it: one narrows what
+              an admin can see, the other replaces who they are. */}
+          {profile.proxiedByEmail && (
+            <ProxyBanner actingAs={user.fullName || user.email} realEmail={profile.proxiedByEmail} />
+          )}
           <ImpersonationBanner reps={switcherReps} />
           <Topbar
             onOpenMenu={() => setMobileOpen(true)}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getProfileByUserId, logViewAs } from "@/lib/auth/profile";
+import { readProxyCookie } from "@/lib/auth/proxy";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getCurrentUser } from "@/lib/auth/session";
 import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
@@ -41,6 +42,7 @@ export async function resolveViewer(
       role: "rep",
       isAdmin: false,
       isAccountManager: false,
+      proxiedByEmail: null,
       viewAsUserId: null,
       viewAsName: null,
       scope: "my",
@@ -123,6 +125,18 @@ export async function resolveViewer(
     }
   }
 
+  // When a proxy is active, `profile` above is already the TARGET's — that
+  // substitution happens in getProfileByUserId so every route follows it too.
+  // All that is left here is to name who is really behind the screen, for the
+  // banner.
+  const proxyTargetId = await readProxyCookie();
+  const realProfile =
+    proxyTargetId && proxyTargetId !== user.id
+      ? await getProfileByUserId(user.id, { ignoreProxy: true })
+      : null;
+  const proxiedByEmail =
+    realProfile && realProfile.user_id !== profile.user_id ? realProfile.email : null;
+
   return {
     supabaseUserId: user.id,
     email: profile.email,
@@ -136,6 +150,7 @@ export async function resolveViewer(
     role,
     isAdmin,
     isAccountManager,
+    proxiedByEmail,
     viewAsUserId,
     viewAsName: null, // resolved in client from snapshot.reps for live display
     scope,

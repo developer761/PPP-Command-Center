@@ -2,6 +2,10 @@ import { ALL_PLATFORMS, type Platform } from "@/lib/platform-cookie";
 import "server-only";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { readProxyCookie } from "@/lib/auth/proxy";
+import { getCurrentUser } from "@/lib/auth/session";
+import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
 
 /**
  * Profile = Supabase user × Salesforce User × admin flag. The bridge that
@@ -104,7 +108,46 @@ export function invalidateProfileCache(userId: string): void {
   profileCache.delete(userId);
 }
 
-export async function getProfileByUserId(userId: string): Promise<Profile | null> {
+/**
+ * The profile the app should act on for this user.
+ *
+ * When an admin is proxying (Settings → Proxy login), this returns the TARGET's
+ * profile instead of theirs — role, capabilities, Salesforce mapping and all.
+ * That substitution happens HERE, in the one function every screen and all
+ * fifty API routes already call, rather than in each of them: a proxy that
+ * only changed the UI would show Jason's menus while the routes behind them
+ * still answered as an admin, so the permissions bug being chased would not
+ * reproduce. A capability the UI re-derives is not a capability.
+ *
+ * Two guards make it safe:
+ *   · it only ever substitutes for the CURRENT session user — a lookup of
+ *     somebody else's profile by id is untouched, or the customer list would
+ *     start showing the proxied user everywhere;
+ *   · the admin check reads the real profile with `ignoreProxy`, so proxying
+ *     can neither grant admin nor trap an admin inside a rep's account.
+ */
+export async function getProfileByUserId(
+  userId: string,
+  opts?: { ignoreProxy?: boolean }
+): Promise<Profile | null> {
+  const real = await loadProfile(userId);
+  if (opts?.ignoreProxy || !real) return real;
+
+  const targetId = await readProxyCookie();
+  if (!targetId || targetId === userId) return real;
+
+  // Only the signed-in user's own profile is ever swapped.
+  const current = await getCurrentUser();
+  if (!current || current.id !== userId) return real;
+
+  // Only an admin may proxy. Judged on the REAL profile, always.
+  const realRole = normalizeRole(real.role, real.is_admin || isAdminEmail(real.email));
+  if (realRole !== "admin") return real;
+
+  return (await loadProfile(targetId)) ?? real;
+}
+
+async function loadProfile(userId: string): Promise<Profile | null> {
   const now = Date.now();
   const hit = profileCache.get(userId);
   if (hit && hit.expiresAt > now) return hit.promise;
@@ -226,6 +269,11 @@ export async function logViewAs(input: {
   admin_email: string;
   target_sf_user_id: string;
   target_label: string | null;
+  /** 'view' for the read-only View As switcher; 'proxy_start' / 'proxy_end'
+   *  for a full proxy login, which is a different and much larger thing to be
+   *  able to find in the log afterwards. The column has carried a default of
+   *  'view' since migration 002 and takes any label. */
+  action?: "view" | "proxy_start" | "proxy_end";
   path: string | null;
   user_agent: string | null;
   ip_address: string | null;
@@ -237,7 +285,7 @@ export async function logViewAs(input: {
       admin_email: input.admin_email,
       target_sf_user_id: input.target_sf_user_id,
       target_label: input.target_label,
-      action: "view",
+      action: input.action ?? "view",
       path: input.path,
       user_agent: input.user_agent,
       ip_address: input.ip_address,

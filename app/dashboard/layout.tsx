@@ -26,7 +26,13 @@ export default async function DashboardLayout({
   // Profile drives the admin flag in the chrome (controls visibility of the
   // View Switcher). The full Viewer (with scope/view_as from URL params) is
   // resolved per-page since the layout doesn't see searchParams.
+  // Already the PROXIED profile when a proxy login is active — that is what
+  // makes the whole shell (menus, capabilities) the target's. The real account
+  // is fetched alongside it so the banner can name who is behind the screen.
   const profile = await getProfileByUserId(user.id);
+  const realProfile = await getProfileByUserId(user.id, { ignoreProxy: true });
+  const proxiedByEmail =
+    realProfile && profile && realProfile.user_id !== profile.user_id ? realProfile.email : null;
 
   // Access gate (defense-in-depth; the callback + provisioning already gate at
   // entry). Two ways in:
@@ -163,6 +169,7 @@ export default async function DashboardLayout({
         isAccountManager,
         sfUserId: profile?.sf_user_id ?? null,
         sfUserName: profile?.sf_user_name ?? null,
+        proxiedByEmail,
       }}
       accessiblePlatforms={access.accessible}
     >

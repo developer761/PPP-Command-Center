@@ -33,6 +33,13 @@ const cards: Card[] = [
     icon: <IconUsers />,
   },
   {
+    href: "/dashboard/settings/proxy",
+    label: "Proxy login",
+    blurb:
+      "See the hub exactly as somebody else sees it — their menus, their permissions, their work orders. For reproducing a problem the person who hit it could not screenshot. Every session is logged.",
+    icon: <IconUsers />,
+  },
+  {
     href: "/dashboard/settings/health",
     label: "Setup Health",
     blurb:
