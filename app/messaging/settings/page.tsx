@@ -7,6 +7,7 @@ import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-h
 import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
 import SnippetsEditor from "@/components/messaging/snippets-editor";
 import FaqImportForm from "@/components/messaging/faq-import-form";
+import SettingsCopyForm from "@/components/messaging/settings-copy-form";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,26 @@ export default async function MessagingSettings({
           {/* Keyed, so switching workspace gives a fresh list rather than one
               that has to reset itself. */}
           <WorkspaceFaqs key={r.id} workspaceId={r.id} />
+        </section>
+      ))}
+
+      {/*
+        Inside the per-workspace block, because it copies FROM the open
+        workspace — the source has to be a workspace somebody has already
+        configured and is looking at, not an abstract default nobody checks.
+      */}
+      {rows.filter((r) => r.id === open).map((r) => (
+        <section key={`copy-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+            <h2 className="font-semibold text-ppp-charcoal text-[14px]">Copy these settings to other workspaces</h2>
+            <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+              Hours, weekend policy, reply delays and the out-of-hours message — set once
+              here, put onto the rest, instead of editing each one by hand.
+            </p>
+          </div>
+          <div className="p-4">
+            <SettingsCopyForm key={r.id} sourceId={r.id} />
+          </div>
         </section>
       ))}
 
