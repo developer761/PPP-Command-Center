@@ -163,10 +163,11 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
     id: string;
     opportunity_id: string | null;
     account_id: string;
+    deleted_at: string | null;
   }>(() =>
     sb
       .from("commercial_invoices")
-      .select("id, opportunity_id, account_id")
+      .select("id, opportunity_id, account_id, deleted_at")
       .in("id", [...new Set(payments.map((p) => p.invoice_id))])
       .order("id", { ascending: true }),
   );
@@ -182,20 +183,46 @@ export async function getMoneyInRows(): Promise<MoneyInRow[]> {
     ),
   );
 
-  const invoiceRows: MoneyInRow[] = payments.map((p) => {
+  const invoiceRows: MoneyInRow[] = [];
+  for (const p of payments) {
     const inv = invById.get(p.invoice_id);
-    return {
+    /*
+     * A PAYMENT ON A DELETED INVOICE IS NOT CASH ON THIS TAB.
+     *
+     * `commercial_invoice_payments` has no `deleted_at` of its own, so deleting
+     * an invoice leaves its payments behind and only the parent tells you they
+     * are gone. This read never asked, and on a job billed by G702 that is not
+     * a rare edge: the original invoice is DELETED once the certificates become
+     * the billing, and the certificate payments are recorded again on the AIA
+     * side — so both copies landed here and the tab counted the same cash
+     * twice.
+     *
+     * Measured on live data 2026-09-29: seven deleted invoices across the AIREF,
+     * Creative Biolabs, Green Leaf and Water Lillies jobs carried $575,660.51 of
+     * payments that the Partner Deposit History was still adding up. Mary found
+     * it from the other end — a $19,000 deposit she could see twice — and the
+     * instinct is to delete one of them, which is wrong: receivables read the
+     * AIA rollup ONLY, so removing the certificate's payment fixes this tab and
+     * puts the same money straight back onto what the GC supposedly still owes.
+     * Nothing is wrong with the data. This read was.
+     *
+     * `!inv` goes the same way: a payment whose invoice row is missing entirely
+     * used to emit a row labelled "—", money against no job. Same rule as
+     * reports/transactions.ts, which was fixed for this and is the reference.
+     */
+    if (!inv || inv.deleted_at) continue;
+    invoiceRows.push({
       id: p.id,
-      oppId: inv?.opportunity_id ?? null,
-      jobName: (inv?.opportunity_id && names.get(inv.opportunity_id)) || "—",
-      accountName: (inv && acct.get(inv.account_id)) || "—",
+      oppId: inv.opportunity_id ?? null,
+      jobName: (inv.opportunity_id && names.get(inv.opportunity_id)) || "—",
+      accountName: acct.get(inv.account_id) || "—",
       ymd: ymdOf(p.paid_at),
       depositedYmd: ymdOf(p.deposited_at),
       amountCents: Number(p.amount_cents),
       method: p.method,
       reference: (p.reference ?? "").trim() || null,
-    };
-  });
+    });
+  }
 
   if (aiaPayments.length === 0) return invoiceRows;
 

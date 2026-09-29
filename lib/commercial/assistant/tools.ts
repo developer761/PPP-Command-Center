@@ -177,7 +177,23 @@ export async function moneyOverview(): Promise<string> {
     paginateAll<{ category: string; amount_cents: number }>(() =>
       sb.from("commercial_project_purchases").select("category, amount_cents").is("deleted_at", null).order("id")
     ),
-    paginateAll<{ amount_cents: number }>(() => sb.from("commercial_invoice_payments").select("amount_cents").order("id")),
+    /*
+     * Joined to the parent, because a payment on a DELETED invoice is not
+     * collected money. The two reads above both filter `deleted_at`; this one
+     * did not, so "Collected all time" and its payment count were both
+     * inflated — by $575,660.51 on live data 2026-09-29, where seven invoices
+     * superseded by G702 certificates were deleted and their payments left
+     * behind. `commercial_invoice_payments` has no `deleted_at` of its own, so
+     * the join is the only way to ask. Same shape as sumCommercialPaymentsSince
+     * in invoices/db.ts, which is the reference.
+     */
+    paginateAll<{ amount_cents: number }>(() =>
+      sb
+        .from("commercial_invoice_payments")
+        .select("amount_cents, commercial_invoices!inner(deleted_at)")
+        .is("commercial_invoices.deleted_at", null)
+        .order("id")
+    ),
   ]);
 
   /**
