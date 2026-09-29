@@ -56,7 +56,7 @@ export function extractCustomerFreeText(raw: string | null | undefined): string 
  */
 // DERIVED from the shared set, never re-typed. A second hand-written list is
 // exactly how round-2 #04 came back: add "Railing" to ORPHAN_SURFACES and a
-// literal regex here would silently stop recognising it, leaking our own
+// literal regex here would silently stop recognizing it, leaking our own
 // machine text back to the customer as if they'd typed it.
 const ORPHAN_SURFACE_PREFIX = new RegExp(
   `^\\s*(?:${[...ORPHAN_SURFACES]
@@ -168,7 +168,7 @@ export function parseMachineColorLines(raw: string | null | undefined): ParsedOr
       rest = rest.slice(0, dash).trim();
     }
 
-    // Trailing "(CODE)" — same shape the fingerprint recognises, so a name with
+    // Trailing "(CODE)" — same shape the fingerprint recognizes, so a name with
     // a parenthetical that isn't a code ("White (Custom Mix)") won't be eaten.
     let colorCode: string | null = null;
     const codeMatch = rest.match(/\(([A-Za-z0-9][A-Za-z0-9.\-/ ]{0,14})\)\s*$/);

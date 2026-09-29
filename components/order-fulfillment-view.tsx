@@ -7,7 +7,7 @@ import type { OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { type FulfillmentState, fulfillmentIsEmpty } from "@/lib/supplier-order/fulfillment-state";
 
 /**
- * FULFILMENT — stage two of the Order Materials split (Kate round-3 #18).
+ * Fulfillment — stage two of the Order Materials split (Kate round-3 #18).
  *
  * Deliberately short. It decides HOW the order arrives — required-by date,
  * delivery or pickup, instructions — and sends the email. It reads the
@@ -105,7 +105,7 @@ export default function OrderFulfillmentView({
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  // R4.33 — every field seeds from the saved fulfilment slice so going back to
+  // R4.33 — every field seeds from the saved fulfillment slice so going back to
   // the order and returning doesn't lose what was typed here. Falls back to the
   // old defaults when there's nothing saved (first visit, or migration pending).
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">(savedFulfillment.method);
@@ -121,7 +121,7 @@ export default function OrderFulfillmentView({
   // wins — it was typed deliberately for this order.
   const [contactPhone, setContactPhone] = useState(savedFulfillment.contactPhone || (viewerPhone ?? ""));
   const [editedBody, setEditedBody] = useState<string | null>(null);
-  /** What the fulfilment said when the body was frozen. Send still posts the
+  /** What the fulfillment said when the body was frozen. Send still posts the
    *  LIVE method, address and date — so switching delivery→pickup after
    *  editing recorded a pickup with no address while the vendor read
    *  "DELIVERY to: 123 Main St". The caveat only mentioned the body. */
@@ -143,7 +143,7 @@ export default function OrderFulfillmentView({
     return raw < today ? today : raw;
   }, [requiredBy, draft, today]);
 
-  /* ── R4.33: persist the fulfilment entries ────────────────────────────────
+  /* ── R4.33: persist the fulfillment entries ────────────────────────────────
    * Its own endpoint writing its own column. This can't touch the order payload
    * — that separation is the whole reason the round-3 reset bugs stayed fixed.
    *
@@ -217,11 +217,11 @@ export default function OrderFulfillmentView({
   }, [fulfillmentJson, workOrderId, supplierAccountId]);
 
   /* ── Draft ─────────────────────────────────────────────────────────────
-   * Rebuilt when a FULFILMENT input changes. The order half of the request is
+   * Rebuilt when a Fulfillment input changes. The order half of the request is
    * the committed payload, passed through verbatim every time — so a rebuild
    * can no longer lose the worker's quantities.
    *
-   * The order half is serialised ONCE and the effect reads that string, never
+   * The order half is serialized ONCE and the effect reads that string, never
    * the `build` object. `build` arrives from the server component and its
    * identity is stable in practice — but an object dependency that ever stopped
    * being stable would refetch on every render: an unbounded loop of
@@ -289,7 +289,7 @@ export default function OrderFulfillmentView({
         if (!cancelled) setLoadingDraft(false);
       }
       // 600ms, not 150. These dependencies include free-text fields — the
-      // fulfilment instructions, the contact phone, every box of the delivery
+      // fulfillment instructions, the contact phone, every box of the delivery
       // address — and each pass is a full Salesforce-backed rebuild of the
       // email. Typing a phone number fired four to six of them, and each one
       // widens the window where Send would post a body built from the previous
@@ -331,7 +331,7 @@ export default function OrderFulfillmentView({
    *
    * The first version of this guard watched the method and the required-by
    * date — two of the six. Editing the body and THEN changing the delivery
-   * address, the pickup branch, the fulfilment instructions or the contact
+   * address, the pickup branch, the fulfillment instructions or the contact
    * number left the vendor reading the old details while the record stored the
    * new ones, with nothing said.
    */
@@ -348,7 +348,7 @@ export default function OrderFulfillmentView({
 
   // Focus the send error ONCE, when it appears. An inline `ref={(el) =>
   // el?.focus()}` has a new identity every render, so React re-attaches it on
-  // every commit and re-fires focus: one character into the fulfilment
+  // every commit and re-fires focus: one character into the fulfillment
   // instructions pulled the cursor back to the banner, and the autosave and
   // draft effects did it even while nobody typed. The page became un-typeable
   // at exactly the moment somebody needed to fix the thing that failed.
@@ -460,7 +460,7 @@ export default function OrderFulfillmentView({
         >
           <span aria-hidden>←</span> Back to the order
         </Link>
-        <h1 className="mt-2 text-xl sm:text-2xl font-condensed font-bold text-ppp-navy">Fulfilment</h1>
+        <h1 className="mt-2 text-xl sm:text-2xl font-condensed font-bold text-ppp-navy">Send the order</h1>
         <p className="text-xs text-ppp-charcoal-500 mt-1">
           {customerName ?? "(unknown customer)"} · WO {woLabel} · {supplierName}
           {draft && <> · <span className="font-mono">{draft.poNumber}</span></>}
@@ -508,7 +508,7 @@ export default function OrderFulfillmentView({
       )}
       {persistenceAvailable && !committed && (
         <div className="bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-4 py-3 text-xs text-ppp-blue-700">
-          You came straight to fulfilment, so this order uses whatever was last saved on the build
+          You came straight here, so this order uses whatever was last saved on the build
           step. <Link href={builderHref} className="underline font-semibold">Check what you&apos;re buying</Link> if
           you haven&apos;t already.
         </div>
@@ -566,7 +566,7 @@ export default function OrderFulfillmentView({
         />
       </section>
 
-      {/* Fulfilment method */}
+      {/* Delivery or pickup */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
         <h2 className="text-sm font-semibold text-ppp-charcoal mb-2">Delivery or pickup</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -743,13 +743,13 @@ export default function OrderFulfillmentView({
         />
       </section>
 
-      {/* Fulfilment instructions */}
+      {/* Notes for the vendor */}
       <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-        <label htmlFor="fulfilment-instructions" className="text-sm font-semibold text-ppp-charcoal block mb-1">
-          Fulfilment instructions
+        <label htmlFor="vendor-notes" className="text-sm font-semibold text-ppp-charcoal block mb-1">
+          Notes for the vendor
         </label>
         <textarea
-          id="fulfilment-instructions"
+          id="vendor-notes"
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
           rows={2}
@@ -797,8 +797,8 @@ export default function OrderFulfillmentView({
         <div className="mt-1 flex items-center justify-between text-[10px] text-ppp-charcoal-500 gap-2">
           <span>
             {editedBody !== null
-              ? "Editing manually — fulfilment changes won't update this body."
-              : "Edit any line before sending. Fulfilment changes update this automatically."}
+              ? "Editing manually — changes above won't update this body."
+              : "Edit any line before sending. Changes above update this automatically."}
           </span>
           {editedBody !== null && editedUnder && editedUnder !== fulfillmentFingerprint && (
             <span role="alert" className="text-ppp-orange-700 font-semibold">

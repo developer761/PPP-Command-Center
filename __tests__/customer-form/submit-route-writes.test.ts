@@ -181,7 +181,7 @@ describe("an answer Salesforce cannot store", () => {
 
   it("does not ALSO call that surface 'no finish chosen'", async () => {
     // Both notes described the same surface in contradictory words: the finish
-    // was recognised-but-unusable, not absent. The second was an artefact of
+    // was recognized-but-unusable, not absent. The second was an artefact of
     // reading the already-sanitized list.
     await post({
       lineItems: line([{ surface: "Walls", colorId: "a02C1", finish: "Rainbow Sparkle" }]),

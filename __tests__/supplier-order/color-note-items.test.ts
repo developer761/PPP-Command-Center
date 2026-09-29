@@ -164,7 +164,7 @@ describe("the room travels with the color", () => {
 describe("a color the buy-list already covers", () => {
   const estimates = [{ colorName: "Windham Cream", colorCode: "HC-6" }];
 
-  it("is recognised by code and by name", () => {
+  it("is recognized by code and by name", () => {
     expect(inBuyList("Siding: HC-6 Windham Cream - Low Lustre", estimates)).toBe(true);
     expect(inBuyList("Siding: windham cream", estimates)).toBe(true);
   });

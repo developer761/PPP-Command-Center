@@ -12,7 +12,7 @@ import {
  * vendor (round-six audit, 2026-09-17).
  *
  * The submit route writes four blocks into ColorNotes__c for PPP to read —
- * a finish that wasn't recognised, a color with no finish, a paint line we
+ * a finish that wasn't recognized, a color with no finish, a paint line we
  * don't sell. Only ONE of them was known to the re-sent form's "your notes"
  * box, and only one to the order builder's buy list. So a customer who typed
  * nothing was shown our note as if they had written it (and stored it again on
@@ -98,7 +98,7 @@ describe("what the estimator is offered to buy", () => {
   });
 });
 
-describe("recognising a heading", () => {
+describe("recognizing a heading", () => {
   it("does not depend on the exact dash or spelling", () => {
     // Both have changed at least once. A literal match fails silently — the
     // block simply leaks again, which is how this shipped.

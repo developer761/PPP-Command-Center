@@ -1,5 +1,5 @@
 /**
- * The fulfilment step's own persisted state (R4.33).
+ * The fulfillment step's own persisted state (R4.33).
  *
  * Kate: "Anything typed on the Fulfillment step — instructions, required-by,
  * pickup location, address, phone — is gone if you go back to change something
@@ -9,7 +9,7 @@
  *
  * So this lives in its own column, never inside the order payload. The
  * separation is structural rather than a convention: the build route writes
- * `payload` and only `payload`, the fulfilment route writes `fulfillment` and
+ * `payload` and only `payload`, the fulfillment route writes `fulfillment` and
  * only `fulfillment`. Neither can clobber the other even by mistake, which is
  * exactly the failure mode that produced round 3 #20/#22/#23.
  */

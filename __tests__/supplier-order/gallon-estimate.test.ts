@@ -133,7 +133,7 @@ describe("the two constants that decide the order", () => {
     expect(COVERAGE_CONFIG.coverageSqftPerGallon).toBe(375);
     expect(COVERAGE_CONFIG.bufferPct).toBe(0.1);
 
-    // And pinned by behaviour, sized deliberately NEAR a whole-gallon boundary
+    // And pinned by behavior, sized deliberately NEAR a whole-gallon boundary
     // so a few percent moves the answer. A 20x24x8 room: perimeter 88 x 8 =
     // 704, less one door and one window (35) = 669, x 1.5 coats = 1003.5 sq ft.
     // 1003.5 / 375 x 1.1 = 2.94 gal → 2 cans. At 400 sq ft/gal it is 2.76 → 2

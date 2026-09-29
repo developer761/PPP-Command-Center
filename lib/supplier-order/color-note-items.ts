@@ -34,7 +34,7 @@ const SURFACE_LEAD = /^[A-Za-z][A-Za-z0-9 ,'&/()+-]{0,60}:\s*\S/;
  * something a vendor can sell. Both the header and everything indented under
  * it are bookkeeping.
  */
-/** All four are recognised from one shared list — this file used to know only
+/** All four are recognized from one shared list — this file used to know only
  *  about the finish one, so the estimator was offered "Walls" and a rejected
  *  paint line as things to buy. */
 /** The submit route's own cap marker. Never a color. */

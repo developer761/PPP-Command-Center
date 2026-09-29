@@ -1,8 +1,8 @@
 /**
- * Grouping for the sundries catalogue.
+ * Grouping for the sundries catalog.
  *
  * Karan, from the materials meeting: "extras organize — caulk should be
- * stacked, rolls etc." The catalogue is one flat alphabetical-ish list of
+ * stacked, rolls etc." The catalog is one flat alphabetical-ish list of
  * twenty items, so the four caulks sit apart from each other and a worker
  * hunting for tape scans the whole thing.
  *
@@ -57,7 +57,7 @@ export function extraGroupOf(name: string): ExtraGroup {
   return "Other";
 }
 
-/** Catalogue split into groups, in EXTRA_GROUPS order, empty groups dropped. */
+/** Catalog split into groups, in EXTRA_GROUPS order, empty groups dropped. */
 export function groupExtras<T extends { name: string }>(
   items: readonly T[]
 ): Array<{ group: ExtraGroup; items: T[] }> {

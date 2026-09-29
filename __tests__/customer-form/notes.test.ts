@@ -181,11 +181,11 @@ describe("crew-written notes are never mistaken for machine output", () => {
  *
  * A second hand-written list is precisely how round-2 #04 came back — the logic
  * was right in one place and absent in another. If someone adds a surface to
- * ORPHAN_SURFACES, a literal regex here would silently stop recognising our own
+ * ORPHAN_SURFACES, a literal regex here would silently stop recognizing our own
  * machine output and leak it back to the customer as their own words.
  */
 describe("orphan surface list is derived, not duplicated", () => {
-  it.each([...ORPHAN_SURFACES])("recognises a machine line for %s", (surface) => {
+  it.each([...ORPHAN_SURFACES])("recognizes a machine line for %s", (surface) => {
     const line = `${surface}: HC-15 Henderson Buff (HC-15) — Semi-Gloss`;
     expect(extractMachineColorLines(line)).toEqual([line]);
     expect(extractCustomerFreeText(line)).toBe("");

@@ -321,7 +321,7 @@ describe("addCustomItemsToTotal (#28)", () => {
   });
 });
 
-describe("applyQuantityOverrides — defence at the vendor boundary", () => {
+describe("applyQuantityOverrides — defense at the vendor boundary", () => {
   it("clamps an absurd quantity rather than emailing it to a supplier", () => {
     const [out] = applyQuantityOverrides(
       [estimate()],

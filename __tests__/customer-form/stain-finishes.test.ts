@@ -44,7 +44,7 @@ describe("stain does not offer interior sheens", () => {
     expect(finishOptionsFor(ALL, "")).toEqual(ALL);
   });
 
-  it("recognises the word, not a substring of another", () => {
+  it("recognizes the word, not a substring of another", () => {
     expect(isStainProduct("Deck Stain")).toBe(true);
     expect(isStainProduct("Solid Staining")).toBe(true);
     // "Stainless" and "Stain-Blocking Primer" are not stains.

@@ -728,7 +728,7 @@ function productFor(materialType: string | null | undefined): MaterialType | und
  * inside and low lustre outside). Without it they were one merged list that was
  * wrong for both.
  *
- * Products with no declared list fall back to the previous generic behaviour,
+ * Products with no declared list fall back to the previous generic behavior,
  * so an unanswered product keeps working rather than losing every option.
  */
 export function finishOptionsFor(

@@ -37,7 +37,7 @@ import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
  * Everything that decides WHAT TO BUY lives here: the vendor, the paint line,
  * quantities, color notes, extras and worker-typed color lines. When the
  * worker advances, the payload is committed to `supplier_order_builds` and the
- * fulfilment page reads it back — it has no way to change any of it.
+ * fulfillment page reads it back — it has no way to change any of it.
  *
  * That separation is the fix for a whole class of bugs Kate reported. In the
  * old single modal, every input change re-fetched the draft and the refetch
@@ -132,7 +132,7 @@ type Draft = {
  * stops rather than a queue of them.
  */
 // Debounce policy lives in lib/supplier-order/draft-timing.ts so it is
-// testable by behaviour rather than by grepping this file.
+// testable by behavior rather than by grepping this file.
 
 type ExtraCatalogItem = {
   id: string;
@@ -200,7 +200,7 @@ export default function OrderBuilderView({
 
   /* ── Persist ─────────────────────────────────────────────────────────────
    * Autosave is debounced and fire-and-forget; the commit on "Continue" is
-   * awaited, because that one has to land before fulfilment reads it.
+   * awaited, because that one has to land before fulfillment reads it.
    *
    * The payload and supplier are passed IN rather than read from refs — refs
    * written during render are a cascading-render trap, and there's no need for
@@ -248,7 +248,7 @@ export default function OrderBuilderView({
    * "+" then "−" returns the payload to a string identical to the baseline
    * while the row already holds the "+" — and the save that would put it back
    * is skipped. The screen then shows 4 gal over a row holding 5, and
-   * fulfilment emails the 5.
+   * fulfillment emails the 5.
    *
    * It also resets with the vendor, or vendor B is compared against A's
    * payload and written on open — the very thing this prevents.
@@ -445,12 +445,12 @@ export default function OrderBuilderView({
     return () => { cancelled = true; };
   }, [supplier]);
 
-  /* ── Extras catalogue ──────────────────────────────────────────────────── */
+  /* ── Extras catalog ──────────────────────────────────────────────────── */
   useEffect(() => {
     if (!supplierId) return;
     let cancelled = false;
     (async () => {
-      // A vendor's catalogue is that vendor's. Leaving the previous one on
+      // A vendor's catalog is that vendor's. Leaving the previous one on
       // screen while the new one loads (or fails) let A-only sundries be
       // ticked onto B's order.
       setCatalog([]);
@@ -462,7 +462,7 @@ export default function OrderBuilderView({
         const data = await res.json();
         if (cancelled) return;
         // The route answers 500 with `{ok:false, extras: []}`, and checking
-        // only "is it an array" turned that into an empty catalogue: the panel
+        // only "is it an array" turned that into an empty catalog: the panel
         // read "No matches." and a worker would conclude PPP stocks nothing.
         if (!res.ok || data?.ok === false) {
           setExtrasError(data?.message ?? data?.error ?? `HTTP ${res.status}`);
@@ -876,7 +876,7 @@ export default function OrderBuilderView({
           Build the order
         </h1>
         <p className="text-xs text-ppp-charcoal-500 mt-1">
-          {customerName ?? "(unknown customer)"} · WO {woLabel} · Step 1 of 2 — decide what to buy, then continue to fulfilment.
+          {customerName ?? "(unknown customer)"} · WO {woLabel} · Step 1 of 2 — decide what to buy, then continue to sending.
         </p>
         {/* An order for this work order has ALREADY gone to a vendor. Said
             plainly, because everything else on this page looks like a fresh
@@ -1243,7 +1243,7 @@ export default function OrderBuilderView({
                               // Wall_Surface_Area__c. That is a reason to keep
                               // the figure on the backend, not a reason to show
                               // it to the person reading the room: a estimator
-                              // recognises "16 × 20 × 9 ft" as the room in
+                              // recognizes "16 × 20 × 9 ft" as the room in
                               // front of them and "648 sq ft wall" as arithmetic.
                               if (dims) measure = dims;
                               else if (src.wallSqft > 0) measure = `${src.wallSqft.toLocaleString()} sq ft wall`;
@@ -1602,7 +1602,7 @@ export default function OrderBuilderView({
                         </button>
                       {/* Caulk is bought loose or by the case, and a case is a different
                           SKU at the counter — not a count of tubes. Only offered where the
-                          catalogue unit is a tube; nothing else PPP orders comes by the
+                          catalog unit is a tube; nothing else PPP orders comes by the
                           case. Karan, materials meeting. */}
                       {c.unit === "tube" && (
                         <select
@@ -1725,9 +1725,9 @@ export default function OrderBuilderView({
                 // "Order saved." was printed whenever nothing was wrong —
                 // including before a single save had happened, and while the
                 // autosave was not even armed.
-                <>Fulfilment is next: required-by date, delivery or pickup, and the email.</>
+                <>Sending is next: required-by date, delivery or pickup, and the email.</>
               ) : (
-                <>Order saved. Fulfilment is next: required-by date, delivery or pickup, and the email.</>
+                <>Order saved. Sending is next: required-by date, delivery or pickup, and the email.</>
               )}
             </div>
             <button
@@ -1736,7 +1736,7 @@ export default function OrderBuilderView({
               disabled={advancing}
               className="px-4 py-2 min-h-[44px] rounded-lg bg-ppp-green text-ppp-navy text-sm font-semibold hover:bg-ppp-green-600 transition-colors disabled:opacity-60 shadow-sm shadow-ppp-green/30 touch-manipulation"
             >
-              {advancing ? "Saving…" : "Continue to fulfilment →"}
+              {advancing ? "Saving…" : "Continue to sending →"}
             </button>
           </div>
         </div>
@@ -1968,7 +1968,7 @@ function CustomColorItems({
   );
 }
 
-/** The sundry half of "Add custom item" — unchanged behaviour, now clearly
+/** The sundry half of "Add custom item" — unchanged behavior, now clearly
  *  labelled as sundries so it reads as the pair to the color item above. */
 function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: string) => void }) {
   const [name, setName] = useState("");

@@ -43,7 +43,7 @@ describe("the buy-list walks the job in a readable order", () => {
   });
 
   it("an unknown surface sorts last rather than first", () => {
-    // Sorting it to 0 would put a surface nobody recognises above the walls.
+    // Sorting it to 0 would put a surface nobody recognizes above the walls.
     expect(surfaceRank("Radiator")).toBe(SURFACE_ORDER.length);
   });
 

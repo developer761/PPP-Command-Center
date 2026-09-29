@@ -532,11 +532,11 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               <span className="text-sm text-ppp-charcoal">
                 {/* Karan 2026-09-09: fulfilment no longer switches itself.
                     Delivery to the customer is the default for every order; a
-                    pickup vendor is flagged on the fulfilment step and the
+                    pickup vendor is flagged on the sending step and the
                     worker chooses. The old copy promised an automatic switch
                     that has been removed. */}
                 {pickupDefault
-                  ? "Fulfilment suggests Pickup for this vendor — the worker still chooses"
+                  ? "Sending suggests Pickup for this vendor — the worker still chooses"
                   : "No suggestion — orders default to delivery to the customer"}
               </span>
             </label>

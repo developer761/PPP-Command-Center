@@ -428,7 +428,7 @@ function roomCoverage(room: RoomTakeoff, cfg: CoverageConfig): RoomCoverage {
  * PPP actually does.
  *
  * Its CALLER decides what to do with that zero, and since the quart work
- * (Katie item 6: "a door is a quart — we need to utilise quarts") every path
+ * (Katie item 6: "a door is a quart — we need to utilize quarts") every path
  * out of estimateOrderGallons turns a sub-gallon line into a real quantity in
  * a real unit. There used to be a `sizedToZero` flag here and an "under 1 gal
  * — from stock" line on the order, for the case where nothing did: 24,000
@@ -775,7 +775,7 @@ export function estimateOrderGallons(
         unit = "gal";
         defaultedNote = `Trim in ${b.contributingRoomCount} rooms — at least 1 gal. Please review.`;
       } else if (b.doorsOnly) {
-        // Katie item 6: "door is a quart — we need to utilise quarts, not
+        // Katie item 6: "door is a quart — we need to utilize quarts, not
         // always gallons." A door is a few square feet; rounding it up to a
         // full gallon is the same waste the whole review was about.
         const quarts = Math.max(1, Math.floor(rawGallons * cfg.quartsPerGallon));
@@ -1263,7 +1263,7 @@ export function formatOrderQuantity(e: GallonEstimate): string {
  * and "Super White Super White", which a vendor reasonably reads as two
  * different things.
  *
- * Comparison strips non-alphanumerics and case, so "HC-14" is recognised inside
+ * Comparison strips non-alphanumerics and case, so "HC-14" is recognized inside
  * "HC 14 Princeton Gold" — the hyphenation is inconsistent in PPP's data and a
  * literal `includes` would miss it.
  */
@@ -1278,7 +1278,7 @@ export function formatColorLabel(
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const nn = norm(n);
   const nc = norm(c);
-  // An empty normalised code (a code of "—" or "-") carries no information.
+  // An empty normalized code (a code of "—" or "-") carries no information.
   if (!nc) return n;
   return nn.includes(nc) ? n : `${n} ${c}`;
 }

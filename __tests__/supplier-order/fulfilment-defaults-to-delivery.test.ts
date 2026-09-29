@@ -5,12 +5,12 @@ import { emptyFulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 
 /**
  * Katie item 10: "marked off for delivery (default for delivery)."
- * Karan, 2026-09-09: "on fulfilment, we want to default to deliver to customer.
+ * Karan, 2026-09-09: "on fulfillment, we want to default to deliver to customer.
  * I told you this and you still didn't do it."
  *
  * He was right. I verified `fulfillmentMethod: "delivery"` in the order BUILDER
  * and reported item 10 as already done. That is the method on step 1. The
- * FULFILMENT step then ran an effect that switched itself to Pickup whenever
+ * Fulfillment step then ran an effect that switched itself to Pickup whenever
  * the supplier was pickup-default OR the delivery address was in the five
  * boroughs — and most of PPP's work is in the boroughs, so the page opened on
  * Pickup for the majority of orders.
@@ -24,7 +24,7 @@ const view = readFileSync(
 );
 const code = view.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
-describe("fulfilment opens on delivery to the customer", () => {
+describe("fulfillment opens on delivery to the customer", () => {
   it("the stored default is delivery", () => {
     expect(emptyFulfillmentState().method).toBe("delivery");
   });
@@ -39,7 +39,7 @@ describe("fulfilment opens on delivery to the customer", () => {
     expect(code).not.toMatch(/setFulfillment\("pickup"\)[\s\S]{0,40}\}, \[/);
     const effects = code.match(/useEffect\([\s\S]*?\}, \[[^\]]*\]\);/g) ?? [];
     for (const e of effects) {
-      expect(e, "an effect must not choose the fulfilment method").not.toMatch(
+      expect(e, "an effect must not choose the fulfillment method").not.toMatch(
         /setFulfillment\(/
       );
     }

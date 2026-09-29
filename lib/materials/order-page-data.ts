@@ -157,7 +157,7 @@ export async function loadBuildPayload(
     );
     const { data, error } = await sb
       .from("supplier_order_builds")
-      // R4.33: the fulfilment slice rides along on the row we were fetching
+      // R4.33: the fulfillment slice rides along on the row we were fetching
       // anyway, so restoring it costs no extra round-trip.
       .select("payload, committed_at, fulfillment")
       .eq("work_order_id", workOrderId)
@@ -248,7 +248,7 @@ export type PriorOrder = {
  * Nothing on either order screen looked at `supplier_orders`, so coming back
  * to add one forgotten gallon resumed the whole finished order — vendor
  * pre-selected, every quantity and extra still there — and "Continue to
- * fulfilment" → Send emailed the lot again as a second PO. The vendor ships
+ * fulfillment" → Send emailed the lot again as a second PO. The vendor ships
  * the job twice. The only place the order's own state was visible is the
  * work-order page the estimator just left.
  *

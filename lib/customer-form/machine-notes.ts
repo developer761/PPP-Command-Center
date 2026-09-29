@@ -8,7 +8,7 @@
  *       Trim
  *
  * They are written for PPP, not for the customer, and not for a vendor. Two
- * readers have to recognise them, and both got it wrong by holding their own
+ * readers have to recognize them, and both got it wrong by holding their own
  * idea of the list (round-six audit, 2026-09-17):
  *
  *   · the re-sent color form pre-filled the customer's own notes box with
@@ -26,18 +26,18 @@ export const MACHINE_NOTE_HEADINGS = {
   /** A finish Salesforce's picklist cannot store, recorded instead. */
   unstorableFinish: "Finish not available in the Salesforce list — recorded here:",
   /** A finish that was not on the list at all (WO 00317803). */
-  droppedFinish: "Finish not recognised — please confirm with the customer:",
+  droppedFinish: "Finish not recognized — please confirm with the customer:",
   /** A color picked with no finish — two sheens are two SKUs. */
   missingFinish: "No finish chosen — please confirm with the customer:",
   /** A paint line the payload carried that PPP does not sell. */
-  droppedPaintLine: "Paint line not recognised — please confirm with the customer:",
+  droppedPaintLine: "Paint line not recognized — please confirm with the customer:",
 } as const;
 
 const HEADINGS = Object.values(MACHINE_NOTE_HEADINGS);
 
 /**
  * Matched on the words, not the exact string: the em dash, the spacing and the
- * British/American spelling of "recognised" have each changed at least once,
+ * British/American spelling of "recognized" have each changed at least once,
  * and a stale literal fails SILENTLY — the block simply leaks again.
  */
 const HEADING_PATTERNS = HEADINGS.map(
@@ -48,7 +48,7 @@ const HEADING_PATTERNS = HEADINGS.map(
           .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
           // any dash, spelled either way, any run of whitespace
           .replace(/—/g, "[—–-]")
-          .replace(/recognised/g, "recogni[sz]ed")
+          .replace(/recognized/g, "recogni[sz]ed")
           .replace(/\s+/g, "\\s+"),
       "i"
     )

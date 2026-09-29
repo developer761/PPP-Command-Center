@@ -40,6 +40,78 @@ describe("American spelling, everywhere a person can read it", () => {
     ).toEqual([]);
   });
 
+  /**
+   * The rest of the British vocabulary — "fulfilment", "recognised",
+   * "behaviour", "catalogue", "centre", "grey" and the -ise verbs.
+   *
+   * Karan, 2026-09-29: "not british anymore." 591 of these were in the source;
+   * the paint tool's 94 are fixed and this stops them coming back. It is
+   * SCOPED to the paths below rather than the whole repo on purpose: the
+   * Commercial and messaging areas hold the remaining ~460 and belong to other
+   * sessions working in this same tree. Widening the net before they are
+   * cleaned would turn one shared CI red for everybody, which is how a
+   * standard gets abandoned rather than adopted. Add paths here as each area
+   * is cleaned.
+   */
+  const PAINT_TOOL_PATHS = [
+    "lib/supplier-order", "lib/customer-form", "lib/materials", "lib/rooms",
+    "components/order-builder-view.tsx", "components/order-fulfillment-view.tsx",
+    "components/customer-form-view.tsx", "components/materials-view.tsx",
+    "components/material-type-picker.tsx",
+    "__tests__/supplier-order", "__tests__/customer-form",
+    "app/api/customer-form", "app/api/admin/supplier-order",
+  ].join(" ");
+
+  const BRITISH = [
+    "behaviours?", "recognis(e|ed|es|ing|able)", "greys?", "centres?", "fulfilment",
+    "catalogues?", "defence", "licence",
+    // -ise where American takes -ize. Spelled out rather than one loose
+    // pattern, because "analysis", "emphasis" and "realistic" are not
+    // misspellings and a lazy regex flags all three.
+    "optimis(e|ed|es|ing|ation)", "normalis(e|ed|es|ing|ation)", "summaris(e|ed|es|ing)",
+    "realis(e|ed|es|ing)", "analys(e|ed|es|ing)", "organis(e|ed|es|ing|ation)",
+    "serialis(e|ed|es|ing)", "authoris(e|ed|es|ing)", "apologis(e|ed|es|ing)",
+    "generalis(e|ed|es|ing)", "utilis(e|ed|es|ing)", "standardis(e|ed|es|ing)",
+    "categoris(e|ed|es|ing)", "sanitis(e|ed|es|ing)", "personalis(e|ed|es|ing)",
+    "minimis(e|ed|es|ing)", "maximis(e|ed|es|ing)", "prioritis(e|ed|es|ing)",
+    "customis(e|ed|es|ing)", "initialis(e|ed|es|ing)", "visualis(e|ed|es|ing)",
+    "emphasis(e|ed|es|ing)",
+  ];
+
+  it("no British vocabulary in the paint tool", () => {
+    const pattern = `\\b(${BRITISH.join("|")})\\b`;
+    const hits = execSync(
+      `grep -rniE '${pattern}' ${PAINT_TOOL_PATHS} || true`,
+      { encoding: "utf8" }
+    )
+      .split("\n")
+      .filter(Boolean);
+
+    expect(
+      hits,
+      `British spelling in the paint tool. Karan: "not british anymore".\n${hits
+        .slice(0, 20)
+        .join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("…and the check would notice if it were", () => {
+    // A grep that matches nothing passes whatever the code says. Prove the
+    // pattern bites on the exact words it is written for.
+    const pattern = `\\b(${BRITISH.join("|")})\\b`;
+    const probe = execSync(
+      `printf '%s\\n' 'the fulfilment behaviour was recognised in the grey centre' | grep -icE '${pattern}' || true`,
+      { encoding: "utf8" }
+    ).trim();
+    expect(probe).toBe("1");
+    // …and that it does NOT flag the words that merely look British.
+    const safe = execSync(
+      `printf '%s\\n' 'this analysis puts emphasis on a realistic organic color' | grep -icE '${pattern}' || true`,
+      { encoding: "utf8" }
+    ).trim();
+    expect(safe).toBe("0");
+  });
+
   it("no filename carries it either", () => {
     // Two test files were named for it — a rename a text-only sweep misses.
     const files = execSync(

@@ -26,7 +26,7 @@ describe("Other captures the actual product", () => {
     expect(otherValueText(v)).toBe("Behr Premium Plus");
   });
 
-  it("a bare Other is recognised but has no text yet", () => {
+  it("a bare Other is recognized but has no text yet", () => {
     expect(isOtherValue("Other")).toBe(true);
     expect(otherValueText("Other")).toBe("");
   });

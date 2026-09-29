@@ -16,7 +16,7 @@ import type { SnapshotAccount, SnapshotPaintColor, SnapshotWoli, SnapshotWorkOrd
  * Alex → Katie (2026-09-24). Everything here asserts on the RENDERED EMAIL,
  * which is the thing he was reading when he wrote them down.
  *
- *   · "loose the wording fulfilment"
+ *   · "loose the wording fulfillment"
  *   · "please add clients last name as part of the po number"
  *   · "we do not need the work order (po number) listed twice"
  *
@@ -62,7 +62,7 @@ function input(over: Partial<BuildSupplierOrderInput> = {}): BuildSupplierOrderI
 describe("the word 'Fulfillment'", () => {
   it("is gone from the email", async () => {
     const { body } = await buildSupplierOrderDraft(input());
-    expect(body).not.toMatch(/fulfilment|fulfillment/i);
+    expect(body).not.toMatch(/fulfillment|fulfillment/i);
   });
 
   it("but the vendor is still told what to do with the order", async () => {

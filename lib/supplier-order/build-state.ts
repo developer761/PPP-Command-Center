@@ -10,7 +10,7 @@ import type { CustomColorItem, SupplierOrderExtra } from "@/lib/supplier-order/b
  *   /dashboard/materials/[woId]/order              → writes it
  *   /dashboard/materials/[woId]/order/[supplierId] → reads it, never writes it
  *
- * Fulfilment deliberately has no way to change any field in here. That is the
+ * Fulfillment deliberately has no way to change any field in here. That is the
  * whole point of the split: before it, editing a delivery address re-derived the
  * draft and wiped the worker's typed quantities.
  */
@@ -21,7 +21,7 @@ export type OrderBuildPayload = {
   materialTypeOverrides: Record<string, string>;
   /** Per-color quantities the worker typed, same key shape. */
   quantities: Record<string, QuantityOverride>;
-  /** Catalogue extras + primers + custom sundry items. */
+  /** Catalog extras + primers + custom sundry items. */
   extras: SupplierOrderExtra[];
   /** Worker-typed color lines — stain, plaster, color matches (#28). */
   customColorItems: CustomColorItem[];

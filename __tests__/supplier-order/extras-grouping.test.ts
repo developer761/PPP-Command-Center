@@ -15,7 +15,7 @@ import { extraGroupOf, groupExtras, EXTRA_GROUPS } from "@/lib/supplier-order/ex
  */
 
 /** The 20 active sundries in production, verbatim, on 2026-09-08. */
-const CATALOGUE = [
+const Catalog = [
   "3M 2\" 2090 Blue Tape",
   "3M 1 1/2\" 2090 Blue Tape",
   "3' Roll Building Paper",
@@ -38,17 +38,17 @@ const CATALOGUE = [
   "9 inch microfiber 9/16",
 ];
 
-describe("the sundries catalogue groups", () => {
+describe("the sundries catalog groups", () => {
   it("puts all four caulks together", () => {
     // Three of the four are named "DAP …" with no "caulk" in them, so a rule
     // looking only for the word misses them.
-    const caulk = CATALOGUE.filter((n) => extraGroupOf(n) === "Caulk");
+    const caulk = Catalog.filter((n) => extraGroupOf(n) === "Caulk");
     expect(caulk).toHaveLength(4);
     expect(caulk.every((n) => n.startsWith("DAP"))).toBe(true);
   });
 
   it("puts all four roller covers together", () => {
-    expect(CATALOGUE.filter((n) => extraGroupOf(n) === "Roller covers")).toHaveLength(4);
+    expect(Catalog.filter((n) => extraGroupOf(n) === "Roller covers")).toHaveLength(4);
   });
 
   it("does not let a roller cover fall into masking", () => {
@@ -59,18 +59,18 @@ describe("the sundries catalogue groups", () => {
   it("groups every real product — nothing lands in Other", () => {
     // "Other" is a silent dumping ground: an item goes there and nobody
     // notices until a worker cannot find it.
-    const orphans = CATALOGUE.filter((n) => extraGroupOf(n) === "Other");
+    const orphans = Catalog.filter((n) => extraGroupOf(n) === "Other");
     expect(orphans, "these need a rule in extraGroupOf").toEqual([]);
   });
 
-  it("covers the whole catalogue with no item counted twice", () => {
-    const grouped = groupExtras(CATALOGUE.map((name) => ({ name })));
-    expect(grouped.flatMap((g) => g.items)).toHaveLength(CATALOGUE.length);
+  it("covers the whole catalog with no item counted twice", () => {
+    const grouped = groupExtras(Catalog.map((name) => ({ name })));
+    expect(grouped.flatMap((g) => g.items)).toHaveLength(Catalog.length);
     expect(grouped.every((g) => g.items.length > 0)).toBe(true);
   });
 
   it("keeps the groups in a fixed order", () => {
-    const grouped = groupExtras(CATALOGUE.map((name) => ({ name })));
+    const grouped = groupExtras(Catalog.map((name) => ({ name })));
     const order = grouped.map((g) => g.group);
     expect(order).toEqual([...order].sort((a, b) => EXTRA_GROUPS.indexOf(a) - EXTRA_GROUPS.indexOf(b)));
   });
@@ -90,7 +90,7 @@ describe("caulk can be ordered by the case", () => {
     expect(view).toMatch(/c\.unit === "tube" &&/);
   });
 
-  it("the catalogue is rendered grouped", () => {
+  it("the catalog is rendered grouped", () => {
     expect(view).toMatch(/groupExtras\(filteredCatalog\)/);
   });
 });

@@ -28,7 +28,7 @@ export type DroppedFinish = {
  * Strip off-list finishes from one line item's surfaces.
  *
  * Returns the surfaces to write (same objects, finish nulled where it was not
- * recognised) and what was dropped, so the caller can record it in the notes
+ * recognized) and what was dropped, so the caller can record it in the notes
  * and tell the customer. Never throws: this runs on a public endpoint where
  * the payload may be anything.
  */

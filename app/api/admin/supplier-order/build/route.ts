@@ -15,7 +15,7 @@ import { isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
  *
  * Kate round-3 #18. The order builder autosaves here (commit=false) so a
  * remount or a tab switch doesn't lose typed quantities (#20), and commits
- * (commit=true) when the worker advances to fulfilment. The fulfilment step
+ * (commit=true) when the worker advances to fulfillment. The fulfillment step
  * only ever GETs — it cannot mutate the order.
  *
  * Admin-only, same capability gate as the draft + send routes.

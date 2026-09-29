@@ -40,7 +40,7 @@
  *     formStatus type guard guarantees `token` is present in both states.
  *   - Ordering is NOT a modal any more (Kate round-3 #18). It lives on
  *     /dashboard/materials/[woId]/order (build) and .../order/[supplierId]
- *     (fulfilment). Keeping it off this page is what stops the focus-refresh
+ *     (fulfillment). Keeping it off this page is what stops the focus-refresh
  *     below from destroying an in-progress order.
  *   - WoPastOrders is dynamic-imported so first-paint stays small. Don't
  *     convert it back to a static import without measuring bundle impact.
@@ -2049,7 +2049,7 @@ function JobDetailImpl({
                   ? "Account Managers can't place orders — an admin, regional manager or rep handles materials. You can still enter colors."
                   : job.lineItems.length === 0
                   ? "No rooms on this WO yet — add rooms/colors in Salesforce before ordering."
-                  : "Step 1: pick a store and set what to buy. Step 2: fulfilment and the email. Nothing sends until you say so."}
+                  : "Step 1: pick a store and set what to buy. Step 2: the date, delivery or pickup, and the email. Nothing sends until you say so."}
               </p>
               {/* R4.7: "Preview Materials Order" removed — it linked to the
                   #preview anchor on the very page Order Materials already opens,

@@ -2172,7 +2172,7 @@ function ColorPicker({
         />
       )}
       {/* There is no arrow-key navigation here, so this is deliberately NOT
-          announced as a combobox — that would promise keyboard behaviour the
+          announced as a combobox — that would promise keyboard behavior the
           widget doesn't have. Instead: say what Enter does, and announce the
           match count as it changes. */}
       <span id={hintId} className="sr-only">

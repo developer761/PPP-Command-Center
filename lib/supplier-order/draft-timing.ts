@@ -13,9 +13,9 @@
  *    round trip. Karan 2026-09-09: "to pop up the build your order when getting
  *    onto this page… takes like 5 seconds."
  *
- * Lives here rather than inline so it can be tested by BEHAVIOUR. The test that
+ * Lives here rather than inline so it can be tested by Behavior. The test that
  * used to guard this read the component's source for `}, DRAFT_DEBOUNCE_MS);`
- * and broke on this very change while the behaviour it cared about was intact —
+ * and broke on this very change while the behavior it cared about was intact —
  * a source-text assertion passes through real regressions and fails on
  * harmless edits.
  */

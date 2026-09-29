@@ -7,7 +7,7 @@ import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
 import { normalizeFulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 
 /**
- * The fulfilment step's own saved entries for one (work order, supplier).
+ * The fulfillment step's own saved entries for one (work order, supplier).
  *
  *   PUT { workOrderId, supplierAccountId, fulfillment }
  *
@@ -17,7 +17,7 @@ import { normalizeFulfillmentState } from "@/lib/supplier-order/fulfillment-stat
  * Kate asked us not to break — an address edit here cannot reach the typed
  * quantities, structurally rather than by convention.
  *
- * There is no GET: the fulfilment page already loads its row server-side
+ * There is no GET: the fulfillment page already loads its row server-side
  * alongside the build payload, so a second round-trip would only add latency.
  *
  * Admin-only, same capability gate as /build, /draft and /send.
@@ -76,10 +76,10 @@ export async function PUT(request: Request) {
       process.env.SUPABASE_SECRET_KEY!,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
-    // UPDATE, not upsert. A fulfilment autosave must never CREATE the row:
+    // UPDATE, not upsert. A fulfillment autosave must never CREATE the row:
     // reaching this page always means the builder committed one first, and an
     // insert here would write a build row with an empty `payload` — which is
-    // precisely the "fulfilment wiped the order" bug we're avoiding.
+    // precisely the "fulfillment wiped the order" bug we're avoiding.
     const { data, error } = await sb
       .from("supplier_order_builds")
       .update({ fulfillment, updated_at: new Date().toISOString() })

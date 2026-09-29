@@ -158,13 +158,13 @@ export type BuildSupplierOrderInput = {
   /** Kate round-3 #18/#22/#23/#26: the worker's COMMITTED per-line quantities,
    *  keyed by `${colorId}::${finish ?? ""}`. The email is rendered FROM these —
    *  previously the modal typed a quantity, then rewrote the rendered body with
-   *  a regex, so any later re-draft (extras, fulfilment, product line) silently
+   *  a regex, so any later re-draft (extras, fulfillment, product line) silently
    *  reverted the number to the estimate and shipped "(PPP to confirm quantity)".
    *  Passing them through the builder makes the email and the screen the same
    *  computation. */
   quantityOverrides?: Record<string, QuantityOverride>;
   /** Kate round-3 #28: worker-typed COLOR lines (stain, venetian plaster,
-   *  color matches — anything that isn't in the paint catalogue). Rendered as
+   *  color matches — anything that isn't in the paint catalog). Rendered as
    *  real order lines alongside the picked colors, not buried in notes. */
   customColorItems?: CustomColorItem[];
   /** Kate round-3 #29: who the supplier should call about this order. */
@@ -1467,7 +1467,7 @@ export async function buildSupplierOrderDraft(
   }
   if (vars.special_instructions) {
     sections.push("");
-    sections.push("FULFILMENT INSTRUCTIONS"); // Kate #25 rename
+    sections.push("Fulfillment INSTRUCTIONS"); // Kate #25 rename
     sections.push(vars.special_instructions);
   }
   // Kate round-3 #29 + R4.29: a reachable human on every order — name, phone

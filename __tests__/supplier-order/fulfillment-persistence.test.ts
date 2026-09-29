@@ -8,7 +8,7 @@ import {
 } from "@/lib/supplier-order/fulfillment-state";
 
 /**
- * R4.33 — fulfilment entries survive going back to the order and returning.
+ * R4.33 — fulfillment entries survive going back to the order and returning.
  *
  * Kate named the constraint herself: "the one-way flow you built for Round 3
  * #18 is what stops an address edit from wiping typed quantities, and we don't
@@ -28,19 +28,19 @@ describe("the two order routes write disjoint columns", () => {
   const build = codeOnly(read("app/api/admin/supplier-order/build/route.ts"));
   const fulfil = codeOnly(read("app/api/admin/supplier-order/fulfillment/route.ts"));
 
-  it("the fulfilment route never writes the order payload", () => {
+  it("the fulfillment route never writes the order payload", () => {
     // Anything that would put `payload` into an update/upsert body.
     expect(fulfil).not.toMatch(/\bpayload\s*[,:]/);
     expect(fulfil).toMatch(/\.update\(\{\s*fulfillment/);
   });
 
-  it("the build route never writes the fulfilment slice", () => {
+  it("the build route never writes the fulfillment slice", () => {
     expect(build).not.toMatch(/\bfulfillment\s*[,:]/);
   });
 
-  it("the fulfilment route cannot CREATE a build row", () => {
+  it("the fulfillment route cannot CREATE a build row", () => {
     // An upsert here would insert a row whose `payload` is empty — which is
-    // exactly "fulfilment wiped the order", the bug being avoided.
+    // exactly "fulfillment wiped the order", the bug being avoided.
     expect(fulfil).not.toContain(".upsert(");
     expect(fulfil).toContain(".update(");
   });
@@ -77,7 +77,7 @@ describe("normalizeFulfillmentState", () => {
     expect(normalizeFulfillmentState({ requiredBy: "2026-09-01T00:00:00Z" }).requiredBy).toBe("2026-09-01");
   });
 
-  it("recognises an untouched form so mounting doesn't write a row", () => {
+  it("recognizes an untouched form so mounting doesn't write a row", () => {
     expect(fulfillmentIsEmpty(emptyFulfillmentState())).toBe(true);
     expect(fulfillmentIsEmpty({ ...emptyFulfillmentState(), instructions: "x" })).toBe(false);
     expect(fulfillmentIsEmpty({ ...emptyFulfillmentState(), method: "pickup" })).toBe(false);

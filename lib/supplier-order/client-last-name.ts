@@ -19,7 +19,7 @@ const SUFFIXES = new Set([
   "md", "m.d.", "phd", "ph.d.", "dds", "esq", "esq.", "cpa", "ret", "ret.",
 ]);
 
-/** Words that mean the account is an organisation, not a person. */
+/** Words that mean the account is an organization, not a person. */
 const COMPANY_WORDS =
   /\b(llc|l\.l\.c|inc|inc\.|incorporated|corp|corp\.|corporation|co|co\.|company|ltd|ltd\.|limited|lp|llp|pllc|group|holdings|properties|property|management|realty|associates|partners|enterprises|condo|condominium|coop|co-op|hoa|apartments|apts|residences|association|trust|church|school|hospital|hotel|restaurant|bank)\b/i;
 

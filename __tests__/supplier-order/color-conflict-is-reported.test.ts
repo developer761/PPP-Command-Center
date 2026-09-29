@@ -73,7 +73,7 @@ describe("when Salesforce and the customer's form disagree", () => {
     });
   });
 
-  it("the order still buys the customer's pick — the behaviour is unchanged", async () => {
+  it("the order still buys the customer's pick — the behavior is unchanged", async () => {
     // Reporting is not resolving. A failed Salesforce writeback leaves the org
     // stale, so flipping the precedence here would be its own bug; this exists
     // so a person can decide.

@@ -13,7 +13,7 @@ import type { SnapshotAccount, SnapshotPaintColor, SnapshotWoli, SnapshotWorkOrd
  * actually painted outside, as per-color overrides.
  *
  * This file used to assert on builder.ts SOURCE TEXT — that a particular `if`
- * existed, in that spelling. It went red on a rename that changed no behaviour
+ * existed, in that spelling. It went red on a rename that changed no behavior
  * (2026-09-17) and would have stayed green if the map had stopped reaching the
  * email. It reads the rendered email now.
  */

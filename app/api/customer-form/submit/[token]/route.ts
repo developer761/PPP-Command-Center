@@ -526,7 +526,7 @@ export async function POST(
         // Kate round-3 #31 wants the finish set off by a dash and each surface
         // on its own line, because these ran together into one unreadable
         // paragraph. Prefer the customer's own finish label over the SF-
-        // normalised one ("Semi-Gloss" reads better than "Semigloss"), and fall
+        // normalized one ("Semi-Gloss" reads better than "Semigloss"), and fall
         // back to whichever exists so an unmapped choice still says something.
         const finishText = o.rawFinish ?? o.sfFinish ?? "";
         const codeText = o.colorCode ? ` (${o.colorCode})` : "";
@@ -590,7 +590,7 @@ export async function POST(
     // a finish for — and the note said both, about the same surface, in
     // contradictory words:
     //
-    //   Finish not recognised …:  Walls — Eggshell Gloss
+    //   Finish not recognized …:  Walls — Eggshell Gloss
     //   No finish chosen …:       Walls
     //
     // The first is the true account; the second is an artefact of the order
