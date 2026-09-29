@@ -94,6 +94,8 @@ export async function runSimTurn(input: {
   /** The last thing the bot said asked the customer to PROVIDE something.
    *  Decides whether a reaction counts as an answer. */
   lastAskedForInfo?: boolean;
+  /** 1, 2 or 3 to simulate an A44 follow-up rather than a live reply. */
+  followUpStep?: number;
   /** Photos attached. No file is needed — what the bot reasons about is that
    *  photos EXIST, and normalizeInbound turns that into words. */
   mediaCount?: number;
@@ -352,6 +354,14 @@ export async function runSimTurn(input: {
     // Parity gap 9: the same standing answers the live path gets.
     workspaceFaqs: faqsForPrompt(faqs),
     lastAskedForInfo: input.lastAskedForInfo,
+    /**
+     * A44 — which follow-up this is, so a stall follow-up can be graded in
+     * the sandbox at all. Without it every simulated turn looks like a live
+     * reply, and the one behaviour A44 is judged on — naming the scope back
+     * rather than opening cold — could not be exercised on the screen built
+     * for exercising it.
+     */
+    followUpStep: input.followUpStep,
     mediaCount: input.mediaCount,
     track,
     // THE RESOLVED SCOPE, NOT JUST THE PANEL, which is what the live path

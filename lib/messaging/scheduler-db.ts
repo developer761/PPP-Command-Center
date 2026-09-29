@@ -491,6 +491,14 @@ export function schedulerDeps(): SchedulerDeps {
          * request for information — so the two cannot answer differently.
          */
         lastAskedForInfo: /^ask_/.test(priorIntents[priorIntents.length - 1] ?? ""),
+        /**
+         * A44 — which of the three follow-ups this is, so the model knows it
+         * is writing one. Without it a follow-up reads as a fresh "just
+         * checking in", which is the Hatch behaviour the capability replaces.
+         */
+        followUpStep: a.action === "stall_followup"
+          ? (a.stall_step ?? undefined)
+          : undefined,
         // A3 is satisfied by events, so the check needs the whole list
         // rather than just the last one.
         priorIntents,
