@@ -8,6 +8,7 @@
  * handoff IS the defect.
  */
 import { describe, it, expect } from "vitest";
+import { removeFromCadence, readsAsADisposition } from "@/lib/messaging/call-signals";
 import { END_STATES } from "@/lib/messaging/db";
 import {
   statedChannelPreference, phoneBranch, holdsCallbackTime,
@@ -231,5 +232,58 @@ describe("a callback time outside the office window", () => {
     // 8pm is when it ends, so a call placed at 8pm is not one we can promise.
     expect(callbackIsInHours(CALLBACK_WINDOW.endHour)).toBe(false);
     expect(callbackIsInHours(CALLBACK_WINDOW.startHour)).toBe(true);
+  });
+});
+
+/**
+ * ── THE NOTIFICATION A25 OWES, WHICH DID NOT EXIST ──────────────────────
+ *
+ * The spec: "the bot continues the conversation in that channel and sends a
+ * notification to the team to remove them from the Salesforce call cadence",
+ * and, settled 24 September, "this stays a notification and an agent removes
+ * them in Salesforce — build the signal, not the cadence edit."
+ *
+ * `statedChannelPreference` was built and tested and had zero production
+ * callers, and there was no signal kind for it — so a customer saying "stop
+ * calling me, just text" stayed in the call cadence indefinitely.
+ */
+describe("the remove-from-cadence notification", () => {
+  const sig = (preference: "text_only" | "email_only") =>
+    removeFromCadence({ conversationId: "c1", leadId: "00Q1", preference });
+
+  it("is its own kind, not a pause", () => {
+    /**
+     * The spec says so outright, because the two have already been read as
+     * one: "A pause is temporary; A25 is permanent… Do not implement one as
+     * the other."
+     */
+    expect(sig("text_only").kind).toBe("remove_from_cadence");
+    expect(sig("text_only").kind).not.toBe("pause_calling");
+  });
+
+  it("carries the lead and the conversation, and nothing else", () => {
+    // The spec names three fields and no more.
+    expect(Object.keys(sig("email_only")).sort())
+      .toEqual(["conversationId", "kind", "leadId", "note"]);
+  });
+
+  it("names the channel they asked for", () => {
+    expect(sig("email_only").note).toMatch(/by email/i);
+    expect(sig("text_only").note).toMatch(/by text/i);
+  });
+
+  it("does not read as a verdict on the lead", () => {
+    // They have said how they want to be contacted, not that they are
+    // uninterested. "A notification that reads as 'this lead is done' is the
+    // failure to avoid."
+    const note = sig("text_only").note;
+    expect(readsAsADisposition(note)).toBe(false);
+    expect(note).toMatch(/still in conversation/i);
+  });
+
+  it("says a person makes the change, not the bot", () => {
+    // Iteration 1 builds the signal, never the cadence edit.
+    expect(sig("text_only").note).toMatch(/Salesforce/);
+    expect(sig("text_only").note).toMatch(/someone needs to/i);
   });
 });

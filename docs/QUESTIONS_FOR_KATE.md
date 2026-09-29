@@ -1012,3 +1012,55 @@ a thing NOT to build until she says.
 **Re-rating part of the handover corpus.** Phone-pricing detection changed
 after parts of the corpus were rated. Not a blocker, and the rule text we
 build against is current either way.
+
+## 18. Two Rule Hub bullets the spec and the data disagree about
+
+Both found auditing the build against the Iteration 1 spec. Neither is
+urgent and neither has been changed, because guessing would remove something
+you may want.
+
+**`History` is rendered, and the spec says it should not be.** The spec:
+"Do not render History — it stays in our record and is not part of this
+screen." But every export from 22 September onward relabels the column
+`History [RULE HUB — the decision history]`, which reads like an instruction
+to render it. The screen currently shows it as "Background" — substantial
+content, ~9.8k characters on A6. **Is the spec bullet stale, or is the
+column header?** Left rendered until you say.
+
+**The 9 retired rules are shown, and the spec says they should not be.**
+The spec: "All 37 live rules are listed and the 9 retired ones are not." The
+live list does contain exactly 37 — the retired ones are in a separate
+section underneath, greyed, labelled "9 retired", each linking to its own
+page.
+
+We kept it deliberately and the reason is yours: a merged rule still explains
+an old grading, and deleting one is how its code gets reused by accident —
+A37 and A42 are burned in your sheet for exactly that reason. **Does the
+bullet mean "not in the live list" (which is already true), or "not on the
+screen at all"?** If the latter, the retired pages become unreachable and old
+gradings stop being explicable.
+
+## 19. A13's baseline: 192 or 206?
+
+The spec says A13 carries **192 defects and 77 good turns**, and names that
+192 as the baseline to beat. The rated CSVs do yield 192/77 when filtered to
+the handover corpus. But the code asserts **206**, and the Rule Hub screen
+shows **206 / 107**, because it counts every finding with no corpus filter.
+
+Neither is wrong, they are counting different things. **Which number is the
+baseline we are judged against** — the corpus figure, or everything rated to
+date? The screen should probably show both and say which is which.
+
+## 20. Does a conversation that was briefly taken over ever stall?
+
+The spec's test for A44 is mechanical: "the last turn is a bot turn and **no
+human ever picked it up**." We implement that literally — `takeover_at`
+survives a release back to the bot, so a conversation a person touched once
+is excluded from the cadence forever.
+
+That matches your words. It may not match your intent: in the handover corpus
+a takeover was terminal, but in the Hub a person can answer one question and
+hand the thread back. If the customer then goes quiet, nothing chases them.
+
+**Left as the spec says.** Say the word if a released conversation should be
+eligible again.

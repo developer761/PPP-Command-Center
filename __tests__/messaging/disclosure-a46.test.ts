@@ -63,8 +63,24 @@ describe("A46 — the approved strings, byte for byte", () => {
 
 describe("A46 — which wording fires when", () => {
   it("answers whenever asked, whatever the clock says", () => {
-    expect(disclosureMove({ askedIfBot: true, outOfHours: false, alreadyDisclosed: false })).toBe("answer");
-    expect(disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: true })).toBe("answer");
+    /**
+     * The intent is that it ALWAYS answers — the bot never denies being a
+     * bot, in any state. WHICH answer depends on the hour: the in-hours one
+     * offers a person, and out of hours there is nobody to offer. So this
+     * asserts that an answer is given rather than pinning one move value,
+     * which is what it used to do and what made the offer-nobody bug look
+     * like correct behaviour.
+     */
+    expect(disclosureMove({ askedIfBot: true, outOfHours: false, alreadyDisclosed: false }))
+      .toBe("answer");
+    expect(disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: true }))
+      .toBe("answer_out_of_hours");
+    for (const outOfHours of [true, false]) {
+      const said = applyDisclosure(
+        disclosureMove({ askedIfBot: true, outOfHours, alreadyDisclosed: true }), "ignored"
+      );
+      expect(said, `outOfHours=${outOfHours}`).toMatch(/I'm an AI assistant/);
+    }
   });
 
   it("says NOTHING unprompted during business hours", () => {
@@ -202,6 +218,61 @@ describe("the out-of-hours prefix is reachable from both callers", () => {
    * denies being a bot, in any state.
    */
   it("answers a direct question even out of hours", () => {
-    expect(disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: true })).toBe("answer");
+    // Answered, and with the line that offers nobody — see the block below.
+    expect(disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: true }))
+      .toBe("answer_out_of_hours");
+  });
+});
+
+/**
+ * ── OUT OF HOURS THERE IS NOBODY TO CONNECT THEM TO ─────────────────────
+ *
+ * The in-hours string ends "Would you prefer to speak with a member of our
+ * team?". Asked "are you a bot?" at 11 PM, the bot sent that — offering a
+ * person who does not exist.
+ *
+ * The spec forbids it twice: "never offers to connect someone to a person
+ * outside that customer's own callable window", and, of the out-of-hours
+ * voice, "no offer of a person… a promise with no owner is worse than none."
+ */
+describe("asked if it is a bot, out of hours", () => {
+  it("still answers truthfully", () => {
+    const move = disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: false });
+    const said = applyDisclosure(move, "ignored");
+    expect(said).toMatch(/I'm an AI assistant/);
+  });
+
+  it("does not offer a person", () => {
+    const said = applyDisclosure(
+      disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: false }),
+      "ignored"
+    );
+    expect(said).not.toMatch(/member of our team/i);
+    expect(said).not.toMatch(/\?/);
+  });
+
+  it("still offers one in hours, where there is somebody", () => {
+    const said = applyDisclosure(
+      disclosureMove({ askedIfBot: true, outOfHours: false, alreadyDisclosed: false }),
+      "ignored"
+    );
+    expect(said).toMatch(/member of our team/i);
+  });
+
+  it("counts as the disclosure, so the prefix does not repeat afterwards", () => {
+    const said = applyDisclosure(
+      disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: false }),
+      "ignored"
+    );
+    expect(alreadyDisclosed([said])).toBe(true);
+  });
+
+  it("answers in Spanish when the conversation is in Spanish", () => {
+    const said = applyDisclosure(
+      disclosureMove({ askedIfBot: true, outOfHours: true, alreadyDisclosed: false }),
+      "ignored", true
+    );
+    expect(said).toMatch(/asistente/i);
+    expect(said).not.toMatch(/\?/);
   });
 });
