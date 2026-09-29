@@ -11,7 +11,7 @@ import { classifyRoomType } from "@/lib/rooms/room-type";
  *
  *   INTERIOR
  *     Main-area ceilings ......... Flat
- *     Bathroom ceilings .......... SATIN (Kate, 2026-09-22 — see below)
+ *     Bathroom ceilings .......... Eggshell (Kate's revised table, 2026-09-29)
  *     Kitchen ceilings ........... Flat, or Kitchen & Bath product
  *     Main-area walls ............ Matte or Eggshell
  *     Bathroom walls ............. Satin / Kitchen & Bath product
@@ -69,10 +69,18 @@ export function recommendedFinishes(
 
   // ── interior ──────────────────────────────────────────────────────────────
   if (s.includes("ceiling")) {
-    // Satin, the same as the walls (Kate 2026-09-22). Matte and Flat stay
-    // behind it for a product that is not sold in Satin — a bathroom ceiling
-    // wants a low sheen before it wants no answer at all.
-    if (room === "bathroom") return ["Satin", "Matte", "Flat"];
+    // EGGSHELL in a bathroom, per Kate's revised table (2026-09-29), whose
+    // Eggshell row reads "Walls; bathroom ceilings".
+    //
+    // This reverses her 2026-09-22 answer ("satin can be the standard rec for
+    // bathroom walls and ceilings"), and the newer artifact wins — but the
+    // real reason to follow it here is that the same table is now ON THE FORM.
+    // A customer reading "Eggshell — bathroom ceilings" two inches above a
+    // dropdown we defaulted to Satin is the disagreement this section was
+    // built to end. Satin and Flat stay behind it for a product not sold in
+    // Eggshell: a bathroom ceiling wants a washable sheen before it wants no
+    // answer at all.
+    if (room === "bathroom") return ["Eggshell", "Satin", "Flat"];
     return ["Flat"];
   }
   if (/trim|door|window|baseboard|crown|molding|moulding|cabinet|shelf|shelves/.test(s)) {

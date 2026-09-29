@@ -1,63 +1,49 @@
 /**
- * PPP's "Finish Quick Reference" — the table the color form shows under
- * "Recommended finishes by area or surface".
+ * PPP's finish reference — the table under "Recommended finishes by area or
+ * surface" on the color form.
  *
- * Kate, 2026-09-29: "this is the original table — I just want it to be simple
- * like this, and it's much more compact." So this is the quick-reference block
- * from the back of the finishes guide rather than the long Interior/Exterior
- * version: three columns, seven rows, no sheen scale.
+ * Kate's wording, revised 2026-09-29 ("made some adjustments to the verbiage").
+ * Short sentences, an Interior and an Exterior block, no sheen bars and no
+ * column headings — the shape she sent, word for word.
  *
- * Copy is PPP's own, word for word.
+ * ONE ROW DECIDES BEHAVIOR, not just copy: Eggshell reads "Walls; bathroom
+ * ceilings". That is the form's auto-fill for a bathroom ceiling too — see
+ * recommended-finish.ts — because a table telling the customer one thing while
+ * the dropdown above it defaults to another is the disagreement this whole
+ * section was meant to end.
  *
  * The finish NAMES are the same strings the finish dropdowns offer — they come
- * from PPP's product data, not from here — so a customer reading "Satin" in
- * this table finds "Satin" in the picker. `finish-guide.test.ts` keeps that
- * true.
+ * from PPP's product data, not from here — so a customer reading "Satin" here
+ * finds "Satin" in the picker. `finish-guide.test.ts` keeps that true.
  */
 
 export type FinishGuideRow = {
   /** The finish, exactly as the picker spells it. */
   finish: string;
-  /** "Typical Use". */
-  typicalUse: string;
-  /** "General Characteristics". */
-  characteristics: string;
+  /** Where it goes. */
+  where: string;
+  /** What it looks like and how it behaves. */
+  description: string;
 };
 
-export const FINISH_QUICK_REFERENCE: readonly FinishGuideRow[] = [
-  {
-    finish: "Flat",
-    typicalUse: "Main-area ceilings",
-    characteristics: "Very low sheen; helps hide minor surface imperfections.",
-  },
-  {
-    finish: "Matte",
-    typicalUse: "Interior walls",
-    characteristics: "Low sheen; soft, understated appearance.",
-  },
-  {
-    finish: "Eggshell",
-    typicalUse: "Interior walls",
-    characteristics: "Low-to-moderate sheen; common balance of appearance and cleanability.",
-  },
-  {
-    finish: "Satin",
-    typicalUse: "Bathrooms; trim",
-    characteristics: "Moderate sheen; durable and easier to clean.",
-  },
-  {
-    finish: "Semi-Gloss",
-    typicalUse: "Trim, doors, baseboards, crown",
-    characteristics: "Higher sheen; durable, washable and the PPP-preferred trim option.",
-  },
-  {
-    finish: "Low Lustre",
-    typicalUse: "Exterior siding",
-    characteristics: "Subtle exterior sheen; PPP's typical siding recommendation.",
-  },
-  {
-    finish: "Soft Gloss",
-    typicalUse: "Exterior trim & soffits",
-    characteristics: "Higher exterior sheen; typically used to highlight and protect trim details.",
-  },
+/** The one-line explanation above both tables. */
+export const FINISH_GUIDE_INTRO =
+  "More shine means more durable and easier to clean. Less shine hides flaws better.";
+
+export const INTERIOR_CAPTION = "Least shine to most";
+export const EXTERIOR_CAPTION = "Two of these names you won't see indoors";
+
+export const INTERIOR_FINISHES: readonly FinishGuideRow[] = [
+  { finish: "Flat", where: "Ceilings in most rooms", description: "No shine. Hides flaws best. Hardest to clean." },
+  { finish: "Matte", where: "Interior walls", description: "Barely any shine. Hides flaws; tougher than flat." },
+  { finish: "Eggshell", where: "Walls; bathroom ceilings", description: "Slight shine. Hides most flaws. Cleans easily." },
+  { finish: "Satin", where: "Bathrooms, kitchens, cabinets", description: "Noticeable shine. Wipes clean; suits smooth walls." },
+  { finish: "Semi-Gloss", where: "Trim, doors, cabinets", description: "Shiny and easy to clean. Highlights trim detail." },
+  { finish: "Gloss", where: "Feature doors, millwork", description: "Almost mirror-like. Makes a feature stand out." },
+];
+
+export const EXTERIOR_FINISHES: readonly FinishGuideRow[] = [
+  { finish: "Flat", where: "Stucco", description: "No shine. The usual choice for stucco." },
+  { finish: "Low Lustre", where: "Exterior siding", description: "Low shine. The usual choice for siding." },
+  { finish: "Soft Gloss", where: "Exterior trim, soffits, doors", description: "More shine. Makes trim stand out from siding." },
 ];

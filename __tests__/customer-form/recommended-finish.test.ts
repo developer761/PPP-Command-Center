@@ -18,7 +18,7 @@ const INTERIOR: Array<[surface: string, room: string, want: string]> = [
   ["Ceiling",              "Bedroom",            "Flat"],
   ["Ceiling",              "Hallway",            "Flat"],
   ["Ceiling",              "Kitchen",            "Flat"],           // kitchen ceilings → Flat or K&B
-  ["Ceiling",              "Bathroom",           "Satin"],          // bathroom ceilings → Satin (Kate 2026-09-22)
+  ["Ceiling",              "Bathroom",           "Eggshell"],       // bathroom ceilings → Eggshell (Kate's revised table, 2026-09-29)
   ["Walls",                "Living Room",        "Eggshell"],       // main-area walls → Matte or Eggshell
   ["Walls",                "Primary Bedroom",    "Eggshell"],
   ["Walls",                "Bathroom",           "Satin"],          // bathroom walls → Satin
@@ -51,20 +51,24 @@ describe("the guide's interior table", () => {
     expect(recommendedFinishes("Walls", "Living Room", "interior")[0]).toBe("Eggshell");
   });
 
-  it("…and her follow-up: the ceiling is Satin too, the whole room", () => {
-    // Kate 2026-09-22: "satin can be the standard rec for bathroom walls and
-    // ceilings." The guide itself only said "low-sheen" for the ceiling.
-    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")[0]).toBe("Satin");
-    expect(recommendedFinishes("Ceiling", "Master Bath", "interior")[0]).toBe("Satin");
-    // A main-area ceiling is untouched by that — still Flat.
+  it("…and the ceiling is EGGSHELL — her revised table moved it", () => {
+    // Kate said "satin for bathroom walls and ceilings" on 2026-09-22, then
+    // sent a revised table on 2026-09-29 whose Eggshell row reads "Walls;
+    // bathroom ceilings". The newer one wins, and it is also the one printed
+    // on the form — see finish-guide.test.ts, which checks the two agree.
+    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")[0]).toBe("Eggshell");
+    expect(recommendedFinishes("Ceiling", "Master Bath", "interior")[0]).toBe("Eggshell");
+    // The WALLS are still Satin, which is where this started.
+    expect(recommendedFinishes("Walls", "Bathroom", "interior")[0]).toBe("Satin");
+    // A main-area ceiling is untouched by any of it — still Flat.
     expect(recommendedFinishes("Ceiling", "Living Room", "interior")[0]).toBe("Flat");
     expect(recommendedFinishes("Ceiling", "Kitchen", "interior")[0]).toBe("Flat");
   });
 
-  it("but a product not sold in Satin still gets a low sheen, not a blank", () => {
+  it("but a product not sold in Eggshell still gets a sheen, not a blank", () => {
     // Aura Bath & Spa is Matte only; Regal Select Kitchen & Bath is Pearl only.
     // The preference order is what keeps those rooms from landing empty.
-    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")).toEqual(["Satin", "Matte", "Flat"]);
+    expect(recommendedFinishes("Ceiling", "Bathroom", "interior")).toEqual(["Eggshell", "Satin", "Flat"]);
   });
 });
 

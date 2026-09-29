@@ -1,7 +1,14 @@
 "use client";
 
 import { useId, useState } from "react";
-import { FINISH_QUICK_REFERENCE } from "@/lib/customer-form/finish-guide";
+import {
+  FINISH_GUIDE_INTRO,
+  INTERIOR_FINISHES,
+  INTERIOR_CAPTION,
+  EXTERIOR_FINISHES,
+  EXTERIOR_CAPTION,
+  type FinishGuideRow,
+} from "@/lib/customer-form/finish-guide";
 
 /**
  * "Recommended finishes by area or surface" — the collapsible reference
@@ -9,13 +16,11 @@ import { FINISH_QUICK_REFERENCE } from "@/lib/customer-form/finish-guide";
  *
  * Kate, 2026-09-29: this REPLACES the line that appeared under a bathroom's
  * finish dropdown ("PPP recommends Satin in a bathroom…"). One table the
- * customer can read once beats a nudge repeated on every surface of every
- * room.
+ * customer reads once beats a nudge repeated on every surface of every room.
  *
- * The table is PPP's Finish Quick Reference, at her word: "I just want it to
- * be simple like this, and it's much more compact." Three columns, seven rows.
- * The first pass carried the long Interior/Exterior version with a sheen bar
- * on every row; this is the one she asked for.
+ * Her revised layout: one explanatory line, then Interior and Exterior blocks.
+ * No column headings — her table has none, and "Finish / Where / What it's
+ * like" over three short columns is scaffolding the rows do not need.
  *
  * Open by default for a CUSTOMER, who has probably never chosen a sheen and is
  * exactly who it is for; the arrow is there for everyone else ("with a
@@ -55,32 +60,46 @@ export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen
       </h3>
 
       <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5">
-        {/* Column headings only where there ARE columns. Each row stacks on a
-            phone, and "Finish / Typical Use / General Characteristics" over the
-            top of a stack labels nothing. */}
-        <div className="hidden sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 pb-1.5 border-b border-ppp-charcoal-100">
-          {["Finish", "Typical Use", "General Characteristics"].map((h) => (
-            <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
-              {h}
-            </span>
-          ))}
-        </div>
-
-        <ul className="divide-y divide-ppp-charcoal-100">
-          {FINISH_QUICK_REFERENCE.map((r) => (
-            <li
-              key={r.finish}
-              className="py-2 sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:items-baseline"
-            >
-              <span className="block font-semibold text-ppp-charcoal text-sm">{r.finish}</span>
-              <span className="block text-xs sm:text-sm text-ppp-charcoal-600">{r.typicalUse}</span>
-              <span className="block text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
-                {r.characteristics}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <p className="text-xs sm:text-sm text-ppp-charcoal-600 leading-relaxed">{FINISH_GUIDE_INTRO}</p>
+        <FinishBlock title="Interior" caption={INTERIOR_CAPTION} rows={INTERIOR_FINISHES} />
+        <FinishBlock title="Exterior" caption={EXTERIOR_CAPTION} rows={EXTERIOR_FINISHES} />
       </div>
     </section>
+  );
+}
+
+function FinishBlock({
+  title,
+  caption,
+  rows,
+}: {
+  title: string;
+  caption: string;
+  rows: readonly FinishGuideRow[];
+}) {
+  return (
+    <div className="mt-4">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap border-b border-ppp-charcoal-100 pb-1.5">
+        <h4 className="font-condensed text-sm sm:text-base font-bold text-ppp-navy">{title}</h4>
+        <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">{caption}</span>
+      </div>
+
+      <ul className="divide-y divide-ppp-charcoal-100">
+        {rows.map((r) => (
+          <li
+            key={`${title}-${r.finish}`}
+            // Stacks on a phone, three columns from `sm`. A real <table> cannot
+            // reflow, and this is read on a phone more often than not.
+            className="py-2 sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:items-baseline"
+          >
+            <span className="block font-semibold text-ppp-charcoal text-sm">{r.finish}</span>
+            <span className="block text-xs sm:text-sm text-ppp-charcoal-600">{r.where}</span>
+            <span className="block text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
+              {r.description}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
