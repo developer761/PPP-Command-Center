@@ -645,7 +645,7 @@ export function estimateOrderGallons(
     // ⚠️ For TRIM this is no longer an area a person can check: since
     // 2026-09-17 trim is priced from linear feet at a usage rate and converted
     // into this currency, so a 15x20 room reports ~234 "sq ft" of trim against
-    // perhaps 26 sq ft of real painted moulding. Nothing renders it today
+    // perhaps 26 sq ft of real painted molding. Nothing renders it today
     // (checked across the residential UI and the vendor email). Any surface
     // that starts to must special-case trim, or show linear feet instead.
     let reportedSqft = b.totalSqft;

@@ -65,6 +65,10 @@ describe("American spelling, everywhere a person can read it", () => {
   const BRITISH = [
     "behaviours?", "recognis(e|ed|es|ing|able)", "greys?", "centres?", "fulfilment",
     "catalogues?", "defence", "licence",
+    // NOT "moulding". PPP's own prose says molding, but the surface matcher in
+    // recommended-finish.ts has to recognize a Salesforce label typed either
+    // way — same reason "fulfilled" is left out below. A word we MATCH is not
+    // a word we WRITE.
     // The bare verb. Not "fulfilled" — that is Promise.allSettled's own
     // status string and appears all over the API routes.
     "fulfil", "fulfils", "fulfilling",

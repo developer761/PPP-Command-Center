@@ -187,7 +187,8 @@ const FINISH_OPTIONS = BASE_FINISHES;
 // exterior products and vice versa) — Katie 2026-06-05.
 import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
 import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to-all";
-import { recommendedFinishes, recommendationReason } from "@/lib/customer-form/recommended-finish";
+import FinishGuideSection from "@/components/finish-guide-section";
+import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
 
@@ -1293,6 +1294,12 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
+      {/* Kate 2026-09-29: one reference section instead of a recommendation
+          repeated under every surface. Sits directly under "Need help picking
+          colors?" and, like that card, is for the CUSTOMER — an AM doing
+          Internal Entry knows what Satin is for. */}
+      {!isInternal && formData.lineItems.length > 0 && <FinishGuideSection />}
+
       {/* Project context from PPP — when there's a Subject or Description on
           the WO, show it prominently. Most useful for exterior jobs where
           the WOLI breakdown is sparse (Katie 2026-06-05: "workers only put
@@ -1825,10 +1832,6 @@ function SurfaceRow({
   // its left and the room heading above it — neither of which a screen reader
   // ties to the control. Spelled out here so each one announces itself.
   const rowContext = `${surface}, ${roomLabel}`;
-  // PPP's recommendation for this room + surface, and the one-line reason —
-  // only for the cases where the guide departs from the ordinary answer.
-  const recommended = defaultFinishFor(surface, materialType, scope, roomTypeText);
-  const finishHint = recommendationReason(surface, roomTypeText, scope);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[110px_1fr_180px] gap-3 sm:items-start">
@@ -1906,33 +1909,6 @@ function SurfaceRow({
             {finishMissing && (
               <span className="text-[10px] text-ppp-orange-700 font-medium">
                 Pick a finish for this color
-              </span>
-            )}
-            {/* PPP's recommendation for this room (Mac's finishes guide via
-                Kate, 2026-09-22).
-                
-                Shown whether or not it is what is selected, because the case
-                that matters most is when it ISN'T: nearly every work order
-                arrives with a finish already on the Salesforce line, so the
-                auto-fill only ever fires on a blank one. Overwriting that
-                silently would throw away what the office recorded — offering
-                it in one tap does not. The guide is explicit that these are
-                "guidelines, not requirements". */}
-            {finishHint && !pick.skipped && (
-              <span className="text-[10px] text-ppp-charcoal-500">
-                {finishHint}
-                {recommended && pick.finish !== recommended && (
-                  <>
-                    {" "}
-                    <button
-                      type="button"
-                      onClick={() => onChange({ finish: recommended })}
-                      className="text-ppp-blue-700 font-medium hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center px-1 touch-manipulation"
-                    >
-                      Use {recommended}
-                    </button>
-                  </>
-                )}
               </span>
             )}
             {/* Apply this color to the same surface in every other room that

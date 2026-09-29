@@ -86,22 +86,3 @@ export function recommendedFinishes(
   if (room === "bathroom") return ["Satin", "Eggshell"];
   return ["Eggshell", "Matte"];
 }
-
-/** Why a surface is being recommended something unusual, for the one-line hint
- *  on the form. Null when the recommendation is the ordinary one for that
- *  surface, so the form stays quiet unless it has something to add. */
-export function recommendationReason(
-  surface: string,
-  roomLabel?: string | null,
-  scope?: "interior" | "exterior" | null
-): string | null {
-  const s = (surface ?? "").toLowerCase();
-  const room = classifyRoomType(roomLabel);
-  if (scope === "exterior") return null;
-  if (room !== "bathroom") return null;
-  if (s.includes("ceiling")) {
-    return "PPP recommends Satin on a bathroom ceiling — it stands up to moisture better than Flat.";
-  }
-  if (/trim|door|window|floor|cabinet|shelf|shelves/.test(s)) return null;
-  return "PPP recommends Satin in a bathroom — it stands up to moisture better than Eggshell.";
-}
