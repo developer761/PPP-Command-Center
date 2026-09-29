@@ -34,6 +34,9 @@ describe("readPaymentsConfig — nothing real happens by default", () => {
   it("pages are public only on exactly PAYMENTS_PUBLIC=1", () => {
     expect(readPaymentsConfig({ PAYMENTS_PUBLIC: "true" }).publicPages).toBe(false);
     expect(readPaymentsConfig({ PAYMENTS_PUBLIC: "1" }).publicPages).toBe(true);
+    // A dashboard paste with stray whitespace still counts; other words don't.
+    expect(readPaymentsConfig({ PAYMENTS_PUBLIC: " 1\n" }).publicPages).toBe(true);
+    expect(readPaymentsConfig({ PAYMENTS_PUBLIC: "yes" }).publicPages).toBe(false);
   });
 
   it("a TEST payment is never written to Salesforce, even with write-back on", () => {

@@ -45,7 +45,7 @@ export function readPaymentsConfig(env: Record<string, string | undefined>): Pay
   let blocked: string | null = null;
   if (!key) blocked = "STRIPE_SECRET_KEY is not set.";
   else if (!mode) blocked = "STRIPE_SECRET_KEY is not a Stripe secret or restricted key (sk_… / rk_…).";
-  else if (mode === "live" && env.STRIPE_LIVE_ENABLED !== "1") {
+  else if (mode === "live" && env.STRIPE_LIVE_ENABLED?.trim() !== "1") {
     blocked = "STRIPE_SECRET_KEY is a LIVE key and live payments are not switched on (STRIPE_LIVE_ENABLED=1). Use the test key while testing.";
   }
 
@@ -70,8 +70,10 @@ export function readPaymentsConfig(env: Record<string, string | undefined>): Pay
     stripeMode: mode,
     stripeBlockedReason: blocked,
     webhookSecretPresent: Boolean(env.STRIPE_WEBHOOK_SECRET?.trim()),
-    publicPages: env.PAYMENTS_PUBLIC === "1",
-    sfWritebackOn: env.PAYMENTS_SF_WRITEBACK === "on",
+    // Trimmed: a value pasted into a dashboard with a trailing space or newline
+    // must not read as "off" (a preview 404'd on exactly that suspicion).
+    publicPages: env.PAYMENTS_PUBLIC?.trim() === "1",
+    sfWritebackOn: env.PAYMENTS_SF_WRITEBACK?.trim() === "on",
   };
 }
 
