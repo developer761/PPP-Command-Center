@@ -27,7 +27,7 @@ import {
   type GallonEstimate,
   type PaintUnit,
 } from "@/lib/supplier-order/estimate-gallons";
-import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES } from "@/lib/customer-form/material-types";
+import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES, materialTypeForVendor } from "@/lib/customer-form/material-types";
 import { emptyBuildPayload, mergeBuildPayloads, pruneToLiveKeys, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
@@ -1402,6 +1402,22 @@ export default function OrderBuilderView({
                           />
                         </div>
                       </div>
+                      {/* A bare "Other" is not a product a paint counter can
+                          fill, so the vendor is sent "[NOT SET]" (Katie item
+                          11). The picker closes over the word "Other" and
+                          looks answered, which left the screen saying one
+                          thing and the email another — seen live on WO
+                          00318014, 2026-09-29. Say it where the choice was
+                          made. */}
+                      {(() => {
+                        const v = readProductOverride(payload.materialTypeOverrides, e) ?? "";
+                        if (!v.trim() || materialTypeForVendor(v).trim()) return null;
+                        return (
+                          <p className="text-[10px] text-ppp-orange-700 mt-1 text-right">
+                            Open the list and type which product — the vendor is sent &ldquo;[NOT SET]&rdquo;.
+                          </p>
+                        );
+                      })()}
                     </div>
 
                     {e.needsMeasurement && !isPlaceholder && (

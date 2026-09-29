@@ -131,3 +131,54 @@ describe("the work order number", () => {
     expect(shipTo).toContain("John Smith");
   });
 });
+
+/* ── the screen said "Other", the vendor was sent [NOT SET] ──────────────── */
+
+describe("a bare 'Other' product line", () => {
+  // Found while verifying Jason's notes on WO 00318014 (2026-09-29): the buy
+  // list showed "Product line: Other" on the bathroom's walls and the email
+  // printed "[NOT SET]" for the same line.
+  //
+  // The EMAIL is right — Katie item 11: a paint counter cannot fill an order
+  // for "Other", so a bare Other resolves to nothing and the line says so.
+  // What was wrong is that the closed picker looked answered, so nobody could
+  // tell. These pin the email half; the screen now carries a note beside the
+  // picker saying what the vendor will see.
+  const KEY = "a02COLOR0000001::Eggshell";
+  const OTHER_COLOR: SnapshotPaintColor = { ...COLOR, id: "a02COLOR0000002", name: "Super White", shortName: "Super White", code: null };
+  const OTHER_KEY = "a02COLOR0000002::Flat";
+
+  /** Two colors, because a bare Other only prints "[NOT SET]" when SOMETHING
+   *  else on the order has a product — otherwise the segment is omitted from
+   *  every line rather than stamping [NOT SET] down the page. That is the
+   *  shape of a real order, and of WO 00318014 where this was found. */
+  const twoColors = (overrides: Record<string, string>) =>
+    input({
+      materialType: "",
+      materialTypeOverrides: overrides,
+      paintColorsById: new Map([[COLOR.id, COLOR], [OTHER_COLOR.id, OTHER_COLOR]]),
+      woliRows: [
+        ...input().woliRows,
+        { ...input().woliRows[0], id: "wl-2", areaLabel: "Bedroom", surfaces: "Ceiling",
+          colorWallId: null, colorCeilingId: OTHER_COLOR.id, finishWall: null, finishCeiling: "Flat" } as SnapshotWoli,
+      ],
+    });
+
+  it("reaches the vendor as [NOT SET], not as the word Other", async () => {
+    const { body } = await buildSupplierOrderDraft(
+      twoColors({ [KEY]: "Other", [OTHER_KEY]: "Ultra Spec Interior" })
+    );
+    expect(body).toContain("[NOT SET]");
+    expect(body).not.toMatch(/—\s*Other\s*—/);
+  });
+
+  it("but an Other with the product typed in reaches them as that product", async () => {
+    const { body } = await buildSupplierOrderDraft(
+      twoColors({ [KEY]: "Other: Behr Premium Plus", [OTHER_KEY]: "Ultra Spec Interior" })
+    );
+    expect(body).toContain("Behr Premium Plus");
+    expect(body).not.toContain("[NOT SET]");
+    // The "Other: " prefix is PPP's bookkeeping and is not the vendor's business.
+    expect(body).not.toContain("Other: Behr");
+  });
+});
