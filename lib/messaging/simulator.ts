@@ -12,7 +12,7 @@
  * other guard were removed.
  */
 import { messagingDb } from "./db";
-import { officeIsOpen } from "./sending-window";
+import { officeIsOpen, recipientDayIsOver } from "./sending-window";
 import { classifyInbound } from "./compliance";
 import { helpReply } from "./help-reply";
 import { selectExamples, situationFrom } from "./retrieval";
@@ -329,7 +329,22 @@ export async function runSimTurn(input: {
      * time_zone threaded here, and that is one more round trip than this is
      * worth until one exists.
      */
-    outOfHours: !officeIsOpen({ now: new Date() }),
+    /**
+     * The SAME rule production uses, both halves of it. Production asks
+     * whether the office is shut OR the recipient's own day is over; asking
+     * only the first here would make the sandbox disagree with production
+     * every evening between 7 and 8 Eastern — on the screen where the
+     * disclosure is graded, which is the one place that must not drift.
+     *
+     * The customer's zone comes from the simulated phone, the same way
+     * production resolves it.
+     */
+    outOfHours:
+      !officeIsOpen({ now: new Date() })
+      || recipientDayIsOver({
+        now: new Date(),
+        customerZone: customerZone({ phone: customerPhone }).timeZone,
+      }),
     // THE SAME RULES THE LIVE PATH GETS. A bot that behaves differently in the
     // sandbox than in production is a bot nobody has actually tested, and this
     // file already carries that lesson twice.

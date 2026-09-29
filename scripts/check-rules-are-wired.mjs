@@ -207,14 +207,34 @@ const CHAINS = [
        * `forbidden` as well.
        */
       ["lib/messaging/sending-window.ts", /export function officeIsOpen/],
-      ["lib/messaging/scheduler-db.ts", /outOfHours: !officeIsOpen\(/],
+      /**
+       * BOTH HALVES, because each alone fails a case Kate named.
+       *
+       * This link used to pin `outOfHours: !officeIsOpen(` — the office and
+       * nothing else. That is the shape her spec calls out directly: "a
+       * single flag gets two of the six states wrong every evening", and her
+       * acceptance test failed on it. At 7:30 PM Eastern the office is open
+       * until 8, so an Eastern customer got no prefix even though A36 says
+       * nothing more reaches them until tomorrow.
+       *
+       * The old comment below is still right about the OTHER half, which is
+       * why the fix is not simply `!sendingWindow().open`: too EARLY on the
+       * customer's clock is not "we are closed". So the rule is the office
+       * being shut, OR the recipient's own day being over — and both links
+       * are pinned, because dropping either one restores a bug that has
+       * already shipped once.
+       */
+      ["lib/messaging/sending-window.ts", /export function recipientDayIsOver/],
+      ["lib/messaging/scheduler-db.ts", /!officeIsOpen\(/],
+      ["lib/messaging/scheduler-db.ts", /recipientDayIsOver\(/],
       /**
        * AND THE SANDBOX, which passed nothing and so could never show the
        * prefix at all — checked live at 10 PM with the office shut. A rule
        * that cannot appear on the screen somebody uses to verify it is a rule
        * nobody can verify.
        */
-      ["lib/messaging/simulator.ts", /outOfHours: !officeIsOpen\(/],
+      ["lib/messaging/simulator.ts", /!officeIsOpen\(/],
+      ["lib/messaging/simulator.ts", /recipientDayIsOver\(/],
       ["lib/messaging/scheduler-db.ts", /customerZone: customerZone\(/],
       // bot_suspected must stay a CONTINUE intent, not an ending.
       ["lib/messaging/agent-output.ts", /"bot_suspected",\n\] as const;|"bot_suspected",/],

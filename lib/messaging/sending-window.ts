@@ -44,7 +44,7 @@
  * and what happens when it cannot be.
  */
 import {
-  clampToFederal, withinMinuteWindow, isWeekendIn, FEDERAL_BOUND, type QuietHours,
+  clampToFederal, withinMinuteWindow, isWeekendIn, localMinutes, FEDERAL_BOUND, type QuietHours,
 } from "./compliance";
 
 /** A36 is written in Eastern because that is where PPP's office sits. */
@@ -188,6 +188,41 @@ export function officeIsOpen(input: {
  * than throwing: a gate that crashes on a misconfigured workspace is worse
  * than one that refuses without a retry time.
  */
+/**
+ * Has the RECIPIENT'S own day ended — too late for them, not merely too early?
+ *
+ * A46's disclosure needs "are we open to THIS customer", and the two obvious
+ * answers are each wrong half the time:
+ *
+ *   officeIsOpen only    At 7:30 PM Eastern the office is open until 8, so an
+ *                        Eastern customer gets no prefix — but A36 says
+ *                        "after 7 PM ET no outbound to Eastern clients until
+ *                        the next day". We are shut TO THEM. This is the
+ *                        acceptance test in Kate's spec, and it failed.
+ *
+ *   sendingWindow only   Shut when EITHER window is closed, including when it
+ *                        is merely too early on the customer's clock. A Los
+ *                        Angeles customer texting at 8:30 AM was told we would
+ *                        pass their details along "once we open" — at 11:30 AM
+ *                        Eastern, with the office open. Daily, on the CA and
+ *                        CO workspaces, in approved compliance copy.
+ *
+ * The asymmetry is the answer. Too EARLY for the customer is not "we are
+ * closed" — the office is open and their details go on somebody's desk now.
+ * Too LATE for the customer is "we are closed", because nothing more reaches
+ * them today whatever the office is doing.
+ *
+ * So: the office being shut closes it for everybody, and the customer's own
+ * evening closes it for them.
+ */
+export function recipientDayIsOver(input: { now: Date; customerZone: string }): boolean {
+  const m = localMinutes(input.now, input.customerZone);
+  // No usable zone is not a claim that their day ended. The office check
+  // beside this one still applies.
+  if (m === null) return false;
+  return m >= CUSTOMER_OUTBOUND.endHour * 60;
+}
+
 export function nextWindowOpen(input: Parameters<typeof sendingWindow>[0]): Date | null {
   if (sendingWindow(input).open) return input.now;
   const cursor = new Date(input.now.getTime());

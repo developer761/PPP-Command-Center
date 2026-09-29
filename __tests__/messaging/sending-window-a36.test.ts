@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { gatedSend, type GateWorkspace, type SendRequest } from "@/lib/messaging/gate";
 import { LoggingTransport } from "@/lib/messaging/transport";
 import { customerZone, stateForAreaCode, FALLBACK_ZONE } from "@/lib/messaging/customer-clock";
-import { sendingWindow, nextWindowOpen, OFFICE_ZONE, officeIsOpen } from "@/lib/messaging/sending-window";
+import { sendingWindow, nextWindowOpen, OFFICE_ZONE, officeIsOpen, recipientDayIsOver } from "@/lib/messaging/sending-window";
 import type { E164 } from "@/lib/messaging/phone";
 
 const NASSAU: GateWorkspace = {
@@ -266,3 +266,69 @@ describe("the office window, with the customer's clock out of it", () => {
     expect(officeIsOpen({ now: new Date("2026-10-03T21:00:00Z"), officeZone: "America/New_York" })).toBe(true);
   });
 });
+
+/**
+ * ── KATE'S ACCEPTANCE TEST, FOR THE DISCLOSURE AND NOT THE GATE ─────────
+ *
+ * The spec states it as a single line: "Tested at 7:30 PM Eastern with a
+ * California lead and an Eastern lead: on the same clock tick, one gets the
+ * in-hours behaviour and the other gets the prefix."
+ *
+ * There WAS a test for that tick — against `sendingWindow`, the send gate.
+ * It passed, and the disclosure was still wrong, because the disclosure read
+ * a different function: a global `officeIsOpen` with no customer in it. At
+ * 7:30 PM the office is open until 8, so the Eastern lead got no prefix even
+ * though A36 says nothing more reaches them until tomorrow.
+ *
+ * That is the spec's "a single flag gets two of the six states wrong every
+ * evening", and it is why this asserts the DISCLOSURE input rather than the
+ * gate.
+ */
+describe("7:30 PM Eastern, two customers, one clock tick", () => {
+  // Wednesday 2026-09-30, 19:30 America/New_York.
+  const TICK = new Date("2026-09-30T23:30:00Z");
+  const shutToThem = (customerZone: string) =>
+    !officeIsOpen({ now: TICK, officeZone: "America/New_York" })
+    || recipientDayIsOver({ now: TICK, customerZone });
+
+  it("gives the Eastern lead the out-of-hours prefix", () => {
+    // 7:30 PM their time. A36: after 7 PM ET nothing more reaches an Eastern
+    // client until the next day.
+    expect(shutToThem("America/New_York")).toBe(true);
+  });
+
+  it("gives the California lead in-hours behaviour on the same tick", () => {
+    // 4:30 PM their time, and the office is open until 8 Eastern.
+    expect(shutToThem("America/Los_Angeles")).toBe(false);
+  });
+});
+
+/**
+ * The other half, and the reason this is not simply `!sendingWindow().open`.
+ *
+ * Too EARLY on the customer's clock is not "we are closed": the office is
+ * open and their details go on somebody's desk now. An LA customer texting at
+ * 8:30 AM was told we would pass them along "once we open" — at 11:30 AM
+ * Eastern, with the office open — daily, in approved compliance copy.
+ */
+describe("too early is not the same as too late", () => {
+  it("does not call it out of hours when the customer's day has not begun", () => {
+    // 8:30 AM Los Angeles = 11:30 AM Eastern. Office open.
+    const early = new Date("2026-09-30T15:30:00Z");
+    expect(recipientDayIsOver({ now: early, customerZone: "America/Los_Angeles" })).toBe(false);
+    expect(officeIsOpen({ now: early, officeZone: "America/New_York" })).toBe(true);
+  });
+
+  it("does call it out of hours once their evening has arrived", () => {
+    // 7:30 PM Los Angeles.
+    const late = new Date("2026-10-01T02:30:00Z");
+    expect(recipientDayIsOver({ now: late, customerZone: "America/Los_Angeles" })).toBe(true);
+  });
+
+  it("does not claim a day ended when the zone is unusable", () => {
+    // Not knowing where they are is not evidence their day is over; the
+    // office check beside it still applies.
+    expect(recipientDayIsOver({ now: TICK_UNUSED, customerZone: "Not/AZone" })).toBe(false);
+  });
+});
+const TICK_UNUSED = new Date("2026-09-30T23:30:00Z");

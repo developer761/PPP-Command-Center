@@ -84,3 +84,71 @@ describe("what the model is told a customer sent", () => {
     expect(reactionResponse(normalizeInbound("👎"), false).treatAs).toBe("not_an_answer");
   });
 });
+
+/**
+ * ── A LIKE IS NOT A REASON TO STOP ──────────────────────────────────────
+ *
+ * Kate's Iteration 1 spec, in its own words: "No conversation ends on a
+ * reaction while the required flow is incomplete." It also says what the
+ * failure costs — Hatch read a reaction as text, the bot answered its own
+ * question, and "one conversation ended that way and lost a full exterior
+ * repaint".
+ *
+ * Two things were wrong and they compounded. `lastAskedForInfo` was passed by
+ * the sandbox and not by production, so every real reaction took the
+ * "informational" branch and was told to end as Msg Liked/Loved. And
+ * `msg_liked_loved` sat in no completeness set, so that ending was allowed
+ * with nothing collected — and it sends no message, so there was not even a
+ * reply to notice.
+ */
+describe("a reaction cannot close an unfinished conversation", () => {
+  it("refuses Msg Liked/Loved while legs are outstanding", () => {
+    const res = validateAction(act("msg_liked_loved"), {
+      customerText: "👍",
+      priorIntents: ["ask_project_details", "ask_address"],
+    } as never);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("reaction_ended_an_open_conversation");
+    expect(res.detail).toMatch(/still outstanding/i);
+  });
+
+  it("names which legs are still owed, so the retry can be right", () => {
+    const res = validateAction(act("msg_liked_loved"), {
+      customerText: "❤️",
+      priorIntents: ["ask_project_details"],
+    } as never);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    // Not "you cannot do that" — the missing fields by name.
+    expect(res.detail.length).toBeGreaterThan(30);
+  });
+
+  it("allows it once the flow is complete", () => {
+    // A like on a finished conversation IS a silent ending, and should stay
+    // one — answering it is one more message to somebody signing off.
+    const res = validateAction(act("msg_liked_loved"), {
+      customerText: "👍",
+      priorIntents: [
+        "ask_project_details", "ask_address", "ask_contact", "ask_availability",
+      ],
+    } as never);
+    expect(res.ok).toBe(true);
+  });
+});
+
+/**
+ * The input that decides what a reaction MEANS. Production did not pass it,
+ * so it defaulted to false and every reaction read as agreement.
+ */
+describe("what a reaction means depends on what we just asked", () => {
+  it("is not an answer when the last message asked for something", () => {
+    expect(reactionResponse(normalizeInbound("Liked “What's the address?”"), true))
+      .toMatchObject({ treatAs: "not_an_answer" });
+  });
+
+  it("is agreement when the last message was informational", () => {
+    expect(reactionResponse(normalizeInbound("Liked “We'll see you Tuesday.”"), false))
+      .toMatchObject({ treatAs: "confirmation" });
+  });
+});

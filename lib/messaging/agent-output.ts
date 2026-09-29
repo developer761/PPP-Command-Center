@@ -306,6 +306,7 @@ export type RejectReason =
   | "details_never_collected"
   | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
   | "parked_a_field_then_quit"    // A40 (1): ended having gathered nothing
+  | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected";// closing a two-property job having collected one
 
@@ -1258,6 +1259,37 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
         ok: false, reason: "parked_a_field_then_quit",
         detail: "they cannot fill one field right now, which parks that field and not the " +
           "conversation — collect the rest rather than closing having gathered nothing",
+      };
+    }
+  }
+
+  /**
+   * A REACTION MUST NOT END A CONVERSATION THAT IS NOT FINISHED.
+   *
+   * Kate's spec, in its own words: "No conversation ends on a reaction while
+   * the required flow is incomplete." It says what the failure cost, too —
+   * Hatch read a reaction as text, answered its own question, and "one
+   * conversation ended that way and lost a full exterior repaint".
+   *
+   * `msg_liked_loved` is the ending a reaction reaches, and it sends NOTHING
+   * — a silent close. It sat in neither CLAIMS_THE_FLOW_FINISHED nor
+   * DEFERRAL_ENDINGS, so a thumbs-up on "what's the address?" closed the
+   * conversation with no fields collected and no message to show for it.
+   *
+   * Kept separate from CLAIMS_THE_FLOW_FINISHED rather than added to it: that
+   * set means "this claims the job is done and owes A3 in full", and a like
+   * claims nothing. The refusal here is narrower — not "you owe the legs" but
+   * "somebody tapping a heart is not a reason to stop asking".
+   */
+  if (ctx.priorIntents && a.intent === "msg_liked_loved") {
+    const seen = new Set([...ctx.priorIntents, a.intent]);
+    const missing = missingLegs(seen, ctx);
+    if (missing.length) {
+      return {
+        ok: false, reason: "reaction_ended_an_open_conversation",
+        detail: `a reaction is not a reason to stop: ${missing.map((m) => m.label).join(" and ")} `
+          + `${missing.length === 1 ? "is" : "are"} still outstanding, so answer or ask again `
+          + `rather than ending`,
       };
     }
   }
