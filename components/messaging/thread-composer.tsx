@@ -13,9 +13,11 @@
  * the opt-out line to a first message, and a composer that hides that is a
  * composer that lies about the message length and the segment count.
  */
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendHumanReply } from "@/lib/messaging/reply-write";
+import { listSnippetsFor } from "@/lib/messaging/snippet-write";
+import type { ReadySnippet } from "@/lib/messaging/snippet-db";
 import { smsSegments } from "@/lib/messaging/first-message";
 
 const REFUSAL_LABEL: Record<string, string> = {
@@ -26,6 +28,17 @@ const REFUSAL_LABEL: Record<string, string> = {
   daily_cap: "This customer has already had the most messages we allow in a day.",
   no_workspace_number: "This workspace has no number to send from.",
   empty_body: "There is nothing to send.",
+  /**
+   * These three were reachable and unlabelled, so they rendered as
+   * "Refused: unresolved_merge_field" — a sentence that tells somebody
+   * mid-conversation with a customer nothing at all, and sends them looking
+   * for a developer instead of for the problem.
+   */
+  unresolved_merge_field:
+    "Part of this message was never filled in — look for something in {{double braces}} "
+    + "and replace it with the real words.",
+  too_long: "This is too long to send as one message. Shorten it or send it in two.",
+  office_closed: "It is outside the hours PPP sends in, so this would not go out yet.",
 };
 
 export function ThreadComposer({ conversationId, ended, heldByOther, holderName }: {
@@ -37,7 +50,33 @@ export function ThreadComposer({ conversationId, ended, heldByOther, holderName 
   const [body, setBody] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  /**
+   * The saved replies, ALREADY FILLED IN for this conversation.
+   *
+   * Loaded rather than passed as a prop because the filling needs the
+   * customer's name and the workspace's number, which is the conversation's
+   * business and not a text box's. What arrives here is the sentence that
+   * will actually be sent — no {{customer_name}} for somebody to notice.
+   */
+  const [snippets, setSnippets] = useState<ReadySnippet[]>([]);
+  /** The text of the last snippet inserted, while it is still undoable. */
+  const [undoable, setUndoable] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      // A failure here loses the shortcut, never the reply box: a composer
+      // that cannot list its snippets is a nuisance, one that will not render
+      // is a customer nobody can answer.
+      try {
+        const list = await listSnippetsFor(conversationId);
+        if (alive) setSnippets(list);
+      } catch { /* the box still works */ }
+    })();
+    return () => { alive = false; };
+  }, [conversationId]);
 
   if (ended) {
     return (
@@ -64,6 +103,7 @@ export function ThreadComposer({ conversationId, ended, heldByOther, holderName 
       const res = await sendHumanReply({ conversationId, body: trimmed });
       if (res.ok) {
         setBody("");
+        setUndoable(null);
         router.refresh();
         return;
       }
@@ -76,10 +116,90 @@ export function ThreadComposer({ conversationId, ended, heldByOther, holderName 
       <label htmlFor="reply" className="block text-[12px] font-semibold text-ppp-charcoal">
         Reply to this customer
       </label>
+      {/*
+        SAVED REPLIES, ABOVE THE BOX.
+
+        They were below it, between the textarea and Send — and they load
+        asynchronously, so on a slow connection somebody types, reaches for
+        Send, and the row appears under their thumb. The tap lands on a
+        snippet and appends text they did not ask for. Above the box, a late
+        arrival pushes the whole composer down rather than sliding a button
+        under a finger already moving.
+
+        Inserted, never sent: the rep still reads it, edits it and presses
+        Send. That is why the content rules on a snippet are lighter than on a
+        standing answer, and why Undo below matters more than a confirm.
+      */}
+      {snippets.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono uppercase tracking-wide text-ppp-charcoal-400">
+              Saved replies
+            </span>
+            {/*
+              UNDO, because a double tap used to be unrecoverable. Insert
+              appends, so a second tap gives the same paragraph twice with no
+              change of state to notice, and Ctrl+Z does not reverse a value
+              React set programmatically. This removes exactly what was last
+              inserted, and only while it is still the tail of the box.
+            */}
+            {undoable && (
+              <button type="button" disabled={pending}
+                onClick={() => { setBody((cur) => cur.slice(0, -undoable.length).trimEnd()); setUndoable(null); }}
+                className="text-[11px] text-ppp-charcoal-500 underline underline-offset-2 disabled:opacity-40">
+                Undo insert
+              </button>
+            )}
+          </div>
+
+          {/*
+            Capped, because the row sits between what somebody types and the
+            Send button. Hatch ships eleven named replies and Kate will want
+            more; unbounded, fifteen is roughly nine rows on a phone and Send
+            goes below the fold on every reply.
+          */}
+          <div className="flex flex-wrap gap-1.5">
+            {(showAll ? snippets : snippets.slice(0, 6)).map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={pending}
+                title={s.body}
+                onClick={() => {
+                  setBody((cur) => (cur.trim() ? `${cur.trimEnd()} ${s.body}` : s.body));
+                  setUndoable(s.body);
+                }}
+                className="min-h-[44px] max-w-[15rem] px-3 py-1 rounded-lg border border-ppp-charcoal-200 bg-white text-left disabled:opacity-40 touch-manipulation"
+              >
+                <span className="block text-[12px] font-medium text-ppp-charcoal truncate">{s.name}</span>
+                {/*
+                  The first few words of the actual text. `title` is a native
+                  tooltip and does not exist on touch at all, so on a phone the
+                  name was the only thing anybody saw — and "Circling Back #1"
+                  against "Circling Back #2" is a coin toss.
+                */}
+                <span className="block text-[11px] text-ppp-charcoal-400 truncate">{s.body}</span>
+              </button>
+            ))}
+            {snippets.length > 6 && (
+              <button type="button" onClick={() => setShowAll((v) => !v)}
+                className="min-h-[44px] px-3 rounded-lg text-[12px] text-ppp-charcoal-500 underline underline-offset-2 touch-manipulation">
+                {showAll ? "Show fewer" : `Show all ${snippets.length}`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <textarea
         id="reply"
         value={body}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(e) => {
+          // Once they edit, the tail is no longer exactly what was inserted,
+          // so an "undo" that sliced it off would cut their own words.
+          if (undoable && !e.target.value.endsWith(undoable)) setUndoable(null);
+          setBody(e.target.value);
+        }}
         rows={3}
         disabled={pending}
         placeholder="Type the message you want to send…"

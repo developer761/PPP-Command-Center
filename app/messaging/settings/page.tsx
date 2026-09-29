@@ -5,6 +5,7 @@ import { loadOptOutRates } from "@/lib/messaging/db";
 import { rank, formatRate } from "@/lib/messaging/optout-rate";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
 import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
+import SnippetsEditor from "@/components/messaging/snippets-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +145,19 @@ export default async function MessagingSettings({
           {/* Keyed, so switching workspace gives a fresh list rather than one
               that has to reset itself. */}
           <WorkspaceFaqs key={r.id} workspaceId={r.id} />
+        </section>
+      ))}
+
+      {rows.filter((r) => r.id === open).map((r) => (
+        <section key={`snip-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+            <h2 className="font-semibold text-ppp-charcoal text-[14px]">Saved replies</h2>
+            <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+              Ready-made replies for somebody answering a thread by hand. Dropped into the
+              box and edited before sending, not sent on their own.
+            </p>
+          </div>
+          <SnippetsEditor key={r.id} workspaceId={r.id} />
         </section>
       ))}
 
