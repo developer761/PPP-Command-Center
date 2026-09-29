@@ -18,14 +18,26 @@ export type AccountingEntryOptions = {
   openInvoices: SearchableOption[];
   jobs: SearchableOption[];
   vendors: SearchableOption[];
-  /** Who has been paid for labor before, so the common ones are one tap. */
+  /**
+   * Who Tomco can pay for labor: everyone paid before, most-paid first, then
+   * the rest of the active crew roster.
+   *
+   * It used to be the payment history ALONE, which meant a crew member could
+   * not be picked until they had already been paid once — so the first payout
+   * to anybody new had to be typed from memory, and a typo made a second payee
+   * that looked like a different person for ever after. Mary, 2026-09-29:
+   * "Can you please add Peter- Profinish as a Sub in the drop down for
+   * attendance & payouts?" Adding him to the roster put him in Attendance
+   * immediately and in this list not at all, because this list had never read
+   * the roster.
+   */
   payees: SearchableOption[];
 };
 
 export async function getAccountingEntryOptions(): Promise<AccountingEntryOptions> {
   const sb = commercialDb();
 
-  const [opps, invoices, vendorRows, laborSpend] = await Promise.all([
+  const [opps, invoices, vendorRows, laborSpend, crew] = await Promise.all([
     paginateAll<{
       id: string;
       account_id: string;
@@ -63,6 +75,14 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
         .is("deleted_at", null)
         .order("id", { ascending: true })
     ),
+    // The crew roster, so somebody who has never been paid yet is still
+    // pickable. Active only — a deactivated painter should not be offered as a
+    // payee, the same rule the shop-floor PIN follows.
+    sb
+      .from("commercial_employees")
+      .select("display_name, worker_type")
+      .eq("active", true)
+      .then((r) => (r.data ?? []) as { display_name: string | null; worker_type: string | null }[]),
   ]);
 
   const { data: accounts } = await sb
@@ -129,6 +149,27 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
   const payees: SearchableOption[] = [...payeeCount.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([name, n]) => ({ value: name, label: name, hint: `${n} payment${n === 1 ? "" : "s"}` }));
+  /*
+   * Then the rest of the roster. Matched case-insensitively against the names
+   * already listed, because the history is free text Mary typed and "Tomco
+   * Labor - Greg" and "tomco labor - greg" are one man, not two — offering
+   * both is how the duplicate payee gets created in the first place.
+   *
+   * Appended rather than merged into the ranking: the ones she actually pays
+   * stay at the top, where they were.
+   */
+  const seen = new Set(payeeCount.keys());
+  const seenLower = new Set([...seen].map((n) => n.toLowerCase()));
+  for (const c of crew) {
+    const name = (c.display_name ?? "").trim();
+    if (!name || seenLower.has(name.toLowerCase())) continue;
+    seenLower.add(name.toLowerCase());
+    payees.push({
+      value: name,
+      label: name,
+      hint: c.worker_type === "sub" ? "sub · not paid yet" : "on the crew list",
+    });
+  }
 
   return { openInvoices, jobs, vendors, payees };
 }
