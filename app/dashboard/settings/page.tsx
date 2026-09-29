@@ -61,6 +61,13 @@ const cards: Card[] = [
     icon: <IconArrow />,
   },
   {
+    href: "/dashboard/settings/payments",
+    label: "Online Payments",
+    blurb:
+      "Stripe pay links for invoices — each milestone at a fixed amount, card or ACH locked, fee only on card. Create a link for a work order and see every payment and what it writes to Salesforce.",
+    icon: <IconCard />,
+  },
+  {
     href: "/dashboard/settings/suppliers",
     label: "Suppliers",
     blurb:
@@ -166,6 +173,14 @@ function IconTruck() {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="1" y="3" width="15" height="13" rx="1" />
       <path d="M16 8h4l3 3v5h-7z M5.5 18a2.5 2.5 0 1 0 0 1 M18.5 18a2.5 2.5 0 1 0 0 1" />
+    </svg>
+  );
+}
+function IconCard() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20 M6 15h4" />
     </svg>
   );
 }
