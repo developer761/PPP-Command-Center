@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
   takeoverBreakdown, median, percentile, humanSeconds, secondsBetween,
+  wasContained, wasBookable, wasBooked, HANDED_TO_A_PERSON,
   HATCH_POLL_SECONDS, MIN_MEASURED, type ConversationRow,
 } from "@/lib/messaging/metrics";
 
@@ -262,5 +263,99 @@ describe("the per-workspace summary carries its sample size", () => {
     expect(MIN_MEASURED).toBeGreaterThan(1);
     const health = workspaceHealth([row("NY NYC Leads", 1)] as never);
     expect(health[0].measured).toBeLessThan(MIN_MEASURED);
+  });
+});
+
+/**
+ * ── CONTAINMENT AND BOOKABLE-TO-BOOKED ──────────────────────────────────
+ *
+ * Hatch names both and populates neither — on 2026-09-26 every row showed
+ * "–". So there is no implementation to match and the definitions are ours,
+ * which is the reason they are pinned here rather than left to a SQL string
+ * somebody rewrites in six months.
+ */
+describe("containment — finished with no person needed", () => {
+  it("counts a conversation the bot finished alone", () => {
+    expect(wasContained(conv({ state: "ended", outcome: "success" }))).toBe(true);
+  });
+
+  it("does not count one still running", () => {
+    // Not contained AND not un-contained yet. Counting it either way moves
+    // the number every time somebody refreshes the page.
+    expect(wasContained(conv({ state: "ai_active", outcome: null }))).toBe(false);
+  });
+
+  it("does not count one a person took over", () => {
+    expect(wasContained(conv({ outcome: "success", takeover_reason: "customer asked for a person" })))
+      .toBe(false);
+  });
+
+  /**
+   * THE ONE A NAIVE DEFINITION GETS WRONG.
+   *
+   * `takeover_reason` alone is not enough: a conversation can end
+   * `transferred` or `bailout` with no takeover row ever written — the bot
+   * decided it could not finish and handed on. Counting those as contained
+   * reports the bot handling work it explicitly refused, which is the exact
+   * opposite of what the metric is for.
+   */
+  it.each([...HANDED_TO_A_PERSON])(
+    "does not count %j, even with no takeover recorded", (outcome) => {
+      expect(wasContained(conv({ state: "ended", outcome, takeover_reason: null }))).toBe(false);
+    }
+  );
+
+  it("reports it per workspace against FINISHED conversations only", () => {
+    const [h] = workspaceHealth([
+      conv({ state: "ended", outcome: "success" }),
+      conv({ state: "ended", outcome: "success" }),
+      conv({ state: "ended", outcome: "transferred" }),
+      conv({ state: "ended", outcome: "lost", takeover_reason: "angry" }),
+      // Still open — must not be in the denominator.
+      conv({ state: "ai_active", outcome: null, ended_at: null }),
+    ]);
+    expect(h.containmentOf).toBe(4);
+    expect(h.containmentPct).toBe(50);
+  });
+
+  it("shows nothing rather than 0% when nothing has finished", () => {
+    const [h] = workspaceHealth([conv({ state: "ai_active", outcome: null, ended_at: null })]);
+    expect(h.containmentOf).toBe(0);
+  });
+});
+
+describe("bookable to booked — conversion where booking was possible", () => {
+  it("counts a conversation that reached availability", () => {
+    expect(wasBookable(conv({ qualification_stage: 4 }))).toBe(true);
+    expect(wasBookable(conv({ qualification_stage: 3 }))).toBe(false);
+  });
+
+  it("treats only a success as booked", () => {
+    expect(wasBooked(conv({ outcome: "success" }))).toBe(true);
+    expect(wasBooked(conv({ outcome: "schedule_follow_up" }))).toBe(false);
+  });
+
+  it("measures against those who got that far, not against everybody", () => {
+    /**
+     * The distinction the whole module exists for. Eight leads never answered
+     * the address question; two reached availability and one booked. Against
+     * all ten that is 10% and reads as a booking problem. Against the two who
+     * could have booked it is 50%, and the real problem is the address.
+     */
+    const [h] = workspaceHealth([
+      ...Array.from({ length: 8 }, () => conv({ qualification_stage: 1, outcome: "lost" })),
+      conv({ qualification_stage: 4, outcome: "success" }),
+      conv({ qualification_stage: 4, outcome: "lost" }),
+    ]);
+    expect(h.bookableOf).toBe(2);
+    expect(h.bookableToBookedPct).toBe(50);
+  });
+
+  it("is NULL, not 0, when nobody got far enough to book", () => {
+    // "Nobody converts" and "nobody was asked" are the same figure and
+    // different problems.
+    const [h] = workspaceHealth([conv({ qualification_stage: 1, outcome: "lost" })]);
+    expect(h.bookableToBookedPct).toBeNull();
+    expect(h.bookableOf).toBe(0);
   });
 });

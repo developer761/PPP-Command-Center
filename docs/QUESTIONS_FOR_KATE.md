@@ -896,3 +896,54 @@ asking the question a second time would collect an answer with nowhere to go.
 **What we do today:** ask again, in the first-time wording, and hold one
 availability. Safe in the sense that nothing wrong is sent, and confusing to
 the customer.
+
+---
+
+## 17. Containment and Bookable-to-Booked — we had to define them ourselves
+
+**Shipped with a default, 2026-09-29.** Both now appear per workspace on the
+reporting screen. Neither needed a migration; every field was already on the
+conversation.
+
+Hatch's reporting carries both columns and **populates neither** — read on
+2026-09-26, every row showed "–". So there was nothing to match, and a metric
+nobody agrees on is worse than no metric: it gets quoted in a meeting and then
+defended. These are the definitions as shipped.
+
+**Containment — "finished with no person needed."**
+Denominator is ENDED conversations only, not all of them: one still running
+has not been contained or not-contained yet, and counting it either way moves
+the number on every refresh.
+
+A conversation counts as contained when it ended, nobody took it over, **and**
+its outcome is not one of `transferred`, `bailout`, `phone_pricing`.
+
+That last clause is the part worth arguing with. `takeover_reason` alone is
+not enough — a conversation can end `transferred` or `bailout` with no
+takeover row ever written, because the bot decided it could not finish and
+handed on. Counting those as contained would report the bot handling work it
+explicitly refused.
+
+**→ The one we are least sure of: `phone_pricing`.** The customer asked for
+pricing, A1 says only the estimator gives numbers, so the bot ends the
+conversation and somebody rings them. The bot behaved *correctly* and a person
+still did the work. We currently count it as NOT contained. You may reasonably
+want it counted as contained, since it is a clean exit rather than a failure —
+it is a one-line change either way.
+
+**Bookable to Booked — "of the conversations that could have booked, the share
+that did."**
+Bookable = reached stage 4 (availability), the last of A3's four legs, so
+everything needed to book was in hand. Booked = outcome `success`.
+
+Measured against those who got that far, never against all conversations.
+Eight leads who never gave an address plus two who reached availability and
+one who booked is **10%** against everybody and **50%** against those who
+could have booked — and the real problem in that data is the address question,
+not booking. Shown as "–" rather than 0% when nobody reached availability,
+because "nobody converts" and "nobody was asked" are the same figure and
+different problems.
+
+**→ Is stage 4 the right bar for "bookable", or should it be stage 3?** Stage
+3 is contact info; a conversation with project, address and contact but no
+availability is arguably still a lead somebody could ring and book.
