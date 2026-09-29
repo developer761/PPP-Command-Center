@@ -1296,9 +1296,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
 
       {/* Kate 2026-09-29: one reference section instead of a recommendation
           repeated under every surface. Sits directly under "Need help picking
-          colors?" and, like that card, is for the CUSTOMER — an AM doing
-          Internal Entry knows what Satin is for. */}
-      {!isInternal && formData.lineItems.length > 0 && <FinishGuideSection />}
+          colors?" — and unlike that card it shows on Internal Entry too, just
+          closed: the AM filling the form in is on the phone with the customer
+          asking exactly what it answers. */}
+      {formData.lineItems.length > 0 && <FinishGuideSection defaultOpen={!isInternal} />}
 
       {/* Project context from PPP — when there's a Subject or Description on
           the WO, show it prominently. Most useful for exterior jobs where

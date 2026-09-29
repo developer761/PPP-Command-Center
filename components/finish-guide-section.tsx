@@ -18,12 +18,19 @@ import {
  * room, and it covers finishes the form never had an opinion about — Pearl,
  * Gloss, stucco.
  *
- * Open by default, because a customer who has never chosen a sheen is exactly
- * who it is for; the arrow is there for everyone else ("with a collapse arrow
- * if the customer wants to collapse it").
+ * Open by default for a CUSTOMER, who has probably never chosen a sheen and is
+ * exactly who it is for; the arrow is there for everyone else ("with a
+ * collapse arrow if the customer wants to collapse it").
+ *
+ * Collapsed, but present, on Internal Entry. Kate kept the palette links off
+ * that screen in round 2 — an AM does not need somewhere to browse colors —
+ * and this is the one piece of that panel that is different: the AM filling
+ * the form in is usually on the phone with the customer, and "what is the
+ * difference between eggshell and satin" is the question they get asked. It
+ * costs them one closed row and answers it.
  */
-export default function FinishGuideSection() {
-  const [open, setOpen] = useState(true);
+export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
 
   return (
