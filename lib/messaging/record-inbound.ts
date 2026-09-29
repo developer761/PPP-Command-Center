@@ -266,11 +266,25 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         .eq("agent_intent", AFTER_HOURS_INTENT)
         .gte("created_at", dayAgo);
 
+      /**
+       * Only a zone we actually RESOLVED, never the fallback.
+       *
+       * customerZone() always returns a timeZone — it falls back to Los
+       * Angeles when neither the zip nor the area code says anything. That is
+       * right for the gate, where a fallback errs toward a later send. It is
+       * wrong here, because this hour goes into a SENTENCE: an Eastern
+       * customer told "9 AM" resolved on a Pacific guess has been given a time
+       * three hours out, stated as fact, with nothing marking it as a guess.
+       * Passing "" makes next-open.ts label the hour ET instead, which the
+       * reader can convert.
+       */
+      const zone = customerZone({ phone: decision.from });
       const autoReply = afterHoursReply({
         workspace: ws,
         now: receivedAt,
         alreadySentToday: count ?? 0,
         keyword: decision.keyword,
+        customerZone: zone.source === "fallback" ? "" : zone.timeZone,
       });
 
       if (autoReply.send) {

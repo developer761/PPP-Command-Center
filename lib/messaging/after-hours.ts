@@ -18,6 +18,7 @@
  * Pure. The caller does the reading and writing.
  */
 import { withinQuietHours, FEDERAL_BOUND, type QuietHours } from "./compliance";
+import { fillNextOpen } from "./next-open";
 
 /** Marks the message, so "once a day" can be counted without a new column. */
 export const AFTER_HOURS_INTENT = "after_hours";
@@ -48,6 +49,12 @@ export function afterHoursReply(input: {
   alreadySentToday: number;
   /** STOP and HELP are answered elsewhere and must never get this instead. */
   keyword: "opt_out" | "opt_in" | "help" | null;
+  /**
+   * The recipient's IANA zone, from customerZone(). Needed only when the
+   * message uses the {{next_open}} merge field, and then it decides whose
+   * clock the promised hour is on — see next-open.ts.
+   */
+  customerZone?: string | null;
 }): AfterHoursDecision {
   const ws = input.workspace;
   if (!ws.after_hours_autoreply) return { send: false, why: "not switched on for this workspace" };
@@ -80,5 +87,25 @@ export function afterHoursReply(input: {
     return { send: false, why: "outside the 8am-9pm federal window" };
   }
 
-  return { send: true, body };
+  /**
+   * LAST, and after every other refusal, so a workspace that was never going
+   * to send does not get an error about a merge field.
+   *
+   * This is also where "we open at ___" stops being a sentence somebody typed
+   * and starts being a fact resolved from the same window the gate enforces.
+   * An unresolved token refuses the whole reply rather than sending a text
+   * with `{{next_open}}` in it — see fillNextOpen for why silence beats all
+   * three alternatives.
+   */
+  const filled = fillNextOpen({
+    body,
+    now: input.now,
+    // The customer's zone when we know it. Empty string rather than a guess:
+    // fillNextOpen reads that as "unknown" and labels the hour ET.
+    customerZone: input.customerZone ?? "",
+    officeHours: hours,
+  });
+  if (!filled.ok) return { send: false, why: filled.why };
+
+  return { send: true, body: filled.body };
 }

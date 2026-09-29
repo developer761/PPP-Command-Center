@@ -158,8 +158,42 @@ was answered from the stored row and the flow carried on to the next step; the
 same question with no workspace selected got "I'm not sure on that one".
 
 **Still empty.** The table holds nothing — the ~25 answers per workspace are
-Kate's to write, and there are 15 workspaces. That is the remaining work on
-this gap, and it is content rather than code.
+Kate's to write. That is the remaining work on this gap, and it is content
+rather than code.
+
+**A SHARED TIER, added 2026-09-29.** Most of those answers are not regional:
+insurance, EPA, warranty and payment terms read the same in Nassau and
+Pasadena, and storing them per workspace meant writing one sentence 15 or 32
+times and editing it that many times when it changed. So `workspace_id` is now
+nullable, NULL meaning "every workspace", with a workspace row beating a
+shared one for the same question.
+
+The original migration's refusal to let anything inherit still stands for the
+answers it was about — `isLocationBound` refuses a location-bound question OR
+ANSWER from the shared tier, because "one service area stated in fifteen
+regions is wrong in fourteen". Three parallel audits of this change found nine
+defects, the worst being that the guard originally checked only the QUESTION:
+"Do you offer free estimates?" / "Yes, anywhere in Nassau County" saved to
+every workspace. Both halves are checked now, and checking the answer is what
+allowed the question pattern to be loosened (it was refusing "Do you use
+water-based or oil-based?" on the word `based`).
+
+**Two things this did NOT fix, both logged deliberately:**
+
+- **The five-minute cache does not cross processes.** `clearWorkspaceFaqCache()`
+  clears the map in whichever serverless instance handled the save; the cron
+  that builds prompts is a different instance with its own copy. So a
+  retracted shared answer can keep going out for up to five minutes, from
+  every workspace at once. A real fix is a version column read per turn, which
+  is a round trip on the hot path — the thing the cache exists to avoid.
+  Karan's call, deferred 2026-09-29 because nothing is sending until the
+  campaign is registered.
+- **There is no bulk import.** Entering 25 answers across 15 workspaces is
+  roughly 555 clicks; across 32 it is ~1,180. Kate keeps this content in a
+  spreadsheet already. A CSV import (two columns for shared, three for
+  per-workspace) is plausibly worth more than the rest of the product-gap list
+  combined, and the pattern exists in this product for opt-outs and training
+  data.
 
 ---
 
@@ -170,9 +204,9 @@ this gap, and it is content rather than code.
 | ⚠️ **Voice** | **Call forwarding BUILT and EXERCISED 2026-09-26** — Kate moved it into Iteration 1. Signed request dials the call centre with the customer as caller ID; unsigned gets a spoken fallback, not a 403. Hatch forwards every workspace to (877) 645-3563 (checked on CA LA, CA San Diego, CO Denver), so `call_forward_to` stays NULL and the fallback matches. Voicemail greetings and inbound-call AI agents are still absent and were not asked for. |
 | ❌ Containment / Bookable-to-Booked metrics | columns exist in Hatch (unpopulated), absent in ours |
 | ❌ Snippet library | reusable named responses for reps |
-| ❌ `[[[[Next Open Time]]]]` merge field | ours is static after-hours text |
+| ✅ `[[[[Next Open Time]]]]` merge field | **BUILT 2026-09-29.** `{{next_open}}` in an after-hours message resolves to "9 AM tomorrow" / "Monday at 9 AM". Resolved through `nextWindowOpen` — the same function the gate enforces — so the promised hour cannot drift from the hour the system acts on. Rendered on the CUSTOMER's clock, since that is when their phone actually buzzes; an unresolved zone falls back to the office zone and labels the hour (EDT/EST). An unresolvable time REFUSES the whole reply rather than sending a token, a blank, or a guess. Hatch's own `[[[[Next Open Time]]]]` spelling is accepted too, because the migration story is pasting their message in. `lib/messaging/next-open.ts`. |
 | ❌ During/after-hours campaign copy | a step can carry two variants |
-| ❌ Account-level setting inheritance | 32 workspaces each edited individually here |
+| ⚠️ Account-level setting inheritance | Still true for SETTINGS. For standing answers there is now a shared tier (2026-09-29): an answer saved once with `workspace_id IS NULL` is read by every workspace, and a workspace's own row overrides it. Location-bound questions AND answers are refused from the shared tier — see `isLocationBound`. |
 | ⚠️ Campaign designer | theirs has a 30-day rail showing which days carry SMS vs email; ours is a list |
 | ❌ **The sequence itself is half as long** | see below — four touches against Hatch's eight |
 

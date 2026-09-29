@@ -26,7 +26,7 @@ import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type Turn } from "./agent-run";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
-import { loadWorkspaceFaqs } from "./workspace-faq-db";
+import { loadWorkspaceFaqs, loadSharedFaqs } from "./workspace-faq-db";
 import { faqsForPrompt } from "./workspace-faq";
 import { addressParts } from "./address";
 import { serviceZipCheck } from "./service-zip";
@@ -156,12 +156,29 @@ export async function runSimTurn(input: {
      * tester could ask the exact question it answers, and the sandbox would
      * escalate — while production answers it.
      *
-     * Only when a workspace is actually selected. "All workspaces" is a
-     * sandbox-only state with no counterpart in production, and standing
-     * answers belong to one workspace; loading nothing there is correct rather
-     * than a gap.
+     * With a workspace selected, that workspace's answers — its own plus the
+     * shared ones, exactly as the live scheduler builds them.
+     *
+     * With NO workspace ("Default settings", which is the dropdown's first
+     * and default option), the SHARED tier alone. The old comment here said
+     * "standing answers belong to one workspace, so loading nothing is
+     * correct rather than a gap", and that was true until the shared tier
+     * existed. It is false now: a shared row belongs to no workspace and
+     * applies to every one, so there is no turn anywhere in production that
+     * sees zero shared answers.
+     *
+     * Left as it was, the sandbox's DEFAULT state showed a bot that escalates
+     * "Are you insured?" while production answers it — on the screen where
+     * Kate grades replies, and a reply graded "Good" there becomes an example
+     * the next model imitates. That is the sixth time this file has been
+     * patched for showing a thinner context than production, and
+     * simulator-parity.test.ts cannot catch it: it compares the option KEYS
+     * at both runAgentTurn call sites, and `workspaceFaqs` was present in
+     * both. The key was passed. The value was empty.
      */
-    input.workspaceId ? loadWorkspaceFaqs(messagingDb(), input.workspaceId) : Promise.resolve([]),
+    input.workspaceId
+      ? loadWorkspaceFaqs(messagingDb(), input.workspaceId)
+      : loadSharedFaqs(messagingDb()),
   ]);
   if (!resolved) {
     return { ok: false, error: track === "nurture"
