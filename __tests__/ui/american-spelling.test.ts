@@ -65,6 +65,9 @@ describe("American spelling, everywhere a person can read it", () => {
   const BRITISH = [
     "behaviours?", "recognis(e|ed|es|ing|able)", "greys?", "centres?", "fulfilment",
     "catalogues?", "defence", "licence",
+    // The bare verb. Not "fulfilled" — that is Promise.allSettled's own
+    // status string and appears all over the API routes.
+    "fulfil", "fulfils", "fulfilling",
     // -ise where American takes -ize. Spelled out rather than one loose
     // pattern, because "analysis", "emphasis" and "realistic" are not
     // misspellings and a lazy regex flags all three.

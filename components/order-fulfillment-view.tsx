@@ -553,7 +553,7 @@ export default function OrderFulfillmentView({
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-ppp-charcoal">Required by</h2>
           <p className="text-[11px] text-ppp-charcoal-500">
-            When the vendor needs to fulfil it. Shows on the order email.
+            When the vendor needs to have it ready. Shows on the order email.
           </p>
         </div>
         <input

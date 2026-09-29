@@ -2007,7 +2007,7 @@ function JobDetailImpl({
                   — ordering with 0 rooms produces a blank paint order (matches
                   the mobile sticky bar + pb-24 gate). */}
               {/* Kate round-3 #18: ordering is its own two-step flow on its own
-                  routes now — build the order, then fulfil it. Rendering it as
+                  routes now — build the order, then send it. Rendering it as
                   an overlay on this page is what made the buttons unreachable
                   (#21) and what let this page's focus-refresh wipe an in-progress
                   order (#20). Both buttons land on the builder; Preview jumps to
