@@ -6,6 +6,7 @@ import { rank, formatRate } from "@/lib/messaging/optout-rate";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
 import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
 import SnippetsEditor from "@/components/messaging/snippets-editor";
+import FaqImportForm from "@/components/messaging/faq-import-form";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,23 @@ export default async function MessagingSettings({
           <WorkspaceFaqs key={r.id} workspaceId={r.id} />
         </section>
       ))}
+
+      {/*
+        NOT inside the per-workspace block, deliberately. An import can carry
+        rows for every workspace at once, and putting it under one workspace's
+        heading would say it was scoped to that one.
+      */}
+      <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">Load answers from a spreadsheet</h2>
+          <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+            For every workspace at once, rather than one answer at a time.
+          </p>
+        </div>
+        <div className="p-4">
+          <FaqImportForm />
+        </div>
+      </section>
 
       {rows.filter((r) => r.id === open).map((r) => (
         <section key={`snip-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">

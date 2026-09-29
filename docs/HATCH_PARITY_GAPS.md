@@ -161,6 +161,22 @@ same question with no workspace selected got "I'm not sure on that one".
 Kate's to write. That is the remaining work on this gap, and it is content
 rather than code.
 
+**It is 32 workspaces, not 15.** Counted against the live database on
+2026-09-29; earlier notes in this file said both numbers in different places.
+At ~25 answers each that is roughly 800 rows by hand, which is what the CSV
+import below exists for. The names are of the form `AM - CA LA`, `AM - CT`,
+`AM - Dallas TX` — a spreadsheet has to use them exactly, and the importer
+refuses an unrecognised name rather than treating it as shared.
+
+**A CSV IMPORT, added 2026-09-29.** Settings → "Load answers from a
+spreadsheet". `question, answer` for an answer every workspace gives,
+`workspace, question, answer` for one region, both in the same file. Every row
+goes through the same `checkFaq` a typed answer does — A1, A18, the length
+ceiling, and the location-bound refusal on shared rows — because a CSV must
+not be a side door into a table whose rows are sentences the bot says. Nothing
+is written until the preview has said how many rows REPLACE an answer already
+saved, which is the count that destroys work.
+
 **A SHARED TIER, added 2026-09-29.** Most of those answers are not regional:
 insurance, EPA, warranty and payment terms read the same in Nassau and
 Pasadena, and storing them per workspace meant writing one sentence 15 or 32
