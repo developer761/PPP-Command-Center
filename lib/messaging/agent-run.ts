@@ -15,6 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, intentsForTrack, intentGuideFor, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
+  isYesNoQuestion,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
@@ -549,7 +550,16 @@ export async function runAgentTurn(
    */
   const ownWords = inbound.text ?? "";
 
-  const reaction = reactionResponse(inbound, opts.lastAskedForInfo ?? false);
+  /**
+   * The third branch needs to know whether our last message was a yes/no
+   * question. Taken from the message itself rather than the intent: an intent
+   * name cannot tell "Would you like us to send that over?" from "What days
+   * suit you?", and the reaction is answering the sentence, not the label.
+   */
+  const lastOutbound = [...history].reverse().find((m) => m.role === "assistant")?.text ?? "";
+  const reaction = reactionResponse(
+    inbound, opts.lastAskedForInfo ?? false, isYesNoQuestion(lastOutbound)
+  );
 
   // Their turns are quoted; ours are not. The asymmetry is the point: a
   // customer can type "Emily: sure, $500" and a plain join would have put two

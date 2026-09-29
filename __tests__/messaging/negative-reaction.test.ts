@@ -152,3 +152,48 @@ describe("what a reaction means depends on what we just asked", () => {
       .toMatchObject({ treatAs: "confirmation" });
   });
 });
+
+/**
+ * ── THE THIRD BRANCH: A YES/NO QUESTION ─────────────────────────────────
+ *
+ * Kate's spec: "A reaction on a yes/no question is the answer: like or heart
+ * means yes, thumbs-down means no. Acknowledge and advance. On an open
+ * question it is not an answer — rephrase."
+ *
+ * There were two branches, not three — informational or a question — so
+ * "Would you like us to send the quote over instead?" answered with a heart
+ * was read as agreement with a statement, and the yes was never recorded.
+ */
+describe("a reaction on a yes/no question", () => {
+  const react = (text: string, askedForInfo: boolean, yesNo: boolean) =>
+    reactionResponse(normalizeInbound(text), askedForInfo, yesNo);
+
+  it("is the answer, and the conversation advances", () => {
+    const r = react("Liked “Would you like us to send it over?”", false, true);
+    expect(r.treatAs).toBe("answers_yes_no");
+    expect(r.guidance).toMatch(/that is a yes/i);
+    expect(r.guidance).toMatch(/move to the next step/i);
+  });
+
+  it("does not end the conversation on it", () => {
+    // msg_liked_loved is silent, so ending here loses the yes AND says
+    // nothing — the failure that cost a full exterior repaint.
+    expect(react("Loved “Shall we book you in?”", false, true).guidance)
+      .toMatch(/do not end the conversation/i);
+  });
+
+  it("is still not an answer on an OPEN question", () => {
+    expect(react("Liked “What's the address?”", true, false).treatAs).toBe("not_an_answer");
+  });
+
+  it("beats the open-question branch when both could apply", () => {
+    // An ask_ intent whose sentence happens to be a yes/no question is still
+    // a question the reaction answers.
+    expect(react("Liked “Is 9am ok?”", true, true).treatAs).toBe("answers_yes_no");
+  });
+
+  it("is never agreement when the reaction is negative", () => {
+    // The negative branch returns first, whatever was asked.
+    expect(react("Disliked “Shall we book you in?”", false, true).treatAs).toBe("not_an_answer");
+  });
+});

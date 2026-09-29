@@ -362,3 +362,53 @@ and the phone is always held.
 
 Kate's call, because it is about what a customer gets called. Worth putting
 to her alongside items 6 and 9.
+
+---
+
+## The bot cannot receive email, and two spec bullets assume it can
+
+Found auditing against the Iteration 1 spec, 2026-09-29. **Structural, not a
+wiring gap**, so it is written down rather than half-built.
+
+A25 says text and email "are the two channels the bot has", and A45's pause
+fires when the customer replies "on text or email". Both assume an inbound
+email path into `sms_conversations`. There is none.
+
+`reply-to.ts` already says so: *"resend-inbound threads supplier and
+customer-form replies and knows nothing about messaging conversations, so a
+reply to the shared address sits unmatched in triage."* A customer's email
+reply lands in the workspace's own inbox and a person reads it. The Hub never
+sees it.
+
+So today:
+
+- **A45's pause fires on SMS only.** A customer who replies by email is still
+  being dialled, because nothing told the call centre to stop.
+- **A25's email branch is one-directional.** The bot can be told "email me
+  instead", and it now sends the remove-from-cadence notification — but it
+  cannot then hold the conversation there, because it cannot hear the replies.
+
+What closing it needs: an inbound route that threads a reply back to a
+conversation (message-id matching, a per-conversation reply address, or both),
+dedupe against Resend retries, and a decision about which address customers
+reply to. That is a feature, not a fix.
+
+**Worth Kate knowing before launch**, because the notification promises
+something the bot cannot do on its own: a human has to pick the email thread
+up.
+
+## Two audit findings that were WRONG, recorded so they are not "fixed" later
+
+**`checking_availability` speaking before a hand-off is A2, verbatim.** The
+rule says: *"SAY SOMETHING LIKE: 'Just a moment, I'm checking availability.',
+then hand off — a human must check with the estimator before any coverage is
+promised."* The spec's "the bot sends nothing on the way out" is about the
+general takeover, not this one. The template is correct and quotes its source.
+
+**`outcome='stalled'` cannot be written**, so "the Hub records the ending as
+Stalled conversation" is satisfied differently. `sms_conversations_ended_shape`
+makes a conversation ended IF AND ONLY IF it carries an outcome, and A44 is
+explicit that a stalled conversation is never ended — the first version tried
+it and got 23514 against an invariant that is right. The record is the
+`sms_call_signals` row, and as of 2026-09-29 it is visible at
+`/messaging/signals`, which is what was actually missing.
