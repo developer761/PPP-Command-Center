@@ -22,7 +22,9 @@ export type SfWriteSource =
   | "customer_form_submit"
   | "admin_manual"
   | "system_resync"
-  | "vendor_email_sent";
+  | "vendor_email_sent"
+  /** A Stripe payment from /pay/<token> marking its Payment_Term__c paid. */
+  | "online_payment";
 
 export type SfWriteAttempt = {
   /** SF object name, e.g. "WorkOrderLineItem". */

@@ -37,6 +37,7 @@ export default async function CardPage({
   const quote = quoteCharge(state.schedule, m, "ach");
   if (!quote) redirect(`${back}?err=not_due`);
 
+  const percent = state.schedule.milestones.find((x) => x.key === m)?.percent ?? null;
   const previewNote = !cfg.publicPages
     ? `Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Test cards: credit 4242 4242 4242 4242 · debit 4000 0566 5566 5556." : ""}`
     : null;
@@ -50,6 +51,7 @@ export default async function CardPage({
         <section className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-6">
           <div className="text-[11px] font-condensed uppercase tracking-[0.16em] text-ppp-charcoal-500">
             Invoice {state.wo.number} · {quote.label}
+            {percent != null && ` (${percent}% of the job)`}
           </div>
           <h1 className="mt-1 text-xl sm:text-2xl font-bold text-ppp-navy">Pay by card</h1>
           <p className="mt-1 text-[13px] text-ppp-charcoal-600">

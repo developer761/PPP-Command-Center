@@ -39,6 +39,13 @@ export type PaymentTermInput = {
   order: number | null;
   /** Payment_Term__c.Amount__c in dollars. */
   amount: number | null;
+  /** Payment_Term__c.Percent__c (30 = 30%) when Value_Type__c is 'Percent'. Shown to
+   *  the customer so "Deposit" reads as "Deposit · 30% of the job". */
+  percent?: number | null;
+  /** Payment_Term__c.Paid_In_Full__c — set by online payments (see
+   *  buildPaymentTermUpdates). Display only; what is owed still comes from the
+   *  balance, because manual payments never set it. */
+  paidInFull?: boolean;
 };
 
 export type MilestoneStatus =
@@ -56,6 +63,8 @@ export type Milestone = {
   /** Payment_Term__c Id, or 'extra' for charges beyond the payment terms. */
   key: string;
   label: string;
+  /** Share of the job this milestone is, e.g. 30. Null for dollar-amount terms and extras. */
+  percent: number | null;
   amountCents: number;
   /** Still owed after confirmed AND in-flight payments. What a button would charge. */
   remainingCents: number;
@@ -137,8 +146,13 @@ export function buildPaymentSchedule(input: {
     );
   }
   const rows = [
-    ...live.map((t) => ({ key: t.id, label: t.type?.trim() || "Payment", amountCents: t.amountCents })),
-    ...(extraCents > 0 ? [{ key: "extra", label: "Additional charges", amountCents: extraCents }] : []),
+    ...live.map((t) => ({
+      key: t.id,
+      label: t.type?.trim() || "Payment",
+      percent: typeof t.percent === "number" && t.percent > 0 ? t.percent : null,
+      amountCents: t.amountCents,
+    })),
+    ...(extraCents > 0 ? [{ key: "extra", label: "Additional charges", percent: null, amountCents: extraCents }] : []),
   ];
   const rowsTotal = termsTotalCents + extraCents;
 
@@ -164,6 +178,7 @@ export function buildPaymentSchedule(input: {
     return {
       key: r.key,
       label: r.label,
+      percent: r.percent,
       amountCents: r.amountCents,
       remainingCents,
       status,
@@ -257,4 +272,55 @@ export function quoteCardCharge(
   if (!base) return null;
   const feeCents = cardCarriesFee(funding) ? cardFeeCents(base.baseCents) : 0;
   return { ...base, method: "card", feeCents, totalCents: base.baseCents + feeCents, funding };
+}
+
+/**
+ * Which Payment_Term__c records a successful online payment completes, and what
+ * to write on each — so Salesforce shows "Deposit: paid" on the term itself,
+ * not only as a Transaction on the Work Order.
+ *
+ * A milestone payment always pays that milestone's whole remaining amount (the
+ * pay page offers nothing smaller), so it completes exactly that term. A
+ * full-balance payment completes the terms that still had money owing WHEN THE
+ * CUSTOMER PAID (`coveredTermIds`, captured at checkout) — not every open term:
+ * a Deposit paid weeks ago by check is still unmarked in Salesforce, and must
+ * not be stamped as paid today by this payment (found in test 2026-09-29).
+ * 'Additional charges' is not a term, so it writes nothing.
+ */
+export type PaymentTermUpdate = {
+  id: string;
+  fields: { Paid_In_Full__c: true; Paid_In_Full_Date__c: string; Unpaid_Amount__c: 0 };
+};
+
+export function buildPaymentTermUpdates(input: {
+  milestoneKey: string;
+  terms: Array<{ id: string; paidInFull?: boolean }>;
+  /** For 'balance': the terms still owing when the customer paid. Missing
+   *  (an older payment) falls back to every open term. */
+  coveredTermIds?: string[] | null;
+  /** YYYY-MM-DD, Eastern. */
+  paidDateEt: string;
+}): PaymentTermUpdate[] {
+  const fields = { Paid_In_Full__c: true, Paid_In_Full_Date__c: input.paidDateEt, Unpaid_Amount__c: 0 } as const;
+  const open = input.terms.filter((t) => !t.paidInFull);
+  const covered =
+    input.milestoneKey === "balance"
+      ? input.coveredTermIds
+        ? open.filter((t) => input.coveredTermIds!.includes(t.id))
+        : open
+      : open.filter((t) => t.id === input.milestoneKey);
+  return covered.map((t) => ({ id: t.id, fields: { ...fields } }));
+}
+
+/**
+ * The Payment_Term__c ids a payment for `milestoneKey` covers, as of now —
+ * stored on the Stripe payment so the Salesforce write later marks exactly
+ * these. Comma-joined for Stripe metadata (500-char values; a term id is 18).
+ */
+export function coveredTermIds(schedule: PaymentSchedule, milestoneKey: string): string {
+  const ids =
+    milestoneKey === "balance"
+      ? schedule.milestones.filter((m) => m.key !== "extra" && m.remainingCents > 0).map((m) => m.key)
+      : schedule.milestones.filter((m) => m.key === milestoneKey && m.key !== "extra").map((m) => m.key);
+  return ids.join(",").slice(0, 500);
 }

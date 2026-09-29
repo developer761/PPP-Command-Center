@@ -7,6 +7,8 @@ import { etTodayIso } from "@/lib/date-et";
 import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
 import {
   buildPaymentSchedule,
+  buildPaymentTermUpdates,
+  coveredTermIds,
   formatCents,
   normalizeFunding,
   quoteCardCharge,
@@ -15,6 +17,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
+import { writeSf } from "@/lib/salesforce/writeback";
 import {
   CARD_ELEMENT_FLOW,
   isForwardMove,
@@ -267,6 +270,7 @@ export async function createCheckout(input: {
     method: quote.method,
     base_cents: String(quote.baseCents),
     fee_cents: String(quote.feeCents),
+    covers: coveredTermIds(state.schedule, quote.milestoneKey),
   };
 
   const email = wo.contactEmail && EMAIL_RE.test(wo.contactEmail) ? wo.contactEmail : undefined;
@@ -439,6 +443,7 @@ export async function payByCard(input: {
         card_funding: q.funding,
         base_cents: String(q.baseCents),
         fee_cents: String(q.feeCents),
+        covers: coveredTermIds(state.schedule, input.milestoneKey),
       },
     },
     // A double-click sends the same token twice; Stripe hands back the same
@@ -614,11 +619,45 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
       paymentIntentId: p.payment_intent_id,
       paidDateEt: etTodayIso(),
     });
-    payload = fields;
+    // Which Payment Terms this payment completes, read live so a term already
+    // marked paid (by an earlier online payment) isn't written twice.
+    const wo = await getWorkOrderPaymentStateById(p.work_order_id);
+    // What the customer's payment covered, captured when they paid (Stripe
+    // metadata) — for a full-balance payment this is NOT "every open term".
+    let covers: string[] | null = null;
+    if (p.milestone_key === "balance" && p.payment_intent_id) {
+      const pi = await getStripe().paymentIntents.retrieve(p.payment_intent_id).catch(() => null);
+      const raw = pi?.metadata?.covers;
+      covers = raw ? raw.split(",").filter(Boolean) : null;
+    }
+    const termUpdates = buildPaymentTermUpdates({
+      milestoneKey: p.milestone_key,
+      terms: wo?.terms ?? [],
+      coveredTermIds: covers,
+      paidDateEt: etTodayIso(),
+    });
+    payload = { transaction: fields, paymentTerms: termUpdates };
+
     if (shouldWriteToSalesforce(cfg, p.livemode)) {
       sfId = await createSalesforceTransaction(fields);
       status = "written";
       detail = `Created Transaction__c ${sfId}.`;
+      // The money is booked; a term that fails to update is a label problem, not
+      // a money problem. Say so in the detail rather than marking the whole
+      // write failed — a retry would book the payment twice.
+      const failed: string[] = [];
+      for (const u of termUpdates) {
+        const res = await writeSf(
+          { sObject: "Payment_Term__c", recordId: u.id, fields: u.fields },
+          { source: "online_payment", workOrderNumber: p.work_order_number },
+        );
+        if (!res.ok) failed.push(`${u.id}: ${res.error}`);
+      }
+      if (termUpdates.length) {
+        detail += failed.length
+          ? ` Payment Term update FAILED — mark it paid by hand: ${failed.join("; ")}`
+          : ` Marked ${termUpdates.length} Payment Term${termUpdates.length === 1 ? "" : "s"} paid.`;
+      }
     } else {
       status = "dry_run";
       detail = !p.livemode

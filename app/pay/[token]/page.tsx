@@ -72,6 +72,13 @@ export default async function PayPage({
     .filter(Boolean)
     .join(" ");
   const nothingOwed = schedule.payableBalanceCents <= 0;
+  // "30% deposit · 50% progress · 20% final" — only when every term is a
+  // percentage; a mix with dollar-amount terms would read as a sum that's off.
+  const terms = schedule.milestones.filter((m) => m.key !== "extra");
+  const scheduleSummary =
+    terms.length > 1 && terms.every((m) => m.percent != null)
+      ? terms.map((m) => `${m.percent}% ${m.label.toLowerCase()}`).join(" · ")
+      : null;
 
   return (
     <PayShell previewNote={previewNote}>
@@ -117,7 +124,10 @@ export default async function PayPage({
           <PayMessage tone="ok" heading="You're all paid up" body="Thank you — there's nothing left to pay on this invoice." />
         ) : (
           <section className="bg-white border border-ppp-charcoal-100 rounded-2xl divide-y divide-ppp-charcoal-100">
-            <h2 className="px-5 sm:px-6 py-4 text-sm font-bold text-ppp-navy">Payment schedule</h2>
+            <div className="px-5 sm:px-6 py-4">
+              <h2 className="text-sm font-bold text-ppp-navy">Payment schedule</h2>
+              {scheduleSummary && <p className="text-[12px] text-ppp-charcoal-600 mt-0.5">{scheduleSummary}</p>}
+            </div>
             {schedule.milestones.map((m) => (
               <MilestoneRow key={m.key} m={m} token={token} />
             ))}
@@ -166,6 +176,9 @@ function MilestoneRow({ m, token }: { m: Milestone; token: string }) {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold text-ppp-navy">{m.label}</div>
+          {m.percent != null && (
+            <div className="text-[12px] text-ppp-charcoal-600">{m.percent}% of the job</div>
+          )}
           {m.partlyPaid && (
             <div className="text-[12px] text-ppp-charcoal-600">
               {formatCents(m.amountCents - m.remainingCents)} of {formatCents(m.amountCents)} already paid

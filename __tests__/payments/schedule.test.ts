@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPaymentSchedule,
+  buildPaymentTermUpdates,
   cardFeeCents,
+  coveredTermIds,
   formatCents,
   normalizeFunding,
   quoteCardCharge,
@@ -170,5 +172,74 @@ describe("quoteCardCharge — the fee follows the CARD, not the button", () => {
     expect(normalizeFunding("CREDIT")).toBe("unknown");
     expect(normalizeFunding(null)).toBe("unknown");
     expect(normalizeFunding("unknown")).toBe("unknown");
+  });
+});
+
+describe("percentages reach the customer", () => {
+  it("each milestone carries its share of the job", () => {
+    const s = buildPaymentSchedule({
+      terms: [
+        { id: "d", type: "Deposit", order: 1, amount: 1698.45, percent: 30 },
+        { id: "p", type: "Progress", order: 2, amount: 2830.75, percent: 50 },
+        { id: "f", type: "Final", order: 3, amount: 1132.3, percent: 20 },
+      ],
+      balanceOwed: 4529.2,
+    });
+    expect(s.milestones.map((m) => m.percent)).toEqual([30, 50, 20]);
+  });
+
+  it("a dollar-amount term and the extras line have no percent", () => {
+    const s = buildPaymentSchedule({
+      terms: [{ id: "d", type: "Deposit", order: 1, amount: 500, percent: null }],
+      balanceOwed: 700,
+    });
+    expect(s.milestones.map((m) => m.percent)).toEqual([null, null]);
+  });
+});
+
+describe("buildPaymentTermUpdates — Salesforce shows the TERM as paid", () => {
+  const terms = [
+    { id: "dep", paidInFull: true },
+    { id: "prog", paidInFull: false },
+    { id: "fin", paidInFull: false },
+  ];
+  const date = "2026-09-29";
+
+  it("a milestone payment marks exactly that term paid", () => {
+    expect(buildPaymentTermUpdates({ milestoneKey: "prog", terms, paidDateEt: date })).toEqual([
+      { id: "prog", fields: { Paid_In_Full__c: true, Paid_In_Full_Date__c: date, Unpaid_Amount__c: 0 } },
+    ]);
+  });
+
+  it("a full-balance payment marks every open term, and skips ones already paid", () => {
+    expect(buildPaymentTermUpdates({ milestoneKey: "balance", terms, paidDateEt: date }).map((u) => u.id)).toEqual([
+      "prog",
+      "fin",
+    ]);
+  });
+
+  it("full balance marks only the terms it covered — not a Deposit paid weeks ago by check", () => {
+    const allOpen = [{ id: "dep" }, { id: "prog" }, { id: "fin" }];
+    expect(
+      buildPaymentTermUpdates({ milestoneKey: "balance", terms: allOpen, coveredTermIds: ["prog", "fin"], paidDateEt: date }).map(
+        (u) => u.id,
+      ),
+    ).toEqual(["prog", "fin"]);
+  });
+
+  it("coveredTermIds: full balance = terms still owing now; a milestone = itself", () => {
+    const s = buildPaymentSchedule({ terms: TERMS_00313399, balanceOwed: 5661.5 - 1698.45 });
+    // Deposit fully paid by earlier money; Progress + Final still owing.
+    expect(coveredTermIds(s, "balance")).toBe("a04Wj00000NjsLaIAJ,a04Wj00000NjsLbIAJ");
+    expect(coveredTermIds(s, "a04Wj00000NjsLaIAJ")).toBe("a04Wj00000NjsLaIAJ");
+    expect(coveredTermIds(s, "extra")).toBe("");
+  });
+
+  it("a term already marked paid is not written again", () => {
+    expect(buildPaymentTermUpdates({ milestoneKey: "dep", terms, paidDateEt: date })).toEqual([]);
+  });
+
+  it("'Additional charges' is not a term — nothing to mark", () => {
+    expect(buildPaymentTermUpdates({ milestoneKey: "extra", terms, paidDateEt: date })).toEqual([]);
   });
 });

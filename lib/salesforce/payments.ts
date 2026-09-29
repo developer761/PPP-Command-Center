@@ -55,6 +55,9 @@ type TermRow = {
   Payment_Type__c: string | null;
   Order__c: number | null;
   Amount__c: number | null;
+  Percent__c: number | null;
+  Value_Type__c: string | null;
+  Paid_In_Full__c: boolean | null;
 };
 
 const SF_ID_RE = /^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/;
@@ -69,7 +72,7 @@ async function loadWorkOrder(where: string): Promise<WorkOrderPaymentState | nul
   if (!w) return null;
 
   const terms = await conn.query<TermRow>(
-    `SELECT Id, Payment_Type__c, Order__c, Amount__c FROM Payment_Term__c WHERE WorkOrder__c = '${w.Id}'`,
+    `SELECT Id, Payment_Type__c, Order__c, Amount__c, Percent__c, Value_Type__c, Paid_In_Full__c FROM Payment_Term__c WHERE WorkOrder__c = '${w.Id}'`,
   );
 
   return {
@@ -90,6 +93,8 @@ async function loadWorkOrder(where: string): Promise<WorkOrderPaymentState | nul
       type: t.Payment_Type__c,
       order: t.Order__c,
       amount: t.Amount__c,
+      percent: t.Value_Type__c === "Percent" ? t.Percent__c : null,
+      paidInFull: t.Paid_In_Full__c === true,
     })),
   };
 }
