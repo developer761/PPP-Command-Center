@@ -223,6 +223,16 @@ export function DateField({
       setInternal(next);
       const el = hiddenRef.current;
       if (el) {
+        /*
+         * KEEP THIS, even though the input is React-controlled now.
+         *
+         * The events below fire SYNCHRONOUSLY, before React has re-rendered
+         * with the new `internal`. AutosaveForm answers a change by reading
+         * `new FormData(form)` there and then — so without this line it would
+         * read the value the field held a moment ago and save the wrong date.
+         * React sets the same value a tick later; this is what the listener
+         * standing right here sees.
+         */
         el.value = next;
         // Bubbling change so the enclosing form (+ AutosaveForm listener) reacts
         // exactly like a native input edit.
@@ -304,15 +314,35 @@ export function DateField({
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      {/* Form value. Uncontrolled → ref-updated + change-dispatched on commit.
-          Controlled WITH a name → a React-controlled hidden input so it still
-          submits (parent owns the value). Controlled WITHOUT a name → parent
-          renders its own hidden input (e.g. the preset picker). */}
+      {/*
+        THE VALUE THE FORM ACTUALLY POSTS.
+        
+        Both branches are React-controlled now. The uncontrolled branch used
+        `defaultValue` and was updated imperatively (`el.value = next` in
+        writeValue), and that is a React footgun with teeth: setting `.value`
+        by hand leaves React unaware the input is dirty, so the very next
+        re-render — which `setInternal` in the same function triggers — resets
+        the DOM value back to `defaultValue`.
+        
+        The result was a field that displayed the date you picked and posted a
+        different one. Reproduced on 2026-09-29: pick Sep 15 on a payment, the
+        box reads "Sep 15, 2026", and the hidden input still holds today.
+        
+        Stephanie has now reported this shape three times — "Bid set date is
+        still not showing up" and "Application period settings are not
+        sticking" on 09-11, and every AIA payment date on 09-29. All 20 AIA
+        payments and all 118 invoice payments in the database carry a paid_at
+        of exactly T16:00:00Z — noon ET — on the day they were ENTERED, which
+        is the default this bug kept posting.
+        
+        Driving it from `internal` means the posted value is the same state the
+        display is rendered from, so the two cannot disagree again.
+      */}
       {controlled
         ? name
           ? <input type="hidden" name={name} value={value} readOnly required={required} />
           : null
-        : <input ref={hiddenRef} type="hidden" name={name} defaultValue={defaultValue} required={required} />}
+        : <input ref={hiddenRef} type="hidden" name={name} value={internal} readOnly required={required} />}
       {/* Trigger = a real TEXT INPUT plus a calendar button, not a button
           alone. Brendan 2026-08-17: bid sets are usually a year or more old,
           and paging the calendar back twelve-plus months every time was the
