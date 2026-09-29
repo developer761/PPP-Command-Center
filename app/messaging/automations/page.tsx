@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { loadCampaign } from "@/lib/messaging/db";
-import { describeAudience, timingOf, campaignWarnings } from "@/lib/messaging/campaign-view";
+import { describeAudience, timingOf, campaignWarnings, campaignRail, lastActiveDay } from "@/lib/messaging/campaign-view";
 import CampaignEditor from "@/components/messaging/campaign-editor";
 import type { Rule } from "@/lib/messaging/rules";
 import type { CampaignStep } from "@/lib/messaging/campaign-schedule";
@@ -72,6 +72,17 @@ export default async function Automations({
     ? { startHour: live[0].quiet_hours_start, endHour: live[0].quiet_hours_end }
     : undefined;
   const warnings = campaignWarnings(asSteps, { workspaceCount: live.length, sendWindow: window });
+  /**
+   * The rail, laid out with the same function that schedules a real
+   * conversation. From today, in the first live workspace's timezone, because
+   * "what happens if a lead comes in now" is the question somebody is
+   * actually asking when they look at it.
+   */
+  const rail = campaignRail(asSteps, {
+    timeZone: live[0]?.time_zone ?? "America/New_York",
+    enrolledAt: new Date(),
+  });
+  const railEnd = lastActiveDay(rail);
   const blocking = warnings.filter((w) => w.severity === "blocking");
   const activeWorkflows = workflows.filter((w) => w.is_active).length;
   const published = !!version?.published_at;
@@ -159,6 +170,50 @@ export default async function Automations({
           </div>
         </div>
       </section>
+
+      {/*
+        THE SHAPE, NOT THE LIST.
+        A list of steps says what each one does; this says everything happens
+        in the first three days and then nothing — which is the thing worth
+        arguing about and the thing a list hides. Hatch draws thirty days;
+        drawing past the last active day would be thirty grey squares telling
+        nobody anything, so it stops two days after the last one and says so.
+      */}
+      {railEnd > 0 && (
+        <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">The shape of it</h2>
+          <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+            Which days carry a text and which carry an email, if a lead came in today.
+          </p>
+          <ol className="mt-2.5 flex flex-wrap gap-1">
+            {rail.slice(0, Math.min(rail.length, railEnd + 3)).map((d) => (
+              <li key={d.day}
+                title={d.ordinals.length
+                  ? `Day ${d.day}: message ${d.ordinals.join(", ")}`
+                  : `Day ${d.day}: nothing`}
+                className={["w-8 rounded-md border text-center py-1",
+                  d.sms || d.email
+                    ? "border-ppp-charcoal-200 bg-white"
+                    : "border-ppp-charcoal-100 bg-ppp-charcoal-50"].join(" ")}>
+                <span className="block text-[9.5px] font-mono text-ppp-charcoal-400 leading-none">
+                  {d.day}
+                </span>
+                <span className="mt-1 block text-[11px] leading-none tabular-nums text-ppp-charcoal">
+                  {d.sms || d.email
+                    ? [d.sms ? `${d.sms}T` : "", d.email ? `${d.email}E` : ""].filter(Boolean).join(" ")
+                    : "·"}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-2 text-[11px] text-ppp-charcoal-400 leading-snug">
+            T = text, E = email. Day 0 is the day the lead arrives.
+            {railEnd === 0
+              ? " Everything goes out on the first day."
+              : ` Nothing is scheduled after day ${railEnd}.`}
+          </p>
+        </section>
+      )}
 
       <CampaignEditor
         versionId={version?.id ?? null}

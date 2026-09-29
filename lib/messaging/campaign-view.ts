@@ -16,7 +16,7 @@
  * Pure.
  */
 import type { Rule } from "./rules";
-import type { CampaignStep } from "./campaign-schedule";
+import { scheduleSteps, type CampaignStep } from "./campaign-schedule";
 import { unresolvedFields, isKnownMergeField } from "./merge-fields";
 import { needsDisclosure } from "./first-message";
 
@@ -114,6 +114,95 @@ export function timingOf(step: CampaignStep): string {
       return `Day ${day} at ${when}`;
     }
   }
+}
+
+/* ────────────────────────────── the rail ─────────────────────────── */
+
+/**
+ * WHICH DAYS OF A CAMPAIGN CARRY A TEXT AND WHICH CARRY AN EMAIL.
+ *
+ * Hatch's campaign designer shows a 30-day rail and it is the one piece of
+ * their UI the parity review called genuinely good: a list of steps tells you
+ * what each one does, a rail tells you the SHAPE — that everything happens in
+ * the first three days and then nothing for a month, which is the thing
+ * actually worth arguing about and the thing a list hides.
+ *
+ * ── SCHEDULED, NOT RE-DERIVED ───────────────────────────────────────────
+ *
+ * This calls `scheduleSteps`, the function the enroller uses to lay out a
+ * real conversation. It does not read `dayOffset` and draw that, which would
+ * be a second implementation of the timing rules — and a rail that disagrees
+ * with the scheduler is worse than no rail, because it is the picture
+ * somebody checks the campaign against. `delay_after_last` is the case that
+ * catches a re-derivation: "15 minutes after the last message" has no day of
+ * its own, it inherits whichever day the previous step landed on.
+ *
+ * Pure. The caller supplies the timezone and the day the lead arrives.
+ */
+export type RailDay = {
+  /** 0 is the day the lead comes in. */
+  day: number;
+  sms: number;
+  email: number;
+  /** Which steps land here, so the rail can be pointed at the list. */
+  ordinals: number[];
+};
+
+/** The calendar day in a zone, as a comparable string. */
+const dayKeyIn = (d: Date, timeZone: string): string =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+
+export function campaignRail(steps: CampaignStep[], opts: {
+  timeZone: string;
+  /** When the lead arrives. The rail is "what happens if one comes in now". */
+  enrolledAt: Date;
+  /** How many days to draw. Hatch shows 30. */
+  days?: number;
+}): RailDay[] {
+  const days = opts.days ?? 30;
+  const rail: RailDay[] = Array.from({ length: days }, (_, i) => ({
+    day: i, sms: 0, email: 0, ordinals: [],
+  }));
+  if (!steps.length) return rail;
+
+  const planned = scheduleSteps(steps, opts.enrolledAt, opts.timeZone);
+  const byOrdinal = new Map(steps.map((s) => [s.ordinal, s]));
+
+  /**
+   * Calendar days apart IN THE WORKSPACE'S ZONE, counted by walking day keys
+   * rather than dividing milliseconds. A month containing a daylight-saving
+   * change has a 23-hour day in it, and `(b - a) / 86400000` silently rounds
+   * that to the wrong side — putting a step on day 6 of a rail that says 7.
+   */
+  const start = dayKeyIn(opts.enrolledAt, opts.timeZone);
+  const keyToDay = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    keyToDay.set(dayKeyIn(new Date(opts.enrolledAt.getTime() + i * 86_400_000), opts.timeZone), i);
+  }
+  keyToDay.set(start, 0);
+
+  for (const p of planned) {
+    const step = byOrdinal.get(p.ordinal);
+    if (!step) continue;
+    const day = keyToDay.get(dayKeyIn(p.runAt, opts.timeZone));
+    // Past the end of the rail. Dropped rather than clamped onto the last
+    // day, which would draw a step on day 29 that happens on day 40.
+    if (day === undefined) continue;
+    if (step.channel === "email") rail[day].email += 1;
+    else rail[day].sms += 1;
+    rail[day].ordinals.push(step.ordinal);
+  }
+  return rail;
+}
+
+/** The last day that carries anything, so the rail can stop drawing empties. */
+export function lastActiveDay(rail: RailDay[]): number {
+  for (let i = rail.length - 1; i >= 0; i--) {
+    if (rail[i].sms || rail[i].email) return i;
+  }
+  return 0;
 }
 
 /* ─────────────────────────── the warnings ─────────────────────────── */
