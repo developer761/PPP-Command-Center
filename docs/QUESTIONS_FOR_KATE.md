@@ -947,3 +947,68 @@ different problems.
 **→ Is stage 4 the right bar for "bookable", or should it be stage 3?** Stage
 3 is contact info; a conversation with project, address and contact but no
 availability is arguably still a lead somebody could ring and book.
+
+---
+
+# Reconciled against the Iteration 1 build spec, 2026-09-29
+
+Kate supplied `ITERATION_1_BUILD_SPEC_2026_09_25.md` today. It is dated
+25 September and arrived after most of the build. Several things we were
+carrying as open are settled in it, and it raises three of its own. Asking her
+for something she has already written down is how a client stops answering.
+
+## Settled by the spec — do NOT ask
+
+**The park cadence.** Bare deferral is "two to three days, three times, then
+notify the call centre"; blocked on a named event is "two weeks"; a customer
+who asks not to be chased gets no cadence at all. Built as
+`PARK_FOLLOW_UP_DAYS = [2, 5, 8]` and `EVENT_PARK_FOLLOW_UP_DAYS = [13, 16,
+19]` (13 lands on day 14). Both match. The count and spacing AFTER the
+two-week event wait are not specified — that half stays ours.
+
+**A46 applies in every state**, not only California and New Jersey, and is
+explicitly *not* a compliance requirement: "it is how we have decided to come
+across." We had this as a possible carve-out.
+
+**A25 in Iteration 1 is a notification only.** "Build the signal, not the
+cadence edit." Calling moves into the Hub later.
+
+**The campaign cadence question is void.** We had logged "ours is 4 touches,
+Hatch's is 8 — which?" as a decision for Kate. The spec answers it: the day 1
+and day 3 follow-ups "are steps 3 and 4 of the Leads Master Campaign, which
+chases someone who has never replied at all. Different population — leave
+those steps as they are." The comparison was between two different mechanisms,
+so there is nothing to decide.
+
+**A44's no-sign-off ending is scoped by rule, not by function.** "The
+no-sign-off ending applies at the end of A44's cadence and nowhere else" —
+A40's park ending and A25's phone branch keep their closing lines.
+
+## Still owed by Kate, confirmed by the spec
+
+**A44's exact follow-up wording.** The spec says "Exact wording settled before
+launch", so this is still outstanding rather than something we missed.
+
+**A46's Spanish rendering** (item 9 above) is *sharpened* rather than closed.
+The spec says the two strings are "the English wordings, and there is no
+approved string per language… The disclosure is what must not vary, not the
+wording." So a Spanish rendering does not need approving as verbatim text —
+but somebody still has to be happy with what we say.
+
+## Newly raised by the spec — Kate's, not ours
+
+**Voicemail.** Call forwarding is Iteration 1 and is built. Voicemail is
+marked TBD: about 11 calls a month currently go unanswered and there is no
+mailbox, so there is nothing for a person to pick up. An inbound-call agent is
+explicitly not Iteration 1, and the spec notes it "would change A25's premise
+if it ever were, since that rule hands off precisely because the bot cannot
+place a call."
+
+**Which already-unqualified leads may still be texted.** Deferred to when the
+cadence settings are configured, with an instruction attached: "it is not
+yours to infer, and no field gate should be built against it yet." So this is
+a thing NOT to build until she says.
+
+**Re-rating part of the handover corpus.** Phone-pricing detection changed
+after parts of the corpus were rated. Not a blocker, and the rule text we
+build against is current either way.
