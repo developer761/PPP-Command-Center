@@ -4,6 +4,7 @@ import {
   claimWebhookEvent,
   stripeWebhookVerifier,
   finishWebhookEvent,
+  bookPaidOutPayments,
   markRefunded,
   syncCheckoutSession,
   syncPaymentIntent,
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
  *   payment_intent.succeeded                    (card payments on /pay/<token>/card)
  *   payment_intent.processing
  *   payment_intent.payment_failed
+ *   payout.paid                                 (money cleared — book it in Salesforce)
  *
  * The signature is checked against STRIPE_WEBHOOK_SECRET on the RAW body —
  * parsing it as JSON first changes the bytes and every signature fails.
@@ -67,6 +69,12 @@ export async function POST(request: Request) {
         // here and synced through its Checkout Session above.
         const res = await syncPaymentIntent(event.data.object);
         if (res.kind === "ignored") outcome = "ok (ignored: " + res.reason + ")";
+        break;
+      }
+      case "payout.paid": {
+        // PPP books Stripe payments once cleared (see lib/payments/payout.ts).
+        const res = await bookPaidOutPayments(event.data.object.id);
+        outcome = `ok (payout: ${res.inPayout} payment(s), ${res.booked} of ours booked)`;
         break;
       }
       case "charge.refunded": {

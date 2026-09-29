@@ -17,6 +17,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
+import { paymentIntentIdsInPayout } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
 import {
   CARD_ELEMENT_FLOW,
@@ -596,11 +597,22 @@ async function advance(
     return { kind: "unchanged", payment: current };
   }
   let payment = moved as PaymentRow;
-  if (next === "succeeded") payment = await recordInSalesforce(payment);
+  if (next === "succeeded") {
+    // Not booked yet — see lib/payments/payout.ts. The pay page already counts
+    // it (so the customer isn't asked twice); Salesforce gets it at payout.
+    const { data } = await db()
+      .from("stripe_payments")
+      .update({ sf_writeback_detail: "Paid. Waiting for the Stripe payout before booking in Salesforce." })
+      .eq("id", payment.id)
+      .is("sf_writeback_status", null)
+      .select("*")
+      .maybeSingle();
+    if (data) payment = data as PaymentRow;
+  }
   return { kind: "updated", payment };
 }
 
-async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
+async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<PaymentRow> {
   const cfg = paymentsConfig();
   let payload: Record<string, unknown> | null = null;
   let status: "dry_run" | "written" | "failed";
@@ -677,6 +689,7 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
     detail = err instanceof Error ? err.message : String(err);
   }
 
+  if (payoutId) detail = `Cleared in Stripe payout ${payoutId}. ${detail}`;
   const { data, error } = await db()
     .from("stripe_payments")
     .update({
@@ -691,6 +704,40 @@ async function recordInSalesforce(p: PaymentRow): Promise<PaymentRow> {
     .single();
   if (error) throw new Error(`stripe_payments write-back record failed: ${error.message}`);
   return data as PaymentRow;
+}
+
+/**
+ * payout.paid — the money is on its way to PPP's bank, so the payments in it
+ * have cleared. Book each one of ours in Salesforce (Payment In + Payment Term).
+ * Safe to run twice: a payment already booked (sf_writeback_status set) is
+ * skipped, and the Salesforce write itself refuses a duplicate pi_ reference.
+ */
+export async function bookPaidOutPayments(payoutId: string): Promise<{ inPayout: number; booked: number }> {
+  const stripe = getStripe();
+  const txns: Parameters<typeof paymentIntentIdsInPayout>[0] = [];
+  for await (const t of stripe.balanceTransactions.list({ payout: payoutId, limit: 100, expand: ["data.source"] })) {
+    txns.push(t as unknown as Parameters<typeof paymentIntentIdsInPayout>[0][number]);
+  }
+  const piIds = paymentIntentIdsInPayout(txns);
+  if (!piIds.length) return { inPayout: 0, booked: 0 };
+  return { inPayout: piIds.length, booked: await bookClearedPayments(piIds, payoutId) };
+}
+
+/** Book the given cleared payments (ours only, not yet booked). Returns how many booked. */
+export async function bookClearedPayments(piIds: string[], payoutId: string): Promise<number> {
+  const { data, error } = await db()
+    .from("stripe_payments")
+    .select("*")
+    .in("payment_intent_id", piIds)
+    .eq("status", "succeeded")
+    .is("sf_writeback_status", null);
+  if (error) throw new Error(`stripe_payments read failed: ${error.message}`);
+  let booked = 0;
+  for (const row of (data ?? []) as PaymentRow[]) {
+    const done = await recordInSalesforce(row, payoutId);
+    if (done.sf_writeback_status !== "failed") booked++;
+  }
+  return booked;
 }
 
 /** charge.refunded — a refund issued in the Stripe dashboard. Marks the row;
@@ -751,8 +798,8 @@ export async function listRecentPayments(limit = 50): Promise<PaymentRow[]> {
   return (data ?? []) as PaymentRow[];
 }
 
-/** Admin: try the Salesforce write again for a succeeded payment whose write
- *  failed (or was a dry run and write-back has since been switched on). */
+/** Admin: book a succeeded payment in Salesforce now — after a failed write,
+ *  a dry run since switched on, or to not wait for the payout (a person's call). */
 export async function retrySalesforceWrite(paymentId: string): Promise<PaymentRow> {
   const { data, error } = await db().from("stripe_payments").select("*").eq("id", paymentId).single();
   if (error) throw new Error(error.message);

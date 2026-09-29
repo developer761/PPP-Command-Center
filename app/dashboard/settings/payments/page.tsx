@@ -168,7 +168,7 @@ export default async function PaymentsSettingsPage({
             state={cfg.sfWritebackOn ? "on" : "off"}
             value={
               cfg.sfWritebackOn
-                ? "On for LIVE payments (test payments are never written)"
+                ? "On for LIVE payments, once each clears in a Stripe payout (test payments are never written)"
                 : "Dry run — the Transaction__c is built and shown below, not sent"
             }
             env="PAYMENTS_SF_WRITEBACK=on"
@@ -311,6 +311,20 @@ function PaymentItem({ p, canRetry }: { p: PaymentRow; canRetry: boolean }) {
           </span>
         )}
       </div>
+      {p.status === "succeeded" && !p.sf_writeback_status && (
+        <div className="mt-2 text-[12px] text-ppp-charcoal-600">
+          Salesforce: <span className="font-semibold">waiting for the Stripe payout</span> — booked automatically once the
+          money clears.
+          {canRetry && (
+            <form action={retryWriteAction} className="mt-2">
+              <input type="hidden" name="id" value={p.id} />
+              <button type="submit" className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-[12px] font-semibold min-h-[44px]">
+                Book in Salesforce now
+              </button>
+            </form>
+          )}
+        </div>
+      )}
       {p.sf_writeback_status && (
         <details className="mt-2">
           <summary className="cursor-pointer text-[12px] font-semibold text-ppp-navy">
