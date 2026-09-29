@@ -56,12 +56,13 @@ export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen
         </button>
       </h3>
 
-      <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5 sm:pb-6">
-        <p className="text-xs sm:text-sm text-ppp-charcoal-600 leading-relaxed">
-          Color gets most of the attention — but the finish decides how that color reads on your
-          wall. Every finish sits on one scale: how much light it reflects.
-        </p>
-
+      {/* The doc's own title AND subtitle are left out — "you can leave out
+          the title and subtitle" (Kate, 2026-09-29). The subtitle was here on
+          the first pass because it explains the sheen scale the bars are drawn
+          from; her instruction is the one that counts, and the section's own
+          heading plus the "ordered from least light reflected to most" caption
+          carry that idea anyway. */}
+      <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5 sm:pb-6 -mt-1">
         <FinishTable
           title="Interior"
           caption="Ordered from least light reflected to most"
