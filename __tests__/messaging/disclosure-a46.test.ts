@@ -293,7 +293,7 @@ describe("asked if it is a bot, out of hours", () => {
  */
 describe("answering 'are you a bot' does not hand the conversation away", () => {
   const act = (confidence: number) => ({
-    intent: "bot_suspected", freeText: "", confidence, reasoning: "",
+    intent: "bot_suspected" as const, freeText: "", confidence, reasoning: "",
   });
 
   it("does not escalate at the confidence the model actually reports", () => {
