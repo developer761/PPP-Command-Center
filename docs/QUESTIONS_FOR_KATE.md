@@ -1064,3 +1064,43 @@ hand the thread back. If the customer then goes quiet, nothing chases them.
 
 **Left as the spec says.** Say the word if a released conversation should be
 eligible again.
+
+## 21. The stage counts ASKING; the screen counts HOLDING. They disagree on a partial address.
+
+Found running scenarios in the sandbox against the live build, 2026-09-30.
+
+**What happened.** Customer: *"its 12 Marchmont Ave. roughly how much would
+that run me? ballpark is fine"*. The bot correctly refused to quote (A1) and
+correctly offered the off-site quote (A7 — "wants only a price / rough
+estimate / ballpark"). On the next turn it asked for name and email.
+
+It never asked for the **ZIP**, and the progress panel still read
+*"Full address ← asking for this next"* while the bot asked for contact.
+
+**Both halves are behaving as designed, which is the problem.**
+
+- The stage machine advances on INTENTS: `ask_address` was asked, so the leg
+  counts. That is your carve-out — "A3's legs are satisfied by having ASKED" —
+  and it is deliberate.
+- The progress panel counts FIELDS HELD, and a partial address is not held.
+  `addressGap("12 Marchmont Ave")` correctly returns `zip`.
+
+So the validator permitted the move, the screen said something else, and the
+missing ZIP was never asked for.
+
+**The A11 machinery is built and correct.** The prompt block says, verbatim:
+"PART of the property address: 12 Marchmont Ave — INCOMPLETE, the ZIP code is
+missing... Ask for the missing piece by name, and only that piece." The model
+had that instruction and chose `ask_contact` anyway. One run, so this is
+adherence rather than a defect, and it is what the rater is for.
+
+**The question is yours, because either answer changes behaviour:**
+
+Should the ADDRESS leg specifically advance on holding rather than on asking?
+That would make `ask_contact` refuse while a partial address stands, and force
+the ZIP question — at the cost of a conversation that cannot move past an
+address the customer will not complete. A41 says do not block the flow on a
+refusal, so it would need a way out after one attempt.
+
+A11 is the second most breached rule in the handover corpus — 289 breaches,
+250 conversations — so it is worth deciding rather than leaving to the model.
