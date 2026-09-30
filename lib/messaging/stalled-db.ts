@@ -27,7 +27,7 @@ import {
   PARK_FOLLOW_UP_DAYS, EVENT_PARK_FOLLOW_UP_DAYS,
 } from "./stalled";
 import { asksNotToBeChased, parkIsBlockedOnEvent } from "./parking";
-import { pauseOnReply, resumeAfterCadence, resumeWithoutChasing, type CallSignal } from "./call-signals";
+import { removeFromCadence, pauseOnReply, resumeAfterCadence, resumeWithoutChasing, type CallSignal } from "./call-signals";
 import { customerZone } from "./customer-clock";
 import { selectAll } from "./paging";
 
@@ -247,6 +247,22 @@ export async function recordSignal(sb: SupabaseClient, signal: CallSignal): Prom
   if (!error) return true;
   if (error.code === "23505") return false;   // already sent — the point of the index
   throw new Error(`could not record ${signal.kind}: ${error.code} ${error.message}`);
+}
+
+/**
+ * A25's notification, when the customer names a channel.
+ *
+ * Same seam and same table as A45's pair, and the same one-per-kind index, so
+ * a customer who says "text only" three times produces one notification. The
+ * insert answers "has one already gone" rather than a read, so two concurrent
+ * webhooks cannot both decide it is the first.
+ */
+export async function removeFromCadenceFor(sb: SupabaseClient, input: {
+  conversationId: string;
+  leadId: string | null;
+  preference: "text_only" | "email_only";
+}): Promise<boolean> {
+  return recordSignal(sb, removeFromCadence(input));
 }
 
 /**

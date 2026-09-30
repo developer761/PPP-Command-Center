@@ -174,8 +174,22 @@ export default function WorkspaceHoursForm({
         <label className="block">
           <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">What the auto-reply says</span>
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3}
-            placeholder="Thanks for reaching out! We are currently closed and will get back to you after we open."
+            placeholder="Thanks for reaching out! We are currently closed and will get back to you after we open at {{next_open}}."
             className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13px] leading-relaxed resize-y" />
+          {/*
+            A MERGE FIELD NOBODY KNOWS ABOUT IS A FEATURE THAT DOES NOT EXIST.
+            The FAQ store shipped complete and unusable for exactly this reason
+            — the capability was built and had no door. So the token is named
+            here, in the box where the sentence is written, rather than in a
+            doc somebody would have to be told to read.
+          */}
+          <span className="mt-1 block text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+            Type <code className="font-mono text-[11px]">{"{{next_open}}"}</code> and it becomes the
+            next time we actually open — &ldquo;9 AM tomorrow&rdquo;, &ldquo;Monday at 9 AM&rdquo; —
+            worked out from these hours and the customer&rsquo;s own timezone. No need to edit it when
+            the hours change. If that time cannot be worked out, no reply is sent rather than a
+            wrong one.
+          </span>
           <span className="mt-1 block text-[11.5px] text-ppp-charcoal-400">
             Kate marked an after-hours reply as a negative on a graded conversation. Leaving this off is a valid answer.
           </span>

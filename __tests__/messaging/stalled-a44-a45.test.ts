@@ -8,6 +8,7 @@
  * three follow-ups and 208 received none at all.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   isStalled, followUpSchedule, shiftIntoWindow, FOLLOW_UP_HOURS, FOLLOW_UP_COUNT,
   PARK_FOLLOW_UP_DAYS, EVENT_PARK_FOLLOW_UP_DAYS,
@@ -449,5 +450,51 @@ describe("the event-park cadence", () => {
       from: parkedAt, notBefore: sweptAt, customerZone: zone, days: PARK_FOLLOW_UP_DAYS,
     });
     expect(daysBetween(parkedAt, event[0])).toBeGreaterThan(daysBetween(parkedAt, bare[0]) + 7);
+  });
+});
+
+/**
+ * ── A FOLLOW-UP HAS TO SOUND LIKE IT REMEMBERS THEM ─────────────────────
+ *
+ * Kate's spec: "Each of the three follow-ups follows up on their request for
+ * their project, naming the scope where we hold it, so the customer never
+ * restates what they have already told us."
+ *
+ * Nothing told the model it was writing one, so a follow-up ran as an
+ * ordinary turn and the natural output is a generic "just checking in" —
+ * exactly the Hatch behaviour this capability replaces, and the source of the
+ * 192 retype defects.
+ *
+ * The instruction is built in agent-run; these assert the source, the way
+ * simulator-parity does, because the alternative is calling a model in a
+ * unit test.
+ */
+describe("the follow-up prompt names the scope", () => {
+  const src = readFileSync("lib/messaging/agent-run.ts", "utf8");
+
+  it("tells the model which of the three it is writing", () => {
+    expect(src).toMatch(/THIS IS FOLLOW-UP \$\{opts\.followUpStep\} OF 3/);
+  });
+
+  it("names the scope back when we hold one", () => {
+    expect(src).toMatch(/opts\.known\?\.inquiryScope/);
+    expect(src).toMatch(/so they do not have to say it again/);
+  });
+
+  it("forbids re-introducing ourselves", () => {
+    // A conversation that resumes is not a new one. Conversation memory is
+    // the whole point of the capability underneath this.
+    expect(src).toMatch(/do not re-introduce/i);
+  });
+
+  it("forbids a sign-off, which is A44's own ending rule", () => {
+    // "Nothing is sent to the customer at the end — no sign-off, and no
+    // softer sign-off in its place."
+    expect(src).toMatch(/No sign-off/i);
+  });
+
+  it("says nothing at all on an ordinary turn", () => {
+    // The line is turn context and must not leak into a live reply.
+    expect(src).toMatch(/const followUpLine = opts\.followUpStep/);
   });
 });

@@ -155,8 +155,16 @@ export function normalizeInbound(raw: string, mediaCount = 0): NormalizedInbound
  */
 export function reactionResponse(
   inbound: NormalizedInbound,
-  lastOutboundAskedForInfo: boolean
-): { treatAs: "confirmation" | "not_an_answer" | "normal"; guidance: string } {
+  lastOutboundAskedForInfo: boolean,
+  /**
+   * Did our last message ask a yes/no question? The one case a reaction can
+   * actually answer — see the branch below.
+   */
+  lastOutboundWasYesNo = false
+): {
+  treatAs: "confirmation" | "not_an_answer" | "answers_yes_no" | "normal";
+  guidance: string;
+} {
   if (inbound.kind !== "reaction" && inbound.kind !== "emoji_only") {
     return { treatAs: "normal", guidance: "" };
   }
@@ -168,6 +176,32 @@ export function reactionResponse(
     return {
       treatAs: "not_an_answer",
       guidance: "The customer reacted negatively. Do not treat this as agreement. Acknowledge and ask what they would prefer.",
+    };
+  }
+
+  /**
+   * A YES/NO QUESTION IS THE ONE CASE A REACTION CAN ANSWER.
+   *
+   * Kate's spec: "A reaction on a yes/no question is the answer: like or
+   * heart means yes, thumbs-down means no. Acknowledge and advance. On an
+   * open question it is not an answer — rephrase."
+   *
+   * This file had two branches, not three — informational or a question —
+   * so "Would you like us to send the quote over instead?" answered with a
+   * heart was treated as agreement with a statement, and the conversation
+   * carried on without ever recording the yes. The negative case above
+   * already returns early, so reaching here with a yes/no question means the
+   * reaction was positive.
+   *
+   * Checked BEFORE the open-question branch: an `ask_` intent that happens to
+   * end in a yes/no question is still a question the reaction answers.
+   */
+  if (lastOutboundWasYesNo) {
+    return {
+      treatAs: "answers_yes_no",
+      guidance: "The last message asked a yes/no question and the customer reacted positively. "
+        + "That is a yes. Acknowledge it in a few words and move to the next step — do not "
+        + "ask the same question again, and do not end the conversation on it.",
     };
   }
 

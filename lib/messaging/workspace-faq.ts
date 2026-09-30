@@ -38,6 +38,18 @@
 export type WorkspaceFaq = {
   question: string;
   answer: string;
+  /**
+   * TRUE when this row is stored once and read by EVERY workspace
+   * (`workspace_id IS NULL`). Carried on the row rather than passed to
+   * checkFaq as an argument, deliberately: an argument with a default is a
+   * check that silently does not run at the call site that forgot it, and
+   * this codebase has shipped that bug more than once. The loader knows which
+   * tier each row came from, so the row can carry it and every reader —
+   * save time and read time — gets the same answer.
+   */
+  shared?: boolean;
+  /** Where it sits in the prompt. Carried so ordering survives validation. */
+  sortOrder?: number;
 };
 
 /**
@@ -50,6 +62,84 @@ const A_PRICE =
 /** Naming somebody else who could do the work. A18. */
 const ANOTHER_COMPANY =
   /\b(?:try|call|contact|reach out to|check with|recommend|suggest)\b[^.?!]{0,30}\b(?:another|a different|other)\s+(?:company|contractor|painter|painters|business|outfit)\b|\byou (?:could|might|should) (?:try|call|check)\b[^.?!]{0,20}\b(?:someone else|another)\b/i;
+
+/**
+ * A QUESTION WHOSE ANSWER DEPENDS ON WHERE THE WORKSPACE IS.
+ *
+ * The original migration refused to let anything inherit, for this reason and
+ * in these words: "'Where are you located?' is 'the greater Los Angeles and
+ * Orange County area' on CA LA Leads and something else entirely in Nassau...
+ * A single list would make the bot confidently wrong about geography, which
+ * is exactly the thing A2 and A6 are careful about."
+ *
+ * The shared tier exists because most answers are NOT like that — insurance,
+ * EPA, warranty and payment terms are company policy and identical
+ * everywhere. This function is what keeps the two apart.
+ *
+ * DELIBERATELY OVER-EAGER, and the asymmetry is the whole design. A question
+ * wrongly refused from the shared tier gets written per workspace, which is
+ * what happens today, so the cost of a false positive is zero new work. A
+ * geographic answer wrongly shared is the bot telling customers in fourteen
+ * regions a service area that is not theirs, stated as fact, with nothing
+ * downstream able to catch it — the validator sees a question answered well.
+ *
+ * Bare "serve", "cover", "based", "office", "city", "town" and bare "area"
+ * are NOT here, on purpose. Each was refusing a genuinely global question —
+ * "Do you use water-based or oil-based?", "Do you offer office painting?",
+ * "What is the minimum area you will do?", "How far in advance do I need to
+ * book?" — and the claim that a false positive "costs nothing new" is wrong:
+ * it costs the whole saving, thirty-two times over, on a sentence that never
+ * varies. "area" is matched only where it means a SERVICE area.
+ *
+ * That loosening is only safe because checkFaq tests the ANSWER too. The two
+ * compose: "Do you work in the city?" passes here and is caught on its real
+ * answer, "Yes, all five boroughs".
+ */
+const LOCATION_BOUND = new RegExp([
+  String.raw`\bwhere\b`,
+  String.raw`\blocat(?:ed|ion|ions)\b`,
+  String.raw`\blocal(?:ly)?\b`,
+  String.raw`\bzips?\b`,
+  String.raw`\bzip\s?codes?\b`,
+  String.raw`\bpostal\b`,
+  String.raw`\bcount(?:y|ies)\b`,
+  String.raw`\bboroughs?\b`,
+  String.raw`\bregions?\b`,
+  String.raw`\bneighbou?rhoods?\b`,
+  String.raw`\bnearby\b`,
+  String.raw`\bnear\s+(?:me|you)\b`,
+  String.raw`\bradius\b`,
+  String.raw`\btravel\b`,
+  String.raw`\bcommute\b`,
+  // "area" only where it means a SERVICE area. Bare "area" was refusing "the
+  // minimum area you'll do" and "the trim as a separate area", which are
+  // square footage and cost the whole saving to write per workspace.
+  String.raw`\b(?:service|coverage|catchment)\s+areas?\b`,
+  String.raw`\bwhat\s+areas?\b`,
+  String.raw`\bareas?\s+(?:do|that)\s+you\b`,
+  // Distance, not time. "How far in advance do I need to book?" is a
+  // scheduling question and identical everywhere.
+  String.raw`\bhow\s+far\s+(?:do|will|can|would)\s+you\s+(?:travel|go|drive|come)\b`,
+].join("|"), "i");
+
+/**
+ * The word that made this look location-bound, or null.
+ *
+ * Returns the WORD rather than a boolean because the refusal has to name it.
+ * A person told that "Do you use water-based or oil-based?" depends on where
+ * the workspace is does not think "a regex over-matched" — they think the
+ * software is broken and go and ask somebody. Told that the word `based` is
+ * what flagged it, they can see the mistake instantly and pick the other
+ * radio. That one difference turns a support message into a two-second fix.
+ */
+export function locationTrigger(text: string): string | null {
+  const m = LOCATION_BOUND.exec(text ?? "");
+  return m ? m[0].trim() : null;
+}
+
+export function isLocationBound(text: string): boolean {
+  return locationTrigger(text) !== null;
+}
 
 export type FaqProblem = { field: "question" | "answer"; why: string };
 
@@ -67,6 +157,44 @@ export function checkFaq(faq: WorkspaceFaq): FaqProblem[] {
 
   if (!q) problems.push({ field: "question", why: "the question is empty" });
   if (!a) problems.push({ field: "answer", why: "the answer is empty" });
+
+  /**
+   * THE SHARED TIER'S ONE HAZARD — CHECKED ON BOTH HALVES OF THE ROW.
+   *
+   * This read the question only, which is the same mistake this codebase
+   * keeps making in a new place: the guard inspected the LABEL and not the
+   * sentence the customer actually reads. These both saved as shared:
+   *
+   *   Q: "Do you offer free estimates?"  A: "Yes, anywhere in Nassau County."
+   *   Q: "Do you do exterior work?"      A: "Yes — we cover the greater LA area."
+   *
+   * Neither question is location-bound. Both answers are, and the answer is
+   * the part that gets texted to somebody in another state as fact. It is
+   * also the likelier mistake in practice: geography leaks into an answer
+   * without the writer thinking about how they worded the question.
+   *
+   * Checking the answer is what lets the question check be LOOSER than it
+   * was. The two compose — "Do you work in the city?" no longer trips on the
+   * question, but its real answer says "all five boroughs" and trips there.
+   * That is why `office`, `city`, `town`, `based` and bare `area` could come
+   * out of the pattern without opening the hole back up.
+   */
+  if (faq.shared) {
+    const inQuestion = q ? locationTrigger(q) : null;
+    const inAnswer = a ? locationTrigger(a) : null;
+    const where = inQuestion ? "question" : "answer";
+    const word = inQuestion ?? inAnswer;
+    if (word) {
+      problems.push({
+        field: where,
+        why: `it looks like this depends on where the workspace is — the word "${word}" in `
+          + `the ${where} is what flagged it. A service area written once would be wrong in `
+          + `every other region, and nothing downstream catches that. Choose "This workspace `
+          + `only" above and it will save. If it really is the same everywhere, say so and `
+          + `the check can be loosened`,
+      });
+    }
+  }
 
   if (A_PRICE.test(a)) {
     problems.push({
@@ -99,7 +227,12 @@ export function usableFaqs(faqs: readonly WorkspaceFaq[]): {
   for (const f of faqs) {
     const problems = checkFaq(f);
     if (problems.length) rejected.push({ faq: f, problems });
-    else usable.push({ question: f.question.trim(), answer: f.answer.trim() });
+    // `shared` is carried through rather than dropped: checkFaq reads it, so a
+    // usable row that loses it would pass a re-check it should have failed.
+    else usable.push({
+      question: f.question.trim(), answer: f.answer.trim(),
+      shared: f.shared, sortOrder: f.sortOrder,
+    });
   }
   return { usable, rejected };
 }

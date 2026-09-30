@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeAudience, clauseFor, timingOf, campaignWarnings } from "@/lib/messaging/campaign-view";
+import { describeAudience, clauseFor, timingOf, campaignWarnings, campaignRail, lastActiveDay } from "@/lib/messaging/campaign-view";
 import type { Rule } from "@/lib/messaging/rules";
 import type { CampaignStep } from "@/lib/messaging/campaign-schedule";
 
@@ -127,5 +127,149 @@ describe("what is wrong with a campaign, before anybody turns it on", () => {
 
   it("finds nothing wrong with a healthy campaign", () => {
     expect(campaignWarnings([step({ ordinal: 1 })], { workspaceCount: 12 })).toEqual([]);
+  });
+});
+
+/**
+ * ── THE OPT-OUT WARNING, AFTER TWO AUDITS DISAGREED WITH IT ─────────────
+ *
+ * Two things were wrong with this warning and both were found by reviewing a
+ * feature that was then abandoned, which is the main reason to keep them:
+ *
+ *   1. This panel had its OWN opt-out regex, narrower than the one the editor
+ *      checklist and the gate's append use. "STOP to unsubscribe" passed one
+ *      screen and was flagged by the other, simultaneously.
+ *   2. It said the gate "adds it automatically". The append is conditional on
+ *      hasEverSent(to) — has PPP ever texted this handset, in ANY workspace —
+ *      so a returning lead gets no appended disclosure. The sentence talked
+ *      somebody out of fixing a compliance line on the opener.
+ */
+describe("the opt-out warning agrees with every other screen", () => {
+  const step = (body: string) => ({
+    ordinal: 1, scheduleMode: "at_launch" as const, delayMinutes: null,
+    dayOffset: null, timeOfDay: null, channel: "sms" as const, body, subject: null,
+  });
+  const msgs = (body: string) =>
+    campaignWarnings([step(body)], { workspaceCount: 1 }).map((w) => w.message);
+
+  it.each([
+    "Hi, it's Emily at Precision Painting Plus. Reply STOP to opt out.",
+    // The one the two screens used to disagree about.
+    "Hi, it's Emily at Precision Painting Plus. Text HELP for help, STOP to unsubscribe.",
+    'Hi, it\'s Emily at Precision Painting Plus. Reply "STOP" to opt out.',
+  ])("accepts %j, the same as the editor checklist does", (body) => {
+    expect(msgs(body).some((m) => /opt out/i.test(m))).toBe(false);
+  });
+
+  it("still flags an opener that says nothing about stopping", () => {
+    expect(msgs("Hi, it's Emily at Precision Painting Plus.").some((m) => /opt out/i.test(m)))
+      .toBe(true);
+  });
+
+  it("does not claim the gate always appends it", () => {
+    // It only appends for a number PPP has never texted. Saying otherwise on
+    // a compliance warning is worse than saying nothing.
+    const warning = msgs("Hi, it's Emily at Precision Painting Plus.").find((m) => /opt out/i.test(m));
+    expect(warning).not.toMatch(/adds it automatically/i);
+    expect(warning).toMatch(/never texted before/i);
+  });
+});
+
+/**
+ * ── THE RAIL ────────────────────────────────────────────────────────────
+ *
+ * Hatch's campaign designer draws thirty days and shows which carry a text
+ * and which carry an email. The parity review called it the one genuinely
+ * good piece of their UI, and the reason is that a list of steps says what
+ * each one does while a rail says the SHAPE — everything in the first three
+ * days and then nothing, which is the thing worth arguing about and the thing
+ * a list hides.
+ */
+describe("the campaign rail", () => {
+  const ET = "America/New_York";
+  /** A Monday, 9 AM Eastern. */
+  const MON = new Date("2026-09-28T13:00:00Z");
+
+  const step = (o: Partial<CampaignStep> & { ordinal: number }): CampaignStep => ({
+    scheduleMode: "at_launch", delayMinutes: null, dayOffset: null, timeOfDay: null,
+    channel: "sms", body: "Hi.", subject: null, ...o,
+  });
+
+  it("puts the opener on day 0", () => {
+    const rail = campaignRail([step({ ordinal: 1 })], { timeZone: ET, enrolledAt: MON });
+    expect(rail[0].sms).toBe(1);
+    expect(rail[0].ordinals).toEqual([1]);
+  });
+
+  it("separates texts from emails on the same day", () => {
+    const rail = campaignRail([
+      step({ ordinal: 1 }),
+      step({ ordinal: 2, scheduleMode: "delay_after_last", delayMinutes: 30, channel: "email", subject: "Hi" }),
+    ], { timeZone: ET, enrolledAt: MON });
+    expect(rail[0]).toMatchObject({ sms: 1, email: 1 });
+  });
+
+  /**
+   * THE CASE THAT CATCHES A RE-DERIVATION.
+   *
+   * "15 minutes after the last message" has no day of its own — it inherits
+   * whichever day the previous step landed on. Anything that read `dayOffset`
+   * and drew that would put this step on day 0 regardless of where step 1
+   * actually went, which is exactly why the rail calls scheduleSteps instead.
+   */
+  it("gives a delay_after_last step the day its predecessor landed on", () => {
+    const rail = campaignRail([
+      step({ ordinal: 1, scheduleMode: "absolute_on_day", dayOffset: 3, timeOfDay: "10:00" }),
+      step({ ordinal: 2, scheduleMode: "delay_after_last", delayMinutes: 30 }),
+    ], { timeZone: ET, enrolledAt: MON });
+    expect(rail[0].sms, "nothing on day 0").toBe(0);
+    expect(rail[3].sms, "both land on day 3").toBe(2);
+  });
+
+  it("places an absolute_on_day step on the day it names", () => {
+    const rail = campaignRail(
+      [step({ ordinal: 1, scheduleMode: "absolute_on_day", dayOffset: 5, timeOfDay: "10:00" })],
+      { timeZone: ET, enrolledAt: MON }
+    );
+    expect(rail[5].sms).toBe(1);
+  });
+
+  /**
+   * A month containing a daylight-saving change has a 23-hour day in it, so
+   * `(b - a) / 86400000` rounds to the wrong side and puts a step one day out.
+   * Counting calendar days in the zone is immune.
+   */
+  it("counts calendar days across a daylight-saving change", () => {
+    // US DST ends 2026-11-01. Enrol the Friday before, fire on day 5.
+    const beforeDst = new Date("2026-10-30T13:00:00Z");
+    const rail = campaignRail(
+      [step({ ordinal: 1, scheduleMode: "absolute_on_day", dayOffset: 5, timeOfDay: "10:00" })],
+      { timeZone: ET, enrolledAt: beforeDst }
+    );
+    expect(rail[5].sms, "day 5, not day 4 or 6").toBe(1);
+  });
+
+  it("draws thirty days by default and starts them all empty", () => {
+    const rail = campaignRail([], { timeZone: ET, enrolledAt: MON });
+    expect(rail).toHaveLength(30);
+    expect(rail.every((d) => d.sms === 0 && d.email === 0)).toBe(true);
+  });
+
+  it("drops a step that lands past the end rather than clamping it", () => {
+    // Clamping would draw something on day 29 that happens on day 40.
+    const rail = campaignRail(
+      [step({ ordinal: 1, scheduleMode: "absolute_on_day", dayOffset: 40, timeOfDay: "10:00" })],
+      { timeZone: ET, enrolledAt: MON }
+    );
+    expect(rail.every((d) => d.sms === 0 && d.email === 0)).toBe(true);
+  });
+
+  it("reports the last day carrying anything", () => {
+    const rail = campaignRail([
+      step({ ordinal: 1 }),
+      step({ ordinal: 2, scheduleMode: "absolute_on_day", dayOffset: 4, timeOfDay: "10:00" }),
+    ], { timeZone: ET, enrolledAt: MON });
+    expect(lastActiveDay(rail)).toBe(4);
+    expect(lastActiveDay(campaignRail([], { timeZone: ET, enrolledAt: MON }))).toBe(0);
   });
 });

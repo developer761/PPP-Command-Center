@@ -44,7 +44,7 @@
  * Pure.
  */
 
-export type CallSignalKind = "pause_calling" | "resume_calling";
+export type CallSignalKind = "pause_calling" | "resume_calling" | "remove_from_cadence";
 
 /**
  * What crosses. The spec names the three fields and no more.
@@ -58,6 +58,39 @@ export type CallSignal = {
   /** Why, in words, for whoever reads the queue. Never a CRM disposition. */
   note: string;
 };
+
+/**
+ * A25 — THE CUSTOMER NAMED A CHANNEL AND WANTS OFF THE PHONE FOR GOOD.
+ *
+ * Kate's spec: "the bot continues the conversation in that channel and sends
+ * a notification to the team to remove them from the Salesforce call
+ * cadence", and, settled 24 September, "this stays a notification and an
+ * agent removes them in Salesforce — build the signal, not the cadence edit."
+ *
+ * PERMANENT, and not to be confused with the pause below. The spec says so
+ * outright because the two have already been read as one: "A pause is
+ * temporary; A25 is permanent… This fires on any reply and lifts by itself.
+ * Do not implement one as the other."
+ *
+ * The note says what they asked for, never what it means for the lead. They
+ * have said how they want to be contacted, not that they are uninterested,
+ * and a notification reading "this lead is done" is the failure to avoid.
+ */
+export function removeFromCadence(input: {
+  conversationId: string;
+  leadId: string | null;
+  preference: "text_only" | "email_only";
+}): CallSignal {
+  const channel = input.preference === "email_only" ? "email" : "text";
+  return {
+    kind: "remove_from_cadence",
+    conversationId: input.conversationId,
+    leadId: input.leadId,
+    note: `The customer asked to be contacted by ${channel} rather than by phone. `
+      + `They are still in conversation — this is how they want to be reached, not a `
+      + `change of interest. Someone needs to take them off the call cadence in Salesforce.`,
+  };
+}
 
 /**
  * Should a PAUSE go out for this reply?

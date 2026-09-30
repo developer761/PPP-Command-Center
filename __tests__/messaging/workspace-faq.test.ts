@@ -188,3 +188,135 @@ describe("the model is told what it does not know, FAQs or not", () => {
       .toMatch(/find out rather than guessing/i);
   });
 });
+
+/**
+ * ── THE ONE HAZARD THE SHARED TIER OPENS ────────────────────────────────
+ *
+ * The original migration refused to let anything inherit, in these words:
+ * "'Where are you located?' is 'the greater Los Angeles and Orange County
+ * area' on CA LA Leads and something else entirely in Nassau... A single list
+ * would make the bot confidently wrong about geography."
+ *
+ * That is still true. The shared tier exists because MOST answers are not
+ * like that — insurance, EPA, warranty and payment terms are company policy —
+ * and isLocationBound is the line between the two.
+ *
+ * The check is over-eager on purpose. A question wrongly refused from the
+ * shared tier is written per workspace, which is what happens today, so the
+ * false positive costs nothing new. A geographic answer wrongly shared is the
+ * bot stating the wrong service area as fact in fourteen regions, and nothing
+ * downstream can catch it: the validator sees a question answered well.
+ */
+describe("what may be shared across workspaces", () => {
+  const shared = (question: string) =>
+    checkFaq({ question, answer: "Sure thing.", shared: true });
+  const local = (question: string) =>
+    checkFaq({ question, answer: "Sure thing.", shared: false });
+
+  const GEOGRAPHIC = [
+    "Where are you located?",
+    "Are you local?",
+    "What zips do you cover?",
+    "What areas do you serve?",
+    "Do you serve Nassau County?",
+    "Where is your office?",
+    "Do you travel to Brooklyn?",
+    "How far do you go?",
+    "Is there anyone nearby?",
+  ];
+
+  it.each(GEOGRAPHIC)("refuses %j from the shared tier", (q) => {
+    const problems = shared(q);
+    expect(problems.some((p) => p.field === "question"), q).toBe(true);
+    expect(problems.map((p) => p.why).join(" ")).toMatch(/depends on where the workspace is/i);
+  });
+
+  it.each(GEOGRAPHIC)("still allows %j for a single workspace", (q) => {
+    expect(local(q), q).toEqual([]);
+  });
+
+  /**
+   * The false positives that would actually hurt. These are company policy,
+   * identical in every region, and they are the whole reason the tier exists
+   * — blocking them would push shared content back into duplication for no
+   * safety gain. "serve" and "cover" are deliberately NOT trigger words.
+   */
+  /**
+   * THE QUESTION CHECK IS LOOSER THAN IT WAS, ON PURPOSE.
+   *
+   * These trip nothing in the question. They are safe to loosen only because
+   * the ANSWER is checked too, and a genuinely regional answer to any of them
+   * names a place. The two halves compose; neither is sufficient alone.
+   */
+  it.each([
+    ["Do you work in the city?", "Yes, all five boroughs."],
+    ["Do you offer office painting?", "Yes, we paint offices in our service area."],
+    ["Do you do exterior work?", "Yes - we cover the greater Los Angeles region."],
+    ["Do you offer free estimates?", "Yes, anywhere in Nassau County."],
+  ])("catches %j through its ANSWER when the question reads as global", (q, a) => {
+    const problems = checkFaq({ question: q, answer: a, shared: true });
+    expect(problems.some((p) => p.field === "answer"), q).toBe(true);
+  });
+
+  it("names the word that flagged it, in the message", () => {
+    // Without this a false positive reads as broken software rather than as
+    // an over-matched word somebody can see and work around.
+    const [problem] = checkFaq({
+      question: "Do you use water-based paint?", answer: "Yes, in Nassau County.", shared: true,
+    });
+    expect(problem.why).toMatch(/"County"/i);
+    expect(problem.why).toMatch(/This workspace only/i);
+  });
+
+  it.each([
+    "Are you insured?",
+    "Do you follow EPA lead-safe practices?",
+    "What are your payment terms?",
+    "What does the warranty cover?",
+    "Do you have a minimum job size?",
+    "Do you serve commercial properties?",
+    "Do you cover wallpaper removal?",
+    "Can you provide references?",
+    // Every one of these was REFUSED before the pattern was tightened, and
+    // every one is a single sentence that reads the same in all 32 regions.
+    // The old comment claimed a false positive "costs nothing new"; it costs
+    // the whole saving, thirty-two times, which is the entire feature.
+    "What is the minimum area you will do?",
+    "Do you offer office painting?",
+    "Can you paint a whole town house?",
+    "How far in advance do I need to book?",
+    "How far out are you scheduling?",
+    "Do you use water-based or oil-based paint?",
+    "Do you count the trim as a separate area?",
+    "Do you paint city buildings?",
+  ])("allows %j to be shared", (q) => {
+    expect(shared(q), q).toEqual([]);
+  });
+
+  it("checks the shared rule ON TOP of the rules every answer has", () => {
+    // Not instead of. A shared row is still bot-facing.
+    const problems = checkFaq({
+      question: "Where are you located?", answer: "About $2,500.", shared: true,
+    });
+    expect(problems.map((p) => p.field).sort()).toEqual(["answer", "question"]);
+  });
+
+  it("drops a shared location-bound row at read time too", () => {
+    // usableFaqs is what stands between the table and the prompt. SQL is a
+    // door the editor does not control.
+    const { usable, rejected } = usableFaqs([
+      { question: "Where are you located?", answer: "Pasadena.", shared: true },
+      { question: "Are you insured?", answer: "Yes, fully licensed and insured.", shared: true },
+    ]);
+    expect(usable.map((f) => f.question)).toEqual(["Are you insured?"]);
+    expect(rejected).toHaveLength(1);
+  });
+
+  it("keeps `shared` on a row that survives, so a re-check gets the same answer", () => {
+    const { usable } = usableFaqs([
+      { question: "Are you insured?", answer: "Yes, fully licensed and insured.", shared: true },
+    ]);
+    expect(usable[0].shared).toBe(true);
+    expect(checkFaq(usable[0])).toEqual([]);
+  });
+});

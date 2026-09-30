@@ -11,7 +11,7 @@ import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import { runAgentTurn, agentFailureIsTransient } from "./agent-run";
-import { officeIsOpen } from "./sending-window";
+import { officeIsOpen, recipientDayIsOver } from "./sending-window";
 import { loadWorkspaceFaqs } from "./workspace-faq-db";
 import { faqsForPrompt } from "./workspace-faq";
 import { reportWarn } from "@/lib/observability";
@@ -471,6 +471,34 @@ export function schedulerDeps(): SchedulerDeps {
         track,
         stage,
         lastIntent: priorIntents[priorIntents.length - 1] ?? undefined,
+        /**
+         * WHETHER OUR LAST MESSAGE ASKED FOR SOMETHING — AND A REACTION
+         * MEANS NOTHING WITHOUT IT.
+         *
+         * This was passed by the sandbox and NOT by production, so
+         * agent-run defaulted it to false and every reaction in a real
+         * conversation took the "informational" branch: "Nothing needs
+         * saying: end as Msg Liked/Loved." A thumbs-up on "what's the
+         * address?" ended the conversation.
+         *
+         * The spec names this failure and what it cost: Hatch delivered a
+         * reaction as text, the bot answered its own question, "one
+         * conversation ended that way and lost a full exterior repaint".
+         * We built the guard against reading a reaction as text and then
+         * did not give it the one input that makes it work.
+         *
+         * Same derivation the sandbox uses — an intent starting `ask_` is a
+         * request for information — so the two cannot answer differently.
+         */
+        lastAskedForInfo: /^ask_/.test(priorIntents[priorIntents.length - 1] ?? ""),
+        /**
+         * A44 — which of the three follow-ups this is, so the model knows it
+         * is writing one. Without it a follow-up reads as a fresh "just
+         * checking in", which is the Hatch behaviour the capability replaces.
+         */
+        followUpStep: a.action === "stall_followup"
+          ? (a.stall_step ?? undefined)
+          : undefined,
         // A3 is satisfied by events, so the check needs the whole list
         // rather than just the last one.
         priorIntents,
@@ -511,7 +539,21 @@ export function schedulerDeps(): SchedulerDeps {
          * The customer's clock still decides whether we may SEND — the gate is
          * unchanged and still refuses a 6:30 AM text.
          */
-        outOfHours: !officeIsOpen({ now: new Date(), officeZone: ws.time_zone }),
+        /**
+         * Shut to THIS customer: the office is closed, or their own day has
+         * ended. See recipientDayIsOver for why neither half is enough alone
+         * — the previous version failed Kate's own acceptance test ("7:30 PM
+         * Eastern: a CA lead gets in-hours behaviour, an ET lead gets the
+         * prefix") because it asked only whether the office was open, which
+         * at 7:30 PM it is. The spec is explicit that a single global "are we
+         * open" flag "gets two of the six states wrong every evening".
+         */
+        outOfHours:
+          !officeIsOpen({ now: new Date(), officeZone: ws.time_zone })
+          || recipientDayIsOver({
+            now: new Date(),
+            customerZone: customerZone({ phone: conv.customer_phone }).timeZone,
+          }),
         known: {
           name: conv.customer_name, phone: conv.customer_phone,
           // The RESOLVED email, not just the column — the one they typed this

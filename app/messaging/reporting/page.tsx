@@ -287,13 +287,32 @@ export default async function ReportingConsole({
                   {([["Active", String(h.active)], ["Done", String(h.completed)],
                      ["Success", `${h.successPct}%`], ["Drop", `${h.dropOffPct}%`],
                      ["Takeover", `${h.takeOverPct}%`],
-                     ["1st reply", humanSeconds(h.medianFirstReplySeconds)]] as const).map(([l, v]) => (
+                     ["1st reply", humanSeconds(h.medianFirstReplySeconds)],
+                     /*
+                       The two Hatch names and does not populate. Both are
+                       shown as "–" rather than 0 when there is nothing to
+                       divide by: "nobody converts" and "nobody was asked" are
+                       the same figure and different problems, which is the
+                       distinction this whole page exists for.
+                     */
+                     ["Contained", h.containmentOf === 0 ? "–" : `${h.containmentPct}%`],
+                     ["Booked", h.bookableToBookedPct === null ? "–" : `${h.bookableToBookedPct}%`]
+                    ] as const).map(([l, v]) => (
                     <div key={l}>
                       <div className="text-[14px] font-bold text-ppp-charcoal tabular-nums leading-none">{v}</div>
                       <div className="mt-1 text-[9.5px] uppercase tracking-wide text-ppp-charcoal-400 leading-tight">{l}</div>
                     </div>
                   ))}
                 </div>
+                {(h.containmentOf > 0 || h.bookableOf > 0) && (
+                  <p className="mt-2 text-[10.5px] text-ppp-charcoal-400 leading-snug">
+                    Contained = finished with no person needed
+                    {h.containmentOf > 0 && `, of ${h.containmentOf} finished`}
+                    {h.bookableOf > 0
+                      ? `. Booked = of the ${h.bookableOf} that got as far as availability.`
+                      : ". Booked needs a conversation to reach availability first."}
+                  </p>
+                )}
                 {h.worstStage && (
                   <p className="mt-2.5 pt-2.5 border-t border-ppp-charcoal-100 text-[12px] text-ppp-charcoal-600 leading-relaxed">
                     {h.measured >= MIN_MEASURED ? (

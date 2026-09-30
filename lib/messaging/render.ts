@@ -372,6 +372,13 @@ export const SAYS: Record<Intent, string[]> = {
    * conversation to a person and ended it, which threw away a live lead for
    * asking a fair question — and neither line answered the question.
    */
+  /**
+   * The IN-HOURS wording. Out of hours applyDisclosure replaces the whole
+   * message with the line that offers nobody — see disclosureMove, which is
+   * applied after the renderer. Left as the in-hours default here because
+   * this table has no clock and should not grow one: two places deciding the
+   * hour is how they come to disagree.
+   */
   bot_suspected: [DISCLOSURE_IN_HOURS],
 
   // — Silent —

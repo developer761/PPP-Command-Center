@@ -78,6 +78,12 @@ const JUSTIFIED: Record<string, string> = {
   callback: "agent-run falls back to the constraint stated in this message, which is correct with no conversation row",
 };
 
+/**
+ * Differences the other way — passed by the sandbox, absent in production —
+ * that are CORRECT. Same bar: state the claim, not the intention.
+ */
+const SANDBOX_ONLY: Record<string, string> = {};
+
 describe("the sandbox is given the same context as production", () => {
   it("finds the call sites it claims to check", () => {
     expect(optionKeys(PRODUCTION).length, PRODUCTION).toBeGreaterThan(8);
@@ -108,6 +114,33 @@ describe("the sandbox is given the same context as production", () => {
     const sim = optionKeys(SANDBOX);
     expect(sim).toContain("stage");
     expect(sim).toContain("priorIntents");
+  });
+
+  /**
+   * ── AND THE OTHER DIRECTION, WHICH IS HOW A REAL BUG GOT THROUGH ──────
+   *
+   * This file checked only one way: fields production passes that the
+   * sandbox does not. `lastAskedForInfo` was passed by the SANDBOX and not by
+   * production, so it sailed past — and it is the single input that decides
+   * what a reaction means. Without it agent-run defaults to false, every
+   * reaction takes the "informational" branch, and a thumbs-up on "what's the
+   * address?" ends the conversation silently.
+   *
+   * The sandbox was RIGHT and production was wrong, which is the case this
+   * file never considered. Kate's spec names what that failure costs: one
+   * conversation ended that way and lost a full exterior repaint.
+   */
+  it("passes every field the sandbox passes", () => {
+    const prod = optionKeys(PRODUCTION);
+    const sim = optionKeys(SANDBOX);
+    const missing = sim.filter((k) => !prod.includes(k) && !(k in SANDBOX_ONLY));
+    expect(
+      missing,
+      `lib/messaging/scheduler-db.ts does not pass ${missing.join(", ")} to runAgentTurn, ` +
+        "which the sandbox does. The sandbox is the more careful caller here, so a field it " +
+        "passes and production does not is a rule that works when graded and not when it " +
+        "matters. Pass the field, or add it to SANDBOX_ONLY with the reason."
+    ).toEqual([]);
   });
 
   it("detects a missing field — proving the check can fail", () => {

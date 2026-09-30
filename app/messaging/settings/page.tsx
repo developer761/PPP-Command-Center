@@ -5,6 +5,9 @@ import { loadOptOutRates } from "@/lib/messaging/db";
 import { rank, formatRate } from "@/lib/messaging/optout-rate";
 import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-hours-form";
 import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
+import SnippetsEditor from "@/components/messaging/snippets-editor";
+import FaqImportForm from "@/components/messaging/faq-import-form";
+import SettingsCopyForm from "@/components/messaging/settings-copy-form";
 
 export const dynamic = "force-dynamic";
 
@@ -144,6 +147,56 @@ export default async function MessagingSettings({
           {/* Keyed, so switching workspace gives a fresh list rather than one
               that has to reset itself. */}
           <WorkspaceFaqs key={r.id} workspaceId={r.id} />
+        </section>
+      ))}
+
+      {/*
+        Inside the per-workspace block, because it copies FROM the open
+        workspace — the source has to be a workspace somebody has already
+        configured and is looking at, not an abstract default nobody checks.
+      */}
+      {rows.filter((r) => r.id === open).map((r) => (
+        <section key={`copy-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+            <h2 className="font-semibold text-ppp-charcoal text-[14px]">Copy these settings to other workspaces</h2>
+            <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+              Hours, weekend policy, reply delays and the out-of-hours message — set once
+              here, put onto the rest, instead of editing each one by hand.
+            </p>
+          </div>
+          <div className="p-4">
+            <SettingsCopyForm key={r.id} sourceId={r.id} />
+          </div>
+        </section>
+      ))}
+
+      {/*
+        NOT inside the per-workspace block, deliberately. An import can carry
+        rows for every workspace at once, and putting it under one workspace's
+        heading would say it was scoped to that one.
+      */}
+      <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">Load answers from a spreadsheet</h2>
+          <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+            For every workspace at once, rather than one answer at a time.
+          </p>
+        </div>
+        <div className="p-4">
+          <FaqImportForm />
+        </div>
+      </section>
+
+      {rows.filter((r) => r.id === open).map((r) => (
+        <section key={`snip-${r.id}`} className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+            <h2 className="font-semibold text-ppp-charcoal text-[14px]">Saved replies</h2>
+            <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+              Ready-made replies for somebody answering a thread by hand. Dropped into the
+              box and edited before sending, not sent on their own.
+            </p>
+          </div>
+          <SnippetsEditor key={r.id} workspaceId={r.id} />
         </section>
       ))}
 

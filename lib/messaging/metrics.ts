@@ -80,6 +80,65 @@ export function qualificationFunnel(rows: ConversationRow[]): FunnelStep[] {
   });
 }
 
+/* ──────────────────── containment & bookable-to-booked ───────────────── */
+
+/**
+ * THE TWO METRICS HATCH NAMES AND DOES NOT POPULATE.
+ *
+ * Their reporting carries a Containment column and a Bookable-to-Booked
+ * column, and on 2026-09-26 both showed "–" for every row. So there is no
+ * reference implementation to match: the definitions below are OURS, which
+ * means they have to be written down where somebody can argue with them
+ * rather than buried in a SQL string.
+ *
+ * Both are logged for Kate (QUESTIONS_FOR_KATE) with these as the shipped
+ * default, because a metric nobody agrees on is worse than no metric — it
+ * gets quoted in a meeting and then defended.
+ */
+
+/**
+ * Outcomes that mean a PERSON had to deal with it, even if nobody formally
+ * took the conversation over.
+ *
+ * `takeover_reason` alone is not enough. A conversation can end `transferred`
+ * or `bailout` without a takeover row ever being written — the bot decided it
+ * could not finish and handed on, which is the whole thing containment is
+ * supposed to measure. Counting those as contained would report the bot
+ * handling work it explicitly refused.
+ *
+ * `phone_pricing` is here and it is the arguable one: the customer asked for
+ * pricing, which A1 says only the estimator gives, so the conversation ends
+ * and somebody rings them. The bot behaved correctly and a person still did
+ * the work. Kate may want it counted as contained — it is a clean exit, not a
+ * failure — which is exactly why it is named here rather than assumed.
+ */
+export const HANDED_TO_A_PERSON = new Set(["transferred", "bailout", "phone_pricing"]);
+
+/** Finished, with no person needed at any point. */
+export function wasContained(r: ConversationRow): boolean {
+  if (r.state !== "ended") return false;
+  if (r.takeover_reason !== null) return false;
+  return !HANDED_TO_A_PERSON.has(r.outcome ?? "");
+}
+
+/**
+ * Got far enough that an appointment was actually on the table.
+ *
+ * Stage 4 is availability — the last of the four legs A3 requires — so a
+ * conversation that reached it had everything needed to book. Measuring
+ * conversion against ALL conversations instead would fold in every lead that
+ * never answered the first question, and report the bot failing at booking
+ * when it was failing at the address.
+ */
+export function wasBookable(r: ConversationRow): boolean {
+  return r.qualification_stage >= 4;
+}
+
+/** Ended in the one outcome that means an estimate is happening. */
+export function wasBooked(r: ConversationRow): boolean {
+  return r.outcome === "success";
+}
+
 /* ───────────────────────── workspace health ──────────────────────── */
 
 export type WorkspaceHealth = {
@@ -95,6 +154,25 @@ export type WorkspaceHealth = {
   medianFirstReplySeconds: number | null;
   /** The stage most conversations died at. Names the question to rewrite. */
   worstStage: { label: string; droppedPct: number } | null;
+  /**
+   * Share of FINISHED conversations that needed no person. Hatch's single
+   * most important bot metric, and the one they do not populate.
+   *
+   * Denominator is ended conversations, not all of them: a conversation still
+   * running has not been contained or not-contained yet, and counting it
+   * either way moves the number every time somebody refreshes.
+   */
+  containmentPct: number;
+  /** How many ended conversations that percentage is computed from. */
+  containmentOf: number;
+  /**
+   * Of the conversations that got far enough to book, the share that did.
+   * NULL when none got that far — 0% would read as "nobody converts" when it
+   * means "nobody was asked".
+   */
+  bookableToBookedPct: number | null;
+  /** How many reached the bookable stage. */
+  bookableOf: number;
   /**
    * How many conversations this row is computed from.
    *
@@ -119,6 +197,7 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
   return [...by.entries()]
     .map(([workspace, rs]) => {
       const completed = rs.filter((r) => r.state === "ended");
+      const bookable = rs.filter(wasBookable);
       const funnel = qualificationFunnel(rs);
       const worst = funnel
         .filter((f) => f.droppedHerePct > 0)
@@ -135,6 +214,15 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
           rs.map((r) => secondsBetween(r.created_at, r.first_outbound_at)).filter((n): n is number => n !== null)
         ),
         worstStage: worst ? { label: worst.label, droppedPct: worst.droppedHerePct } : null,
+        containmentPct: pct(completed.filter(wasContained).length, completed.length),
+        containmentOf: completed.length,
+        // NULL, not 0: "nobody converts" and "nobody was asked" are the same
+        // figure and different problems, which is the distinction this whole
+        // module was built around.
+        bookableToBookedPct: bookable.length === 0
+          ? null
+          : pct(bookable.filter(wasBooked).length, bookable.length),
+        bookableOf: bookable.length,
         measured: rs.length,
       };
     })

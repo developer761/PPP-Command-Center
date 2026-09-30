@@ -22,7 +22,8 @@ import type { InboundDecision } from "./inbound";
 import { reportWarn } from "@/lib/observability";
 import { replyDueAt, TURN_START_SECONDS } from "./reply-delay";
 import { customerZone } from "./customer-clock";
-import { pauseCallingFor, setParkReminder } from "./stalled-db";
+import { statedChannelPreference } from "./channel-preference";
+import { removeFromCadenceFor, pauseCallingFor, setParkReminder } from "./stalled-db";
 import { parkKind } from "./parking";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
@@ -266,11 +267,25 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         .eq("agent_intent", AFTER_HOURS_INTENT)
         .gte("created_at", dayAgo);
 
+      /**
+       * Only a zone we actually RESOLVED, never the fallback.
+       *
+       * customerZone() always returns a timeZone — it falls back to Los
+       * Angeles when neither the zip nor the area code says anything. That is
+       * right for the gate, where a fallback errs toward a later send. It is
+       * wrong here, because this hour goes into a SENTENCE: an Eastern
+       * customer told "9 AM" resolved on a Pacific guess has been given a time
+       * three hours out, stated as fact, with nothing marking it as a guess.
+       * Passing "" makes next-open.ts label the hour ET instead, which the
+       * reader can convert.
+       */
+      const zone = customerZone({ phone: decision.from });
       const autoReply = afterHoursReply({
         workspace: ws,
         now: receivedAt,
         alreadySentToday: count ?? 0,
         keyword: decision.keyword,
+        customerZone: zone.source === "fallback" ? "" : zone.timeZone,
       });
 
       if (autoReply.send) {
@@ -377,6 +392,79 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
           conversationId,
           leadId: c?.[0]?.sf_lead_id ?? null,
         });
+
+        /**
+         * A25 — THEY NAMED A CHANNEL AND WANT OFF THE PHONE.
+         *
+         * `statedChannelPreference` existed, was tested, and had ZERO
+         * production callers — so a customer saying "stop calling me, just
+         * text" produced no notification and stayed in the call cadence
+         * indefinitely. The detector was built and never wired, which is the
+         * shape this codebase keeps producing.
+         *
+         * Detected here rather than in the agent turn because it is something
+         * the customer SAID, same as a park: the notification is owed whether
+         * or not the bot is the one who answers next, and a turn that
+         * escalates or is held by a human would otherwise swallow it.
+         *
+         * The phone branch is NOT this — that runs through the renderer,
+         * because the bot cannot make a call and has to settle a callback
+         * time before handing off.
+         */
+        const preference = statedChannelPreference(decision.body);
+        if (preference === "text_only" || preference === "email_only") {
+          try {
+            await removeFromCadenceFor(sb, {
+              conversationId,
+              leadId: c?.[0]?.sf_lead_id ?? null,
+              preference,
+            });
+          } catch (e) {
+            reportWarn({
+              key: "sms_cadence_removal_not_recorded",
+              message: "Could not record the A25 remove-from-cadence notification",
+              platform: "ppp_cc",
+              context: { conversationId, error: e instanceof Error ? e.message : String(e) },
+            });
+          }
+        }
+
+        /**
+         * A44 — THEY ANSWERED, SO STOP CHASING THEM.
+         *
+         * The cadence exists for a customer who has gone quiet. Once they
+         * reply they are not quiet, and the remaining follow-ups are exactly
+         * what A44's own guidance calls out: "a follow-up sent after the
+         * customer has answered is not a follow-up, it is a redundant ask."
+         *
+         * Nothing cancelled these. `latestInboundIsAnswered` is deliberately
+         * bypassed for `stall_followup` (scheduler-db) because a follow-up
+         * speaks after ourselves by definition — correct for the quiet case,
+         * and it also meant a customer who answered follow-up 1 still
+         * received 2 and 3, a day and two days later.
+         *
+         * Only PENDING rows: one already claimed is mid-flight, and a
+         * cancelled row is left alone so the unique index still sees the
+         * cadence as spent rather than re-queueing it.
+         */
+        const { error: cancelErr } = await sb.from("sms_scheduled_actions")
+          .update({
+            state: "cancelled",
+            cancelled_reason: "the customer replied, so the follow-up cadence stops",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("conversation_id", conversationId)
+          .in("action", ["stall_followup", "park_reopen"])
+          .eq("state", "pending");
+        if (cancelErr) {
+          // Loud: an uncancelled cadence keeps texting somebody who answered.
+          reportWarn({
+            key: "sms_cadence_not_cancelled",
+            message: "Could not stop the follow-up cadence after a reply",
+            platform: "ppp_cc",
+            context: { conversationId, error: cancelErr.message },
+          });
+        }
 
         /**
          * A40 — IF THEY PARKED AND NAMED A TIME, SET THE REMINDER.

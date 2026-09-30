@@ -431,7 +431,7 @@ export async function loadCampaign(campaignId?: string) {
     sb.from("sms_campaign_versions").select("id, version, published_at, notes")
       .eq("campaign_id", campaign.id).order("version", { ascending: false }),
     sb.from("sms_campaign_workspaces")
-      .select("workspace_id, sms_sub_accounts(id, name, phone_e164, is_active, quiet_hours_start, quiet_hours_end)")
+      .select("workspace_id, sms_sub_accounts(id, name, phone_e164, is_active, quiet_hours_start, quiet_hours_end, time_zone)")
       .eq("campaign_id", campaign.id),
     sb.from("sms_workflows")
       .select("id, name, workspace_id, is_active, entry_rules_id, exit_rules_id")
@@ -462,7 +462,7 @@ export async function loadCampaign(campaignId?: string) {
     workspaces: (links ?? [])
       .map((l) => l.sms_sub_accounts as unknown as {
         id: string; name: string; phone_e164: string | null; is_active: boolean;
-        quiet_hours_start: number; quiet_hours_end: number;
+        quiet_hours_start: number; quiet_hours_end: number; time_zone: string;
       } | null)
       .filter((w): w is NonNullable<typeof w> => !!w),
     workflows: workflows ?? [],

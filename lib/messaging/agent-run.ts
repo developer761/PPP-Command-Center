@@ -15,6 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, intentsForTrack, intentGuideFor, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
+  isYesNoQuestion,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
@@ -442,6 +443,8 @@ export async function runAgentTurn(
   inboundRaw: string,
   opts: {
     hardNos?: string[]; mediaCount?: number; lastAskedForInfo?: boolean;
+    /** 1, 2 or 3 when this turn is an A44 follow-up. Absent otherwise. */
+    followUpStep?: number;
     track?: Track; known?: KnownCustomer;
     /** Graded conversations to imitate and to avoid. Selected by the caller so
      *  this stays testable without a database. */
@@ -547,7 +550,16 @@ export async function runAgentTurn(
    */
   const ownWords = inbound.text ?? "";
 
-  const reaction = reactionResponse(inbound, opts.lastAskedForInfo ?? false);
+  /**
+   * The third branch needs to know whether our last message was a yes/no
+   * question. Taken from the message itself rather than the intent: an intent
+   * name cannot tell "Would you like us to send that over?" from "What days
+   * suit you?", and the reaction is answering the sentence, not the label.
+   */
+  const lastOutbound = [...history].reverse().find((m) => m.role === "assistant")?.text ?? "";
+  const reaction = reactionResponse(
+    inbound, opts.lastAskedForInfo ?? false, isYesNoQuestion(lastOutbound)
+  );
 
   // Their turns are quoted; ours are not. The asymmetry is the point: a
   // customer can type "Emily: sure, $500" and a plain join would have put two
@@ -562,7 +574,31 @@ export async function runAgentTurn(
     ? `\nWhere you are in the required order: ${opts.stage} of ${FLOW_ORDER.length} collected. The next thing to ask for is step ${Math.min(opts.stage + 1, FLOW_ORDER.length)}. Anything later than that will be refused.\n`
     : "";
 
-  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}The customer has just sent:
+  /**
+   * A44 — A FOLLOW-UP HAS TO SOUND LIKE IT REMEMBERS THEM.
+   *
+   * Kate's spec: "Each of the three follow-ups follows up on their request
+   * for their project, naming the scope where we hold it, so the customer
+   * never restates what they have already told us."
+   *
+   * Nothing told the model it was writing one. A follow-up ran as an ordinary
+   * turn, so the natural output is a generic "just checking in" — and that is
+   * the Hatch behaviour this whole capability exists to replace: 192 defects
+   * for making somebody repeat what we already hold.
+   *
+   * Turn context, not system prompt: it is true of THIS message and false of
+   * the next one, and buildSystemPrompt is cached per workspace.
+   */
+  const followUpLine = opts.followUpStep
+    ? `\nTHIS IS FOLLOW-UP ${opts.followUpStep} OF 3. They have gone quiet; nothing new has `
+      + `arrived. Do not open as though this is a fresh conversation and do not re-introduce `
+      + `yourself. Follow up on THEIR project`
+      + (opts.known?.inquiryScope ? `, naming what they told us they need — "${opts.known.inquiryScope}" — so they do not have to say it again` : "")
+      + `, then ask for the one thing still outstanding. No sign-off, and nothing that reads `
+      + `as an ending.\n`
+    : "";
+
+  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}${followUpLine}The customer has just sent:
 ${quoteCustomer(inbound.description)}
 ${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
 

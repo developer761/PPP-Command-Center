@@ -87,6 +87,11 @@ export type DisclosureMove =
   | "prefix"
   /** They asked in hours: the approved line IS the message. */
   | "answer"
+  /**
+   * They asked OUT of hours. Still answered truthfully, but with the line
+   * that carries no offer of a person — there is nobody to connect them to.
+   */
+  | "answer_out_of_hours"
   /** Nothing to do. */
   | null;
 
@@ -111,9 +116,24 @@ export function disclosureMove(input: {
   outOfHours: boolean;
   alreadyDisclosed: boolean;
 }): DisclosureMove {
-  // Being asked outright is answered truthfully whatever the clock says. The
-  // bot never denies being a bot, in any state.
-  if (input.askedIfBot) return "answer";
+  /**
+   * Asked outright: answered truthfully whatever the clock says — the bot
+   * never denies being a bot, in any state.
+   *
+   * WHICH truthful answer depends on the hour, and it used to not. The
+   * in-hours string ends "Would you prefer to speak with a member of our
+   * team?", so a customer asking "are you a bot?" at 11 PM was offered a
+   * person who does not exist. The spec forbids exactly that twice: "never
+   * offers to connect someone to a person outside that customer's own
+   * callable window", and out of hours "no offer of a person… a promise with
+   * no owner is worse than none".
+   *
+   * The out-of-hours string is already the answer to this question — "I'm an
+   * AI assistant, but I can take your project details and pass them along
+   * once we open" — and carries no offer. It also counts as the disclosure,
+   * so alreadyDisclosed sees it and the prefix will not repeat later.
+   */
+  if (input.askedIfBot) return input.outOfHours ? "answer_out_of_hours" : "answer";
   if (input.outOfHours && !input.alreadyDisclosed) return "prefix";
   return null;
 }
@@ -127,6 +147,8 @@ export function disclosureMove(input: {
  */
 export function applyDisclosure(move: DisclosureMove, reply: string, es = false): string {
   if (move === "answer") return es ? DISCLOSURE_IN_HOURS_ES : DISCLOSURE_IN_HOURS;
+  // Truthful, and with no offer of a person there is nobody to honour.
+  if (move === "answer_out_of_hours") return es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
   if (move === "prefix") {
     const line = es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
     const body = reply.trim();

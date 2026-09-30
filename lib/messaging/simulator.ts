@@ -12,7 +12,7 @@
  * other guard were removed.
  */
 import { messagingDb } from "./db";
-import { officeIsOpen } from "./sending-window";
+import { officeIsOpen, recipientDayIsOver } from "./sending-window";
 import { classifyInbound } from "./compliance";
 import { helpReply } from "./help-reply";
 import { selectExamples, situationFrom } from "./retrieval";
@@ -26,7 +26,7 @@ import type { KnownCustomer } from "./known-customer";
 import { runAgentTurn, agentAvailable, type Turn } from "./agent-run";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
-import { loadWorkspaceFaqs } from "./workspace-faq-db";
+import { loadWorkspaceFaqs, loadSharedFaqs } from "./workspace-faq-db";
 import { faqsForPrompt } from "./workspace-faq";
 import { addressParts } from "./address";
 import { serviceZipCheck } from "./service-zip";
@@ -94,6 +94,8 @@ export async function runSimTurn(input: {
   /** The last thing the bot said asked the customer to PROVIDE something.
    *  Decides whether a reaction counts as an answer. */
   lastAskedForInfo?: boolean;
+  /** 1, 2 or 3 to simulate an A44 follow-up rather than a live reply. */
+  followUpStep?: number;
   /** Photos attached. No file is needed — what the bot reasons about is that
    *  photos EXIST, and normalizeInbound turns that into words. */
   mediaCount?: number;
@@ -156,12 +158,29 @@ export async function runSimTurn(input: {
      * tester could ask the exact question it answers, and the sandbox would
      * escalate — while production answers it.
      *
-     * Only when a workspace is actually selected. "All workspaces" is a
-     * sandbox-only state with no counterpart in production, and standing
-     * answers belong to one workspace; loading nothing there is correct rather
-     * than a gap.
+     * With a workspace selected, that workspace's answers — its own plus the
+     * shared ones, exactly as the live scheduler builds them.
+     *
+     * With NO workspace ("Default settings", which is the dropdown's first
+     * and default option), the SHARED tier alone. The old comment here said
+     * "standing answers belong to one workspace, so loading nothing is
+     * correct rather than a gap", and that was true until the shared tier
+     * existed. It is false now: a shared row belongs to no workspace and
+     * applies to every one, so there is no turn anywhere in production that
+     * sees zero shared answers.
+     *
+     * Left as it was, the sandbox's DEFAULT state showed a bot that escalates
+     * "Are you insured?" while production answers it — on the screen where
+     * Kate grades replies, and a reply graded "Good" there becomes an example
+     * the next model imitates. That is the sixth time this file has been
+     * patched for showing a thinner context than production, and
+     * simulator-parity.test.ts cannot catch it: it compares the option KEYS
+     * at both runAgentTurn call sites, and `workspaceFaqs` was present in
+     * both. The key was passed. The value was empty.
      */
-    input.workspaceId ? loadWorkspaceFaqs(messagingDb(), input.workspaceId) : Promise.resolve([]),
+    input.workspaceId
+      ? loadWorkspaceFaqs(messagingDb(), input.workspaceId)
+      : loadSharedFaqs(messagingDb()),
   ]);
   if (!resolved) {
     return { ok: false, error: track === "nurture"
@@ -312,7 +331,22 @@ export async function runSimTurn(input: {
      * time_zone threaded here, and that is one more round trip than this is
      * worth until one exists.
      */
-    outOfHours: !officeIsOpen({ now: new Date() }),
+    /**
+     * The SAME rule production uses, both halves of it. Production asks
+     * whether the office is shut OR the recipient's own day is over; asking
+     * only the first here would make the sandbox disagree with production
+     * every evening between 7 and 8 Eastern — on the screen where the
+     * disclosure is graded, which is the one place that must not drift.
+     *
+     * The customer's zone comes from the simulated phone, the same way
+     * production resolves it.
+     */
+    outOfHours:
+      !officeIsOpen({ now: new Date() })
+      || recipientDayIsOver({
+        now: new Date(),
+        customerZone: customerZone({ phone: customerPhone }).timeZone,
+      }),
     // THE SAME RULES THE LIVE PATH GETS. A bot that behaves differently in the
     // sandbox than in production is a bot nobody has actually tested, and this
     // file already carries that lesson twice.
@@ -320,6 +354,14 @@ export async function runSimTurn(input: {
     // Parity gap 9: the same standing answers the live path gets.
     workspaceFaqs: faqsForPrompt(faqs),
     lastAskedForInfo: input.lastAskedForInfo,
+    /**
+     * A44 — which follow-up this is, so a stall follow-up can be graded in
+     * the sandbox at all. Without it every simulated turn looks like a live
+     * reply, and the one behaviour A44 is judged on — naming the scope back
+     * rather than opening cold — could not be exercised on the screen built
+     * for exercising it.
+     */
+    followUpStep: input.followUpStep,
     mediaCount: input.mediaCount,
     track,
     // THE RESOLVED SCOPE, NOT JUST THE PANEL, which is what the live path

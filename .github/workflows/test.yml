@@ -41,3 +41,20 @@ jobs:
           COMMERCIAL_ARCHIVE_HMAC_SECRET: ci-test-secret-32-chars-1234567890abc
           COMMERCIAL_ARCHIVE_LOCAL: orders
           COMMERCIAL_ARCHIVE_DOMAIN: orders.precisionpaintingplus.net
+
+      # THE WIRING CHECK, WHICH HAS BEEN CATCHING REAL BUGS AND NOT RUNNING HERE.
+      #
+      # It asserts that each rule's value reaches the call that enforces it —
+      # not that a function exists, but that the two ends are joined. That is
+      # a class vitest structurally cannot see: every unit test passes while a
+      # value is computed, handed to one consumer, and withheld from another.
+      #
+      # It has caught, among others, the disclosure resolving against a global
+      # office flag rather than the recipient, and a sandbox given a thinner
+      # context than production. It needs no database and no secrets, so there
+      # was never a reason for it to be missing here beyond nobody adding it.
+      - run: npm run check:rules
+
+      # The lint budget, for the same reason: a number that only ever goes up
+      # is not a budget.
+      - run: npm run lint:budget
