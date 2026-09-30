@@ -306,6 +306,7 @@ export type RejectReason =
   | "details_never_collected"
   | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
   | "parked_a_field_then_quit"    // A40 (1): ended having gathered nothing
+  | "partial_address_walked_past" // A11: moved on holding half an address
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected";// closing a two-property job having collected one
@@ -1140,6 +1141,48 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * Refusing leaves ask_address available, which renders the gap question, so
    * the turn still has somewhere to go.
    */
+  /**
+   * A11 — A HALF ADDRESS CANNOT BE WALKED PAST.
+   *
+   * Seen in the sandbox on 2026-09-30, against the live build: the customer
+   * said "its 12 Marchmont Ave. roughly how much would that run me?", the bot
+   * correctly refused to quote and offered the off-site quote, and then asked
+   * for name and email. It never asked for the ZIP — while the progress panel
+   * still read "Full address, asking for this next".
+   *
+   * Nothing was breached. The stage machine advances on intents ASKED, which
+   * is Kate's carve-out, so `ask_contact` was legal. The A11 machinery was
+   * right too: addressGap returned `zip` and the prompt told the model to ask
+   * for that piece "and only that piece". The model simply chose otherwise,
+   * and a prompt instruction the model can decline is the exact shape this
+   * file exists to replace with a refusal.
+   *
+   * ── AND IT MUST NOT STRAND THE CONVERSATION ─────────────────────────────
+   *
+   * A41: "Do not block the flow on a REFUSAL. If they decline to give a
+   * field, continue and move on." So this refuses ONCE — only when the turn
+   * before it was not itself an address ask. If we have just asked and they
+   * still have not completed it, moving on is correct and this allows it.
+   *
+   * The effect is narrow: after any detour, the bot must come back for the
+   * missing piece before advancing, and exactly one attempt is owed.
+   */
+  if (
+    ctx.addressGap
+    && MOVES_PAST_ADDRESS.has(a.intent)
+    && ctx.lastIntent !== "ask_address"
+  ) {
+    const missing = ctx.addressGap === "zip" ? "the ZIP code"
+      : ctx.addressGap === "street" ? "the house number and street"
+      : "most of it";
+    return {
+      ok: false, reason: "partial_address_walked_past",
+      detail: `we hold only part of the address and ${missing} is still missing, so this `
+        + `moves on from a half address. Ask for that piece by name, and only that piece — `
+        + `they have already given the rest (A11)`,
+    };
+  }
+
   if (a.intent === "confirm_address" && ctx.addressGap) {
     return {
       ok: false, reason: "unknown_intent",
@@ -1673,6 +1716,19 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
  * unsure it is still the right next question, and there is no commitment in it
  * to get wrong. Everything else stays on the strict threshold.
  */
+/**
+ * Intents that move the conversation PAST the address leg.
+ *
+ * Deliberately not "everything except ask_address": answering a question,
+ * acknowledging, handling a reaction and the off-site offers all have to stay
+ * available while a gap is open, or a customer asking something mid-address
+ * gets refused instead of answered (A29).
+ */
+const MOVES_PAST_ADDRESS = new Set<string>([
+  "ask_contact", "ask_availability", "confirm_contact",
+  "success", "accepted", "phone_pricing",
+]);
+
 const LOW_STAKES = new Set<string>([
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
   "confirm_scope", "confirm_address", "confirm_contact",

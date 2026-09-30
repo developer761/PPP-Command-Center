@@ -1065,7 +1065,7 @@ hand the thread back. If the customer then goes quiet, nothing chases them.
 **Left as the spec says.** Say the word if a released conversation should be
 eligible again.
 
-## 21. The stage counts ASKING; the screen counts HOLDING. They disagree on a partial address.
+## 21. The stage counts ASKING; the screen counts HOLDING. — **FIXED 2026-09-30, one question left**
 
 Found running scenarios in the sandbox against the live build, 2026-09-30.
 
@@ -1094,13 +1094,24 @@ missing... Ask for the missing piece by name, and only that piece." The model
 had that instruction and chose `ask_contact` anyway. One run, so this is
 adherence rather than a defect, and it is what the rater is for.
 
-**The question is yours, because either answer changes behaviour:**
+**Fixed, with the A41 escape built in.** `validateAction` now REFUSES an
+intent that moves past the address — `ask_contact`, `ask_availability`,
+`confirm_contact`, `success`, `accepted`, `phone_pricing` — while a gap is
+open, unless the previous turn was itself an address ask.
 
-Should the ADDRESS leg specifically advance on holding rather than on asking?
-That would make `ask_contact` refuse while a partial address stands, and force
-the ZIP question — at the cost of a conversation that cannot move past an
-address the customer will not complete. A41 says do not block the flow on a
-refusal, so it would need a way out after one attempt.
+So exactly one attempt is owed. After any detour the bot must come back for
+the missing piece; if it has just asked and the customer still has not
+completed it, moving on is allowed, which is what A41 requires. The refusal
+names the piece, so the retry is the right ask rather than a second request
+for the whole address.
 
-A11 is the second most breached rule in the handover corpus — 289 breaches,
-250 conversations — so it is worth deciding rather than leaving to the model.
+Deliberately still available while the gap is open: `answer_question`,
+`acknowledge`, the off-site offers and `ask_address` itself — a customer who
+asks something mid-address gets an answer, not a refusal, because A29 binds
+at any point.
+
+**The one question left for you:** the stage machine still advances on intents
+ASKED, so the progress panel and the stage can still disagree on the screen —
+the panel will say the address is owed while the stage has moved on. The
+BEHAVIOUR is now correct either way; it is the display that can look odd.
+Worth knowing before you grade against that panel.
