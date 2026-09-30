@@ -14,7 +14,7 @@ import {
   disclosureMove, applyDisclosure, alreadyDisclosed,
 } from "@/lib/messaging/disclosure";
 import { renderMessage, isSilent } from "@/lib/messaging/render";
-import { END_INTENTS, CONTINUE_INTENTS } from "@/lib/messaging/agent-output";
+import { END_INTENTS, CONTINUE_INTENTS, shouldEscalate } from "@/lib/messaging/agent-output";
 
 describe("A46 — the approved strings, byte for byte", () => {
   it("in hours", () => {
@@ -274,5 +274,40 @@ describe("asked if it is a bot, out of hours", () => {
     );
     expect(said).toMatch(/asistente/i);
     expect(said).not.toMatch(/\?/);
+  });
+});
+
+/**
+ * ── ASKING A FAIR QUESTION MUST NOT COST THE LEAD ───────────────────────
+ *
+ * A46 was moved out of END_INTENTS because ending on "are you a bot?"
+ * "threw away a live lead for asking a fair question". It was still held to
+ * the 0.95 confidence threshold, and the model reports about 0.90 on this
+ * question — so every one of them escalated instead. Same harm, different
+ * door, and only visible by running it: the sandbox showed "hands to a
+ * person" on a turn that answered perfectly.
+ *
+ * The reply is a CONSTANT — render.ts maps bot_suspected to the approved
+ * string and the model composes nothing — so there is no prose to be unsure
+ * about.
+ */
+describe("answering 'are you a bot' does not hand the conversation away", () => {
+  const act = (confidence: number) => ({
+    intent: "bot_suspected", freeText: "", confidence, reasoning: "",
+  });
+
+  it("does not escalate at the confidence the model actually reports", () => {
+    expect(shouldEscalate(act(0.90), { confidenceThreshold: 0.95 })).toBe(false);
+  });
+
+  it("still escalates when the model is genuinely lost", () => {
+    // LOW_STAKES_FLOOR, not "never escalate".
+    expect(shouldEscalate(act(0.3), { confidenceThreshold: 0.95 })).toBe(true);
+  });
+
+  it("is a continue intent, so it is not an ending either", () => {
+    // Both halves matter: not an ending AND not a hand-off.
+    expect(CONTINUE_INTENTS).toContain("bot_suspected");
+    expect(END_INTENTS).not.toContain("bot_suspected");
   });
 });

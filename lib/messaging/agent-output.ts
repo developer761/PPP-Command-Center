@@ -1677,6 +1677,20 @@ const LOW_STAKES = new Set<string>([
   "ask_project_details", "ask_address", "ask_contact", "ask_availability",
   "confirm_scope", "confirm_address", "confirm_contact",
   "acknowledge", "nurture_check_in", "ask_for_decision", "ask_check_back",
+  /**
+   * A46. THE REPLY IS A CONSTANT, SO THERE IS NOTHING TO BE UNSURE ABOUT.
+   *
+   * bot_suspected renders one approved string from render.ts — the model
+   * composes nothing. The only judgement is "did they ask whether they are
+   * talking to a bot", which is not a high-stakes call.
+   *
+   * Held at 0.95 it escalated every time: the model reports about 0.90 on
+   * this question, exactly as the note below describes for opening questions.
+   * So asking a fair question handed the conversation to a person — which is
+   * the same harm A46 was moved out of END_INTENTS to prevent, arriving by a
+   * different door. Found by running it in the sandbox, 2026-09-30.
+   */
+  "bot_suspected",
 ]);
 
 /** Below this even a routine question is not worth sending. */
