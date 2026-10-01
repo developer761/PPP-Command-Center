@@ -17,6 +17,30 @@
  * finds "Satin" in the picker. `finish-guide.test.ts` keeps that true.
  */
 
+/**
+ * Which blocks of the table this job should see (Kate 2026-10-01: "hide
+ * interior finish options for exterior-only projects and vice-versa").
+ *
+ * Extracted from the component because the rule is the interesting part and a
+ * component in this repo cannot be rendered by the suite (node env, no DOM) —
+ * the same reason applyToAllTargets lives outside its component. It also means
+ * the exterior-only case is provable without hunting for an exterior work
+ * order to look at.
+ *
+ * A job with NO signal either way gets both blocks. That is the same fallback
+ * filterMaterialTypesForWorkOrder takes, and the reason is that guessing wrong
+ * here hides the half of the table the customer needed.
+ */
+export function finishGuideScope(hasInterior: boolean, hasExterior: boolean): {
+  showInterior: boolean;
+  showExterior: boolean;
+} {
+  return {
+    showInterior: hasInterior || !hasExterior,
+    showExterior: hasExterior || !hasInterior,
+  };
+}
+
 export type FinishGuideRow = {
   /** The finish, exactly as the picker spells it. */
   finish: string;

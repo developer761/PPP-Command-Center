@@ -6,6 +6,7 @@ import {
 } from "@/lib/customer-form/finish-guide";
 import { BASE_FINISHES, finishOptionsFor } from "@/lib/customer-form/material-types";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
+import { finishGuideScope } from "@/lib/customer-form/finish-guide";
 
 /**
  * PPP's finish reference — the table under "Recommended finishes by area or
@@ -118,5 +119,28 @@ describe("the table and the form's own defaults agree", () => {
     expect(row.where).toContain("soffits");
     expect(recommendedFinishes("Trim", "Exterior", "exterior")[0]).toBe("Soft Gloss");
     expect(recommendedFinishes("Soffit", "Exterior", "exterior")[0]).toBe("Soft Gloss");
+  });
+});
+
+describe("which half of the table a job sees (Kate 2026-10-01)", () => {
+  it("shows ONLY Interior on an interior-only job", () => {
+    expect(finishGuideScope(true, false)).toEqual({ showInterior: true, showExterior: false });
+  });
+
+  it("shows ONLY Exterior on an exterior-only job", () => {
+    // The half that cannot be checked by opening a form — PPP's test work
+    // orders are all interior — which is exactly why the rule lives in a
+    // function rather than inline in the component.
+    expect(finishGuideScope(false, true)).toEqual({ showInterior: false, showExterior: true });
+  });
+
+  it("shows both on a mixed job", () => {
+    expect(finishGuideScope(true, true)).toEqual({ showInterior: true, showExterior: true });
+  });
+
+  it("shows both when the job gives no signal either way", () => {
+    // Guessing wrong here hides the half of the table the customer needed, so
+    // no-signal deliberately shows everything rather than nothing.
+    expect(finishGuideScope(false, false)).toEqual({ showInterior: true, showExterior: true });
   });
 });

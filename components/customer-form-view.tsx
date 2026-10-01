@@ -189,6 +189,7 @@ import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isSta
 import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to-all";
 import FinishGuideSection from "@/components/finish-guide-section";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
+import { finishGuideScope } from "@/lib/customer-form/finish-guide";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
 
@@ -1317,8 +1318,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       {formData.lineItems.length > 0 && (
         <FinishGuideSection
           defaultOpen={!isInternal}
-          showInterior={workContext.hasInterior || !workContext.hasExterior}
-          showExterior={workContext.hasExterior || !workContext.hasInterior}
+          {...finishGuideScope(workContext.hasInterior, workContext.hasExterior)}
         />
       )}
 
