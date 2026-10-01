@@ -141,6 +141,13 @@ export default async function CustomerFormPage({ params }: { params: Params }) {
         copy={copy}
         isEditing={isEditing}
         priorSubmission={priorSubmission}
+        // THIS token's own saved colors, which is not the same question as
+        // `priorSubmission` — that falls back to the latest payload for the
+        // whole work order, from any token, so it is truthy on a brand-new
+        // internal entry whose customer already submitted. The receipt button
+        // sends this token's submission, so it has to ask the narrower
+        // question or it offers to send something that does not exist.
+        hasOwnSubmission={!!ownPayload}
         isPreview={isPreview}
         isInternal={isInternal}
         colorDeadline={status.token.color_deadline ?? null}

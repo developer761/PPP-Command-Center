@@ -62,12 +62,16 @@ export default function SendReceiptButton({ token }: { token: string }) {
       >
         {state === "sending" ? "Sending…" : "Send receipt to customer"}
       </button>
-      <p className="mt-2 text-xs text-ppp-charcoal-500 max-w-md mx-auto leading-relaxed">
+      {/* No mx-auto / max-w here: this renders BOTH inside the centered
+          post-save panel and inside the left-aligned internal-entry banner,
+          and centering constraints meant for the first one left the text
+          visibly offset in the second. The container decides alignment. */}
+      <p className="mt-2 text-xs text-ppp-charcoal-500 leading-relaxed">
         Emails the customer a copy of these selections with a link to review them. Nothing is sent
         until you click.
       </p>
       {message && (
-        <p className="mt-2 text-xs text-ppp-orange-700 max-w-md mx-auto leading-relaxed">{message}</p>
+        <p className="mt-2 text-xs text-ppp-orange-700 leading-relaxed">{message}</p>
       )}
     </div>
   );

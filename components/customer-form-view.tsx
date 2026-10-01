@@ -127,6 +127,10 @@ type Props = {
   isEditing?: boolean;
   /** Prior picks to seed the form with when re-editing. */
   priorSubmission?: PriorSubmission;
+  /** THIS token already has colors saved against it. Distinct from
+   *  `priorSubmission`, which may have come from a sibling token on the same
+   *  work order. */
+  hasOwnSubmission?: boolean;
   /** Kate round-3 #07 — the color deadline the sender set on this token
    *  (YYYY-MM-DD). Wins over the derived start-date chain; null means the
    *  customer is shown no date at all rather than an expired one. */
@@ -356,7 +360,7 @@ function formatEditDeadline(
   return { kind: "deadline", label };
 }
 
-export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, isPreview = false, isInternal = false, colorDeadline = null }: Props) {
+export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, hasOwnSubmission = false, isPreview = false, isInternal = false, colorDeadline = null }: Props) {
   // Staff-facing entry (preview OR internal): shows the product-line picker and
   // hides customer-only chrome. Only "internal" actually saves.
   const isStaffEntry = isPreview || isInternal;
@@ -1121,7 +1125,15 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             add the Salesforce-sync caveat when the WO isn't yet enabled). */}
         {isInternal && (
           <div className="text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
-            <strong>Internal entry.</strong> You&apos;re entering colors on the customer&apos;s behalf. This is saved when you submit, and nothing is emailed to the customer automatically — once it&apos;s saved you&apos;ll get a button to send them a receipt when you&apos;re ready.
+            <strong>Internal entry.</strong> You&apos;re entering colors on the customer&apos;s behalf. This is saved when you submit, and nothing is emailed to the customer automatically — you send them a receipt yourself, when you&apos;re ready.
+            {/* Katie 2026-10-01: "update/save and come back and make
+                adjustments before sending to the customer — they can review to
+                make sure it's ready." Coming back to REVIEW and then send is
+                the half that needed this: the copy of the button on the
+                post-save screen only exists in the session that saved, so an
+                AM returning the next day would have had to re-save to reach
+                it. Shown whenever there is something saved to send. */}
+            {hasOwnSubmission && <SendReceiptButton token={token} />}
           </div>
         )}
         {/* Test-mode banner — writeback mode is "test_only" and this WO isn't
