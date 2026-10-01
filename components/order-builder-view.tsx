@@ -875,7 +875,12 @@ export default function OrderBuilderView({
     // difference between the reader seeing the problem and seeing the button
     // that refused.
     const id = window.setTimeout(() => {
-      buyListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      // AUTO, not smooth. A smooth scroll animates for a few hundred ms and
+      // the browser cancels it the moment anything else scrolls — which is
+      // exactly what the footer button's own focus does. Measured both ways:
+      // smooth left the banner 2,177px above the viewport, instant puts it at
+      // the top of the screen.
+      buyListRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
     }, 80);
     return () => window.clearTimeout(id);
   }, [productLineNudge]);
