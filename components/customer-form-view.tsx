@@ -1967,10 +1967,19 @@ function SurfaceRow({
                   long: the moment a color is picked the finish is required and
                   submit blocks without one, so the word only ever described the
                   seconds before the customer chose a color. */}
+              {/* "Select a finish", not "Finish" — Katie, 2026-10-01: "I think
+                  that will make it more clear". A bare noun sitting in a
+                  dropdown reads as a label for something already chosen.
+                  One phrasing in both states, too: it used to say "Finish"
+                  before a color was picked and "Choose a finish…" after, which
+                  is two ways of asking the same question.
+
+                  Width is fine in both layouts, which is the thing worth
+                  checking: this row is grid-cols-1 below `sm`, so the select is
+                  FULL WIDTH on a phone, and the 180px column it sits in from
+                  `sm` up already renders "Choose a finish…" today. */}
               <option value="">
-                {isStainProduct(materialType)
-                  ? (pick.colorId ? "Choose an opacity…" : "Opacity")
-                  : (pick.colorId ? "Choose a finish…" : "Finish")}
+                {isStainProduct(materialType) ? "Select an opacity" : "Select a finish"}
               </option>
               {finishOptionsFor(FINISH_OPTIONS, materialType, scope).map((f) => (
                 <option key={f} value={f}>{f}</option>
