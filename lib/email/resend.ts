@@ -519,6 +519,9 @@ export async function sendCustomerFormConfirmation(input: {
   colorDeadline?: string | null;
   senderEmail?: string | null;
   senderName?: string | null;
+  /** Staff preview — adds a banner and leaves the body otherwise identical. */
+  previewNotice?: string | null;
+  subjectOverride?: string | null;
 }): Promise<ResendSendResult> {
   const { loadTemplates, render, buildVars } = await import("@/lib/customer-form/templates");
   const { buildConfirmationEmail } = await import("@/lib/customer-form/confirmation-email");
@@ -539,6 +542,8 @@ export async function sendCustomerFormConfirmation(input: {
     isReedit: input.isReedit,
     formUrl: input.formUrl,
     senderName: input.senderName,
+    previewNotice: input.previewNotice,
+    subjectOverride: input.subjectOverride,
   });
 
   // CC the sender so a customer reply reaches their actual estimator. PPP

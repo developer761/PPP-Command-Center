@@ -45,12 +45,26 @@ export function buildConfirmationEmail(input: {
   isReedit?: boolean;
   formUrl: string;
   senderName?: string | null;
+  /**
+   * Marks the email as a staff preview rather than a real receipt.
+   *
+   * Rendered as a strip across the top, NOT woven into the content. The first
+   * version of the admin preview tagged the sample ROOM names instead
+   * ("[TEST 12:40 PM] Interior Painting · Bathroom"), and the moment Karan
+   * forwarded one to Katie her first question was what that text was — which
+   * is the right question to ask about a receipt, and exactly the wrong thing
+   * for a sample to make somebody wonder. A preview should look like the real
+   * document everywhere except where it says it is a preview.
+   */
+  previewNotice?: string | null;
+  /** Overrides the templated subject — used to prefix "[TEST]" on previews. */
+  subjectOverride?: string | null;
 }): ConfirmationEmail {
   const { templates, vars, render, rooms } = input;
 
   const firstName = (vars.customer_name ?? "").trim().split(/\s+/)[0] ?? "";
   const greeting = firstName ? `Hi ${firstName},` : "Hi there,";
-  const subject = render(templates.confirm_subject, vars);
+  const subject = input.subjectOverride ?? render(templates.confirm_subject, vars);
   const intro = render(templates.confirm_intro, vars);
   const outro = render(templates.confirm_outro, vars);
   const signoff = render(templates.email_signoff, vars);
@@ -67,7 +81,9 @@ export function buildConfirmationEmail(input: {
     if (room.notes) textRooms.push(`  Your note: ${room.notes}`);
     textRooms.push("");
   }
+  const previewNotice = (input.previewNotice ?? "").trim() || null;
   const text = [
+    ...(previewNotice ? [previewNotice.toUpperCase(), ""] : []),
     greeting,
     "",
     intro,
@@ -158,6 +174,13 @@ export function buildConfirmationEmail(input: {
         <img alt="Precision Painting Plus" src="https://precisionplus.file.force.com/servlet/servlet.ImageServer?id=0156g000003hGa2AAE&amp;oid=00D6g000001XvD9EAK" width="200" height="55" />
       </td>
     </tr>
+    ${previewNotice ? `<tr>
+      <td style="padding:0 20px 10px 20px;">
+        <table border="0" cellpadding="8" cellspacing="0" style="width:100%; background:#fff6e5; border:1px solid #f0d9a8;">
+          <tbody><tr><td style="font-size:9pt; color:#8a5a00;"><strong>Preview.</strong> ${escapeHtml(previewNotice)}</td></tr></tbody>
+        </table>
+      </td>
+    </tr>` : ""}
     <tr>
       <td style="padding:15px 20px 5px 20px;">
         <p style="margin:0 0 12px 0;">Hi ${escName},</p>

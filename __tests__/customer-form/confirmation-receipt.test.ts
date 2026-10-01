@@ -255,3 +255,31 @@ describe("who the Internal Entry button emails", () => {
     expect(receiptRecipient({ tokenKind: null, tokenEmail: "   ", tokenCustomerName: null }).email).toBeNull();
   });
 });
+
+describe("a preview must look like the real thing", () => {
+  // Katie, 2026-10-01, on the forwarded sample: "before the first room that's
+  // listed, there is this text '[TEST 12:40 PM]'. Do you know what that is?"
+  // It was a marker welded into the sample ROOM names. A reader cannot tell
+  // that apart from a real defect in their receipt.
+
+  it("keeps the test marker out of the content", () => {
+    const preview = build({
+      previewNotice: "Sample email sent to you at 12:40 PM from Settings.",
+      subjectOverride: "[TEST] receipt preview",
+    });
+    // The rooms read normally…
+    expect(preview.html).toContain("Interior Painting · Bathroom");
+    expect(preview.html).not.toContain("[TEST] Interior Painting");
+    // …and the fact that it is a sample is said once, in its own bar.
+    expect(preview.html).toContain("Sample email sent to you");
+    expect(preview.subject).toBe("[TEST] receipt preview");
+  });
+
+  it("shows no preview bar on a real receipt", () => {
+    const real = build();
+    expect(real.html).not.toContain("Preview.");
+    expect(real.html).not.toContain("Sample email");
+    // And the real subject comes from the editable template, not an override.
+    expect(real.subject).toContain("Your color selections");
+  });
+});

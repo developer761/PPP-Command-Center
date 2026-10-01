@@ -120,12 +120,19 @@ export async function GET(request: Request) {
               notes: null,
             },
           ],
+          // Room names exactly as a real receipt would carry them. The "[TEST]"
+          // marker used to live HERE, and when Karan forwarded a preview to
+          // Katie her first question was what that text was — a sample has to
+          // look like the real document, and say it is a sample somewhere a
+          // reader expects to be told. It is now the banner and the subject.
           roomLabelById: new Map([
-            ["sample-1", `[TEST ${stamp}] Interior Painting · Bathroom`],
-            ["sample-2", "[TEST] Interior Painting · Living Room"],
+            ["sample-1", "Interior Painting · Bathroom"],
+            ["sample-2", "Interior Painting · Living Room"],
           ]),
         }),
-        globalNotes: "Sample job-wide note — this is a template preview, not a real submission.",
+        globalNotes: "Please use the side gate — the dog is usually in the back yard.",
+        previewNotice: `Sample email sent to you at ${stamp} from Settings. A real customer receipt looks exactly like this, without this bar.`,
+        subjectOverride: `[TEST] Your color selections — receipt preview · ${stamp}`,
       })
     // Use the REAL customer-form invite path so admin sees their template
     // edits reflected. Prepend "[TEST]" via subjectOverride so the email
