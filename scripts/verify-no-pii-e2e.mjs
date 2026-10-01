@@ -109,6 +109,31 @@ const BY_DESIGN = new Set([
  * An allowlist that excuses more than the thing it was written for is how a
  * check stops checking, quietly, while still printing a tick.
  */
+/**
+ * KNOWN, DELIBERATE, AND ON A DEADLINE — reported loudly, counted as a note
+ * rather than a failure.
+ *
+ * Different from ALLOWED, which excuses something that is fine forever. This
+ * is for a value that is NOT fine, is there on purpose for now, and must be
+ * gone before a stated event. It still prints every run, in full, with the
+ * reason — so it nags — but it does not turn the sweep red, because a red
+ * sweep that is always red is a sweep nobody reads, and the next REAL leak
+ * would land underneath it.
+ *
+ * Any other value in the same column still fails normally: this is keyed to
+ * one table, one row and one column, same as ALLOWED.
+ */
+const PENDING_REMOVAL = new Map([
+  ["sms_sub_accounts.44ed500b-80ad-481a-ac94-0e42dca0ee73.call_forward_to",
+   "Karan's mobile, set to test voice on the toll-free pilot. Karan, 2026-10-01: "
+   + "\"before we go live we will reroute it\". MUST BE CLEARED BEFORE THE TOLL-FREE "
+   + "GOES LIVE — +18888156464 is the number printed in the registered sample "
+   + "messages (\"Call us at 888-815-6464\"), so once texts carry it, customers "
+   + "ring this phone instead of MAIN_LINE. Clearing it restores the documented "
+   + "design: voice-forward.ts says call_forward_to is NULL on every workspace "
+   + "and the fallback does the rest."],
+]);
+
 const ALLOWED = new Set([
   // A22 IS NO LONGER HERE. Kate, 2026-09-24: "you can modify the example to
   // remove the actual phone number + email!" — so it now reads "Is [PHONE]
@@ -205,6 +230,7 @@ function sweepSource() {
 }
 
 let findings = 0, scanned = 0, columns = 0;
+const pending = [];
 
 console.log("\nPII SWEEP — every text column, discovered not listed\n");
 
@@ -247,6 +273,8 @@ for (const table of TABLES) {
       // to be called id would still be caught.
       if (UUID.test(v)) continue;
       if (ALLOWED.has(`${table}.${r[key]}.${c}`)) continue;
+      const pendingKey = `${table}.${r[key]}.${c}`;
+      if (PENDING_REMOVAL.has(pendingKey)) { pending.push([pendingKey, v, PENDING_REMOVAL.get(pendingKey)]); continue; }
       scanned++;
       const pii = residualPii(v);
       const names = suspectedNames(v, ["Emily", "Emma", "Sarah"])
@@ -277,5 +305,13 @@ for (const table of TABLES) {
 console.log(`\n  ${columns} text columns scanned, ${scanned} values read`);
 console.log("\nAND THE SOURCE TREE\n");
 findings += sweepSource();
-console.log(findings ? `\nFAILURES — ${findings} value(s) carry customer data\n` : "\nALL CLEAN\n");
+if (pending.length) {
+  console.log(`\nKNOWN AND STILL THERE — ${pending.length} value(s) deliberately left, each with a deadline:`);
+  for (const [key, value, why] of pending) {
+    console.log(`  !  ${key}`);
+    console.log(`       value: ${value}`);
+    console.log(`       ${why.replace(/\s+/g, " ")}`);
+  }
+}
+console.log(findings ? `\nFAILURES — ${findings} value(s) carry customer data\n` : `\nALL CLEAN${pending.length ? ` — but ${pending.length} deliberate value(s) above still have to go` : ""}\n`);
 process.exit(findings ? 1 : 0);
