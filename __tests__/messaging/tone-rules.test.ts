@@ -74,3 +74,69 @@ describe("tone rules are enforced, but proportionately", () => {
     if (res.ok) expect(res.droppedRapport).toBeUndefined();
   });
 });
+
+/**
+ * THE BOT HAS NO CALENDAR.
+ *
+ * Found in the sandbox 2026-10-01. The customer named a scope and an address
+ * and no time whatsoever; the bot replied "I'll check the calendar for that
+ * time. Got it! Is 12 Marchmont Ave, 11530 the correct address?"
+ *
+ * That sentence carries no digit and no time-shaped token, so TIME_COMMITMENT
+ * and the numeric backstop both let it through — and this very string was
+ * already sitting in rapport-stacking.test.ts as an example of ACCEPTABLE
+ * rapport, which is how it survived a suite that otherwise checks this area
+ * hard.
+ *
+ * Dropped, not refused: the template underneath asks the right question.
+ */
+describe("rapport may not claim the bot is checking a calendar", () => {
+  const dropped = (freeText: string, intent = "acknowledge") => {
+    const res = validateAction({ intent, freeText, confidence: 0.99, reasoning: "" } as never);
+    expect(res.ok, freeText).toBe(true);
+    return res.ok ? res.droppedRapport : undefined;
+  };
+
+  it.each([
+    "I'll check the calendar for that time.",
+    "Let me check the calendar.",
+    "I'll check our schedule and get back to you.",
+    "Let me check availability.",
+    "Let me see what we have available.",
+    "I'll look at the books.",
+    "I'll pull up the schedule.",
+    "Let me see when we can fit you in.",
+    "I'll get you on the books.",
+  ])("drops %j", (text) => {
+    expect(dropped(text)).toMatch(/calendar/);
+  });
+
+  /**
+   * THE HALF THAT MATTERS MORE. A guard this shape earns its keep by what it
+   * leaves alone — rapport is most of the warmth in a reply, and a check that
+   * eats honest sentences gets switched off.
+   */
+  it.each([
+    "Got it!",
+    "Happy to help with that.",
+    "I'll pass this along to the estimator.",
+    "Let me check with the office on that.",
+    "I'll make sure someone picks this up.",
+    "Thanks for bearing with me.",
+    "That sounds like a decent sized job.",
+  ])("leaves %j alone", (text) => {
+    expect(dropped(text)).toBeUndefined();
+  });
+
+  it("exempts checking_availability, whose approved template says exactly this", () => {
+    expect(dropped("One moment while I check availability.", "checking_availability")).toBeUndefined();
+  });
+
+  it("keeps the turn, so a good lead is not handed to a person over a sentence", () => {
+    const res = validateAction(
+      { intent: "confirm_address", freeText: "I'll check the calendar for that time.", confidence: 0.9, reasoning: "" } as never,
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.action.freeText).toBeUndefined();
+  });
+});
