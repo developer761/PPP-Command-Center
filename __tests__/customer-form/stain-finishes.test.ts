@@ -19,7 +19,10 @@ import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
  * coming from Jason; guessing it here would be a worse error than the one being
  * fixed.
  */
-const ALL = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss", "High-Gloss"];
+/** The generic sheens as the picker offers them — Gloss and High-Gloss were
+ *  withdrawn on 2026-10-01 (Kate). This list is about STAINS, so the change is
+ *  incidental here; it just has to match what finishOptionsFor can return. */
+const ALL = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss"];
 
 describe("stain does not offer interior sheens", () => {
   it("drops flat, matte and eggshell for a stain", () => {

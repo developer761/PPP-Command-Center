@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { finishOptionsFor, isExteriorProduct } from "@/lib/customer-form/material-types";
+import { finishOptionsFor, isExteriorProduct, ALL_FINISH_VALUES } from "@/lib/customer-form/material-types";
 import { normalizeFinishToSf, denormalizeFinishFromSf } from "@/lib/customer-form/surface-mapping";
 
 /**
@@ -12,7 +12,13 @@ import { normalizeFinishToSf, denormalizeFinishFromSf } from "@/lib/customer-for
  * option the picker offers but Salesforce does not accept is not a cosmetic
  * mismatch: the write is REJECTED and the colors silently fail to land.
  */
-const BASE = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss", "High-Gloss"];
+/** The generic sheens as the picker offers them. Gloss and High-Gloss left on
+ *  2026-10-01 (Kate) — see RETIRED_FINISHES. */
+const BASE = ["Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss"];
+
+/** What callers used to pass. Kept so the tests below can prove the withdrawn
+ *  sheens are stripped even when a caller still hands them in. */
+const BASE_BEFORE_2026_10_01 = [...BASE, "Gloss", "High-Gloss"];
 
 describe("exterior sheens", () => {
   it("offers Low Lustre and Soft Gloss on an exterior product", () => {
@@ -42,6 +48,53 @@ describe("exterior sheens", () => {
     expect(finishOptionsFor(BASE, null)).toEqual(BASE);
   });
 
+  it("never offers Gloss or High-Gloss again, whoever asks", () => {
+    // Kate 2026-10-01: "remove Gloss and High-Gloss from the finish selection
+    // picklist." They are stripped at the exit of finishOptionsFor rather than
+    // product by product, so this holds for a caller still passing the old
+    // list, for Jason's per-product sheets that name them (SW Duration and SW
+    // Super Paint exterior), and for any product added later.
+    const callers: Array<[string | null, "interior" | "exterior" | null]> = [
+      [null, null],
+      ["SW Duration", "exterior"],
+      ["SW Super Paint", "exterior"],
+      ["Regal Select", "interior"],
+      ["Mooreglo", "exterior"],
+    ];
+    let checked = 0;
+    for (const [product, scope] of callers) {
+      const out = finishOptionsFor(BASE_BEFORE_2026_10_01, product, scope);
+      expect(out, `${product} / ${scope}`).not.toContain("Gloss");
+      expect(out, `${product} / ${scope}`).not.toContain("High-Gloss");
+      // The near-misses must survive — they are different finishes.
+      expect(out.length, `${product} / ${scope}`).toBeGreaterThan(0);
+      checked++;
+    }
+    expect(checked).toBe(callers.length);
+    // Semi-Gloss and Soft Gloss are NOT Gloss. Exact matches only.
+    expect(finishOptionsFor(BASE_BEFORE_2026_10_01, "Regal Select", "interior")).toContain("Semi-Gloss");
+    expect(finishOptionsFor(BASE_BEFORE_2026_10_01, "Mooreglo", "exterior")).toContain("Soft Gloss");
+  });
+
+  it("still ACCEPTS a withdrawn sheen a saved form already holds", () => {
+    // The property that matters: withdrawing a sheen from the picker must not
+    // turn a form sent last week into a 400 when the customer comes back to
+    // edit it. The submit route validates against ALL_FINISH_VALUES, so this
+    // is the check standing between Kate's request and a broken edit link.
+    //
+    // ⚠ Deliberately NOT a tight mutation guard, and it should not be read as
+    // one. Two independent things put these values in the set today — the
+    // RETIRED_FINISHES spread, and Jason's per-product lists, which still name
+    // Gloss on SW Duration exterior and both on SW Super Paint exterior.
+    // Deleting either one alone leaves this green (verified by mutation on
+    // 2026-10-01). That redundancy is the point: the spread is what keeps
+    // acceptance working on the day somebody tidies the now-unofferable sheens
+    // out of the product data.
+    for (const retired of ["Gloss", "High-Gloss"]) {
+      expect(ALL_FINISH_VALUES.has(retired), retired).toBe(true);
+    }
+  });
+
   it("still strips the interior-only sheens from an exterior STAIN", () => {
     // Katie item 19 — a rear deck ordered in eggshell. That rule has to keep
     // working now that exterior products append sheens rather than replace.
@@ -65,14 +118,20 @@ describe("exterior sheens", () => {
     // Mooreglo is Soft Gloss only now, so nothing is lost there.
     expect(finishOptionsFor(BASE, "Mooreglo").filter((f) => normalizeFinishToSf(f) === null)).toEqual([]);
 
-    // SW Super Paint is the one that still loses a sheen, in BOTH scopes, and
-    // it is not a mapping bug: neither value exists on Salesforce's restricted
-    // picklist. Pinned so the day Katie adds them, this test says so.
+    // SW Super Paint INTERIOR still loses one: "Velvet" has no value on
+    // Salesforce's restricted picklist. Pinned so the day Katie adds it, this
+    // test says so.
     expect(
       finishOptionsFor(BASE, "SW Super Paint", "interior").filter((f) => normalizeFinishToSf(f) === null)
     ).toEqual(["Velvet"]);
+
+    // EXTERIOR used to lose "High-Gloss" the same way. Withdrawing it from the
+    // picker on 2026-10-01 closed that hole as a side effect: a customer can no
+    // longer choose a sheen that is silently dropped on the way to Salesforce.
+    // If this ever goes non-empty again, something re-offered an unmappable
+    // finish.
     expect(
       finishOptionsFor(BASE, "SW Super Paint", "exterior").filter((f) => normalizeFinishToSf(f) === null)
-    ).toEqual(["High-Gloss"]);
+    ).toEqual([]);
   });
 });

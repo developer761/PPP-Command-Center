@@ -31,8 +31,22 @@ import {
  * and this is the one piece of that panel that is different: the AM filling
  * the form in is usually on the phone with the customer, and "what is the
  * difference between eggshell and satin" is the question they get asked.
+ *
+ * `showInterior` / `showExterior` scope it to the job (Kate, 2026-10-01: "hide
+ * interior finish options for exterior-only projects and vice-versa"). Both
+ * default to true, and a job with no signal either way shows both — the same
+ * fallback filterMaterialTypesForWorkOrder already takes, because guessing
+ * wrong here hides the half of the table the customer needed.
  */
-export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen?: boolean }) {
+export default function FinishGuideSection({
+  defaultOpen = true,
+  showInterior = true,
+  showExterior = true,
+}: {
+  defaultOpen?: boolean;
+  showInterior?: boolean;
+  showExterior?: boolean;
+}) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = useId();
 
@@ -61,8 +75,12 @@ export default function FinishGuideSection({ defaultOpen = true }: { defaultOpen
 
       <div id={panelId} hidden={!open} className="px-5 sm:px-6 pb-5">
         <p className="text-xs sm:text-sm text-ppp-charcoal-600 leading-relaxed">{FINISH_GUIDE_INTRO}</p>
-        <FinishBlock title="Interior" caption={INTERIOR_CAPTION} rows={INTERIOR_FINISHES} />
-        <FinishBlock title="Exterior" caption={EXTERIOR_CAPTION} rows={EXTERIOR_FINISHES} />
+        {showInterior && (
+          <FinishBlock title="Interior" caption={INTERIOR_CAPTION} rows={INTERIOR_FINISHES} />
+        )}
+        {showExterior && (
+          <FinishBlock title="Exterior" caption={EXTERIOR_CAPTION} rows={EXTERIOR_FINISHES} />
+        )}
       </div>
     </section>
   );
@@ -82,6 +100,21 @@ function FinishBlock({
       <div className="flex items-baseline justify-between gap-3 flex-wrap border-b border-ppp-charcoal-100 pb-1.5">
         <h4 className="font-condensed text-sm sm:text-base font-bold text-ppp-navy">{title}</h4>
         <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">{caption}</span>
+      </div>
+
+      {/* Kate 2026-10-01: name the middle column. Only the middle one — her
+          table has never had headings over the finish or the description, and
+          two more would be scaffolding the rows do not need. Hidden below `sm`,
+          where the rows stack and there are no columns for it to sit over. */}
+      <div
+        aria-hidden
+        className="hidden sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 pt-2 pb-1"
+      >
+        <span />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+          Recommended Surface
+        </span>
+        <span />
       </div>
 
       <ul className="divide-y divide-ppp-charcoal-100">

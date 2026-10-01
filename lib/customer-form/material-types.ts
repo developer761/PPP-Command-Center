@@ -35,13 +35,25 @@ export const BASE_FINISHES: readonly string[] = [
   "Eggshell",
   "Satin",
   "Semi-Gloss",
-  "Gloss",
-  "High-Gloss",
 ];
 
 /** Legacy combined labels — kept accepted so a form filled in before the
  *  Flat/Matte and Gloss/High-Gloss splits still submits. */
 const LEGACY_FINISHES: readonly string[] = ["Flat / Matte", "Gloss / High-Gloss"];
+
+/**
+ * Withdrawn from the picker, still accepted by the server (Kate, 2026-10-01:
+ * "Remove Gloss to simplify options. AND remove Gloss and High-Gloss from the
+ * finish selection picklist").
+ *
+ * They are NOT deleted, for the same reason the legacy labels above are not:
+ * a form sent before today may already hold one, Salesforce may already have
+ * written one onto a surface, and the submit route validates every finish
+ * against ALL_FINISH_VALUES. Deleting the value outright would turn a
+ * customer's saved answer into a 400 on the day they come back to edit it.
+ * Offered and accepted are two different lists; only the first one shrank.
+ */
+export const RETIRED_FINISHES: readonly string[] = ["Gloss", "High-Gloss"];
 
 /** Finishes a product is sold in, split when the interior and exterior
  *  versions of the same line differ (all three Sherwin Williams grades do). */
@@ -306,6 +318,8 @@ export const PAINT_LINE_VALUES: ReadonlySet<string> = new Set(PAINT_LINES.map((l
 export const ALL_FINISH_VALUES: ReadonlySet<string> = new Set([
   ...BASE_FINISHES,
   ...LEGACY_FINISHES,
+  // Withdrawn from every picker, still valid on the way in — see RETIRED_FINISHES.
+  ...RETIRED_FINISHES,
   ...[...PAINT_LINES, ...MATERIAL_TYPES].flatMap((m) => {
     const f = m.finishes;
     if (!f) return [];
@@ -731,7 +745,31 @@ function productFor(materialType: string | null | undefined): MaterialType | und
  * Products with no declared list fall back to the previous generic behavior,
  * so an unanswered product keeps working rather than losing every option.
  */
+const RETIRED_FINISH_SET: ReadonlySet<string> = new Set(RETIRED_FINISHES);
+
+/**
+ * Every picker in the app resolves its options through here, so withdrawing a
+ * sheen is done ONCE, at the exit, rather than by hand in each product entry.
+ *
+ * That matters because Gloss and High-Gloss are not only in the generic list —
+ * they are inside Jason's per-product sheets for SW Duration and SW Super Paint
+ * exterior (2026-09-09). Editing those two by hand would have left the next
+ * product free to reintroduce the sheen Kate just asked us to drop, and the
+ * removal would have been invisible to anybody reading this function.
+ *
+ * Exact matches only: "Semi-Gloss" and "Soft Gloss" are different finishes and
+ * both survive.
+ */
 export function finishOptionsFor(
+  allOptions: readonly string[],
+  materialType: string | null | undefined,
+  scope?: "interior" | "exterior" | null
+): string[] {
+  return finishOptionsForUnfiltered(allOptions, materialType, scope)
+    .filter((f) => !RETIRED_FINISH_SET.has(f));
+}
+
+function finishOptionsForUnfiltered(
   allOptions: readonly string[],
   materialType: string | null | undefined,
   scope?: "interior" | "exterior" | null

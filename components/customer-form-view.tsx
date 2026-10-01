@@ -790,12 +790,20 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     // decision or only our own suggestion. See finishForTarget.
     const sourceLi = formData.lineItems.find((l) => l.id === sourceLineId);
     const sourceIsExterior = /^exterior/i.test(sourceLi?.productFamily ?? "");
-    const sourceSuggestion = defaultFinishFor(
-      surface,
-      sourceIsExterior ? materialTypeExterior || materialType : materialType,
-      sourceIsExterior ? "exterior" : "interior",
-      sourceLi ? roomTypeTextFrom(sourceLi.areaLabel, sourceLi.productName) : null
-    );
+    // Empty on the customer form, where nothing is ever suggested (Alex,
+    // 2026-10-01). finishForTarget reads "finish differs from our suggestion"
+    // as "a person chose this" — with no suggestion to differ from, every
+    // finish the customer set travels with the color, which is right: they
+    // typed it. The target's product still has the last word on whether it is
+    // sellable there.
+    const sourceSuggestion = isStaffEntry
+      ? defaultFinishFor(
+          surface,
+          sourceIsExterior ? materialTypeExterior || materialType : materialType,
+          sourceIsExterior ? "exterior" : "interior",
+          sourceLi ? roomTypeTextFrom(sourceLi.areaLabel, sourceLi.productName) : null
+        )
+      : "";
     const finishForLine = (li: FormLineItem): string => {
       const mt = /^exterior/i.test(li.productFamily ?? "")
         ? materialTypeExterior || materialType
@@ -806,7 +814,9 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         sourceSuggestion,
         // Per TARGET room: a wall color carried from a bedroom into a bathroom
         // should land on the bathroom's Satin, not the bedroom's Eggshell.
-        targetSuggestion: defaultFinishFor(surface, mt, sc, roomTypeTextFrom(li.areaLabel, li.productName)),
+        targetSuggestion: isStaffEntry
+          ? defaultFinishFor(surface, mt, sc, roomTypeTextFrom(li.areaLabel, li.productName))
+          : "",
         targetSells: finishOptionsFor(BASE_FINISHES, mt, sc),
       });
     };
@@ -1299,7 +1309,18 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           colors?" — and unlike that card it shows on Internal Entry too, just
           closed: the AM filling the form in is on the phone with the customer
           asking exactly what it answers. */}
-      {formData.lineItems.length > 0 && <FinishGuideSection defaultOpen={!isInternal} />}
+      {/* Kate 2026-10-01: "hide interior finish options for exterior-only
+          projects and vice-versa". `workContext` is the same interior/exterior
+          read the product pickers and the copy already use, so the table cannot
+          disagree with the dropdowns above it. A job with no signal either way
+          has both flags false — show both blocks rather than an empty section. */}
+      {formData.lineItems.length > 0 && (
+        <FinishGuideSection
+          defaultOpen={!isInternal}
+          showInterior={workContext.hasInterior || !workContext.hasExterior}
+          showExterior={workContext.hasExterior || !workContext.hasInterior}
+        />
+      )}
 
       {/* Project context from PPP — when there's a Subject or Description on
           the WO, show it prominently. Most useful for exterior jobs where
@@ -1328,6 +1349,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onDismissApplyNote={() => setApplyNote(null)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
             isInternal={isInternal}
+            suggestFinish={isStaffEntry}
             materialType={
               /^exterior/i.test(li.productFamily ?? "")
                 ? materialTypeExterior || materialType
@@ -1546,9 +1568,13 @@ function LineItemSection({
   onDismissApplyNote,
   onNotesChange,
   isInternal = false,
+  suggestFinish = false,
   materialType,
   scope,
 }: {
+  /** Pre-fill the finish when a color is picked. Staff entry only — see the
+   *  prop of the same name on SurfaceRow. */
+  suggestFinish?: boolean;
   /** The product line for THIS line item — the exterior answer on an exterior
    *  line, the job line otherwise. Feeds the finish list (Katie item 19). */
   materialType?: string | null;
@@ -1728,6 +1754,7 @@ function LineItemSection({
               applyNote={applyNote?.surface === surface ? applyNote : null}
               onOverwriteAll={() => onOverwriteAll(surface, state.picks[surface] ?? emptyPick())}
               onDismissApplyNote={onDismissApplyNote}
+              suggestFinish={suggestFinish}
               // NOT forwarded before today. LineItemSection accepted
               // materialType and dropped it here, so SurfaceRow's
               // finishOptionsFor call always received undefined — which means
@@ -1771,9 +1798,25 @@ function SurfaceRow({
   onApplyToAll,
   onOverwriteAll,
   onDismissApplyNote,
+  suggestFinish = false,
   materialType,
   scope,
 }: {
+  /**
+   * Pre-fill the finish when a color is picked.
+   *
+   * FALSE on the customer form (Alex, 2026-10-01: "doesn't want the finish to
+   * auto-populate for customers"). A sheen the form chose looks exactly like a
+   * sheen the customer chose once the email and the order are printed, and
+   * nothing downstream can tell them apart — so on the customer's side the box
+   * now stays empty until a person answers.
+   *
+   * TRUE for staff entry, which is deliberately NOT what Alex asked to change:
+   * an AM on the phone entering a whole house is the one case where the
+   * suggestion is a shortcut rather than an unasked question. Flip this to a
+   * flat `false` if PPP wants it gone there too.
+   */
+  suggestFinish?: boolean;
   surface: string;
   /** The product line in play. Katie item 19: stain is sold by opacity, not by
    *  sheen, so the interior sheens must not be offered against one. */
@@ -1812,13 +1855,17 @@ function SurfaceRow({
     }
   };
 
-  // When the customer picks a color, auto-fill the surface's default finish if
-  // they haven't chosen one — so a color always lands complete (finish is
-  // required). Clearing the color also clears the finish so a stale finish
-  // doesn't linger on an empty surface.
+  // On STAFF entry, picking a color fills the surface's default finish if none
+  // is set, so a color lands complete (finish is required). On the customer
+  // form it fills nothing — see `suggestFinish`. Clearing the color still
+  // clears the finish either way, so a stale sheen doesn't linger on an empty
+  // surface.
   const handleColorPick = (patch: Partial<SurfacePick>) => {
     if (patch.colorId) {
-      onChange({ finish: pick.finish ?? defaultFinishFor(surface, materialType, scope, roomTypeText), ...patch });
+      const filled = suggestFinish
+        ? pick.finish ?? defaultFinishFor(surface, materialType, scope, roomTypeText)
+        : pick.finish;
+      onChange({ finish: filled, ...patch });
     } else if (patch.colorId === null) {
       onChange({ ...patch, finish: null });
     } else {
@@ -1898,10 +1945,14 @@ function SurfaceRow({
                   list "Finish" asks the customer a question the words do not
                   match. The options already came from the product; the label
                   should too. */}
+              {/* Not "(optional)" — Alex, 2026-10-01. It was never true for
+                  long: the moment a color is picked the finish is required and
+                  submit blocks without one, so the word only ever described the
+                  seconds before the customer chose a color. */}
               <option value="">
                 {isStainProduct(materialType)
-                  ? (pick.colorId ? "Choose an opacity…" : "Opacity (optional)")
-                  : (pick.colorId ? "Choose a finish…" : "Finish (optional)")}
+                  ? (pick.colorId ? "Choose an opacity…" : "Opacity")
+                  : (pick.colorId ? "Choose a finish…" : "Finish")}
               </option>
               {finishOptionsFor(FINISH_OPTIONS, materialType, scope).map((f) => (
                 <option key={f} value={f}>{f}</option>

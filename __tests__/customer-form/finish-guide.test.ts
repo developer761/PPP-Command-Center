@@ -52,9 +52,10 @@ describe("every finish the table names", () => {
 });
 
 describe("the table as Kate wrote it", () => {
-  it("is her six interior rows, least shine to most", () => {
+  it("is her five interior rows, least shine to most", () => {
+    // Gloss dropped 2026-10-01 ("remove Gloss to simplify options").
     expect(INTERIOR_FINISHES.map((r) => r.finish)).toEqual([
-      "Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss",
+      "Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss",
     ]);
   });
 

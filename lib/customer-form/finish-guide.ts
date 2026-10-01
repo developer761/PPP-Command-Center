@@ -39,7 +39,10 @@ export const INTERIOR_FINISHES: readonly FinishGuideRow[] = [
   { finish: "Eggshell", where: "Walls; bathroom ceilings", description: "Slight shine. Hides most flaws. Cleans easily." },
   { finish: "Satin", where: "Bathrooms, kitchens, cabinets", description: "Noticeable shine. Wipes clean; suits smooth walls." },
   { finish: "Semi-Gloss", where: "Trim, doors, cabinets", description: "Shiny and easy to clean. Highlights trim detail." },
-  { finish: "Gloss", where: "Feature doors, millwork", description: "Almost mirror-like. Makes a feature stand out." },
+  // Gloss removed 2026-10-01 (Kate, "remove Gloss to simplify options") and
+  // withdrawn from the picker in the same breath — see RETIRED_FINISHES in
+  // material-types.ts. The table and the dropdown have to shrink together, or
+  // this section starts recommending a sheen the customer cannot select.
 ];
 
 export const EXTERIOR_FINISHES: readonly FinishGuideRow[] = [
