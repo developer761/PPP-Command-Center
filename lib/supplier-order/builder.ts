@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { loadSupplierTemplate, render } from "@/lib/supplier-order/templates";
 import { estimateOrderGallons, classifySurface, GALLONS_PER_BUCKET, formatOrderQuantity, formatOrderTotal, summarizeOrder, addCustomItemsToTotal, applyQuantityOverrides, formatColorLabel, quantityKey, readProductOverride, type RoomTakeoff, type RoomSurface, type GallonEstimate, type QuantityOverride } from "@/lib/supplier-order/estimate-gallons";
 import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
-import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, paintLineFromValue } from "@/lib/customer-form/material-types";
+import { isExteriorWorkOrder, isInteriorWorkOrder, filterMaterialTypesForWorkOrder, materialTypeForVendor, materialTypeForVendorScoped, paintLineFromValue } from "@/lib/customer-form/material-types";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import { poBaseFor } from "@/lib/supplier-order/client-last-name";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
@@ -884,6 +884,10 @@ export function formatOrderSummaryBlock(
   materialType: string | null,
   materialTypeOverrides?: Map<string, string>,
   customColorItems: CustomColorItem[] = [],
+  /** Which side of the building each color is on, keyed the way
+   *  scopesByColorKey is (plain key, no bathroom split). Feeds the INT / EXT
+   *  suffix the vendor reads — Katie 2026-10-01. */
+  scopesByColorKey?: Map<string, Set<"interior" | "exterior">>,
 ): string {
   if (estimates.length === 0 && customColorItems.length === 0) {
     return "(no colors picked yet — customer has not submitted the color form)";
@@ -913,11 +917,19 @@ export function formatOrderSummaryBlock(
     // change this one line whenever the bathroom really does differ.
     const raw = readProductOverride(materialTypeOverrides, e)
       ?? materialType ?? null;
+    // INT / EXT, so a paint counter knows which can (Katie 2026-10-01).
+    // Only when the job actually says: a color used on BOTH sides is
+    // ambiguous and gets no suffix, because a guessed "INT" on exterior work
+    // buys the wrong paint, which is worse than making somebody ask.
+    const scopes = scopesByColorKey?.get(quantityKey(e.colorId, e.finish));
+    const scope = scopes && scopes.size === 1
+      ? (scopes.has("exterior") ? "exterior" : "interior")
+      : null;
     // Katie item 11 — an "Other: Behr Premium Plus" value prints the
     // product alone; the prefix is our bookkeeping. A bare "Other" with
     // nothing typed resolves to null, so the line groups under [NOT SET]
     // rather than telling a vendor the product line is "Other".
-    return materialTypeForVendor(raw) || null;
+    return materialTypeForVendorScoped(raw, scope) || null;
   });
   // Only lines that will actually be ordered decide whether the job has one
   // shared paint line or a mix — otherwise an excluded color on a different
@@ -1296,7 +1308,7 @@ export async function buildSupplierOrderDraft(
   // the exterior defaults filled in above, so it is the one everything reads.
   const materialTypeOverridesMap =
     derivedMaterialTypeOverrides.size > 0 ? derivedMaterialTypeOverrides : undefined;
-  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap, customColorItems);
+  const orderSummaryBlock = formatOrderSummaryBlock(gallonEstimates, materialType, materialTypeOverridesMap, customColorItems, scopesByColorKey);
   const placementBlock = formatPlacementBlock(lineItems);
   const deliveryAddress = resolveDeliveryAddress(input);
   const requiredByDate = computeRequiredByDate(input.workOrder, input.requiredByDate);

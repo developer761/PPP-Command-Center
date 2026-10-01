@@ -795,3 +795,38 @@ export function finishOptionsFor(
   if (!isStainProduct(materialType)) return base;
   return base.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));
 }
+
+/**
+ * Already says which side of the building it is for.
+ *
+ * "Ultra Spec Interior" needs no INT; "Ultra Spec" does. Matched on whole
+ * words so a product whose NAME happens to contain the letters (none today,
+ * but "Interlux" would) is not mistaken for a scoped one.
+ */
+const SCOPE_IN_NAME = /\b(interior|exterior|int|ext|indoor|outdoor)\b/i;
+
+/**
+ * The product line as the VENDOR should read it, with INT or EXT appended.
+ *
+ * Katie, 2026-10-01: "Need 'INT' and 'EXT' appended to the product lines so
+ * vendors know whether to use UltraSpec Interior or UltraSpec Exterior."
+ *
+ * PPP's picker carries scope-agnostic values ("Ultra Spec", "SW Duration")
+ * alongside explicitly scoped ones, because a work order can be either. The
+ * vendor cannot see the work order, so a bare "Ultra Spec" on a paint counter
+ * is a question, and the answer is a different can.
+ *
+ * Appends nothing when the name already answers it — "Ultra Spec Interior INT"
+ * reads like a typo — and nothing when the job gives no scope, because a
+ * guessed INT on an exterior order is worse than no suffix at all.
+ */
+export function materialTypeForVendorScoped(
+  value: string | null | undefined,
+  scope: "interior" | "exterior" | null | undefined
+): string {
+  const base = materialTypeForVendor(value);
+  if (!base.trim()) return base;
+  if (!scope) return base;
+  if (SCOPE_IN_NAME.test(base)) return base;
+  return `${base} ${scope === "exterior" ? "EXT" : "INT"}`;
+}

@@ -179,6 +179,21 @@ export default function OrderBuilderView({
     initialSupplierId ? { accountId: initialSupplierId, name: "" } : null
   );
   const [payload, setPayload] = useState<OrderBuildPayload>(initialPayload ?? emptyBuildPayload());
+  /**
+   * Set when Continue was refused for a missing product line (Katie 2026-10-01).
+   *
+   * Never cleared by answering ONE row. The banner and the red markers are
+   * gated on `needProductLine` as well, so they shrink as each picker is
+   * answered and vanish on their own when the last one is — which is the point
+   * of marking twelve rows red. Clearing the flag on the first pick made the
+   * other eleven markers disappear with it, taking away the only thing showing
+   * which rows were still outstanding.
+   */
+  const [productLineError, setProductLineError] = useState(false);
+  /** Bumped on every refusal, so the scroll-to-the-problem effect fires again
+   *  when they press Continue a second time without fixing anything. */
+  const [productLineNudge, setProductLineNudge] = useState(0);
+  const buyListRef = useRef<HTMLDivElement | null>(null);
   // The draft is stamped with the supplier it was built FOR. Without that, the
   // moment you switch vendors you keep seeing the previous vendor's colors and
   // quantities until the refetch lands — briefly on a fast connection, visibly
@@ -825,8 +840,64 @@ export default function OrderBuilderView({
   };
 
   /* ── Advance ───────────────────────────────────────────────────────────── */
+  /**
+   * Colors that would reach the vendor as "[NOT SET]".
+   *
+   * Katie, 2026-10-01: "Make product line selection required before they can
+   * click 'Continue to sending'". Her email showed three lines reading
+   * "[NOT SET]" — a vendor cannot fill those, so the order goes out needing a
+   * phone call.
+   *
+   * Resolved the same way the EMAIL resolves it, not just "did they touch the
+   * picker": an explicit pick, else the job default the picker shows as
+   * "(from the job)". A line already covered by the default is answered.
+   * Excluded colors are not being bought, so they are not asked about.
+   */
+  const needProductLine = estimates.filter((e) => {
+    if (e.excluded) return false;
+    const picked = readProductOverride(payload.materialTypeOverrides, e) ?? "";
+    const resolved = picked || readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e) || "";
+    // A bare "Other" with nothing typed is the one that LOOKS answered and
+    // prints "[NOT SET]" anyway — the trap Katie item 11 already named.
+    return !materialTypeForVendor(resolved).trim();
+  });
+
+  // Scrolling from inside the click handler did not move the page: the button
+  // sits in a sticky footer inside the dashboard's own scroll container, and
+  // the call ran before React had committed the banner. An effect keyed on the
+  // nudge counter runs after the commit, with the layout settled.
+  useEffect(() => {
+    if (productLineNudge === 0) return;
+    // A beat, deliberately. Clicking the footer button makes the browser bring
+    // the button itself back into view, and that scroll lands AFTER a
+    // same-tick call — measured: the banner ended up 1,925px above the
+    // viewport. Letting the focus scroll finish first and then moving is the
+    // difference between the reader seeing the problem and seeing the button
+    // that refused.
+    const id = window.setTimeout(() => {
+      buyListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [productLineNudge]);
+
   const handleAdvance = async () => {
     if (!supplier || advancing) return;
+    // Katie 2026-10-01 — refuse, say why, and put them back where the problem
+    // is. A message at the bottom of a long page about a control at the top is
+    // a message nobody can act on, so this scrolls to the buy-list and turns
+    // the offending pickers red.
+    if (needProductLine.length > 0) {
+      setProductLineError(true);
+      // The button lives in a STICKY FOOTER. Left focused, the browser scrolls
+      // it back into view and lands the reader at the bottom of the page —
+      // which is where they already were, and the opposite of the point.
+      // Blur it, then scroll on the next frame so the banner React is about to
+      // insert is already measured. Instant, not smooth: a smooth scroll here
+      // was still animating when the footer's own scroll undid it.
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setProductLineNudge((n) => n + 1);
+      return;
+    }
     // The load effect leaves `loadedFor` unset when the GET failed, precisely
     // so the autosave cannot write over a row we could not read. Continue used
     // the same payload through the door next to it — and stamped it committed.
@@ -866,6 +937,7 @@ export default function OrderBuilderView({
     // A color the worker zeroed out on purpose is answered, not outstanding.
     (e) => !e.excluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0))
   );
+
 
   return (
     <div className="space-y-5 pb-4">
@@ -1077,7 +1149,21 @@ export default function OrderBuilderView({
           )}
 
           {/* ── Order — what to buy ───────────────────────────────────────── */}
+          <div ref={buyListRef} className="scroll-mt-4">
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+            {/* Katie 2026-10-01 — the refusal is explained HERE, at the control
+                that has to change, because the button that refused is at the
+                bottom of a long page. */}
+            {productLineError && needProductLine.length > 0 && (
+              <p role="alert" className="px-4 py-2.5 text-[12px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
+                Product line required — {needProductLine.length === 1
+                  ? "1 color below has no product line."
+                  : `${needProductLine.length} colors below have no product line.`}{" "}
+                <span className="font-normal">
+                  Pick one on each row marked in red; the vendor is sent &ldquo;[NOT SET]&rdquo; without it.
+                </span>
+              </p>
+            )}
             <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-ppp-charcoal">Order — what to buy</h2>
               {(totals.buckets > 0 || totals.cans > 0 || totals.quarts > 0) && (
@@ -1163,6 +1249,10 @@ export default function OrderBuilderView({
                 // an unfinished field and still shipped the color to the vendor.
                 const isExcluded = !!e.excluded;
                 const isPlaceholder = !isExcluded && (e.manualOnly || (e.buckets === 0 && e.cans === 0));
+                // Red only AFTER Continue was refused — coloring an untouched
+                // form on arrival scolds somebody who has not done anything yet.
+                const lineNeedsProduct =
+                  productLineError && needProductLine.some((n) => quantityKey(n.colorId, n.finish, n.isBathroom) === key);
                 return (
                   <li key={key} className="px-4 py-3 text-xs">
                     {/* basis-full sm:basis-auto makes the name take its own row
@@ -1401,10 +1491,10 @@ export default function OrderBuilderView({
                         </span>
                       )}
                       <div className="flex items-center gap-1.5 w-full">
-                        <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${key}`}>
+                        <label className={`text-[10px] shrink-0 ${lineNeedsProduct ? "text-ppp-orange-700 font-semibold" : "text-ppp-charcoal-500"}`} htmlFor={`mt-${key}`}>
                           Product line:
                         </label>
-                        <div className="flex-1 min-w-0">
+                        <div className={`flex-1 min-w-0 ${lineNeedsProduct ? "rounded-lg ring-2 ring-ppp-orange-700" : ""}`}>
                           <MaterialTypePicker
                             id={`mt-${key}`}
                             value={readProductOverride(payload.materialTypeOverrides, e) ?? ""}
@@ -1437,6 +1527,11 @@ export default function OrderBuilderView({
                           thing and the email another — seen live on WO
                           00318014, 2026-09-29. Say it where the choice was
                           made. */}
+                      {lineNeedsProduct && (
+                        <p className="text-[10px] font-semibold text-ppp-orange-700 text-right">
+                          Product line required
+                        </p>
+                      )}
                       {(() => {
                         const v = readProductOverride(payload.materialTypeOverrides, e) ?? "";
                         if (!v.trim() || materialTypeForVendor(v).trim()) return null;
@@ -1476,6 +1571,7 @@ export default function OrderBuilderView({
               })}
             </ul>
           </section>
+          </div>
 
           {/* ── Custom color item (#28) ──────────────────────────────────── */}
           <CustomColorItems
