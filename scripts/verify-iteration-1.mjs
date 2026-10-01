@@ -196,8 +196,25 @@ head("+", "Hatch parity — a requested time (not in the spec, but customer-faci
 const held = replyToRequestedTime("can you do Tuesday at 2?");
 ok('a requested time is held, never confirmed',
    held?.reply === "I'll check the calendar for that time.");
+/**
+ * "4821 Oak Lane" ALONE NEVER EXERCISED THIS. The number is too big to be an
+ * hour and there is no preposition, so it exits before the branch that
+ * matters. That branch reads a bare number after "at", "around" or "by" —
+ * the same three words that introduce an address — and until 2026-10-01 it
+ * read "painted at 12 Marchmont Ave" as noon and "come by 7 Oak Road" as
+ * 7pm, which is past the last slot, so somebody who gave us their address
+ * was told our latest visit is usually 5 PM. This check was green throughout.
+ */
 ok('a house number is not a time',
-   replyToRequestedTime("4821 Oak Lane") === null);
+   ["4821 Oak Lane",
+    "looking to get the living room painted at 12 Marchmont Ave, Garden City NY 11530",
+    "we're at 9 Lakeview Dr Massapequa NY 11758",
+    "the house is at 3 Elm St",
+    "come by 7 Oak Road please",
+   ].every((t) => replyToRequestedTime(t) === null));
+ok('…and a real time still is one',
+   ["can you call me at 2pm", "how about Tuesday at 2", "at 3 works for me"]
+     .every((t) => replyToRequestedTime(t) !== null));
 
 /* ── 12 + 13. The two internal builds ───────────────────────────────── */
 head(12, "Rule Hub");

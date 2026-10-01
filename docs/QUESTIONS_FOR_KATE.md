@@ -1047,6 +1047,38 @@ The spec says A13 carries **192 defects and 77 good turns**, and names that
 the handover corpus. But the code asserts **206**, and the Rule Hub screen
 shows **206 / 107**, because it counts every finding with no corpus filter.
 
+> **ANSWERED 2026-10-01, from the database. Nothing is broken, and no
+> importer is over-counting.** There are simply THREE rating passes in the
+> table, and 192 is one of them:
+>
+> | date created | defects | done well |
+> |---|---|---|
+> | 2026-09-15 | 14 | 30 |
+> | **2026-09-24** | **192** | **77** |
+> | 2026-09-26 | 1 | 0 |
+> | **all time** | **207** | **107** |
+>
+> 192 + 14 + 1 = 207, and 77 + 30 = 107. Your 192/77 is **exactly the 24
+> September pass** — the spec's number is that pass and nothing else. The
+> screen's 206/107 is every finding ever recorded, less one example outside
+> the handover corpus.
+>
+> **So the baseline is whichever you mean, and they measure different
+> things**: 192 is "what the 24 September rating found", 207 is "everything
+> anyone has ever recorded against A13, across three sittings a fortnight
+> apart". Ours should quote 192 when it is quoting your spec.
+>
+> **Correcting our own earlier note**, which is left below: we said the
+> 14-finding gap was "inside the handover import itself" and that the
+> importer was probably over-counting on other rules too. That was wrong. We
+> filtered on `source` when the axis was `created_at`, and the 14 defects and
+> 30 good turns are a 15 September pass that predates yours.
+>
+> **Nothing needed from you unless you disagree** that the spec's 192 means
+> your own pass.
+
+<details><summary>our earlier reasoning, which was wrong, kept for the record</summary>
+
 **Investigated 2026-10-01, and it is NOT what it looked like.** The obvious
 guess was corpus versus all-time. Counting only findings whose example has
 `source = 'hatch'` — the handover corpus, 988 of the 1,000 examples — gives
@@ -1059,6 +1091,8 @@ because "206 in the corpus, 207 all time" explains nothing.
 **The question, now narrower: is 192 the number to beat, or 206?** If 192, the
 importer is over-counting by 14 on this rule and probably on others — worth
 finding before any figure is quoted in a meeting.
+
+</details>
 
 ## 20. Does a conversation that was briefly taken over ever stall?
 
