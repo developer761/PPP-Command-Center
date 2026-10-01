@@ -488,3 +488,77 @@ export async function sendCustomerFormInvite(input: {
     ],
   });
 }
+
+/**
+ * The customer's RECEIPT, sent when they submit the color form (Kate,
+ * 2026-10-01: "Provides a 'receipt' and a chance to correct errors, preventing
+ * disputes").
+ *
+ * Two jobs, and the second is the one that matters: it prints back exactly what
+ * we received, and it carries a button to the same form so a mistake can be
+ * fixed by the person who made it.
+ *
+ * Deliberately NOT gated on the Salesforce writeback succeeding. The receipt
+ * describes what the CUSTOMER sent us; whether our writeback landed is our
+ * problem, and telling them nothing because our integration failed is how the
+ * dispute this email exists to prevent starts.
+ *
+ * The document itself is built by buildConfirmationEmail, which is pure and
+ * testable; this function only resolves templates and hands it to Resend.
+ */
+export async function sendCustomerFormConfirmation(input: {
+  to: string;
+  customerName: string | null;
+  workOrderNumber: string | null;
+  formUrl: string;
+  rooms: ReadonlyArray<import("@/lib/customer-form/receipt-lines").ReceiptRoom>;
+  globalNotes?: string | null;
+  /** A re-submission rather than the first one — changes one line of copy so a
+   *  customer who edits twice is not told "thanks for submitting" twice. */
+  isReedit?: boolean;
+  colorDeadline?: string | null;
+  senderEmail?: string | null;
+  senderName?: string | null;
+}): Promise<ResendSendResult> {
+  const { loadTemplates, render, buildVars } = await import("@/lib/customer-form/templates");
+  const { buildConfirmationEmail } = await import("@/lib/customer-form/confirmation-email");
+  const { templates } = await loadTemplates();
+  const vars = buildVars({
+    customerName: input.customerName,
+    workOrderNumber: input.workOrderNumber,
+    formUrl: input.formUrl,
+    colorDeadline: input.colorDeadline,
+  });
+
+  const { subject, text, html } = buildConfirmationEmail({
+    templates,
+    vars,
+    render,
+    rooms: input.rooms,
+    globalNotes: input.globalNotes,
+    isReedit: input.isReedit,
+    formUrl: input.formUrl,
+    senderName: input.senderName,
+  });
+
+  // CC the sender so a customer reply reaches their actual estimator. PPP
+  // domains only — the same belt-and-braces guard the invite uses.
+  const senderEmail = input.senderEmail?.trim().toLowerCase() ?? "";
+  const ccList =
+    senderEmail &&
+    (senderEmail.endsWith("@precisionpaintingplus.com") || senderEmail.endsWith("@precisionpaintingplus.net"))
+      ? [senderEmail]
+      : undefined;
+
+  return sendEmail({
+    to: input.to,
+    cc: ccList,
+    subject,
+    text,
+    html,
+    tags: [
+      { name: "kind", value: "customer_form_confirmation" },
+      ...(input.workOrderNumber ? [{ name: "wo", value: input.workOrderNumber }] : []),
+    ],
+  });
+}

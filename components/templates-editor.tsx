@@ -7,6 +7,9 @@ type Templates = {
   email_intro: string;
   email_outro: string;
   email_signoff: string;
+  confirm_subject: string;
+  confirm_intro: string;
+  confirm_outro: string;
   form_header_eyebrow: string;
   form_header_title: string;
   form_header_subtitle: string;
@@ -62,6 +65,33 @@ const EMAIL_FIELDS: FieldDef[] = [
   },
 ];
 
+/** The receipt the customer gets back when they submit (Kate 2026-10-01). The
+ *  selections table between the intro and the button is generated from what
+ *  they actually chose, so there is nothing to edit in the middle. */
+const CONFIRM_FIELDS: FieldDef[] = [
+  {
+    key: "confirm_subject",
+    label: "Receipt subject line",
+    help: "Variables: {{wo_number}}, {{customer_first}}",
+    multiline: false,
+  },
+  {
+    key: "confirm_intro",
+    label: "Opening paragraph (above their selections)",
+    help: "Variables: {{customer_first}}, {{wo_number}}, {{ppp_brand}}",
+    multiline: true,
+    rows: 4,
+  },
+  {
+    key: "confirm_outro",
+    label: "Closing paragraph (below the edit button)",
+    help:
+      "Variables: {{color_deadline_notice}} — the same deadline sentence the form and the invite use. Blank lines separate paragraphs.",
+    multiline: true,
+    rows: 5,
+  },
+];
+
 const FORM_FIELDS: FieldDef[] = [
   {
     key: "form_header_eyebrow",
@@ -103,7 +133,7 @@ const FORM_FIELDS: FieldDef[] = [
   },
 ];
 
-const ALL_FIELDS: FieldDef[] = [...EMAIL_FIELDS, ...FORM_FIELDS];
+const ALL_FIELDS: FieldDef[] = [...EMAIL_FIELDS, ...CONFIRM_FIELDS, ...FORM_FIELDS];
 
 /**
  * Variables the customer-form template renderer actually substitutes —
@@ -250,6 +280,24 @@ export default function TemplatesEditor({ initial, defaults, isCustomized, updat
       {/* Email section */}
       <Section title="Customer invite email" subtitle="Sent when an admin clicks “Send Color Form” on a Work Order">
         {EMAIL_FIELDS.map((f) => (
+          <FieldRow
+            key={f.key}
+            field={f}
+            value={draft[f.key]}
+            defaultValue={defaults[f.key]}
+            isDirty={dirtyKeys.has(f.key)}
+            onChange={(v) => setDraft((p) => ({ ...p, [f.key]: v }))}
+            onReset={() => resetFieldToDefault(f.key)}
+          />
+        ))}
+      </Section>
+
+      {/* Receipt section */}
+      <Section
+        title="Customer confirmation (receipt)"
+        subtitle="Sent automatically when the customer submits the form — lists what they chose and links back so they can correct it"
+      >
+        {CONFIRM_FIELDS.map((f) => (
           <FieldRow
             key={f.key}
             field={f}

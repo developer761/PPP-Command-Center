@@ -20,6 +20,7 @@ The app must tolerate the migration being un-applied — e.g., `createToken` fal
 | `002_profiles_and_view_as.sql` | `profiles` table (admin flag, SF user id mapping) + `view_as_log` audit table. |
 | `003_customer_form_tokens.sql` | The customer-form token system. Adds `kind` column for `preview` vs real sends. |
 | `004_customer_form_templates.sql` | Email template overrides per template-key. |
+| `20261001120000_customer_form_confirmation_copy.sql` | Adds `confirm_subject` / `confirm_intro` / `confirm_outro` to `customer_form_templates` — the editable copy for the customer's confirmation ("receipt") email sent on form submit (Kate 2026-10-01). Until it's applied the receipt still sends on code defaults; only *editing* that copy in Settings → Customer Copy needs the columns, and `saveTemplates` says so rather than failing the whole save. |
 | `005_supplier_orders.sql` | The supplier order header table (PO numbers, draft/sent state, audit timestamps). |
 | `006_supplier_settings.sql` | Per-supplier config (active flag, sort order, pickup locations, etc.). |
 | `007_supplier_extras.sql` | The "extras" catalog (rollers, tape, etc.) for supplier order drafts. |

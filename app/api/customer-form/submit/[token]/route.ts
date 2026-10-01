@@ -14,6 +14,8 @@ import { ALL_FINISH_VALUES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-fo
 import { activePicklistValues, resolveFinishValue } from "@/lib/salesforce/picklists";
 import { formatProductLines } from "@/lib/customer-form/product-lines";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
+import { buildReceiptRooms, receiptIsEmpty } from "@/lib/customer-form/receipt-lines";
+import { sendCustomerFormConfirmation } from "@/lib/email/resend";
 import {
   STANDARD_SURFACE_FIELDS,
   ORPHAN_SURFACES,
@@ -968,6 +970,49 @@ export async function POST(
       errorMessage: writesFailedInfo.sampleErrorMessage,
     });
   }
+  // ── The customer's own receipt (Kate 2026-10-01) ──────────────────────────
+  //
+  // Sent to the address the form was sent TO, not anything the browser posted,
+  // so a tampered payload cannot redirect somebody's selections to a stranger.
+  //
+  // Internal-entry tokens are excluded for the same reason the sender notice
+  // is: on those rows `customer_email` is the STAFF member who opened the
+  // entry screen, so this would mail an AM a receipt addressed to the customer.
+  // Whether an AM entering colors on the phone should ALSO send the customer a
+  // receipt is a real question — flagged for Kate rather than guessed at here.
+  //
+  // Deliberately not gated on `runWrites` or on the Salesforce writeback: the
+  // receipt reports what the CUSTOMER sent, and staying silent because our own
+  // integration failed is exactly the dispute it exists to prevent.
+  if (notifySender && hasMeaningfulSubmission && status.token.customer_email) {
+    const receiptRoomLabels = new Map<string, string>();
+    for (const li of fresh.lineItems) {
+      if (li.id) receiptRoomLabels.set(li.id, roomLabelFrom(li.areaLabel, li.productName));
+    }
+    const rooms = buildReceiptRooms({
+      lineItems: sanitizedLineItems,
+      roomLabelById: receiptRoomLabels,
+    });
+    const receiptNotes = sanitizeNotesField(body.globalNotes);
+    if (!receiptIsEmpty(rooms, receiptNotes)) {
+      sendCustomerFormConfirmation({
+        to: status.token.customer_email,
+        customerName: status.token.customer_name,
+        workOrderNumber: fresh.workOrderNumber,
+        formUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")}/select/${tokenFromUrl}`,
+        rooms,
+        globalNotes: receiptNotes,
+        isReedit,
+        colorDeadline: status.token.color_deadline ?? null,
+      }).catch((err) => {
+        console.warn(
+          `[customer-form] customer receipt failed for token ${tokenFromUrl.slice(0, 8)}…:`,
+          err instanceof Error ? err.message : err
+        );
+      });
+    }
+  }
+
   if (status.token.created_by_user_id && runWrites && hasMeaningfulSubmission && notifySender) {
     // EMAIL — Katie 2026-07-08: previously gated on writebackHappened
     // (skipped the email when SF was bypassed). Now also fires on

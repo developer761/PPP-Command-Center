@@ -32,6 +32,12 @@ export type Templates = {
   email_intro: string;
   email_outro: string;
   email_signoff: string;
+  /** Confirmation ("receipt") email, sent to the customer on submit — Kate
+   *  2026-10-01. Editable for the same reason the invite copy is: the wording
+   *  of a document meant to settle a dispute should not need a deploy. */
+  confirm_subject: string;
+  confirm_intro: string;
+  confirm_outro: string;
   form_header_eyebrow: string;
   form_header_title: string;
   form_header_subtitle: string;
@@ -55,6 +61,16 @@ export const DEFAULT_TEMPLATES: Templates = {
   email_outro:
     "{{color_deadline_notice}}\n\nOnce you submit, we'll order materials and confirm your start date. The link is unique to your job — please don't share it.\n\nIf you have questions or want to add anything, just reply to this email.",
   email_signoff: "Thanks,\n{{ppp_brand}}",
+
+  confirm_subject: "Your color selections — Work Order #{{wo_number}}",
+  confirm_intro:
+    "Thanks — we've got your color selections for Work Order #{{wo_number}}. Here's exactly what we received, so you can check it over.",
+  // The edit button sits between these two paragraphs, so the outro follows on
+  // from it. {{color_deadline_notice}} is the SAME sentence the form and the
+  // invite use, from one function (Kate 2026-09-04) — three places that must
+  // never promise a customer three different dates.
+  confirm_outro:
+    "If anything above isn't right, use the button to update it — your selections stay editable until we order the materials.\n\n{{color_deadline_notice}}\n\nIf you have questions, just reply to this email.",
 
   form_header_eyebrow: "Pick your paint colors",
   form_header_title: "Hi {{customer_first}} — let's lock in your colors",
@@ -146,13 +162,53 @@ export async function saveTemplates(
       .from("customer_form_templates")
       .update(update)
       .eq("id", "default");
-    if (error) {
-      return { ok: false, error: error.message };
+    if (!error) return { ok: true };
+
+    // A column this build knows about but the database does not — the state
+    // between shipping a new template field and somebody pasting the migration
+    // into the SQL editor (there is no runner; see supabase/migrations/README).
+    // The README's rule is that the app tolerates an un-applied migration, so
+    // save everything that CAN be saved and say plainly what could not, rather
+    // than failing the whole edit and losing the admin's other changes.
+    const missing = missingColumnsFrom(error.message, Object.keys(update));
+    if (missing.length === 0) return { ok: false, error: error.message };
+
+    const retry: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(update)) {
+      if (!missing.includes(k)) retry[k] = v;
     }
-    return { ok: true };
+    if (Object.keys(retry).length === 0) {
+      return { ok: false, error: `Not saved — the database is missing ${missing.join(", ")}. Run the latest migration in supabase/migrations.` };
+    }
+    const { error: retryError } = await sb
+      .from("customer_form_templates")
+      .update(retry)
+      .eq("id", "default");
+    if (retryError) return { ok: false, error: retryError.message };
+    return {
+      ok: false,
+      error: `Saved everything except ${missing.join(", ")} — those columns don't exist yet. Run the latest migration in supabase/migrations, then save again.`,
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Which of the columns we tried to write does Postgres say it doesn't have?
+ *
+ * PostgREST surfaces 42703 as a message naming ONE column
+ * (`column "confirm_intro" of relation "customer_form_templates" does not
+ * exist`), so the quoted name is matched against what we actually sent rather
+ * than trusted blindly — and the whole candidate set is intersected, because a
+ * second missing column only reveals itself on the retry. Returns [] for any
+ * other failure, which keeps a real error (RLS, constraint) loud instead of
+ * being mistaken for a pending migration.
+ */
+function missingColumnsFrom(message: string, attempted: string[]): string[] {
+  if (!/does not exist/i.test(message)) return [];
+  const named = Array.from(message.matchAll(/"([a-z0-9_]+)"/gi)).map((m) => m[1]);
+  return attempted.filter((c) => named.includes(c));
 }
 
 /**
