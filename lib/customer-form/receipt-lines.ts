@@ -106,3 +106,68 @@ export function receiptIsEmpty(rooms: ReadonlyArray<ReceiptRoom>, globalNotes: s
   if (str(globalNotes)) return false;
   return !rooms.some((r) => r.notes || r.surfaces.some((s) => s.skipped || s.colorName));
 }
+
+/** Looks like a deliverable address. Same shape every admin send route uses. */
+const EMAIL_RE = /^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i;
+
+/**
+ * Who the receipt is actually addressed to.
+ *
+ * This exists because of one specific trap. `customer_form_tokens.customer_email`
+ * is the customer on a normal token — but on a kind="internal" row it holds the
+ * PPP STAFF MEMBER who opened the entry screen, and `customer_name` holds a
+ * label like "[Internal Entry] katie@precisionpaintingplus.net". Reading the
+ * obvious column therefore emails an AM a receipt that opens "Hi Katie" and
+ * lists somebody else's bathroom.
+ *
+ * So an internal entry takes its recipient from the WORK ORDER (resolved by the
+ * same schema-driven discovery the "Send Color Form" modal uses), and returns
+ * null rather than falling back to the token when the work order has no email —
+ * a missing address is a thing to tell the AM about, never a reason to send it
+ * to the nearest address we happen to have.
+ */
+export function receiptRecipient(input: {
+  tokenKind: string | null | undefined;
+  tokenEmail: string | null | undefined;
+  tokenCustomerName: string | null | undefined;
+  /** Resolved from the WorkOrder — only consulted for internal entry. */
+  workOrderEmail?: string | null;
+  workOrderCustomerName?: string | null;
+}): { email: string | null; name: string | null } {
+  const isInternal = input.tokenKind === "internal";
+  const raw = (isInternal ? input.workOrderEmail : input.tokenEmail) ?? "";
+  const email = EMAIL_RE.test(raw.trim()) ? raw.trim() : null;
+
+  const rawName = (isInternal ? input.workOrderCustomerName ?? input.tokenCustomerName : input.tokenCustomerName) ?? null;
+  // Never greet a customer with the staff label these rows carry.
+  const name = rawName && !/^\s*\[internal entry\]/i.test(rawName) ? rawName : null;
+
+  return { email, name };
+}
+
+/**
+ * The COLOR cell of the receipt table, without the finish.
+ *
+ * Split out from receiptSurfaceText (which still writes the one-line plain-text
+ * version) because the HTML receipt reads as a table: color and finish belong
+ * in their own columns, and the "·" that joined them made every row look like a
+ * sentence instead of a line item. Karan, 2026-10-01: "it looks like a lot and
+ * not like a receipt".
+ */
+export function receiptColorText(s: ReceiptSurface): string {
+  if (s.skipped) return "Not painting this surface";
+  if (!s.colorName) return "No color chosen yet";
+  return s.colorName;
+}
+
+/** The color CODE, when it adds something the name doesn't already say. */
+export function receiptColorCode(s: ReceiptSurface): string | null {
+  if (s.skipped || !s.colorName || !s.colorCode) return null;
+  return s.colorName.includes(s.colorCode) ? null : s.colorCode;
+}
+
+/** The FINISH cell. Empty string when the row has nothing to say about one. */
+export function receiptFinishText(s: ReceiptSurface): string {
+  if (s.skipped || !s.colorName) return "";
+  return s.finish || "Not chosen";
+}

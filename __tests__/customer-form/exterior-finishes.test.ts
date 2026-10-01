@@ -48,32 +48,37 @@ describe("exterior sheens", () => {
     expect(finishOptionsFor(BASE, null)).toEqual(BASE);
   });
 
-  it("never offers Gloss or High-Gloss again, whoever asks", () => {
-    // Kate 2026-10-01: "remove Gloss and High-Gloss from the finish selection
-    // picklist." They are stripped at the exit of finishOptionsFor rather than
-    // product by product, so this holds for a caller still passing the old
-    // list, for Jason's per-product sheets that name them (SW Duration and SW
-    // Super Paint exterior), and for any product added later.
-    const callers: Array<[string | null, "interior" | "exterior" | null]> = [
-      [null, null],
-      ["SW Duration", "exterior"],
-      ["SW Super Paint", "exterior"],
-      ["Regal Select", "interior"],
-      ["Mooreglo", "exterior"],
-    ];
-    let checked = 0;
-    for (const [product, scope] of callers) {
-      const out = finishOptionsFor(BASE_BEFORE_2026_10_01, product, scope);
-      expect(out, `${product} / ${scope}`).not.toContain("Gloss");
-      expect(out, `${product} / ${scope}`).not.toContain("High-Gloss");
-      // The near-misses must survive — they are different finishes.
-      expect(out.length, `${product} / ${scope}`).toBeGreaterThan(0);
-      checked++;
-    }
-    expect(checked).toBe(callers.length);
-    // Semi-Gloss and Soft Gloss are NOT Gloss. Exact matches only.
-    expect(finishOptionsFor(BASE_BEFORE_2026_10_01, "Regal Select", "interior")).toContain("Semi-Gloss");
-    expect(finishOptionsFor(BASE_BEFORE_2026_10_01, "Mooreglo", "exterior")).toContain("Soft Gloss");
+  it("drops Gloss from the GENERIC list but not from products that sell it", () => {
+    // Katie, 2026-10-01, narrowing Kate's first instruction: "Leave Gloss and
+    // High-Gloss as options to select but don't add to the recommended
+    // finishes table. You can remove from Interior options to select."
+    //
+    // So the removal is about the generic fallback, not about products. An
+    // ordinary interior wall paint no longer offers gloss…
+    expect(finishOptionsFor(BASE, null, "interior")).not.toContain("Gloss");
+    expect(finishOptionsFor(BASE, null, "interior")).not.toContain("High-Gloss");
+    expect(finishOptionsFor(BASE, "Regal Select", "interior")).not.toContain("Gloss");
+
+    // …while a product that is actually sold in it keeps it. Emerald Urethane
+    // is Katie's OWN example in the same message ("works inside and outside …
+    // satin, semi-gloss and gloss … their main trim, door and window
+    // product"), so stripping it here would have deleted the sheen from the
+    // one product she named while answering the question.
+    expect(finishOptionsFor(BASE, "SW Emerald Urethane Trim/Cabinets", "interior")).toContain("Gloss");
+    expect(finishOptionsFor(BASE, "SW Duration", "exterior")).toContain("Gloss");
+    expect(finishOptionsFor(BASE, "SW Emerald", "exterior")).toContain("Gloss");
+
+    // Semi-Gloss and Soft Gloss are NOT Gloss — different finishes, both stay.
+    expect(finishOptionsFor(BASE, "Regal Select", "interior")).toContain("Semi-Gloss");
+    expect(finishOptionsFor(BASE, "Mooreglo", "exterior")).toContain("Soft Gloss");
+  });
+
+  it("sells Kitchen & Bath in Satin, which is what the table recommends", () => {
+    // Was "Pearl" — a guess, because the product was missing from Jason's
+    // sheet. Katie checked Benjamin Moore's page and sent the can: SATIN.
+    // The Satin row of the finishes table names this product by name, so a
+    // mismatch here is the table recommending something the picker contradicts.
+    expect(finishOptionsFor(BASE, "Regal Select Kitchen & Bath", "interior")).toEqual(["Satin"]);
   });
 
   it("still ACCEPTS a withdrawn sheen a saved form already holds", () => {
@@ -125,13 +130,18 @@ describe("exterior sheens", () => {
       finishOptionsFor(BASE, "SW Super Paint", "interior").filter((f) => normalizeFinishToSf(f) === null)
     ).toEqual(["Velvet"]);
 
-    // EXTERIOR used to lose "High-Gloss" the same way. Withdrawing it from the
-    // picker on 2026-10-01 closed that hole as a side effect: a customer can no
-    // longer choose a sheen that is silently dropped on the way to Salesforce.
-    // If this ever goes non-empty again, something re-offered an unmappable
-    // finish.
+    // EXTERIOR loses "High-Gloss" the same way, and this is DELIBERATELY still
+    // open. Withdrawing the sheen from every picker closed it for a few hours
+    // on 2026-10-01; Katie then asked for Gloss and High-Gloss to stay
+    // selectable on the products that sell them, which necessarily reopens it.
+    //
+    // The consequence is worth stating plainly: a customer who picks
+    // High-Gloss on SW Super Paint exterior gets their COLOR saved and their
+    // SHEEN dropped, because no such value exists on Salesforce's restricted
+    // Finish__c picklist. The fix is in Salesforce, not here — flagged for
+    // Katie. `npm run check:sf-picklists` names it on every run.
     expect(
       finishOptionsFor(BASE, "SW Super Paint", "exterior").filter((f) => normalizeFinishToSf(f) === null)
-    ).toEqual([]);
+    ).toEqual(["High-Gloss"]);
   });
 });

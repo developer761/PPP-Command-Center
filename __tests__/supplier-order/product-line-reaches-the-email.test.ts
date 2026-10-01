@@ -107,7 +107,10 @@ describe("the new products are real products, not just strings", () => {
       ["Ultra Spec Interior", "interior", ["Flat", "Eggshell", "Satin", "Semi-Gloss"]],
       ["Ultra Spec Exterior", "exterior", ["Low Lustre", "Satin", "Soft Gloss"]],
       ["Aura Bath & Spa", "interior", ["Matte"]],
-      ["Regal Select Kitchen & Bath", "interior", ["Pearl"]],
+      // Satin, corrected 2026-10-01 — Katie checked Benjamin Moore's page and
+      // sent the can ("KITCHEN & BATH · INTERIOR · SATIN"). "Pearl" here was a
+      // guess from when the product was missing off Jason's sheet.
+      ["Regal Select Kitchen & Bath", "interior", ["Satin"]],
     ];
     for (const [product, scope, expected] of cases) {
       const offered = finishOptionsFor([...ALL_FINISH_VALUES], product, scope);

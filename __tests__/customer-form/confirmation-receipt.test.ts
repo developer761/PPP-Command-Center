@@ -3,6 +3,8 @@ import {
   buildReceiptRooms,
   receiptSurfaceText,
   receiptIsEmpty,
+  receiptFinishText,
+  receiptRecipient,
 } from "@/lib/customer-form/receipt-lines";
 import { buildConfirmationEmail } from "@/lib/customer-form/confirmation-email";
 import { DEFAULT_TEMPLATES, render, buildVars } from "@/lib/customer-form/templates";
@@ -78,9 +80,28 @@ describe("what the receipt says happened", () => {
     // From 2026-10-01 the form stopped auto-filling one (Alex), so this is a
     // common state and the customer is the only person who can resolve it.
     // Printing the color with a silent blank beside it is how it gets missed.
+    //
+    // The plain-text body says it inline; the HTML says it in the Finish
+    // column, where an empty cell would read as "nothing to do here".
     expect(receiptSurfaceText({ surface: "Ceiling", colorName: "Chantilly Lace", colorCode: "OC-65", finish: null, skipped: false }))
       .toContain("finish not chosen");
-    expect(build().html).toContain("finish not chosen");
+    expect(receiptFinishText({ surface: "Ceiling", colorName: "Chantilly Lace", colorCode: "OC-65", finish: null, skipped: false }))
+      .toBe("Not chosen");
+    expect(build().html).toContain("Not chosen");
+    expect(build().text).toContain("finish not chosen");
+  });
+
+  it("gives the receipt real columns rather than sentences", () => {
+    // Karan, 2026-10-01: "it looks like a lot and not like a receipt". The
+    // fix was structural — Surface / Color / Finish as actual table columns,
+    // with the color code in its own muted span instead of joined to the
+    // finish by a "·" that made every row read as prose.
+    const { html } = build();
+    for (const heading of ["Surface", "Color", "Finish"]) {
+      expect(html, heading).toContain(`>${heading}</th>`);
+    }
+    // The color and the finish are no longer welded into one string.
+    expect(html).not.toContain("Stardust (2108-40) · Satin");
   });
 
   it("shows a skipped surface rather than dropping it", () => {
@@ -174,5 +195,63 @@ describe("what must not reach the customer", () => {
       roomLabelById: ROOM_LABELS,
     });
     expect(orphan[0].room).toBe("Unnamed area");
+  });
+});
+
+describe("who the Internal Entry button emails", () => {
+  // Katie 2026-10-01: Internal Entry does not auto-send; it gets a button.
+  // The trap is that `customer_email` on a kind="internal" row holds the PPP
+  // STAFF MEMBER who opened the entry screen, so the obvious column is the
+  // wrong one — it would mail an AM a receipt addressed to the customer.
+
+  it("uses the WORK ORDER's email on an internal entry, never the token's", () => {
+    const r = receiptRecipient({
+      tokenKind: "internal",
+      tokenEmail: "katie@precisionpaintingplus.net",
+      tokenCustomerName: "[Internal Entry] katie@precisionpaintingplus.net",
+      workOrderEmail: "jane@example.com",
+      workOrderCustomerName: "Jane Doe",
+    });
+    expect(r.email).toBe("jane@example.com");
+    expect(r.name).toBe("Jane Doe");
+  });
+
+  it("refuses to send rather than falling back to the staff address", () => {
+    // The failure that matters. With no customer email on the work order the
+    // answer is "tell the AM", never "send it to the nearest address we have".
+    const r = receiptRecipient({
+      tokenKind: "internal",
+      tokenEmail: "katie@precisionpaintingplus.net",
+      tokenCustomerName: "[Internal Entry] katie@precisionpaintingplus.net",
+      workOrderEmail: null,
+    });
+    expect(r.email).toBeNull();
+  });
+
+  it("never greets a customer with the internal-entry label", () => {
+    const r = receiptRecipient({
+      tokenKind: "internal",
+      tokenEmail: "katie@precisionpaintingplus.net",
+      tokenCustomerName: "[Internal Entry] katie@precisionpaintingplus.net",
+      workOrderEmail: "jane@example.com",
+      workOrderCustomerName: null,
+    });
+    expect(r.email).toBe("jane@example.com");
+    expect(r.name).toBeNull();
+  });
+
+  it("uses the token's own email on an ordinary customer form", () => {
+    const r = receiptRecipient({
+      tokenKind: null,
+      tokenEmail: "jane@example.com",
+      tokenCustomerName: "Jane Doe",
+    });
+    expect(r.email).toBe("jane@example.com");
+    expect(r.name).toBe("Jane Doe");
+  });
+
+  it("rejects an address that isn't one", () => {
+    expect(receiptRecipient({ tokenKind: null, tokenEmail: "jane@example", tokenCustomerName: null }).email).toBeNull();
+    expect(receiptRecipient({ tokenKind: null, tokenEmail: "   ", tokenCustomerName: null }).email).toBeNull();
   });
 });

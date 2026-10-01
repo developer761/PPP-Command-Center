@@ -1,4 +1,10 @@
-import { receiptSurfaceText, type ReceiptRoom } from "@/lib/customer-form/receipt-lines";
+import {
+  receiptSurfaceText,
+  receiptColorText,
+  receiptColorCode,
+  receiptFinishText,
+  type ReceiptRoom,
+} from "@/lib/customer-form/receipt-lines";
 import type { Templates } from "@/lib/customer-form/templates";
 
 /**
@@ -80,41 +86,70 @@ export function buildConfirmationEmail(input: {
   // ── html ──────────────────────────────────────────────────────────────────
   const escName = firstName ? escapeHtml(firstName) : "there";
   const escUrl = encodeURI(input.formUrl);
-  const roomsHtml = rooms
+  // ONE itemised table for the whole job, the way a receipt is laid out: a
+  // shaded room band, then Surface / Color / Finish in fixed columns. Built
+  // from <table> and inline styles only — Outlook and Gmail both ignore
+  // flexbox and most <style> blocks, so a "nicer" layout is a broken one.
+  const COL = {
+    surface: "padding:7px 10px; font-size:9.5pt; color:#555; vertical-align:top; width:28%; border-bottom:1px solid #eee;",
+    color: "padding:7px 10px; font-size:10pt; vertical-align:top; border-bottom:1px solid #eee;",
+    finish: "padding:7px 10px; font-size:10pt; vertical-align:top; width:24%; white-space:nowrap; border-bottom:1px solid #eee;",
+  };
+
+  const roomBlocks = rooms
     .map((room) => {
       const surfaceRows = room.surfaces
         .map((s) => {
-          const value = escapeHtml(receiptSurfaceText(s));
-          // Greyed + italic when there is nothing chosen, so a glance down the
-          // column separates answered from unanswered without reading it all.
-          const muted = s.skipped || !s.colorName;
-          const valueStyle = muted ? "color:#777; font-style:italic;" : "color:#333;";
+          const unanswered = s.skipped || !s.colorName;
+          const colorText = escapeHtml(receiptColorText(s));
+          const code = receiptColorCode(s);
+          const finish = receiptFinishText(s);
+          // Gray italic for anything nobody answered, so one glance down the
+          // column separates chosen from not-chosen.
+          const colorCell = unanswered
+            ? `<span style="color:#888; font-style:italic;">${colorText}</span>`
+            : `${colorText}${code ? `<span style="color:#888;"> ${escapeHtml(code)}</span>` : ""}`;
+          const finishCell = !finish
+            ? ""
+            : finish === "Not chosen"
+              ? `<span style="color:#b55b1e; font-style:italic;">Not chosen</span>`
+              : escapeHtml(finish);
           return `<tr>
-              <td style="padding:4px 10px 4px 0; font-size:9pt; color:#777; white-space:nowrap; vertical-align:top;">${escapeHtml(s.surface)}</td>
-              <td style="padding:4px 0; font-size:10pt; ${valueStyle}">${value}</td>
-            </tr>`;
+                <td style="${COL.surface}">${escapeHtml(s.surface)}</td>
+                <td style="${COL.color}">${colorCell}</td>
+                <td style="${COL.finish}">${finishCell}</td>
+              </tr>`;
         })
         .join("\n");
       const noteRow = room.notes
-        ? `<tr><td colspan="2" style="padding:6px 0 0 0; font-size:9pt; color:#555;"><em>Your note: ${escapeHtml(room.notes)}</em></td></tr>`
+        ? `<tr><td colspan="3" style="padding:6px 10px 8px 10px; font-size:9pt; color:#666; border-bottom:1px solid #eee;"><em>Note: ${escapeHtml(room.notes)}</em></td></tr>`
         : "";
-      return `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; margin:0 0 14px 0;">
-        <tbody>
-          <tr><td colspan="2" style="padding:0 0 4px 0; font-size:10pt; font-weight:bold; color:#333; border-bottom:1px solid #ddd;">${escapeHtml(room.room)}</td></tr>
+      return `<tr><td colspan="3" style="padding:9px 10px 8px 10px; font-size:9.5pt; font-weight:bold; color:#333; background:#f5f5f5; border-bottom:1px solid #e0e0e0;">${escapeHtml(room.room)}</td></tr>
           ${surfaceRows}
-          ${noteRow}
-        </tbody>
-      </table>`;
+          ${noteRow}`;
     })
     .join("\n");
 
+  const roomsHtml = `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:1px solid #e0e0e0; border-collapse:collapse;">
+        <tbody>
+          <tr>
+            <th align="left" style="padding:6px 10px; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold; border-bottom:1px solid #e0e0e0;">Surface</th>
+            <th align="left" style="padding:6px 10px; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold; border-bottom:1px solid #e0e0e0;">Color</th>
+            <th align="left" style="padding:6px 10px; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold; border-bottom:1px solid #e0e0e0;">Finish</th>
+          </tr>
+          ${roomBlocks}
+        </tbody>
+      </table>`;
+
   const notesBlock = globalNotes
-    ? `<tr><td style="padding:0 20px 10px 20px;"><p style="margin:0 0 4px 0; font-size:9pt; color:#777;">Your notes for the team</p><p style="margin:0; font-size:10pt; color:#333;">${escapeHtml(globalNotes)}</p></td></tr>`
+    ? `<tr><td style="padding:14px 20px 0 20px;"><p style="margin:0 0 3px 0; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold;">Your notes for the team</p><p style="margin:0; font-size:10pt; color:#333;">${escapeHtml(globalNotes)}</p></td></tr>`
     : "";
   const escWo = (vars.wo_number ?? "").trim() ? escapeHtml(vars.wo_number) : "";
+  // One line, not a two-line box. The old version repeated "Work Order" and
+  // "Status" as a stacked block that competed with the table underneath it.
   const woBlock = escWo
-    ? `<strong>Work Order:</strong> #${escWo}<br/>\n                <strong>Status:</strong> <span style="color:#27772f;">Color selections received</span>`
-    : `<strong>Status:</strong> <span style="color:#27772f;">Color selections received</span>`;
+    ? `Work Order <strong>#${escWo}</strong> &nbsp;·&nbsp; <span style="color:#27772f; font-weight:bold;">Color selections received</span>`
+    : `<span style="color:#27772f; font-weight:bold;">Color selections received</span>`;
 
   const html = `<table border="0" cellpadding="0" cellspacing="0" style="width:600px; font-family:tahoma,geneva,sans-serif; font-size:10pt; line-height:1.5; color:#333;">
   <tbody>
@@ -131,20 +166,12 @@ export function buildConfirmationEmail(input: {
       </td>
     </tr>
     <tr>
-      <td style="padding:5px 20px;">
-        <table border="0" cellpadding="10" cellspacing="0" style="width:100%; background:#f5f5f5; border:1px solid #ddd;">
-          <tbody>
-            <tr>
-              <td style="font-size:9pt;">
-                ${woBlock}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <td style="padding:0 20px 12px 20px; font-size:9pt; color:#555;">
+        ${woBlock}
       </td>
     </tr>
     <tr>
-      <td style="padding:15px 20px 0 20px;">
+      <td style="padding:0 20px;">
         ${roomsHtml}
       </td>
     </tr>

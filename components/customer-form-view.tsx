@@ -190,6 +190,7 @@ import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to
 import FinishGuideSection from "@/components/finish-guide-section";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
 import { finishGuideScope } from "@/lib/customer-form/finish-guide";
+import SendReceiptButton from "@/components/send-receipt-button";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
 
@@ -706,6 +707,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             {note}
           </p>
         ))}
+        {/* Katie 2026-10-01 — Internal Entry does NOT auto-send the customer a
+            receipt; it offers one here instead, "so they can review to make
+            sure it's ready". Only on real internal entry: preview saves
+            nothing, so there would be nothing to send. */}
+        {isInternal && <SendReceiptButton token={token} />}
         {sfWriteFailed && isStaffEntry && (
           <div role="alert" className="mt-4 text-left text-xs sm:text-sm text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 max-w-md mx-auto">
             <strong className="block">Saved here, but Salesforce rejected it.</strong>
@@ -1115,7 +1121,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             add the Salesforce-sync caveat when the WO isn't yet enabled). */}
         {isInternal && (
           <div className="text-xs sm:text-sm text-ppp-blue-700 bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-3 py-2 leading-relaxed">
-            <strong>Internal entry.</strong> You&apos;re entering colors on the customer&apos;s behalf. This is saved when you submit — no email is sent to the customer.
+            <strong>Internal entry.</strong> You&apos;re entering colors on the customer&apos;s behalf. This is saved when you submit, and nothing is emailed to the customer automatically — once it&apos;s saved you&apos;ll get a button to send them a receipt when you&apos;re ready.
           </div>
         )}
         {/* Test-mode banner — writeback mode is "test_only" and this WO isn't
