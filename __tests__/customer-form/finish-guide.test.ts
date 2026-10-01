@@ -156,14 +156,20 @@ describe("Katie's Satin row (2026-10-01)", () => {
     expect(satin!.description).not.toContain("smooth walls");
   });
 
-  it("names the product she wants recommended", () => {
-    expect(satin!.product).toBe("Kitchen & Bath (resists mold and mildew)");
+  it("names the product she wants recommended, in her words", () => {
+    // Her second pass (same day) rewrote the whole line: surfaces first, the
+    // reason parenthetical, product last. The label moved INTO the string
+    // because the sentence is no longer "<label>: <product>" — it reads as one
+    // clause and splitting it would mean reassembling her wording in JSX.
+    expect(satin!.product).toBe(
+      "Recommended product for walls and ceilings (resists mold and mildew): Kitchen & Bath"
+    );
   });
 
-  it("carries the label in the component, not in the data", () => {
-    // Otherwise the next row to get a product has to retype "Recommended
-    // Product:" and the two drift apart.
-    expect(satin!.product).not.toMatch(/recommended product/i);
+  it("mentions the surfaces it applies to, not just the product", () => {
+    // The point of her rewrite — "Kitchen & Bath" alone did not say WHERE.
+    expect(satin!.product).toMatch(/walls and ceilings/i);
+    expect(satin!.product).toMatch(/Kitchen & Bath$/);
   });
 
   it("is the only row with a product for now", () => {

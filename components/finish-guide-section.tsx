@@ -129,17 +129,18 @@ function FinishBlock({
             <span className="block text-xs sm:text-sm text-ppp-charcoal-600">{r.where}</span>
             <span className="block text-xs sm:text-sm text-ppp-charcoal-500 leading-relaxed">
               {r.description}
-              {/* Katie 2026-10-01 — the product recommendation sits under the
-                  description rather than beside it: it is a second sentence
-                  about the same finish, and on a phone the row is already
-                  stacked. The label is here, not in the data, so every row
-                  that gets one reads identically. */}
-              {r.product && (
-                <span className="block mt-0.5 text-ppp-charcoal-600">
-                  <span className="font-semibold">Recommended Product:</span> {r.product}
-                </span>
-              )}
             </span>
+            {/* Katie's mockup, 2026-10-01: the product recommendation is a
+                highlighted box ACROSS the whole row, not a third line inside
+                the description column. sm:col-span-3 is what spans it; on a
+                phone the row is already stacked, so it simply sits last.
+                Amber on amber-50 rather than the brand orange, which fails AA
+                against this background. */}
+            {r.product && (
+              <span className="block sm:col-span-3 mt-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 leading-relaxed">
+                {r.product}
+              </span>
+            )}
           </li>
         ))}
       </ul>

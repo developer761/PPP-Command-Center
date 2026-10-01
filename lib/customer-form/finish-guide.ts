@@ -77,7 +77,9 @@ export const INTERIOR_FINISHES: readonly FinishGuideRow[] = [
     finish: "Satin",
     where: "Bathrooms, kitchens, cabinets",
     description: "Noticeable shine. Wipes clean; suits smooth surfaces.",
-    product: "Kitchen & Bath (resists mold and mildew)",
+    // Katie's wording, 2026-10-01 (second pass): the surfaces lead, the
+    // reason is parenthetical, and the product lands last.
+    product: "Recommended product for walls and ceilings (resists mold and mildew): Kitchen & Bath",
   },
   { finish: "Semi-Gloss", where: "Trim, doors, cabinets", description: "Shiny and easy to clean. Highlights trim detail." },
   // Gloss removed 2026-10-01 (Kate, "remove Gloss to simplify options") and
