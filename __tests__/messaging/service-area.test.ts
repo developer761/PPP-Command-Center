@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { territoryFor, SERVICED_STATES } from "@/lib/messaging/territory";
+import { checkServiceZip } from "@/lib/messaging/service-zip";
 import { renderMessage, SAYS } from "@/lib/messaging/render";
 import { shouldEscalate } from "@/lib/messaging/agent-output";
 import { buildSystemPrompt } from "@/lib/messaging/agent-run";
@@ -255,5 +256,48 @@ describe("what our own lookup says reaches the prompt", () => {
     // The line ADDS a fact; it must not replace the rule that governs it.
     const p = prompt({ outcome: "out_of_state", zip: "75001", state: "Texas" });
     expect(p).toMatch(/never say a place is outside our area off your own judgement/);
+  });
+});
+
+/**
+ * ONE LIST, NOT TWO.
+ *
+ * service-zip.ts held its own copy of the six states, justified in a comment
+ * as saving an import. Nothing pinned that copy — the two tests that pin the
+ * list both pin territory.ts's SERVICED_STATES — so adding a seventh state
+ * would have failed those two tests, been fixed in territory.ts, gone green,
+ * and left checkServiceZip still answering "we do not service that state" to
+ * every lead in the new one. That is the only message in the system that
+ * tells a customer no outright.
+ *
+ * This asserts the BEHAVIOUR rather than the identity of the set, because a
+ * future edit could reintroduce a literal that happens to match today and
+ * drift tomorrow. A state added to SERVICED_STATES must stop being refused by
+ * the zip lookup, whatever that lookup declares internally.
+ */
+describe("the zip lookup reads the same six states as the territory rule", () => {
+  const freshness = new Date("2026-10-01T12:00:00Z");
+  const now = new Date("2026-10-01T12:05:00Z");
+
+  it("refuses every state that is not in SERVICED_STATES", () => {
+    for (const state of ["TX", "LA", "VA", "NC", "PA", "MD", "ID"]) {
+      const out = checkServiceZip(
+        "83702",
+        { zip: "83702", state, city: null, county: null, territoryName: "Something", territoryActive: true },
+        freshness, now,
+      );
+      expect(out.outcome, state).toBe("out_of_state");
+    }
+  });
+
+  it("refuses none of the six, so the two lists cannot have drifted apart", () => {
+    for (const state of SERVICED_STATES) {
+      const out = checkServiceZip(
+        "11530",
+        { zip: "11530", state, city: null, county: null, territoryName: "NY Nassau North", territoryActive: true },
+        freshness, now,
+      );
+      expect(out.outcome, state).not.toBe("out_of_state");
+    }
   });
 });

@@ -30,7 +30,7 @@
  * the reply path reads the table the poll writes and never calls Salesforce.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { territoryFor, normalizeZip, type ZipRow } from "./territory";
+import { territoryFor, normalizeZip, SERVICED_STATES, type ZipRow } from "./territory";
 
 /**
  * How old the table may be before it stops being evidence.
@@ -75,9 +75,23 @@ export function stateName(code: string | null | undefined): string {
   return STATE_NAME[c] ?? c;
 }
 
-/** The six PPP covers. Kept here so the out-of-state branch can be decided
- *  without importing the set and re-deriving the same answer twice. */
-const SERVICED = new Set(["NJ", "CA", "CT", "FL", "NY", "CO"]);
+/**
+ * THE SIX PPP COVERS, AND THERE IS ONLY ONE COPY OF THEM.
+ *
+ * This was a second `new Set(["NJ","CA","CT","FL","NY","CO"])` declared here,
+ * justified as saving an import. Both tests that pin the list pin
+ * territory.ts's SERVICED_STATES and neither pinned this one, so adding a
+ * state would have gone like this: both tests fail, somebody edits
+ * territory.ts, the tests pass, and this copy goes on telling every lead in
+ * the new state that PPP does not service it — the only message in the system
+ * that tells a customer "no" outright.
+ *
+ * Not hypothetical. The live map holds 270 zips across TX, LA, VA, NC, PA and
+ * MD with no active territory behind them (checked against production
+ * 2026-10-01, which is also why the current six are right: every zip outside
+ * them is inactive). Those are exactly the states an expansion turns on.
+ */
+const SERVICED = SERVICED_STATES;
 
 /**
  * Pure half, so the decision can be tested without a database.
