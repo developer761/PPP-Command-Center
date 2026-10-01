@@ -1047,9 +1047,18 @@ The spec says A13 carries **192 defects and 77 good turns**, and names that
 the handover corpus. But the code asserts **206**, and the Rule Hub screen
 shows **206 / 107**, because it counts every finding with no corpus filter.
 
-Neither is wrong, they are counting different things. **Which number is the
-baseline we are judged against** — the corpus figure, or everything rated to
-date? The screen should probably show both and say which is which.
+**Investigated 2026-10-01, and it is NOT what it looked like.** The obvious
+guess was corpus versus all-time. Counting only findings whose example has
+`source = 'hatch'` — the handover corpus, 988 of the 1,000 examples — gives
+**206 breached and 107 done well** for A13. All-time is 207 / 107.
+
+So the 14-finding gap against your 192 is inside the handover import itself,
+not from anything rated since. A dual-count display was built and reverted,
+because "206 in the corpus, 207 all time" explains nothing.
+
+**The question, now narrower: is 192 the number to beat, or 206?** If 192, the
+importer is over-counting by 14 on this rule and probably on others — worth
+finding before any figure is quoted in a meeting.
 
 ## 20. Does a conversation that was briefly taken over ever stall?
 
