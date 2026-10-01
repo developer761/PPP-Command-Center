@@ -6,7 +6,7 @@ import { deriveOpenMaterialsWorkOrders, type OpenWorkOrderForMaterials } from "@
 import { resolveWorkOrderId } from "@/lib/materials/resolve-wo";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { extractCustomerFreeText } from "@/lib/customer-form/notes";
-import { colorNoteLines } from "@/lib/supplier-order/color-note-items";
+import { parseColorNotes } from "@/lib/supplier-order/color-note-parse";
 import { normalizeBuildPayload, emptyBuildPayload, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
 import { normalizeFulfillmentState, emptyFulfillmentState, type FulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 import { capabilitiesFor } from "@/lib/auth/roles";
@@ -82,6 +82,8 @@ export async function loadOrderPageDataOrReason(
       .split(";")
       .map((s) => s.trim())
       .filter(Boolean);
+    // Parsed once: the offers and the remarks come out of the same read.
+    const parsedNotes = parseColorNotes(li.raw.colorNotes);
     // Kate round-3 #14: the source list has to say which room AND which
     // surfaces the line covers — "Interior Painting · 2 coats" identified
     // nothing when a work order had six of them.
@@ -110,7 +112,13 @@ export async function loadOrderPageDataOrReason(
       // Color notes never reach the vendor email (R4.14), so each color in
       // them is offered to the custom-item form — including the orphan-surface
       // lines the color form writes, which the free-text view above omits.
-      colorNoteLines: colorNoteLines(li.raw.colorNotes),
+      // Parsed as a small document, not a list of lines: the room headings
+      // the rep wrote become per-offer rooms, trailing "(…)" instructions are
+      // captured instead of glued onto a product name, and the customer's
+      // prose is separated out so it stops arriving as a thing to buy
+      // (Katie 2026-10-01).
+      colorNoteOffers: parsedNotes.offers,
+      colorNoteRemarks: parsedNotes.remarks,
     });
   }
 

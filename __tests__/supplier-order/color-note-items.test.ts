@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseColorNotes } from "@/lib/supplier-order/color-note-parse";
 import {
   colorNoteLines,
   customItemLabel,
@@ -37,10 +38,20 @@ describe("each color in Color Notes is offered on its own", () => {
     ]);
   });
 
-  it("a sentence that merely contains a period is left whole", () => {
+  it("a sentence is not split in half, and is not offered either", () => {
+    // SUPERSEDED, deliberately. This used to assert the sentence came back as
+    // one orderable line — the old parser had a single bucket, so prose became
+    // a buy-list row with a quantity box beside it. Katie reported exactly that
+    // on 2026-10-01, so prose is now a REMARK: still shown to the estimator,
+    // never offered as a thing to buy.
+    //
+    // The half the original test was protecting still holds: the full stop in
+    // "approx. 2 gal" must not split the line in two.
     const prose = "Customer notes: Use approx. 2 gal on the porch ceiling. It was painted last year.";
-    expect(colorNoteLines(prose)).toEqual([
-      // Untouched, full stop and all — nothing here names a surface to buy for.
+    expect(colorNoteLines(prose)).toEqual([]);
+
+    const parsed = parseColorNotes(prose);
+    expect(parsed.remarks).toEqual([
       "Use approx. 2 gal on the porch ceiling. It was painted last year.",
     ]);
   });

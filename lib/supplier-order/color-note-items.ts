@@ -1,5 +1,4 @@
-import { extractCustomerFreeText, extractMachineColorLines } from "@/lib/customer-form/notes";
-import { isMachineNoteHeading } from "@/lib/customer-form/machine-notes";
+import { parseColorNotes } from "@/lib/supplier-order/color-note-parse";
 
 /**
  * Color Notes → custom color items, one color at a time.
@@ -20,9 +19,6 @@ import { isMachineNoteHeading } from "@/lib/customer-form/machine-notes";
  *  or a long line reads "on order" until the page reloads and then doesn't. */
 const LABEL_MAX = 300;
 
-/** "Siding:", "Shutters, Doors and Iron Railings:" — a surface the note names. */
-const SURFACE_LEAD = /^[A-Za-z][A-Za-z0-9 ,'&/()+-]{0,60}:\s*\S/;
-
 /**
  * The machine trailer the submit route writes when Salesforce cannot store a
  * finish:
@@ -37,63 +33,19 @@ const SURFACE_LEAD = /^[A-Za-z][A-Za-z0-9 ,'&/()+-]{0,60}:\s*\S/;
 /** All four are recognized from one shared list — this file used to know only
  *  about the finish one, so the estimator was offered "Walls" and a rejected
  *  paint line as things to buy. */
-/** The submit route's own cap marker. Never a color. */
-const TRUNCATION_MARKER = /^\[…?\s*truncated/i;
 
-/** Split "Siding: HC-6. Trim: OC-95." into one entry per named surface. */
-function splitRun(line: string): string[] {
-  const parts: string[] = [];
-  let rest = line;
-  // Only split where the text AFTER the break starts a new "Surface: color".
-  // Anything else — a sentence, a decimal, "approx. 2 gal" — stays whole.
-  const BREAK = /\.\s+(?=[A-Za-z][A-Za-z0-9 ,'&/()+-]{0,60}:\s*\S)/;
-  for (;;) {
-    const m = BREAK.exec(rest);
-    if (!m) break;
-    parts.push(rest.slice(0, m.index).trim());
-    rest = rest.slice(m.index + m[0].length);
-  }
-  parts.push(rest.trim());
-  return parts.filter(Boolean).map((p) => p.replace(/\.$/, "").trim());
-}
-
-/** One offerable entry per color written in ColorNotes__c, machine lines first. */
+/**
+ * The flat shape: one string per orderable color.
+ *
+ * Superseded by parseColorNotes (lib/supplier-order/color-note-parse.ts), which
+ * reads the same notes as a document — rooms, qualifiers and remarks kept apart
+ * — and is what the order page renders. This DELEGATES rather than parsing
+ * again, so there is exactly one parser: a second copy is how the two would
+ * drift and how the bugs Katie found on 2026-10-01 would come back in one of
+ * them.
+ */
 export function colorNoteLines(raw: string | null | undefined): string[] {
-  const machine = extractMachineColorLines(raw);
-  const rawHuman = extractCustomerFreeText(raw).replace(/\r\n?/g, "\n").split("\n");
-
-  const human: string[] = [];
-  let inFinishTrailer = false;
-  for (const original of rawHuman) {
-    const indented = /^\s{2,}\S/.test(original);
-    const line = original
-      // Reps bullet their lists; the bullet is not part of the color.
-      .replace(/^\s*(?:[-–—•*]|\d+[.)])\s+/, "")
-      .trim();
-    if (!line) { inFinishTrailer = false; continue; }
-    if (isMachineNoteHeading(line)) { inFinishTrailer = true; continue; }
-    // The trailer's values are indented under its header. An unindented line
-    // ends it — a customer's own words are not part of our bookkeeping.
-    if (inFinishTrailer && indented) continue;
-    inFinishTrailer = false;
-    if (TRUNCATION_MARKER.test(line)) continue;
-    // A bare heading ("Exterior:", "Exterior (2nd floor: rear):") names where
-    // the colors go; the colors are on the lines under it.
-    if (/:\s*$/.test(line)) continue;
-    // Nothing to order in punctuation or a separator rule.
-    if (!/[A-Za-z0-9]/.test(line)) continue;
-    human.push(...(SURFACE_LEAD.test(line) ? splitRun(line) : [line]));
-  }
-
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const l of [...machine, ...human]) {
-    const k = itemKey(l);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    out.push(l);
-  }
-  return out;
+  return parseColorNotes(raw).offers.map((o) => o.line);
 }
 
 /** Case-, space- and length-insensitive, matching what actually gets stored. */

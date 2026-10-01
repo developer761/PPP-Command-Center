@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
 import { customItemLabel, inBuyList, isOnOrder, nextCustomColorId, orderableQty } from "@/lib/supplier-order/color-note-items";
+import type { ColorNoteOffer } from "@/lib/supplier-order/color-note-parse";
 import { formatRoomDimensions } from "@/lib/supplier-order/room-dimensions";
 import { groupExtras } from "@/lib/supplier-order/extras-groups";
 import MaterialTypePicker from "@/components/material-type-picker";
@@ -81,7 +82,11 @@ export type SourceLine = {
   colorNotes?: string | null;
   /** Each color written in ColorNotes__c, one per entry, offered to the
    *  custom-item form — color notes never reach the vendor email (R4.14). */
-  colorNoteLines?: string[];
+  /** Offers parsed from Color Notes, each carrying the room heading it sat
+   *  under and any trailing "(…)" instruction (Katie 2026-10-01). */
+  colorNoteOffers?: ColorNoteOffer[];
+  /** What the customer said that is not a thing to buy. */
+  colorNoteRemarks?: string[];
 };
 
 export type PreviewColor = {
@@ -965,7 +970,8 @@ export default function OrderBuilderView({
                     <LineItemNotes notes={l.colorNotes} label="Colors" />
                     <ColorNoteOffers
                       room={l.room}
-                      lines={l.colorNoteLines ?? []}
+                      offers={l.colorNoteOffers ?? []}
+                      remarks={l.colorNoteRemarks ?? []}
                       items={payload.customColorItems}
                       estimates={estimates}
                       onAdd={addCustomColorItem}
@@ -1774,31 +1780,40 @@ export default function OrderBuilderView({
  */
 function ColorNoteOffers({
   room,
-  lines,
+  offers,
+  remarks,
   items,
   estimates,
   onAdd,
 }: {
   room: string;
-  lines: string[];
+  offers: ColorNoteOffer[];
+  remarks: string[];
   items: Array<{ label: string }>;
   estimates: Array<{ colorName: string; colorCode: string | null }>;
   onAdd: (label: string, qty: number, unit: string) => void;
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, PaintUnit>>({});
-  if (lines.length === 0) return null;
-  const pending = lines.filter((line) => !isOnOrder(items, customItemLabel(room, line))).length;
+  if (offers.length === 0 && remarks.length === 0) return null;
+  // The room the NOTE named beats the line item's own — when a rep puts seven
+  // rooms on one line, the line's name identifies none of them (Katie
+  // 2026-10-01). Falls back to the line item for notes with no headings.
+  const labelFor = (o: ColorNoteOffer) => customItemLabel(o.room ?? room, o.line);
+  const pending = offers.filter((o) => !isOnOrder(items, labelFor(o))).length;
   return (
     <div className="mt-2 rounded-lg border border-ppp-charcoal-100 px-3 py-2">
+      {offers.length > 0 && (
       <p className="text-[11px] text-ppp-charcoal-600">
         {pending === 0
           ? "Every color in these notes is on the order."
           : "Color notes don't go to the vendor. Add anything that needs buying:"}
       </p>
+      )}
       <ul className="mt-1 divide-y divide-ppp-charcoal-100">
-        {lines.map((line) => {
-          const label = customItemLabel(room, line);
+        {offers.map((offer) => {
+          const line = offer.line;
+          const label = labelFor(offer);
           const added = isOnOrder(items, label);
           const covered = inBuyList(line, estimates);
           const q = qty[line] ?? "";
@@ -1806,6 +1821,11 @@ function ColorNoteOffers({
             <li key={line} className="py-1.5">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="flex-1 min-w-[8rem] text-[12px] leading-snug text-ppp-charcoal break-words">
+                  {/* The room the note named, carried onto the line the way
+                      the exterior buy-list already shows its areas. */}
+                  {offer.room && (
+                    <span className="font-semibold text-ppp-charcoal-600">{offer.room} · </span>
+                  )}
                   {line}
                 </span>
                 {added ? (
@@ -1852,6 +1872,15 @@ function ColorNoteOffers({
               {/* The rep wrote the color into the notes AND set it on the
                   Salesforce field, so it is already on the buy-list with a
                   computed quantity. Adding it here would order it twice. */}
+              {/* "(eggshell for the bathroom ceiling)" — an instruction about
+                  WHERE the color goes, which used to be glued onto the end of
+                  the product text where it read as part of the color name
+                  (Katie 2026-10-01). */}
+              {offer.qualifier && (
+                <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mt-0.5 inline-block">
+                  {offer.qualifier}
+                </p>
+              )}
               {!added && covered && (
                 <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">Already in the buy-list above.</p>
               )}
@@ -1859,6 +1888,22 @@ function ColorNoteOffers({
           );
         })}
       </ul>
+      {/* What the customer SAID. Not offerable — these used to arrive as
+          buy-list rows with a quantity box beside them — but not discarded
+          either: "I'd like an accent wall in a plum" is the estimator's cue to
+          call them (Katie 2026-10-01). */}
+      {remarks.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-ppp-charcoal-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+            Also in the notes — not something to buy
+          </p>
+          <ul className="mt-1 space-y-1">
+            {remarks.map((r) => (
+              <li key={r} className="text-[11px] leading-snug text-ppp-charcoal-600">{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
