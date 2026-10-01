@@ -144,3 +144,30 @@ describe("which half of the table a job sees (Kate 2026-10-01)", () => {
     expect(finishGuideScope(false, false)).toEqual({ showInterior: true, showExterior: true });
   });
 });
+
+describe("Katie's Satin row (2026-10-01)", () => {
+  const satin = INTERIOR_FINISHES.find((r) => r.finish === "Satin");
+
+  it("reads the way she asked", () => {
+    expect(satin).toBeDefined();
+    expect(satin!.description).toBe("Noticeable shine. Wipes clean; suits smooth surfaces.");
+    // "walls" became "surfaces" — the change she actually asked for, and easy
+    // to lose in a later copy edit.
+    expect(satin!.description).not.toContain("smooth walls");
+  });
+
+  it("names the product she wants recommended", () => {
+    expect(satin!.product).toBe("Kitchen & Bath (resists mold and mildew)");
+  });
+
+  it("carries the label in the component, not in the data", () => {
+    // Otherwise the next row to get a product has to retype "Recommended
+    // Product:" and the two drift apart.
+    expect(satin!.product).not.toMatch(/recommended product/i);
+  });
+
+  it("is the only row with a product for now", () => {
+    const withProduct = [...INTERIOR_FINISHES, ...EXTERIOR_FINISHES].filter((r) => r.product);
+    expect(withProduct.map((r) => r.finish)).toEqual(["Satin"]);
+  });
+});

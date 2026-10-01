@@ -48,6 +48,14 @@ export type FinishGuideRow = {
   where: string;
   /** What it looks like and how it behaves. */
   description: string;
+  /**
+   * A specific product PPP recommends for this finish, rendered under the
+   * description as "Recommended Product: …" (Katie, 2026-10-01).
+   *
+   * Optional, and the label lives in the component rather than in the string,
+   * so the next row to get one reads the same way without anybody retyping it.
+   */
+  product?: string;
 };
 
 /** The one-line explanation above both tables. */
@@ -61,7 +69,16 @@ export const INTERIOR_FINISHES: readonly FinishGuideRow[] = [
   { finish: "Flat", where: "Ceilings in most rooms", description: "No shine. Hides flaws best. Hardest to clean." },
   { finish: "Matte", where: "Interior walls", description: "Barely any shine. Hides flaws; tougher than flat." },
   { finish: "Eggshell", where: "Walls; bathroom ceilings", description: "Slight shine. Hides most flaws. Cleans easily." },
-  { finish: "Satin", where: "Bathrooms, kitchens, cabinets", description: "Noticeable shine. Wipes clean; suits smooth walls." },
+  // Katie, 2026-10-01. Two small departures from her text, both flagged to
+  // Karan: she wrote "suites smooth surfaces" (kept as "suits", the word she
+  // meant) and "Wipes Clean" mid-sentence (kept lowercase, so the row matches
+  // the sentence case of every other row in the table).
+  {
+    finish: "Satin",
+    where: "Bathrooms, kitchens, cabinets",
+    description: "Noticeable shine. Wipes clean; suits smooth surfaces.",
+    product: "Kitchen & Bath (resists mold and mildew)",
+  },
   { finish: "Semi-Gloss", where: "Trim, doors, cabinets", description: "Shiny and easy to clean. Highlights trim detail." },
   // Gloss removed 2026-10-01 (Kate, "remove Gloss to simplify options") and
   // withdrawn from the picker in the same breath — see RETIRED_FINISHES in
