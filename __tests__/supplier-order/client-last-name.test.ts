@@ -76,3 +76,32 @@ describe("the PO number itself", () => {
     expect(poBaseFor("00318847", `John ${silly}`).length).toBeLessThan(40);
   });
 });
+
+describe("a numbered account is not a person (Katie, 2026-10-01)", () => {
+  it("puts no name on the PO for 'Testing Paint Hub, 2'", () => {
+    // Her report: "Remove Hub from PO + subject line". The comma branch read
+    // the name as "Surname, Firstname" and answered with the last word before
+    // the comma, so a live purchase order and its email subject both said
+    // "00319896 Hub".
+    expect(clientLastName("Testing Paint Hub, 2")).toBe("");
+    expect(poBaseFor("00319896", "Testing Paint Hub, 2")).toBe("00319896");
+  });
+
+  it("holds for any duplicate-account number", () => {
+    for (const n of ["Smith Residence, 2", "Acme, 3", "Jones, 10"]) {
+      expect(clientLastName(n), n).toBe("");
+    }
+  });
+
+  it("still reverses a REAL surname-first name", () => {
+    // The rule this sits next to, which must not regress — Jason asked for the
+    // client's last name on the PO and that is still what a person gets.
+    expect(clientLastName("Smith, John")).toBe("Smith");
+    expect(clientLastName("O'Brien, Patrick J.")).toBe("O'Brien");
+    expect(poBaseFor("00319896", "John Smith")).toBe("00319896 Smith");
+  });
+
+  it("still treats a comma before a suffix as punctuation", () => {
+    expect(clientLastName("Smith, Jr.")).toBe("Smith");
+  });
+});

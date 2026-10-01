@@ -1172,8 +1172,19 @@ export default function OrderBuilderView({
                         name whatever the shrink-0 button cluster leaves — which
                         at 320px is nothing, and the parent's overflow-hidden
                         then clipped the "+" button off the card. */}
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-0 basis-full sm:basis-auto sm:flex-1 break-words">
+                    {/* Katie's four layout notes, 2026-10-01. One row, two
+                        columns: everything the line SAYS on the left, every
+                        control on the right in a fixed-width stack.
+
+                        It used to be two stacked flex rows with `flex-wrap`,
+                        and `sm:basis-auto` beat `sm:flex-1` on the text block —
+                        so a line naming six rooms sized itself to its content
+                        and shoved the counter onto a second line at the LEFT,
+                        while a one-room line kept it at the right. Same list,
+                        two different layouts, depending on how many rooms a
+                        color happened to cover. */}
+                    <div className="sm:flex sm:items-start sm:gap-4">
+                      <div className="min-w-0 sm:flex-1 break-words">
                         <div>
                           <span className="font-medium text-ppp-charcoal">{e.colorName}</span>
                           {e.colorCode && <span className="text-ppp-charcoal-400 ml-1">{e.colorCode}</span>}
@@ -1290,7 +1301,14 @@ export default function OrderBuilderView({
                         </div>
                       </div>
 
-                      <div className="shrink-0 flex items-center gap-1.5">
+                      {/* The control column. Fixed width from `sm` up, so the
+                          unit toggle growing a third button at five gallons
+                          ("Bucket") no longer widens the line and knocks every
+                          other row out of alignment — Katie's yellow note,
+                          "keep the widest width no matter the selection so the
+                          view is cohesive". */}
+                      <div className="mt-2 sm:mt-0 sm:w-[17.5rem] sm:shrink-0 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
                           aria-label={`Decrease ${e.colorName}`}
@@ -1337,11 +1355,24 @@ export default function OrderBuilderView({
                           +
                         </button>
                       </div>
-                    </div>
 
-                    <div className="mt-2 flex items-center justify-end gap-3 flex-wrap">
-                      {/* Kate round-3 #27: gallons or quarts, per line. */}
-                      <div className="inline-flex rounded-lg border border-ppp-charcoal-100 overflow-hidden" role="group" aria-label={`Unit for ${e.colorName}`}>
+                      {/* Directly under the counter — Katie's purple note. It
+                          undoes the number immediately above it, and sat three
+                          controls away from it. */}
+                      {override && (
+                        <button
+                          type="button"
+                          onClick={() => resetQuantity(e)}
+                          className="text-[10px] text-ppp-blue-700 hover:underline self-end px-1 min-h-[44px] sm:min-h-0 touch-manipulation"
+                        >
+                          reset to estimate
+                        </button>
+                      )}
+
+                      {/* Kate round-3 #27: gallons or quarts, per line.
+                          Full width of the column with equal-width buttons, so
+                          two options and three occupy the same space. */}
+                      <div className="flex w-full rounded-lg border border-ppp-charcoal-100 overflow-hidden" role="group" aria-label={`Unit for ${e.colorName}`}>
                         {/* Bucket appears once a line reaches five gallons (Karan 2026-09-09).
                             Offering it below that would let someone order a pail for two
                             gallons of paint; hiding it entirely is what forced the silent
@@ -1354,7 +1385,7 @@ export default function OrderBuilderView({
                             type="button"
                             onClick={() => setUnit(e, u)}
                             aria-pressed={unit === u}
-                            className={`px-3 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
+                            className={`flex-1 px-2 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
                               unit === u
                                 ? "bg-ppp-blue text-ppp-navy"
                                 : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
@@ -1365,24 +1396,15 @@ export default function OrderBuilderView({
                         ))}
                       </div>
                       {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
-                        <span className={`text-[11px] basis-full text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
+                        <span className={`text-[11px] text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
                           {unitNote.text}
                         </span>
                       )}
-                      {override && (
-                        <button
-                          type="button"
-                          onClick={() => resetQuantity(e)}
-                          className="text-[10px] text-ppp-blue-700 hover:underline px-1 py-1 min-h-[44px] sm:min-h-0 touch-manipulation"
-                        >
-                          reset to estimate
-                        </button>
-                      )}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 w-full">
                         <label className="text-[10px] text-ppp-charcoal-500 shrink-0" htmlFor={`mt-${key}`}>
                           Product line:
                         </label>
-                        <div className="max-w-[190px]">
+                        <div className="flex-1 min-w-0">
                           <MaterialTypePicker
                             id={`mt-${key}`}
                             value={readProductOverride(payload.materialTypeOverrides, e) ?? ""}
@@ -1424,6 +1446,7 @@ export default function OrderBuilderView({
                           </p>
                         );
                       })()}
+                      </div>
                     </div>
 
                     {e.needsMeasurement && !isPlaceholder && (

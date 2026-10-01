@@ -45,6 +45,13 @@ export function clientLastName(accountName: string | null | undefined): string {
     // …unless what follows is a suffix ("Smith, Jr."), in which case the comma
     // is punctuation inside one name rather than a reversal.
     const after = raw.slice(comma + 1).trim().toLowerCase();
+    // …or a bare number. "Testing Paint Hub, 2" is a DUPLICATE-ACCOUNT marker,
+    // not a name reversal, and reading it as one put "Hub" on a live purchase
+    // order and in its email subject (Katie, 2026-10-01: "Remove Hub from PO +
+    // subject line"). Nobody's surname is "2", and an account somebody had to
+    // number is not the person the PO is for — so this returns no name at all
+    // rather than guessing a better word out of the same string.
+    if (/^\d+$/.test(after)) return "";
     if (before && !SUFFIXES.has(after)) return clean(before.split(" ").pop() ?? "");
   }
 
