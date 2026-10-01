@@ -266,3 +266,61 @@ describe("a time named on a collecting turn is not ignored", () => {
       .toBe("I'll check the calendar for that time.");
   });
 });
+
+/**
+ * "AT" IS ALSO HOW PEOPLE WRITE AN ADDRESS.
+ *
+ * Found in the sandbox 2026-10-01. The customer's opening message was
+ * "looking to get the living room and hallway painted at 12 Marchmont Ave,
+ * Garden City NY 11530" — no time anywhere in it — and the bot replied
+ * "I'll check the calendar for that time."
+ *
+ * The three prepositions that make a bare number a time are the same three
+ * that introduce an address, so every low house number was an appointment.
+ * The worst of them is "come by 7 Oak Road": 7pm is past the last slot, so
+ * somebody who gave us their address was told our latest visit is usually
+ * 5 PM and asked what else worked.
+ *
+ * This file's own header already said "a number in a text message is usually
+ * not a time — it is a house number". It was never tested with a preposition
+ * in front of it, which is the only shape that reaches this branch.
+ */
+describe("a house number after at/around/by is not a time", () => {
+  it.each([
+    "looking to get the living room and hallway painted at 12 Marchmont Ave, Garden City NY 11530",
+    "we're at 9 Lakeview Dr Massapequa NY 11758",
+    "the house is at 3 Elm St",
+    "I'm at 10 Maple Lane, Garden City",
+    "come by 7 Oak Road please",
+    "property at 12 Marchmont Avenue",
+    "it's at 5 Old Mill Road",
+    "around 4 Birch Lane, the back of the house",
+  ])("reads no time in %j", (text) => {
+    expect(requestedTime(text)).toBeNull();
+    expect(replyToRequestedTime(text)).toBeNull();
+  });
+
+  /** The half that must not regress: these are real times and still are. */
+  it.each([
+    ["can you call me at 2pm", 14],
+    ["how about Tuesday at 2", 14],
+    ["around 10 in the morning works", 10],
+    ["by 11 would be great", 11],
+    ["at 3 works for me", 15],
+    ["at 12 works", 12],
+  ])("still reads %j as %i", (text, hour) => {
+    expect(requestedTime(text)?.hour).toBe(hour);
+  });
+
+  /**
+   * BOTH IN ONE MESSAGE, which is why the branch scans instead of giving up
+   * on the first address it meets.
+   */
+  it("finds a real time that follows an address", () => {
+    expect(requestedTime("at 12 Marchmont Ave, can you come at 3?")?.hour).toBe(15);
+  });
+
+  it("does not turn an address into a too-late refusal", () => {
+    expect(replyToRequestedTime("come by 7 Oak Road please")).toBeNull();
+  });
+});

@@ -371,56 +371,6 @@ const PRICE = new RegExp(
  */
 const NUMBER_IN_RAPPORT = /\d/;
 
-/**
- * CLAIMING TO CHECK A CALENDAR THE BOT DOES NOT HAVE.
- *
- * Found in the sandbox 2026-10-01. The customer's first message named a scope
- * and an address and NO TIME AT ALL:
- *
- *   customer  "looking to get the living room and hallway painted at
- *              12 Marchmont Ave, Garden City NY 11530"
- *   BOT       "I'll check the calendar for that time. Got it! Is 12
- *              Marchmont Ave, 11530 the correct address for the estimate?"
- *
- * Two things wrong in one clause: "that time" refers to nothing, and the bot
- * has no calendar. The system prompt is explicit — "You never quote a price
- * and you never offer an appointment time. The office does both."
- *
- * ── WHY THE EXISTING GUARDS MISS IT ────────────────────────────────────
- *
- * TIME_COMMITMENT is a list of time SHAPES and NUMBER_IN_RAPPORT wants a
- * digit. This sentence has neither, so both let it through — while making a
- * stronger claim than "we have a few openings this week", which 6b removed
- * from a template for asserting something the bot cannot know.
- *
- * The category is different from either: not a time offered, but a CAPABILITY
- * claimed. A customer told the calendar is being checked waits for a booking
- * that no one is making.
- *
- * ── IT DROPS THE RAPPORT RATHER THAN REFUSING ──────────────────────────
- *
- * The template underneath was correct and complete and would have asked the
- * next question. Refusing would have handed a good lead to a person over one
- * cosmetic sentence — which is the live complaint in QUESTIONS_FOR_KATE item
- * 15 about invented_availability being fatal on a time the customer named.
- * A price and a real time still refuse outright, above; this sits with the
- * numeric backstop, where the safe move is to send the template without the
- * sentence.
- *
- * checking_availability is EXEMPT: its two approved templates say "I'm
- * checking availability" on purpose, and a guard that refuses a rule's own
- * approved wording is a guard that will be deleted.
- */
-const CHECKING_A_CALENDAR = new RegExp(
-  [
-    // A verb of looking, then the thing being looked at, within one clause.
-    String.raw`\b(?:check\w*|look\w*\s+(?:at|up|into)|see|seeing|review\w*|confirm\w*|pull\w*\s+up)\b[^.?!]{0,40}?\b(?:calendar|schedule|availab\w*|openings?|time\s?slots?|slots?|books|diary)\b`,
-    // And the promise that skips the lookup and goes straight to the booking.
-    String.raw`\b(?:fit|squeeze|slot|pencil|book|get)\s+(?:you|y'?all|us)\s+(?:in|on\s+the\s+(?:books|calendar|schedule))\b`,
-  ].join("|"),
-  "i",
-);
-
 /** A specific time or date. The model may never offer one — Emily's prompt is
  *  explicit: "Never offer, confirm, or suggest appointment times yourself." */
 const TIME_COMMITMENT = new RegExp(
@@ -1667,15 +1617,6 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * are removed and the rest of the sentence is still read, so "around 2500 at
    * 2pm" still loses its rapport for the 2500.
    */
-  // The bot has no calendar. See CHECKING_A_CALENDAR — this runs before the
-  // numeric backstop because the sentence it catches carries no digit, so the
-  // backstop would never reach it.
-  if (rapport && a.intent !== "checking_availability" && CHECKING_A_CALENDAR.test(rapport)) {
-    const m = CHECKING_A_CALENDAR.exec(rapport);
-    droppedRapport = `it says "${m?.[0].trim()}" — the office owns the calendar, the bot has none to check`;
-    rapport = undefined;
-  }
-
   if (rapport) {
     const unexplained = hasVerifiedSlot(ctx, "times")
       ? rapport.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")

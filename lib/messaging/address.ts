@@ -124,6 +124,32 @@ const STREET_IN_PROSE =
   /\b\d{1,6}[A-Za-z]?\s+(?:[A-Za-z0-9.'-]+\s+){0,4}(?:st|street|ave|avenue|rd|road|dr|drive|ln|lane|blvd|boulevard|ct|court|cir|circle|pl|place|way|ter|terrace|pkwy|parkway|hwy|highway|trail|trl)\b\.?/i;
 
 /**
+ * IS THE NUMBER AT THIS INDEX A HOUSE NUMBER?
+ *
+ * Exported for appointment-time.ts, which reads a bare number after "at",
+ * "around" or "by" as a clock time. That preposition is also the single most
+ * common way anybody writes an address — "painted at 12 Marchmont Ave" — so
+ * without this, every low house number became an appointment time: "at 9
+ * Lakeview Dr" read as 9am, and "come by 7 Oak Road" as 7pm, which is past
+ * the last slot — so a customer who gave us their address was told our latest
+ * visit is usually 5 PM and asked what else worked.
+ *
+ * It lives HERE rather than there so that there is one street pattern and not
+ * two. The last time this codebase kept the same knowledge in two places, a
+ * fix landed on one of them and the other went on being wrong.
+ */
+export function startsAStreetAddress(text: string, index: number): boolean {
+  const re = new RegExp(STREET_IN_PROSE.source, "gi");
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m.index === index) return true;
+    // Matches arrive left to right, so once they are past the number there is
+    // nothing left that could start on it.
+    if (m.index > index) return false;
+  }
+  return false;
+}
+
+/**
  * A zip, but not a measurement. "1450 sq ft" and "10000 square feet" are the
  * numbers a painting customer types most, and a bare five-digit match reads
  * the second one as a zip code.

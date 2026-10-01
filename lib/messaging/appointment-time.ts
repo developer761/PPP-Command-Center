@@ -34,8 +34,11 @@
  * QUESTIONS_FOR_KATE. What is built here is the SHAPE — too early, too late,
  * or fine — and the wording stays ours until she settles the hours.
  *
- * Pure.
+ * Pure. The one import is the shared street pattern, so that "at 12 Marchmont
+ * Ave" is recognised as an address by the same regex the rest of the system
+ * uses rather than by a second copy of it.
  */
+import { startsAStreetAddress } from "./address";
 
 /**
  * The hour a bare number means, per Hatch's rule.
@@ -99,16 +102,33 @@ export function requestedTime(text: string | null | undefined): RequestedTime | 
 
   // A BARE HOUR, and only with a time preposition. "in the morning" and "in
   // the afternoon" qualify it, so those are read too.
-  const bare = /\b(?:at|around|by)\s+(\d{1,2})\b(?!\s*(?:rooms?|beds?|baths?|cars?|doors?|windows?|sq|square|feet|ft|\d))/.exec(t);
-  if (bare) {
+  //
+  // ── THE PREPOSITION IS ALSO HOW PEOPLE WRITE AN ADDRESS ───────────────
+  //
+  // "at", "around" and "by" were chosen to make a bare number a time, and
+  // "painted AT 12 Marchmont Ave" is the commonest sentence a painting
+  // customer sends. Every low house number was an appointment time: "at 9
+  // Lakeview Dr" was 9am, "at 3 Elm St" was 3pm, and "come by 7 Oak Road" was
+  // 7pm — past the last slot, so somebody giving us their address got told
+  // our latest visit is usually 5 PM.
+  //
+  // The branch's own comment already knew the shape of this — "4821 Oak Lane
+  // must never read as 48:21" — and guarded only the case where the number
+  // itself is too big to be an hour.
+  //
+  // It SCANS rather than giving up on the first address, because "at 12
+  // Marchmont Ave, can you come at 3?" contains both and the 3 is real.
+  const bareRe = /\b(?:at|around|by)\s+(\d{1,2})\b(?!\s*(?:rooms?|beds?|baths?|cars?|doors?|windows?|sq|square|feet|ft|\d))/g;
+  for (let bare = bareRe.exec(t); bare; bare = bareRe.exec(t)) {
     const h = Number(bare[1]);
-    if (h < 1 || h > 12) return null;
+    if (h < 1 || h > 12) continue;
+    if (startsAStreetAddress(t, bare.index + bare[0].indexOf(bare[1]))) continue;
     const morning = /\b(?:in the )?morning\b|\bam\b/.test(t);
     const evening = /\b(?:in the )?(?:afternoon|evening)\b|\bpm\b/.test(t);
     if (morning && !evening) return { hour: h === 12 ? 0 : h, minute: 0, explicit: true };
     if (evening && !morning) return { hour: h === 12 ? 12 : h + 12, minute: 0, explicit: true };
     const resolved = resolveBareHour(h);
-    if (resolved === null) return null;
+    if (resolved === null) continue;
     return { hour: resolved, minute: 0, explicit: false };
   }
 
