@@ -1124,3 +1124,47 @@ ASKED, so the progress panel and the stage can still disagree on the screen —
 the panel will say the address is owed while the stage has moved on. The
 BEHAVIOUR is now correct either way; it is the display that can look odd.
 Worth knowing before you grade against that panel.
+
+## 22. A6's shared-space list says "corridor" but not "hallway"
+
+**OPEN — your call, because the fix defeats one of your nevers.** Found in the
+sandbox 2026-10-01, running your reissued A3/A6 against the live build.
+
+    customer  "the tenants in our building are complaining about the
+               hallway paint, needs redoing"
+    BOT       ask_address, then ask_contact — the ordinary residential flow
+
+**Every step is behaving as written, and the A6 veto is doing its job.** Your
+carve-out holds: "tenant" did not fire the commercial gate, which is exactly
+what you asked for on 28 September and what the fix to A3 was about.
+
+**The gap is in the other half of A6** — the named shared space that is
+supposed to win over that veto. The list we built from your rule is:
+
+    lobby · common area · corridor · stairwell · the whole floor ·
+    entire floor · suite
+
+A hallway in a multi-unit building is the same space as a corridor. It is also
+the word an American landlord actually writes; "corridor" reads as British or
+institutional. So the clause that is meant to catch this case misses it on
+vocabulary alone.
+
+**Why we did NOT just add the word.** "Paint my hallway and stairs" in a
+single-family house is residential, and `COMMERCIAL_SPACE` is tested before
+anything else — so adding `hallway` to that list would route a homeowner's
+hallway commercial. The narrow version is a conjunction: hallway counts as a
+shared space only when the same message also establishes a multi-unit building
+("our building", "the tenants", "the units"). But that defeats the `tenant`
+veto you wrote as a never, using a word you never named, on our reading of
+American usage. That is yours to say, not ours.
+
+**What it costs today, which is less than it first looks.** The job still gets
+an estimator visit — on-site IS in person, which is the outcome you said you
+cared about on the bare "our building" question. What it does not get is the
+commercial label and whatever hangs off it.
+
+**→ Recommendation:** add the conjunction. Hallway, entryway and landing count
+as shared spaces when the message also names a building with others in it, and
+stay residential otherwise. One line, and it wants a wiring chain pinning the
+conjunction so a later edit cannot drop the second half and route every
+hallway commercial.
