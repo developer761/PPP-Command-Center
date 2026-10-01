@@ -178,10 +178,22 @@ export type BuildSupplierOrderInput = {
  *  plus a quantity and unit like any other line (Kate round-3 #28). */
 export type CustomColorItem = {
   id: string;
-  /** Free text, e.g. "Color Match: Behr 56, eggshell". */
+  /** Free text, e.g. "Color Match: Behr 56". */
   label: string;
   qty: number;
   unit: string;
+  /**
+   * Sheen, and the product line to buy it in — Katie, 2026-10-01: she typed
+   * "Accent wall Hale Navy" into the color notes, added it to the order, "and
+   * was able to add # of gallons, but couldn't add/edit the finish or product
+   * line".
+   *
+   * Optional: items added before today have neither, and a line that is
+   * genuinely finish-less (a color match handed over on a chip) should not be
+   * forced to invent one.
+   */
+  finish?: string | null;
+  materialType?: string | null;
 };
 
 export type CustomerSubmittedPayload = {
@@ -1022,8 +1034,6 @@ export function formatOrderSummaryBlock(
   }
   // Kate round-3 #28: worker-typed color lines (stain, plaster, color
   // matches) are real order lines, not a note the vendor has to interpret.
-  // They carry no product line, so they belong under [NOT SET] — which is
-  // exactly where Kate's R4.32 example puts "Behr 56 Semigloss".
   for (const c of customColorItems) {
     const label = c.label.trim();
     if (!label) continue;
@@ -1033,8 +1043,15 @@ export function formatOrderSummaryBlock(
     const raw = (c.unit || "gal").trim();
     // A vendor reads "2 x 5 gal", not "2 bucket" (Katie item 8).
     const unit = raw === "bucket" ? `x ${GALLONS_PER_BUCKET} gal` : raw;
-    // Hand-typed lines carry no product line by definition.
-    pushGrouped("", `  ${qty} ${unit} — ${anyLineSet ? `${NOT_SET} — ` : ""}${label}`);
+    // These used to be hard-coded to [NOT SET] — "hand-typed lines carry no
+    // product line by definition". They do now (Katie 2026-10-01), so they
+    // print exactly like every other line: their own product, then the sheen.
+    // No INT/EXT: a hand-typed line has no work-order scope to read, and
+    // guessing one buys the wrong can.
+    const mt = materialTypeForVendor(c.materialType);
+    const productSeg = anyLineSet ? `${mt || NOT_SET} — ` : mt ? `${mt} — ` : "";
+    const finish = c.finish?.trim() ? ` · ${c.finish.trim()}` : "";
+    pushGrouped("", `  ${qty} ${unit} — ${productSeg}${label}${finish}`);
   }
 
   // FLAT list, one line per color, each naming its own product (Karan

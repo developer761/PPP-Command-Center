@@ -1582,6 +1582,7 @@ export default function OrderBuilderView({
           <CustomColorItems
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
+            materialValues={lineMaterialValues}
           />
 
           {/* ── Color Notes (#16) ─────────────────────────────────────────── */}
@@ -2032,16 +2033,30 @@ function ColorNoteOffers({
   );
 }
 
+type CustomItem = {
+  id: string;
+  label: string;
+  qty: number;
+  unit: string;
+  finish?: string | null;
+  materialType?: string | null;
+};
+
 function CustomColorItems({
   items,
   onChange,
+  materialValues,
 }: {
-  items: Array<{ id: string; label: string; qty: number; unit: string }>;
-  onChange: (items: Array<{ id: string; label: string; qty: number; unit: string }>) => void;
+  items: CustomItem[];
+  onChange: (items: CustomItem[]) => void;
+  /** The same product list the buy-list rows offer, filtered to this job. */
+  materialValues?: ReadonlySet<string>;
 }) {
   const [label, setLabel] = useState("");
   const [qty, setQty] = useState("1");
   const [unit, setUnit] = useState<PaintUnit>("gal");
+  const [finish, setFinish] = useState("");
+  const [materialType, setMaterialType] = useState("");
 
   const add = () => {
     const l = label.trim();
@@ -2049,12 +2064,27 @@ function CustomColorItems({
     if (!qty.trim()) return;
     onChange([
       ...items,
-      { id: nextCustomColorId(items, l), label: l, qty: orderableQty(qty), unit },
+      {
+        id: nextCustomColorId(items, l),
+        label: l,
+        qty: orderableQty(qty),
+        unit,
+        finish: finish.trim() || null,
+        materialType: materialType.trim() || null,
+      },
     ]);
     setLabel("");
     setQty("1");
     setUnit("gal");
+    setFinish("");
+    setMaterialType("");
   };
+
+  /** Edit one field on an item already on the order (Katie 2026-10-01: she
+   *  could add a quantity but could not "add/edit the finish or product
+   *  line"). */
+  const patchItem = (id: string, patch: Partial<CustomItem>) =>
+    onChange(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
 
   return (
     <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3 scroll-mt-4">
@@ -2067,17 +2097,51 @@ function CustomColorItems({
       {items.length > 0 && (
         <ul className="space-y-1.5 mb-3">
           {items.map((it) => (
-            <li key={it.id} className="flex items-center gap-2 text-xs bg-ppp-green-50/50 border border-ppp-green-100 rounded px-2.5 py-2">
-              <span className="flex-1 min-w-0 truncate text-ppp-charcoal">{it.label}</span>
-              <span className="text-[10px] text-ppp-charcoal-500 shrink-0">×{it.qty} {it.unit}</span>
-              <button
-                type="button"
-                onClick={() => onChange(items.filter((x) => x.id !== it.id))}
-                className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-700 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
-                aria-label={`Remove ${it.label}`}
-              >
-                Remove
-              </button>
+            <li key={it.id} className="text-xs bg-ppp-green-50/50 border border-ppp-green-100 rounded px-2.5 py-2">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 min-w-0 truncate text-ppp-charcoal">{it.label}</span>
+                <span className="text-[10px] text-ppp-charcoal-500 shrink-0">×{it.qty} {it.unit}</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(items.filter((x) => x.id !== it.id))}
+                  className="shrink-0 text-ppp-orange-700 hover:text-ppp-orange-700 px-3 py-1 min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+                  aria-label={`Remove ${it.label}`}
+                >
+                  Remove
+                </button>
+              </div>
+              {/* EDITABLE after the fact — Katie 2026-10-01 added a line, set
+                  the gallons, and then had nowhere to say which sheen or which
+                  product it was. Both sit on the line itself rather than in the
+                  add-form only, because the thing she needed to change was
+                  already on the order. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <label className="text-[10px] text-ppp-charcoal-500" htmlFor={`cc-finish-${it.id}`}>
+                  Finish
+                </label>
+                <input
+                  id={`cc-finish-${it.id}`}
+                  type="text"
+                  value={it.finish ?? ""}
+                  onChange={(e) => patchItem(it.id, { finish: e.target.value })}
+                  placeholder="e.g. Eggshell"
+                  className="w-32 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 min-h-[44px] sm:min-h-0"
+                />
+                <label className="text-[10px] text-ppp-charcoal-500" htmlFor={`cc-mt-${it.id}`}>
+                  Product line
+                </label>
+                <div className="w-[190px]">
+                  <MaterialTypePicker
+                    id={`cc-mt-${it.id}`}
+                    value={it.materialType ?? ""}
+                    onChange={(v) => patchItem(it.id, { materialType: v })}
+                    placeholder="— pick a product —"
+                    compact
+                    allowClear
+                    availableValues={materialValues}
+                  />
+                </div>
+              </div>
             </li>
           ))}
         </ul>
@@ -2131,6 +2195,38 @@ function CustomColorItems({
           >
             Add
           </button>
+        </div>
+      </div>
+
+      {/* Finish and product line on the way IN as well, so a line does not have
+          to be added and then corrected. Both optional: a color match handed
+          over on a chip genuinely has no sheen to give. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="text-[10px] text-ppp-charcoal-500" htmlFor="cc-new-finish">
+          Finish
+        </label>
+        <input
+          id="cc-new-finish"
+          type="text"
+          value={finish}
+          onChange={(e) => setFinish(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          placeholder="e.g. Eggshell"
+          className="w-32 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 min-h-[44px] sm:min-h-0"
+        />
+        <label className="text-[10px] text-ppp-charcoal-500" htmlFor="cc-new-mt">
+          Product line
+        </label>
+        <div className="w-[190px]">
+          <MaterialTypePicker
+            id="cc-new-mt"
+            value={materialType}
+            onChange={setMaterialType}
+            placeholder="— pick a product —"
+            compact
+            allowClear
+            availableValues={materialValues}
+          />
         </div>
       </div>
     </section>
