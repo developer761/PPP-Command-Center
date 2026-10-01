@@ -97,24 +97,24 @@ function FinishBlock({
 }) {
   return (
     <div className="mt-4">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap border-b border-ppp-charcoal-100 pb-1.5">
-        <h4 className="font-condensed text-sm sm:text-base font-bold text-ppp-navy">{title}</h4>
-        <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500">{caption}</span>
-      </div>
+      {/* "Recommended Surface" sits ON the heading line, above the rule — Kate
+          moved it there on 2026-10-01 ("move the header above the line"); it
+          had been dropped into the gap between the rule and the first row,
+          which read as a stray caption belonging to Flat rather than a column
+          heading.
 
-      {/* Kate 2026-10-01: name the middle column. Only the middle one — her
-          table has never had headings over the finish or the description, and
-          two more would be scaffolding the rows do not need. Hidden below `sm`,
-          where the rows stack and there are no columns for it to sit over. */}
-      <div
-        aria-hidden
-        className="hidden sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 pt-2 pb-1"
-      >
-        <span />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+          One row, two layouts: flex below `sm` (title left, caption right,
+          column heading hidden because the rows are stacked and there are no
+          columns for it to label) and the rows' own 3-column grid from `sm` up,
+          so the heading lands exactly over the column it names. */}
+      <div className="border-b border-ppp-charcoal-100 pb-1.5 flex items-baseline justify-between gap-3 flex-wrap sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:justify-normal">
+        <h4 className="font-condensed text-sm sm:text-base font-bold text-ppp-navy">{title}</h4>
+        <span className="hidden sm:block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
           Recommended Surface
         </span>
-        <span />
+        <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500 sm:text-right">
+          {caption}
+        </span>
       </div>
 
       <ul className="divide-y divide-ppp-charcoal-100">

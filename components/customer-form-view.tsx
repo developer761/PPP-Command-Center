@@ -194,6 +194,7 @@ import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to
 import FinishGuideSection from "@/components/finish-guide-section";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
 import { finishGuideScope } from "@/lib/customer-form/finish-guide";
+import { finishSeedPolicy } from "@/lib/customer-form/finish-seed-policy";
 import SendReceiptButton from "@/components/send-receipt-button";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
@@ -418,6 +419,14 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // Seed state. When re-editing, pre-fill each surface from the customer's
   // prior submission (colors + finishes + skipped + notes) so they tweak what
   // they already chose rather than starting over. Otherwise start blank.
+  // Whose finish may appear in the box before the customer answers.
+  //
+  // Staff entry keeps every shortcut. On the customer form the only finish
+  // that may be pre-filled is one THEY submitted on THIS token — a re-edit
+  // showing their own previous answer. Everything else (Salesforce's saved
+  // Finish, a staff internal entry on the same work order) is somebody else's
+  // answer wearing the customer's dropdown.
+  const finishSeeds = finishSeedPolicy({ isStaffEntry, hasOwnSubmission });
   const initialState = useMemo<Record<string, LineItemState>>(() => {
     // Index the prior submission by line-item id → surface name for O(1) lookup.
     const priorByLine = new Map<string, Map<string, PriorSurface>>();
@@ -450,14 +459,20 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 colorName: p.colorName,
                 colorCode: p.colorCode,
                 colorHex: null, // re-resolved from the catalog by the swatch helper
-                finish: p.finish,
+                // The customer's OWN previous answer comes back — that is what
+                // re-editing means. A payload from somebody ELSE's token on
+                // this work order (a staff internal entry, via the
+                // getLatestSubmittedPayload fallback) does not: its finish is
+                // not their answer, and showing it is the auto-populating Alex
+                // asked us to stop.
+                finish: finishSeeds.fromPriorSubmission ? p.finish : null,
                 skipped: p.skipped ?? false,
               }];
             }
             // No prior submission for this surface → fall back to the color
             // already saved on the WorkOrderLineItem in Salesforce (Kate #14).
             // colorName/code/hex are hydrated from the catalog once it loads.
-            const sf = sfSeedForSurface(s, li, soleOrphan);
+            const sf = sfSeedForSurface(s, li, soleOrphan, finishSeeds.fromSalesforce);
             if (sf) return [s, sf];
             return [s, emptyPick()];
           })
@@ -471,7 +486,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       };
     }
     return state;
-  }, [formData, priorSubmission]);
+  }, [formData, priorSubmission, finishSeeds.fromSalesforce, finishSeeds.fromPriorSubmission]);
 
   const [state, setState] = useState(initialState);
   /** How many rooms came back from a local draft, once, on mount. */
@@ -1367,7 +1382,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onDismissApplyNote={() => setApplyNote(null)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
             isInternal={isInternal}
-            suggestFinish={isStaffEntry}
+            suggestFinish={finishSeeds.onColorPick}
             materialType={
               /^exterior/i.test(li.productFamily ?? "")
                 ? materialTypeExterior || materialType
@@ -2332,10 +2347,26 @@ function emptyPick(): SurfacePick {
  * colors). Returns null when SF has no color for this surface. colorName/code/
  * hex are left null here and hydrated from the catalog once it loads.
  */
+/**
+ * `seedFinish` is FALSE on the customer form (Kate, 2026-10-01: "Finish still
+ * auto-populates for customers").
+ *
+ * The first pass at Alex's request only stopped the form CHOOSING a finish
+ * when a color was picked. This is the other, larger source and the one a
+ * customer actually meets: most work orders already carry a Finish on the
+ * WorkOrderLineItem, and seeding it put a sheen in the box before the customer
+ * touched anything. It does not matter to them that Salesforce picked it
+ * rather than us — it is still an answer they did not give.
+ *
+ * The COLOR seed stays, deliberately. That is Kate's own #14 and a different
+ * question: showing the color already on the job is useful, and a color is
+ * what the customer came to confirm.
+ */
 function sfSeedForSurface(
   surface: string,
   li: FormLineItem,
-  soleOrphan: string | null
+  soleOrphan: string | null,
+  seedFinish: boolean
 ): SurfacePick | null {
   const key = surface.toLowerCase().trim();
   let colorId: string | null = null;
@@ -2360,7 +2391,7 @@ function sfSeedForSurface(
     colorHex: null,
     // Map the SF picklist value (e.g. "Semigloss") back to a form option
     // ("Semi-Gloss") so the dropdown matches and submit doesn't reject it (#14).
-    finish: denormalizeFinishFromSf(finish),
+    finish: seedFinish ? denormalizeFinishFromSf(finish) : null,
     skipped: false,
   };
 }
