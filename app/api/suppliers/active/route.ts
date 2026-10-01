@@ -63,6 +63,15 @@ export type ActiveSupplier = {
   /** Always true — inactive suppliers are filtered out server-side. Kept on
    *  the payload so a caller can't silently start assuming the opposite. */
   isActive: boolean;
+  /**
+   * Two-letter state of this vendor's branch (Katie 2026-10-01), used to float
+   * the vendors near the job to the top of the picker.
+   *
+   * NULL for the three PPP vendors whose pickup address carries no state, and
+   * for any vendor an admin adds without filling it in. A null NEVER removes a
+   * vendor from the list — see rankVendors.
+   */
+  state: string | null;
 };
 
 export async function GET() {
@@ -81,7 +90,7 @@ export async function GET() {
     const sb = adminClient();
     // Read every supplier_settings row. Filter the result set in JS so we
     // can gracefully degrade if the newer columns aren't present yet.
-    const richSelect = "supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations, is_active, is_bm_retailer, sort_order, phone_only, phone_number, pickup_default";
+    const richSelect = "supplier_account_id, supplier_name, order_email, ppp_account_number, pickup_locations, is_active, is_bm_retailer, sort_order, phone_only, phone_number, pickup_default, state";
     const { data: rows, error } = await sb
       .from("supplier_settings")
       .select(richSelect);
@@ -114,6 +123,9 @@ export async function GET() {
       phone_only?: boolean;
       phone_number?: string | null;
       pickup_default?: boolean;
+      /** Optional: absent on the degraded retry select, and on any deployment
+       *  where the vendor-state migration has not been pasted in yet. */
+      state?: string | null;
     };
     const suppliers: ActiveSupplier[] = (safeRows ?? [])
       // A supplier is "usable" if it has EITHER an email OR is phone-only
@@ -140,6 +152,9 @@ export async function GET() {
           phoneOnly: Boolean(r.phone_only),
           phoneNumber: (r.phone_number as string | null) ?? null,
           pickupDefault: Boolean(r.pickup_default),
+          // Normalised here so every consumer compares the same shape; the
+          // column is free text an admin types.
+          state: ((r.state as string | null) ?? "").trim().toUpperCase() || null,
           isActive: r.is_active !== false, // default true if missing
           _sortOrder: typeof r.sort_order === "number" ? r.sort_order : null,
         } as ActiveSupplier & { _sortOrder: number | null };

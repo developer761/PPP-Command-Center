@@ -153,6 +153,7 @@ export default function OrderBuilderView({
   workOrderId,
   workOrderNumber,
   customerName,
+  jobState = null,
   sourceLines,
   initialPayload,
   initialSupplierId,
@@ -162,6 +163,9 @@ export default function OrderBuilderView({
   workOrderId: string;
   workOrderNumber: string | null;
   customerName: string | null;
+  /** Account.BillingState for this work order. Floats the vendors near the job
+   *  to the top of the picker (Katie 2026-10-01); null leaves it alone. */
+  jobState?: string | null;
   sourceLines: SourceLine[];
   initialPayload: OrderBuildPayload;
   /** Resume straight into a supplier the worker already started building for. */
@@ -1104,6 +1108,7 @@ export default function OrderBuilderView({
           </div>
         ) : (
           <SupplierPickList
+            jobState={jobState}
             onPick={(s: ActiveSupplier) => {
               // Keep the custom color items typed before a vendor existed. The
               // Color Notes "Add" buttons sit in the source panel ABOVE the

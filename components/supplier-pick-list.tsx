@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { rankVendors, vendorGroupLabel } from "@/lib/supplier-order/vendor-ranking";
 
 /**
  * The active-supplier list, with no modal chrome around it.
@@ -23,20 +24,60 @@ export type ActiveSupplier = {
   phoneNumber: string | null;
   pickupDefault: boolean;
   isActive: boolean;
+  /** Two-letter state of this branch; null when nobody has told us. */
+  state?: string | null;
 };
 
 export default function SupplierPickList({
   onPick,
   excludeIds = [],
+  jobState = null,
 }: {
   onPick: (supplier: ActiveSupplier) => void;
   excludeIds?: string[];
+  /** Account.BillingState for the job being ordered for — the vendors near it
+   *  float to the top (Katie 2026-10-01). Null just leaves the list alone. */
+  jobState?: string | null;
 }) {
   const [suppliers, setSuppliers] = useState<ActiveSupplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
+  const [favorites, setFavorites] = useState<string[]>([]);
+
+  // Separate from the vendor list on purpose — that one is global and cached,
+  // this one is per-user and must not be. A failure here is silent: an
+  // unsorted list is still a working list.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/suppliers/favorites", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.favorites)) setFavorites(data.favorites);
+      } catch {
+        /* the picker works unsorted */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleFavorite = async (accountId: string) => {
+    const on = favorites.includes(accountId);
+    // Optimistic: starring is a preference, and waiting on a round trip to
+    // show a star is the kind of lag that makes people click twice.
+    setFavorites((cur) => (on ? cur.filter((x) => x !== accountId) : [...cur, accountId]));
+    try {
+      await fetch("/api/suppliers/favorites", {
+        method: on ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ supplierAccountId: accountId }),
+      });
+    } catch {
+      setFavorites((cur) => (on ? [...cur, accountId] : cur.filter((x) => x !== accountId)));
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +111,11 @@ export default function SupplierPickList({
       if (!q) return true;
       return s.name.toLowerCase().includes(q) || s.orderEmail.toLowerCase().includes(q);
     });
+
+  // Ranked AFTER the search filter: typing searches every vendor, and the
+  // groups simply reorder whatever the search left. rankVendors never drops a
+  // row, so this cannot hide a vendor somebody is looking for.
+  const ranked = rankVendors({ vendors: filtered, favoriteIds: favorites, jobState });
 
   return (
     <div>
@@ -141,8 +187,17 @@ export default function SupplierPickList({
           </div>
         )}
         <ul className="divide-y divide-ppp-charcoal-100">
-          {filtered.map((s) => (
+          {ranked.map(({ vendor: s, group }, i) => (
             <li key={s.accountId}>
+              {/* A heading the first time each group appears. Only ever two or
+                  three of these, and they are what make the reordering legible
+                  rather than mysterious. */}
+              {group !== ranked[i - 1]?.group && (
+                <div className="px-4 sm:px-5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 bg-[var(--color-surface-muted)]">
+                  {vendorGroupLabel(group, jobState)}
+                </div>
+              )}
+              <div className="flex items-stretch">
               <button
                 type="button"
                 onClick={() => onPick(s)}
@@ -170,6 +225,11 @@ export default function SupplierPickList({
                           Pickup
                         </span>
                       )}
+                      {s.state && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-ppp-green-50 text-ppp-green-700 border border-ppp-green-100" title={`This branch is in ${s.state}`}>
+                          {s.state}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[12px] sm:text-[11px] text-ppp-charcoal-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       {s.phoneOnly && s.phoneNumber ? (
@@ -194,6 +254,24 @@ export default function SupplierPickList({
                   <span className="shrink-0 text-ppp-blue text-lg leading-none" aria-hidden>→</span>
                 </div>
               </button>
+              {/* OUTSIDE the pick button, not inside it — a star nested in the
+                  row button would select the vendor as well as star it, and
+                  nested interactive elements are invalid markup besides. */}
+              <button
+                type="button"
+                onClick={() => toggleFavorite(s.accountId)}
+                aria-pressed={favorites.includes(s.accountId)}
+                aria-label={favorites.includes(s.accountId) ? `Unfavorite ${s.name}` : `Favorite ${s.name}`}
+                title={favorites.includes(s.accountId) ? "Remove from your favorites" : "Add to your favorites"}
+                className={`shrink-0 px-3 min-h-[44px] flex items-center text-lg leading-none touch-manipulation transition-colors ${
+                  favorites.includes(s.accountId)
+                    ? "text-ppp-orange-700 hover:text-ppp-orange-600"
+                    : "text-ppp-charcoal-300 hover:text-ppp-charcoal-500"
+                }`}
+              >
+                {favorites.includes(s.accountId) ? "★" : "☆"}
+              </button>
+              </div>
             </li>
           ))}
         </ul>

@@ -42,6 +42,8 @@ type SupplierSettingsRow = {
   phone_only?: boolean;
   phone_number?: string | null;
   pickup_default?: boolean;
+  /** Two-letter branch state, e.g. "NY". Null = unknown. */
+  state?: string | null;
   updated_at: string;
 };
 
@@ -215,6 +217,13 @@ export async function PUT(request: Request) {
   }
   if ("pickup_default" in body) {
     row.pickup_default = body.pickup_default;
+  }
+  // Two-letter state of this branch (Katie 2026-10-01). Normalised on the way
+  // in so the picker's comparison never has to care how it was typed; blank
+  // clears it back to unknown rather than storing "".
+  if ("state" in body) {
+    const st = String(body.state ?? "").trim().toUpperCase();
+    row.state = /^[A-Z]{2}$/.test(st) ? st : null;
   }
 
   const { error } = await sb

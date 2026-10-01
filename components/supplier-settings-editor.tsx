@@ -29,6 +29,8 @@ type CandidateRow = {
     supplier_name: string;
     order_email: string | null;
     ppp_account_number: string | null;
+    /** Two-letter branch state (Katie 2026-10-01); null = unknown. */
+    state?: string | null;
     pickup_locations: Array<{ name: string; address: string }>;
     preferred_template_key: string | null;
     is_active: boolean;
@@ -301,6 +303,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
   const [expanded, setExpanded] = useState(false);
   const [orderEmail, setOrderEmail] = useState(candidate.settings?.order_email ?? "");
   const [accountNumber, setAccountNumber] = useState(candidate.settings?.ppp_account_number ?? "");
+  const [vendorState, setVendorState] = useState(candidate.settings?.state ?? "");
   const [pickupLocations, setPickupLocations] = useState<Array<{ name: string; address: string }>>(
     candidate.settings?.pickup_locations ?? []
   );
@@ -315,13 +318,14 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
     return (
       orderEmail !== (candidate.settings?.order_email ?? "") ||
       accountNumber !== (candidate.settings?.ppp_account_number ?? "") ||
+      vendorState !== (candidate.settings?.state ?? "") ||
       JSON.stringify(pickupLocations) !== JSON.stringify(candidate.settings?.pickup_locations ?? []) ||
       isActive !== (candidate.settings?.is_active ?? true) ||
       phoneOnly !== Boolean(candidate.settings?.phone_only) ||
       phoneNumber !== (candidate.settings?.phone_number ?? "") ||
       pickupDefault !== Boolean(candidate.settings?.pickup_default)
     );
-  }, [orderEmail, accountNumber, pickupLocations, isActive, phoneOnly, phoneNumber, pickupDefault, candidate.settings]);
+  }, [orderEmail, accountNumber, vendorState, pickupLocations, isActive, phoneOnly, phoneNumber, pickupDefault, candidate.settings]);
 
   const handleSave = async () => {
     if (!isDirty || saving) return;
@@ -336,6 +340,7 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
           supplier_name: candidate.supplierName,
           order_email: orderEmail.trim() || null,
           ppp_account_number: accountNumber.trim() || null,
+          state: vendorState.trim().toUpperCase() || null,
           pickup_locations: pickupLocations.filter((p) => p.name.trim()),
           is_active: isActive,
           phone_only: phoneOnly,
@@ -441,6 +446,20 @@ function SupplierRow({ candidate, onSaved }: { candidate: CandidateRow; onSaved:
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="e.g. 12345678 (PPP's contractor number)"
               className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono"
+            />
+          </Field>
+
+          <Field
+            label="State"
+            help="Two letters — NY, NJ, FL. Floats this vendor to the top of the picker on jobs in the same state. Leave blank if it doesn't apply; a blank never hides the vendor."
+          >
+            <input
+              type="text"
+              value={vendorState}
+              onChange={(e) => setVendorState(e.target.value.toUpperCase().slice(0, 2))}
+              placeholder="NY"
+              maxLength={2}
+              className="w-20 px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue font-mono uppercase"
             />
           </Field>
 
