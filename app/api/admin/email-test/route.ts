@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { sendCustomerFormInvite } from "@/lib/email/resend";
+import { sendCustomerFormInvite, sendCustomerFormConfirmation } from "@/lib/email/resend";
+import { buildReceiptRooms } from "@/lib/customer-form/receipt-lines";
 
 
 /**
@@ -21,6 +22,8 @@ export const dynamic = "force-dynamic";
  *
  *   GET /api/admin/email-test?to=karan@example.com
  *      Optional: ?name=Jane%20Doe  &wo=00012345
+ *      Optional: ?kind=confirmation  — preview the submission RECEIPT
+ *                (Kate 2026-10-01) instead of the invite. Default: invite.
  *
  * Previously this sent a hardcoded "Resend wired" plain message and did
  * NOT go through the template system — admin would edit templates,
@@ -68,24 +71,73 @@ export async function GET(request: Request) {
 
   const fromAddress = process.env.RESEND_FROM_ADDRESS ?? "(RESEND_FROM_ADDRESS not set)";
   const hasApiKey = !!process.env.RESEND_API_KEY;
+  const stamp = new Date().toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
 
-  // Use the REAL customer-form invite path so admin sees their template
-  // edits reflected. Prepend "[TEST]" via subjectOverride so the email
-  // reads as a preview, not a live customer send.
-  const result = await sendCustomerFormInvite({
-    to,
-    customerName: fakeName,
-    workOrderNumber: fakeWoNumber,
-    formUrl: fakeFormUrl,
-    subjectOverride: `[TEST] Template preview · ${new Date().toLocaleString("en-US", { hour: "numeric", minute: "2-digit" })}`,
-  });
+  // Which of the two customer emails to preview. The receipt (Kate
+  // 2026-10-01) needs this just as much as the invite did: it is only sent
+  // by a real form submission, so without a test path the only way to see
+  // one was to submit somebody's live work order.
+  const kind = (url.searchParams.get("kind") || "invite").toLowerCase();
+  if (kind !== "invite" && kind !== "confirmation") {
+    return NextResponse.json({
+      error: "unknown_kind",
+      hint: "Use ?kind=invite (default) or ?kind=confirmation",
+    }, { status: 400 });
+  }
+
+  // Sample selections, built through the SAME function a real submission
+  // uses, so the preview cannot drift from the real receipt. Deliberately
+  // includes the awkward rows — a skipped surface, a color with no finish,
+  // and a surface left blank — because those are the lines worth checking.
+  const result = kind === "confirmation"
+    ? await sendCustomerFormConfirmation({
+        to,
+        customerName: fakeName,
+        workOrderNumber: fakeWoNumber,
+        formUrl: fakeFormUrl,
+        rooms: buildReceiptRooms({
+          lineItems: [
+            {
+              id: "sample-1",
+              surfaces: [
+                { surface: "Walls", colorName: "Stardust", colorCode: "2108-40", finish: "Satin" },
+                { surface: "Ceiling", colorName: "Chantilly Lace", colorCode: "OC-65", finish: null },
+                { surface: "Trim", skipped: true },
+              ],
+              notes: "Sample room note",
+            },
+            {
+              id: "sample-2",
+              surfaces: [{ surface: "Walls", colorName: null }],
+              notes: null,
+            },
+          ],
+          roomLabelById: new Map([
+            ["sample-1", `[TEST ${stamp}] Interior Painting · Bathroom`],
+            ["sample-2", "[TEST] Interior Painting · Living Room"],
+          ]),
+        }),
+        globalNotes: "Sample job-wide note — this is a template preview, not a real submission.",
+      })
+    // Use the REAL customer-form invite path so admin sees their template
+    // edits reflected. Prepend "[TEST]" via subjectOverride so the email
+    // reads as a preview, not a live customer send.
+    : await sendCustomerFormInvite({
+        to,
+        customerName: fakeName,
+        workOrderNumber: fakeWoNumber,
+        formUrl: fakeFormUrl,
+        subjectOverride: `[TEST] Template preview · ${stamp}`,
+      });
 
   return NextResponse.json({
     triggeredBy: data.user.email,
+    kind,
     to,
     fromAddress,
     hasApiKey,
     note: "This test uses the LIVE customer_form_templates config — edits at /dashboard/settings/templates take effect immediately on the next test.",
+    hint: kind === "invite" ? "Add &kind=confirmation to preview the submission receipt instead." : undefined,
     result,
   }, { status: result.ok ? 200 : 500 });
 }
