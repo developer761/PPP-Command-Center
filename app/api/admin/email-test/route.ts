@@ -71,7 +71,15 @@ export async function GET(request: Request) {
 
   const fromAddress = process.env.RESEND_FROM_ADDRESS ?? "(RESEND_FROM_ADDRESS not set)";
   const hasApiKey = !!process.env.RESEND_API_KEY;
-  const stamp = new Date().toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+  // New York, not the server's clock. Vercel runs UTC, so this read "4:19 PM"
+  // to somebody looking at it at 12:19 — which makes the stamp useless for the
+  // one job it has, telling two test emails apart. PPP is on Long Island and
+  // every other customer-facing time in this app is already Eastern.
+  const stamp = new Date().toLocaleString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/New_York",
+  });
 
   // Which of the two customer emails to preview. The receipt (Kate
   // 2026-10-01) needs this just as much as the invite did: it is only sent
