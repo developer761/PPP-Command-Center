@@ -91,6 +91,31 @@ const SCENARIOS = [
       phone: "999-784-6046", name: "Tom" },
     wants: "success" },
 
+  /**
+   * THE SAME CLOSE, IN THE ORDER IT ACTUALLY ARRIVES.
+   *
+   * The scenario above gives availability in the CURRENT message, so the A4
+   * gap is null and the close is allowed. Live, the order is the other way
+   * round: availability is answered, the bot asks for the second property,
+   * and the address is the message being validated. Found in the sandbox
+   * 2026-10-01 — `success` was refused with "they named a time but no day",
+   * because the guard re-read the current message and found an address. All
+   * four legs were collected and the conversation could not close.
+   */
+  { name: "two properties, availability FIRST and the second address last",
+    history: [
+      "we have two rental properties that both need the living room and hallway painted",
+      "12 Oak St, Garden City NY 11530",
+      "Tom Smith, tom@example.com",
+      "Wednesday afternoon works",
+    ],
+    text: "45 Pine St, Garden City NY 11530",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability", "ask_address"],
+    known: { inquiryScope: "living room and hallway in each of two rentals",
+      address: "12 Oak St, Garden City NY 11530", email: "tom@example.com",
+      phone: "999-784-6046", name: "Tom" },
+    wants: "success" },
+
   { name: "two properties, only ONE address given, must not close",
     history: [
       "I have two rental properties I need quoted, one in Garden City and one in Hempstead",

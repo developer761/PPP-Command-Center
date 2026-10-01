@@ -21,7 +21,7 @@ import { conversationLanguage } from "../lib/messaging/language.ts";
 import { offsiteReasonFor } from "../lib/messaging/offsite.ts";
 import { normalizeInbound } from "../lib/messaging/inbound-normalize.ts";
 import { addressGap } from "../lib/messaging/address.ts";
-import { availabilityGap } from "../lib/messaging/availability.ts";
+import { availabilityGap, availabilityGapAcross } from "../lib/messaging/availability.ts";
 import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/multi-property.ts";
 import { jobRoute } from "../lib/messaging/offsite.ts";
 import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
@@ -121,8 +121,18 @@ export function waysThrough(scenario) {
      * allowed it.
      */
     templateAsks: (intent) => templateAsks(intent, history.length),
-    // A4, for the close as well as the ask.
-    availabilityGap: availabilityGap(inbound.description),
+    /**
+     * A4, FOR THE CLOSE. Across the whole conversation, and from the
+     * CUSTOMER's own words — matching agent-run exactly.
+     *
+     * Was availabilityGap(inbound.description) here and in production. Two
+     * faults in one line: it asked only about the current message, so every
+     * turn after the availability turn reported nothing bookable and a fully
+     * collected conversation could not close; and on a bare reaction the
+     * description quotes our own question back, so a thumbs-up on "What days
+     * work best for you this week?" read as a DAY supplied.
+     */
+    availabilityGap: availabilityGapAcross(customerSaid),
     /**
      * A FOURTH FIELD agent-run PASSES AND THIS DID NOT (agent-run.ts:531).
      *
@@ -159,11 +169,14 @@ export function waysThrough(scenario) {
      * any scenario. Kate: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed
      * & Friday this week works best' is NOT availability collected."
      *
-     * From the DESCRIPTION, exactly as agent-run reads it — a reaction or a
-     * photo arrives described rather than quoted, and reading the raw text
-     * would scan our own sentence.
+     * From ownWords, exactly as agent-run reads it. This comment used to say
+     * the opposite — "from the DESCRIPTION... reading the raw text would scan
+     * our own sentence" — and had it exactly backwards. It is the DESCRIPTION
+     * that carries our sentence: on a bare reaction it reads `The customer
+     * Liked the message: "<our question>"`. ownWords is empty there, because
+     * they said nothing, which is what this rule needs to know.
      */
-    availabilityGap: availabilityGap(inbound.description),
+    availabilityGap: availabilityGap(ownWords),
     offsiteReason: offsiteReasonFor(ownWords),
     covers: COVERS,
     language,
