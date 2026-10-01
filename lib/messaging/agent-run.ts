@@ -541,9 +541,17 @@ export async function runAgentTurn(
    *   own previous sentence, so rephrasing a question — which is exactly what
    *   a reaction to a question calls for — reads as echoing the customer.
    *
+   *   BOTH availability checks, 2026-10-01 — the validator's and the
+   *   renderer's. "What days work best for you this week?" liked back reads
+   *   as a DAY supplied, so the close guard and the follow-up ask both
+   *   believed the customer had given half an answer they never gave.
+   *
    * The same trap that put `Liked "..."` into inquiry_scope this morning, one
-   * layer up. normalizeInbound already answers it: text is null for a bare
-   * reaction, because they said nothing of their own.
+   * layer up. Five instances now, every one of them silent and every one in
+   * the permissive direction, so if you are adding a rule that judges what
+   * the customer said: it reads ownWords. normalizeInbound already answers
+   * it: text is null for a bare reaction, because they said nothing of their
+   * own.
    *
    * The PROMPT still gets the description. The model needs to know a photo
    * arrived or a message was liked; the rules need to know what was said.
@@ -714,11 +722,17 @@ Choose the next action.`;
        *
        * The renderer's copy below stays per-message on purpose: it is wording
        * the follow-up ask about what the customer just wrote.
+       *
+       * AND IT IS customerSaid, NOT inbound.description. The description is a
+       * narration written for the model — on a bare reaction it reads `The
+       * customer Liked the message: "What days work best for you this week?"`,
+       * quoting OUR OWN sentence back. Fed to an availability parser that
+       * returns "window", meaning a day was supplied, read out of our own
+       * question. ownWords is empty for a reaction precisely because they said
+       * nothing, which is what this rule needs to know. The first draft of
+       * this fix used the description and had exactly that bug.
        */
-      availabilityGap: availabilityGapAcross([
-        ...history.filter((t) => t.role === "customer").map((t) => t.text),
-        inbound.description,
-      ]),
+      availabilityGap: availabilityGapAcross(customerSaid),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
@@ -797,10 +811,20 @@ Choose the next action.`;
        * already given one.
        */
       secondProperty: wantsSecondAddress,
-      // A4: and the same for availability. Read from what the customer just
-      // said, because that is where an answer to an availability question
-      // lands. Only narrows an ask the model has already chosen to make.
-      availabilityGap: availabilityGap(inbound.description),
+      /**
+       * A4: and the same for availability. Read from what the customer just
+       * said, because that is where an answer to an availability question
+       * lands. Only narrows an ask the model has already chosen to make.
+       *
+       * ownWords, not inbound.description — the third rule check to need that
+       * distinction, after the two named at the top of this function. On a
+       * bare reaction the description quotes our own sentence back, so a
+       * thumbs-up on "What days work best for you this week?" read as a DAY
+       * supplied and narrowed the next ask to "and roughly what time of day
+       * suits you then?" — asking a customer who had said nothing at all to
+       * fill in the half we had invented for them.
+       */
+      availabilityGap: availabilityGap(ownWords),
       // What we DO cover, for the one case that needs it: turning work down.
       // Capped, because this goes out as a text message and the full list is
       // fifteen rows long.

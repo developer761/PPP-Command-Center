@@ -295,3 +295,38 @@ describe("availability is read across the conversation", () => {
     expect(availabilityGapAcross([])).toBe("both");
   });
 });
+
+/**
+ * A REACTION IS NOT AN ANSWER, AND THE NARRATION IS NOT THE CUSTOMER.
+ *
+ * normalizeInbound produces two different things: `text`, what the customer
+ * actually wrote, and `description`, a narration for the model. On a bare
+ * reaction `text` is null — they said nothing — and `description` reads:
+ *
+ *   The customer Liked the message: "What days work best for you this week?"
+ *
+ * which quotes OUR sentence back. Fed to availabilityGap that returns
+ * "window", meaning a day has been supplied — read entirely out of our own
+ * question. The first draft of availabilityGapAcross was wired to
+ * description and had exactly that bug; agent-run.ts passes customerSaid,
+ * which is built from ownWords.
+ *
+ * Pinned here because the two fields are one word apart at the call site and
+ * the wrong one fails silently in the permissive direction.
+ */
+describe("a reaction narration is never read as availability", () => {
+  it.each([
+    'The customer Liked the message: "What days work best for you this week?"',
+    'The customer Liked the message: "Are weekdays or weekends easier on your end?"',
+    'The customer Loved the message: "What sort of days work for you to have someone take a look?"',
+  ])("our own question quoted back is not availability: %j", (narration) => {
+    // This is what the narration WOULD yield, and why it must never be passed.
+    expect(availabilityGap(narration)).not.toBeNull();
+    // What the rules actually see on a bare reaction: nothing said.
+    expect(availabilityGapAcross([""])).toBe("both");
+  });
+
+  it("a reaction after real availability still holds the real answer", () => {
+    expect(availabilityGapAcross(["Wednesday afternoon works", ""])).toBeNull();
+  });
+});

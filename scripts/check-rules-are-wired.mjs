@@ -56,6 +56,27 @@ const ok = (label, cond, detail = "") => {
  */
 const CHAINS = [
   {
+    rule: "A4 — availability is judged on what the CUSTOMER said, across the thread",
+    why: "the close guard read only the current message, so any turn after the availability turn reported nothing bookable and a fully collected conversation could not close; and the narration quotes our own question back, so a thumbs-up read as a day supplied",
+    links: [
+      ["lib/messaging/availability.ts", /export function availabilityGapAcross/],
+      // The validator gets the whole conversation, from the customer's own words.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid\)/],
+      // The renderer stays per-message, but on ownWords rather than the narration.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
+      ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
+    ],
+    forbidden: [
+      /**
+       * inbound.description is a narration written for the MODEL. On a bare
+       * reaction it reads `The customer Liked the message: "What days work
+       * best for you this week?"`, so an availability parser finds a DAY in
+       * our own question. Both call sites had this; neither may have it again.
+       */
+      ["lib/messaging/agent-run.ts", /availabilityGap\w*\(\s*inbound\.description/],
+    ],
+  },
+  {
     rule: "A7 — the off-site reason reaches the renderer",
     why: "computed and never passed, so offer_offsite_quote rendered empty every time and the turn escalated instead of making the offer",
     links: [
