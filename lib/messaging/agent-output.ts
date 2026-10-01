@@ -1403,9 +1403,15 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
       if (ctx.availabilityGap) {
         return {
           ok: false, reason: "details_never_collected",
+          // "both" used to fall through to the "a time but no day" wording and
+          // tell a grader the customer had named a time when they had named
+          // neither. That is what a two-property run reported, while the real
+          // fault was the guard reading the wrong message entirely.
           detail: ctx.availabilityGap === "window"
             ? "they named days but no time of day, and an estimator cannot be booked against a day alone (A4)"
-            : "they named a time but no day, and an estimator cannot be booked against a time alone (A4)",
+            : ctx.availabilityGap === "day"
+              ? "they named a time but no day, and an estimator cannot be booked against a time alone (A4)"
+              : "no day and no time of day has been given anywhere in the conversation (A4)",
         };
       }
     }

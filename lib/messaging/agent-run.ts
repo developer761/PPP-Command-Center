@@ -22,7 +22,7 @@ import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-cu
 import { quoteCustomer, UNTRUSTED_NOTE } from "./untrusted";
 import { addressGap } from "./address";
 import { jobRoute, offsiteReasonFor } from "./offsite";
-import { availabilityGap } from "./availability";
+import { availabilityGap, availabilityGapAcross } from "./availability";
 import { statedConstraint } from "./reachability";
 import { requestedTime } from "./appointment-time";
 import { disclosureMove, applyDisclosure, alreadyDisclosed } from "./disclosure";
@@ -701,9 +701,24 @@ Choose the next action.`;
        * is being validated right now.
        */
       addressesHeld,
-      // A4: the same gap the renderer uses to ASK for the missing half, so the
-      // close cannot happen over it either.
-      availabilityGap: availabilityGap(inbound.description),
+      /**
+       * A4, ACROSS THE CONVERSATION rather than this one message.
+       *
+       * This was availabilityGap(inbound.description), which asks "is there
+       * bookable availability in what they JUST said". After the availability
+       * turn the answer is always no — the next message is an address, a
+       * name, a "yes that's right" — so the close guard blocked conversations
+       * that had collected all four legs and then said one more thing, and
+       * handed them to a person. Found running two properties end to end in
+       * the sandbox; see availabilityGapAcross for the transcript.
+       *
+       * The renderer's copy below stays per-message on purpose: it is wording
+       * the follow-up ask about what the customer just wrote.
+       */
+      availabilityGap: availabilityGapAcross([
+        ...history.filter((t) => t.role === "customer").map((t) => t.text),
+        inbound.description,
+      ]),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",

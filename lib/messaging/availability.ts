@@ -100,6 +100,55 @@ export function availabilityGap(
   return "both";
 }
 
+/**
+ * THE GAP ACROSS A WHOLE CONVERSATION, NOT ONE MESSAGE.
+ *
+ * availabilityGap answers "does THIS message contain bookable availability",
+ * which is the right question for the renderer — it is wording the follow-up
+ * ask about what the customer just said.
+ *
+ * It is the wrong question for the close guard. Found in the sandbox
+ * 2026-10-01, running two properties end to end:
+ *
+ *   customer  "Wednesday afternoon works"        -> gap null, bookable
+ *   BOT       "And what's the address for the second property?"
+ *   customer  "45 Pine St, Garden City NY 11530"
+ *   BOT       success  ->  BLOCKED: "they named a time but no day (A4)"
+ *
+ * Availability had been collected two turns earlier and the progress panel
+ * showed it held. The guard re-read the CURRENT message, found an address,
+ * and reported that nothing bookable existed. Every turn after availability
+ * is collected does this — an address, a name, even "yes that's right" — so a
+ * conversation that has all four legs cannot close and goes to a person.
+ *
+ * The guard's own comment already said it should not work this way: "It does
+ * not re-litigate a conversation whose availability was collected earlier."
+ * This is the function that makes that true.
+ *
+ * The two halves ACCUMULATE, because they genuinely arrive apart: "Wednesday"
+ * in one message and "afternoon" in the next is a day and a window, and Kate's
+ * test — could a person reply "you're booked for X" without asking anything
+ * further — is satisfied by the pair.
+ */
+export function availabilityGapAcross(
+  texts: readonly (string | null | undefined)[],
+  opts: { justAskedForAvailability?: boolean } = {}
+): AvailabilityGap {
+  let haveDay = false;
+  let haveWindow = false;
+  for (const text of texts) {
+    const gap = availabilityGap(text, opts);
+    if (gap === null) return null;
+    // "window" means a DAY was found and the window is what is missing.
+    if (gap === "window") haveDay = true;
+    if (gap === "day") haveWindow = true;
+  }
+  if (haveDay && haveWindow) return null;
+  if (haveDay) return "window";
+  if (haveWindow) return "day";
+  return "both";
+}
+
 /** Could a person reply "you're booked for X" without asking anything else? */
 export function availabilityIsBookable(
   text: string | null | undefined,

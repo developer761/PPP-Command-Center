@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateAction } from "@/lib/messaging/agent-output";
-import { availabilityGap, availabilityIsBookable } from "@/lib/messaging/availability";
+import { availabilityGapAcross, availabilityGap, availabilityIsBookable } from "@/lib/messaging/availability";
 import { renderMessage } from "@/lib/messaging/render";
 
 /**
@@ -230,5 +230,68 @@ describe("the close guard does not block answers a person could book", () => {
     for (const t of ["anytime works", "I'm flexible", "whenever suits you", "any day is fine"]) {
       expect(availabilityGap(t), t).toBeNull();
     }
+  });
+});
+
+/**
+ * THE CLOSE GUARD READS THE CONVERSATION, NOT THE LAST MESSAGE.
+ *
+ * Found running two properties end to end in the sandbox, 2026-10-01:
+ *
+ *   customer  "we have two rental properties..."
+ *   customer  "12 Oak St, Garden City NY 11530"
+ *   customer  "Tom Smith, tom@example.com"
+ *   customer  "Wednesday afternoon works"       <- bookable, gap null
+ *   BOT       "And what's the address for the second property?"
+ *   customer  "45 Pine St, Garden City NY 11530"
+ *   BOT       success  ->  BLOCKED, "they named a time but no day (A4)"
+ *
+ * All four legs were collected and the progress panel showed availability
+ * held. The guard re-read the CURRENT message, found an address, and reported
+ * that nothing bookable existed — so the conversation could not close and went
+ * to a person. Every turn after the availability turn did this.
+ */
+describe("availability is read across the conversation", () => {
+  const twoProperties = [
+    "we have two rental properties that both need the living room and hallway painted",
+    "12 Oak St, Garden City NY 11530",
+    "Tom Smith, tom@example.com",
+    "Wednesday afternoon works",
+    "45 Pine St, Garden City NY 11530",
+  ];
+
+  it("does not re-litigate availability collected earlier in the thread", () => {
+    expect(availabilityGapAcross(twoProperties)).toBeNull();
+  });
+
+  it("is the regression: the last message alone reports a gap that is not real", () => {
+    expect(availabilityGap("45 Pine St, Garden City NY 11530")).toBe("both");
+  });
+
+  it.each([
+    ["Tom Smith, tom@example.com"],
+    ["yes that's right"],
+    ["12 Oak St, Garden City NY 11530"],
+  ])("a later %j does not undo availability already given", (after) => {
+    expect(availabilityGapAcross(["Wednesday afternoon works", after])).toBeNull();
+  });
+
+  /** The halves genuinely arrive apart, and together they are bookable. */
+  it("accumulates a day from one message and a window from another", () => {
+    expect(availabilityGapAcross(["Wednesday works", "afternoon is better"])).toBeNull();
+    expect(availabilityGapAcross(["afternoon is better", "Wednesday works"])).toBeNull();
+  });
+
+  /** The protection it must keep: a conversation that never answered. */
+  it("still reports both when nothing anywhere names a day or a window", () => {
+    expect(availabilityGapAcross(["12 Oak St", "Tom Smith", "yes"])).toBe("both");
+  });
+
+  it("still reports a partial that was never completed", () => {
+    expect(availabilityGapAcross(["Wednesday works", "12 Oak St"])).toBe("window");
+  });
+
+  it("is empty-safe", () => {
+    expect(availabilityGapAcross([])).toBe("both");
   });
 });
