@@ -1168,3 +1168,42 @@ as shared spaces when the message also names a building with others in it, and
 stay residential otherwise. One line, and it wants a wiring chain pinning the
 conjunction so a later edit cannot drop the second half and route every
 hallway commercial.
+
+## 23. One of the three "ask the estimator" lines stops making sense when its question is removed
+
+**OPEN — your wording, so your call.** Found in the sandbox 2026-10-01.
+
+    customer  "do you guys use low voc paint? we have a baby.
+               its 14 Beech St Hicksville NY 11801"
+    BOT       "Congrats on the baby! I'm not sure which paints we stock, so
+               the estimator will confirm low VOC options for you. Our office
+               confirms the timing, so they'll lock that in with you."
+
+**The rule behaviour is right.** A29 answered the question, the address was
+captured, no price and no product claim — it deferred rather than guessing
+what we stock, which is what A33 asks for.
+
+**The last sentence is the problem, and it is not the model.** It is
+`defer_to_estimator` template 3, which reads in full:
+
+> "Our office confirms the timing, so they'll lock that in with you. **What
+> sort of days are easiest for you?**"
+
+The flow had not reached availability, so the renderer correctly removed the
+trailing question — it is too early to ask about days. What is left is a
+sentence about scheduling, to somebody who asked about paint. "They'll lock
+that in" sounds like something is being booked.
+
+**The other two survive the same removal:**
+
+> "The estimator will confirm that with you directly." — stands alone
+> "That's one for the estimator, and they'll go through it with you." — stands alone
+
+Only the third one's first half exists to set up its second half.
+
+**→ Recommendation:** reword the third so its opening clause answers rather
+than sets up — the timing half can stay in the question that follows it.
+Something like "That's one the estimator will confirm with you. What sort of
+days are easiest for you?" We have NOT changed it: it is customer-facing
+wording and the last time we rewrote one of these from our own reading we got
+it backwards (item 4).
