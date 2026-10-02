@@ -117,6 +117,33 @@ describe("the G702 heading sits where her form reads it", () => {
     }
   });
 
+  it("marks line 8 the way her form does, and leaves every other figure black", async () => {
+    /*
+     * Both forms pick out CURRENT PAYMENT DUE in color — hers red, our template
+     * green. Karan, reading the rendered PDF: "why is the 45 number green". It
+     * was the $4,545.00 beside it, line 8.
+     */
+    const buf = await buildAiaWorkbookBuffer({
+      application: { application_number: 5, retainage_pct: 10, period_to: "2026-09-23" } as never,
+      lines: [] as never[],
+      g702: G702,
+      ownerLabel: "O",
+      projectLabel: "P",
+      contractorLabel: "C",
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const g = wb.getWorksheet("Loan G-702")!;
+    const c = (ref: string) =>
+      (g.getCell(ref).font?.color as { argb?: string; indexed?: number } | undefined) ?? {};
+    expect(c("E40").argb).toBe("FFFF0000"); // her red
+    expect(c("E40").indexed).toBeUndefined(); // not the template's green (11)
+    // The rest of the column stays as her form has it: black.
+    for (const ref of ["E24", "E25", "E26", "E27", "E35", "E36", "E39", "E41"]) {
+      expect(c(ref).argb, ref).toBeUndefined();
+    }
+  });
+
   it("keeps her own labels intact", async () => {
     const v = await build();
     expect(v("A3")).toBe("TO OWNER:");

@@ -179,6 +179,14 @@ export async function buildAiaWorkbookBuffer(input: {
   money("E39", g702.previousCertificatesCents);
   money("E40", g702.currentPaymentDueCents);
   money("E41", g702.balanceToFinishCents);
+  /*
+   * LINE 8 IS THE NUMBER THE GC PAYS, and both forms pick it out in color —
+   * hers in red, ours in green. Every other money cell on the sheet is black in
+   * both. Same template-lineage drift as the project block, and the same fix:
+   * take her sample's color, explicitly, so it does not depend on a palette the
+   * file does not carry.
+   */
+  g.getCell("E40").font = { ...(g.getCell("E40").font ?? {}), color: HER_RED };
 
   // Change-order summary. Her form has this block and the old export wrote none
   // of it — it wasn't even in the cells the map said to fill. Split additions
