@@ -219,6 +219,24 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     // and the adapter deliberately does not use one, so nothing in the path
     // ever did.
     //
+    // ── IS THAT STILL TRUE? UNVERIFIED, AND LEFT IN ANYWAY. 2026-10-02 ──
+    //
+    // Advanced Opt-Out was switched ON for the Messaging Service that day,
+    // carrying our own HELP wording. The 646 is a sender in that service, so
+    // Twilio MAY now answer HELP itself and a customer would get two replies.
+    //
+    // Not removed on that maybe. We send with `From`, never
+    // MessagingServiceSid — transports/twilio.ts explains why — and whether
+    // the service's opt-out management fires for inbound to a number that
+    // merely belongs to it is not something to assume. The two mistakes are
+    // not the same size: two HELP replies is embarrassing, zero is a CTIA
+    // violation and carriers test for it.
+    //
+    // THE TEST, the moment the number can receive: text HELP and count the
+    // replies. One, from us — leave this alone. Two — delete this block and
+    // let Twilio own the keyword, since its handler answers even when the app
+    // is down. Until somebody has actually sent that text, this stays.
+    //
     // A fixed body rather than a generated one: what a HELP reply must contain
     // is a rule, not a judgement, and a model that improvises it could drop
     // half the obligations on a bad day. It goes out as a send_reply so it
