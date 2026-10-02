@@ -1241,3 +1241,40 @@ Something like "That's one the estimator will confirm with you. What sort of
 days are easiest for you?" We have NOT changed it: it is customer-facing
 wording and the last time we rewrote one of these from our own reading we got
 it backwards (item 4).
+
+## 24. Turning on a Texas workspace will tell Texas leads we do not serve Texas
+
+**NOT A BUG TODAY — a tripwire for whenever PPP expands.** Found reading the
+workspace list 2026-10-02.
+
+A2 step 1 is a hard gate: *"the state must be one of NJ, CA, CT, FL, NY, CO"*,
+and a zip outside those is `out_of_state` **whatever its record says**. That
+renders A2 script 2 — the only message in the whole system that tells a
+customer no outright.
+
+The table already holds workspaces for states outside that list:
+
+| workspace | state | live? |
+|---|---|---|
+| TX Dallas Leads | TX | inactive |
+| AM - Dallas TX | TX | inactive, has a number |
+| TX Meta 2 | TX | inactive |
+| NC Leads | NC | inactive |
+| LA Baton Rouge Leads | LA | inactive |
+
+**All five are inactive, so nothing is wrong right now**, and the data agrees
+with the rule: checked against production, the 270 zips outside the six states
+(TX 118, LA 82, VA 36, NC 31, PA 2, MD 1) have **zero** active territories
+between them. The six states and the live map match exactly.
+
+**The trap is the order of operations at expansion.** Switching on TX Dallas
+Leads is a one-field change somebody will reasonably make without touching
+code — and from that moment every lead in that workspace's own region is told
+"we don't currently service the state of Texas." It will look like the bot is
+broken, and every part of it will be behaving exactly as written.
+
+**→ Nothing to do now. When a new state opens, SERVICED_STATES has to change
+in the same breath as the workspace is activated.** Flagging it because it is
+the kind of thing discovered by a customer rather than by us. If you would
+rather the gate refuse to *activate* a workspace whose state is not covered,
+that is a small change and a better place for the failure than a text message.
