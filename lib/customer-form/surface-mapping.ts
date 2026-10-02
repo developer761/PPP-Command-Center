@@ -14,7 +14,7 @@
  *  §2 Per WOLI: exactly 1 orphan → color+finish to ColorOther__c/FinishOther__c;
  *     2+ orphans → all orphan picks to ColorNotes__c text, Other left blank.
  *  §3 Finish label → SF picklist value (Semi-Gloss → "Semigloss"); choices
- *     with no SF value (High-Gloss, legacy combined) → null. Never guess.
+ *     with no SF value (the legacy combined labels) → null. Never guess.
  */
 
 /**
@@ -72,8 +72,14 @@ export function classifySurface(surface: string): SurfaceKind {
  * Map a customer-picked finish label (FINISH_OPTIONS in customer-form-view) to
  * its Salesforce picklist value (§3):
  *   - Semi-Gloss → "Semigloss" (SF stores it as one word)
- *   - High-Gloss → no SF picklist value → null (never guess a finish)
  *   - legacy combined labels (Flat / Matte, Gloss / High-Gloss) → null
+ *
+ * NOTE: this hardcoded map is the FALLBACK, not the authority. The submit
+ * route asks the org (activePicklistValues) and resolveFinishValue takes an
+ * exact case-insensitive match against the live values, so a sheen Katie adds
+ * in Salesforce saves from that moment without a deploy. That is why
+ * High-Gloss was being written correctly even while this map returned null for
+ * it — the describe-backed path was built for exactly this.
  * Returns null for anything without a clean SF match so the caller leaves the
  * finish field empty rather than writing an invalid picklist value.
  */
@@ -108,7 +114,22 @@ export function normalizeFinishToSf(finish: string | null | undefined): string |
       return "Bath & Spa (Aura)";
     case "kitchen & bath (regal)":
       return "Kitchen & Bath (Regal)";
-    // High-Gloss + legacy combined labels have no SF picklist value.
+    // High-Gloss and Velvet, corrected 2026-10-02. This file said for months
+    // that they "have no SF picklist value" — Katie: "High-Gloss is a finish in
+    // Salesforce! I see it on the finish picklist for walls, ceiling, trim, and
+    // other." She was right. Read from the live describe: all five restricted
+    // Finish*__c picklists hold both as ACTIVE values, spelled exactly so.
+    //
+    // She had told us she was adding them. The comment was written while that
+    // was still true and was never revisited, and it is where a warning that
+    // PPP was silently losing sheens came from — see the note on
+    // resolveFinishValue below for why nothing was actually lost.
+    case "high-gloss":
+      return "High-Gloss";
+    case "velvet":
+      return "Velvet";
+    // The legacy combined labels ("Flat / Matte", "Gloss / High-Gloss") still
+    // have no single SF value, and deliberately resolve to null.
     default:
       return null;
   }

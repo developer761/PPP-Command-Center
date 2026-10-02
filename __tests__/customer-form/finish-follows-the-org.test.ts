@@ -17,6 +17,10 @@ const resolve = (label: string, allowed: Set<string> | null) =>
 
 describe("a finish is written only if the org accepts it", () => {
   it("BEFORE Katie adds them: not written, so the write cannot fail", () => {
+    // Historical, and still the contract for the NEXT sheen she adds: a value
+    // the org does not hold is never written, whatever the hardcoded map says.
+    // High-Gloss and Velvet are mapped now, so the org set is what rules them
+    // out here — which is the whole point of asking the org.
     for (const f of ["Velvet", "High-Gloss", "Semi-Transparent", "Solid"]) {
       expect(resolve(f, withoutNew), f).toBeNull();
     }
@@ -48,7 +52,10 @@ describe("a finish is written only if the org accepts it", () => {
     // picklist would silently stop writing every finish on every job.
     expect(resolve("Eggshell", null)).toBe("Eggshell");
     expect(resolve("Semi-Gloss", null)).toBe("Semigloss");
-    // ...and still refuses to guess an unmapped one into a restricted field.
-    expect(resolve("Velvet", null)).toBeNull();
+    // ...and still refuses to guess an UNMAPPED one into a restricted field.
+    // Velvet used to be the example here; it is mapped now, so this needs a
+    // label the hardcoded map genuinely does not know.
+    expect(resolve("Chartreuse Sparkle", null)).toBeNull();
+    expect(resolve("Flat / Matte", null)).toBeNull();
   });
 });

@@ -117,31 +117,32 @@ describe("exterior sheens", () => {
 
   it("every finish an exterior job can pick actually reaches Salesforce", () => {
     // The seam that matters: an option the picker shows but normalizeFinishToSf
-    // maps to null is written as an EMPTY finish — the color lands, the sheen
-    // vanishes, and nobody is told. "High-Gloss" is the known, deliberate
-    // exception (no SF picklist value exists for it).
-    // Mooreglo is Soft Gloss only now, so nothing is lost there.
+    // maps to null falls back to the live describe, and if the org does not
+    // hold it either the finish is written EMPTY — the color lands, the sheen
+    // vanishes, and nobody is told.
+    //
+    // As of 2026-10-02 nothing on this job is in that position: Katie's
+    // additions (Velvet, High-Gloss, the stain opacities) are all ACTIVE on
+    // the five restricted Finish*__c picklists, read back from the live
+    // describe, and the map now lists them.
     expect(finishOptionsFor(BASE, "Mooreglo").filter((f) => normalizeFinishToSf(f) === null)).toEqual([]);
 
-    // SW Super Paint INTERIOR still loses one: "Velvet" has no value on
-    // Salesforce's restricted picklist. Pinned so the day Katie adds it, this
-    // test says so.
+    // SW Super Paint INTERIOR used to lose "Velvet" the same way. Katie added
+    // it; this now proves the catch-up rather than the gap.
     expect(
       finishOptionsFor(BASE, "SW Super Paint", "interior").filter((f) => normalizeFinishToSf(f) === null)
-    ).toEqual(["Velvet"]);
+    ).toEqual([]);
 
-    // EXTERIOR loses "High-Gloss" the same way, and this is DELIBERATELY still
-    // open. Withdrawing the sheen from every picker closed it for a few hours
-    // on 2026-10-01; Katie then asked for Gloss and High-Gloss to stay
-    // selectable on the products that sell them, which necessarily reopens it.
+    // EXTERIOR loses nothing either, CORRECTED 2026-10-02. This asserted that
+    // High-Gloss was dropped on the way to Salesforce, and it was wrong twice
+    // over: the value is ACTIVE on all five restricted Finish*__c picklists
+    // (Katie: "I see it on the finish picklist for walls, ceiling, trim, and
+    // other"), and the submit route reads the org anyway, so resolveFinishValue
+    // matched it exactly even while the hardcoded map returned null.
     //
-    // The consequence is worth stating plainly: a customer who picks
-    // High-Gloss on SW Super Paint exterior gets their COLOR saved and their
-    // SHEEN dropped, because no such value exists on Salesforce's restricted
-    // Finish__c picklist. The fix is in Salesforce, not here — flagged for
-    // Katie. `npm run check:sf-picklists` names it on every run.
+    // Nothing was ever silently lost. The hardcoded map now lists it too.
     expect(
       finishOptionsFor(BASE, "SW Super Paint", "exterior").filter((f) => normalizeFinishToSf(f) === null)
-    ).toEqual(["High-Gloss"]);
+    ).toEqual([]);
   });
 });

@@ -24,8 +24,14 @@ describe("normalizeFinishToSf (§3 finish value map)", () => {
     expect(normalizeFinishToSf("Semi-Gloss")).toBe("Semigloss");
   });
 
-  it("returns null for High-Gloss (no SF picklist value — never guess)", () => {
-    expect(normalizeFinishToSf("High-Gloss")).toBeNull();
+  it("maps High-Gloss and Velvet — Salesforce holds both", () => {
+    // CORRECTED 2026-10-02. This asserted null for months, on a comment
+    // written while Katie was still in the middle of adding them. Katie:
+    // "High-Gloss is a finish in Salesforce! I see it on the finish picklist
+    // for walls, ceiling, trim, and other." Read back from the live describe:
+    // ACTIVE on all five restricted Finish*__c picklists.
+    expect(normalizeFinishToSf("High-Gloss")).toBe("High-Gloss");
+    expect(normalizeFinishToSf("Velvet")).toBe("Velvet");
   });
 
   it("returns null for legacy combined labels", () => {
