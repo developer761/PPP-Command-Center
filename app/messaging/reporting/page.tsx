@@ -190,8 +190,23 @@ export default async function ReportingConsole({
           <Stat label="Median" value={humanSeconds(r.speed.medianSeconds)}
             note={delta(r.speed.medianSeconds, r.previousSpeed.medianSeconds)} />
           <Stat label="Slowest 10%" value={humanSeconds(r.speed.p90Seconds)} />
-          <Stat label={`Under ${TARGET_SECONDS}s`} value={`${r.speed.withinTargetPct}%`} note="the target" />
-          <Stat label="Beating Hatch" value={`${r.speed.beatingHatchPct}%`} />
+          {/*
+            A SHARE OF NOTHING IS NOT ZERO PERCENT.
+
+            humanSeconds renders an em dash when there is nothing to average,
+            so Median and Slowest 10% read "—" before any lead has flowed.
+            These two interpolated the number straight in and read "0%", three
+            inches above a caption saying nothing has been measured — so one
+            panel said both "no data" and "we beat Hatch zero percent of the
+            time", and only one of those gets repeated in a meeting.
+
+            The same rule the booking rate already follows: "nobody converts"
+            and "nobody was asked" are the same figure and different problems.
+          */}
+          <Stat label={`Under ${TARGET_SECONDS}s`}
+            value={r.speed.measured === 0 ? "—" : `${r.speed.withinTargetPct}%`} note="the target" />
+          <Stat label="Beating Hatch"
+            value={r.speed.measured === 0 ? "—" : `${r.speed.beatingHatchPct}%`} />
         </div>
         {r.speed.measured === 0 ? (
           <p className="px-4 pb-3 text-[12px] text-ppp-charcoal-500">
@@ -285,7 +300,20 @@ export default async function ReportingConsole({
                 <p className="font-semibold text-ppp-charcoal truncate text-[13.5px]">{h.workspace}</p>
                 <div className="mt-2.5 grid grid-cols-3 gap-y-2.5 gap-x-1.5 text-center">
                   {([["Active", String(h.active)], ["Done", String(h.completed)],
-                     ["Success", `${h.successPct}%`], ["Drop", `${h.dropOffPct}%`],
+                     /*
+                       Both divide by COMPLETED, not by all of them, so a
+                       workspace holding only conversations still running
+                       showed "Success 0%" — which reads as nobody converting
+                       rather than nobody having finished yet. Reachable today:
+                       two workspaces sit here with a customer waiting and
+                       nothing ended.
+
+                       Takeover divides by every conversation, and a workspace
+                       with none does not appear in this list at all, so it
+                       needs no guard.
+                     */
+                     ["Success", h.completed === 0 ? "–" : `${h.successPct}%`],
+                     ["Drop", h.completed === 0 ? "–" : `${h.dropOffPct}%`],
                      ["Takeover", `${h.takeOverPct}%`],
                      ["1st reply", humanSeconds(h.medianFirstReplySeconds)],
                      /*
