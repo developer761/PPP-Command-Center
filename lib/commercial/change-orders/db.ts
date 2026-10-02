@@ -95,14 +95,42 @@ export async function getChangeOrder(id: string): Promise<CommercialChangeOrder 
  * excluded, so a declined CO never touches the contract sum.
  */
 export async function netApprovedChangeOrderCents(opportunityId: string): Promise<number> {
+  const rows = await approvedChangeOrdersForAia(opportunityId);
+  return rows.reduce((acc, r) => acc + r.amountCents, 0);
+}
+
+/**
+ * The approved change orders behind G702 line 2, each with the date it was
+ * approved — what the CHANGE ORDER SUMMARY block at the foot of the cover sheet
+ * needs to split "approved in previous months" from "approved this month".
+ *
+ * Shares its filter with `netApprovedChangeOrderCents` above (which now calls
+ * it) rather than repeating the three conditions, because line 2 and the
+ * summary block that is supposed to explain line 2 drifting apart is exactly
+ * the defect this was written for: on Green Leaf App 5 the cover sheet said
+ * $18,800.00 of change orders on line 2 and $13,750.00 in the summary
+ * underneath it, a $5,050.00 disagreement on one page. The summary had been
+ * derived from the G703 rows tagged as change orders instead of from the change
+ * orders themselves.
+ *
+ * `decided_at` is when a CO was approved. It can be null on older rows, which
+ * the caller treats as "previous months" — a change order with no approval date
+ * is not something that happened in the period being billed.
+ */
+export async function approvedChangeOrdersForAia(
+  opportunityId: string
+): Promise<Array<{ amountCents: number; decidedAt: string | null }>> {
   const sb = commercialDb();
   const { data } = await sb
     .from("commercial_change_orders")
-    .select("amount_cents")
+    .select("amount_cents, decided_at")
     .eq("opportunity_id", opportunityId)
     .eq("status", "approved")
     .is("deleted_at", null);
-  return (data ?? []).reduce((acc, r) => acc + Number((r as { amount_cents: number }).amount_cents), 0);
+  return ((data ?? []) as Array<{ amount_cents: number; decided_at: string | null }>).map((r) => ({
+    amountCents: Number(r.amount_cents),
+    decidedAt: r.decided_at,
+  }));
 }
 
 /**

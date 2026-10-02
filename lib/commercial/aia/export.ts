@@ -48,6 +48,13 @@ export async function buildAiaWorkbookBuffer(input: {
   projectLabel: string;
   ownerLabel: string;
   contractorLabel: string;
+  /**
+   * The approved change orders behind line 2, with their approval dates, so the
+   * CHANGE ORDER SUMMARY can split previous months from this month. Omitted,
+   * the block still foots to line 2 and reports it all as previous months —
+   * never as work approved in a period nobody can evidence.
+   */
+  changeOrders?: Array<{ amountCents: number; decidedAt: string | null }>;
 }): Promise<Buffer> {
   const { application: app, lines, g702 } = input;
 
@@ -86,17 +93,50 @@ export async function buildAiaWorkbookBuffer(input: {
   //
   // Row height is left to Excel: an explicit height would clip a four-line
   // address, and `undefined` lets it auto-fit the wrapped content.
-  for (const [ref, value] of [
-    ["A4", input.ownerLabel],
-    ["D4", input.projectLabel],
-    ["A11", input.contractorLabel],
-  ] as const) {
-    const cell = g.getCell(ref);
-    cell.value = value;
-    // Preserve the template's own font/border/fill — only add wrapping and top
-    // alignment, so a multi-line block starts at the top of its cell.
-    cell.alignment = { ...(cell.alignment ?? {}), wrapText: true, vertical: "top" };
-  }
+  /*
+   * ONE LINE PER ROW, in the cells her form actually uses.
+   *
+   * Stephanie 2026-10-02, with a filled sample attached: "the heading on the
+   * G702 (pg 1) doesn't export the way we need it to."
+   *
+   * Her sample puts each block's name, street and city/state/ZIP in three
+   * SEPARATE cells going down the column the label points at:
+   *
+   *     TO OWNER:        C5 name · C6 street · C7 city, state ZIP
+   *     PROJECT:         E5 name · E6 street · E7 city, state ZIP
+   *     FROM CONTRACTOR: C12 name · C14 street · C15 city, state ZIP
+   *
+   * We were writing all three lines as ONE newline-joined, wrapped string into
+   * A4, D4 and A11 — cells her form leaves empty, in the wrong column, with the
+   * block crammed into a single cell. Every cell above was empty in our export
+   * and every cell we wrote was one her layout does not read.
+   *
+   * The contractor block skips row 13: that is her sheet's spacing, not a typo.
+   *
+   * The labels are joined with "\n" by header-labels, so splitting on it gives
+   * the parts back. Three slots per block; an address with a second line
+   * produces four parts, so the middle ones are merged into the street slot
+   * rather than pushing the city off the end.
+   */
+  const fill = (lines: string[], cells: readonly string[]) => {
+    const parts = lines.filter((p) => p.trim() !== "");
+    const laid =
+      parts.length <= cells.length
+        ? parts
+        : [parts[0], parts.slice(1, parts.length - 1).join(", "), parts[parts.length - 1]];
+    cells.forEach((ref, i) => {
+      const cell = g.getCell(ref);
+      cell.value = laid[i] ?? null;
+      // Single line per cell now, so no wrapping — wrapped text in a one-line
+      // row is what made the old block unreadable.
+      cell.alignment = { ...(cell.alignment ?? {}), wrapText: false, vertical: "top" };
+    });
+  };
+  fill(input.ownerLabel.split("\n"), ["C5", "C6", "C7"]);
+  fill(input.projectLabel.split("\n"), ["E5", "E6", "E7"]);
+  fill(input.contractorLabel.split("\n"), ["C12", "C14", "C15"]);
+  // The cells the old layout used. Cleared, or the block appears twice.
+  for (const ref of ["A4", "D4", "A11"]) g.getCell(ref).value = null;
   g.getCell("I4").value = app.application_number;
   if (periodTo) {
     const c = g.getCell("I7"); // overwrites the template's =TODAY()
@@ -127,20 +167,86 @@ export async function buildAiaWorkbookBuffer(input: {
   // of it — it wasn't even in the cells the map said to fill. Split additions
   // from deductions, because that is what the two columns mean; a net figure in
   // the ADDITIONS column would be wrong on a job with a credit.
-  const coLines = lines.filter((l) => !!l.change_order_id || /^CO-0*\d+$/i.test(l.item_no ?? ""));
-  const additions = coLines.reduce((n, l) => n + Math.max(0, l.scheduled_value_cents), 0);
-  const deductions = coLines.reduce((n, l) => n + Math.min(0, l.scheduled_value_cents), 0);
-  // "Previous months" vs "this month" needs a per-CO approval date this export
-  // does not receive, so everything lands on the THIS MONTH row rather than
-  // being split on a guess. The totals are right either way, which is what the
-  // GC reconciles against.
-  money("D46", 0);
-  money("E46", 0);
-  money("D48", additions);
-  money("E48", Math.abs(deductions));
-  money("D50", additions);
-  money("E50", Math.abs(deductions));
-  money("D51", additions + deductions);
+  /*
+   * SPLIT BY WHEN EACH CHANGE ORDER WAS APPROVED, and foot to line 2.
+   *
+   * This block used to be derived from the G703 rows tagged as change orders,
+   * which is a different population from the change orders that make up line 2
+   * — so the cover sheet could contradict itself. Green Leaf App 5, measured
+   * 2026-10-02: line 2 said $18,800.00 and this summary said $13,750.00, a
+   * $5,050.00 disagreement on one page, on a document whose whole purpose is to
+   * explain how the contract sum got where it is.
+   *
+   * It also put everything on the THIS MONTH row because the export had no
+   * approval dates. It does now: `decided_at` is on every change order, and
+   * Green Leaf's two were approved in July and on 22 September, which her form
+   * wants on different lines.
+   *
+   * The split is by CALENDAR MONTH, because that is what her form asks for:
+   * "Total changes approved in previous months by Owner" against "Total
+   * approved this Month". Keying off `period_from` instead looks equivalent and
+   * is not — Green Leaf App 5 runs 2026-09-23 to 2026-09-23, a single day, so a
+   * change order approved on the 22nd of the same month fell into "previous"
+   * and the THIS MONTH row read zero on a certificate that exists largely to
+   * bill it.
+   *
+   * Measured against the period's own month (PERIOD TO, the date the
+   * certificate carries). Strictly earlier month is previous; the same month or
+   * later is this month, so a recent approval is never buried in a row the GC
+   * reads as already-settled history. A CO with no approval date is previous —
+   * it cannot be evidenced as belonging to this period. With no period recorded
+   * at all, everything is previous rather than claiming this month's work.
+   */
+  const periodMark = input.application.period_to ?? input.application.period_from ?? null;
+  const ym = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+  const periodYm = periodMark ? ym(new Date(periodMark)) : null;
+  const isThisPeriod = (decidedAt: string | null): boolean => {
+    if (!decidedAt || periodYm === null) return false;
+    return ym(new Date(decidedAt)) >= periodYm;
+  };
+  /*
+   * With no change orders supplied, line 2 still has to be EXPLAINED by the
+   * rows above it — so the whole of it is reported as approved in previous
+   * months. Leaving the buckets empty while forcing the net to line 2 made the
+   * block not add up (D46 + D48 = 0 under a net of $8,000), which is the same
+   * self-contradiction this change set out to remove. Caught by the footing
+   * assertion, not by the one that only checked the net.
+   */
+  const cos =
+    input.changeOrders && input.changeOrders.length > 0
+      ? input.changeOrders
+      : g702.netChangeOrdersCents !== 0
+        ? [{ amountCents: g702.netChangeOrdersCents, decidedAt: null }]
+        : [];
+  const bucket = (want: boolean) => {
+    const rows = cos.filter((c) => isThisPeriod(c.decidedAt) === want);
+    return {
+      add: rows.reduce((n, c) => n + Math.max(0, c.amountCents), 0),
+      ded: rows.reduce((n, c) => n + Math.min(0, c.amountCents), 0),
+    };
+  };
+  const prev = bucket(false);
+  const now = bucket(true);
+  /*
+   * Line 2 carries sales tax on a taxable job while these raw amounts are
+   * pre-tax (see resolveG702). Scaling both columns by the same factor keeps
+   * each one's meaning and makes the block total exactly line 2 — which is the
+   * invariant a GC's AP department checks. Every live job is capital-improvement
+   * exempt, so the factor is 1 today and nothing moves.
+   */
+  const rawNet = prev.add + prev.ded + now.add + now.ded;
+  const k = rawNet !== 0 ? g702.netChangeOrdersCents / rawNet : 1;
+  const scaled = (n: number) => Math.round(n * k);
+  const prevAdd = scaled(prev.add), prevDed = Math.abs(scaled(prev.ded));
+  const nowAdd = scaled(now.add), nowDed = Math.abs(scaled(now.ded));
+  money("D46", prevAdd);
+  money("E46", prevDed);
+  money("D48", nowAdd);
+  money("E48", nowDed);
+  money("D50", prevAdd + nowAdd);
+  money("E50", prevDed + nowDed);
+  // The net the GC reads, and it must equal line 2 to the cent.
+  money("D51", g702.netChangeOrdersCents);
 
   // ── Sheet 2 · G703 ──────────────────────────────────────────────────────
   s.getCell("I2").value = app.application_number;

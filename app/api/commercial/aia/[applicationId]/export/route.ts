@@ -8,6 +8,7 @@ import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/oppor
 import { getAiaApplication, listAiaLineItems, resolveG702, reconcileDraftChangeOrderRows } from "@/lib/commercial/aia/db";
 import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
+import { approvedChangeOrdersForAia } from "@/lib/commercial/change-orders/db";
 
 /**
  * GET /api/commercial/aia/<applicationId>/export
@@ -59,6 +60,9 @@ export async function GET(
     ownerLabel: aiaOwnerLabel(account),
     // PPP is the contractor submitting the application.
     contractorLabel: aiaContractorLabel(await getOperatingCompany()),
+    // Feeds the CHANGE ORDER SUMMARY's previous-months / this-month split, from
+    // the same change orders line 2 is built from.
+    changeOrders: await approvedChangeOrdersForAia(application.opportunity_id),
   });
 
   const safeName = `AIA_App_${application.application_number}_${dealName}`

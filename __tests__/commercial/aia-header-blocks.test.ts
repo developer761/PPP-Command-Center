@@ -95,12 +95,22 @@ describe("FROM CONTRACTOR", () => {
   });
 });
 
-describe("the cells actually wrap", () => {
-  it("sets wrapText on all three, or the newlines render as one long line", async () => {
-    // The whole point of her note. Excel shows an embedded newline as a run-on
-    // unless the cell wraps — so without this the address change makes the
-    // block WORSE than the name-only version it replaced. Asserted on the
-    // rendered workbook, not on the source.
+describe("the blocks land one line per cell", () => {
+  it("writes each line into its own cell instead of wrapping one", async () => {
+    /*
+     * SUPERSEDES the wrapText assertion that was here.
+     *
+     * That one was right for the layout we had: all three blocks went into A4,
+     * D4 and A11 as newline-joined text, and Excel renders an embedded newline
+     * as a run-on unless the cell wraps, so wrapping was the fix.
+     *
+     * Stephanie 2026-10-02 sent a filled sample showing the layout her form
+     * actually uses, and it is not one wrapped cell per block — it is one line
+     * per cell going down the column each label points at. So there is nothing
+     * left to wrap, and A4/D4/A11 are not cells her sheet reads at all.
+     *
+     * Still asserted on the rendered workbook, not on the source.
+     */
     const { buildAiaWorkbookBuffer } = await import("@/lib/commercial/aia/export");
     const buf = await buildAiaWorkbookBuffer({
       application: { id: "a", opportunity_id: "o", application_number: 1, status: "draft", period_from: null, period_to: null, original_contract_cents: 25_000_00, retainage_pct: 10, notes: null },
@@ -115,9 +125,19 @@ describe("the cells actually wrap", () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as never);
     const g = wb.getWorksheet("Loan G-702")!;
+    // Her cells, one line each, no newline left anywhere in them.
+    const laid: Array<[string, string]> = [
+      ["C5", "Alta"], ["C6", "1 Sunrise Hwy"], ["C7", "Bay Shore, NY 11706"],
+      ["E5", "115 Connetquot Ave"], ["E6", "Islip, NY 11751"],
+      ["C12", "Tomco Painting Inc."], ["C14", "77 Windsor Place"], ["C15", "Central Islip, NY 11722"],
+    ];
+    for (const [ref, want] of laid) {
+      expect(String(g.getCell(ref).value), `${ref}`).toBe(want);
+      expect(String(g.getCell(ref).value), `${ref} still holds a joined block`).not.toContain("\n");
+    }
+    // And the cells the old layout used are empty, or the block prints twice.
     for (const ref of ["A4", "D4", "A11"]) {
-      expect(g.getCell(ref).alignment?.wrapText, `${ref} does not wrap`).toBe(true);
-      expect(String(g.getCell(ref).value)).toContain("\n");
+      expect(g.getCell(ref).value ?? "", `${ref} should be cleared`).toBe("");
     }
   }, 60_000);
 });

@@ -14,7 +14,7 @@ import { getAiaLienWaiver } from "@/lib/commercial/aia/lien-waiver";
 import { createClient } from "@/lib/supabase/server";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { netApprovedChangeOrderCents } from "@/lib/commercial/change-orders/db";
+import { netApprovedChangeOrderCents, approvedChangeOrdersForAia } from "@/lib/commercial/change-orders/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
@@ -393,6 +393,7 @@ async function autoFileAiaApplication(accountId: string, dealId: string, appId: 
       projectLabel: aiaProjectLabel(dealName, opp),
       ownerLabel: aiaOwnerLabel(account),
       contractorLabel: aiaContractorLabel(await getOperatingCompany()),
+      changeOrders: await approvedChangeOrdersForAia(application.opportunity_id),
     });
     await autoFileOpportunityDocument({
       opportunityId: dealId,

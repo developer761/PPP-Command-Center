@@ -92,13 +92,22 @@ describe("our numbers are in it", () => {
   });
 
   it("fills the change-order summary, which used to be blank", async () => {
-    // The map listed seven cells here and the old export wrote NONE of them.
-    // Additions and deductions are split, because that is what the two columns
-    // mean — a net figure under ADDITIONS is wrong on a job with a credit.
+    /*
+     * The map listed seven cells here and the old export wrote NONE of them.
+     *
+     * It then wrote them from the G703 rows TAGGED as change orders, which is a
+     * different population from the change orders G702 line 2 is built from —
+     * so the cover sheet could contradict itself, and on Green Leaf App 5 it
+     * did: $13,750.00 here against $18,800.00 on line 2. The block is now built
+     * from the change orders themselves and is passed in; with none passed it
+     * still has to foot to line 2 rather than invent a figure from the rows.
+     */
     const { raw } = await build(LINES);
-    expect(raw("Loan G-702", "D48")).toBeCloseTo(10_000, 2);
-    expect(raw("Loan G-702", "E48")).toBeCloseTo(2_000, 2);
     expect(raw("Loan G-702", "D51")).toBeCloseTo(8_000, 2);
+    expect(raw("Loan G-702", "D51")).toBeCloseTo(raw("Loan G-702", "E25") as number, 2);
+    // Nothing is claimed as approved THIS month without a date to evidence it.
+    expect(raw("Loan G-702", "D48")).toBeCloseTo(0, 2);
+    expect(raw("Loan G-702", "D46")).toBeCloseTo(8_000, 2);
   });
 
   it("writes the schedule of values in her row range and totals it", async () => {

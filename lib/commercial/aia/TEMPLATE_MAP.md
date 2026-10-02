@@ -10,9 +10,9 @@ keep it as the fill template (exceljs reads/writes .xlsx, preserves styling).
 | Cell | Field |
 |---|---|
 | I4  | Application No. |
-| D3  | Project (deal name / property) |
-| A3 (below) | Owner (GC / account) |
-| A10 (below) | Contractor (PPP) |
+| **C5 · C6 · C7** | Owner (GC) — name · street · city, state ZIP |
+| **E5 · E6 · E7** | Project — name · street · city, state ZIP |
+| **C12 · C14 · C15** | Contractor (Tomco) — name · street · city, state ZIP (row 13 is skipped; that is her sheet's spacing) |
 | I7  | Period To (Excel date serial) |
 | H16 (value) | Contract date |
 | **E24** | 1. Original Contract Sum |
@@ -31,6 +31,14 @@ keep it as the fill template (exceljs reads/writes .xlsx, preserves styling).
 | D48/E48 | CO summary — approved this month (add/deduct) |
 | D50/E50 | CO summary — totals |
 | D51 | CO summary — net change |
+
+The CO summary is built from the APPROVED CHANGE ORDERS (the same rows G702 line
+2 is built from), split by the calendar month of each one's `decided_at` against
+the application's PERIOD TO — not from the G703 rows tagged as change orders.
+Those are a different population, and deriving the block from them let the cover
+sheet contradict itself: Green Leaf App 5 printed $13,750.00 here under an
+$18,800.00 line 2. **D46 + D48 must equal D50, and D50 − E50 must equal D51 and
+line 2 (E25).**
 
 ## Sheet 2 — "G-703 Total Hard Cost" (continuation sheet)
 Header: I2 = Application No · I3 = Application Date · I4 = Period To · J10 = retainage rate (0.05).
