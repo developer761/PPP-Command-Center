@@ -7,6 +7,7 @@ import WorkspaceHoursForm, { type Row } from "@/components/messaging/workspace-h
 import WorkspaceFaqs from "@/components/messaging/workspace-faqs";
 import SnippetsEditor from "@/components/messaging/snippets-editor";
 import FaqImportForm from "@/components/messaging/faq-import-form";
+import NumberImportForm from "@/components/messaging/number-import-form";
 import SettingsCopyForm from "@/components/messaging/settings-copy-form";
 
 export const dynamic = "force-dynamic";
@@ -184,6 +185,24 @@ export default async function MessagingSettings({
         </div>
         <div className="p-4">
           <FaqImportForm />
+        </div>
+      </section>
+
+      {/*
+        SAME PLACE AND SAME REASON AS THE ANSWERS IMPORT: it writes across
+        every workspace at once, so it cannot sit under one workspace's
+        heading without implying it is scoped to that one.
+      */}
+      <section className="rounded-xl border border-ppp-charcoal-100 bg-white overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ppp-charcoal-100">
+          <h2 className="font-semibold text-ppp-charcoal text-[14px]">Assign numbers from a spreadsheet</h2>
+          <p className="mt-0.5 text-[12px] text-ppp-charcoal-500">
+            For the port, when numbers arrive a region at a time. Says which workspaces
+            change before anything is written.
+          </p>
+        </div>
+        <div className="p-4">
+          <NumberImportForm />
         </div>
       </section>
 
