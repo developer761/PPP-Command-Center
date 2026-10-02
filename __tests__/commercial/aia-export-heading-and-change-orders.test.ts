@@ -86,6 +86,37 @@ describe("the G702 heading sits where her form reads it", () => {
     for (const ref of ["A4", "D4", "A11"]) expect(v(ref) ?? "").toBe("");
   });
 
+  it("colors the blocks the way her sample does, not the template's leftover green", async () => {
+    /*
+     * These cells were empty until we started filling them, so their font
+     * color had never been seen. The template carries GREEN on the project
+     * block and BLUE on the other two — a bright green block next to two blue
+     * ones. Her sample is blue / red / blue.
+     */
+    const buf = await buildAiaWorkbookBuffer({
+      application: { application_number: 5, retainage_pct: 10, period_to: "2026-09-23" } as never,
+      lines: [] as never[],
+      g702: G702,
+      ownerLabel: "O\nstreet\ncity",
+      projectLabel: "P\nstreet\ncity",
+      contractorLabel: "C\nstreet\ncity",
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const g = wb.getWorksheet("Loan G-702")!;
+    const colorOf = (ref: string) =>
+      (g.getCell(ref).font?.color as { argb?: string; indexed?: number } | undefined) ?? {};
+    for (const ref of ["C5", "C6", "C7", "C12", "C14", "C15"]) {
+      expect(colorOf(ref).argb, ref).toBe("FF0000FF"); // her blue
+    }
+    for (const ref of ["E5", "E6", "E7"]) {
+      expect(colorOf(ref).argb, ref).toBe("FFFF0000"); // her red
+      // Explicit, so it no longer depends on a palette the file does not carry
+      // — which is how the project block came out bright green (index 11).
+      expect(colorOf(ref).indexed, ref).toBeUndefined();
+    }
+  });
+
   it("keeps her own labels intact", async () => {
     const v = await build();
     expect(v("A3")).toBe("TO OWNER:");

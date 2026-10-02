@@ -82,17 +82,12 @@ export async function buildAiaWorkbookBuffer(input: {
 
   // ── Sheet 1 · G702 ──────────────────────────────────────────────────────
   // The header labels ("TO OWNER:", "PROJECT:") are part of her form; only the
-  // values go in, on the line beneath each, which is where she writes them.
+  // values go in.
   //
-  // wrapText, and it is not cosmetic. Stephanie 2026-09-11: "(wrap the text
-  // below instead of it showing up as one long line in a single cell)". These
-  // values are now multi-line — name, street, city/state/ZIP — and Excel
-  // renders an embedded newline as a single run-on line unless the cell is
-  // explicitly set to wrap. Without this the address change makes the block
-  // WORSE than the name-only version it replaced.
-  //
-  // Row height is left to Excel: an explicit height would clip a four-line
-  // address, and `undefined` lets it auto-fit the wrapped content.
+  // The wrapText note that stood here is gone with the layout it described:
+  // Stephanie 2026-09-11 asked for the block to wrap rather than run on in one
+  // cell, which was the right fix while all three lines shared a single cell.
+  // They no longer do — see below — so there is nothing left to wrap.
   /*
    * ONE LINE PER ROW, in the cells her form actually uses.
    *
@@ -118,7 +113,27 @@ export async function buildAiaWorkbookBuffer(input: {
    * produces four parts, so the middle ones are merged into the street slot
    * rather than pushing the city off the end.
    */
-  const fill = (lines: string[], cells: readonly string[]) => {
+  /*
+   * The color is hers too, and it only became visible when we started filling
+   * these cells.
+   *
+   * Her form colors the typed-in values: the owner and contractor blocks blue,
+   * the project block red (palette indices 12 and 10, same standard palette in
+   * both files). Our template carries BLUE on the owner and contractor cells —
+   * already matching — and GREEN on the project cells, which nobody had ever
+   * seen because those cells were empty. Filling them put a bright green
+   * project block next to two blue ones on a document that goes to a GC.
+   *
+   * Written as explicit ARGB rather than her palette INDEX. The template's
+   * colors are all indexed and the .xls -> .xlsx conversion carried no
+   * <indexedColors> palette with them, so every one of them is resolved against
+   * whatever default the reader happens to use — which is how a block nobody
+   * chose ended up green. An explicit color renders the same in Excel, Numbers
+   * and Sheets and cannot drift when the template is next reconverted.
+   */
+  const HER_BLUE = { argb: "FF0000FF" }; // palette index 12 in her sample
+  const HER_RED = { argb: "FFFF0000" }; // palette index 10 in her sample
+  const fill = (lines: string[], cells: readonly string[], color: { argb: string }) => {
     const parts = lines.filter((p) => p.trim() !== "");
     const laid =
       parts.length <= cells.length
@@ -130,11 +145,13 @@ export async function buildAiaWorkbookBuffer(input: {
       // Single line per cell now, so no wrapping — wrapped text in a one-line
       // row is what made the old block unreadable.
       cell.alignment = { ...(cell.alignment ?? {}), wrapText: false, vertical: "top" };
+      // Keep the template's face, size and weight; only the color is ours.
+      cell.font = { ...(cell.font ?? {}), color: color };
     });
   };
-  fill(input.ownerLabel.split("\n"), ["C5", "C6", "C7"]);
-  fill(input.projectLabel.split("\n"), ["E5", "E6", "E7"]);
-  fill(input.contractorLabel.split("\n"), ["C12", "C14", "C15"]);
+  fill(input.ownerLabel.split("\n"), ["C5", "C6", "C7"], HER_BLUE);
+  fill(input.projectLabel.split("\n"), ["E5", "E6", "E7"], HER_RED);
+  fill(input.contractorLabel.split("\n"), ["C12", "C14", "C15"], HER_BLUE);
   // The cells the old layout used. Cleared, or the block appears twice.
   for (const ref of ["A4", "D4", "A11"]) g.getCell(ref).value = null;
   g.getCell("I4").value = app.application_number;
