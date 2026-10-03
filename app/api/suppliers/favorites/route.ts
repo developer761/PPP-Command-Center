@@ -15,7 +15,7 @@ import { resolveViewer } from "@/lib/auth/viewer-server";
  * So: the vendor list stays global and cached, this is tiny and uncached, and
  * the client merges them.
  *
- *   GET    → { favorites: string[] }   account ids
+ *   GET    → { favorites: string[], userState: string | null }
  *   POST   { supplierAccountId }       star
  *   DELETE { supplierAccountId }       unstar
  *
@@ -50,15 +50,24 @@ export async function GET() {
   const userId = await viewerId();
   if (!userId) return noStore({ error: "unauthorized" }, 401);
 
-  const { data, error } = await db()
-    .from("supplier_favorites")
-    .select("supplier_account_id")
-    .eq("user_id", userId);
+  const sb = db();
+  const [fav, prof] = await Promise.all([
+    sb.from("supplier_favorites").select("supplier_account_id").eq("user_id", userId),
+    // The person's own state, which is what the vendor list filters on
+    // (Katie 2026-10-02). Carried on THIS response rather than threaded down
+    // from the page: it is per-user, like the favorites, and the vendor list
+    // itself stays global and cached.
+    sb.from("profiles").select("state").eq("user_id", userId).maybeSingle(),
+  ]);
 
-  // A missing table (migration not pasted yet) must not take the vendor picker
-  // down with it — the list is still perfectly usable unsorted.
-  if (error) return noStore({ favorites: [], degraded: true, message: error.message });
-  return noStore({ favorites: (data ?? []).map((r) => r.supplier_account_id as string) });
+  // Either column missing (migration not pasted yet) must not take the vendor
+  // picker down with it — an unfiltered, unsorted list is still a working one.
+  const userState = ((prof.data as { state?: string | null } | null)?.state ?? "").trim().toUpperCase() || null;
+  if (fav.error) return noStore({ favorites: [], userState, degraded: true, message: fav.error.message });
+  return noStore({
+    favorites: (fav.data ?? []).map((r) => r.supplier_account_id as string),
+    userState,
+  });
 }
 
 async function readId(request: Request): Promise<string | null> {

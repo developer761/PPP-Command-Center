@@ -29,9 +29,6 @@ export type OrderPageData = {
   /** Customer address, for the measure tool's property lookup. Null when
    *  Salesforce has none on the account. */
   address: { street: string; city: string; state: string; postalCode: string } | null;
-  /** Two-letter state of the JOB, independent of whether a street was ever
-   *  typed. Feeds the vendor picker's "near the job" grouping. */
-  jobState: string | null;
 };
 
 // STANDARD_SURFACES is imported, not redeclared — the Rooms & Colors list and
@@ -151,34 +148,7 @@ export async function loadOrderPageDataOrReason(
           postalCode: acct.billingPostalCode ?? "",
         }
       : null,
-    /**
-     * The job's state on its own, NOT read through `address` above.
-     *
-     * That object is gated on `billingStreet`, because a delivery address with
-     * no street is useless to a driver — reasonable for its purpose, wrong for
-     * this one. A work order can know it is in Florida without anybody having
-     * typed a street, and the vendor picker only needs the state. Reading it
-     * through `address` silently returned null on exactly such a job (seen on
-     * WO 00318893, which has a state and no street).
-     *
-     * Normalized to a two-letter code: Salesforce carries both "FL" and
-     * "Florida", and the vendor column is two letters.
-     */
-    jobState: normalizeStateCode(acct?.billingState),
   } };
-}
-
-/** "FL" / "Florida" / " fl " → "FL". Anything unrecognisable → null, which
- *  simply leaves the vendor list in its default order. */
-export function normalizeStateCode(raw: string | null | undefined): string | null {
-  const v = (raw ?? "").trim();
-  if (!v) return null;
-  if (/^[A-Za-z]{2}$/.test(v)) return v.toUpperCase();
-  const byName: Record<string, string> = {
-    florida: "FL", "new york": "NY", "new jersey": "NJ", connecticut: "CT",
-    pennsylvania: "PA", massachusetts: "MA", texas: "TX", california: "CA",
-  };
-  return byName[v.toLowerCase()] ?? null;
 }
 
 /** Read the committed build for one (WO, supplier). Deploy-safe: returns an

@@ -8,6 +8,7 @@ import {
   setUserActive,
   updateUserRole,
   updateUserPhone,
+  updateUserState,
   updateUserTitle,
   updateUserName,
   type ActorMeta,
@@ -18,6 +19,7 @@ import {
  *   PATCH { action: "role", role }            → change role
  *   PATCH { action: "active", is_active }      → activate / deactivate
  *   PATCH { action: "phone", phone }           → set the contact number used on supplier orders
+ *   PATCH { action: "state", state }           → the state whose vendors they see
  *   PATCH { action: "title", title }           → set the job title printed on the proposal sign-off
  *   PATCH { action: "name", full_name }        → correct the display name used on documents
  *   PATCH { action: "reset_password", password } → admin-set new password
@@ -77,6 +79,17 @@ export async function PATCH(
     const r = await updateUserRole({
       user_id: userId,
       role: normalizeRole(String(body.role ?? "")),
+      actor: gate.actor,
+    });
+    return r.ok
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ error: r.error }, { status: 400 });
+  }
+
+  if (action === "state") {
+    const r = await updateUserState({
+      user_id: userId,
+      state: typeof body.state === "string" ? body.state : null,
       actor: gate.actor,
     });
     return r.ok

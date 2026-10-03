@@ -1,26 +1,34 @@
 /**
- * The order vendors appear in on "Build the order".
+ * Which vendors a person sees on "Build the order", and in what order.
  *
- * Katie, 2026-10-01: "Vendor list -- ensure it's filtering to show a user's
- * favorited vendors and FL vendors if the user is a FL user, NJ if they're
- * from NJ, etc."
+ * Katie settled the rule on 2026-10-02, overruling the first version of this
+ * file: "We don't need to sort the vendors based on location relative to the
+ * job. We just need to filter the vendors based on location of the team. The
+ * guys have relationships with specific stores and will order from a further
+ * store because they use that store all the time, they carry specific items,
+ * or maybe they're close to where they live, etc. It's not always based on the
+ * location of the job. We can make it simple - NJ based guys see NJ Vendors,
+ * NY sees NY vendors, etc. Then they can utilize the Favorites feature from
+ * that filtered list."
  *
- * IT SORTS. IT DOES NOT HIDE, and that is the one place this deliberately
- * answers a slightly different question than the one asked.
+ * So: FILTER, by the PERSON's state. The first version sorted by the JOB's
+ * state, which optimized for where the paint was going rather than for who was
+ * buying it — a crew's vendor list is a set of standing relationships, not a
+ * geography problem.
  *
- * Three of PPP's fourteen vendors have no state even after the backfill —
- * their pickup addresses simply do not contain one — and an admin adding a
- * vendor by hand types a free-text address with no state field in sight. A
- * filter built on a value that thin removes a vendor from the picker, and the
- * person who needed it has no way to know it was ever there. A sort costs them
- * a scroll. Same benefit at the top of the list, no cliff at the bottom.
+ * Hiding is safe now in a way it was not a day earlier. The objection then was
+ * that three vendors had no state and would vanish; Katie settled all three in
+ * the same message (Paints by George is NY, Eco Wall Coatings and Sunbelt stay
+ * inactive and are never emailed an order), so every ACTIVE vendor carries a
+ * state.
  *
- * "In state" is matched against the JOB, not the signed-in user. There is no
- * state on `profiles` to match against — and it is the better rule regardless:
- * paint is bought near the site, so the Long Island rep ordering the Miami job
- * should see Stein Paint first, which a rep-state rule gets exactly backwards.
+ * Two deliberate escape hatches, both of which only ever show MORE:
+ *   · a person with no state set sees everything — filtering on nothing would
+ *     hand them an empty picker and no way to understand why;
+ *   · a vendor with no state is shown to everyone, because "unknown" is not a
+ *     reason to make something unreachable.
  *
- * Pure: no DOM, no fetch. The component renders what this returns.
+ * Pure: no DOM, no fetch.
  */
 
 export type RankableVendor = {
@@ -28,12 +36,11 @@ export type RankableVendor = {
   name: string;
   /** Two-letter state, or null when nobody has told us. */
   state?: string | null;
-  /** Admin-set ordering from supplier_settings.sort_order; nulls sort last. */
   sortOrder?: number | null;
   isActive?: boolean;
 };
 
-export type VendorGroup = "favorite" | "in-state" | "other";
+export type VendorGroup = "favorite" | "other";
 
 export type RankedVendor<T extends RankableVendor> = {
   vendor: T;
@@ -47,47 +54,52 @@ function sameState(a: string | null | undefined, b: string | null | undefined): 
   return x.length === 2 && x === y;
 }
 
+/** Is this vendor in scope for somebody working in `userState`? */
+export function vendorIsInScope(
+  vendorState: string | null | undefined,
+  userState: string | null | undefined
+): boolean {
+  const user = (userState ?? "").trim();
+  if (user.length !== 2) return true; // nothing to filter on
+  const vendor = (vendorState ?? "").trim();
+  if (vendor.length !== 2) return true; // unknown is not a reason to hide
+  return sameState(vendorState, userState);
+}
+
 /**
- * Favorites first, then vendors in the job's state, then everyone else.
+ * The vendors this person should see, favorites first.
  *
- * Within each group the existing order is preserved exactly — active first,
- * then the admin's `sort_order` with nulls last, then alphabetical — so a job
- * with no state, and a user with no favorites, gets today's list unchanged.
- * That property is the safety net: the feature can only ever reorder, never
- * lose, and with nothing to go on it is a no-op.
+ * Favorites are picked from WITHIN the filtered list, which is Katie's own
+ * sequence — "then they can utilize the Favorites feature from that filtered
+ * list". A starred vendor in another state is therefore still hidden; that is
+ * the filter doing its job, and the person can clear their state to see
+ * everything.
  */
 export function rankVendors<T extends RankableVendor>(input: {
   vendors: readonly T[];
-  /** Account ids this user has starred. */
   favoriteIds?: readonly string[];
-  /** Account.BillingState for the work order being ordered for. */
-  jobState?: string | null;
+  /** The signed-in person's state, from profiles.state. */
+  userState?: string | null;
 }): RankedVendor<T>[] {
   const favorites = new Set(input.favoriteIds ?? []);
 
-  const groupOf = (v: T): VendorGroup => {
-    if (favorites.has(v.accountId)) return "favorite";
-    if (sameState(v.state, input.jobState)) return "in-state";
-    return "other";
-  };
-
-  const RANK: Record<VendorGroup, number> = { favorite: 0, "in-state": 1, other: 2 };
-
-  // Decorate with the incoming index so the sort is stable on every engine:
-  // the server already ordered this list (active → sort_order → alpha) and
-  // that work must survive, not be re-derived here and risk disagreeing.
   return input.vendors
-    .map((vendor, i) => ({ vendor, group: groupOf(vendor), i }))
-    .sort((a, b) => RANK[a.group] - RANK[b.group] || a.i - b.i)
+    .filter((v) => vendorIsInScope(v.state, input.userState))
+    // Decorated with the incoming index so the sort is stable on every engine:
+    // the server already ordered this list (active → sort_order → alpha) and
+    // that work must survive rather than be re-derived here.
+    .map((vendor, i) => ({
+      vendor,
+      group: (favorites.has(vendor.accountId) ? "favorite" : "other") as VendorGroup,
+      i,
+    }))
+    .sort((a, b) => (a.group === b.group ? a.i - b.i : a.group === "favorite" ? -1 : 1))
     .map(({ vendor, group }) => ({ vendor, group }));
 }
 
-/** Heading for a group, naming the state when there is one to name. */
-export function vendorGroupLabel(group: VendorGroup, jobState?: string | null): string {
+/** Heading for a group. */
+export function vendorGroupLabel(group: VendorGroup, userState?: string | null): string {
   if (group === "favorite") return "Your favorites";
-  if (group === "in-state") {
-    const st = (jobState ?? "").trim().toUpperCase();
-    return st ? `In ${st} — where the job is` : "Near the job";
-  }
-  return "All other vendors";
+  const st = (userState ?? "").trim().toUpperCase();
+  return st.length === 2 ? `${st} vendors` : "All vendors";
 }

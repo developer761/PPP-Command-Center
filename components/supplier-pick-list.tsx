@@ -31,13 +31,9 @@ export type ActiveSupplier = {
 export default function SupplierPickList({
   onPick,
   excludeIds = [],
-  jobState = null,
 }: {
   onPick: (supplier: ActiveSupplier) => void;
   excludeIds?: string[];
-  /** Account.BillingState for the job being ordered for — the vendors near it
-   *  float to the top (Katie 2026-10-01). Null just leaves the list alone. */
-  jobState?: string | null;
 }) {
   const [suppliers, setSuppliers] = useState<ActiveSupplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +41,10 @@ export default function SupplierPickList({
   const [search, setSearch] = useState("");
   const [retryNonce, setRetryNonce] = useState(0);
   const [favorites, setFavorites] = useState<string[]>([]);
+  /** The signed-in person's state — the list filters to it (Katie 2026-10-02).
+   *  Null until loaded, and null for anyone whose state is unset, both of
+   *  which show the whole list rather than none of it. */
+  const [userState, setUserState] = useState<string | null>(null);
 
   // Separate from the vendor list on purpose — that one is global and cached,
   // this one is per-user and must not be. A failure here is silent: an
@@ -55,7 +55,9 @@ export default function SupplierPickList({
       try {
         const res = await fetch("/api/suppliers/favorites", { cache: "no-store" });
         const data = await res.json();
-        if (!cancelled && Array.isArray(data?.favorites)) setFavorites(data.favorites);
+        if (cancelled) return;
+        if (Array.isArray(data?.favorites)) setFavorites(data.favorites);
+        if (typeof data?.userState === "string" || data?.userState === null) setUserState(data.userState);
       } catch {
         /* the picker works unsorted */
       }
@@ -112,10 +114,11 @@ export default function SupplierPickList({
       return s.name.toLowerCase().includes(q) || s.orderEmail.toLowerCase().includes(q);
     });
 
-  // Ranked AFTER the search filter: typing searches every vendor, and the
-  // groups simply reorder whatever the search left. rankVendors never drops a
-  // row, so this cannot hide a vendor somebody is looking for.
-  const ranked = rankVendors({ vendors: filtered, favoriteIds: favorites, jobState });
+  // Filtered to the person's state, favorites first (Katie 2026-10-02:
+  // "NJ based guys see NJ Vendors, NY sees NY vendors … then they can utilize
+  // the Favorites feature from that filtered list"). Applied after the search
+  // so typing still searches within what they are allowed to see.
+  const ranked = rankVendors({ vendors: filtered, favoriteIds: favorites, userState });
 
   return (
     <div>
@@ -194,7 +197,7 @@ export default function SupplierPickList({
                   rather than mysterious. */}
               {group !== ranked[i - 1]?.group && (
                 <div className="px-4 sm:px-5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500 bg-[var(--color-surface-muted)]">
-                  {vendorGroupLabel(group, jobState)}
+                  {vendorGroupLabel(group, userState)}
                 </div>
               )}
               <div className="flex items-stretch">

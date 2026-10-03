@@ -37,6 +37,9 @@ export type ManagedUser = {
    *  added the column for exactly this and nothing could ever set it, so every
    *  profile carried null and the line silently never printed. */
   title: string | null;
+  /** Two-letter state this person works in. Filters their vendor list when
+   *  ordering (Katie 2026-10-02). Null = unset, and unset sees every vendor. */
+  state: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -78,6 +81,9 @@ function mapRow(row: Record<string, unknown>): ManagedUser {
     full_name: (row.full_name as string | null) ?? (row.sf_user_name as string | null) ?? null,
     phone: (row.phone as string | null) ?? null,
     title: (row.title as string | null) ?? null,
+    // Absent until the vendor-filter migration is applied; null simply means
+    // "sees every vendor", which is the right default either way.
+    state: ((row.state as string | null) ?? "").trim().toUpperCase() || null,
     role: normalizeRole((row.role as string | null) ?? null, row.is_admin === true),
     auth_provider: provider,
     is_active: row.is_active !== false,
@@ -96,7 +102,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const { data, error } = await sb
     .from("profiles")
     .select(
-      "user_id,email,full_name,sf_user_name,phone,title,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
+      "user_id,email,full_name,sf_user_name,phone,title,state,role,is_admin,auth_provider,is_active,last_login_at,created_at,has_command_center_access,has_new_platform_access"
     )
     .order("created_at", { ascending: false });
   if (error) {
@@ -590,6 +596,42 @@ export async function updateUserPhone(input: {
     target_user_id: input.user_id,
     target_email: null,
     detail: { phone_set: !!phone },
+  });
+  return { ok: true };
+}
+
+/**
+ * The state a person works in, which filters their vendor list.
+ *
+ * Katie, 2026-10-02: "NJ based guys see NJ Vendors, NY sees NY vendors, etc."
+ * Blank clears it, and a person with no state set sees every vendor rather
+ * than none — an unset profile must not lock somebody out of ordering.
+ */
+export async function updateUserState(input: {
+  user_id: string;
+  state: string | null;
+  actor: ActorMeta;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const raw = (input.state ?? "").trim().toUpperCase();
+  if (raw && !/^[A-Z]{2}$/.test(raw)) {
+    return { ok: false, error: "Use the two-letter state code, e.g. NY, NJ or FL." };
+  }
+  const state = raw || null;
+  const sb = adminClient();
+  const { error } = await sb.from("profiles").update({ state }).eq("user_id", input.user_id);
+  if (error) {
+    if (/column .*state.* does not exist/i.test(error.message) || (error as { code?: string }).code === "42703") {
+      return { ok: false, error: "State storage isn't set up yet — the vendor-filter migration hasn't been applied." };
+    }
+    return { ok: false, error: error.message };
+  }
+  invalidateProfileCache(input.user_id);
+  await audit({
+    actor: input.actor,
+    action: "update_state",
+    target_user_id: input.user_id,
+    target_email: null,
+    detail: { state },
   });
   return { ok: true };
 }

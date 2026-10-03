@@ -12,6 +12,9 @@ type ManagedUser = {
   phone: string | null;
   /** Job title, printed under the name on the proposal sign-off. */
   title: string | null;
+  /** Two-letter state they work in — filters their vendor list when ordering
+   *  (Katie 2026-10-02). Null = unset, and unset sees every vendor. */
+  state: string | null;
   role: UserRole;
   auth_provider: "google" | "password";
   is_active: boolean;
@@ -355,6 +358,8 @@ function UserRow({
   // Settings → Access", where no such field existed.
   const [editingPhone, setEditingPhone] = useState(false);
   const [phoneDraft, setPhoneDraft] = useState(user.phone ?? "");
+  const [editingState, setEditingState] = useState(false);
+  const [stateDraft, setStateDraft] = useState(user.state ?? "");
   // Title had NO editor anywhere on the platform. Migration 151 added the
   // column for the proposal sign-off and nothing could write to it, so every
   // profile read null and the "Lead Estimator, Tomco Painting" line silently
@@ -398,6 +403,19 @@ function UserRow({
       next ? `${label}'s phone saved — it'll fill in on their supplier orders.` : `${label}'s phone cleared.`
     );
     if (ok) setEditingPhone(false);
+  };
+
+  /** Katie 2026-10-02 — "NJ based guys see NJ Vendors, NY sees NY vendors". */
+  const saveState = async () => {
+    const next = stateDraft.trim().toUpperCase();
+    if (next === (user.state ?? "")) { setEditingState(false); return; }
+    const ok = await patch(
+      { action: "state", state: next || null },
+      next
+        ? `${label} now sees ${next} vendors when ordering.`
+        : `${label}'s state cleared — they'll see every vendor.`
+    );
+    if (ok) setEditingState(false);
   };
 
   const saveTitle = async () => {
@@ -511,6 +529,52 @@ function UserRow({
                   {user.phone
                     ? <>☎ {user.phone}</>
                     : <>☎ Add a phone <span className="text-ppp-charcoal-400 font-normal">— goes on supplier orders they place</span></>}
+                </button>
+              )}
+            </div>
+            {/* State — which vendors they see when ordering (Katie 2026-10-02). */}
+            <div className="mt-1 text-xs">
+              {editingState ? (
+                <span className="inline-flex items-center gap-1.5 flex-wrap">
+                  <input
+                    type="text"
+                    autoFocus
+                    maxLength={2}
+                    value={stateDraft}
+                    onChange={(e) => setStateDraft(e.target.value.toUpperCase().slice(0, 2))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void saveState(); }
+                      if (e.key === "Escape") { setStateDraft(user.state ?? ""); setEditingState(false); }
+                    }}
+                    placeholder="NY"
+                    aria-label={`Work state for ${label}`}
+                    className="w-16 rounded border border-ppp-charcoal-200 px-2 py-1 text-base sm:text-xs font-mono uppercase min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveState()}
+                    disabled={busy}
+                    className="rounded bg-ppp-blue-700 px-2.5 py-1 text-xs font-semibold text-white min-h-[44px] sm:min-h-0 disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStateDraft(user.state ?? ""); setEditingState(false); }}
+                    className="px-2 py-1 text-xs text-ppp-charcoal-500 min-h-[44px] sm:min-h-0"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingState(true)}
+                  className="inline-flex items-center gap-1.5 text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 touch-manipulation"
+                >
+                  {user.state
+                    ? <>📍 {user.state} <span className="text-ppp-charcoal-400 font-normal">— sees {user.state} vendors</span></>
+                    : <>📍 Set a state <span className="text-ppp-charcoal-400 font-normal">— filters the vendors they order from</span></>}
                 </button>
               )}
             </div>

@@ -82,9 +82,6 @@ export default async function OrderBuilderPage({
       workOrderId={data.workOrderId}
       workOrderNumber={data.job.wo.workOrderNumber ?? null}
       customerName={data.job.wo.accountName ?? null}
-      // The JOB's state, not the signed-in user's — paint is bought near the
-      // site. Already loaded for the delivery address, so this costs no query.
-      jobState={data.jobState}
       sourceLines={data.sourceLines}
       // Kate round-3 #24: seed the paint line from the work order when the
       // saved build has none. The AM picks a line on Internal Entry, it lands
