@@ -172,8 +172,55 @@ export function ExclusionPicker({
   };
 
   const addCustomLine = (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    /*
+     * A PASTED LIST BECOMES A LIST.
+     *
+     * Stephanie 2026-10-05: "I didn't add them as exclusions because I didn't
+     * want to type them in or copy them in all individually ... so I added them
+     * as qualifications and removed all of the exclusions completely to avoid
+     * there being 2 sections ... Ticking them off or adding them as you go is
+     * fine for an estimator who is working through a plan page by page, but if
+     * I have a bulk amount of them, like there was with Glenwood, its time
+     * consuming to add them all in individually."
+     *
+     * Her Glenwood list is fifteen. This box took one line at a time, and the
+     * single-line <input> it used to be threw the newlines away on paste — so
+     * fifteen exclusions arrived as one. Hence the workaround, and hence the
+     * request for a combined section: she was routing around this box.
+     *
+     * Each line becomes its own entry, bullet characters she pasted are
+     * stripped (the PDF draws its own), and duplicates are skipped quietly
+     * rather than stopping the whole paste.
+     */
+    const incoming = String(text ?? "")
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^\s*[●•◦▪·*•●▪-]+\s*/, "").trim())
+      .filter(Boolean);
+    if (incoming.length === 0) return;
+    if (incoming.length > 1) {
+      const seen = new Set(customLines.map((c) => c.trim().toLowerCase()));
+      const fresh: string[] = [];
+      for (const line of incoming) {
+        const key = line.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fresh.push(line);
+      }
+      const skipped = incoming.length - fresh.length;
+      setDupHint(
+        skipped > 0
+          ? `Added ${fresh.length}. ${skipped} ${skipped === 1 ? "was" : "were"} already on this proposal.`
+          : `Added ${fresh.length}.`,
+      );
+      window.clearTimeout(dupHintTimerRef.current);
+      dupHintTimerRef.current = window.setTimeout(() => setDupHint(null), 3000);
+      if (fresh.length > 0) setCustomLines((prev) => [...prev, ...fresh]);
+      setQuery("");
+      setResults([]);
+      setHighlightIdx(-1);
+      return;
+    }
+    const trimmed = incoming[0];
     // Round-3 audit fix: was silent-clear on duplicate; now surfaces a
     // brief inline hint so Alex sees why the input didn't take.
     if (customLines.some((c) => c.trim().toLowerCase() === trimmed.toLowerCase())) {
@@ -432,13 +479,17 @@ export function ExclusionPicker({
 
         {/* Dedicated one-off input + add button */}
         <div className="flex gap-2">
-          <input
+          {/* A TEXTAREA, so a pasted list survives.
+              An <input type="text"> drops the newlines, which is why pasting
+              Stephanie's fifteen Glenwood exclusions produced one. Enter still
+              adds — Shift+Enter is the newline, as everywhere else. */}
+          <textarea
             id={`${rootId}-oneoff`}
-            type="text"
+            rows={2}
             value={customDraft}
             onChange={(e) => setCustomDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (customDraft.trim()) {
                   addCustomLine(customDraft);
@@ -446,8 +497,8 @@ export function ExclusionPicker({
                 }
               }
             }}
-            placeholder="Type a one-off exclusion and hit Enter…"
-            className="flex-1 px-3 py-2 text-base sm:text-sm bg-surface border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[44px]"
+            placeholder="Type one and hit Enter, or paste a whole list — one per line."
+            className="flex-1 px-3 py-2 text-base sm:text-sm bg-surface border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 min-h-[44px] resize-y"
           />
           <button
             type="button"
