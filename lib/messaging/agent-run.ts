@@ -33,6 +33,7 @@ import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
 import { addressesInThread, secondPropertyAskDue } from "./multi-property";
 import { isAvailabilityStandOff } from "./availability-ask";
+import { reportWarn } from "@/lib/observability";
 import { stallFollowUpGoal, isFollowUpStep, FOLLOW_UP_COUNT } from "./stall-followup-goals";
 
 const MODEL = "claude-opus-5";
@@ -710,6 +711,33 @@ Choose the next action.`;
       // replies with prose instead of choosing an action.
       tool_choice: { type: "tool", name: "choose_action" },
     });
+
+    /**
+     * IS THE CACHE ACTUALLY BEING HIT?
+     *
+     * A broken prompt cache costs money and changes nothing a test can see:
+     * the same bytes go out, the same reply comes back, and the bill quietly
+     * stays where it was. Exactly the invisible failure this codebase keeps
+     * producing, so it gets a signal rather than a hope.
+     *
+     * ZERO ON BOTH COUNTERS IS THE FAULT. A read of 0 with a non-zero
+     * creation is a cold cache, which is normal and expected once per
+     * workspace every few minutes; a read of 0 with a creation of 0 means the
+     * breakpoint is not being honoured at all — usually because something
+     * that varies per turn has drifted back into the stable half.
+     *
+     * Deduped by the observability layer, so a sustained fault says so once
+     * rather than once per turn.
+     */
+    const usage = res.usage as { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined;
+    if (usage && !usage.cache_read_input_tokens && !usage.cache_creation_input_tokens) {
+      reportWarn({
+        key: "sms_prompt_cache_not_used",
+        message: "The agent prompt cache was neither read nor written — the stable prefix is not being cached",
+        platform: "ppp_cc",
+        context: { model: MODEL, inputTokens: res.usage?.input_tokens ?? null },
+      });
+    }
 
     const call = res.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "choose_action"
