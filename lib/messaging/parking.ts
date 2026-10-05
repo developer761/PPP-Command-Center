@@ -175,6 +175,29 @@ const BLOCKED_ON_AN_EVENT = new RegExp(
   "i"
 );
 
+/**
+ * THE SAME QUESTION, ASKED OF THE WHOLE CONVERSATION.
+ *
+ * The event is named ONCE, early, and referred to loosely afterwards:
+ *
+ *   "we are closing on the house on the 14th"        <- matches
+ *   "we cant do anything until after the closing"    <- does not
+ *
+ * So a guard reading only the current message decides there is no event on
+ * exactly the turn that matters, which is the turn they defer on. Found in
+ * the sandbox running the closing scenario end to end.
+ *
+ * Third instance of this shape in one session, after availabilityGapAcross
+ * and the A4 close guard: a fact that is true of the CONVERSATION asked of
+ * one message. If you are adding a rule about something the customer has
+ * told us, it reads the thread.
+ */
+export function threadIsBlockedOnEvent(
+  messages: readonly (string | null | undefined)[]
+): boolean {
+  return messages.some((m) => parkIsBlockedOnEvent(m));
+}
+
 /** Is this park waiting on a named event rather than on the customer? */
 export function parkIsBlockedOnEvent(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();

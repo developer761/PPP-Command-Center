@@ -19,7 +19,7 @@
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import type { JobRoute } from "./offsite";
-import { parkKind, isAsk, conversationWasDeferred, parkIsBlockedOnEvent } from "./parking";
+import { parkKind, isAsk, conversationWasDeferred, threadIsBlockedOnEvent } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
@@ -224,8 +224,24 @@ export const INTENT_GUIDE: Record<string, string> = {
   checking_availability: "you are looking something up and will come back",
 
   // The off-site quote
-  present_offsite_quote: "this job does not need a visit, so offer the quick quote",
-  offer_offsite_quote: "a visit is normal for this job but something stops it, and the reason must be on file",
+  /**
+   * THE TEST IS THE JOB, NEVER THE REQUEST, and the model kept getting this
+   * backwards in the sandbox — twice in one session, on "our building lobby
+   * and the stairwell" and on "3 bedrooms and a hallway, just need a rough
+   * number". Both times it read the customer ASKING for a quick quote as
+   * licence to present one, the validator refused with wrong_offsite_rule,
+   * and a good lead went to a person over a choice the system had already
+   * made for it.
+   *
+   * Asking for a ballpark is an A7 TRIGGER, which is what makes an off-site
+   * quote available at all. It is not what decides which of the two moves it
+   * is. Said explicitly here because the old wording described the job and
+   * left the inference to be made.
+   */
+  present_offsite_quote: "the JOB is small and clearly defined, so a quick quote IS the plan. "
+    + "Never chosen because the customer asked for one — that only makes an off-site quote possible",
+  offer_offsite_quote: "the job would normally be seen in person and something stops this customer, "
+    + "so the quick quote is OFFERED as a choice with the reason they qualify",
 
   // Handing over and ending
   escalate: "you are not sure, or it needs a person for any other reason",
@@ -1286,7 +1302,35 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    */
   if (isAsk(a.intent)) {
     const said = [...(ctx.customerMessages ?? []), ctx.customerText ?? ""].filter(Boolean);
-    if (conversationWasDeferred(said)) {
+    /**
+     * ONE CARVE-OUT, AND KATE WROTE IT HERSELF.
+     *
+     * A40 (2) is from 2026-09-11 and says collection stops, "CONTACT AND
+     * AVAILABILITY ALIKE". Her note of 2026-10-05 is newer and narrower, and
+     * for a NAMED EVENT it prescribes the opposite first move:
+     *
+     *   "Before parking one of these at all, run A7... its order is to offer
+     *    the visit for when they WILL have access FIRST, and the off-site
+     *    quote only if they will not wait."
+     *
+     * Our vocabulary has no "offer a later visit" intent — offering days
+     * after the closing IS ask_availability — so the older rule made her
+     * first rung unreachable and the ladder always skipped to the off-site
+     * offer. Found in the sandbox: the model wrote "Totally understood, we
+     * can look at days after the 14th", which is her sentence, and the guard
+     * refused it.
+     *
+     * Narrow deliberately. It needs a named event, it is availability only,
+     * and it is allowed ONCE — the turn after that is pressing again, which
+     * is the failure A40 (2) is actually about: "carrying on collecting after
+     * they have said they will come back to us".
+     */
+    const runningA7Ladder =
+      a.intent === "ask_availability"
+      && threadIsBlockedOnEvent(said)
+      && !(ctx.priorIntents ?? []).includes("ask_availability");
+
+    if (conversationWasDeferred(said) && !runningA7Ladder) {
       return {
         ok: false, reason: "pressed_after_deferral",
         detail: "they have moved the booking conversation to another time or channel, " +
@@ -1350,7 +1394,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (
     ctx.priorIntents
     && DEFERRAL_ENDINGS.has(a.intent)
-    && parkIsBlockedOnEvent(ctx.customerText)
+    && threadIsBlockedOnEvent([...(ctx.customerMessages ?? []), ctx.customerText])
     && !ctx.priorIntents.some((i) => RAN_A7_LADDER.has(i))
   ) {
     return {

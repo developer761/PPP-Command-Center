@@ -1328,16 +1328,33 @@ function renderBody(input: RenderInput): string {
     // No em dash. A23 bans it, and it is the one Kate names first — the
     // house-voice test would have caught this in a template, but this string
     // is built in code, so it would have gone out.
+    /*
+      KATE'S ENDING, 2026-10-05, AND IT HAD TO BE CHANGED IN THREE PLACES.
+
+      The SAYS templates carry her new wording; this branch builds its own
+      sentence, so changing the templates left the old "if I've misread the
+      project, let me know" alive wherever a workspace has a services list —
+      which is every real one. Caught by replaying the furniture scenario in
+      the sandbox after shipping the template change, not by the suite: no
+      test exercised discard WITH covers.
+
+      Her reason, which this branch has to honour too: the customer does not
+      know what we cover, so asking them to judge whether we misread it is
+      asking an unanswerable question. The doubt is ours and we come back to
+      them. The covers list stays, because that is this branch's whole point
+      — "built-in bookcases ARE covered" is what lets somebody say "oh, mine
+      are built in".
+    */
     if (es) {
       const aperture = (input.turn ?? 0) % 2 === 0
-        ? "\u00a1Gracias por comunicarse! Eso no es algo que nosotros hagamos."
-        : "Le agradezco que nos escriba. Ese no es un trabajo que hagamos.";
-      return `${aperture} S\u00ed cubrimos ${input.covers}. Si entend\u00ed mal el proyecto, av\u00edseme y lo reviso de nuevo.`;
+        ? "Creo que no podemos ayudar con este proyecto."
+        : "No creo que esto sea algo que hagamos.";
+      return `${aperture} S\u00ed cubrimos ${input.covers}. Lo reviso y le aviso si me equivoco. Disculpe la molestia!`;
     }
     const opener = (input.turn ?? 0) % 2 === 0
-      ? "Thanks for reaching out! That isn't something we take on."
-      : "Appreciate you getting in touch. That isn't work we take on.";
-    return `${opener} We do cover ${input.covers}. If I've misread the project, let me know and I'll take another look.`;
+      ? "I don't think we can help with this project."
+      : "I don't believe this is something we take on.";
+    return `${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`;
   }
 
   const rapport = (input.freeText ?? "").trim();
