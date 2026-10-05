@@ -30,16 +30,48 @@
  * Pure.
  */
 
+/**
+ * ── SPANISH, AND WHY IT IS IN THE SAME REGEXES ──────────────────────────
+ *
+ * Played live 2026-10-05: a Spanish conversation ran the whole flow in
+ * Spanish, the customer answered "el miércoles", and `success` was refused
+ * with "no day and no time of day has been given anywhere in the
+ * conversation (A4)". Wednesday had been given. The day was simply in a
+ * language these patterns did not read.
+ *
+ * Two costs, and the second is the expensive one. The close is blocked, so a
+ * Spanish lead that answered every question still goes to a person — the
+ * unsatisfiable shape this repo keeps producing, where the BEST lead is the
+ * one that cannot convert. And ASK_AVAILABILITY_GAP_ES, the Spanish "and
+ * roughly what time of day?", could never fire either: the gap is only
+ * "window" once a DAY has been found, so a whole set of translated templates
+ * was unreachable rather than merely unused.
+ *
+ * Same regexes rather than a language-switched pair, because a Spanish day
+ * name means the same thing in a thread we have labelled English — people
+ * code-switch, and nothing here depends on the rest of the sentence.
+ *
+ * ── ONE WORD NEEDS CARE: "mañana" ───────────────────────────────────────
+ *
+ * It is both TOMORROW and MORNING. Bare, it is the day; with an article and
+ * a preposition ("por la mañana", "en la mañana") it is the window. So it is
+ * a DAY on its own and a WINDOW only in that phrase — which makes "mañana
+ * por la mañana" match both, correctly. The same shape covers "la tarde" and
+ * "la noche", where the bare words also mean "late" and "night".
+ *
+ * Erring tight on purpose: a false DAY would let a conversation close as
+ * booked against nothing, which is the whole thing A4 exists to stop.
+ */
 /** A named day, or a relative one people actually use. */
 const DAY =
-  /\b(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?\b|\b(?:today|tomorrow|tmrw|weekday|weekend)s?\b|\b(?:next|this)\s+week\b|\b\d{1,2}\s*\/\s*\d{1,2}\b/i;
+  /\b(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?\b|\b(?:today|tomorrow|tmrw|weekday|weekend)s?\b|\b(?:next|this)\s+week\b|\b\d{1,2}\s*\/\s*\d{1,2}\b|\b(?:lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bados?|domingos?)\b|\bhoy\b|\bpasado\s+ma[ñn]ana\b|(?<!la\s)(?<!las\s)\bma[ñn]ana\b|\bfin(?:es)?\s+de\s+semana\b|\bentre\s+semana\b|\b(?:la\s+)?(?:pr[óo]xima|siguiente)\s+semana\b|\besta\s+semana\b/i;
 
 /**
  * A time window. A clock time counts, because "2pm" tells an estimator when
  * to turn up even without an explicit range.
  */
 const WINDOW =
-  /\b\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\.?)\b|\b\d{1,2}\s*(?:-|–|to|until|til+)\s*\d{1,2}\s*(?:[ap]\.?m\.?)?\b|\b(?:mornings?|afternoons?|evenings?|noon|midday|lunchtime|first thing|after work|before work|early|late)\b/i;
+  /\b\d{1,2}(?::\d{2})?\s*(?:[ap]\.?m\.?)\b|\b\d{1,2}\s*(?:-|–|to|until|til+)\s*\d{1,2}\s*(?:[ap]\.?m\.?)?\b|\b(?:mornings?|afternoons?|evenings?|noon|midday|lunchtime|first thing|after work|before work|early|late)\b|\b(?:por|en|de)\s+la(?:s)?\s+(?:ma[ñn]anas?|tardes?|noches?)\b|\b(?:medio\s?d[íi]a|mediod[íi]a)\b|\ba\s+las?\s+\d{1,2}(?::\d{2})?\b|\b(?:temprano|tempranito)\b/i;
 
 /**
  * Nothing left to narrow. Kate names these explicitly as availability
@@ -58,6 +90,15 @@ const OPEN_ENDED = new RegExp(
     // an apology about the past, offered as a bookable slot.
     String.raw`\b(?:available|free|open|home|around|here)\b[^.!?]{0,20}\ball day\b`,
     String.raw`\ball day\b[^.!?]{0,15}\b(?:works?|is fine|is good|suits)\b`,
+    // The same set in Spanish. "cuando sea" and "cuando guste" are the two a
+    // person actually types; "soy flexible" is the direct equivalent of the
+    // English one above it. Kept to phrases, because bare "cualquier" or
+    // bare "hora" appear in questions about OUR availability too.
+    String.raw`\bcuando\s+(?:sea|guste|quiera|pueda[ns]?|le\s+(?:sirva|convenga|quede))\b`,
+    String.raw`\bcualquier\s+(?:d[íi]a|hora|momento)\b`,
+    String.raw`\ba\s+cualquier\s+hora\b`,
+    String.raw`\b(?:soy|estoy|somos|estamos)\s+flexibles?\b`,
+    String.raw`\blo\s+que\s+(?:le\s+)?(?:sirva|convenga|quede\s+mejor)\b`,
   ].join("|"),
   "i"
 );

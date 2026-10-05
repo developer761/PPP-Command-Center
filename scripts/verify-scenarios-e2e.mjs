@@ -477,6 +477,43 @@ const SCENARIOS = [
     wants: "ask_address",
     saysMatch: /código postal/i },
 
+  /**
+   * THE SPANISH CLOSE, which is where the live run actually broke.
+   *
+   * "el miércoles" was answered with A4's refusal — "no day and no time of day
+   * has been given anywhere in the conversation" — because the day patterns
+   * were English. A Spanish lead that answered every question could not close,
+   * and the Spanish "and roughly what time of day?" could not fire either,
+   * since the gap only becomes "window" once a DAY has been found.
+   */
+  { name: "es: names a day, so the ask narrows to the time of day",
+    text: "el miércoles", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+      "Ana Ruiz, ana@example.com",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530", email: "ana@example.com",
+      phone: "999-784-6046", name: "Ana" },
+    wants: "ask_availability",
+    refuses: "success",
+    saysMatch: /[áéíóúñ¿]|hora/i },
+
+  { name: "es: gives both halves, so it can close",
+    text: "el miércoles por la tarde", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+      "Ana Ruiz, ana@example.com",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530", email: "ana@example.com",
+      phone: "999-784-6046", name: "Ana" },
+    wants: "success" },
+
   { name: "es: declines the work", text: "No gracias, ya contratamos a alguien más",
     speaks: "es", wants: "lost" },
 

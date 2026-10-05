@@ -1293,9 +1293,13 @@ one row per service.
 Those rows are stored in English, and there is no Spanish column. So a Spanish
 conversation ends like this:
 
-> Creo que no podemos ayudar con este proyecto. Sí cubrimos **interior and
-> exterior painting, cabinets, wallpaper and drywall repair**. Lo reviso y le
-> aviso si me equivoco. Disculpe la molestia!
+> Creo que no podemos ayudar con este proyecto. Sí cubrimos **interior
+> painting, exterior painting, lime washing, skim coating and more**. Lo
+> reviso y le aviso si me equivoco. Disculpe la molestia!
+
+That is copied from the live bot, not a mock-up — played in the simulator
+against production on 2026-10-05. Worth noting the joining words are English
+too ("and more"), so this is not only the service names.
 
 Understandable, and not wrong in substance — but half the sentence is in the
 wrong language, in the one message whose entire job is to be clear about what
