@@ -581,3 +581,75 @@ describe("a named event parks only after A7 has been offered", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+/**
+ * THE TWO A40 RULES COLLIDED, AND KATE'S NEWER ONE WINS FOR NAMED EVENTS.
+ *
+ * A40 (2), 2026-09-11: once they defer, collection stops, "CONTACT AND
+ * AVAILABILITY ALIKE".
+ * A40's note, 2026-10-05: for a named event, "offer the visit for when they
+ * WILL have access FIRST, and the off-site quote only if they will not wait."
+ *
+ * We have no "offer a later visit" intent — offering days after the closing
+ * IS ask_availability — so the older rule made her first rung unreachable and
+ * the ladder always skipped to the off-site offer. Found in the sandbox: the
+ * model wrote "Totally understood, we can look at days after the 14th", her
+ * sentence almost exactly, and the guard refused it.
+ *
+ * This is the unsatisfiable-rules shape: two correct rules with no legal move
+ * between them.
+ */
+describe("A7's first rung is reachable for a named event", () => {
+  const act = (intent: string) => ({ intent, confidence: 0.99, reasoning: "" });
+  const DEFERRED_EVENT = "we cant do anything until after the closing on the 14th, I'll get back to you";
+
+  it("allows the later-visit offer once", () => {
+    const r = validateAction(act("ask_availability") as never, {
+      customerText: DEFERRED_EVENT,
+      // The event is named ONCE, early — exactly as it arrives live. The
+      // later message only refers to it, which is why these guards read the
+      // thread rather than the current turn.
+      customerMessages: ["we want the whole upstairs painted but we are closing on the house on the 14th"],
+      priorIntents: ["ask_project_details", "ask_address", "ask_contact"],
+    });
+    expect(r.ok, "Kate's first rung has to be reachable").toBe(true);
+  });
+
+  it("refuses it a second time, which is pressing", () => {
+    const r = validateAction(act("ask_availability") as never, {
+      customerText: DEFERRED_EVENT,
+      // The event is named ONCE, early — exactly as it arrives live. The
+      // later message only refers to it, which is why these guards read the
+      // thread rather than the current turn.
+      customerMessages: ["we want the whole upstairs painted but we are closing on the house on the 14th"],
+      priorIntents: ["ask_project_details", "ask_availability"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("pressed_after_deferral");
+  });
+
+  it("still refuses other collection after any deferral", () => {
+    for (const intent of ["ask_contact", "ask_address", "confirm_contact"]) {
+      const r = validateAction(act(intent) as never, {
+        customerText: DEFERRED_EVENT,
+        // The event is named ONCE, early — exactly as it arrives live. The
+      // later message only refers to it, which is why these guards read the
+      // thread rather than the current turn.
+      customerMessages: ["we want the whole upstairs painted but we are closing on the house on the 14th"],
+        priorIntents: ["ask_project_details"],
+      });
+      expect(r.ok, intent).toBe(false);
+    }
+  });
+
+  /** An ordinary deferral is untouched: no named event anywhere, no carve-out. */
+  it("does not widen the ordinary deferral", () => {
+    const r = validateAction(act("ask_availability") as never, {
+      customerText: "let me talk to my wife and I'll get back to you",
+      customerMessages: ["we want the whole upstairs painted"],
+      priorIntents: ["ask_project_details"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("pressed_after_deferral");
+  });
+});

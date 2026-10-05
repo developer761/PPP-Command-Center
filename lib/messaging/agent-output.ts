@@ -19,7 +19,7 @@
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import type { JobRoute } from "./offsite";
-import { parkKind, isAsk, conversationWasDeferred, parkIsBlockedOnEvent } from "./parking";
+import { parkKind, isAsk, conversationWasDeferred, threadIsBlockedOnEvent } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
@@ -1302,7 +1302,35 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    */
   if (isAsk(a.intent)) {
     const said = [...(ctx.customerMessages ?? []), ctx.customerText ?? ""].filter(Boolean);
-    if (conversationWasDeferred(said)) {
+    /**
+     * ONE CARVE-OUT, AND KATE WROTE IT HERSELF.
+     *
+     * A40 (2) is from 2026-09-11 and says collection stops, "CONTACT AND
+     * AVAILABILITY ALIKE". Her note of 2026-10-05 is newer and narrower, and
+     * for a NAMED EVENT it prescribes the opposite first move:
+     *
+     *   "Before parking one of these at all, run A7... its order is to offer
+     *    the visit for when they WILL have access FIRST, and the off-site
+     *    quote only if they will not wait."
+     *
+     * Our vocabulary has no "offer a later visit" intent — offering days
+     * after the closing IS ask_availability — so the older rule made her
+     * first rung unreachable and the ladder always skipped to the off-site
+     * offer. Found in the sandbox: the model wrote "Totally understood, we
+     * can look at days after the 14th", which is her sentence, and the guard
+     * refused it.
+     *
+     * Narrow deliberately. It needs a named event, it is availability only,
+     * and it is allowed ONCE — the turn after that is pressing again, which
+     * is the failure A40 (2) is actually about: "carrying on collecting after
+     * they have said they will come back to us".
+     */
+    const runningA7Ladder =
+      a.intent === "ask_availability"
+      && threadIsBlockedOnEvent(said)
+      && !(ctx.priorIntents ?? []).includes("ask_availability");
+
+    if (conversationWasDeferred(said) && !runningA7Ladder) {
       return {
         ok: false, reason: "pressed_after_deferral",
         detail: "they have moved the booking conversation to another time or channel, " +
@@ -1366,7 +1394,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   if (
     ctx.priorIntents
     && DEFERRAL_ENDINGS.has(a.intent)
-    && parkIsBlockedOnEvent(ctx.customerText)
+    && threadIsBlockedOnEvent([...(ctx.customerMessages ?? []), ctx.customerText])
     && !ctx.priorIntents.some((i) => RAN_A7_LADDER.has(i))
   ) {
     return {
