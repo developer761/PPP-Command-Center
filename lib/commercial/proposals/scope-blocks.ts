@@ -99,17 +99,23 @@ export function shouldPrintGrandTotal(args: {
 }
 
 /**
- * A block's body, as the lines it prints.
+ * A block's body, as the lines it prints — TEXT ONLY, no bullet character.
  *
- * Her text is pasted out of an email, so it arrives with blank lines and a
- * mix of styles — some lines already bulleted, some not. Blank lines go; the
- * rest keep a bullet they already have and are given one if they have not,
- * because that is how every Tomco proposal reads.
+ * The bullet is drawn, not typed. Every other list on this document renders a
+ * 5pt filled circle as a `View` beside the text, with a comment on the style
+ * saying why: "Kept as View not glyph so it works across any font." The PDF is
+ * set in Times, which has no ● glyph.
+ *
+ * My first version prefixed "● " as text and it came out as "Ï" on the
+ * proposal Stephanie generated — which is what she reported as "can the option
+ * to bullet within both?". So this strips any bullet she typed or pasted and
+ * returns the words; the renderer puts a real dot beside each one.
+ *
+ * Her text comes out of an email, so blank lines go too.
  */
 export function scopeBlockLines(description: string | null | undefined): string[] {
   return String(description ?? "")
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => (/^[●•\-*]\s*/.test(l) ? l.replace(/^[•\-*]\s*/, "● ") : `● ${l}`));
+    .map((l) => l.replace(/^\s*[●•◦▪·*•●▪-]+\s*/, "").trim())
+    .filter(Boolean);
 }

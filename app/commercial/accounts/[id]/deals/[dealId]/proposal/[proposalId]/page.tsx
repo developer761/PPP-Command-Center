@@ -356,10 +356,28 @@ async function saveProposalAction(formData: FormData) {
     try {
       const parsed = JSON.parse(rawCustom);
       if (Array.isArray(parsed)) {
+        /*
+         * A multi-line entry is kept whole here and split into one bullet per
+         * line at render (exclusion-texts). Stephanie 2026-10-05 asked for a
+         * verbiage block she can paste a list into, and the Glenwood sample
+         * she sent is fourteen exclusions in one paste.
+         *
+         * The cap is per LINE now rather than per entry, so a fourteen-line
+         * paste is not thrown away for being over 500 characters in total —
+         * which is what the old filter did to it, silently.
+         */
         customExclusions = parsed
           .filter((s): s is string => typeof s === "string")
           .map((s) => s.trim())
-          .filter((s) => s.length > 0 && s.length <= 500);
+          .filter((s) => s.length > 0)
+          .map((s) =>
+            s
+              .split(/\r?\n/)
+              .map((l) => l.trim().slice(0, 500))
+              .filter(Boolean)
+              .join("\n"),
+          )
+          .filter(Boolean);
       }
     } catch {
       // keep existing on malformed JSON
@@ -2516,6 +2534,23 @@ export default async function ProposalEditorPage({
             promise one treatment while the invoice charged another. */}
         <EditorSection title="Sales tax" subtitle="Applies to this job everywhere — proposal, invoices, change orders.">
           <div className="space-y-3">
+            {/* SAY IT WHEN NO TAX WILL PRINT.
+                Stephanie 2026-10-05: "the sales tax is not carrying through."
+                It was not a tax bug — the Glenwood job had no ZIP on it, so no
+                jurisdiction resolved and the proposal simply printed TOTAL with
+                no tax line, giving her nothing to act on. The rate comes from
+                where the WORK is, so we will not borrow the GC's billing ZIP
+                and risk charging a customer the wrong county's rate. We can say
+                so, which is what was missing. */}
+            {!(opp.tax_exempt ?? account?.tax_exempt ?? false) &&
+            !String(opp.property_zip ?? "").trim() ? (
+              <div className="rounded-lg px-3 py-2.5 text-[12.5px] bg-amber-50 border border-amber-200 text-amber-900">
+                <strong>No sales tax will print on this proposal.</strong> This job
+                has no ZIP code, so there is no rate to apply. Add the job&rsquo;s ZIP
+                below and the Price / Sales Tax / TOTAL lines appear — on this
+                proposal and on every block in it.
+              </div>
+            ) : null}
             <form action={setJobTaxFromProposalAction} className="space-y-2.5">
               <input type="hidden" name="account_id" value={accountId} />
               <input type="hidden" name="deal_id" value={dealId} />

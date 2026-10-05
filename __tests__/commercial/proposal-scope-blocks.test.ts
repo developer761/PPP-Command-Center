@@ -87,20 +87,40 @@ describe("the tax on a block", () => {
 });
 
 describe("the body text", () => {
-  it("bullets the lines she typed and drops the blank ones", () => {
+  /*
+   * THE BULLET IS DRAWN, NOT TYPED.
+   *
+   * Stephanie 2026-10-05: "can the option to bullet within both?" She was
+   * looking at a proposal where every scope line began with "Ï". The PDF is set
+   * in Times, which has no ● glyph, and my first version prefixed one as text.
+   * Every other list on the document draws a 5pt circle as a View for exactly
+   * this reason — the style even says so.
+   *
+   * So these return WORDS, and a bullet character she typed or pasted is
+   * stripped rather than printed.
+   */
+  it("returns no bullet character of its own", () => {
+    for (const line of scopeBlockLines("Power wash PVC fence\nPower wash bluestone caps")) {
+      expect(line).not.toMatch(/[●•◦▪·\u2022\u25CF]/);
+    }
+  });
+
+  it("strips a bullet she pasted in, in any of the shapes Word produces", () => {
+    expect(scopeBlockLines("● Power wash PVC fence")).toEqual(["Power wash PVC fence"]);
+    expect(scopeBlockLines("• Power wash")).toEqual(["Power wash"]);
+    expect(scopeBlockLines("- Power wash")).toEqual(["Power wash"]);
+    expect(scopeBlockLines("* Power wash")).toEqual(["Power wash"]);
+  });
+
+  it("keeps her lines and drops the blank ones", () => {
     expect(scopeBlockLines("Walls: Prep and paint with 2 coats\n\nFRP: Remove existing")).toEqual([
-      "● Walls: Prep and paint with 2 coats",
-      "● FRP: Remove existing",
+      "Walls: Prep and paint with 2 coats",
+      "FRP: Remove existing",
     ]);
   });
 
-  it("does not double-bullet a line she already bulleted", () => {
-    expect(scopeBlockLines("● Power wash PVC fence")).toEqual(["● Power wash PVC fence"]);
-    expect(scopeBlockLines("- Power wash")).toEqual(["● Power wash"]);
-  });
-
   it("survives the \\r\\n she pastes out of Word", () => {
-    expect(scopeBlockLines("One\r\nTwo")).toEqual(["● One", "● Two"]);
+    expect(scopeBlockLines("One\r\nTwo")).toEqual(["One", "Two"]);
   });
 });
 

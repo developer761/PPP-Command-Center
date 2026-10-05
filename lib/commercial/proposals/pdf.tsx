@@ -1461,8 +1461,12 @@ function ScopeBlockSection({
         <Text style={styles.sectionUnderlineHeader}>{block.block_title}</Text>
       ) : null}
       <View style={{ marginTop: 4 }}>
+        {/* A DRAWN dot, like every other list here. Times has no ● glyph, so
+            a typed one renders as "Ï" — which is exactly what came out on the
+            proposal Stephanie generated. */}
         {lines.map((line, i) => (
           <View key={i} style={styles.bulletRow}>
+            <View style={styles.bulletDot} />
             <Text style={styles.bulletBody}>{line}</Text>
           </View>
         ))}

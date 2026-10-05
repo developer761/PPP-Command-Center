@@ -48,8 +48,27 @@ export async function resolveProposalExclusions(
   // DB write could bypass it, and a 10KB blob would blow the PDF layout.
   // A per-proposal one-off has no library entry to carry a kind, so it prints
   // as an exclusion — the section it has always printed under.
+  /*
+   * ONE BULLET PER LINE, not one per entry.
+   *
+   * Stephanie 2026-10-05: "Can we add a custom block called Custom Exclusions &
+   * Qualifications as well, just verbiage? Also, can the option to bullet
+   * within both?"
+   *
+   * An entry is free text she pastes out of an email, and the Glenwood sample
+   * she sent is fourteen separate exclusions. Kept whole, that is one bullet
+   * holding fourteen lines — a wall of text where her document has a list. So
+   * a multi-line entry becomes one bullet per line, and the leading bullet
+   * character she typed is stripped because the renderer draws a real dot
+   * beside each (Times has no ● glyph; a typed one prints as "Ï").
+   *
+   * The 500-character cap stays, applied per LINE now rather than per entry,
+   * so one runaway paste still cannot blow the layout.
+   */
   const customTexts: ResolvedExclusion[] = (proposal.custom_exclusions ?? [])
-    .filter((t) => t && t.trim())
+    .flatMap((t) => String(t ?? "").split(/\r?\n/))
+    .map((t) => t.replace(/^\s*[●•◦▪·*•●▪-]+\s*/, "").trim())
+    .filter(Boolean)
     .map((t) => ({ text: t.length > 500 ? t.slice(0, 500) + "…" : t, kind: "exclusion" as const }));
   // Custom lines print AFTER the library-resolved ones, in the order they were
   // added.
