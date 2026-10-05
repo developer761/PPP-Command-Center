@@ -102,6 +102,31 @@ const SCENARIOS = [
    * because the guard re-read the current message and found an address. All
    * four legs were collected and the conversation could not close.
    */
+  /**
+   * A NAMED EVENT, DEFERRED — the scenario that caught two rules leaving no
+   * legal first move between them, 2026-10-05.
+   *
+   * A40 (2) stops collection once they defer; A40's note says a named event
+   * runs A7's ladder first, and that ladder's first rung IS an availability
+   * ask. The harness had no closing scenario, so the collision only showed up
+   * in the sandbox. It is here now.
+   *
+   * The event is named ONCE and referred to loosely afterwards, which is the
+   * half that made the detector say "no event" on the turn that mattered.
+   */
+  { name: "blocked on a closing, then defers",
+    history: [
+      "we want the whole upstairs painted but we are closing on the house on the 14th",
+      "18 Bayview Rd, Massapequa NY 11758",
+      "Dana Reed, dana@example.com",
+    ],
+    text: "like I said we cant do anything until after the closing, I'll get back to you",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact"],
+    known: { inquiryScope: "the whole upstairs", address: "18 Bayview Rd, Massapequa NY 11758",
+      email: "dana@example.com", phone: "999-784-6046", name: "Dana" },
+    wants: "ask_availability",
+    refuses: "schedule_follow_up" },
+
   { name: "two properties, availability FIRST and the second address last",
     history: [
       "we have two rental properties that both need the living room and hallway painted",
