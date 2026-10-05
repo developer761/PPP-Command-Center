@@ -49,3 +49,4 @@ next-env.d.ts
 #   scripts/import-tomco.mjs --action-deletions → .sf-deletions-backup.json
 scripts/.uninvoiced-backup.json
 scripts/.sf-deletions-backup.json
+findings-outside-kates-pass.csv
