@@ -249,7 +249,15 @@ describe("rendering an intent into words", () => {
       covers: "interior painting, exterior painting, cabinets and drywall",
     });
     expect(out).toMatch(/interior painting/);
-    expect(out).toMatch(/misread|let me know/i);
+    /*
+      KATE'S ENDING, 2026-10-05 — and this assertion is why the covers branch
+      was missed. It required the OLD "misread / let me know" wording, so it
+      stayed green while the templates next to it said something different,
+      and the branch went on sending the sentence she had struck. Found by
+      replaying the furniture scenario in the sandbox, not here.
+    */
+    expect(out).toMatch(/circle back|come back to you|i'll check/i);
+    expect(out).not.toMatch(/let me know|if i've misread|take another look/i);
     // A18 — never point at somebody else.
     expect(out).not.toMatch(/another (?:company|contractor)|someone else|try .* who does/i);
     // A9 — do not read their own words back at them.
