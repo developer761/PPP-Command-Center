@@ -1942,7 +1942,7 @@ export function ProposalPdfDocument({
    * Brendan 2026-09-23 asked for a line the GC does not see — lifts, night
    * access, a dumpster. It is real priced work, so it stays in the TOTAL
    * (which is computed from the line items, not from this list); it just is
-   * not itemised to them.
+   * not itemized to them.
    *
    * Filtered HERE, once, on the way into the renderer — rather than inside
    * each of the three places that print a line — so a new print path cannot
@@ -1982,7 +1982,23 @@ export function ProposalPdfDocument({
   // visibly contradict the TOTAL (#4). Internal mode always keeps the real
   // itemized math (the estimator set the override); the customer copy drops all
   // itemized prices so only the single, reconciled TOTAL shows.
-  const itemizedSumCents = [...inclusions, ...laborRows].reduce((s, it) => s + lineTotalCents(it), 0);
+  /*
+   * SCOPE BLOCKS COUNT AS ITEMISED MONEY.
+   *
+   * This sum is what tells the page whether a final price was set by hand:
+   * when the lines do not add up to the total, an override is in effect. Blocks
+   * were left out of it when they came out of `inclusions`, so a proposal made
+   * ENTIRELY of blocks summed to zero against a real total, and every override
+   * behaviour fired — the grand total printed under three blocks that already
+   * explained it, and labor prices would have been hidden.
+   *
+   * Caught by rendering Stephanie's own proposal in the app, not by reading
+   * this line: the arithmetic is invisible until something prints.
+   */
+  const itemizedSumCents = [...inclusions, ...scopeBlocks, ...laborRows].reduce(
+    (s, it) => s + lineTotalCents(it),
+    0,
+  );
   const overrideActive = mode !== "internal" && Math.abs(proposal.total_cents - itemizedSumCents) > 1;
   // On the INTERNAL report the itemized math is deliberately kept, so an
   // override means the printed line prices genuinely do not add up to the
@@ -2137,7 +2153,7 @@ export function ProposalPdfDocument({
 
             Flow is now: Scope of Work → TOTAL → Alternate → Exclusions →
             Qualifications → sign-off. */}
-        {/* Her blocks, each carrying its own price. Between the itemised scope
+        {/* Her blocks, each carrying its own price. Between the itemized scope
             and the page's TOTAL, which is where "under the inclusions" puts
             them. */}
         {scopeBlocks.map((b) => (

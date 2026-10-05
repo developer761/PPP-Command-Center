@@ -251,4 +251,35 @@ describe("her Inspection Room proposal, rendered", () => {
     expect(await pdfPageCount(bytes)).toBe(1);
     expect(fitted).toBe(true);
   }, 60_000);
+
+  it("does not mistake a blocks-only proposal for a hand-set final price", async () => {
+    /*
+     * REGRESSION. The page decides an override is in effect when the itemized
+     * lines do not add up to the total. Blocks were left out of that sum when
+     * they came out of `inclusions`, so a proposal made entirely of blocks
+     * summed to zero against a real total and every override behaviour fired —
+     * the grand total printed underneath three blocks that already explained
+     * it, which is the one thing her sample does not have.
+     *
+     * Rendering it in the app is what showed this; nothing in the source reads
+     * wrong. The assertion here is the page COUNT, because an extra price block
+     * is the kind of growth that eventually costs a page — and because the
+     * decision itself is covered by shouldPrintGrandTotal above.
+     */
+    const { bytes, fitted } = await renderFitToOnePage((pageHeightScale) =>
+      renderProposalPdf({
+        proposal: HER_PROPOSAL, lineItems: HER_BLOCKS,
+        exclusions: ["Work to be completed during normal business hours"],
+        qualifications: [], showSignatureBlock: true, company: COMPANY,
+        mode: "customer", pageHeightScale,
+        tax: {
+          priceCents: 537500, label: "NYS Sales Tax (8.75%)",
+          taxCents: 47031, totalCents: 584531,
+          jurisdictionName: "Suffolk", rateThou: 8750,
+        },
+      } as never)
+    );
+    expect(await pdfPageCount(bytes)).toBe(1);
+    expect(fitted).toBe(true);
+  }, 60_000);
 });
