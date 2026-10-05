@@ -85,6 +85,21 @@ const CHAINS = [
       // The renderer stays per-message, but on ownWords rather than the narration.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
+      /**
+       * AND THE MODEL IS TOLD, which is the half that was missing.
+       *
+       * The validator knew a day alone is not bookable and the renderer knew
+       * how to ask for the other half; nothing told the MODEL. So "Wednesday
+       * works" — one of the commonest answers there is — had it choose
+       * `success`, get refused, and hand a fully collected lead to a person.
+       * Seen live in Spanish and identical in English.
+       */
+      ["lib/messaging/agent-run.ts", /A DAY IS NOT AN APPOINTMENT/],
+      // Spanish days and windows, or none of the above fires for a Spanish
+      // lead: "el miércoles" read as no day given, so the close was refused
+      // and ASK_AVAILABILITY_GAP_ES could never render.
+      ["lib/messaging/availability.ts", /lunes\|martes\|mi\[[^\]]*\]rcoles/],
+      ["lib/messaging/availability.ts", /ma\[[^\]]*\]anas\?\|tardes\?\|noches\?/],
     ],
     forbidden: [
       /**
