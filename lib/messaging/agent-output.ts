@@ -19,7 +19,7 @@
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import type { JobRoute } from "./offsite";
-import { parkKind, isAsk, conversationWasDeferred } from "./parking";
+import { parkKind, isAsk, conversationWasDeferred, parkIsBlockedOnEvent } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
@@ -305,7 +305,8 @@ export type RejectReason =
   | "question_left_unanswered"
   | "details_never_collected"
   | "pressed_after_deferral"      // A40 (2): still collecting after they moved the conversation
-  | "parked_a_field_then_quit"    // A40 (1): ended having gathered nothing
+  | "parked_a_field_then_quit"
+  | "parked_before_running_a7"    // A40 (1): ended having gathered nothing
   | "partial_address_walked_past" // A11: moved on holding half an address
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
@@ -964,6 +965,18 @@ const CLAIMS_THE_FLOW_FINISHED = new Set<string>(["success", "phone_pricing"]);
 const DEFERRAL_ENDINGS = new Set<string>(["schedule_follow_up"]);
 
 /**
+ * Either half of A7's ladder counts as having run it.
+ *
+ * "Offer the visit for when they WILL have access" is an availability ask —
+ * there is no separate intent for a later visit, and inventing one would give
+ * the model another way to be wrong for nothing. The two off-site intents are
+ * the second rung.
+ */
+const RAN_A7_LADDER = new Set<string>([
+  "offer_offsite_quote", "present_offsite_quote", "ask_availability",
+]);
+
+/**
  * Intents that promise PPP will do the work.
  *
  * Booking, quoting and closing all say we cover this address. Asking for
@@ -1304,6 +1317,48 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
           "conversation — collect the rest rather than closing having gathered nothing",
       };
     }
+  }
+
+  /**
+   * A NAMED EVENT RUNS A7'S LADDER BEFORE IT PARKS.
+   *
+   * Kate, 2026-10-05, supplying the note we had been missing — and it was in
+   * A40's rule card all along, which is why the model already reads it:
+   *
+   *   "BLOCKED ON A NAMED EVENT - moving, a closing, an insurance payout, no
+   *    power at the property, travelling. TWO WEEKS. Before parking one of
+   *    these at all, run A7: no access to the property yet is one of its
+   *    triggers, and its order is to offer the visit for when they WILL have
+   *    access first, and the off-site quote only if they will not wait. Park
+   *    only if they decline both."
+   *
+   * So a park is the THIRD move, not the first. Somebody closing on a house
+   * in a fortnight is a live lead who can be booked for the week after, or
+   * quoted off-site today — and parking them straight away throws both away
+   * and waits two weeks to say so.
+   *
+   * The rule card says it and the model mostly follows it; this makes it a
+   * refusal rather than a hope. Satisfied by EITHER half of the ladder: an
+   * off-site offer, or an availability ask, which is how "offer the visit for
+   * when they WILL have access" is actually phrased.
+   *
+   * Narrow on purpose. It needs a named event, a park ENDING, and no prior
+   * attempt — a conversation where the ladder has already run parks exactly
+   * as before, and so does every ordinary deferral, which A40's common case
+   * is by a wide margin.
+   */
+  if (
+    ctx.priorIntents
+    && DEFERRAL_ENDINGS.has(a.intent)
+    && parkIsBlockedOnEvent(ctx.customerText)
+    && !ctx.priorIntents.some((i) => RAN_A7_LADDER.has(i))
+  ) {
+    return {
+      ok: false, reason: "parked_before_running_a7",
+      detail: "they are blocked on a named event, so A7 runs first: offer the visit for when "
+        + "they WILL have access, and the off-site quote if they will not wait. Park only if "
+        + "they decline both (A40)",
+    };
   }
 
   /**
