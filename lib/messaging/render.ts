@@ -19,7 +19,10 @@
  * better." Selection is deterministic on the turn number rather than random —
  * same conversation, same words, so a regression test can assert output.
  */
-import { BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun } from "./agent-output";
+import {
+  BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  ANSWERS_A_QUESTION,
+} from "./agent-output";
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
@@ -1439,6 +1442,19 @@ function renderBody(input: RenderInput): string {
   }
 
   const rapport = (input.freeText ?? "").trim();
+  /**
+   * The customer asked us something AND this intent's own template does not
+   * answer it — so the rapport is the only place an answer can come from, and
+   * dropping it sends a turn that ignores them.
+   *
+   * ANSWERS_A_QUESTION is the same set validateAction uses to decide whether
+   * A29 is satisfied without any rapport at all, which is exactly the right
+   * line: where the template answers, rapport saying the same thing again is
+   * the duplicate the redundancy rule exists to remove — "Pricing comes from
+   * our estimator… That's one for the estimator…" — and it keeps doing that.
+   */
+  const answerIsOwed =
+    asksSomething(input.customerText) && !ANSWERS_A_QUESTION.has(input.intent);
   const parts: string[] = [];
   /** Where the model's rapport ended up, or -1 when it was not used at all. */
   let rapportAt = -1;
@@ -1460,7 +1476,33 @@ function renderBody(input: RenderInput): string {
     // Two acknowledgements in a row is how "Got it. Got it." reaches a
     // customer. The template's own opener wins, because it is the one that
     // goes on to say something.
-    && !rapportIsRedundant(rapport, pick)
+    //
+    // UNLESS AN ANSWER IS OWED, in which case the rapport is not a pleasantry
+    // and dropping it ships the exact breach A29 exists to prevent.
+    //
+    // Found live 2026-10-05. The customer asked "what times do you have
+    // available this week?", the model answered it in freeText and asked for
+    // the address, and validateAction ALLOWED the turn precisely because the
+    // answer was there — `saysSomething` is one of the things that satisfies
+    // the A29 guard. Then this line dropped the answer for sharing words with
+    // the template, and what went out was:
+    //
+    //   "What address should we have the estimator go to?"
+    //
+    // and nothing else. The customer's question ignored, while the validator
+    // believed it had been answered.
+    //
+    // agent-output already documents this collision for the yes/no case —
+    // "the echo rule removes the answer, and then this guard sees no answer
+    // and escalates... two correct rules with no legal move between them" —
+    // and fixed it there with affirmsAYesNo. This is the same collision for
+    // every other kind of question, and it is worse, because it does not
+    // escalate: it sends the half that asks and drops the half that answers.
+    //
+    // The redundancy rule keeps its whole job whenever nothing is owed. When
+    // something is, two acknowledgements stacked is a much smaller fault than
+    // ignoring a customer who asked us a direct question.
+    && !(rapportIsRedundant(rapport, pick) && !answerIsOwed)
   ) {
     parts.push(rapport);
     rapportAt = parts.length - 1;

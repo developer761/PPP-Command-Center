@@ -806,7 +806,7 @@ export function checkRapport(text: string, customerText?: string, templateAsks =
  * read a value back, which answers "do you have my details". escalate hands
  * the question to a person, which is the honest answer when there is none.
  */
-const ANSWERS_A_QUESTION = new Set<string>([
+export const ANSWERS_A_QUESTION = new Set<string>([
   "answer_question", "defer_to_estimator", "escalate",
   "present_offsite_quote", "offer_offsite_quote",
   "confirm_scope", "confirm_address", "confirm_contact",
