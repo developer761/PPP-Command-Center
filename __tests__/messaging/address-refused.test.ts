@@ -60,6 +60,23 @@ describe("the re-ask after a refusal narrows to the zip and says why", () => {
     expect(out).not.toMatch(/where's the property located/i);
   });
 
+  /**
+   * AND NOT WHEN THEY ASKED US SOMETHING. The floor concedes the street on
+   * purpose and says "No problem" to having been turned down; a customer who
+   * replied with a question of their own has turned nothing down. Played live:
+   * "what times do you have available this week?" got "No problem. We at least
+   * need the zip code to price it accurately" — conceding to a refusal that
+   * had not happened, and giving the street away for free.
+   *
+   * The flag is computed by the caller, so this asserts the rendering it
+   * drives; address-dodged.test.ts covers the condition itself.
+   */
+  it("uses the ordinary ask, not the floor, when the flag is off", () => {
+    const out = renderMessage({ ...base, addressAskedBefore: false });
+    expect(out).not.toMatch(/at least need the zip/i);
+    expect(out).toMatch(/address|property/i);
+  });
+
   it("leaves the FIRST ask alone — it has no reason to apologise yet", () => {
     const out = renderMessage({ ...base, turn: 0, addressAskedBefore: false });
     expect(out).toMatch(/address/i);

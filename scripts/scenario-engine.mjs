@@ -14,7 +14,7 @@
  * means agent-run calling this, which is a bigger change than a hunt should
  * make in passing.
  */
-import { validateAction, intentsForTrack, stageFromIntents } from "../lib/messaging/agent-output.ts";
+import { validateAction, intentsForTrack, stageFromIntents, asksSomething } from "../lib/messaging/agent-output.ts";
 import { renderMessage, isSilent, templateAsks } from "../lib/messaging/render.ts";
 import { knownFromThread } from "../lib/messaging/known-from-thread.ts";
 import { conversationLanguage } from "../lib/messaging/language.ts";
@@ -168,7 +168,8 @@ export function waysThrough(scenario) {
      * passes it (agent-run.ts) so the refusal re-ask must be reachable here
      * too, or the zip floor is wording no scenario can ever see.
      */
-    addressAskedBefore: !derived.address && priorIntents.includes("ask_address"),
+    addressAskedBefore: !derived.address && priorIntents.includes("ask_address")
+      && !asksSomething(ownWords),
     /**
      * A SEVENTH FIELD, and the same shape as addressGap: agent-run passes it
      * (agent-run.ts) and this did not, so A4's gap wording could not render in

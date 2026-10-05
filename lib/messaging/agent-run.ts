@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, intentsForTrack, intentGuideFor, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
-  isYesNoQuestion,
+  isYesNoQuestion, asksSomething,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
@@ -939,10 +939,21 @@ Choose the next action.`;
       secondProperty: wantsSecondAddress,
       /**
        * A REPEAT ask, which is Kate's zip floor rather than the same question
-       * twice. "We hold nothing AND we have asked" is the refusal case without
-       * having to detect a refusal — the same ask-based test the A3 legs use.
+       * twice. "We hold nothing AND we have asked" stands in for a refusal
+       * without having to detect one — the same ask-based test the A3 legs use.
+       *
+       * EXCEPT WHEN THEY ASKED US SOMETHING, which is the case it got wrong.
+       * The zip floor is the concession we make AFTER a refusal — "we at least
+       * need the zip code" gives up the street on purpose, and says "No
+       * problem" to having been turned down. A customer who answered the
+       * address question with a question of their own has refused nothing, and
+       * played live that read as conceding to a refusal that never happened
+       * while handing back the street for free. They get the ordinary ask
+       * again; the floor is still there for when they actually decline.
        */
-      addressAskedBefore: !kf.address && (opts.priorIntents ?? []).includes("ask_address"),
+      addressAskedBefore: !kf.address
+        && (opts.priorIntents ?? []).includes("ask_address")
+        && !asksSomething(ownWords),
       /**
        * A4: and the same for availability. Read from what the customer just
        * said, because that is where an answer to an availability question
