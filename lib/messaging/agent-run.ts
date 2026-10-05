@@ -315,6 +315,12 @@ Say so first. If the job is small enough, or they want somebody out the same
 day, we quote it over the phone instead of visiting, but tell them that is
 what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
+
+WHEN THEY WILL NOT GIVE AN ADDRESS, THE ANSWER IS A PHONE QUOTE.
+Ask once more for the zip code at least, and say why — an accurate estimate
+needs it. If they still will not, do NOT keep asking and do NOT try to close:
+an estimator cannot be sent to an address we do not have, so choose
+"phone_pricing" and let them be priced over the phone instead.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 ${classARules ? `\n${classARules}\n` : ""}${workspaceFaqs ? `\n${workspaceFaqs}\n` : ""}

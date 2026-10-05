@@ -114,6 +114,30 @@ const SCENARIOS = [
    * The event is named ONCE and referred to loosely afterwards, which is the
    * half that made the detector say "no event" on the turn that mattered.
    */
+  /**
+   * KATE'S #4, 2026-10-05: "We wouldn't be able to provide an in-person
+   * estimate without a confirmed address, so a phone pricing would be
+   * offered/required in this case."
+   *
+   * Found in the sandbox: the customer refuses the address, the bot collects
+   * everything else and then tries to CLOSE, which is refused for the address
+   * it does not hold — a refusal and a handover where Kate wants a phone
+   * price. phone_pricing was legal the whole time; nothing told the model to
+   * reach for it.
+   */
+  { name: "refuses the address, so it has to be a phone price",
+    history: [
+      "i need my kitchen and living room painted",
+      "id rather not give my address out over text",
+      "Dana Reed, dana@example.com",
+    ],
+    text: "Wednesday afternoon works",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "kitchen and living room", email: "dana@example.com",
+      phone: "999-784-6046", name: "Dana" },
+    wants: "phone_pricing",
+    refuses: "success" },
+
   { name: "blocked on a closing, then defers",
     history: [
       "we want the whole upstairs painted but we are closing on the house on the 14th",
