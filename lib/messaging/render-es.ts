@@ -200,6 +200,16 @@ export const ASK_ADDRESS_GAP_ES: Record<"zip" | "street", string[]> = {
 /** Se negaron a dar la dirección y ya preguntamos. Ver ASK_ADDRESS_REFUSED. */
 export const ASK_ADDRESS_REFUSED_ES = [ASK_ZIP_WITH_REASON_ES];
 
+/**
+ * Cotización por teléfono cuando no tenemos dirección: aquí la llamada es el
+ * plan, no la alternativa, y no se menciona ninguna cita porque no puede
+ * haberla. Ver PHONE_PRICING_NO_ADDRESS.
+ */
+export const PHONE_PRICING_NO_ADDRESS_ES = [
+  "No hay problema, lo podemos hacer por teléfono. Uno de nuestros estimadores lo llamará para repasar los detalles y darle un precio.",
+  "Sin ningún problema. Lo cotizamos por teléfono, y un estimador se comunicará con usted para repasar los detalles.",
+];
+
 export const ASK_AVAILABILITY_GAP_ES: Record<"window" | "day", string[]> = {
   window: [
     "Qué horario le funciona esos días?",

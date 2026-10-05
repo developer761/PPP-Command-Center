@@ -25,6 +25,7 @@ import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import {
   SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
+  PHONE_PRICING_NO_ADDRESS_ES,
 } from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
@@ -837,6 +838,30 @@ const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
 const ASK_ADDRESS_REFUSED = [ASK_ZIP_WITH_REASON];
 
 /**
+ * A PHONE PRICE WHEN WE HAVE NO ADDRESS AT ALL.
+ *
+ * The ordinary phone_pricing wording says "I'm getting that appointment set up
+ * for you… if a number is all you need, they can do a quick quote instead".
+ * That is right for the case it was written for — a small job, or somebody who
+ * wants a number today — where the visit is the default and the phone quote is
+ * the alternative offered.
+ *
+ * It is a FALSE PROMISE for the customer who just refused to give an address.
+ * Played live 2026-10-05: they said "no im not giving that out, i told you",
+ * and two turns later the bot said it was setting up their appointment — to a
+ * property we cannot locate, which the office cannot send anybody to. It also
+ * ignores the thing they just said twice.
+ *
+ * So the branches swap: here the phone quote is the plan, not the fallback,
+ * and no appointment is mentioned because none can happen. Still names no time
+ * (A15) and still promises no price (A1).
+ */
+const PHONE_PRICING_NO_ADDRESS = [
+  "That's no problem — we can do this over the phone instead. One of our estimators will call you to go through the details and get you a price.",
+  "Not a problem at all. We'll price it over the phone instead, and an estimator will reach out to go through the details with you.",
+];
+
+/**
  * Asking for the half of the availability we are missing.
  *
  * A4, Kate, 2026-09-21: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed &
@@ -1118,8 +1143,16 @@ function renderBody(input: RenderInput): string {
    */
   const refused = input.intent === "ask_address" && !gap && !secondProperty
     && !!input.addressAskedBefore;
+  /**
+   * No flag for this one: the renderer already holds the address, so it can
+   * see for itself that there is none. Derived beats passed — a flag would be
+   * a fourth thing two callers have to remember to set.
+   */
+  const phonePriceNoAddress = input.intent === "phone_pricing" && !input.known?.address;
   const variants = secondProperty
     ? [es ? askSecondPropertyAddressEs() : askSecondPropertyAddress()]
+    : phonePriceNoAddress
+    ? (es ? PHONE_PRICING_NO_ADDRESS_ES : PHONE_PRICING_NO_ADDRESS)
     : refused
     ? (es ? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED)
     : gap

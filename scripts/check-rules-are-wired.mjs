@@ -413,6 +413,9 @@ const CHAINS = [
       // The model is told phone_pricing owes contact, which is what it got wrong.
       ["lib/messaging/agent-run.ts", /A phone quote is NOT a way out of the rest/],
       ["lib/messaging/agent-run.ts", /ASK FOR THOSE FIRST/],
+      // And the price itself says no appointment, because none can happen.
+      ["lib/messaging/render.ts", /const PHONE_PRICING_NO_ADDRESS = \[/],
+      ["lib/messaging/render.ts", /phonePriceNoAddress = input\.intent === "phone_pricing" && !input\.known\?\.address/],
     ],
   },
   {

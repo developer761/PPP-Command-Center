@@ -102,6 +102,57 @@ describe("the re-ask after a refusal narrows to the zip and says why", () => {
 });
 
 /**
+ * THE PHONE PRICE ITSELF, which is where the live run ended up: the ladder
+ * worked, nothing was blocked, and the message said "I'm getting that
+ * appointment set up for you" to somebody who had refused an address twice.
+ * Nothing refuses that — it is approved copy, correct for the case it was
+ * written for — so only a test of the wording catches it.
+ */
+describe("a phone price with no address promises no visit", () => {
+  const phone = (known: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    renderMessage({ intent: "phone_pricing", turn: 4, known, ...extra } as never);
+
+  it("does not claim an appointment is being arranged", () => {
+    const out = phone({ address: null, scope: "kitchen", email: "d@e.com" });
+    expect(out).not.toMatch(/appointment/i);
+    expect(out).not.toMatch(/\bvisit\b/i);
+  });
+
+  it("says a person will call with a price", () => {
+    const out = phone({ address: null, scope: "kitchen" });
+    expect(out).toMatch(/phone/i);
+    expect(out).toMatch(/estimator/i);
+  });
+
+  /** A1 and A15 still bind: no number, no time. */
+  it("names no price and no time", () => {
+    for (const turn of [0, 1, 2, 3]) {
+      const out = renderMessage({
+        intent: "phone_pricing", turn, known: { address: null, scope: "kitchen" },
+      } as never);
+      expect(out).not.toMatch(/\$|\d+\s*(dollars|per)/i);
+      expect(out).not.toMatch(/monday|tuesday|wednesday|thursday|friday|tomorrow|\d\s*(am|pm)/i);
+    }
+  });
+
+  it("says it in Spanish too", () => {
+    const out = phone({ address: null, scope: "cocina" }, { language: "es" });
+    expect(out).toMatch(/teléfono/i);
+    expect(out).not.toMatch(/cita/i);
+  });
+
+  /**
+   * AND LEAVES THE ORDINARY CASE ALONE. When we DO hold an address the visit
+   * is real and offering the quick quote instead is Kate's own wording — this
+   * must not have replaced it.
+   */
+  it("keeps the appointment wording when we actually have an address", () => {
+    const out = phone({ address: "12 Oak St, Garden City NY 11530", scope: "kitchen" });
+    expect(out).toMatch(/appointment/i);
+  });
+});
+
+/**
  * AND THE DESTINATION. These are the rules the prompt now has to agree with;
  * if either flips, the guidance in agent-run.ts is telling the model to do
  * something that gets refused.
