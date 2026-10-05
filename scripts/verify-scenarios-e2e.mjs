@@ -150,6 +150,39 @@ const SCENARIOS = [
    * The legal move is to ask for contact first, and nothing asserted one
    * existed.
    */
+  /**
+   * DODGED, NOT REFUSED — and the difference decides whether the flow may
+   * advance. Played live 2026-10-05:
+   *
+   *   bot       "What's the address for the project?"
+   *   customer  "what times do you have available this week?"
+   *   bot       answered honestly, then asked for NAME AND EMAIL
+   *   ...and never asked for the address again, so four turns later the close
+   *   was refused for the address we never got, and the lead went to a person.
+   *
+   * Answering was right (A29). Advancing was not. A41 lets the flow move past
+   * a REFUSAL; a question is not a refusal, and this is the commonest way an
+   * address ask goes unanswered. A11 is the most-breached rule in the corpus.
+   *
+   * WHAT THIS ASSERTS, AND WHAT IT CANNOT. The answering half is enforced —
+   * `question_left_unanswered` refuses any turn that just asks the next
+   * question back, which is why `ask_address` is NOT listed as wanted here:
+   * every intent is illegal in this context unless its text answers them, and
+   * the harness only has generic rapport ("Got it, thank you.") to offer. So
+   * asserting that some OTHER intent is refused would pass for the wrong
+   * reason and look like a real test.
+   *
+   * The half that is prompt-level — answer them and ask for the SAME thing
+   * again rather than advancing — is verified by replaying it, not here.
+   */
+  { name: "dodges the address with a question, so the question gets answered",
+    history: ["i need my living room painted"],
+    text: "what times do you have available this week?",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "living room" },
+    wants: "answer_question",
+    refuses: "success" },
+
   { name: "refuses the address: the phone price is not a way out of the flow",
     history: [
       "i need my kitchen and living room painted",
