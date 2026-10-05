@@ -167,9 +167,33 @@ export default function SupplierPickList({
             </button>
           </div>
         )}
-        {!loading && !error && filtered.length === 0 && (
+        {/* Judged on `ranked`, NOT `filtered`. The state filter is applied after
+            the search, so a person whose state matches no vendor had
+            filtered.length > 0 and ranked.length === 0 — and fell through every
+            branch below to render an empty box with no message at all.
+            Reachable two ways: a two-letter typo ("NU" for "NJ"), and a real
+            state we simply have no vendor in yet. */}
+        {!loading && !error && ranked.length === 0 && (
           <div className="p-6 text-center text-sm text-ppp-charcoal-500">
-            {suppliers.length === 0 ? (
+            {suppliers.length > 0 && filtered.length > 0 ? (
+              <>
+                <div className="font-medium text-ppp-charcoal">
+                  No vendors in {(userState ?? "").trim().toUpperCase() || "your state"}.
+                </div>
+                <div className="mt-1.5 leading-snug">
+                  Your account is set to{" "}
+                  <span className="font-semibold">{(userState ?? "").trim().toUpperCase()}</span>, and
+                  every vendor we have is somewhere else. Check the state on your account &mdash;
+                  or clear it to see all {suppliers.length}.
+                </div>
+                <a
+                  href="/dashboard/account"
+                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-xs font-semibold text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Open account settings
+                </a>
+              </>
+            ) : suppliers.length === 0 ? (
               <>
                 <div>No active suppliers configured yet.</div>
                 <a

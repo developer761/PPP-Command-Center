@@ -33,6 +33,12 @@ export type Profile = {
   phone?: string | null;
   /** Display name for provisioned users who have no SF mapping. */
   full_name?: string | null;
+  /** Two-letter state this person works in (migration 20261002140000), which
+   *  filters their vendor picker — "NJ based guys see NJ Vendors, NY sees NY
+   *  vendors" (Katie 2026-10-02). NULL means unset, and an unset person sees
+   *  EVERY vendor rather than none. Optional at the type level for the same
+   *  reason as `role`: a row read before the migration ran must not throw. */
+  state?: string | null;
   is_active: boolean;
   /** Phase 0 New Platform (migration 019) — per-platform access flags.
    *  Defaults: Command Center true (everyone keeps prior access), New

@@ -6,6 +6,7 @@ import { normalizeRole, roleLabel } from "@/lib/auth/roles";
 import PageHeader from "@/components/page-header";
 import ChangePasswordForm from "@/components/change-password-form";
 import AccountPhoneForm from "@/components/account-phone-form";
+import AccountStateForm from "@/components/account-state-form";
 
 /**
  * Account settings — the signed-in user's own profile + password change.
@@ -22,6 +23,12 @@ export default async function AccountPage() {
   if (!user) redirect("/");
 
   const profile = await getProfileByUserId(user.id);
+  // The state box must show the row it will WRITE to. getProfileByUserId
+  // substitutes the proxy target's profile when an admin is acting as somebody
+  // else, but /api/account/state resolves the real signed-in user from the
+  // session — so without ignoreProxy the field would display one person's state
+  // and save over another's.
+  const ownProfile = await getProfileByUserId(user.id, { ignoreProxy: true });
   const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
   const name = profile?.sf_user_name ?? profile?.full_name ?? user.email?.split("@")[0] ?? "";
   const provider = profile?.auth_provider === "password" ? "Email & password" : "Google";
@@ -30,7 +37,7 @@ export default async function AccountPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Account settings"
-        subtitle="Your profile, contact number and password."
+        subtitle="Your profile, contact number, the state you order in, and your password."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -51,6 +58,13 @@ export default async function AccountPage() {
               it was blank for everyone. */}
           <div className="mt-5 pt-5 border-t border-ppp-charcoal-100">
             <AccountPhoneForm initial={(profile?.phone as string | null) ?? null} />
+          </div>
+
+          {/* Karan 2026-10-05 — self-serve, so nobody waits on an admin to be
+              able to order. The admin editor on Settings → Access & Users stays
+              for corrections. */}
+          <div className="mt-5 pt-5 border-t border-ppp-charcoal-100">
+            <AccountStateForm initial={ownProfile?.state ?? null} />
           </div>
         </section>
 

@@ -64,12 +64,14 @@ export type ActiveSupplier = {
    *  the payload so a caller can't silently start assuming the opposite. */
   isActive: boolean;
   /**
-   * Two-letter state of this vendor's branch (Katie 2026-10-01), used to float
-   * the vendors near the job to the top of the picker.
+   * Two-letter state of this vendor's branch, used to FILTER the picker to the
+   * vendors in the signed-in person's own state — "NJ based guys see NJ
+   * Vendors, NY sees NY vendors" (Katie 2026-10-02, overruling the 10-01
+   * design that sorted by the JOB's state instead).
    *
-   * NULL for the three PPP vendors whose pickup address carries no state, and
-   * for any vendor an admin adds without filling it in. A null NEVER removes a
-   * vendor from the list — see rankVendors.
+   * NULL for a vendor an admin adds without filling it in, and for the two that
+   * stay inactive and are never emailed an order (Eco Wall Coatings, Sunbelt).
+   * A null NEVER removes a vendor from the list — see vendorIsInScope.
    */
   state: string | null;
 };

@@ -600,12 +600,24 @@ export async function updateUserPhone(input: {
   return { ok: true };
 }
 
+/** The 50 states, DC and the territories PPP could plausibly work in. Used to
+ *  reject a two-letter string that is shaped like a state but isn't one. */
+const US_STATE_CODES = new Set([
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC","PR","VI","GU",
+]);
+
 /**
  * The state a person works in, which filters their vendor list.
  *
  * Katie, 2026-10-02: "NJ based guys see NJ Vendors, NY sees NY vendors, etc."
  * Blank clears it, and a person with no state set sees every vendor rather
  * than none — an unset profile must not lock somebody out of ordering.
+ *
+ * Shared by the admin editor (Settings → Access & Users) and, since 2026-10-05,
+ * by /api/account/state, where every member of staff sets their own.
  */
 export async function updateUserState(input: {
   user_id: string;
@@ -615,6 +627,14 @@ export async function updateUserState(input: {
   const raw = (input.state ?? "").trim().toUpperCase();
   if (raw && !/^[A-Z]{2}$/.test(raw)) {
     return { ok: false, error: "Use the two-letter state code, e.g. NY, NJ or FL." };
+  }
+  // The shape check above is not enough, now that people set this themselves.
+  // "ZZ" and "NU" pass /^[A-Z]{2}$/ and then match no vendor at all, which
+  // emptied the picker — so a one-key slip on NJ silently took somebody's whole
+  // vendor list away. Checked against the real codes instead, which turns that
+  // into a message at the moment of typing.
+  if (raw && !US_STATE_CODES.has(raw)) {
+    return { ok: false, error: `"${raw}" isn't a state. Use a code like NY, NJ or FL.` };
   }
   const state = raw || null;
   const sb = adminClient();
