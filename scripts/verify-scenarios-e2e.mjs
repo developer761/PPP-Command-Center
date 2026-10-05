@@ -164,24 +164,33 @@ const SCENARIOS = [
    * a REFUSAL; a question is not a refusal, and this is the commonest way an
    * address ask goes unanswered. A11 is the most-breached rule in the corpus.
    *
-   * WHAT THIS ASSERTS, AND WHAT IT CANNOT. The answering half is enforced —
-   * `question_left_unanswered` refuses any turn that just asks the next
-   * question back, which is why `ask_address` is NOT listed as wanted here:
-   * every intent is illegal in this context unless its text answers them, and
-   * the harness only has generic rapport ("Got it, thank you.") to offer. So
-   * asserting that some OTHER intent is refused would pass for the wrong
-   * reason and look like a real test.
+   * TOLD THE MODEL FIRST, AND IT DECLINED. The prompt gained "a question back
+   * is not an answer" and the next live replay advanced to ask_contact anyway,
+   * so `address_question_walked_past` is what makes the instruction true.
    *
-   * The half that is prompt-level — answer them and ask for the SAME thing
-   * again rather than advancing — is verified by replaying it, not here.
+   * `refuses: ask_contact` is the whole point — advancing to the NEXT field is
+   * the bug. The run prints the reason, so a pass here cannot be the generic
+   * question_left_unanswered standing in for it.
    */
-  { name: "dodges the address with a question, so the question gets answered",
+  { name: "dodges the address with a question, so the flow may not advance",
     history: ["i need my living room painted"],
     text: "what times do you have available this week?",
     priorIntents: ["ask_project_details", "ask_address"],
     known: { inquiryScope: "living room" },
     wants: "answer_question",
-    refuses: "success" },
+    refuses: "ask_contact" },
+
+  /*
+    THE RELEASE — that it lets go after two asks — is NOT testable here, and
+    the reason is the harness rather than the rule. The guard only fires when
+    the customer's message is a QUESTION, and a question also means every
+    intent owes an answer; the harness has only generic rapport ("Got it,
+    thank you.") to offer, so ask_contact is refused as
+    question_left_unanswered whatever this guard does. A scenario asserting
+    the release would fail for a reason that has nothing to do with it.
+    Proved in __tests__/messaging/address-dodged.test.ts instead, where the
+    free text can carry the answer.
+  */
 
   { name: "refuses the address: the phone price is not a way out of the flow",
     history: [

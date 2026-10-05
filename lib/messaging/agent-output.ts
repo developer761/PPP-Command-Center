@@ -324,6 +324,7 @@ export type RejectReason =
   | "parked_a_field_then_quit"
   | "parked_before_running_a7"    // A40 (1): ended having gathered nothing
   | "partial_address_walked_past" // A11: moved on holding half an address
+  | "address_question_walked_past" // A11: advanced on a question, which is not a refusal
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected";// closing a two-property job having collected one
@@ -1230,6 +1231,59 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * The effect is narrow: after any detour, the bot must come back for the
    * missing piece before advancing, and exactly one attempt is owed.
    */
+  /**
+   * A QUESTION BACK IS NOT A REFUSAL, SO THE ADDRESS IS STILL OWED.
+   *
+   * The guard above covers HALF an address. This covers none of it, and only
+   * the one case where moving on is clearly wrong.
+   *
+   * Played live 2026-10-05, twice, the second time against a build whose
+   * prompt had just been told not to do it:
+   *
+   *   bot       "What's the address for the project?"
+   *   customer  "what times do you have available this week?"
+   *   bot       answered honestly — then asked for NAME AND EMAIL,
+   *             and never asked for the address again
+   *
+   * Four turns later the close was refused for the address we never got and
+   * the lead went to a person. Answering was right (A29); advancing was not.
+   * A41 says do not block on a REFUSAL — and a question is not a refusal.
+   * Somebody asking what times we have still has not said where the property
+   * is, and this is the commonest way an address ask goes unanswered.
+   *
+   * ── WHY THIS IS A REFUSAL AND NOT A PROMPT LINE ─────────────────────────
+   *
+   * Because the prompt line was tried first and the model declined it. The
+   * instruction is still there and still right; this is what makes it true.
+   *
+   * ── WHY IT CANNOT LOOP ──────────────────────────────────────────────────
+   *
+   * Three bounds, and all three matter:
+   *   - it needs the customer's last message to be a QUESTION. A refusal
+   *     ("I'd rather not give my address out over text") is not one, so the
+   *     refusal ladder — zip floor, contact, phone price — is untouched.
+   *   - it stops after the SECOND ask. Two attempts is what Kate already
+   *     accepted for the zip floor; a third would be the nagging A41 forbids.
+   *   - MOVES_PAST_ADDRESS holds no exit. escalate, bailout, discard, lost,
+   *     answer_question and defer_to_estimator stay legal throughout, so a
+   *     customer who opts out, turns abusive or just wants an answer is never
+   *     held here.
+   */
+  if (
+    !ctx.addressGap
+    && !ctx.knownFields?.address
+    && MOVES_PAST_ADDRESS.has(a.intent)
+    && asksSomething(ctx.customerText)
+    && (ctx.priorIntents ?? []).filter((i) => i === "ask_address").length === 1
+  ) {
+    return {
+      ok: false, reason: "address_question_walked_past",
+      detail: "they asked you something instead of giving the address, which is not a "
+        + "refusal — so the address is still owed. Answer them AND ask for it again in "
+        + "the same message, rather than moving on to the next step (A11)",
+    };
+  }
+
   if (
     ctx.addressGap
     && MOVES_PAST_ADDRESS.has(a.intent)
