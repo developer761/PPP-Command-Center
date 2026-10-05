@@ -52,4 +52,30 @@ describe("an address the customer typed", () => {
       expect(addressFromCustomer(t), t).toBeNull();
     }
   });
+
+  /**
+   * THE SAME GUARD, FINISHED. The measurement words were English only, so a
+   * five-digit area in Spanish became a ZIP CODE: "necesito pintar 10000 pies
+   * cuadrados" recorded 10000 as this customer's postcode, and the bot then
+   * asked for the street of a number it had invented.
+   *
+   * Only five-digit figures could reach it, so "1450 pies cuadrados" was never
+   * affected — it took a big job to produce a fake address.
+   */
+  it("does not read a Spanish area as a zip code", () => {
+    for (const t of [
+      "necesito pintar 10000 pies cuadrados de mi casa",
+      "son como 12000 metros cuadrados",
+      "el local tiene 15000 pies cuadrados",
+      "aproximadamente 20000 m2",
+    ]) {
+      expect(addressFromCustomer(t), t).toBeNull();
+    }
+  });
+
+  /** And a real zip in a Spanish sentence still parses. */
+  it("still reads a genuine address written in Spanish prose", () => {
+    expect(addressFromCustomer("mi casa está en 12 Oak St, Garden City NY 11530"))
+      .toBe("12 Oak St, 11530");
+  });
 });
