@@ -17,6 +17,7 @@ import {
   pauseOnReply, resumeAfterCadence, readsAsADisposition,
 } from "@/lib/messaging/call-signals";
 import { sendingWindow } from "@/lib/messaging/sending-window";
+import { validateAction } from "@/lib/messaging/agent-output";
 
 const NY = "America/New_York";
 const LA = "America/Los_Angeles";
@@ -517,5 +518,66 @@ describe("the follow-up prompt names the scope", () => {
   it("says nothing at all on an ordinary turn", () => {
     // The line is turn context and must not leak into a live reply.
     expect(src).toMatch(/const followUpLine = isFollowUpStep\(opts\.followUpStep\)/);
+  });
+});
+
+/**
+ * A NAMED EVENT RUNS A7'S LADDER BEFORE IT PARKS.
+ *
+ * Kate, 2026-10-05, supplying the note item 2 had been waiting on — and it
+ * turned out to be in A40's rule card already, so the model reads it; what
+ * was missing was the refusal:
+ *
+ *   "BLOCKED ON A NAMED EVENT... TWO WEEKS. Before parking one of these at
+ *    all, run A7: ... offer the visit for when they WILL have access first,
+ *    and the off-site quote only if they will not wait. Park only if they
+ *    decline both."
+ *
+ * A park is the third move. Somebody closing on a house in a fortnight can be
+ * booked for the week after or quoted off-site today; parking them at once
+ * throws both away and waits two weeks to say so.
+ */
+describe("a named event parks only after A7 has been offered", () => {
+  const act = (intent: string) => ({ intent, confidence: 0.99, reasoning: "" });
+  const EVENT = "we're closing on the house on the 14th so nothing until after that";
+
+  it("refuses the park when the ladder has not run", () => {
+    const r = validateAction(act("schedule_follow_up") as never, {
+      customerText: EVENT,
+      priorIntents: ["ask_project_details", "ask_address"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("parked_before_running_a7");
+  });
+
+  it.each(["offer_offsite_quote", "present_offsite_quote", "ask_availability"])(
+    "allows the park once %s has been tried", (rung) => {
+      const r = validateAction(act("schedule_follow_up") as never, {
+        customerText: EVENT,
+        priorIntents: ["ask_project_details", rung],
+      });
+      expect(r.ok, `${rung} should satisfy the ladder`).toBe(true);
+    });
+
+  /** The ladder itself must stay available, or the rule cannot be satisfied. */
+  it.each(["offer_offsite_quote", "ask_availability"])("allows %s itself", (rung) => {
+    const r = validateAction(act(rung) as never, {
+      customerText: EVENT,
+      priorIntents: ["ask_project_details"],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  /**
+   * NARROW ON PURPOSE. A40's common case by a wide margin is an ordinary
+   * deferral — "let me talk to my wife" — and that one parks immediately,
+   * exactly as before.
+   */
+  it("leaves an ordinary deferral alone", () => {
+    const r = validateAction(act("schedule_follow_up") as never, {
+      customerText: "let me talk to my wife first",
+      priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    });
+    expect(r.ok).toBe(true);
   });
 });

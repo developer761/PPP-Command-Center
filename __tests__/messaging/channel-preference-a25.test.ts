@@ -287,3 +287,58 @@ describe("the remove-from-cadence notification", () => {
     expect(sig("text_only").note).toMatch(/someone needs to/i);
   });
 });
+
+/**
+ * THE INVERSION, 2026-10-05.
+ *
+ * statedChannelPreference asked "is there a text word AND an exclusivity
+ * word", counting "don't" as exclusivity. So a customer asking to be CALLED
+ * was recorded as wanting TEXT:
+ *
+ *   "please call me instead of texting"    -> text_only
+ *   "stop texting me and call me instead"  -> text_only
+ *   "dont text me just call me"            -> text_only
+ *
+ * Worse than useless: a stated preference outranks the default, and A25's
+ * notification would have told the team to take them off the CALL cadence —
+ * the one channel they had just asked for. Found while wiring Kate's ruling
+ * that this case routes to a person.
+ *
+ * Each of these names TWO channels and means opposite things by them, which
+ * is the whole difficulty. Pinned individually because a single regex change
+ * can flip any one of them on its own.
+ */
+describe("a refusal of one channel is never a request for it", () => {
+  it.each([
+    ["dont text me just call me", "phone"],
+    ["don't text me, just call me", "phone"],
+    ["stop texting me and call me instead", "phone"],
+    ["please call me instead of texting", "phone"],
+    ["stop calling me, just text", "text_only"],
+    ["dont call me just email me", "email_only"],
+    ["email me instead of texting", "email_only"],
+    ["text me rather than calling", "text_only"],
+    ["stop texting me, use email please", "email_only"],
+  ])("%j -> %s", (said, expected) => {
+    expect(statedChannelPreference(said)).toBe(expected);
+  });
+
+  /** Naming a channel is not asking for it. */
+  it.each([
+    "I'll email you the photos tonight",
+    "sounds good",
+    "yes that works",
+    "can you just email me the quote",
+  ])("%j states no preference", (said) => {
+    expect(statedChannelPreference(said)).toBeNull();
+  });
+
+  /**
+   * A refusal with no alternative is an OPT-OUT, not a preference. Returning
+   * one here would quietly downgrade it; compliance.ts owns that call.
+   */
+  it("a bare refusal names no preference", () => {
+    expect(statedChannelPreference("stop texting me")).toBeNull();
+    expect(statedChannelPreference("no more emails please")).toBeNull();
+  });
+});
