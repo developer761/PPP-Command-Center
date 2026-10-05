@@ -211,8 +211,21 @@ describe("rendering an intent into words", () => {
       expect(out).not.toMatch(/bookcase|dresser/i);
       // Kate: "Never suggest another company."
       expect(out).not.toMatch(/another (?:company|contractor)|someone else|refer you/i);
-      // It has to leave a door open, because the bot may simply be wrong.
-      expect(out).toMatch(/let me know|tell me|misread|got that wrong/i);
+      /*
+        IT LEAVES THE DOOR OPEN ON OUR SIDE, NOT THEIRS.
+
+        This used to require /let me know|tell me|misread/ — the bot asking
+        the customer to correct it. Kate struck that on 2026-10-05: "they obv
+        don't know our covered services or they would know we don't do what
+        they're asking". Only PPP knows where the line is, so inviting a
+        dispute asks the customer to argue from information they do not have.
+
+        So the doubt has to be OURS and we have to come back to them — which
+        is also what actually happens, since the conversation goes to a person
+        to confirm.
+      */
+      expect(out).toMatch(/circle back|come back to you|i'll check|i'll double/i);
+      expect(out).not.toMatch(/let me know|tell me more|if i've misread/i);
     }
   });
 
@@ -277,7 +290,8 @@ describe("rendering an intent into words", () => {
     // message must not disappear because the pivot is unavailable.
     const out = renderMessage({ intent: "discard", turn: 0, known: { scope: "a dresser" }, covers: null });
     expect(out.length).toBeGreaterThan(0);
-    expect(out).toMatch(/misread|let me know/i);
+    // Kate's shape, 2026-10-05: the doubt is ours and we come back to them.
+    expect(out).toMatch(/circle back|come back to you|i'll check/i);
   });
 
   it("stays silent on a discard with no project behind it, which is the spam case", () => {

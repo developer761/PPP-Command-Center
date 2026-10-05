@@ -382,11 +382,28 @@ export const SAYS: Record<Intent, string[]> = {
   bot_suspected: [DISCLOSURE_IN_HOURS],
 
   // — Silent —
-  // Kate's wording, turned into a sentence: say we cannot help, invite the
-  // correction, and never point them at another company.
+  /**
+   * KATE'S OWN WORDING, 2026-10-05, replacing ours.
+   *
+   * Ours invited the customer to correct us: "If I've misread the project,
+   * let me know and I'll take another look." She rejected the premise:
+   *
+   *   "This won't make sense to the customer because they obv don't know our
+   *    covered services or they would know we don't do what they're asking"
+   *
+   * The ask was unanswerable. Only PPP knows where the line is, so inviting
+   * the customer to dispute it asks them to argue from information they do
+   * not have. Hers puts the doubt on US — "I'll circle back if I'm wrong" —
+   * and the conversation goes to a person to confirm, which is what actually
+   * happens, in her words "without the customer knowing".
+   *
+   * Both variants keep her shape: we probably cannot help · we will check ·
+   * sorry. Neither asks the customer to do anything. And neither names
+   * another company, which is still A18.
+   */
   discard: [
-    "Thanks for reaching out! That isn't something we're able to take on. If I've misread the project, let me know and I'll take another look.",
-    "Appreciate you getting in touch. Unfortunately that isn't work we're able to help with. If I've got that wrong, just tell me a bit more about it.",
+    "I don't think we can help with this project but I'll circle back if I'm wrong. Apologies for the inconvenience!",
+    "I don't believe this is something we take on, though I'll check and come back to you if that's wrong. Sorry for the trouble!",
   ],
   // Kate's own words, from A17's card. The re-engagement line is the POINT
   // here and the breach on an opt-out; A24 is what keeps the two apart.

@@ -147,9 +147,17 @@ export const SAYS_ES: Record<Intent, string[]> = {
   // A46. The old pair handed off and disclosed nothing, so a Spanish speaker
   // asking "are you a bot?" got the one answer the rule forbids.
   bot_suspected: [DISCLOSURE_IN_HOURS_ES],
+  /**
+   * Sigue el cambio de Kate del 2026-10-05, no la versión anterior.
+   *
+   * La nuestra le pedía al cliente que nos corrigiera. Ella lo rechazó: el
+   * cliente no sabe qué servicios cubrimos, así que pedirle que juzgue si nos
+   * equivocamos es pedirle algo que no puede contestar. La duda es NUESTRA y
+   * nosotros volvemos a él. La cita completa está en render.ts.
+   */
   discard: [
-    "Gracias por comunicarse! Eso no es algo que nosotros hagamos. Si entendí mal el proyecto, avíseme y lo reviso de nuevo.",
-    "Le agradezco que nos escriba. Lamentablemente ese no es un trabajo que hagamos. Si me equivoqué, cuénteme un poco más.",
+    "Creo que no podemos ayudar con este proyecto, pero lo reviso y le aviso si me equivoco. Disculpe la molestia!",
+    "No creo que esto sea algo que hagamos, igual lo confirmo y le escribo si no es asi. Perdone la molestia!",
   ],
 
   // Callados por diseño, igual que en inglés.
