@@ -324,7 +324,19 @@ export default async function ReportingConsole({
                        distinction this whole page exists for.
                      */
                      ["Contained", h.containmentOf === 0 ? "–" : `${h.containmentPct}%`],
-                     ["Booked", h.bookableToBookedPct === null ? "–" : `${h.bookableToBookedPct}%`]
+                     /*
+                       TWO BARS, BECAUSE PPP SELLS TWO THINGS. Kate, 2026-10-05:
+                       "Bookable phone pricing = scope, address, contact =
+                       confirmed. Availability is needed to consider an
+                       in-person bookable."
+
+                       Reporting only the in-person bar counted every lead an
+                       estimator could have rung and priced as a failure to
+                       book. Both are shown, both "–" when there is nothing to
+                       divide by.
+                     */
+                     ["Booked, visit", h.bookableToBookedPct === null ? "–" : `${h.bookableToBookedPct}%`],
+                     ["Booked, phone", h.phoneBookableToBookedPct === null ? "–" : `${h.phoneBookableToBookedPct}%`]
                     ] as const).map(([l, v]) => (
                     <div key={l}>
                       <div className="text-[14px] font-bold text-ppp-charcoal tabular-nums leading-none">{v}</div>

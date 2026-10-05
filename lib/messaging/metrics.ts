@@ -122,17 +122,47 @@ export function wasContained(r: ConversationRow): boolean {
 }
 
 /**
- * Got far enough that an appointment was actually on the table.
+ * BOOKABLE IS TWO DIFFERENT BARS, because PPP sells two different things.
  *
- * Stage 4 is availability — the last of the four legs A3 requires — so a
- * conversation that reached it had everything needed to book. Measuring
- * conversion against ALL conversations instead would fold in every lead that
- * never answered the first question, and report the bot failing at booking
- * when it was failing at the address.
+ * Kate, 2026-10-05, asked which stage counts as bookable and answered with a
+ * split rather than a stage:
+ *
+ *   "Bookable phone pricing = scope, address, contact = confirmed.
+ *    Availability is needed to consider an in-person bookable. Only when
+ *    customers are hesitant would scope, contact, and only confirming their
+ *    zip be fine for a phone pricing."
+ *
+ * So a conversation holding scope, address and contact is already bookable —
+ * an estimator can ring them and price it. Availability is what makes it
+ * bookable as a VISIT. Reporting one number against the stage-4 bar counted
+ * every phone-priceable lead as a failure to book, which is the opposite of
+ * what happened to it.
+ *
+ * Against the funnel: stage 3 is contact info, stage 4 is availability.
+ *
+ * Measured against those who got that far, never against all conversations —
+ * that would fold in every lead who never answered the first question and
+ * report the bot failing at booking when it was failing at the address.
  */
-export function wasBookable(r: ConversationRow): boolean {
+export function wasBookableByPhone(r: ConversationRow): boolean {
+  return r.qualification_stage >= 3;
+}
+
+export function wasBookableInPerson(r: ConversationRow): boolean {
   return r.qualification_stage >= 4;
 }
+
+/**
+ * HER THIRD CLAUSE IS NOT MEASURED HERE, AND IS NOT QUIETLY FOLDED IN.
+ *
+ * "Only when customers are hesitant would scope, contact, and only confirming
+ * their zip be fine for a phone pricing" describes a narrower bar — a zip
+ * instead of a full address, and only for a hesitant customer. Neither
+ * "hesitant" nor "zip but no street" is a stage, so counting it would mean
+ * inventing a signal. A metric nobody can derive is worse than a missing one:
+ * it gets quoted and then defended.
+ */
+export const HESITANT_ZIP_ONLY_NOT_MEASURED = true;
 
 /** Ended in the one outcome that means an estimate is happening. */
 export function wasBooked(r: ConversationRow): boolean {
@@ -174,6 +204,16 @@ export type WorkspaceHealth = {
   /** How many reached the bookable stage. */
   bookableOf: number;
   /**
+   * THE SAME CONVERSION AGAINST KATE'S OTHER BAR, 2026-10-05.
+   *
+   * "Bookable phone pricing = scope, address, contact = confirmed." A lead
+   * holding those three is sellable without availability, so measuring only
+   * against the in-person bar reported every phone-priceable lead as a
+   * failure to book. Null for the same reason as the one above.
+   */
+  phoneBookableToBookedPct: number | null;
+  phoneBookableOf: number;
+  /**
    * How many conversations this row is computed from.
    *
    * The same reasoning as FunnelStep.total, one level up. "Most stop at
@@ -197,7 +237,8 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
   return [...by.entries()]
     .map(([workspace, rs]) => {
       const completed = rs.filter((r) => r.state === "ended");
-      const bookable = rs.filter(wasBookable);
+      const bookable = rs.filter(wasBookableInPerson);
+      const phoneBookable = rs.filter(wasBookableByPhone);
       const funnel = qualificationFunnel(rs);
       const worst = funnel
         .filter((f) => f.droppedHerePct > 0)
@@ -223,6 +264,10 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
           ? null
           : pct(bookable.filter(wasBooked).length, bookable.length),
         bookableOf: bookable.length,
+        phoneBookableToBookedPct: phoneBookable.length === 0
+          ? null
+          : pct(phoneBookable.filter(wasBooked).length, phoneBookable.length),
+        phoneBookableOf: phoneBookable.length,
         measured: rs.length,
       };
     })

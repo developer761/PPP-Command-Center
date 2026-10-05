@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
   takeoverBreakdown, median, percentile, humanSeconds, secondsBetween,
-  wasContained, wasBookable, wasBooked, HANDED_TO_A_PERSON,
+  wasContained, wasBookableByPhone, wasBookableInPerson, wasBooked, HANDED_TO_A_PERSON,
   HATCH_POLL_SECONDS, MIN_MEASURED, type ConversationRow,
 } from "@/lib/messaging/metrics";
 
@@ -325,9 +325,33 @@ describe("containment — finished with no person needed", () => {
 });
 
 describe("bookable to booked — conversion where booking was possible", () => {
-  it("counts a conversation that reached availability", () => {
-    expect(wasBookable(conv({ qualification_stage: 4 }))).toBe(true);
-    expect(wasBookable(conv({ qualification_stage: 3 }))).toBe(false);
+  /**
+   * KATE SPLIT THIS ON 2026-10-05, and the split is the point:
+   *
+   *   "Bookable phone pricing = scope, address, contact = confirmed.
+   *    Availability is needed to consider an in-person bookable."
+   *
+   * A lead holding scope, address and contact is already sellable — an
+   * estimator can ring them and price it. Measuring everything against the
+   * availability bar counted those as failures to book.
+   */
+  it("in-person needs availability, stage 4", () => {
+    expect(wasBookableInPerson(conv({ qualification_stage: 4 }))).toBe(true);
+    expect(wasBookableInPerson(conv({ qualification_stage: 3 }))).toBe(false);
+  });
+
+  it("phone pricing needs only scope, address and contact, stage 3", () => {
+    expect(wasBookableByPhone(conv({ qualification_stage: 3 }))).toBe(true);
+    expect(wasBookableByPhone(conv({ qualification_stage: 2 }))).toBe(false);
+  });
+
+  it("anything bookable in person is bookable by phone, never the reverse", () => {
+    for (const stage of [0, 1, 2, 3, 4]) {
+      const r = conv({ qualification_stage: stage });
+      if (wasBookableInPerson(r)) expect(wasBookableByPhone(r), `stage ${stage}`).toBe(true);
+    }
+    expect(wasBookableByPhone(conv({ qualification_stage: 3 }))).toBe(true);
+    expect(wasBookableInPerson(conv({ qualification_stage: 3 }))).toBe(false);
   });
 
   it("treats only a success as booked", () => {
