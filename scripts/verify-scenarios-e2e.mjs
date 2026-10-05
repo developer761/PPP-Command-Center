@@ -387,6 +387,99 @@ const SCENARIOS = [
   { name: "sends a very long message", text: "hi there so we bought this house last year and its a colonial built in 1974 and honestly the whole thing needs doing, the living room and dining room have wallpaper we hate, the kitchen cabinets are that orange oak, upstairs there are three bedrooms and a hallway, and outside the trim is peeling badly on the south side, we are not in a rush but would like it done before the holidays if possible", wants: "ask_address" },
   { name: "sends two photos with a caption", text: "here is the wall I mean", mediaCount: 2, wants: "ask_project_details" },
 
+  /**
+   * ── SPANISH, PAST THE FIRST MESSAGE ───────────────────────────────────
+   *
+   * One scenario reached Spanish ("writes in Spanish" → ask_address) and
+   * stopped there, so every Spanish template after the opening question was
+   * shipped untested. render-es.ts is a full parallel copy of the wording —
+   * the fix-lands-on-one-twin shape with a whole file as the twin — and the
+   * zip floor and the no-address phone price both just added an ES half.
+   *
+   * These walk the same legs the English ones do and assert the reply is
+   * actually IN Spanish, because the failure that matters is not a missing
+   * template, it is an English sentence going to somebody who told us they do
+   * not speak it.
+   */
+  /**
+   * THE ADDRESS IS IN US FORMAT, and that is not laziness in the fixture.
+   *
+   * Checked against the 1,298 graded conversations in production: THREE carry
+   * any Spanish at all, and the only Spanish-street-word hit in the whole
+   * corpus is "7720 El Camino Real" — an English-context US street NAME. So a
+   * Spanish-FORMATTED street ("Calle 12 Oak") appears zero times, and teaching
+   * STREET_IN_PROSE the words calle/avenida/camino would mis-read that real
+   * address while fixing nothing anybody has ever sent. A Spanish speaker in
+   * Nassau County writes their address the way the post office does.
+   *
+   * Spanish still matters: one of those three IS a real customer writing
+   * "Quiero pintar el exterior de mi vivienda". What has to hold is that the
+   * REPLIES stay Spanish all the way through, which is what these check.
+   */
+  { name: "es: gives the address", text: "12 Oak St, Garden City NY 11530", speaks: "es",
+    history: ["Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo"],
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo" },
+    wants: "ask_contact",
+    saysMatch: /[áéíóúñ¿]|correo|nombre|estimado/i },
+
+  /**
+   * AND THE LANGUAGE HAS TO SURVIVE A MESSAGE WITH NO LANGUAGE IN IT.
+   *
+   * "Ana Ruiz, ana@example.com" is not Spanish, or English, or anything — a
+   * name and an email carry no markers at all. conversationLanguage reads the
+   * WHOLE thread for exactly this reason, so the history here is the test: a
+   * Spanish conversation must not flip to English the moment somebody answers
+   * with their contact details.
+   */
+  { name: "es: gives contact details", text: "Ana Ruiz, ana@example.com", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530" },
+    wants: "ask_availability",
+    saysMatch: /[áéíóúñ¿]|días|semana/i },
+
+  { name: "es: asks whether it is a bot", text: "oiga, es una persona real o un robot?",
+    speaks: "es", wants: "bot_suspected", saysMatch: /[áéíóúñ¿]|persona|equipo/i },
+
+  /**
+   * THE ONE THAT USED TO SEND NOTHING AT ALL.
+   *
+   * isSilent splits Kate's two discards by asking whether the customer NAMED
+   * work we do not cover, and that list was English — so "pintan muebles?"
+   * fell into the silent branch and a real customer got no reply, with no
+   * person seeing it either because a discard is an ending.
+   *
+   * NO `speaks` HERE, deliberately, and it is not the check being dodged.
+   * The reply is Kate's Spanish sentence followed by the workspace's SERVICES
+   * LIST, and that list is data — sms_workspace_services, stored in English,
+   * one row per service — so what renders is "Sí cubrimos interior and
+   * exterior painting, cabinets, wallpaper and drywall repair." Half Spanish,
+   * half English, and understandable, but not right. Translating it is a
+   * content decision about workspace data rather than anything this code can
+   * settle, so it is QUESTIONS_FOR_KATE item 25 and the assertion below tests
+   * the part that IS ours: the Spanish sentence renders and is not silence.
+   */
+  { name: "es: asks for work we do not cover",
+    text: "Hola, pintan muebles? Tengo un librero grande y una cómoda",
+    wants: "discard",
+    saysMatch: /Creo que no podemos ayudar con este proyecto/ },
+
+  { name: "es: refuses the address, so the zip floor applies",
+    text: "prefiero no dar mi dirección por mensaje", speaks: "es",
+    history: ["necesito pintar mi cocina y la sala"],
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "la cocina y la sala" },
+    wants: "ask_address",
+    saysMatch: /código postal/i },
+
+  { name: "es: declines the work", text: "No gracias, ya contratamos a alguien más",
+    speaks: "es", wants: "lost" },
+
   // ── nurture, further in ───────────────────────────────────────────────
   { name: "quote already sent, wants a call", track: "nurture", text: "can the estimator call me to go through it?", wants: "offer_estimator_call" },
   { name: "quote already sent, declines", track: "nurture", text: "we went with someone else, thanks", wants: "lost" },

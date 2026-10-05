@@ -1278,3 +1278,50 @@ in the same breath as the workspace is activated.** Flagging it because it is
 the kind of thing discovered by a customer rather than by us. If you would
 rather the gate refuse to *activate* a workspace whose state is not covered,
 that is a small change and a better place for the failure than a text message.
+
+---
+
+## 25. A Spanish conversation ends with an English list of what we do cover
+
+**Found by testing, 2026-10-05. Low stakes, but it reaches a customer.**
+
+When somebody asks about work we do not cover, the bot says we cannot help and
+then names what we DO cover — so a person can say "oh, mine are built in".
+That list is the workspace's own services, read from `sms_workspace_services`,
+one row per service.
+
+Those rows are stored in English, and there is no Spanish column. So a Spanish
+conversation ends like this:
+
+> Creo que no podemos ayudar con este proyecto. Sí cubrimos **interior and
+> exterior painting, cabinets, wallpaper and drywall repair**. Lo reviso y le
+> aviso si me equivoco. Disculpe la molestia!
+
+Understandable, and not wrong in substance — but half the sentence is in the
+wrong language, in the one message whose entire job is to be clear about what
+we sell.
+
+**Worth saying plainly: this is rare.** Of the 1,298 graded conversations in
+production, **three** carry any Spanish at all and only one is a customer
+writing to us in it. So this is not urgent; it is cheap to fix and easy to
+forget.
+
+**→ Three options, and it is your call which:**
+
+1. **Leave it.** Defensible at this volume. The sentence still communicates.
+2. **A Spanish name per service** — a `name_es` column on the services rows,
+   filled in once. Then both languages read naturally. This is the one I would
+   pick if Spanish is going to matter at all.
+3. **Drop the list in Spanish only** — say we cannot help and that we will come
+   back to them, without naming the services. Loses the "mine are built in"
+   recovery, which is the point of naming them, so I would not.
+
+Nothing is blocked on this. If you choose (2), the service names are yours to
+write and I will wire the column.
+
+**Separately, and already fixed:** the same test found that a Spanish speaker
+asking about work we do not cover previously got **no reply at all**. The rule
+that decides whether a discard is silent — a wrong number gets silence, a real
+customer gets an answer — was deciding it on an English word list, so
+"pintan muebles?" looked like a wrong number. It now reads Spanish too, and
+because a discard is an ending, nobody would have seen those threads.

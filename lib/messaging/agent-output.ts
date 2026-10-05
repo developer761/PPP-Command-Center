@@ -555,8 +555,42 @@ export function outOfScopePromise(text: string): { word: string; clause: string 
  * discards: "not an estimate request" (a wrong number, and silence is right)
  * from "work we do not cover" (a real customer owed an answer).
  */
+/**
+ * THE SAME QUESTION IN SPANISH, AND WHY IT IS A SEPARATE LIST.
+ *
+ * isSilent() keeps a discard silent unless there is a project on file OR the
+ * customer NAMED work we do not cover. Every word above is English, so
+ * "pintan muebles?" matched nothing and a Spanish speaker asking a real
+ * question got silence — and because discard is an ending, no person saw it
+ * either. That is the precise harm the comment on isSilent says was fixed;
+ * the fix only ever landed on the English half.
+ *
+ * ── WHY NOT JUST ADD THESE TO OUT_OF_SCOPE ──────────────────────────────
+ *
+ * Because that regex is read in BOTH directions. outOfScopePromise() runs it
+ * over OUR outbound text to catch the bot promising work we do not do, and it
+ * clears a match only when the clause also matches DECLINING — which is
+ * English. Adding Spanish nouns there would make "No pintamos muebles" look
+ * like a PROMISE to paint furniture, refusing the one sentence the
+ * configuration tells the bot to say. A false refusal escalates, so the
+ * customer loses either way.
+ *
+ * So this list answers only the customer-side question. The promise test is
+ * unchanged and still English-only, which is safe: it is a check on text we
+ * generate, and a missed check there is a draft a person still reviews.
+ *
+ * ── DELIBERATELY NOT HERE ───────────────────────────────────────────────
+ *
+ * `techo` — it is the ordinary word for CEILING, which PPP paints on nearly
+ * every interior job, as well as for a roof. Matching it would read "pintar
+ * el techo de la sala" as out-of-scope roofing and discard a live lead.
+ * `ventanas` and `concreto` are out for the same reason: trim and floors.
+ */
+const OUT_OF_SCOPE_ES =
+  /\b(?:muebles?|libreros?|estanter[íi]as?|ba[ñn]eras?|tinas?\s+de\s+ba[ñn]o|electrodom[ée]sticos?|murales?|mural|plomer[íi]a|fontaner[íi]a|jardiner[íi]a|alba[ñn]iler[íi]a|tapicer[íi]a|retapiz\w*|techado|techumbre)\b/i;
+
 export function mentionsWorkWeDoNotDo(text: string | null | undefined): boolean {
-  return !!text && OUT_OF_SCOPE.test(text);
+  return !!text && (OUT_OF_SCOPE.test(text) || OUT_OF_SCOPE_ES.test(text));
 }
 
 /** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
