@@ -138,6 +138,43 @@ const SCENARIOS = [
     wants: "phone_pricing",
     refuses: "success" },
 
+  /**
+   * THE RUNG ABOVE IT, which the scenario above skips by handing the harness a
+   * priorIntents that already contains ask_contact.
+   *
+   * Played live 2026-10-05: at THIS point the model reached straight for
+   * phone_pricing and was refused — "details_never_collected: contact details
+   * was never asked for or confirmed". Kate puts phone_pricing in the set that
+   * owes all three legs ("the quote going out by text or phone still requires
+   * all three here"), so a phone price is where this ENDS, not how it escapes.
+   * The legal move is to ask for contact first, and nothing asserted one
+   * existed.
+   */
+  { name: "refuses the address: the phone price is not a way out of the flow",
+    history: [
+      "i need my kitchen and living room painted",
+      "id rather not give my address out over text",
+    ],
+    text: "no im not giving that out, i told you",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "kitchen and living room", phone: "999-784-6046" },
+    wants: "ask_contact",
+    refuses: "phone_pricing" },
+
+  /**
+   * And the WORDING of the re-ask, the other half of the same run: a refusal
+   * is not a PARTIAL address, so A11's gap narrowing did not apply and the
+   * second ask was the plain question over again — "What address should we
+   * have the estimator go to?" Kate's zip floor applies here too.
+   */
+  { name: "the second address ask narrows to the zip and says why",
+    history: ["i need my kitchen and living room painted"],
+    text: "id rather not give my address out over text",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "kitchen and living room" },
+    wants: "ask_address",
+    saysMatch: /zip code to price it accurately/i },
+
   { name: "blocked on a closing, then defers",
     history: [
       "we want the whole upstairs painted but we are closing on the house on the 14th",

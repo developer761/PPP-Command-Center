@@ -23,7 +23,9 @@ import { BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestShared
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
-import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
+import {
+  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
+} from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch, CALLBACK_WINDOW } from "./channel-preference";
@@ -657,6 +659,15 @@ export type RenderInput = {
    * would unblock it.
    */
   secondProperty?: boolean;
+  /**
+   * We have asked for the address already and still hold none of it — so this
+   * ask is a REPEAT, and Kate's zip floor applies. See ASK_ADDRESS_REFUSED.
+   *
+   * A flag rather than something the renderer works out, for the same reason as
+   * addressGap and secondProperty: the system knows what it has already sent,
+   * and the model does not.
+   */
+  addressAskedBefore?: boolean;
   /** What is missing from a partial availability. Narrows ask_availability,
    *  which is A4's own remedy. See ASK_AVAILABILITY_GAP below. */
   availabilityGap?: AvailabilityGap;
@@ -784,6 +795,18 @@ export type RenderInput = {
  * more attempt has been made — including to phone_pricing, which is exactly
  * the fallback Kate names when no address is ever confirmed.
  */
+/**
+ * THE ZIP FLOOR, said once and referenced everywhere it is needed.
+ *
+ * Kate's "we at least need the zip, and here is why" lands in two different
+ * places: the third ask when we hold HALF an address, and the second ask when
+ * we hold NONE of it because they refused. Same sentence, same rule, so it is
+ * one string — the fourth copy of a line is how the wording in one branch gets
+ * fixed and the wording in another does not.
+ */
+export const ASK_ZIP_WITH_REASON =
+  "No problem. We at least need the zip code to price it accurately. What's the zip there?";
+
 const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   zip: [
     "Thanks! What's the zip code for {address}?",
@@ -793,9 +816,25 @@ const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   street: [
     "Thanks! And what's the street address?",
     "Got it. What's the street address there?",
-    "No problem. We at least need the zip code to price it accurately. What's the zip there?",
+    ASK_ZIP_WITH_REASON,
   ],
 };
+
+/**
+ * WHEN THEY GAVE US NOTHING AND WE ALREADY ASKED.
+ *
+ * A refusal is not a partial address, so none of the gap narrowing above
+ * applies and ask_address fell through to its ordinary variants — which is how
+ * "I'd rather not give my address out over text" was answered with "What
+ * address should we have the estimator go to?", the same question again with
+ * no reason attached. Kate, 2026-10-05: "Letting them know we at least need to
+ * confirm the zip code to provide an accurate estimate is valid."
+ *
+ * So the re-ask narrows to the zip and says why, exactly as it does for half
+ * an address. A41 still caps it at this one more attempt; after that the
+ * conversation moves to a phone price.
+ */
+const ASK_ADDRESS_REFUSED = [ASK_ZIP_WITH_REASON];
 
 /**
  * Asking for the half of the availability we are missing.
@@ -1072,8 +1111,17 @@ function renderBody(input: RenderInput): string {
    * that gap narrowing exists to prevent.
    */
   const secondProperty = input.intent === "ask_address" && !gap && !!input.secondProperty;
+  /**
+   * A re-ask after a refusal. Checked after `gap` and `secondProperty` for the
+   * same reason they are ordered that way: holding half an address, or being on
+   * the second property, is the more specific fact and keeps its own wording.
+   */
+  const refused = input.intent === "ask_address" && !gap && !secondProperty
+    && !!input.addressAskedBefore;
   const variants = secondProperty
     ? [es ? askSecondPropertyAddressEs() : askSecondPropertyAddress()]
+    : refused
+    ? (es ? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED)
     : gap
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap

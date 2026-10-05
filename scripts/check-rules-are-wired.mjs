@@ -396,6 +396,26 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A41/A3 — a refused address gets the zip floor, then a phone price",
+    why: "played live: 'id rather not give my address out over text' was answered with "
+      + "'What address should we have the estimator go to?' — the same question with no "
+      + "reason — and then phone_pricing was refused for never having asked for contact. "
+      + "Kate: a phone quote 'still requires all three', so it is the END of the flow, not "
+      + "a way out of it. Both halves have to be wired or the lead goes to a person",
+    links: [
+      // The wording exists once and both branches reach it.
+      ["lib/messaging/render.ts", /export const ASK_ZIP_WITH_REASON\b/],
+      ["lib/messaging/render.ts", /const ASK_ADDRESS_REFUSED = \[ASK_ZIP_WITH_REASON\]/],
+      ["lib/messaging/render.ts", /refused\s*\n?\s*\?\s*\(es \? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED\)/],
+      // And BOTH callers set the flag, or the harness cannot see the wording.
+      ["lib/messaging/agent-run.ts", /addressAskedBefore: !kf\.address/],
+      ["scripts/scenario-engine.mjs", /addressAskedBefore: !derived\.address/],
+      // The model is told phone_pricing owes contact, which is what it got wrong.
+      ["lib/messaging/agent-run.ts", /A phone quote is NOT a way out of the rest/],
+      ["lib/messaging/agent-run.ts", /ASK FOR THOSE FIRST/],
+    ],
+  },
+  {
     rule: "Parity 9 — the workspace FAQ reaches the prompt, and only safe rows do",
     why: "these are BOT-FACING. An answer carrying a price launders a quote past the validator, which sees a question answered rather than a price invented",
     links: [

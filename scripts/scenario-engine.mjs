@@ -164,6 +164,12 @@ export function waysThrough(scenario) {
      */
     addressGap: derived.address ? addressGap(derived.address) : undefined,
     /**
+     * AN EIGHTH, same shape and same reason as the two below it: agent-run
+     * passes it (agent-run.ts) so the refusal re-ask must be reachable here
+     * too, or the zip floor is wording no scenario can ever see.
+     */
+    addressAskedBefore: !derived.address && priorIntents.includes("ask_address"),
+    /**
      * A SEVENTH FIELD, and the same shape as addressGap: agent-run passes it
      * (agent-run.ts) and this did not, so A4's gap wording could not render in
      * any scenario. Kate: "A DAY IS NOT A WINDOW, AND BOTH ARE REQUIRED. 'Wed

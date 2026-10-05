@@ -317,10 +317,14 @@ what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
 
 WHEN THEY WILL NOT GIVE AN ADDRESS, THE ANSWER IS A PHONE QUOTE.
-Ask once more for the zip code at least, and say why — an accurate estimate
-needs it. If they still will not, do NOT keep asking and do NOT try to close:
-an estimator cannot be sent to an address we do not have, so choose
-"phone_pricing" and let them be priced over the phone instead.
+Ask once more for the ZIP CODE on its own — not the street again — and say why:
+an accurate estimate needs to know the area. If they still will not, stop
+asking, because an estimator cannot be sent to an address we do not have.
+
+A phone quote is NOT a way out of the rest of the conversation. It still owes
+their contact details, so ASK FOR THOSE FIRST and choose "phone_pricing" only
+once you have. Choosing it before contact has been asked for is refused before
+it can be sent, and the lead goes to a person instead of to a price.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 ${classARules ? `\n${classARules}\n` : ""}${workspaceFaqs ? `\n${workspaceFaqs}\n` : ""}
@@ -917,6 +921,12 @@ Choose the next action.`;
        * already given one.
        */
       secondProperty: wantsSecondAddress,
+      /**
+       * A REPEAT ask, which is Kate's zip floor rather than the same question
+       * twice. "We hold nothing AND we have asked" is the refusal case without
+       * having to detect a refusal — the same ask-based test the A3 legs use.
+       */
+      addressAskedBefore: !kf.address && (opts.priorIntents ?? []).includes("ask_address"),
       /**
        * A4: and the same for availability. Read from what the customer just
        * said, because that is where an answer to an availability question
