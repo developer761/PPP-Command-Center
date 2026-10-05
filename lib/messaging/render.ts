@@ -305,9 +305,30 @@ export const SAYS: Record<Intent, string[]> = {
     "Perfect, you're all set. Someone from the office will confirm the details with you.",
     "Great, that's everything we need. The office will be in touch to confirm.",
   ],
+  /**
+   * KATE CORRECTED THE BEHAVIOUR HERE, 2026-10-05, not just the wording.
+   *
+   * Asked whether a phone-priced conversation counts as contained, she
+   * answered about what the bot should DO instead:
+   *
+   *   "The correct behavior in this case: 'Customer asks for a price, bot
+   *    correctly refuses' would be that the bot states that our estimators
+   *    provide pricing and that it is setting up that appointment. If they
+   *    just want a price, the estimator can provide a quick quote."
+   *
+   * Ours stopped at the refusal and a vague "someone will reach out", which
+   * reads as a brush-off to somebody who asked a direct question. Hers keeps
+   * the lead moving: pricing comes from the estimator, the appointment is
+   * being arranged, and if a number is all they want they can have one
+   * without a visit.
+   *
+   * STILL NAMES NO TIME. "Setting up that appointment" is the office's
+   * process, not a slot — A15 forbids offering or confirming a time, and
+   * nothing here does.
+   */
   phone_pricing: [
-    "Pricing is something our estimator goes over with you directly, so I'll have someone reach out to talk it through.",
-    "I'm not able to give numbers over text. Our estimator handles that, and I'll get someone to call you.",
+    "Pricing comes from our estimator, so I'm getting that appointment set up for you. If a number is all you need, they can do a quick quote instead.",
+    "Our estimators handle pricing, so I'm arranging that appointment now. And if you only want a price, they can give you a quick quote without the visit.",
   ],
   schedule_follow_up: [
     "No problem at all. I'll check back in with you later on.",
@@ -382,11 +403,28 @@ export const SAYS: Record<Intent, string[]> = {
   bot_suspected: [DISCLOSURE_IN_HOURS],
 
   // — Silent —
-  // Kate's wording, turned into a sentence: say we cannot help, invite the
-  // correction, and never point them at another company.
+  /**
+   * KATE'S OWN WORDING, 2026-10-05, replacing ours.
+   *
+   * Ours invited the customer to correct us: "If I've misread the project,
+   * let me know and I'll take another look." She rejected the premise:
+   *
+   *   "This won't make sense to the customer because they obv don't know our
+   *    covered services or they would know we don't do what they're asking"
+   *
+   * The ask was unanswerable. Only PPP knows where the line is, so inviting
+   * the customer to dispute it asks them to argue from information they do
+   * not have. Hers puts the doubt on US — "I'll circle back if I'm wrong" —
+   * and the conversation goes to a person to confirm, which is what actually
+   * happens, in her words "without the customer knowing".
+   *
+   * Both variants keep her shape: we probably cannot help · we will check ·
+   * sorry. Neither asks the customer to do anything. And neither names
+   * another company, which is still A18.
+   */
   discard: [
-    "Thanks for reaching out! That isn't something we're able to take on. If I've misread the project, let me know and I'll take another look.",
-    "Appreciate you getting in touch. Unfortunately that isn't work we're able to help with. If I've got that wrong, just tell me a bit more about it.",
+    "I don't think we can help with this project but I'll circle back if I'm wrong. Apologies for the inconvenience!",
+    "I don't believe this is something we take on, though I'll check and come back to you if that's wrong. Sorry for the trouble!",
   ],
   // Kate's own words, from A17's card. The re-engagement line is the POINT
   // here and the breach on an opt-out; A24 is what keeps the two apart.
@@ -726,14 +764,36 @@ export type RenderInput = {
  * rows PPP already curates, and asking somebody to type what we can look up is
  * the complaint this entire family of rules is about.
  */
+/**
+ * THE LATER ASKS SAY WHY, which is Kate's answer of 2026-10-05 to "after one
+ * refusal, does move on mean stop asking?":
+ *
+ *   "Letting them know we at least need to confirm the zip code to provide an
+ *    accurate estimate is valid. We wouldn't be able to provide an in-person
+ *    estimate without a confirmed address, so a phone pricing would be
+ *    offered/required in this case."
+ *
+ * So the zip is the floor, not the whole address, and the reason is worth
+ * saying out loud: a bare second "what's the zip code there?" reads as
+ * nagging, while the same question with "so the estimate is accurate" reads
+ * as a reason somebody can agree with.
+ *
+ * Variants are selected by turn, so the first ask stays short and the repeat
+ * carries the reason. Neither is a third ask: A41 still caps it, and
+ * validateAction still lets the conversation move past the address once one
+ * more attempt has been made — including to phone_pricing, which is exactly
+ * the fallback Kate names when no address is ever confirmed.
+ */
 const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   zip: [
     "Thanks! What's the zip code for {address}?",
     "Got it. And what's the zip code there?",
+    "No problem. We do need the zip code at least, so the estimate is accurate. What is it?",
   ],
   street: [
     "Thanks! And what's the street address?",
     "Got it. What's the street address there?",
+    "No problem. We at least need the zip code to price it accurately. What's the zip there?",
   ],
 };
 

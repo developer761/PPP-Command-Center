@@ -330,3 +330,43 @@ describe("a reaction narration is never read as availability", () => {
     expect(availabilityGapAcross(["Wednesday afternoon works", ""])).toBeNull();
   });
 });
+
+/**
+ * KATE'S ADDRESS LADDER, 2026-10-05.
+ *
+ *   "Letting them know we at least need to confirm the zip code to provide an
+ *    accurate estimate is valid. We wouldn't be able to provide an in-person
+ *    estimate without a confirmed address, so a phone pricing would be
+ *    offered/required in this case."
+ *
+ * Three steps, and the last one is the point: when no address is ever
+ * confirmed the conversation does NOT die, it becomes a phone price. The A11
+ * guard already permitted that — it lets an intent move past the address once
+ * one more attempt has been made — but nothing asserted it, so it was true by
+ * accident rather than by rule. It is a rule now.
+ */
+describe("when the address never arrives, phone pricing is the fallback", () => {
+  const act = (intent: string) => ({ intent, confidence: 0.99, reasoning: "" });
+
+  it("refuses phone pricing while the address has not been asked for again", () => {
+    const r = validateAction(act("phone_pricing") as never, {
+      addressGap: "zip", lastIntent: "ask_contact",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("partial_address_walked_past");
+  });
+
+  it("allows phone pricing once we have asked again and still have no address", () => {
+    const r = validateAction(act("phone_pricing") as never, {
+      addressGap: "zip", lastIntent: "ask_address",
+    });
+    expect(r.ok, "the fallback Kate names has to be reachable").toBe(true);
+  });
+
+  it("asking for the address again is always allowed", () => {
+    const r = validateAction(act("ask_address") as never, {
+      addressGap: "zip", lastIntent: "ask_contact",
+    });
+    expect(r.ok).toBe(true);
+  });
+});

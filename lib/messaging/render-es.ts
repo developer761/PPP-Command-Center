@@ -121,9 +121,15 @@ export const SAYS_ES: Record<Intent, string[]> = {
     "Perfecto, todo listo. Alguien de la oficina le confirmará los detalles.",
     "Muy bien, eso es todo lo que necesitamos. La oficina se comunicará para confirmar.",
   ],
+  /**
+   * Sigue la corrección de Kate del 2026-10-05: el estimador da el precio, Y
+   * la cita se está coordinando. Si solo quieren un número, el estimador
+   * puede dar una cotización rápida sin visita. La versión anterior se
+   * quedaba en la negativa. Ver render.ts para la cita completa.
+   */
   phone_pricing: [
-    "Los precios los repasa nuestro estimador directamente con usted, así que le pediré a alguien que lo contacte para platicarlo.",
-    "No puedo dar cifras por mensaje. Eso lo maneja nuestro estimador, y le pido que lo llame.",
+    "El precio lo da nuestro estimador, así que le estoy coordinando esa cita. Si solo necesita un número, él puede darle una cotización rápida.",
+    "Los precios los maneja nuestro estimador, y ya le estoy armando la cita. Y si solo quiere el precio, él se lo puede dar sin la visita.",
   ],
   schedule_follow_up: [
     "Sin ningún problema. Le doy seguimiento más adelante.",
@@ -147,9 +153,17 @@ export const SAYS_ES: Record<Intent, string[]> = {
   // A46. The old pair handed off and disclosed nothing, so a Spanish speaker
   // asking "are you a bot?" got the one answer the rule forbids.
   bot_suspected: [DISCLOSURE_IN_HOURS_ES],
+  /**
+   * Sigue el cambio de Kate del 2026-10-05, no la versión anterior.
+   *
+   * La nuestra le pedía al cliente que nos corrigiera. Ella lo rechazó: el
+   * cliente no sabe qué servicios cubrimos, así que pedirle que juzgue si nos
+   * equivocamos es pedirle algo que no puede contestar. La duda es NUESTRA y
+   * nosotros volvemos a él. La cita completa está en render.ts.
+   */
   discard: [
-    "Gracias por comunicarse! Eso no es algo que nosotros hagamos. Si entendí mal el proyecto, avíseme y lo reviso de nuevo.",
-    "Le agradezco que nos escriba. Lamentablemente ese no es un trabajo que hagamos. Si me equivoqué, cuénteme un poco más.",
+    "Creo que no podemos ayudar con este proyecto, pero lo reviso y le aviso si me equivoco. Disculpe la molestia!",
+    "No creo que esto sea algo que hagamos, igual lo confirmo y le escribo si no es asi. Perdone la molestia!",
   ],
 
   // Callados por diseño, igual que en inglés.
@@ -161,14 +175,21 @@ export const SAYS_ES: Record<Intent, string[]> = {
 };
 
 /** Los mismos huecos parciales que en inglés: A11 y A4. */
+/**
+ * La tercera variante da el motivo, igual que en inglés — Kate, 2026-10-05:
+ * el código postal es el mínimo y conviene decir por qué, porque una segunda
+ * pregunta a secas se lee como insistencia. Ver render.ts.
+ */
 export const ASK_ADDRESS_GAP_ES: Record<"zip" | "street", string[]> = {
   zip: [
     "Gracias! Cuál es el código postal de {address}?",
     "Entendido. Y cuál es el código postal ahí?",
+    "Sin problema. Sí necesitamos al menos el código postal para que el estimado sea exacto. Cuál es?",
   ],
   street: [
     "Gracias! Y cuál es la dirección de la calle?",
     "Entendido. Cuál es la dirección de la calle?",
+    "Sin problema. Necesitamos al menos el código postal para cotizarlo bien. Cuál es el de ahí?",
   ],
 };
 

@@ -33,6 +33,7 @@ import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
 import { addressesInThread, secondPropertyAskDue } from "./multi-property";
 import { isAvailabilityStandOff } from "./availability-ask";
+import { stallFollowUpGoal, isFollowUpStep, FOLLOW_UP_COUNT } from "./stall-followup-goals";
 
 const MODEL = "claude-opus-5";
 
@@ -597,13 +598,21 @@ export async function runAgentTurn(
    * Turn context, not system prompt: it is true of THIS message and false of
    * the next one, and buildSystemPrompt is cached per workspace.
    */
-  const followUpLine = opts.followUpStep
-    ? `\nTHIS IS FOLLOW-UP ${opts.followUpStep} OF 3. They have gone quiet; nothing new has `
-      + `arrived. Do not open as though this is a fresh conversation and do not re-introduce `
-      + `yourself. Follow up on THEIR project`
-      + (opts.known?.inquiryScope ? `, naming what they told us they need — "${opts.known.inquiryScope}" — so they do not have to say it again` : "")
-      + `, then ask for the one thing still outstanding. No sign-off, and nothing that reads `
-      + `as an ending.\n`
+  /**
+   * EACH OF THE THREE HAS ITS OWN GOAL, and they are Kate's, 2026-10-05.
+   *
+   * This used to send one generic instruction for all three — "follow up on
+   * THEIR project, then ask for the one thing still outstanding" — which made
+   * the three nudges interchangeable. They are not: a nudge, then a concrete
+   * ask for today, then a last check on whether they want the quote at all.
+   * See stall-followup-goals.ts for her wording and why these are goals
+   * rather than templates.
+   */
+  const followUpLine = isFollowUpStep(opts.followUpStep)
+    ? `\nTHIS IS FOLLOW-UP ${opts.followUpStep} OF ${FOLLOW_UP_COUNT}. They have gone quiet; nothing new `
+      + `has arrived. Do not open as though this is a fresh conversation and do not re-introduce `
+      + `yourself. ${stallFollowUpGoal(opts.followUpStep, opts.known?.inquiryScope)} `
+      + `No sign-off, and nothing that reads as an ending.\n`
     : "";
 
   const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}${followUpLine}The customer has just sent:
