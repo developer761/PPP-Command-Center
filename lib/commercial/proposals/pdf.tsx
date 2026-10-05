@@ -1602,6 +1602,9 @@ function QualificationsBlock({
   notes?: string | null;
 }) {
   const note = notes?.trim();
+  // Same splitting and bullet-stripping the scope blocks use, so one rule
+  // governs every pasted list on the document.
+  const noteLines = scopeBlockLines(note);
   if (qualifications.length === 0 && !note) return null;
   return (
     <View style={{ marginTop: 16 }}>
@@ -1617,7 +1620,34 @@ function QualificationsBlock({
           Qualifications did not put anything under Qualifications.
 
           One section now. The paragraph leads it, the library lines follow. */}
-      {note && <Text style={{ marginBottom: 6, fontSize: 11 }}>{note}</Text>}
+      {/* A LIST IS A LIST, a sentence is a sentence.
+
+          Stephanie 2026-10-05: "I didn't add them as exclusions because I
+          didn't want to type them in or copy them in all individually ... so I
+          added them as qualifications and removed all of the exclusions
+          completely to avoid there being 2 sections ... I am still not seeing
+          bullets on the qualifications I did add."
+
+          She is right, and this box was the one place that could not do it.
+          Ticking fifteen library rows one at a time is fine for Kim working
+          through a plan; it is not how you handle the bulk list a GC sends in
+          an email, which is why she pasted the lot in here.
+
+          A note she wrote as several lines now prints as bullets, each with
+          the drawn dot the rest of the page uses. A single-line note stays a
+          paragraph — that is prose like "Assumes one mobilisation and clear
+          access", it is what every existing proposal holds, and none of them
+          change shape. */}
+      {noteLines.length > 1 ? (
+        noteLines.map((l, i) => (
+          <View key={`n${i}`} style={styles.bulletRow}>
+            <View style={styles.bulletDot} />
+            <Text style={styles.bulletBody}>{l}</Text>
+          </View>
+        ))
+      ) : note ? (
+        <Text style={{ marginBottom: 6, fontSize: 11 }}>{note}</Text>
+      ) : null}
       {qualifications.map((q, i) => (
         <View key={i} style={styles.bulletRow}>
           <View style={styles.bulletDot} />
