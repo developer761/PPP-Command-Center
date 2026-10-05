@@ -56,6 +56,26 @@ const ok = (label, cond, detail = "") => {
  */
 const CHAINS = [
   {
+    rule: "A44 — each of the three follow-ups carries its OWN goal into the prompt",
+    why: "one generic instruction for all three made the nudges interchangeable, which is the Hatch behaviour A44 replaces; Kate gave three distinct goals on 2026-10-05",
+    links: [
+      ["lib/messaging/stall-followup-goals.ts", /export function stallFollowUpGoal/],
+      // Produced per step, with the scope, and actually placed in the prompt.
+      ["lib/messaging/agent-run.ts", /stallFollowUpGoal\(opts\.followUpStep/],
+      ["lib/messaging/agent-run.ts", /followUpLine/],
+      // And the step has to arrive from the cadence, or it is always absent.
+      ["lib/messaging/scheduler-db.ts", /followUpStep/],
+      ["lib/messaging/simulator.ts", /followUpStep/],
+    ],
+    forbidden: [
+      /**
+       * The line this replaced. If it comes back, all three follow-ups are
+       * the same message again and nothing else here would notice.
+       */
+      ["lib/messaging/agent-run.ts", /then ask for the one thing still outstanding/],
+    ],
+  },
+  {
     rule: "A4 — availability is judged on what the CUSTOMER said, across the thread",
     why: "the close guard read only the current message, so any turn after the availability turn reported nothing bookable and a fully collected conversation could not close; and the narration quotes our own question back, so a thumbs-up read as a day supplied",
     links: [

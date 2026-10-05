@@ -473,12 +473,33 @@ describe("the follow-up prompt names the scope", () => {
   const src = readFileSync("lib/messaging/agent-run.ts", "utf8");
 
   it("tells the model which of the three it is writing", () => {
-    expect(src).toMatch(/THIS IS FOLLOW-UP \$\{opts\.followUpStep\} OF 3/);
+    expect(src).toMatch(/THIS IS FOLLOW-UP \$\{opts\.followUpStep\} OF \$\{FOLLOW_UP_COUNT\}/);
   });
 
-  it("names the scope back when we hold one", () => {
-    expect(src).toMatch(/opts\.known\?\.inquiryScope/);
-    expect(src).toMatch(/so they do not have to say it again/);
+  /**
+   * THE SCOPE MOVED, AND SO DID THE REASON FOR IT.
+   *
+   * It used to be interpolated here with "so they do not have to say it
+   * again". Kate gave three distinct goals on 2026-10-05, so the scope is now
+   * woven into whichever goal is being asked — see stall-followup-goals.ts,
+   * which owns the wording and is unit-tested on its own. What this file
+   * still has to prove is that the goal REACHES the prompt with the scope.
+   */
+  it("hands the scope to the step's own goal", () => {
+    expect(src).toMatch(/stallFollowUpGoal\(opts\.followUpStep, opts\.known\?\.inquiryScope\)/);
+  });
+
+  it("no longer sends one generic instruction for all three", () => {
+    /*
+      COMMENTS STRIPPED FIRST, or this tests history rather than behaviour.
+
+      The replaced line is QUOTED in agent-run's comment, explaining what it
+      replaced and why — which is exactly what the comment should do, and
+      exactly what makes a naive negative assertion fail. check-rules-are-wired
+      strips comments for the same reason; so does this.
+    */
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/then ask for the one thing still outstanding/);
   });
 
   it("forbids re-introducing ourselves", () => {
@@ -495,6 +516,6 @@ describe("the follow-up prompt names the scope", () => {
 
   it("says nothing at all on an ordinary turn", () => {
     // The line is turn context and must not leak into a live reply.
-    expect(src).toMatch(/const followUpLine = opts\.followUpStep/);
+    expect(src).toMatch(/const followUpLine = isFollowUpStep\(opts\.followUpStep\)/);
   });
 });
