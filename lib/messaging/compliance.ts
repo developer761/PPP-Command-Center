@@ -112,6 +112,35 @@ const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
     String.raw`\bunsubscribe\b`,
     String.raw`\bopt\s*me\s*out\b`,
     String.raw`\bno\s+more\s+(?:texts?|messages?|emails?|calls?)\b`,
+    /*
+      ── THE SAME RULE IN SPANISH ──────────────────────────────────────────
+      A24 is about what the customer MEANT, not which language they meant it
+      in, and the bill for missing one is the same $500-$1500 a message.
+      Every English pattern above needed a communication verb or a list; so
+      does every one of these, for the identical reason — "no gracias" and
+      "ya no me interesa" decline the SERVICE (A17, close warmly), and
+      reading those as opt-outs would suppress live leads wholesale.
+
+      So: a stop verb with an enumerated communication noun, or a list
+      phrase, and nothing softer. Bare "no", bare "pare" and bare "basta"
+      are deliberately absent. Accents are optional throughout because
+      phone keyboards drop them.
+    */
+    // dejen/paren/no me manden + how we are reaching them
+    String.raw`\b(?:deje|dejen|dejar|pare|paren|parar|dejad)\s+de\s+(?:mandar\w*|enviar\w*|escribir\w*|textear\w*|llamar\w*|contactar\w*|molestar\w*)\b`,
+    String.raw`\bno\s+(?:me\s+)?(?:manden?|m[áa]nden?me|env[íi]en?|escriban?|llamen?|contacten?|molesten?)\b`,
+    String.raw`\bno\s+me\s+(?:vuelvan?\s+a\s+)?(?:mandar|enviar|escribir|llamar|contactar)\b`,
+    // no more messages
+    String.raw`\bno\s+(?:m[áa]s|quiero\s+m[áa]s)\s+(?:mensajes?|textos?|llamadas?|correos?)\b`,
+    // take me off the list
+    String.raw`\b(?:qu[íi]tenme|quitenme|qu[íi]teme|s[áa]quenme|saquenme|borrenme|b[óo]rrenme|elim[íi]nenme)\b`,
+    String.raw`\b(?:qu[íi]ten\w*|saquen\w*|borren\w*|eliminen\w*)\s+mi\s+(?:n[úu]mero|contacto)\b`,
+    String.raw`\bde\s+(?:la|su)\s+lista\b`,
+    // leave me alone
+    String.raw`\b(?:d[ée]jenme|dejenme|d[ée]jeme|dejeme)\s+(?:en\s+paz|tranquil\w+)\b`,
+    String.raw`\bno\s+me\s+molesten?\b`,
+    // unsubscribe
+    String.raw`\b(?:desuscrib\w*|desinscrib\w*|darme\s+de\s+baja|dar\s+de\s+baja)\b`,
   ].join("|"),
   "i",
 );

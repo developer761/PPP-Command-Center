@@ -108,7 +108,17 @@ const OPEN_ENDED = new RegExp(
  * A non-answer counts, in Kate's words, so the caller tells us whether we had
  * just asked and a bare assent is enough.
  */
-const ASSENT = /^\s*(?:yes|yep|yeah|yup|sure|ok(?:ay)?|sounds good|please|yes please|that works|works for me|perfect|great)\b[\s.!]*$/i;
+/**
+ * Spanish assent sits in the same anchored shape, and the anchor is what
+ * makes it safe: unaccented "si" is the conditional IF, so "si puede el
+ * jueves" is an answer about Thursday and not a bare yes. `^…$` means it only
+ * matches a message that is NOTHING but the assent.
+ *
+ * Missed when DAY and WINDOW were given Spanish: a Spanish lead who replied
+ * "sí, perfecto" to the availability question still could not be closed, which
+ * is the exact outcome that change was made to prevent.
+ */
+const ASSENT = /^\s*(?:yes|yep|yeah|yup|sure|ok(?:ay)?|sounds good|please|yes please|that works|works for me|perfect|great|s[íi]|claro|perfecto|de acuerdo|est[áa] bien|esta bien|me sirve|s[íi] por favor|excelente|vale)\b[\s.!]*$/i;
 
 export type AvailabilityGap =
   /** Nothing usable at all. */
