@@ -224,8 +224,24 @@ export const INTENT_GUIDE: Record<string, string> = {
   checking_availability: "you are looking something up and will come back",
 
   // The off-site quote
-  present_offsite_quote: "this job does not need a visit, so offer the quick quote",
-  offer_offsite_quote: "a visit is normal for this job but something stops it, and the reason must be on file",
+  /**
+   * THE TEST IS THE JOB, NEVER THE REQUEST, and the model kept getting this
+   * backwards in the sandbox — twice in one session, on "our building lobby
+   * and the stairwell" and on "3 bedrooms and a hallway, just need a rough
+   * number". Both times it read the customer ASKING for a quick quote as
+   * licence to present one, the validator refused with wrong_offsite_rule,
+   * and a good lead went to a person over a choice the system had already
+   * made for it.
+   *
+   * Asking for a ballpark is an A7 TRIGGER, which is what makes an off-site
+   * quote available at all. It is not what decides which of the two moves it
+   * is. Said explicitly here because the old wording described the job and
+   * left the inference to be made.
+   */
+  present_offsite_quote: "the JOB is small and clearly defined, so a quick quote IS the plan. "
+    + "Never chosen because the customer asked for one — that only makes an off-site quote possible",
+  offer_offsite_quote: "the job would normally be seen in person and something stops this customer, "
+    + "so the quick quote is OFFERED as a choice with the reason they qualify",
 
   // Handing over and ending
   escalate: "you are not sure, or it needs a person for any other reason",
