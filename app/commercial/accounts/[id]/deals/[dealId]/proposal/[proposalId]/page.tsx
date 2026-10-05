@@ -1598,7 +1598,12 @@ export default async function ProposalEditorPage({
   // 2026-07-21 audit: the PDF has a real body (and a non-zero TOTAL) when
   // there are inclusions OR labor rows — a labor-only bid is valid. Gate
   // Preview/Send on this, not on inclusions alone.
-  const hasPdfBody = inclusions.length > 0 || laborRows.length > 0;
+  /* A scope block IS a body. Left out, a proposal written entirely of blocks —
+     which is the whole point of them — showed "PDF: add an inclusion or labor
+     row first" and could be neither downloaded nor sent. Found by building
+     Stephanie's Glenwood proposal out of one block and looking at the page. */
+  const hasPdfBody =
+    inclusions.length > 0 || laborRows.length > 0 || scopeBlocks.length > 0;
   const oppName = derivedOppName(opp, account.company_name);
   // F.5: TOTAL label ("Labor Only TOTAL" flip) considers BOTH library
   // exclusions and one-off custom lines so a "Materials" exclusion
