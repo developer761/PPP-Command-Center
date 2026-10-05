@@ -159,7 +159,20 @@ export async function askTheRater(
   const res = await new Anthropic({ apiKey }).messages.create({
     model: RATER_MODEL,
     max_tokens: 4000,
-    system: prompt,
+    /**
+     * CACHED WHOLE, which the bot's prompt cannot be.
+     *
+     * The rater's system prompt is the rule set plus the rating guidance, and
+     * it is identical for every conversation it grades — nothing in it varies
+     * per customer. So the entire block is the cacheable prefix, with no
+     * reordering needed; the thing that changes is the transcript, and that
+     * is the user message.
+     *
+     * This matters because the rater is the second of two Opus calls per
+     * conversation and nobody is waiting on it, so it has been the quieter
+     * half of the bill.
+     */
+    system: [{ type: "text", text: prompt, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: transcript }],
     tools: [{ name: "record_findings", description: "Record every finding for this conversation.", input_schema: RATER_SCHEMA }],
     // One tool, and it must be used — no path where the rater writes prose

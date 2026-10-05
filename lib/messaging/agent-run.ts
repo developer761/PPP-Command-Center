@@ -161,7 +161,7 @@ function languagePrompt(language: Language): string {
   ].join("\n");
 }
 
-export function buildSystemPrompt(
+export function buildSystemPromptParts(
   cfg: AgentConfigForRun,
   hardNos: string[],
   track: Track = "new_lead",
@@ -204,7 +204,7 @@ export function buildSystemPrompt(
     zip?: string | null;
     state?: string | null;
   } | null,
-): string {
+): { stable: string; variable: string } {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
   /**
@@ -249,7 +249,7 @@ Your job is to confirm what they need, check it is work we do and an area we cov
 COLLECT IN THIS ORDER, and do not reorder or skip:
 ${flow}`;
 
-  return `${opening}
+  const stable = `${opening}
 
 ${services?.length ? servicesPrompt(services) : `WHAT WE DO:\n${cfg.services_included ?? "Interior and exterior painting."}`}
 
@@ -265,7 +265,6 @@ hands to a person, who checks. Only choose "area_not_serviced" when the state
 itself is one we do not serve, and that message names the zip we hold and
 asks whether the project is somewhere else, because the zip on file is often
 out of date.
-${areaLine}
 
 OFFSITE QUOTES. There are two of these and they are not the same move:
 present_offsite_quote  the JOB is small and clearly defined, so a quick quote
@@ -303,13 +302,12 @@ told you about still has no address, so keep going rather than handing over.
 
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
-${languagePrompt(language)}
 
 ${cfg.office_location ? `Our office is in ${cfg.office_location}.` : ""}
 ${cfg.service_area_note ? `Where we serve: ${cfg.service_area_note}` : ""}
-${knownCustomerPrompt(known)}
 
-${examples ? examplesPrompt(examples) : ""}
+
+
 
 ${track === "new_lead" ? `BEFORE SWITCHING TO A PHONE QUOTE:
 Say so first. If the job is small enough, or they want somebody out the same
@@ -333,6 +331,44 @@ ${UNTRUSTED_NOTE}
 You reply by choosing an intent and filling its slots. You never write the
 message that is sent. If you are unsure, choose "escalate". A person picking
 it up costs far less than a wrong answer to a customer.`;
+
+  /**
+   * EVERYTHING THAT CHANGES, AFTER EVERYTHING THAT DOES NOT.
+   *
+   * These four used to sit in the middle of the prompt, which is a reasonable
+   * place to read them and the worst possible place to cache them: a cache
+   * breakpoint covers a PREFIX, so one varying line early on makes everything
+   * after it uncacheable too. About 6,000 of the ~7,200 input tokens on every
+   * turn are identical — the 37 rule cards, the persona, the intent guide,
+   * the workspace's FAQs — and they were being paid for in full, every turn,
+   * on two models.
+   *
+   * Moved rather than duplicated. The text is unchanged and so is the order
+   * within each piece; only the position of these four relative to the stable
+   * body has changed.
+   */
+  const variable = [
+    languagePrompt(language),
+    areaLine,
+    knownCustomerPrompt(known),
+    examples ? examplesPrompt(examples) : "",
+  ].map((x) => x.trim()).filter(Boolean).join("\n\n");
+
+  return { stable, variable };
+}
+
+/**
+ * The whole prompt as one string.
+ *
+ * Kept because the simulator, the tests and verify-iteration-1 all read it,
+ * and because a caller that does not care about caching should not have to
+ * know the prompt has two halves.
+ */
+export function buildSystemPrompt(
+  ...args: Parameters<typeof buildSystemPromptParts>
+): string {
+  const { stable, variable } = buildSystemPromptParts(...args);
+  return variable ? `${stable}\n\n${variable}` : stable;
 }
 
 /**
@@ -631,16 +667,43 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(
-        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
-        opts.classARules, opts.workspaceFaqs, language,
-        // A2: the verdict the caller already looked up. It reached the
-        // validator and stopped there, so the model was asked to apply a rule
-        // whose one input it could not see.
-        opts.serviceArea
-          ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
-          : null,
-      ),
+      /**
+       * TWO BLOCKS, AND THE FIRST ONE IS CACHED.
+       *
+       * About 6,000 of the ~7,200 input tokens on every turn never change:
+       * the 37 rule cards, the persona, the intent guide, the workspace's
+       * standing answers. Measured, not guessed — the rules block alone is
+       * 9,566 characters.
+       *
+       * They were being paid for in full on every turn, on two models, and
+       * the account ran out of credit mid-session. A cache breakpoint covers
+       * a PREFIX, which is why the four varying pieces had to move to the end
+       * first; see buildSystemPromptParts.
+       *
+       * The cached prefix is stable PER WORKSPACE — persona, services, tone,
+       * rules, FAQs — so there is one entry per workspace rather than one per
+       * conversation, and sixteen live workspaces means sixteen.
+       *
+       * Correctness is unaffected either way: a cache miss sends exactly the
+       * same bytes and costs exactly what it used to.
+       */
+      system: (() => {
+        const { stable, variable } = buildSystemPromptParts(
+          cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
+          opts.classARules, opts.workspaceFaqs, language,
+          // A2: the verdict the caller already looked up. It reached the
+          // validator and stopped there, so the model was asked to apply a
+          // rule whose one input it could not see.
+          opts.serviceArea
+            ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
+            : null,
+        );
+        const blocks: Anthropic.TextBlockParam[] = [
+          { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+        ];
+        if (variable) blocks.push({ type: "text", text: variable });
+        return blocks;
+      })(),
       messages: [{ role: "user", content: prompt }],
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
