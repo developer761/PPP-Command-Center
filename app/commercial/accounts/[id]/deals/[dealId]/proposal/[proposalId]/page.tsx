@@ -67,6 +67,7 @@ import {
   listProposalsForOpp,
   type CommercialProposalLineItem,
 } from "@/lib/commercial/proposals/db";
+import { splitScopeBlocks } from "@/lib/commercial/proposals/scope-blocks";
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import {
   tomcoDefaultIntro,
@@ -800,21 +801,38 @@ async function addLineItemAction(formData: FormData) {
   const is_internal = formData.get("is_internal") === "on";
   const phaseRaw = String(formData.get("phase") ?? "").trim();
   const phase = phaseRaw || null;
+  /*
+   * A FREE-TEXT SCOPE BLOCK. Stephanie 2026-10-05.
+   *
+   * Its own form, so none of the take-off machinery has to be filled in to use
+   * it: quantity 1, unit "each", the whole price on the line, and the price
+   * SHOWN. That last one matters — `show_price` defaults to false, and a block
+   * whose price silently did not print would be the same defect she is already
+   * working around, just moved.
+   */
+  const is_scope_block = formData.get("is_scope_block") === "on";
+  const block_title = String(formData.get("block_title") ?? "").trim() || null;
   const result = await createLineItem(
     {
       proposal_id: proposalId,
       product_id,
       product_name,
       description,
-      quantity: Number.isFinite(quantity) && quantity >= 0 ? quantity : 1,
-      unit,
+      quantity: is_scope_block
+        ? 1
+        : Number.isFinite(quantity) && quantity >= 0
+          ? quantity
+          : 1,
+      unit: is_scope_block ? "each" : unit,
       unit_price_cents,
       is_internal,
       is_alternate,
       phase,
       is_labor: is_labor && !is_alternate,
+      is_scope_block,
+      block_title,
       // R1a: checkbox defaults checked; unchecked → absent → false (hide price).
-      show_price: formData.get("show_price") === "on",
+      show_price: is_scope_block ? true : formData.get("show_price") === "on",
       line_total_override_cents,
     },
     userId
@@ -1531,7 +1549,10 @@ export default async function ProposalEditorPage({
   const phasingOn =
     proposal.header_json.use_phasing ?? lineItems.some((i) => (i.phase ?? "").trim() !== "");
 
-  const inclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  /* Scope blocks are their own section, so they must come OUT of Inclusions —
+     the same split the PDF does, from the same helper, so the editor and the
+     document cannot disagree about which rows are which. */
+  const { scopeBlocks, inclusions } = splitScopeBlocks(lineItems, "internal");
   const laborRows = lineItems.filter((i) => !i.is_alternate && i.is_labor);
   const alternates = lineItems.filter((i) => i.is_alternate);
   /**
@@ -2616,6 +2637,134 @@ export default async function ProposalEditorPage({
               backHref={backParam}
             />
           )}
+        </div>
+      </EditorSection>
+
+      {/* SCOPE BLOCKS — Stephanie 2026-10-05.
+          "Can we add a text box (under the inclusions) that has a price section
+          in it but operates the same way the inclusions work where I can add
+          multiple custom inclusions?"
+
+          Under the inclusions, as asked. No product picker, no quantity, no
+          unit — those are the take-off machinery that works for Kim and gets in
+          her way, because most of her proposals come from an email Brendan
+          typed rather than a set of plans. A heading, the scope in her words,
+          and a price. */}
+      <EditorSection
+        id="scope-blocks"
+        title="Scope & price blocks"
+        subtitle="Type the scope in your own words with its own price. Each block prints with its own Price, Sales Tax and TOTAL."
+        icon={
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 7h16M4 12h10M4 17h7" />
+          </svg>
+        }
+        right={
+          <span className="text-[12px] text-ppp-charcoal-500 tabular-nums">
+            {scopeBlocks.length} block{scopeBlocks.length === 1 ? "" : "s"} · <strong className="text-ppp-charcoal-800">{formatDollars(scopeBlocks.reduce((a, r) => a + Math.round(Number(r.quantity) * r.unit_price_cents), 0))}</strong>
+          </span>
+        }
+      >
+        <div className="space-y-4">
+          {scopeBlocks.length === 0 ? (
+            <p className="text-[13px] text-ppp-charcoal-500 italic">
+              {canEditLines
+                ? "No blocks yet. Use this when there is no take-off — paste the scope and put the price on it."
+                : "No scope blocks."}
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {scopeBlocks.map((b) => (
+                <li key={b.id} className="rounded-xl border border-ppp-charcoal-100 bg-surface p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      {b.block_title ? (
+                        <p className="text-[13px] font-semibold text-ppp-charcoal-800">{b.block_title}</p>
+                      ) : null}
+                      <p className="text-[12.5px] text-ppp-charcoal-600 whitespace-pre-line mt-0.5">{b.description}</p>
+                    </div>
+                    <span className="text-[13px] font-semibold tabular-nums text-ppp-charcoal-800 shrink-0">
+                      {formatDollars(Math.round(Number(b.quantity) * b.unit_price_cents))}
+                    </span>
+                  </div>
+                  {canEditLines ? (
+                    <form action={deleteLineItemAction} className="mt-2 flex justify-end">
+                      <input type="hidden" name="account_id" value={accountId} />
+                      <input type="hidden" name="deal_id" value={dealId} />
+                      <input type="hidden" name="proposal_id" value={proposalId} />
+                      <input type="hidden" name="line_item_id" value={b.id} />
+                      <input type="hidden" name="back" value={backParam ?? ""} />
+                      <ConfirmSubmitButton
+                        message={`Remove this block${b.block_title ? ` (${b.block_title})` : ""}?`}
+                        pendingLabel="Removing…"
+                        className="px-3 py-1.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-400 hover:text-rose-700 hover:bg-rose-50 min-h-[44px]"
+                      >
+                        Remove
+                      </ConfirmSubmitButton>
+                    </form>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {canEditLines ? (
+            <form action={addLineItemAction} className="rounded-xl border border-dashed border-ppp-charcoal-200 p-3 space-y-3">
+              <input type="hidden" name="account_id" value={accountId} />
+              <input type="hidden" name="deal_id" value={dealId} />
+              <input type="hidden" name="proposal_id" value={proposalId} />
+              <input type="hidden" name="back" value={backParam ?? ""} />
+              {/* What makes this a block rather than an inclusion. */}
+              <input type="hidden" name="is_scope_block" value="on" />
+              <label className="block">
+                <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Heading (optional)</span>
+                <input
+                  name="block_title"
+                  placeholder="Inspection Room:"
+                  maxLength={120}
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 min-h-[44px]"
+                />
+                <span className="block text-[10.5px] text-ppp-charcoal-400 mt-1">
+                  Prints in bold above the scope. Leave blank for a block with no heading.
+                </span>
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Scope *</span>
+                <textarea
+                  name="description"
+                  required
+                  rows={6}
+                  maxLength={4000}
+                  placeholder={"Walls: Prep and paint with 2 coats\nHM Doors & Frames: Prep and paint (3) units with 2 coats"}
+                  className="w-full px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 resize-y"
+                />
+                <span className="block text-[10.5px] text-ppp-charcoal-400 mt-1">
+                  One line per bullet. Paste it straight from the email — bullets you already typed are kept.
+                </span>
+              </label>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="block">
+                  <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Price ($) *</span>
+                  <input
+                    name="unit_price"
+                    required
+                    inputMode="decimal"
+                    placeholder="3600.00"
+                    className="w-40 px-3 py-2 text-base sm:text-sm bg-surface border border-ppp-charcoal-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cc-brand-600/30 min-h-[44px]"
+                  />
+                </label>
+                <PendingSubmitButton
+                  pendingLabel="Adding…"
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 min-h-[44px]"
+                >
+                  Add block
+                </PendingSubmitButton>
+                <p className="text-[11px] text-ppp-charcoal-400 basis-full sm:basis-auto sm:flex-1 sm:min-w-[16rem]">
+                  Sales tax is worked out from the job, the same as the rest of the proposal.
+                </p>
+              </div>
+            </form>
+          ) : null}
         </div>
       </EditorSection>
 

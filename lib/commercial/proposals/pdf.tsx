@@ -19,6 +19,12 @@ import { join } from "node:path";
 
 import type { ProposalTaxLine } from "./proposal-tax";
 import {
+  splitScopeBlocks,
+  scopeBlockTaxCents,
+  scopeBlockLines,
+  shouldPrintGrandTotal,
+} from "./scope-blocks";
+import {
   TOMCO_COMPANY_FOOTER,
   tomcoDefaultIntro,
   proposalTotalLabel,
@@ -428,6 +434,21 @@ const styles = StyleSheet.create({
   taxLine: {
     fontSize: 11,
     lineHeight: 1.5,
+  },
+  /*
+   * A scope block's own price, tighter than the page's single TOTAL.
+   *
+   * `taxBlock` above carries marginTop 22 because it sits once, at the foot,
+   * and needs to separate from the exclusions. A block's price sits under its
+   * own scope and repeats — three of them at 22 is 66pt of dead space, which
+   * pushed Stephanie's three-block proposal onto a second page when her Word
+   * version fits on one. Measured by rendering it, not by reading it.
+   */
+  scopeBlockPrice: {
+    marginTop: 6,
+    marginBottom: 2,
+    flexDirection: "column",
+    alignItems: "flex-end",
   },
   signContact: {
     marginTop: 18,
@@ -1400,6 +1421,75 @@ function TaxedTotalBlock({ label, tax }: { label: string; tax: ProposalTaxLine }
   );
 }
 
+/**
+ * A free-text scope block: her heading, her words, and its own price.
+ *
+ * Stephanie 2026-10-05, with two proposals she had just typed by hand in Word:
+ * "most of the time there isn't a formal take off or plans ... It is just
+ * Brendan typing up an email and sending to me to put into proposal format."
+ *
+ * Her Inspection Room sample is three of these on one page — Inspection Room,
+ * Exterior Doors, 100 13th Ave — each with its own Price / NYS Sales Tax /
+ * TOTAL and no grand total underneath. That is the shape this renders.
+ *
+ * The body is printed as written. Lines that already start with a bullet keep
+ * theirs; the rest get one, because that is how every Tomco proposal reads.
+ * The heading is its own field rather than the first line of the body — on the
+ * version she was driving by hand, the heading she typed became the first
+ * bullet and the price rode one line of it, which is the thing that looked
+ * wrong on a document a GC reads.
+ */
+function ScopeBlockSection({
+  block,
+  rateThou,
+  taxLabel,
+  showPrice,
+}: {
+  block: CommercialProposalLineItem;
+  /** The proposal's own resolved rate, so a block's tax cannot disagree with
+   *  the tax line at the foot of the same page. Null = no tax line prints. */
+  rateThou: number | null;
+  taxLabel: string | null;
+  showPrice: boolean;
+}) {
+  const priceCents = lineTotalCents(block);
+  const lines = scopeBlockLines(block.description);
+  const taxCents = scopeBlockTaxCents(priceCents, rateThou);
+  return (
+    <View wrap={false}>
+      {block.block_title ? (
+        <Text style={styles.sectionUnderlineHeader}>{block.block_title}</Text>
+      ) : null}
+      <View style={{ marginTop: 4 }}>
+        {lines.map((line, i) => (
+          <View key={i} style={styles.bulletRow}>
+            <Text style={styles.bulletBody}>{line}</Text>
+          </View>
+        ))}
+      </View>
+      {showPrice ? (
+        taxCents != null && taxLabel ? (
+          <View style={styles.scopeBlockPrice}>
+            <Text style={styles.taxLine}>Price: {formatDollars(priceCents)}</Text>
+            <Text style={styles.taxLine}>
+              {taxLabel}: {formatDollars(taxCents)}
+            </Text>
+            <Text style={styles.totalText}>
+              TOTAL: {formatDollars(priceCents + taxCents)}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.scopeBlockPrice}>
+            <Text style={styles.totalText}>
+              TOTAL: {formatDollars(priceCents)}
+            </Text>
+          </View>
+        )
+      ) : null}
+    </View>
+  );
+}
+
 function TotalRow({ label, cents }: { label: string; cents: number }) {
   return (
     <View style={styles.totalRow}>
@@ -1833,7 +1923,19 @@ export function ProposalPdfDocument({
   // section between Inclusions and Alternates. Rolls into TOTAL like
   // inclusions (which is why we filter them out of the inclusions
   // bucket here — they'd double-count the TOTAL otherwise).
-  const allInclusions = lineItems.filter((i) => !i.is_alternate && !i.is_labor);
+  /**
+   * SCOPE BLOCKS COME OUT FIRST, or they print twice.
+   *
+   * Stephanie 2026-10-05: a block is the scope in her own words with one price
+   * on it, written from an email rather than a take-off. It is still a line
+   * item — it has money on it, so it has to be in the total the tax, the AIA
+   * contract sum and the invoice all read — but it renders as a headed
+   * narrative section, not as a row in the Inclusions list.
+   *
+   * Separated here, once, on the way in, for the same reason the internal rows
+   * are: so a print path added later cannot forget the rule.
+   */
+  const { scopeBlocks, inclusions: allInclusions } = splitScopeBlocks(lineItems, mode);
   /**
    * INTERNAL LINES NEVER REACH THE CUSTOMER COPY.
    *
@@ -1894,6 +1996,28 @@ export function ProposalPdfDocument({
   // migration-148 backfill, not a decision — and honouring it would blank the
   // whole itemized table. See LiRow.
   const respectShowPrice = lineItems.some((i) => i.show_price === true);
+  /*
+   * Does the page still owe the reader a grand total?
+   *
+   * Only when there is priced work OUTSIDE the scope blocks. Her Inspection
+   * Room sample is three priced blocks and nothing underneath — the three
+   * totals ARE the proposal, and a fourth figure under them would be a number
+   * the GC has to work out the meaning of. Her Glenwood sample is one scope and
+   * one total, which is what a proposal with no blocks has always printed.
+   *
+   * Measured against the money, not a flag: if anything outside the blocks
+   * carries a price, or an override has set the total by hand, the total still
+   * prints. Internal copies always print it — that reader is checking the
+   * arithmetic.
+   */
+  const scopeBlockSumCents = scopeBlocks.reduce((s, it) => s + lineTotalCents(it), 0);
+  const showGrandTotal = shouldPrintGrandTotal({
+    mode,
+    scopeBlocks,
+    scopeBlockSumCents,
+    totalCents: proposal.total_cents,
+    overrideActive,
+  });
 
   return (
     <Document
@@ -2013,11 +2137,32 @@ export function ProposalPdfDocument({
 
             Flow is now: Scope of Work → TOTAL → Alternate → Exclusions →
             Qualifications → sign-off. */}
-        {tax ? (
-          <TaxedTotalBlock label={totalLabel} tax={tax} />
-        ) : (
-          <TotalRow label={totalLabel} cents={proposal.total_cents} />
-        )}
+        {/* Her blocks, each carrying its own price. Between the itemised scope
+            and the page's TOTAL, which is where "under the inclusions" puts
+            them. */}
+        {scopeBlocks.map((b) => (
+          <ScopeBlockSection
+            key={b.id}
+            block={b}
+            rateThou={tax?.rateThou ?? null}
+            taxLabel={tax?.label ?? null}
+            showPrice={mode === "internal" || b.show_price !== false}
+          />
+        ))}
+
+        {/* THE GRAND TOTAL IS SKIPPED WHEN THE BLOCKS ALREADY ARE IT.
+            Her Inspection Room sample is three priced blocks and no total
+            underneath — the three block totals ARE the proposal. Her Glenwood
+            sample is one scope and one total. Both come out right if the page
+            stops repeating a figure the reader has already been given: print
+            the TOTAL only when there is priced work outside the blocks. */}
+        {showGrandTotal ? (
+          tax ? (
+            <TaxedTotalBlock label={totalLabel} tax={tax} />
+          ) : (
+            <TotalRow label={totalLabel} cents={proposal.total_cents} />
+          )
+        ) : null}
 
         {/* Katie 2026-08-13: "on the proposal PDF the Alternates should be
             below the final price so that it doesn't look like those items are

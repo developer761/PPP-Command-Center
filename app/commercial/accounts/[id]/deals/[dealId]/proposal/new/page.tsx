@@ -217,6 +217,13 @@ export default async function CreateProposalRoute({
           // R1a: carry per-line price visibility forward too (else it resets to
           // shown on every revision).
           show_price: item.show_price,
+          // Internal rows and free-text scope blocks carry forward for the same
+          // reason: a revision that quietly turned Stephanie's priced blocks
+          // back into ordinary inclusions — losing their headings and their own
+          // Price / Sales Tax / TOTAL — would be found by a GC, not by us.
+          is_internal: item.is_internal,
+          is_scope_block: item.is_scope_block,
+          block_title: item.block_title,
         },
         user.id
       );

@@ -220,6 +220,29 @@ export type CommercialProposalLineItem = {
    * migration runner, so the code must read correctly before it is applied.
    */
   is_internal?: boolean;
+  /**
+   * A free-text scope block with its own price, rather than a catalog line.
+   *
+   * Stephanie 2026-10-05: the product picker works for Kim doing a real
+   * take-off, and does not work at all for the proposals she writes from an
+   * email Brendan typed. A block is one headed narrative section — the scope in
+   * her words — carrying one price, and it prints its own
+   * Price / Sales Tax / TOTAL the way her samples do.
+   *
+   * Still a line item, deliberately: it has money on it, so it has to be the
+   * same row the proposal total, the tax line, the AIA contract sum and the
+   * invoice all read. A separate table would put a second source of money on
+   * one document.
+   *
+   * Optional on the type for the same reason as `is_internal`: the column
+   * arrives in 20261005150000_proposal_scope_blocks and there is no migration
+   * runner here, so this code has to read correctly before it is applied.
+   */
+  is_scope_block?: boolean;
+  /** The heading above a scope block ("Inspection Room:"). Kept out of
+   *  `description` so it prints bold instead of becoming the first bullet —
+   *  which is exactly what looks wrong on the proposals she sent. */
+  block_title?: string | null;
   /** Brendan 2026-08-17: overrides qty x unit_price for this line only, so a
    *  line can be discounted or uplifted while the quantity stays honest on the
    *  page. NULL = computed normally. */
@@ -2135,8 +2158,28 @@ export type CreateLineItemInput = {
   /** R1a (migration 100): print this line's price on the client PDF. Default
    *  true. Hidden lines still count toward the total. */
   show_price?: boolean;
+  /** Free-text scope block with its own price. See `is_scope_block` on
+   *  CommercialProposalLineItem. */
+  is_scope_block?: boolean;
+  /** Heading above a scope block. Trimmed on write; empty → NULL. */
+  block_title?: string | null;
   line_total_override_cents?: number | null;
 };
+
+/**
+ * Clean a scope block's heading. It is pasted out of an email more often than
+ * typed, so it arrives with newlines and zero-width characters, and it prints
+ * bold at the top of a block on a document a GC reads. Same treatment `phase`
+ * gets, and shared by create and update so the two cannot drift.
+ */
+function cleanBlockTitle(raw: string | null | undefined): string | null {
+  const s = (raw ?? "")
+    .replace(/[​-‍﻿]/g, "")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+  if (!s) return null;
+  return s.length > 120 ? s.slice(0, 120) : s;
+}
 
 /** Migration 071 deploy-safety helpers. `product_name` is a brand-new
  *  column; between shipping this code and applying the migration (plus
@@ -2299,6 +2342,9 @@ export async function createLineItem(
           // missing-column retry below drops it (defaults to true server-side).
           show_price: input.show_price ?? false,
           is_internal: input.is_internal ?? false,
+          // 20261005150000: free-text scope block + its heading.
+          is_scope_block: input.is_scope_block ?? false,
+          block_title: cleanBlockTitle(input.block_title),
           line_total_override_cents: input.line_total_override_cents ?? null,
         },
         input.product_name,
@@ -2306,6 +2352,41 @@ export async function createLineItem(
     )
     .select("*")
     .single();
+  /*
+   * Deploy-safety for the scope-block columns, same shape as the is_internal
+   * retry below: until the migration is pasted in, drop the two fields and
+   * insert without them rather than refusing to create the line. A proposal
+   * that cannot take a line item at all is a worse failure than one whose new
+   * block renders as an ordinary inclusion for a few minutes.
+   */
+  if (error && /is_scope_block|block_title/i.test(error.message)) {
+    const retry = await sb
+      .from("commercial_proposal_line_items")
+      .insert(
+        withProductName(
+          {
+            proposal_id: input.proposal_id,
+            product_id: input.product_id ?? null,
+            description: input.description.trim(),
+            quantity: input.quantity,
+            unit: input.unit,
+            unit_price_cents: input.unit_price_cents,
+            is_alternate: input.is_alternate ?? false,
+            position,
+            phase: phaseNormalized,
+            is_labor: input.is_labor ?? false,
+            show_price: input.show_price ?? false,
+            is_internal: input.is_internal ?? false,
+            line_total_override_cents: input.line_total_override_cents ?? null,
+          },
+          input.product_name,
+        ),
+      )
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
   // Migration 071 deploy-safety: if product_name isn't in the schema yet
   // (migration not applied / PostgREST cache lag), retry once without it
   // so line-item creation never breaks on the ordering window.
@@ -2391,6 +2472,10 @@ export type UpdateLineItemInput = {
   show_price?: boolean;
   /** Hidden from the customer copy, still in the TOTAL. See is_internal. */
   is_internal?: boolean;
+  /** Free-text scope block flag. See `is_scope_block`. */
+  is_scope_block?: boolean;
+  /** Heading above a scope block. Pass empty string or null to clear. */
+  block_title?: string | null;
   line_total_override_cents?: number | null;
 };
 
@@ -2461,6 +2546,10 @@ export async function updateLineItem(
   if (input.is_alternate !== undefined) patch.is_alternate = input.is_alternate;
   if (input.show_price !== undefined) patch.show_price = input.show_price;
   if (input.is_internal !== undefined) patch.is_internal = input.is_internal;
+  if (input.is_scope_block !== undefined)
+    patch.is_scope_block = input.is_scope_block;
+  if (input.block_title !== undefined)
+    patch.block_title = cleanBlockTitle(input.block_title);
   if (input.line_total_override_cents !== undefined)
     patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;
