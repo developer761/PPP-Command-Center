@@ -156,3 +156,40 @@ export function capabilitiesFor(role: UserRole): Capabilities {
     canSeeAnalytics: !isAccountManager,
   };
 }
+
+/**
+ * The role a profile row actually grants — the ONE derivation.
+ *
+ * Three surfaces decided this independently and drifted twice in two days:
+ *
+ *   · the sidebar          `is_admin || isAdminEmail(email)`, then normalize
+ *   · the Settings hub     `is_admin ?? isAdminEmail(email)` — role ignored
+ *   · Settings → Access    `is_admin ?? isAdminEmail(email)`, then normalize
+ *
+ * `??` only falls through on null/undefined, so a row with role 'admin' and
+ * the legacy is_admin boolean still FALSE resolved to "rep" on two of the
+ * three — the menu offered Settings and the page bounced them with no
+ * explanation (jason.eng@, 2026-10-05). Repairing the role handling left a
+ * second split one layer in: is_admin FALSE beside a bootstrap email still
+ * disagreed, which an exhaustive test caught and reading the code had not.
+ *
+ * So it lives here, once. `||`, because the allow-list is a bootstrap that a
+ * stale flag must not override, and the role wins over both when it is set.
+ *
+ * `bootstrapAdmin` is the caller's isAdminEmail() result — passed in rather
+ * than read here so this stays pure and the env lookup stays in one place.
+ */
+export function roleForProfile(
+  profile: { role?: string | null; is_admin?: boolean | null } | null | undefined,
+  bootstrapAdmin = false
+): UserRole {
+  return normalizeRole(profile?.role, (profile?.is_admin ?? false) || bootstrapAdmin);
+}
+
+/** Shorthand for the gate every admin-only page repeats. */
+export function isAdminProfile(
+  profile: { role?: string | null; is_admin?: boolean | null } | null | undefined,
+  bootstrapAdmin = false
+): boolean {
+  return roleForProfile(profile, bootstrapAdmin) === "admin";
+}

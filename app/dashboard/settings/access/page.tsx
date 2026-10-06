@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { normalizeRole } from "@/lib/auth/roles";
+import { roleForProfile } from "@/lib/auth/roles";
 import { listManagedUsers } from "@/lib/auth/user-management";
 import PageHeader from "@/components/page-header";
 import AccessManager from "@/components/settings/access-manager";
@@ -25,7 +25,9 @@ export default async function AccessPage() {
   if (!user) redirect("/");
 
   const profile = await getProfileByUserId(user.id);
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  // Shared derivation — this used `??`, which read a row with role 'admin'
+  // and a stale is_admin FALSE as a rep. See roleForProfile.
+  const role = roleForProfile(profile, isAdminEmail(user.email));
   if (role !== "admin") redirect("/dashboard");
 
   const users = await listManagedUsers();

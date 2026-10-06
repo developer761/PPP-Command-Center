@@ -4,7 +4,7 @@ import { getProfileByUserId, logViewAs } from "@/lib/auth/profile";
 import { readProxyCookie } from "@/lib/auth/proxy";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { getCurrentUser } from "@/lib/auth/session";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import type { Viewer, ViewerScope } from "@/lib/auth/viewer";
 
 /**
@@ -53,11 +53,10 @@ export async function resolveViewer(
   // Belt-and-suspenders: even if the profile row somehow has is_admin=false
   // for a person on the env allow-list, trust the allow-list. Stops a stale
   // profile from locking an admin out of impersonation.
-  const isAdminByFlag = profile.is_admin || isAdminEmail(profile.email);
-
   // Role drives capabilities. The env allow-list is an admin bootstrap: a
   // person on it is treated as admin even if their stored role lags behind.
-  const role = normalizeRole(profile.role, isAdminByFlag);
+  // Shared with both Settings pages so the menu and the page cannot disagree.
+  const role = roleForProfile(profile, isAdminEmail(profile.email));
   const caps = capabilitiesFor(role);
   const isAdmin = caps.isAdmin;
   const isAccountManager = caps.isAccountManager;

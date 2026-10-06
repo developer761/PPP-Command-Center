@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { normalizeRole } from "@/lib/auth/roles";
+import { isAdminProfile } from "@/lib/auth/roles";
 import PageHeader from "@/components/page-header";
 
 /**
@@ -96,23 +96,9 @@ export default async function SettingsHubPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
-  // Derive admin EXACTLY as the sidebar and /dashboard/settings/access do, or
-  // the menu and the page disagree about who may be here.
-  //
-  // This read `profile?.is_admin ?? isAdminEmail(user.email)`. The `??` only
-  // falls through on null/undefined, so a profile carrying role 'admin' with
-  // the legacy is_admin boolean still FALSE resolved to false and was bounced —
-  // while the sidebar (viewer-server.ts, which ORs the two and then normalizes
-  // the role) happily rendered the Settings link. jason.eng@ was in exactly
-  // that state on 2026-10-05: he could see Settings and never open it, landing
-  // back on /dashboard with nothing said. Every write path mirrors
-  // is_admin = role === 'admin', so the two only drift on a hand-edited row —
-  // which is precisely the case nobody notices until someone can't work.
-  //
-  // role is now authoritative, with is_admin and the bootstrap email list as
-  // fallbacks for rows written before the role column existed.
-  const isAdmin =
-    normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email)) === "admin";
+  // ONE derivation, shared with the sidebar and Settings → Access. These three
+  // computed it separately and drifted twice in two days — see roleForProfile.
+  const isAdmin = isAdminProfile(profile, isAdminEmail(user.email));
   if (!isAdmin) redirect("/dashboard");
 
   return (
