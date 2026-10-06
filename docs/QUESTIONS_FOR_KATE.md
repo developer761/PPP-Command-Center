@@ -1502,3 +1502,41 @@ simply answers in the morning. Say the word and it is one toggle.
 
 **If you do want it on, the other question is the wording** — the sentence
 above is ours and would want to be yours.
+
+## 27. Should a price question be answered by Emily, or handed to a person?
+
+**Raised 2026-10-06, from playing it rather than from the spec.** Typed two
+price questions into the sandbox against the live configuration:
+
+> "Hi, how much would it cost to paint a 12x14 bedroom? Just give me a
+> ballpark number please"
+>
+> "What would you charge to paint my kitchen cabinets? rough number is fine"
+
+Both got the right reply — **"The estimator will confirm that with you
+directly."** — and both were then marked **hands to a person**, at 0.85
+confidence against the 0.95 threshold set on the Agent screen. Price is the
+commonest thing a lead opens with, so once Emily is sending on her own, that
+is a large share of every conversation arriving in the human queue having
+already been answered correctly.
+
+**What changed today (the default, while you decide):** a turn that says the
+estimator owns the answer no longer needs 0.95. It is treated the way "are you
+a bot" already is — the reply is a fixed sentence, it quotes nothing, promises
+nothing and names no time, and an estimator following up is the flow we are
+collecting details for. Below 0.5 it still hands over, so a genuinely lost bot
+behaves as it did.
+
+**What stays strict either way:** actually answering a question about scope,
+offering or presenting an off-site quote, and closing a conversation. Those
+commit PPP to something; this does not.
+
+**→ The question for you:** when somebody asks for a number, do you want
+Emily to say "the estimator will confirm that with you directly" and carry on
+collecting details, or do you want a person on that conversation from the
+moment price comes up? Today's answer is the first. Say the word and it is one
+line.
+
+**Worth knowing either way:** this only bites when autosend is on. Today
+Emily is not sending on her own in any workspace, so every reply already
+reaches a person before it goes out.

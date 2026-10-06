@@ -162,8 +162,23 @@ try {
       })
     ).toString("base64");
 
+  /**
+   * A PAGE THAT NEVER LOADED IS NOT A MISSING TARGET.
+   *
+   * Both used to be counted as `missing`, and the summary read "53 of 53
+   * walkthrough targets are not rendered — those steps would spotlight
+   * nothing". Every page had answered 307, because the probe session was not
+   * accepted; nothing at all was known about the targets. Somebody running
+   * `npm run verify` was told the walkthrough was entirely broken when what
+   * was broken was the sign-in in this script.
+   *
+   * Counted apart now, and the redirect's destination is printed, because
+   * "→ /login" and "→ /onboarding" are different problems and the Location
+   * header is the one thing that distinguishes them.
+   */
   const pages = new Map();
   let missing = 0;
+  const unreachable = new Map();
   for (const { target, route } of targets) {
     if (!pages.has(route)) {
       const res = await fetch(BASE + route, {
@@ -172,23 +187,40 @@ try {
         signal: AbortSignal.timeout(120_000),
       });
       if (res.status !== 200) {
-        console.log(`  DOWN  ${route} → HTTP ${res.status}`);
-        pages.set(route, "");
+        const where = res.headers.get("location");
+        console.log(`  DOWN  ${route} → HTTP ${res.status}${where ? ` → ${where}` : ""}`);
+        pages.set(route, null);
+        unreachable.set(route, `${res.status}${where ? ` → ${where}` : ""}`);
       } else {
         pages.set(route, await res.text());
       }
     }
-    const ok = pages.get(route).includes(`data-tour="${target}"`);
+    const html = pages.get(route);
+    if (html === null) {
+      console.log(`  ????  ${target.padEnd(32)} ${route} (page did not load — not checked)`);
+      continue;
+    }
+    const ok = html.includes(`data-tour="${target}"`);
     if (!ok) missing++;
     console.log(`  ${ok ? "ok  " : "MISS"}  ${target.padEnd(32)} ${route}`);
   }
 
+  const unchecked = targets.filter((t) => unreachable.has(t.route)).length;
+  if (unreachable.size) {
+    console.log(
+      `\n⚠  ${unreachable.size} page(s) did not load as the probe user, so ${unchecked} target(s)`
+      + ` were not checked. This is the script's own sign-in or ${BASE} being the wrong server —`
+      + ` it says NOTHING about the walkthrough. First one: ${[...unreachable][0][0]} ${[...unreachable][0][1]}`
+    );
+  }
+  const checked = targets.length - unchecked;
   console.log(
     missing === 0
-      ? `\n✅ all ${targets.length} walkthrough targets are on their page`
-      : `\n❌ ${missing} of ${targets.length} walkthrough targets are not rendered — those steps would spotlight nothing`
+      ? `\n✅ all ${checked} walkthrough targets that could be checked are on their page`
+      : `\n❌ ${missing} of ${checked} checked walkthrough targets are not rendered — those steps would spotlight nothing`
   );
-  process.exitCode = missing === 0 ? 0 : 1;
+  // Either is a failure: a target that is gone, and a run that proved nothing.
+  process.exitCode = missing === 0 && unreachable.size === 0 ? 0 : 1;
 } finally {
   await admin.from("profiles").delete().eq("user_id", uid);
   await admin.auth.admin.deleteUser(uid);

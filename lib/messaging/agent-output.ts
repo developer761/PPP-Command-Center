@@ -1988,6 +1988,38 @@ const LOW_STAKES = new Set<string>([
    * different door. Found by running it in the sandbox, 2026-09-30.
    */
   "bot_suspected",
+  /**
+   * A33's "that one is the estimator's" — the same case as bot_suspected
+   * above, found the same way, on the question customers ask most.
+   *
+   * Run in the sandbox 2026-10-06, twice, with different wording:
+   *
+   *   "how much would it cost to paint a 12x14 bedroom?"
+   *   "what would you charge to paint my kitchen cabinets?"
+   *   → defer_to_estimator, 0.85, hands to a person. Both times.
+   *
+   * The configured threshold is 0.95 — checked on /messaging/agent in
+   * production, not assumed — and the model reports about 0.85 here, so once
+   * autosend is on EVERY price question lands in the human queue. Price is
+   * the commonest thing a painting lead opens with.
+   *
+   * The test this file sets is CONSEQUENCE, not correctness: "quoting, ending
+   * a conversation, answering a question about scope and offering an off-site
+   * quote all commit PPP to something". This commits PPP to nothing. The
+   * template is a constant — "The estimator will confirm that with you
+   * directly" — the model composes only the rapport, which is post-filtered
+   * and can carry neither a price nor a time, and an estimator following up
+   * is the flow we are collecting details FOR.
+   *
+   * Being wrong costs a deferral of something we might have answered. Today
+   * that is nothing: the standing-answer list is empty on every workspace, so
+   * there is no answer being withheld. The floor is still 0.5, so a model
+   * that is genuinely unsure hands over as before.
+   *
+   * Kate's call in the end — docs/QUESTIONS_FOR_KATE.md item 27 — and this is
+   * the default shipped while she decides, the convention for this file.
+   */
+  "defer_to_estimator",
 ]);
 
 /** Below this even a routine question is not worth sending. */

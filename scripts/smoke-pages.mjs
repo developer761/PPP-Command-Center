@@ -116,7 +116,7 @@ try {
     Buffer.from(JSON.stringify({
       access_token: s.access_token, token_type: "bearer", expires_in: s.expires_in,
       expires_at: s.expires_at, refresh_token: s.refresh_token, user: s.user,
-    })).toString("base64");
+    })).toString("base64url");
 
   // Real records, so the dynamic routes are exercised too — a page that only
   // renders with data is exactly where a runtime error hides.
