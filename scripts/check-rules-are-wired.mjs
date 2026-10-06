@@ -81,7 +81,11 @@ const CHAINS = [
     links: [
       ["lib/messaging/availability.ts", /export function availabilityGapAcross/],
       // The validator gets the whole conversation, from the customer's own words.
-      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid\)/],
+      // `customerSaid`, not inbound.description, and Across, not per-message.
+      // Deliberately tolerant of the options argument that was added later —
+      // see "a bare yes to the availability question counts as availability"
+      // below, which pins what goes in it. This chain is about WHAT is judged.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid[,)]/],
       // The renderer stays per-message, but on ownWords rather than the narration.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
@@ -652,6 +656,29 @@ const CHAINS = [
       // The write must stay guarded. Without `.is(..., null)` it would
       // overwrite the office's version with something read out of a text.
       ["lib/messaging/scheduler-db.ts", /update\(\{ customer_email[^}]*\}\)\s*\.eq\([^)]*\)\s*;/],
+    ],
+  },
+  {
+    rule: "a bare yes to the availability question counts as availability",
+    why:
+      "Kate: a non-answer counts — 'yes please' in reply to the availability question IS " +
+      "availability received. availabilityGap has taken justAskedForAvailability since it was " +
+      "written and NOTHING EVER SET IT except the tests, so in production the carve-out could " +
+      "not fire once, including the Spanish assent words added specifically to stop a 'si, " +
+      "perfecto' lead being unclosable. The close guard refused for ever and the customer was " +
+      "asked for days they had already agreed to on every turn after. A flag whose only caller " +
+      "is a test is a capability the product does not have",
+    links: [
+      // The caller passes it, gated on OUR last intent...
+      ["lib/messaging/agent-run.ts", /justAskedForAvailability:\s*opts\.lastIntent === "ask_availability"/],
+      // ...and it reaches only the message that can be answering us.
+      ["lib/messaging/availability.ts", /i === texts\.length - 1 \? opts : \{\}/],
+    ],
+    forbidden: [
+      // Applied across the whole history it is the opposite bug: a "yes"
+      // confirming an address becomes an answer about days, and closes a
+      // conversation with no availability in it anywhere.
+      ["lib/messaging/availability.ts", /for \(const text of texts\)/],
     ],
   },
   {

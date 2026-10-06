@@ -767,7 +767,23 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
   return { ok: true };
 }
 
-export function checkRapport(text: string, customerText?: string, templateAsks = true): RapportCheck {
+/**
+ * The intents whose template is empty, so the model's sentence IS the whole
+ * message rather than a preface to one.
+ *
+ * Listed here rather than read from render.ts because this module must not
+ * import the renderer, and pinned to it by
+ * __tests__/messaging/rapport-is-the-message.test.ts — which fails if render.ts
+ * gains or loses an empty template, so the two cannot drift apart.
+ */
+export const RAPPORT_IS_THE_MESSAGE = new Set<string>(["answer_question", "msg_liked_loved"]);
+
+export function checkRapport(
+  text: string,
+  customerText?: string,
+  templateAsks = true,
+  rapportIsTheMessage = false,
+): RapportCheck {
   const tone = checkTone(text, customerText, templateAsks);
   if (!tone.ok) return tone;
 
@@ -790,7 +806,33 @@ export function checkRapport(text: string, customerText?: string, templateAsks =
   //
   // Rapport exists for "Got it" and "Happy to help". A justification is not
   // rapport, and the template it would be bolted onto already says the thing.
-  const reason = REASON_CLAUSE.exec(text);
+  /**
+   * UNLESS THERE IS NO ASK FOR IT TO PAD.
+   *
+   * Every sentence of the rule above assumes a template underneath: "the ask
+   * stands alone", "the template it would be bolted onto already says the
+   * thing". answer_question has no template — SAYS[answer_question] is [""] —
+   * so the model's sentence is the entire message, and there is nothing it can
+   * be padding.
+   *
+   * Dropped anyway, this did not shorten a message. It deleted it:
+   *
+   *   customer  "how long will the job take?"
+   *   model     answer_question + "Most rooms take a day or two because of
+   *             drying time."
+   *   → rapport dropped → renderMessage returns "" → saysNothing → the
+   *     conversation is handed to a person with NO DRAFT WRITTEN. The customer
+   *     gets silence, and nobody sees what the bot wanted to say.
+   *
+   * An answer to "how long" or "why" is a reason — that is what those
+   * questions ask for — so the rule as written forbade answering them at all.
+   * checkTone's question rule was split out and gated for exactly this reason,
+   * three guards up; this one was left ungated.
+   *
+   * A32 still binds every ask: the gate is the intent's own template, not the
+   * wording.
+   */
+  const reason = rapportIsTheMessage ? null : REASON_CLAUSE.exec(text);
   if (reason) return { ok: false, why: `it pads the ask with a reason ("${reason[0].trim()}")` };
 
   return { ok: true };
@@ -1803,7 +1845,10 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   let rapport = text || undefined;
   let droppedRapport: string | undefined;
   if (rapport) {
-    const style = checkRapport(rapport, ctx.customerText, ctx.templateAsks?.(a.intent) ?? true);
+    const style = checkRapport(
+      rapport, ctx.customerText, ctx.templateAsks?.(a.intent) ?? true,
+      RAPPORT_IS_THE_MESSAGE.has(a.intent),
+    );
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
   }
 

@@ -98,6 +98,43 @@ describe("a bare yes only counts when we had just asked", () => {
   });
 });
 
+/**
+ * ACROSS A CONVERSATION, THE CARVE-OUT BELONGS TO THE LAST MESSAGE ALONE.
+ *
+ * Two bugs meet here, pulling in opposite directions, which is why they are
+ * tested together.
+ *
+ * The flag was never passed in production at all — the tests above were the
+ * only callers that ever set it — so "yes please" to the availability question
+ * was not availability, the close guard refused for ever, and the customer was
+ * asked for days they had already agreed to on every turn after.
+ *
+ * And the obvious fix, passing it for the whole history, is worse: every "yes"
+ * in the thread becomes an answer about days, so "is 12 Hilton Ave right?" →
+ * "yes" would close a conversation that never discussed timing at all.
+ */
+describe("availabilityGapAcross — a yes answers the question it follows", () => {
+  const asked = { justAskedForAvailability: true };
+
+  it("counts a bare yes that is the latest message", () => {
+    expect(availabilityGapAcross(["I need my kitchen done", "yes please"], asked)).toBeNull();
+  });
+
+  it("does NOT count a bare yes from earlier in the thread", () => {
+    // That yes was confirming an address. Nothing here is availability.
+    expect(availabilityGapAcross(["yes", "12 Hilton Ave, 11530"], asked)).toBe("both");
+  });
+
+  it("still needs the flag — an unprompted yes is not an answer", () => {
+    expect(availabilityGapAcross(["I need my kitchen done", "yes please"])).toBe("both");
+  });
+
+  it("leaves a real answer alone either way", () => {
+    expect(availabilityGapAcross(["Tuesday morning works"], asked)).toBeNull();
+    expect(availabilityGapAcross(["Tuesday morning works"])).toBeNull();
+  });
+});
+
 describe("the ask narrows to the half that is missing", () => {
   it("asks for the window when they named days", () => {
     const out = renderMessage({ intent: "ask_availability", availabilityGap: "window", turn: 0 });

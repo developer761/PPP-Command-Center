@@ -187,8 +187,21 @@ export function availabilityGapAcross(
 ): AvailabilityGap {
   let haveDay = false;
   let haveWindow = false;
-  for (const text of texts) {
-    const gap = availabilityGap(text, opts);
+  for (const [i, text] of texts.entries()) {
+    /**
+     * THE BARE-ASSENT CARVE-OUT BELONGS TO THE LAST MESSAGE ONLY.
+     *
+     * "Yes please" counts as availability because it answers the question we
+     * have just asked — so it counts for the message that answered it, and
+     * for no other. Applied across the whole history it would read the "yes"
+     * from "is 12 Hilton Ave right?" eight turns earlier as an answer about
+     * days, and close a conversation with no availability in it anywhere.
+     *
+     * `texts` is oldest-first with the current inbound appended (agent-run.ts
+     * builds it that way), so the last entry is the only one that can be
+     * answering us.
+     */
+    const gap = availabilityGap(text, i === texts.length - 1 ? opts : {});
     if (gap === null) return null;
     // "window" means a DAY was found and the window is what is missing.
     if (gap === "window") haveDay = true;

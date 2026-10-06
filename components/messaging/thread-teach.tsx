@@ -9,10 +9,19 @@
  * reading a real conversation is uniquely able to give: what the reply should
  * have been.
  *
- * The carrier is still not connected and this still delivers nothing. What it
- * does instead is bank the correction as a training example, with the real
- * conversation above it as context. That is the same mechanism the repair
- * screen uses, moved to the place where someone actually notices the problem.
+ * This panel delivers nothing itself. What it does instead is bank the
+ * correction as a training example, with the real conversation above it as
+ * context. That is the same mechanism the repair screen uses, moved to the
+ * place where someone actually notices the problem.
+ *
+ * WHAT IT MUST NOT DO IS SPEAK FOR THE CARRIER. The note beside the button
+ * used to read "Sending is off until the carrier is connected" as a hardcoded
+ * constant — true when it was written, and sitting directly beneath
+ * ThreadComposer, whose Send calls gatedSend and really does reach a phone.
+ * The dashboard and the review queue both read transportChoice() and say what
+ * is actually happening; this screen would have gone on announcing that
+ * sending was off from the morning PPP went live. The page passes the answer
+ * in now.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,10 +33,13 @@ export function ThreadTeach({
   turns,
   tags,
   lastWasCustomer,
+  sendingIsLive,
 }: {
   turns: AuthoredTurn[];
   tags: Tag[];
   lastWasCustomer: boolean;
+  /** transportChoice().live, read by the page. Never assumed here. */
+  sendingIsLive: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -83,7 +95,9 @@ export function ThreadTeach({
         {!open ? (
           <div className="flex items-center justify-between gap-3 pb-3">
             <p className="text-[12px] text-ppp-charcoal-500 leading-snug">
-              Sending is off until the carrier is connected.
+              {sendingIsLive
+                ? "Replies you send from here go to the customer's phone."
+                : "Sending is off until the carrier is connected."}
             </p>
             <button
               type="button"

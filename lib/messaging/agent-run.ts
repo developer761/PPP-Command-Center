@@ -917,7 +917,27 @@ Choose the next action.`;
        * nothing, which is what this rule needs to know. The first draft of
        * this fix used the description and had exactly that bug.
        */
-      availabilityGap: availabilityGapAcross(customerSaid),
+      /**
+       * AND THE FLAG THAT MAKES "YES PLEASE" AN ANSWER WAS NEVER PASSED.
+       *
+       * availabilityGap has taken `justAskedForAvailability` since it was
+       * written, and the only places that ever set it were its own tests. In
+       * production it was always false, so the ASSENT list — including the
+       * Spanish words added specifically to stop a "sí, perfecto" lead being
+       * unclosable — could not fire once.
+       *
+       * The result was a conversation that can never end: Kate's rule is that
+       * a bare yes to the availability question IS availability, the close
+       * guard disagreed, and the customer was asked for days they had already
+       * agreed to, every turn. The lead who answered everything was the one
+       * that could not convert.
+       *
+       * Gated on OUR last intent, so the carve-out only applies to a message
+       * that is actually answering our availability question.
+       */
+      availabilityGap: availabilityGapAcross(customerSaid, {
+        justAskedForAvailability: opts.lastIntent === "ask_availability",
+      }),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent: string) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
