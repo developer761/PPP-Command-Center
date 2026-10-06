@@ -119,7 +119,13 @@ export type SchedulerDeps = {
     | { kind: "drafted" }
     | { kind: "held"; at: Date }
     | { kind: "sent"; providerId: string; body: string; intent?: string | null }
-    | { kind: "skipped"; reason: string }
+    /**
+     * `retryable` means the reason is TRUE NOW AND NOT FOREVER — a draft
+     * waiting on a reviewer, a person holding the thread. Without it every
+     * skip was cancelled, and the cadence died on states that clear by
+     * themselves. See the stall_followup branch below.
+     */
+    | { kind: "skipped"; reason: string; retryable?: boolean }
   >;
   /**
    * Deliver a held reply at its moment: drop it if the customer has texted
@@ -358,6 +364,36 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       }
       if (out.kind === "drafted") { await deps.markDone(a); return { kind: "drafted" }; }
       if (out.kind === "held") { await deps.markDone(a); return { kind: "held", at: out.at }; }
+
+      /**
+       * A REASON THAT CLEARS BY ITSELF IS NOT A REASON TO GIVE UP.
+       *
+       * Every skip used to be cancelled here, and several of draftReply's
+       * skips describe a passing state: a draft waiting on a reviewer, a
+       * person holding the thread, a turn handed to a person. Confirmed in
+       * production 2026-10-06 — of the three A44 cadences that have ever run,
+       * NONE can complete:
+       *
+       *   conversation 022606b8…  step 1 done
+       *                           step 2 cancelled "a reply is already
+       *                           step 3 cancelled  waiting for review"
+       *
+       * And the damage outlives the cadence. It cannot be re-queued, because
+       * stalled-db counts non-cancelled rows and step 1 is done; and
+       * resumeCallingIfSpent needs three DONE steps before it tells the call
+       * centre it may dial again. So the lead is neither chased nor called —
+       * the exact dead end A44 and A45 exist to close, produced by the
+       * machinery built to close it.
+       *
+       * An hour, the same guess this file makes everywhere it defers, and the
+       * human_active horizon above still ends anything a person keeps.
+       */
+      if (out.retryable) {
+        const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
+        await deps.reschedule(a, at, out.reason, "deferral");
+        return { kind: "rescheduled", at, reason: out.reason };
+      }
+
       await deps.cancel(a, out.reason);
       return { kind: "cancelled", reason: out.reason };
     } catch (err) {

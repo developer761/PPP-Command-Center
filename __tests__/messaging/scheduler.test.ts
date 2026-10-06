@@ -625,3 +625,79 @@ describe("a model that could not be reached is retried, not cancelled", () => {
     expect(d.calls.cancel).toBe(1);
   });
 });
+
+/**
+ * A REASON THAT CLEARS BY ITSELF IS NOT A REASON TO GIVE UP.
+ *
+ * Every skip from draftReply used to be cancelled, and several of those skips
+ * describe a passing state. Confirmed in production 2026-10-06: of the three
+ * A44 cadences that have ever run, NONE can complete.
+ *
+ *   conversation 022606b8…  step 1 done
+ *                           step 2 cancelled "a reply is already
+ *                           step 3 cancelled  waiting for review"
+ *
+ * The damage outlives the cadence. It cannot be re-queued — stalled-db counts
+ * non-cancelled rows and step 1 is done — and resumeCallingIfSpent needs three
+ * DONE steps before the call centre is told it may dial again. The lead is
+ * neither chased nor called, which is the exact dead end A44 and A45 exist to
+ * close, produced by the machinery built to close it.
+ */
+describe("a stall follow-up blocked by something temporary", () => {
+  const stall = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "s1", conversation_id: "c1", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 2, ...over,
+  });
+
+  it.each([
+    "a reply is already waiting for review",
+    "a person has taken this conversation over",
+    "handed to a person: question_left_unanswered: …",
+  ])("defers rather than cancelling: %s", async (reason) => {
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({ kind: "skipped" as const, reason, retryable: true }),
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(0);
+    expect(d.calls.reschedule).toBe(1);
+  });
+
+  /**
+   * The attempt is given BACK. attempts increments on claim, so a deferral
+   * that spent one would fail the row after five quiet hours — the bug the
+   * `why` parameter exists to prevent. The default spy does not record `why`,
+   * so this one captures it.
+   */
+  it("spends no attempt on such a deferral", async () => {
+    let why: string | undefined;
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({
+        kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true,
+      }),
+      reschedule: async (_a: DueAction, _at: Date, _r: string, w: "error" | "deferral") => { why = w; },
+    });
+    await runDueActions(d);
+    expect(why).toBe("deferral");
+  });
+
+  /**
+   * AND A REASON THAT IS TRUE FOR EVER STILL CANCELS. Without this the fix
+   * would just be the unbounded-deferral bug wearing a different hat.
+   */
+  it.each([
+    "conversation has ended",
+    "conversation no longer exists",
+    "somebody has already answered the customer",
+    "handed to a person after 20 replies (max_turns is 20)",
+  ])("still cancels: %s", async (reason) => {
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({ kind: "skipped" as const, reason }),
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+});

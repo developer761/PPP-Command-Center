@@ -233,7 +233,7 @@ export function schedulerDeps(): SchedulerDeps {
       // This guard and the claim button have to ship together: without it,
       // taking a conversation over does not actually take it off the bot.
       if (conv.state === "human_active") {
-        return { kind: "skipped" as const, reason: "a person has taken this conversation over" };
+        return { kind: "skipped" as const, reason: "a person has taken this conversation over", retryable: true };
       }
 
       const ws = conv.sms_sub_accounts as unknown as {
@@ -248,7 +248,7 @@ export function schedulerDeps(): SchedulerDeps {
       // turns a constraint violation into a clean skip.
       const { data: existing } = await sb.from("sms_drafts")
         .select("id").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
-      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review" };
+      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true };
 
       const { data: msgs } = await sb.from("sms_messages")
         .select("id, direction, body, created_at, media_count")
@@ -622,14 +622,14 @@ export function schedulerDeps(): SchedulerDeps {
           // "the bot was unsure and escalated itself" — which is exactly what
           // a refused turn is.
           await handToAPerson(sb, conv.id, "low_confidence");
-          return { kind: "skipped" as const, reason: `handed to a person: ${res.rejected}` };
+          return { kind: "skipped" as const, reason: `handed to a person: ${res.rejected}`, retryable: true };
         }
         throw new Error(`the agent could not produce a reply: ${res.error}`);
       }
       if (!res.rendered.trim()) {
         // Same reasoning: a turn that renders nothing is a customer waiting.
         await handToAPerson(sb, conv.id, "low_confidence");
-        return { kind: "skipped" as const, reason: "handed to a person: the agent had nothing to say" };
+        return { kind: "skipped" as const, reason: "handed to a person: the agent had nothing to say", retryable: true };
       }
 
       // AUTOSEND, and what it does and does not mean.
