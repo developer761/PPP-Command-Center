@@ -31,7 +31,16 @@ export default function DraftReview({
   const draft = drafts[0];
   const [body, setBody] = useState(draft?.body ?? "");
   const [busy, setBusy] = useState(false);
-  const [refused, setRefused] = useState<string | null>(null);
+  /**
+   * SEEDED FROM THE DRAFT, not only from this session's attempt.
+   *
+   * The gate records why it refused — on the autosend that produced the draft,
+   * and on anybody's earlier "Send it" — and the queue did not read the column.
+   * So a draft for somebody who has opted out looked like every other one, and
+   * the only way to discover it was to press Send and be refused. This says so
+   * before they press anything.
+   */
+  const [refused, setRefused] = useState<string | null>(draft?.sendError ?? null);
   const [err, setErr] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");

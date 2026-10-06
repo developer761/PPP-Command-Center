@@ -10,6 +10,7 @@ const d = (o: Partial<DraftForReview>): DraftForReview => ({
   intent: "ask_address", confidence: 0.9, reasoning: null,
   body: "What's the address for the project?",
   reviewReason: "autosend_off",
+  sendError: null,
   createdAt: "2026-09-10T10:00:00Z",
   answersMessageId: "m1", latestInboundId: "m1", latestInboundAt: "2026-09-10T09:59:00Z",
   ...o,
@@ -99,5 +100,36 @@ describe("wording a person can act on", () => {
     expect(refusalText("daily_cap")).toMatch(/maximum messages/i);
     // Even one nobody thought of still reads as a sentence.
     expect(refusalText("something_new")).toMatch(/refused/i);
+  });
+});
+
+/**
+ * THE GATE'S REASON WAS WRITTEN IN THREE PLACES AND READ IN NONE.
+ *
+ * sms_drafts.send_error is set when an autosend is refused and when somebody's
+ * "Send it" is refused — and pendingDrafts selected every column except that
+ * one. So a draft for a customer who has opted out arrived in the queue
+ * looking like any other, under the benign line "Nothing sends without you
+ * while we are testing", and the only way to find out was to press Send and be
+ * refused. For a suppressed number that is a person trying repeatedly to text
+ * somebody they are not allowed to text, with the answer already on file.
+ */
+describe("a draft the gate has already refused says so", () => {
+  it("carries the reason on the draft itself", () => {
+    const draft = d({ sendError: "suppressed" });
+    expect(draft.sendError).toBe("suppressed");
+    expect(refusalText(draft.sendError!)).toMatch(/opted out/i);
+  });
+
+  it("every refusal the gate can give has a sentence for a person", () => {
+    // A code with no wording would render as nothing at all on the card.
+    for (const reason of [
+      "suppressed", "quiet_hours", "weekend", "holiday", "daily_cap",
+      "no_workspace_number", "empty_body", "too_long", "office_closed",
+      "suppression_list_empty", "unresolved_merge_field",
+    ]) {
+      expect(refusalText(reason), reason).toBeTruthy();
+      expect(refusalText(reason).length, reason).toBeGreaterThan(10);
+    }
   });
 });

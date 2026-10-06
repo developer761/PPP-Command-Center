@@ -80,7 +80,7 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
   // catches this and says the screen could not load, which is the truth.
   const { data: rows, error } = await sb
     .from("sms_drafts")
-    .select("id, conversation_id, answers_message_id, intent, confidence, reasoning, body, review_reason, created_at, sms_conversations(customer_phone, customer_name, sms_sub_accounts(name))")
+    .select("id, conversation_id, answers_message_id, intent, confidence, reasoning, body, review_reason, send_error, created_at, sms_conversations(customer_phone, customer_name, sms_sub_accounts(name))")
     .eq("state", "pending")
     // Not the ones somebody is actively looking at, unless they have been
     // holding it long enough to have walked away.
@@ -123,6 +123,8 @@ export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
       reasoning: r.reasoning,
       body: r.body,
       reviewReason: r.review_reason as DraftForReview["reviewReason"],
+      // Why the gate has already refused it, if it has. See DraftForReview.
+      sendError: (r as { send_error?: string | null }).send_error ?? null,
       createdAt: r.created_at,
       answersMessageId: r.answers_message_id,
       latestInboundId: l?.id ?? null,
