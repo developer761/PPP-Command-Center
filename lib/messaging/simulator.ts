@@ -54,6 +54,12 @@ export type SimTurn = {
   droppedRapport?: string;
   /** The intent produced no words at all and was handed to a person. */
   saysNothing?: boolean;
+  /** The first attempt was refused and this turn is the second, with the
+   *  refusal that produced it. On a reply it means the retry rescued a turn
+   *  that would otherwise have gone to a person; on an error it means both
+   *  attempts failed, and whether the two reasons DIFFER says whether the
+   *  model moved or simply declined the instruction. */
+  retriedAfter?: string;
 };
 
 export type SimResult =
@@ -463,6 +469,7 @@ export async function runSimTurn(input: {
         customerText: input.customerText,
         intent: null, confidence: null, message: "", escalate: true,
         error: res.error, rejected: res.rejected, attempted: res.attempted,
+        retriedAfter: res.retriedAfter,
       },
     };
   }
@@ -478,6 +485,7 @@ export async function runSimTurn(input: {
       escalate: res.escalate,
       droppedRapport: res.droppedRapport,
       saysNothing: res.saysNothing,
+      retriedAfter: res.retriedAfter,
     },
   };
 }

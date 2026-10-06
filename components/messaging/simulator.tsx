@@ -443,6 +443,21 @@ export default function Simulator({
                       <>
                         <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">Blocked before sending: {t.rejected}</p>
                         {/*
+                          BOTH REFUSALS, BECAUSE THEY MEAN DIFFERENT THINGS.
+                          The turn gets one retry with the refusal fed back, so
+                          a second DIFFERENT reason means the model moved and
+                          still missed — the rule is probably unsatisfiable —
+                          while the same reason twice means it declined the
+                          instruction outright. Guessing between those is what
+                          made the first draft of the dodge fix a prompt line
+                          that did nothing.
+                        */}
+                        {t.retriedAfter && (
+                          <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
+                            It had already been refused once, for: {t.retriedAfter}
+                          </p>
+                        )}
+                        {/*
                           WITHOUT THIS LINE THE SANDBOX LIES ABOUT PRODUCTION.
                           A refusal reads as the customer getting silence, and
                           it is not: scheduler-db calls handToAPerson on a
@@ -504,6 +519,21 @@ export default function Simulator({
                       {t.escalate && (
                         <span className="rounded-full bg-ppp-orange-50 px-1.5 py-0.5 text-[9.5px] font-medium text-ppp-orange-700">
                           hands to a person
+                        </span>
+                      )}
+                      {/*
+                        A TURN THE RETRY RESCUED. Without it this reply would
+                        not exist and the conversation would have gone to a
+                        person here, so it is worth seeing while grading: a
+                        reply that needed two goes is a rule the model keeps
+                        getting wrong, even though the customer saw something
+                        correct.
+                      */}
+                      {t.retriedAfter && (
+                        <span
+                          title={t.retriedAfter}
+                          className="rounded-full bg-ppp-charcoal-50 px-1.5 py-0.5 text-[9.5px] font-medium text-ppp-charcoal-500">
+                          took two tries
                         </span>
                       )}
                     </div>

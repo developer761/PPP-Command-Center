@@ -66,9 +66,20 @@ export type RunResult =
       /** Rapport that broke a tone rule and was not sent, with the reason —
        *  surfaced rather than swallowed so grading can see it. */
       droppedRapport?: string;
+      /**
+       * The first attempt was refused and the SECOND one is what is being
+       * sent, with the refusal that produced it. Carried rather than counted
+       * internally so the rate is visible: a retry rescuing most turns means
+       * the rules are fine and the model needs the feedback, and a retry
+       * rescuing almost none means the instruction itself is wrong.
+       */
+      retriedAfter?: string;
     }
   | {
       ok: false; error: string; rejected?: string;
+      /** Both attempts were refused; this is the FIRST refusal. The one in
+       *  `rejected` is the second, which is what the model saw last. */
+      retriedAfter?: string;
       /**
        * What the model actually tried, when a rule refused it.
        *
@@ -684,9 +695,69 @@ ${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
 
 Choose the next action.`;
 
+  /**
+   * ── ONE RETRY, AND ONLY FOR A REFUSAL THAT NAMES ITS OWN FIX ────────────
+   *
+   * A rejection used to end the turn, on the reasoning in
+   * agentFailureIsTransient: "the same input will be refused again next
+   * minute, so retrying is pointless". That is true of a banned phrase or a
+   * price — the model would write the same thing — and it was NOT true of the
+   * refusals seen live on 2026-10-05, because every one of them says what to
+   * do instead:
+   *
+   *   address_question_walked_past: ...so the address is still owed. Answer
+   *   them AND ask for it again in the same message
+   *
+   * The model never saw that sentence. It got one roll and the lead went to a
+   * person. Three times in one afternoon: it chose ask_contact where the
+   * refusal said ask_address, wrote "Wednesday" into rapport where the prompt
+   * says never name a day, and reached for phone_pricing before contact.
+   * Replaying identical input gave different intents, so these are variance
+   * rather than determinism — exactly what a second attempt fixes.
+   *
+   * EXACTLY ONE. The retry costs an API call and the system prompt is already
+   * cached, so the marginal cost is small; an unbounded loop is not, and a
+   * model that declines the same instruction twice is telling us the
+   * instruction is wrong rather than unlucky.
+   *
+   * THE TERMINAL SEMANTICS ARE UNCHANGED. After the retry is spent the result
+   * is the same `rejected` shape it always was, so agentFailureIsTransient
+   * still reads it as terminal and the scheduler still cancels rather than
+   * counting a failure. That contract is what stops a rate-limited minute
+   * silently dropping replies, which this codebase has already done once.
+   */
+  const MAX_ATTEMPTS = 2;
+
   try {
     const client = new Anthropic({ apiKey });
-    const res = await client.messages.create({
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
+    /** The first refusal, once there has been one. */
+    let firstRefusal: string | undefined;
+
+    /**
+     * BUILT ONCE, SENT ON BOTH ATTEMPTS — which is also what makes the retry
+     * cheap. The cached prefix is the same bytes, so a retry reads the cache
+     * rather than paying for 6,000 tokens of rules a second time.
+     */
+    const systemBlocks = (() => {
+      const { stable, variable } = buildSystemPromptParts(
+        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
+        opts.classARules, opts.workspaceFaqs, language,
+        // A2: the verdict the caller already looked up. It reached the
+        // validator and stopped there, so the model was asked to apply a
+        // rule whose one input it could not see.
+        opts.serviceArea
+          ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
+          : null,
+      );
+      const blocks: Anthropic.TextBlockParam[] = [
+        { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+      ];
+      if (variable) blocks.push({ type: "text", text: variable });
+      return blocks;
+    })();
+
+    let res = await client.messages.create({
       model: MODEL,
       // Choosing one of eighteen intents and a line of rapport is a
       // classification, not a reasoning problem. Adaptive thinking plus a
@@ -714,24 +785,8 @@ Choose the next action.`;
        * Correctness is unaffected either way: a cache miss sends exactly the
        * same bytes and costs exactly what it used to.
        */
-      system: (() => {
-        const { stable, variable } = buildSystemPromptParts(
-          cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
-          opts.classARules, opts.workspaceFaqs, language,
-          // A2: the verdict the caller already looked up. It reached the
-          // validator and stopped there, so the model was asked to apply a
-          // rule whose one input it could not see.
-          opts.serviceArea
-            ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
-            : null,
-        );
-        const blocks: Anthropic.TextBlockParam[] = [
-          { type: "text", text: stable, cache_control: { type: "ephemeral" } },
-        ];
-        if (variable) blocks.push({ type: "text", text: variable });
-        return blocks;
-      })(),
-      messages: [{ role: "user", content: prompt }],
+      system: systemBlocks,
+      messages,
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
       // replies with prose instead of choosing an action.
@@ -804,7 +859,11 @@ Choose the next action.`;
     });
 
     // The post-filter. Even with a constrained schema, freeText is free text.
-    const v = validateAction(parsed, {
+    //
+    // Named rather than inlined so BOTH attempts are judged by exactly the
+    // same context. Building it twice is how a retry quietly gets an easier
+    // test than the attempt it is replacing.
+    const validateCtx = {
       confidenceThreshold: cfg.confidence_threshold,
       hardNoPhrases: opts.hardNos,
       track,
@@ -860,7 +919,7 @@ Choose the next action.`;
        */
       availabilityGap: availabilityGapAcross(customerSaid),
       // Whether the template for the chosen intent already asks something.
-      templateAsks: (intent) => templateAsks(intent as Intent, history.length),
+      templateAsks: (intent: string) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
       // The last thing WE said. Only meaningful when they reacted to it.
       lastIntent: opts.lastIntent,
@@ -886,7 +945,53 @@ Choose the next action.`;
       // A2: nothing may promise coverage until the zip says we have it.
       serviceArea: opts.serviceArea ?? null,
       ...opts.ctx,
-    });
+    };
+
+    let attempted: unknown = parsed;
+    let v = validateAction(attempted, validateCtx);
+
+    /**
+     * THE RETRY. See MAX_ATTEMPTS above for why this exists and why it is one.
+     *
+     * The refusal goes back as a tool_result against the model's own tool_use,
+     * which is the shape the API requires and also the honest one: it is the
+     * RESULT of the action it chose, not a new instruction appended to the
+     * system prompt. The detail already says what to do instead, so nothing
+     * here rewrites or softens it.
+     */
+    let currentCall = call;
+    for (let attempt = 2; !v.ok && attempt <= MAX_ATTEMPTS; attempt++) {
+      firstRefusal ??= `${v.reason}: ${v.detail}`;
+      messages.push({ role: "assistant", content: res.content });
+      messages.push({
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: currentCall.id,
+          is_error: true,
+          content: `That reply was REFUSED before sending and the customer did not see it.\n\n`
+            + `${firstRefusal}\n\n`
+            + `Choose again, fixing exactly that. Do not repeat the same choice.`,
+        }],
+      });
+      res = await client.messages.create({
+        model: MODEL,
+        max_tokens: 700,
+        system: systemBlocks,
+        messages,
+        tools: [actionTool(track)],
+        tool_choice: { type: "tool", name: "choose_action" },
+      });
+      const again = res.content.find(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "choose_action"
+      );
+      // No action on the retry is the same dead end as none on the first try,
+      // so keep the refusal we already have rather than inventing a new one.
+      if (!again) break;
+      currentCall = again;
+      attempted = again.input;
+      v = validateAction(attempted, validateCtx);
+    }
     /**
      * A REJECTION HAS TO SAY WHAT WAS REJECTED.
      *
@@ -908,10 +1013,17 @@ Choose the next action.`;
       return {
         ok: false,
         error: "The reply was rejected before sending.",
+        // The LAST refusal, which is what the model saw most recently and what
+        // a grader needs to read first.
         rejected: `${v.reason}: ${v.detail}`,
+        // And the first, when a retry was spent — two different refusals mean
+        // the model moved and still missed, one repeated means it did not.
+        ...(firstRefusal && firstRefusal !== `${v.reason}: ${v.detail}`
+          ? { retriedAfter: firstRefusal }
+          : {}),
         attempted: {
-          intent: (parsed as { intent?: string })?.intent ?? "(none)",
-          freeText: (parsed as { freeText?: string })?.freeText ?? null,
+          intent: (attempted as { intent?: string })?.intent ?? "(none)",
+          freeText: (attempted as { freeText?: string })?.freeText ?? null,
         },
       };
     }
@@ -1065,6 +1177,10 @@ Choose the next action.`;
         || shouldEscalate(v.action, { confidenceThreshold: cfg.confidence_threshold }),
       saysNothing,
       droppedRapport: v.droppedRapport,
+      // A retry rescued this turn: without it, the conversation would have
+      // gone to a person here. Carried so the rate is countable rather than
+      // assumed — see MAX_ATTEMPTS.
+      ...(firstRefusal ? { retriedAfter: firstRefusal } : {}),
       // Rendered from the intent, NOT from the model's prose. This is the line
       // that used to read `v.action.freeText ?? ""`, which is why a correctly
       // chosen ask_project_details went out as "Hi there!".
