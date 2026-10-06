@@ -193,6 +193,14 @@ export default function CampaignEditor({
   );
 }
 
+/** Blank, spaces or nonsense is an unanswered field rather than a zero. */
+function numberOrNull(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
 function StepForm({
   step, isOpener, preview, onDone, onError, onCancel,
 }: {
@@ -228,8 +236,22 @@ function StepForm({
         edit: {
           body, subject: step.channel === "email" ? subject : null,
           scheduleMode: mode,
-          delayMinutes: mode === "delay_after_last" ? Number(delay) : null,
-          dayOffset: mode === "absolute_on_day" ? Number(day) : null,
+          /**
+           * AN EMPTY BOX IS "NOT SAID", NOT ZERO.
+           *
+           * Number("") is 0, and the server guard tests `=== null || < 0`, so
+           * a cleared field sailed through as a real answer: step 2 then fires
+           * at the same instant as step 1 and updateStep rewrites run_at on
+           * every pending action for every live conversation on that version.
+           * The banner even says so — "N messages already queued moved to the
+           * new time". That is the thing this file's own header complains
+           * Hatch does: "you find out they disagree when a customer gets two
+           * texts in a minute."
+           *
+           * null instead, so the existing refusal explains it in words.
+           */
+          delayMinutes: mode === "delay_after_last" ? numberOrNull(delay) : null,
+          dayOffset: mode === "absolute_on_day" ? numberOrNull(day) : null,
           timeOfDay: mode === "absolute_on_day" ? time : null,
         },
       });
