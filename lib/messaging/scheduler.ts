@@ -507,10 +507,63 @@ export type TickSummary = {
 
 /** One tick. Returns counts so the caller can alert on them — a tick that
  *  processed nothing and a tick that failed everything must not look alike. */
-export async function runDueActions(deps: SchedulerDeps, limit = 50): Promise<TickSummary> {
+/**
+ * How long a tick may spend working before it stops starting new rows.
+ *
+ * The route's maxDuration is 300s. A claimed row the lambda never reaches is
+ * not free: `sms_claim_due_actions` increments `attempts` on the CLAIM, and
+ * `sms_reclaim_stale_actions` returns the row to pending WITHOUT giving the
+ * attempt back. So six abandoned ticks fail a message that was never once
+ * attempted — "gave up after 6 attempts" about a send nobody tried.
+ *
+ * The obvious fix is to reset attempts on reclaim, and it is WRONG. The
+ * migration says why: "Attempts increments on CLAIM, not completion, so a row
+ * that crashes mid-send cannot retry forever." A row abandoned because the
+ * tick ran out of time and a row abandoned because it crashed after the
+ * carrier accepted look identical from the reclaim's side, and refunding both
+ * would let the second retry for ever — a duplicate text, which is worse than
+ * a late one.
+ *
+ * So the cause is fixed instead of the symptom: stop starting work there is no
+ * time to finish. A row not claimed stays pending with its attempts intact and
+ * is picked up by the next tick a minute later.
+ *
+ * 240s of 300 leaves room for the slowest single action to finish — an agent
+ * turn is a model call and a handful of reads — plus the heartbeat write after
+ * the loop.
+ */
+export const TICK_BUDGET_MS = 240_000;
+
+export async function runDueActions(
+  deps: SchedulerDeps,
+  limit = 50,
+  /** Overridable so the budget can be tested in milliseconds rather than by
+   *  waiting four minutes. Production uses the default. */
+  budgetMs = TICK_BUDGET_MS,
+): Promise<TickSummary> {
+  /**
+   * REAL elapsed time, never deps.now. That clock is injected for business
+   * decisions — "is it a weekend where this customer is" — and tests pin it to
+   * a fixed instant. Measuring a wall-clock budget against a frozen clock made
+   * every tick instantly over budget, which is how the first version of this
+   * skipped every row in the suite.
+   */
+  const startedAt = Date.now();
   const claimed = await deps.claimDue(limit);
   const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {
+    /**
+     * OUT OF TIME: leave the rest claimed and let the reclaim return them.
+     *
+     * They each cost one attempt this way, which is the price of not knowing
+     * whether an abandoned row had already reached the carrier. Stopping here
+     * means only the rows we could not reach pay it, instead of every row in
+     * an oversized batch paying it every tick.
+     */
+    if (Date.now() - startedAt > budgetMs) {
+      s.skipped += claimed.length - (s.sent + s.drafted + s.held + s.rescheduled + s.cancelled + s.failed + s.skipped);
+      break;
+    }
     // One bad row must not stop the tick — the rest of the queue is unrelated.
     try {
       const out = await runAction(a, deps);

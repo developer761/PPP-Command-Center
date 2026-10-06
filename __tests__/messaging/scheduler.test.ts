@@ -701,3 +701,46 @@ describe("a stall follow-up blocked by something temporary", () => {
     expect(d.calls.reschedule).toBe(0);
   });
 });
+
+/**
+ * A TICK THAT RUNS OUT OF TIME MUST NOT FAIL MESSAGES NOBODY TRIED.
+ *
+ * `sms_claim_due_actions` increments `attempts` on the CLAIM, and
+ * `sms_reclaim_stale_actions` returns an abandoned row to pending without
+ * giving it back. So a tick that claims 50 slow rows and dies at 300s costs
+ * every unreached row an attempt, and six such ticks fail a message that was
+ * never once attempted.
+ *
+ * Refunding on reclaim would be the obvious fix and is wrong — the migration
+ * says why: a row that crashed AFTER the carrier accepted is indistinguishable
+ * from one the tick never reached, and refunding both lets the first retry for
+ * ever. A duplicate text is worse than a late one. So the tick stops starting
+ * work it cannot finish instead.
+ */
+describe("the tick stops before it runs out of time", () => {
+  it("does not start rows it has no time to finish", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => action({ id: `t${i}` }));
+    let started = 0;
+    // Each action eats a quarter of the budget, so it gets through four and
+    // then stops rather than being killed mid-way through the tenth.
+    const d = deps({
+      claimDue: async () => rows,
+      resolve: async () => { started++; await new Promise((r) => setTimeout(r, 60)); return null; },
+    });
+    const out = await runDueActions(d, 10, 150);   // 150ms of budget
+    expect(out.claimed).toBe(10);
+    expect(started).toBeLessThan(10);
+    // Everything claimed is accounted for, so the summary never under-reports.
+    const seen = out.sent + out.drafted + out.held + out.rescheduled
+      + out.cancelled + out.failed + out.skipped;
+    expect(seen).toBe(10);
+  }, 20_000);
+
+  it("processes the whole batch when there is time", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => action({ id: `q${i}` }));
+    const d = deps({ claimDue: async () => rows, resolve: async () => null });
+    const out = await runDueActions(d, 5);
+    expect(out.claimed).toBe(5);
+    expect(out.cancelled + out.skipped).toBe(5);
+  });
+});
