@@ -17,6 +17,9 @@ const WS = {
 /** A local New York hour, as UTC. EDT in September is UTC-4. */
 const nyc = (hour: number) => new Date(Date.UTC(2026, 8, 22, hour + 4, 0));
 
+/** 8:30pm local: out of hours, and inside the federal 8am-9pm window. */
+const evening = new Date(Date.UTC(2026, 8, 22, 20 + 4, 30));
+
 const decide = (over: Partial<Parameters<typeof afterHoursReply>[0]> = {}) =>
   afterHoursReply({ workspace: WS, now: nyc(21), alreadySentToday: 0, keyword: null, ...over });
 
@@ -83,10 +86,38 @@ describe("configuration it refuses to guess at", () => {
     expect(decide({ workspace: { ...WS, after_hours_autoreply: null } }).send).toBe(false);
   });
 
-  it("will not send an empty message just because the toggle is on", () => {
-    const d = decide({ workspace: { ...WS, after_hours_message: "   " } });
-    expect(d.send).toBe(false);
-    expect(d.send === false && d.why).toMatch(/no after-hours message/i);
+  /**
+   * CHANGED 2026-10-06, and the assertion this replaces is worth stating: a
+   * blank box used to refuse the send, under "configuration it refuses to
+   * guess at".
+   *
+   * What that produced in practice: checked against production, the message is
+   * NULL on all 33 workspaces. Switching the feature on would have changed
+   * nothing, with the reason visible only in a log line — the "configured and
+   * still does nothing" shape this codebase keeps producing. Settings has
+   * shown this exact sentence as its placeholder the whole time, so the words
+   * are not invented here; they are the suggestion nobody could act on
+   * thirty-three times.
+   *
+   * The conservatism moves to the TOGGLE, which is the control that decides
+   * whether anything sends at all, and is still refused outright above.
+   */
+  it("falls back to the default wording when nobody has written one", () => {
+    // 8:30pm: inside the federal window, so the only thing under test is the
+    // blank message. The default `now` here is 9pm and refuses on the window.
+    const d = decide({ workspace: { ...WS, after_hours_message: "   " }, now: evening });
+    expect(d.send).toBe(true);
+    if (d.send) {
+      expect(d.body).toMatch(/our office is closed right now/i);
+      // Resolved, never sent with the token still in it.
+      expect(d.body).not.toMatch(/\{\{/);
+    }
+  });
+
+  it("still prefers what somebody actually wrote", () => {
+    const d = decide({ workspace: { ...WS, after_hours_message: "We are shut. Back at {{next_open}}." }, now: evening });
+    expect(d.send).toBe(true);
+    if (d.send) expect(d.body).toMatch(/^We are shut\./);
   });
 
   it("says nothing when the workspace has no timezone", () => {
