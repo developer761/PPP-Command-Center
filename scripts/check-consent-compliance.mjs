@@ -64,6 +64,29 @@ const textOf = (html) =>
       .trim();
 
 /**
+ * THE SAME ESTIMATE FORM IS EMBEDDED IN EVERY PAGE, AND IT IS NOT THE PAGE.
+ *
+ * Both policy pages carry a copy of the estimate form in the footer, consent
+ * sentences and all. Asserting on the whole page therefore reads the FORM's
+ * words as the POLICY's words, and on 2026-10-06 that was wrong in both
+ * directions at once:
+ *
+ *   false PASS  Terms & Conditions "carries a rates disclosure" — it does not.
+ *               The page is promotions only; the sentence came from the form
+ *               in its footer. The headed-section check below already warns
+ *               about exactly this leak, one assertion further down.
+ *   false FAIL  Privacy "still quotes a combined marketing+SMS sentence" — it
+ *               does not. The policy separates them correctly in its own
+ *               words; the embedded form supplied both halves.
+ *
+ * A check that can fail a correct page is worse than no check, because
+ * somebody goes and "fixes" it. So the prose assertions run against the page
+ * with the form cut out, and the form assertions keep the full HTML.
+ */
+const withoutEmbeddedForm = (html) =>
+  html.replace(/<form[^>]*class="[^"]*wpcf7-form[^"]*"[\s\S]*?<\/form>/gi, " ");
+
+/**
  * Every wpcf7-acceptance block, with the two attributes that got us rejected
  * and the words that decide which box it is.
  */
@@ -132,7 +155,7 @@ if (marketingOnly.length) {
 /* ── 2. Privacy policy ─────────────────────────────────────────────────── */
 head("2. Privacy Policy");
 const privacy = await get(PRIVACY);
-const pText = textOf(privacy.html);
+const pText = textOf(withoutEmbeddedForm(privacy.html));
 ok("loads", privacy.status === 200, String(privacy.status));
 ok('titled "Privacy Policy"', /<title[^>]*>[^<]*Privacy Policy/i.test(privacy.html));
 ok("names the brand", /Precision Painting Plus/i.test(pText));
@@ -143,15 +166,51 @@ ok("has an SMS section", /SMS TERMS|SMS & EMAIL OPT/i.test(pText));
 /**
  * The policy quotes the form's consent sentence. If the form changes and this
  * does not, the two disagree and a reviewer reads both.
+ *
+ * NEARNESS IS NOT COMBINATION, which this used to assume. It matched the two
+ * subjects within 120 characters of each other, and the sentence a carrier
+ * most wants to see says both in one breath ON PURPOSE:
+ *
+ *   "Email marketing (special offers and home improvement tips) is offered as
+ *    a separate, optional opt-in and is not required to receive text messages."
+ *
+ * That is the fix for rejection 30507 written out in plain English, and the
+ * check marked it as the rejection. Somebody acting on that would have deleted
+ * the sentence that proves compliance.
+ *
+ * So it reads SENTENCES, and a sentence holding both subjects only fails when
+ * it reads as one CONSENT and does not say they are separate.
  */
-const quotesMarketingSms = /text messages[^.]{0,120}(special offers|home improvement tips)|(?:special offers|home improvement tips)[^.]{0,120}text messages/i.test(pText);
-ok("does not still quote a combined marketing+SMS consent sentence", !quotesMarketingSms,
-   quotesMarketingSms ? "the old combined wording is still reproduced here" : "");
+const SEPARATION = /\bseparate\b|\boptional\b|\bnot required\b|\bdoes not require\b/i;
+const CONSENT_VERB = /\bI agree\b|\bI'd also like\b|\bI would also like\b|\byou agree\b|\bby (?:submitting|checking)\b|\bconsent to receive\b/i;
+const findCombined = (text) => text
+  .split(/(?<=[.?!])\s+/)
+  .find((s) => SMS_WORDS.test(s) && MARKETING_WORDS.test(s)
+            && CONSENT_VERB.test(s) && !SEPARATION.test(s));
+
+/**
+ * The detector is checked against the two sentences it has to tell apart,
+ * every run. Narrowing a rule until it stops firing is the easy mistake here,
+ * and a rule that can no longer catch the original rejection would pass this
+ * page in silence for ever.
+ */
+{
+  const REJECTED = "I agree to receive text messages from Precision Painting Plus with special offers and home improvement tips.";
+  const CORRECT = "Email marketing (special offers and home improvement tips) is offered as a separate, optional opt-in and is not required to receive text messages.";
+  if (!findCombined(REJECTED) || findCombined(CORRECT)) {
+    console.error("\n✗  the combined-consent detector itself is broken — it no longer tells 30507's wording from the fix for it. Nothing below can be trusted.");
+    process.exit(1);
+  }
+}
+
+const combinedSentence = findCombined(pText);
+ok("does not still quote a combined marketing+SMS consent sentence", !combinedSentence,
+   combinedSentence ? `still reproduced here: "${combinedSentence.slice(0, 160)}"` : "");
 
 /* ── 3. Terms & Conditions ─────────────────────────────────────────────── */
 head("3. Terms & Conditions");
 const terms = await get(TERMS);
-const tText = textOf(terms.html);
+const tText = textOf(withoutEmbeddedForm(terms.html));
 ok("loads", terms.status === 200, String(terms.status));
 ok('titled "Terms & Conditions" or "Terms of Service"',
    /<title[^>]*>[^<]*(Terms\s*(&amp;|&|and)?\s*Conditions|Terms of Service)/i.test(terms.html));
