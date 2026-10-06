@@ -16,6 +16,7 @@
  * once. So an unknown-column error retries without it rather than giving up.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { reportWarn } from "@/lib/observability";
 
 /** Postgres: column does not exist. */
 const UNKNOWN_COLUMN = "42703";
@@ -52,7 +53,43 @@ export async function recordOutbound(sb: SupabaseClient, row: OutboundRow): Prom
     ...base,
     ...(row.agent_intent ? { agent_intent: row.agent_intent } : {}),
   });
-  if (error?.code === UNKNOWN_COLUMN) {
-    await sb.from("sms_messages").insert(base);
+  /**
+   * THE RETRY'S OWN ERROR WAS NEVER READ, AND NEITHER WAS ANY OTHER.
+   *
+   * This checked for 42703 and discarded everything else, and the second
+   * insert's result was not looked at at all. Every failure other than a
+   * missing column — a constraint, a dropped connection, RLS — ended here in
+   * silence, and the caller went on to return ok: true.
+   *
+   * The header above says what that costs, and it is not small: "a customer
+   * holding a text the system has no record of, which breaks the thread, the
+   * daily cap and the opt-out disclosure all at once". The cap counts ROWS and
+   * the disclosure fires on the first outbound ROW, so a missing one can mean
+   * the next message repeats the disclosure or exceeds the cap, with the
+   * thread showing neither.
+   *
+   * IT STILL MUST NOT THROW. The carrier has already accepted the message —
+   * the header is emphatic that a failed insert does not mean "no message" —
+   * and throwing would hand a retry to a caller whose retry is another TEXT.
+   * Loud, not fatal: the warning carries the conversation and provider id,
+   * which is everything needed to write the row by hand.
+   */
+  const failed = error?.code === UNKNOWN_COLUMN
+    ? (await sb.from("sms_messages").insert(base)).error
+    : error;
+
+  if (failed) {
+    reportWarn({
+      key: "outbound_not_recorded",
+      message: "a message was sent and could not be written to the thread",
+      platform: "ppp_cc",
+      context: {
+        conversationId: row.conversation_id,
+        providerId: row.provider_id,
+        channel: row.channel ?? "sms",
+        error: failed.message,
+        code: failed.code ?? null,
+      },
+    });
   }
 }

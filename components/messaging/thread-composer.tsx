@@ -100,14 +100,36 @@ export function ThreadComposer({ conversationId, ended, heldByOther, holderName 
   const send = () => {
     setProblem(null);
     start(async () => {
-      const res = await sendHumanReply({ conversationId, body: trimmed });
-      if (res.ok) {
-        setBody("");
-        setUndoable(null);
+      /**
+       * A THROW USED TO LEAVE NO TRACE, and the one thing an operator must
+       * never be left guessing about is whether a customer got the text.
+       *
+       * This was the only one of the four composer-shaped forms with no
+       * try/catch. A thrown action — a dropped connection, a server error —
+       * left `problem` unset and the button back at "Send", which reads
+       * exactly like a reply that was never attempted. The operator presses
+       * again, and the customer gets it twice.
+       *
+       * The message says WHAT IS UNKNOWN rather than claiming failure,
+       * because a throw between the carrier accepting and the row landing is
+       * precisely the case where "it did not send" would be a lie.
+       */
+      try {
+        const res = await sendHumanReply({ conversationId, body: trimmed });
+        if (res.ok) {
+          setBody("");
+          setUndoable(null);
+          router.refresh();
+          return;
+        }
+        setProblem(res.refused ? (REFUSAL_LABEL[res.refused] ?? `Refused: ${res.refused}`) : (res.error ?? "It could not be sent."));
+      } catch {
+        setProblem(
+          "Something went wrong and it is not clear whether that sent. "
+          + "Check the thread before trying again, rather than pressing send twice."
+        );
         router.refresh();
-        return;
       }
-      setProblem(res.refused ? (REFUSAL_LABEL[res.refused] ?? `Refused: ${res.refused}`) : (res.error ?? "It could not be sent."));
     });
   };
 
