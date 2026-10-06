@@ -5,6 +5,7 @@ import {
 } from "@/lib/messaging/scheduler";
 import type { GateResult, GateWorkspace } from "@/lib/messaging/gate";
 import type { E164 } from "@/lib/messaging/phone";
+import { CarrierUnsubscribedError } from "@/lib/messaging/transports/twilio";
 
 const WS: GateWorkspace = {
   id: "ws", name: "NY LI Nassau Leads", phone_e164: "+15163448418",
@@ -742,5 +743,63 @@ describe("the tick stops before it runs out of time", () => {
     const out = await runDueActions(d, 5);
     expect(out.claimed).toBe(5);
     expect(out.cancelled + out.skipped).toBe(5);
+  });
+});
+
+/**
+ * A CARRIER-LEVEL OPT-OUT IS NOT A TRANSIENT ERROR.
+ *
+ * Twilio keeps its own suppression list and enforces it before we do. Code
+ * 21610 means the person is on it and NOT in sms_opt_outs — the two lists
+ * have drifted. twilio.ts said exactly that in a comment, "not a transient
+ * error, and retrying it will fail forever", and then threw a plain Error,
+ * which this scheduler read as transient: five retries, then failed, and the
+ * number never written down. Every other workspace went on trying them.
+ */
+describe("the carrier says they are unsubscribed", () => {
+  const boom = () => {
+    throw new CarrierUnsubscribedError("+15165550147", "Twilio 400: on Twilio's own opt-out list");
+  };
+
+  it("cancels instead of retrying", async () => {
+    const d = deps({ claimDue: async () => [action()], send: async () => boom() });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("writes the number to our own list, so the next workspace is stopped by the gate", async () => {
+    let suppressed: string | null = null;
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => boom(),
+      onCarrierSuppressed: async (_a, to) => { suppressed = to; },
+    });
+    await runDueActions(d);
+    expect(suppressed).toBe("+15165550147");
+  });
+
+  /** Recording is best effort — failing to write it must not resurrect a retry. */
+  it("still cancels when the suppression cannot be recorded", async () => {
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => boom(),
+      onCarrierSuppressed: async () => { throw new Error("database down"); },
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+
+  /** An ordinary carrier failure is still transient. */
+  it("still retries a plain carrier error", async () => {
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => { throw new Error("Twilio 503: service unavailable"); },
+    });
+    const out = await runDueActions(d);
+    expect(out.rescheduled).toBe(1);
+    expect(d.calls.cancel).toBe(0);
   });
 });

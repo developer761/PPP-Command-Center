@@ -104,6 +104,47 @@ export function schedulerDeps(): SchedulerDeps {
       }
     },
 
+    /**
+     * The carrier had them suppressed and we did not. Write our own row so the
+     * gap closes: the next attempt from any workspace is stopped by our own
+     * gate instead of by a failed send.
+     *
+     * source 'carrier' rather than a keyword or a phrase, because that is what
+     * it is — Twilio told us, the customer did not. If an opt-out is ever
+     * disputed, "their carrier had them on its list" is different evidence
+     * from "they replied STOP", and the column exists to keep them apart.
+     *
+     * A duplicate key is the outcome we wanted anyway, so it is not an error.
+     */
+    async onCarrierSuppressed(_a, to) {
+      const { error } = await sb.from("sms_opt_outs").insert({
+        phone_e164: to,
+        channel: "sms",
+        inbound_body: null,
+        source: "carrier",
+        opted_out_at: new Date().toISOString(),
+      });
+      if (error && error.code !== "23505") {
+        /**
+         * A source CHECK that does not know 'carrier' must not lose the
+         * suppression — the same reasoning record-inbound uses for
+         * 'inbound_phrase'. The number matters; the label is the part that can
+         * wait for the migration.
+         */
+        const { error: retry } = await sb.from("sms_opt_outs").insert({
+          phone_e164: to, channel: "sms", inbound_body: null,
+          source: "inbound_keyword", opted_out_at: new Date().toISOString(),
+        });
+        if (retry && retry.code !== "23505") {
+          reportWarn({
+            key: "carrier_optout_not_recorded", platform: "ppp_cc",
+            message: "the carrier refused a send as unsubscribed and we could not record it",
+            context: { to, error: retry.message, code: retry.code ?? null },
+          });
+        }
+      }
+    },
+
     async claimDue(limit) {
       const { data, error } = await sb.rpc("sms_claim_due_actions", { p_limit: limit });
       if (error) throw new Error(`claim failed: ${error.message}`);

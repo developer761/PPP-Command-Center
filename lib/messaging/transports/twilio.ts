@@ -36,6 +36,25 @@ import type { TwilioChoice } from "../transport-config";
  */
 export const TWILIO_UNSUBSCRIBED = 21610;
 
+/**
+ * The carrier says this person is unsubscribed, and we did not know.
+ *
+ * A distinguishable type rather than a message, because the comment above was
+ * already right about what it means — "not a transient error, and retrying it
+ * will fail forever" — and the code then threw a plain Error, which the
+ * scheduler reads as transient and retries five times before failing. The
+ * number was never written to sms_opt_outs either, so every other workspace
+ * and every other channel went on trying the same person.
+ *
+ * Carries the number so the caller can close the gap it describes.
+ */
+export class CarrierUnsubscribedError extends Error {
+  constructor(public readonly to: string, message: string) {
+    super(message);
+    this.name = "CarrierUnsubscribedError";
+  }
+}
+
 export class TwilioTransport implements MessageTransport {
   // Written out rather than declared as constructor parameter properties.
   // verify-messaging-e2e.mjs runs the transport modules through node's
@@ -87,10 +106,14 @@ export class TwilioTransport implements MessageTransport {
       // trip to diagnose — the mistake the Anthropic 400 already taught.
       let code: number | undefined;
       try { code = (JSON.parse(text) as { code?: number }).code; } catch { /* keep the raw text */ }
-      const hint = code === TWILIO_UNSUBSCRIBED
-        ? " — this number is on Twilio's own opt-out list and is not in sms_opt_outs, which means the two lists have drifted"
-        : "";
-      throw new Error(`Twilio ${res.status}: ${text.slice(0, 500)}${hint}`);
+      if (code === TWILIO_UNSUBSCRIBED) {
+        throw new CarrierUnsubscribedError(
+          to,
+          `Twilio ${res.status}: this number is on Twilio's own opt-out list and is not in `
+          + `sms_opt_outs, which means the two lists have drifted — ${text.slice(0, 300)}`
+        );
+      }
+      throw new Error(`Twilio ${res.status}: ${text.slice(0, 500)}`);
     }
 
     let parsed: { sid?: string; status?: string; error_message?: string | null };

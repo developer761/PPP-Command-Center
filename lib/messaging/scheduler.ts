@@ -12,6 +12,7 @@
 import type { E164 } from "./phone";
 import type { GateResult, GateWorkspace, SendRequest, GateDeps } from "./gate";
 import { FOLLOW_UP_COUNT } from "./stalled";
+import { CarrierUnsubscribedError } from "./transports/twilio";
 
 /** After this many tries a row stops retrying and asks for a human. Five
  *  minute-ly attempts is enough to ride out a transient carrier blip; more
@@ -142,6 +143,13 @@ export type SchedulerDeps = {
    * steps keeps working without supplying one.
    */
   onCadenceSpent?(a: DueAction): Promise<void>;
+  /**
+   * The carrier refused because THEY have this person suppressed and we did
+   * not. Closes the gap by writing our own row, so the next workspace to try
+   * is stopped by our gate rather than by a failed send. Optional, so a worker
+   * that only drains campaign steps need not supply one.
+   */
+  onCarrierSuppressed?(a: DueAction, to: E164): Promise<void>;
   sendHeldReply?(a: DueAction): Promise<
     | { kind: "sent"; providerId: string; body: string }
     | { kind: "drafted" }
@@ -452,6 +460,31 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       agent: ctx.agent, now: deps.now,
     });
   } catch (err) {
+    /**
+     * A CARRIER-LEVEL OPT-OUT IS NOT TRANSIENT, and treating it as one is both
+     * useless and wrong.
+     *
+     * Twilio keeps its own suppression list and enforces it before we do. Code
+     * 21610 means this person is on it and NOT in sms_opt_outs — the two lists
+     * have drifted. twilio.ts already said so in a comment ("not a transient
+     * error, and retrying it will fail forever") and then threw a plain Error,
+     * which this catch read as transient: five retries, then failed, and the
+     * number never written down. Every other workspace went on trying them.
+     *
+     * So it cancels, and writes our own row first. The customer has told
+     * SOMEBODY to stop, which is the only fact that matters.
+     */
+    if (err instanceof CarrierUnsubscribedError) {
+      try {
+        await deps.onCarrierSuppressed?.(a, err.to as E164);
+      } catch {
+        // Recording it is best effort; not recording it must not turn a
+        // definite "do not text this person" back into a retry.
+      }
+      await deps.cancel(a, err.message);
+      return { kind: "cancelled", reason: err.message };
+    }
+
     // The carrier threw. Transient until proven otherwise — but attempts was
     // already incremented at claim time, so this cannot loop forever.
     const reason = err instanceof Error ? err.message : String(err);
