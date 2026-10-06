@@ -24,8 +24,15 @@
  *   node --env-file=.env.local scripts/smoke-accounting-tabs.mjs
  */
 import { createClient } from "@supabase/supabase-js";
+import { sessionCookie } from "./session-cookie.mjs";
 
 const BASE = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+
+// Before anything else: is that server this app? Several projects on this
+// machine use port 3000, and testing the wrong one reports with complete
+// confidence about an app this repo does not contain.
+const { assertThisApp } = await import("./assert-this-app.mjs");
+await assertThisApp(BASE);
 const env = process.env;
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -118,20 +125,10 @@ try {
   );
   const { data: sess, error: sErr } = await anon.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error("sign-in failed: " + sErr.message);
-  const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-  const s = sess.session;
-  const cookie =
-    `sb-${ref}-auth-token=base64-` +
-    Buffer.from(
-      JSON.stringify({
-        access_token: s.access_token,
-        token_type: "bearer",
-        expires_in: s.expires_in,
-        expires_at: s.expires_at,
-        refresh_token: s.refresh_token,
-        user: s.user,
-      }),
-    ).toString("base64");
+  // Built by @supabase/ssr's own functions, in scripts/session-cookie.mjs —
+  // the third copy of these fifteen lines, and the one most likely to be
+  // forgotten when the other two change.
+  const cookie = sessionCookie(env.NEXT_PUBLIC_SUPABASE_URL, sess.session);
 
   console.log(`Loading ${TABS.length} accounting tabs as an admin…\n`);
 

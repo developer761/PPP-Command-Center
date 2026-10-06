@@ -19,8 +19,15 @@
  * behind "More" render from a second map that had not been tagged.
  */
 import { readFileSync } from "node:fs";
+import { sessionCookie } from "./session-cookie.mjs";
 
 const BASE = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+
+// Before anything else: is that server this app? Several projects on this
+// machine use port 3000, and testing the wrong one reports with complete
+// confidence about an app this repo does not contain.
+const { assertThisApp } = await import("./assert-this-app.mjs");
+await assertThisApp(BASE);
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -147,34 +154,26 @@ try {
   });
   const { data: sess, error: sErr } = await anon.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error("sign-in failed: " + sErr.message);
-  const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-  const s = sess.session;
-  const cookie =
-    `sb-${ref}-auth-token=base64-` +
-    Buffer.from(
-      JSON.stringify({
-        access_token: s.access_token,
-        token_type: "bearer",
-        expires_in: s.expires_in,
-        expires_at: s.expires_at,
-        refresh_token: s.refresh_token,
-        user: s.user,
-      })
-    ).toString("base64");
+  const cookie = sessionCookie(env.NEXT_PUBLIC_SUPABASE_URL, sess.session);
 
   /**
    * A PAGE THAT NEVER LOADED IS NOT A MISSING TARGET.
    *
    * Both used to be counted as `missing`, and the summary read "53 of 53
    * walkthrough targets are not rendered — those steps would spotlight
-   * nothing". Every page had answered 307, because the probe session was not
-   * accepted; nothing at all was known about the targets. Somebody running
-   * `npm run verify` was told the walkthrough was entirely broken when what
-   * was broken was the sign-in in this script.
+   * nothing". Every page had in fact answered 307 and nothing at all was known
+   * about any target. Somebody running `npm run verify` was told the
+   * walkthrough was entirely broken; the truth was that port 3000 was serving
+   * a different project, which assert-this-app.mjs now refuses up front.
    *
-   * Counted apart now, and the redirect's destination is printed, because
-   * "→ /login" and "→ /onboarding" are different problems and the Location
-   * header is the one thing that distinguishes them.
+   * That guard makes this one redundant for that particular cause, and it
+   * stays anyway: "could not load the page" and "the target is not on the
+   * page" are different findings whatever the reason, and this check exists
+   * because the second one is invisible to every other gate.
+   *
+   * The redirect's destination is printed, because "→ /login" and
+   * "→ /onboarding" are different problems and the Location header is the one
+   * thing that tells them apart.
    */
   const pages = new Map();
   let missing = 0;
