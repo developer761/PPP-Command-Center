@@ -343,11 +343,20 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     };
   }
 
-  // 3. Weekend policy. PPP's own setting, not a legal bound — so it defers to
-  //    the next open weekday rather than refusing outright. Narrower than
-  //    A36's weekend half-day above, and applied after it, so whichever is
-  //    stricter wins.
-  if (!ws.send_on_weekends && isWeekendIn(now, ws.time_zone)) {
+  /**
+   * 3. Weekend policy. PPP's own setting, not a legal bound — so it defers to
+   *    the next open weekday rather than refusing outright. Narrower than
+   *    A36's weekend half-day above, and applied after it, so whichever is
+   *    stricter wins.
+   *
+   * STANDS DOWN FOR A REPLY, like the office window two steps up and for the
+   * identical reason, stated there: "somebody who texts at 8:30pm has started
+   * the conversation, and replying to them is not a callback to set an
+   * appointment — it is an answer." These rules govern contact PPP INITIATES.
+   * Not working Saturdays is a reason not to start a conversation on one; it
+   * is not a reason to leave somebody who wrote to us unanswered.
+   */
+  if (!req.answersInbound && !ws.send_on_weekends && isWeekendIn(now, ws.time_zone)) {
     return { ok: false, reason: "weekend", retryAt: nextWeekdayOpen(now, ws.time_zone, hours) };
   }
 
@@ -371,7 +380,23 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
    * After the weekend check on purpose, so Thanksgiving Friday defers to
    * Monday rather than to Saturday.
    */
-  if (!ws.send_on_holidays && isHolidayIn(now, ws.time_zone)) {
+  /**
+   * AND IT STANDS DOWN FOR A REPLY TOO, which the first version of this did
+   * not and which was a regression I introduced on 2026-10-06.
+   *
+   * Unconditional, it refused ANY outbound on a holiday — including the ones
+   * answering a customer who had just texted us. The worst of those is HELP:
+   * record-inbound queues the legally-required HELP reply as a send_reply so
+   * it passes this gate, the gate refused it as "holiday", and the reply
+   * became a draft sitting in a review queue on a day nobody is reviewing.
+   * CTIA requires that reply. The after-hours "we are closed" message and any
+   * held reply answering an inbound went the same way.
+   *
+   * Kate's answer was about not MESSAGING customers on holidays — a chase, a
+   * nudge, a campaign step. Nobody meant "do not answer somebody who writes to
+   * you on Christmas Eve".
+   */
+  if (!req.answersInbound && !ws.send_on_holidays && isHolidayIn(now, ws.time_zone)) {
     return { ok: false, reason: "holiday", retryAt: nextOpenDay(now, ws.time_zone, hours, ws.send_on_weekends) };
   }
 

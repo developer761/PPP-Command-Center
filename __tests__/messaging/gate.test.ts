@@ -438,3 +438,75 @@ describe("gatedSend — holidays", () => {
     expect(res.ok).toBe(true);
   });
 });
+
+/**
+ * ANSWERING SOMEBODY IS NOT INITIATING CONTACT, and the holiday rule briefly
+ * forgot it.
+ *
+ * The holiday check shipped on 2026-10-06 unconditional, so it refused ANY
+ * outbound on a holiday — including replies to a customer who had just texted
+ * us. The worst of those is HELP: record-inbound queues the legally-required
+ * reply as a send_reply precisely so it passes this gate, the gate refused it
+ * as "holiday", and it became a draft in a review queue on a day nobody is
+ * reviewing. CTIA requires that reply.
+ *
+ * Kate's answer was about not MESSAGING customers on holidays — a chase, a
+ * nudge, a campaign step. Nobody meant "do not answer somebody who writes to
+ * you on Christmas Eve".
+ *
+ * The weekend rule had the same shape and is latent only because every
+ * workspace currently sends at weekends.
+ */
+describe("gatedSend — a reply is answered whatever day it is", () => {
+  const XMAS = utc("2026-12-25T19:00:00Z");   // Friday 2pm EST
+  const SAT2 = utc("2026-07-18T18:00:00Z");   // Saturday 2pm EDT
+
+  it("answers an inbound on Christmas Day", async () => {
+    const res = await gatedSend(req({ now: XMAS, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  it("still refuses something PPP started on Christmas Day", async () => {
+    const res = await gatedSend(req({ now: XMAS }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("holiday");
+  });
+
+  it("answers an inbound at the weekend when the workspace does not work them", async () => {
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(req({ now: SAT2, workspace: ws, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  it("still refuses something PPP started at that weekend", async () => {
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(req({ now: SAT2, workspace: ws }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("weekend");
+  });
+
+  /** Both at once: a Saturday that is also a holiday, answering an inbound. */
+  it("answers an inbound on a holiday that falls at a weekend", async () => {
+    // 4 July 2026 is a Saturday.
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(
+      req({ now: utc("2026-07-04T18:00:00Z"), workspace: ws, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  /** The legal bound is NOT relaxed by any of this. */
+  it("still refuses a reply at 2am, holiday or not", async () => {
+    const res = await gatedSend(
+      req({ now: utc("2026-12-25T07:00:00Z"), answersInbound: true }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("quiet_hours");
+  });
+
+  /** And suppression still wins over everything. */
+  it("still refuses a reply to somebody who opted out", async () => {
+    const res = await gatedSend(
+      req({ now: XMAS, answersInbound: true }), deps({ isSuppressed: async () => true }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("suppressed");
+  });
+});
