@@ -49,8 +49,17 @@ export const TWILIO_UNSUBSCRIBED = 21610;
  * Carries the number so the caller can close the gap it describes.
  */
 export class CarrierUnsubscribedError extends Error {
-  constructor(public readonly to: string, message: string) {
+  // Written out, NOT a constructor parameter property — for the reason spelled
+  // out on TwilioTransport just below, which this class was added four lines
+  // above and broke anyway. Node's strip-only TypeScript mode cannot parse
+  // them, and every verify:* script loads this module through it: tsc and
+  // next build were both green while the entire end-to-end suite died on
+  // import. See __tests__/messaging/strip-only-safe.test.ts.
+  readonly to: string;
+
+  constructor(to: string, message: string) {
     super(message);
+    this.to = to;
     this.name = "CarrierUnsubscribedError";
   }
 }

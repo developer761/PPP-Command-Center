@@ -191,10 +191,16 @@ export function gateDeps(sb: SupabaseClient): GateDeps {
       return (count ?? 0) > 0;
     },
 
-    async sentToday(to: E164) {
+    async sentToday(to: E164, from: Date) {
       // Across every agent and workspace — the cap belongs to the handset, not
       // to whoever happens to be texting it.
-      const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+      //
+      // WHERE "TODAY" BEGINS IS THE GATE'S TO SAY. This read it as `now - 24h`
+      // while the gate deferred a capped message to the next calendar day, so
+      // the message came back to a window that still held the three that
+      // stopped it and was refused a second time. One boundary, decided in one
+      // place, passed in. See GateDeps.sentToday.
+      const since = from.toISOString();
       // Paged. One handset will not reach a thousand conversations and that
       // is not the point: every truncation bug in this repo was somewhere the
       // number looked too small to matter, and this one decides whether a

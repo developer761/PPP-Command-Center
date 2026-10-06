@@ -105,8 +105,18 @@ export type GateDeps = {
    * workspaces would read as spam.
    */
   hasEverSent?(to: E164): Promise<boolean>;
-  /** Messages already sent to this handset today, across every agent and workspace. */
-  sentToday(to: E164): Promise<number>;
+  /**
+   * Messages already sent to this handset today, across every agent and
+   * workspace.
+   *
+   * `since` is the start of the recipient's own calendar day and the GATE
+   * works it out, not this dep. It used to be a rolling 24 hours computed in
+   * here while the gate deferred to the next calendar day, and two different
+   * windows either side of one decision is how a message lands two days late:
+   * three sent on Monday evening, refused, retried Tuesday morning, and all
+   * three were still inside the rolling 24 hours — refused again, Wednesday.
+   */
+  sentToday(to: E164, since: Date): Promise<number>;
   /**
    * Is there a suppression list at all?
    *
@@ -400,11 +410,50 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     return { ok: false, reason: "holiday", retryAt: nextOpenDay(now, ws.time_zone, hours, ws.send_on_weekends) };
   }
 
-  // 4. Daily cap, per handset across every agent. Retried tomorrow, not today:
-  //    the cap exists precisely to stop a fourth message today.
+  /**
+   * 4. Daily cap, per handset across every agent. Retried tomorrow, not today:
+   *    the cap exists precisely to stop a fourth message today.
+   *
+   * THE WINDOW AND THE RETRY ARE THE SAME DAY, which they were not.
+   *
+   * The count was a rolling 24 hours (gate-deps: `now - 24h`) and the retry was
+   * the next calendar day. Three messages at 6:00, 6:30 and 7:00 on Monday
+   * evening refused the fourth and promised Tuesday 9am — and at Tuesday 9am
+   * all three were still inside the rolling 24 hours, so it refused again and
+   * promised Wednesday. Every message the cap caught in an evening landed two
+   * days late, and nothing in the refusal said so.
+   *
+   * Fixed by counting the recipient's calendar day, which is what the name
+   * sentToday, the constant DEFAULT_DAILY_CAP = 3 and Kate's "three a day" all
+   * already said. The alternative — keep the rolling window and retry at
+   * oldest+24h — was rejected: it makes "3 a day" mean something nobody said,
+   * and it needs the dep to return a timestamp as well as a count, so the two
+   * halves could drift apart again.
+   *
+   * ON THE RECIPIENT'S CLOCK, like the sending window above, and for a reason
+   * particular to this rule: the cap is per CUSTOMER across every workspace, so
+   * if the boundary were each workspace's own midnight the same three messages
+   * would count as three for one agent and two for another, and the fourth
+   * message would go out.
+   *
+   * What this does NOT do is stop 3 late on Monday and 3 early on Tuesday.
+   * That is six inside eleven hours and it is deliberate: the sending window
+   * two steps up already bounds both ends to the customer's 8am-9pm, "three a
+   * day" is the rule PPP agreed, and a rolling window that quietly rations
+   * three per 24h is a different promise.
+   */
   const cap = deps.dailyCap ?? DEFAULT_DAILY_CAP;
-  if (!withinDailyCap(await deps.sentToday(to), cap)) {
-    return { ok: false, reason: "daily_cap", retryAt: nextSendableTime(startOfNextDay(now, ws.time_zone), ws.time_zone, hours) };
+  const dayStart = startOfDayIn(now, zone.timeZone);
+  if (!withinDailyCap(await deps.sentToday(to, dayStart), cap)) {
+    // Anchored at the start of the recipient's NEXT day — the first moment the
+    // count above is 0 — and then moved to the first legal sending moment by
+    // the same function the window refusal uses, so the two cannot disagree.
+    const tomorrow = startOfNextDay(now, zone.timeZone);
+    const retryAt = nextWindowOpen({
+      now: tomorrow, customerZone: zone.timeZone, officeZone: ws.time_zone,
+      officeHours: hours, answersInbound: req.answersInbound,
+    }) ?? nextSendableTime(tomorrow, ws.time_zone, hours);
+    return { ok: false, reason: "daily_cap", retryAt };
   }
 
   // LAST THING BEFORE THE CARRIER. Every path — campaign step, agent autosend,
@@ -470,6 +519,33 @@ function startOfNextDay(now: Date, timeZone: string): Date {
   for (let i = 0; i < 48; i++) {
     c.setUTCHours(c.getUTCHours() + 1);
     if (day.format(c) !== today) return c;
+  }
+  return c;
+}
+
+/**
+ * The first instant of the local calendar day `now` falls in.
+ *
+ * Steps BACKWARD until the local day changes rather than subtracting the local
+ * clock time, because subtracting is wrong on the two days a year a zone shifts
+ * — an hour out, in the direction that makes yesterday evening's messages count
+ * as today's. Quarter-hours because a few zones sit at :30 and :45 offsets, so
+ * whole-hour steps would land inside yesterday there.
+ *
+ * Bounded at 100 steps (25 hours, longer than any real day) and returns the
+ * oldest candidate if it never finds the boundary: that counts MORE messages
+ * than it should, which holds a message back. The other direction sends one.
+ */
+export function startOfDayIn(now: Date, timeZone: string): Date {
+  const day = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "numeric", day: "numeric" });
+  const today = day.format(now);
+  const c = new Date(now.getTime());
+  c.setUTCSeconds(0, 0);
+  c.setUTCMinutes(Math.floor(c.getUTCMinutes() / 15) * 15);
+  for (let i = 0; i < 100; i++) {
+    const back = new Date(c.getTime() - 15 * 60_000);
+    if (day.format(back) !== today) return c;
+    c.setTime(back.getTime());
   }
   return c;
 }
