@@ -40,6 +40,24 @@ export default function Grader({
 
   const byId = new Map(options.map((o) => [o.id, o]));
   const tagKeys = [...new Set(picked.map((id) => byId.get(id)?.tagKey).filter((k): k is string => !!k))];
+  /**
+   * PICKS THAT WILL NOT BE RECORDED, named rather than dropped in silence.
+   *
+   * sms_training_example_tags stores a tag_key and nothing else, so a code
+   * with no tag_key behind it saves no row at all. Seven of the twenty-nine
+   * active codes are in that state today — A8 Intent, A19 Tone, A25
+   * Communication Preference, A29 Answerable question, A33 Deferred to
+   * estimator, A34 and A39 — and they are not obscure ones.
+   *
+   * The warning below only fired when NOTHING resolved. Pick an unmapped code
+   * ALONGSIDE a mapped one and tagKeys is non-empty, the button enables, the
+   * save succeeds, and the unmapped half is gone with nothing said. That is
+   * the same silent-drop shape as the three feedback boxes the simulator was
+   * discarding, on the screen Kate is using today.
+   */
+  const unrecorded = picked
+    .map((id) => byId.get(id))
+    .filter((o): o is NonNullable<typeof o> => !!o && !o.tagKey);
 
   const advance = async (skip: string[]) => {
     const next = await nextToGrade(skip);
@@ -188,6 +206,14 @@ export default function Grader({
         {conduct && tagKeys.length === 0 && (
           <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500">
             {picked.length ? "The codes picked are not linked to a rule yet. Add the closest rule too." : "Pick at least one rule first."}
+          </p>
+        )}
+        {/* Fires on a MIXED selection, which the line above cannot see. */}
+        {unrecorded.length > 0 && tagKeys.length > 0 && (
+          <p className="mt-1.5 text-[11.5px] text-ppp-orange-700">
+            {unrecorded.map((o) => o.label).join(", ")}
+            {unrecorded.length === 1 ? " is" : " are"} not linked to a rule yet, so
+            {unrecorded.length === 1 ? " it" : " they"} will not be saved. The rest will.
           </p>
         )}
       </section>
