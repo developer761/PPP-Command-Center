@@ -53,6 +53,7 @@ to work through in one sitting.
 | 22 | A6's shared-space list says "corridor" but not "hallway" | One word, but it decides a routing branch. |
 | 6 / 6b | Sign-off on the English bot-disclosure and the availability ask | She approved the SPANISH disclosure; this is confirming the English says the same. |
 | 25 | A Spanish conversation ends with an English list of what we cover | Low stakes, cheap to fix, easy to forget. |
+| 26 | **Do you want an after-hours auto-reply at all?** | You graded one as a negative once. It is off everywhere today. Only affects 8-9am and 8-9pm. |
 
 ### Ours to do, not hers
 
@@ -1454,3 +1455,50 @@ that decides whether a discard is silent — a wrong number gets silence, a real
 customer gets an answer — was deciding it on an English word list, so
 "pintan muebles?" looked like a wrong number. It now reads Spanish too, and
 because a discard is an ending, nobody would have seen those threads.
+
+---
+
+## 26. Do you want an after-hours auto-reply at all?
+
+**Raised 2026-10-06, and you have already voted once.** The note on the
+Settings screen records that **you marked an after-hours reply as a negative on
+a graded conversation**, so this is us checking whether that was the general
+rule or that one conversation.
+
+**Where it stands today:** off. Checked against production — the toggle is off
+on all 33 workspaces and no message has been written in any of them. Somebody
+texting at 10pm gets nothing until the office opens, when Emily answers them
+normally. Nothing is lost and nobody is told to wait; they just wait.
+
+**What it would say if it were on** (ours, not approved by anyone):
+
+> Thanks for reaching out! Our office is closed right now, but we'll pick this
+> up and get back to you after we open at **9 AM tomorrow**.
+
+That bold part is resolved, not typed: it reads the same opening-hours
+function the sending gate uses, in the CUSTOMER's timezone, so it cannot
+promise an hour the system will not act on. If it cannot be worked out, no
+reply is sent rather than a wrong one.
+
+**The part that makes this a smaller question than it sounds.** An
+after-hours reply can only go out inside the federal 8am-9pm window, and
+inside your 9am-8pm office hours the ordinary reply already covers it. So the
+only times this can ever fire are:
+
+| Local time | What happens |
+|---|---|
+| 8am - 9am | after-hours reply (office not open yet) |
+| 9am - 8pm | normal conversation, unaffected |
+| 8pm - 9pm | after-hours reply |
+| 9pm - 8am | silence either way, by law |
+
+So switching it on changes two hours of the day. It is capped at one per
+person per 24 hours, and never replaces STOP or HELP.
+
+**→ Recommendation: leave it OFF unless you say otherwise.** You have graded
+one as a negative, it only covers two hours, and a bot that says "we are
+closed" and then says nothing for eleven hours can read worse than a bot that
+simply answers in the morning. Say the word and it is one toggle.
+
+**If you do want it on, the other question is the wording** — the sentence
+above is ours and would want to be yours.
