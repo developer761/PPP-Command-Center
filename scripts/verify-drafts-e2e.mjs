@@ -206,7 +206,22 @@ try {
   for (const p of made.optOuts) await sb.from("sms_opt_outs").delete().eq("phone_e164", p);
   const { count: c } = await sb.from("sms_conversations").select("*", { count: "exact", head: true }).eq("customer_phone", CUSTOMER);
   const { count: o } = await sb.from("sms_opt_outs").select("*", { count: "exact", head: true }).eq("phone_e164", CUSTOMER);
-  const { count: d } = await sb.from("sms_drafts").select("*", { count: "exact", head: true });
+  /**
+   * SCOPED TO WHAT THIS SCRIPT MADE, like the two counts above it.
+   *
+   * This counted EVERY row in sms_drafts. Production legitimately holds
+   * pending drafts — two, the day this was found — so the line read
+   * "2 drafts remain (expect 0, 0, 0)" on a clean run and had done for as long
+   * as any draft existed.
+   *
+   * The cost is not the false alarm, it is that the number can never be zero,
+   * so a run that genuinely DID leak a draft looks exactly like a run that did
+   * not. A check whose output is always the same is not a check.
+   */
+  const { count: d } = made.conversations.length
+    ? await sb.from("sms_drafts").select("*", { count: "exact", head: true })
+        .in("conversation_id", made.conversations)
+    : { count: 0 };
   console.log(`cleanup: ${c} conversations, ${o} opt-outs, ${d} drafts remain (expect 0, 0, 0)`);
 }
 process.exit(fail === 0 ? 0 : 1);
