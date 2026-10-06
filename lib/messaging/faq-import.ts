@@ -71,6 +71,17 @@ export type FaqImportPreview = {
   /** Rows that would replace an answer already held, rather than add one. */
   replacing: number;
   duplicates: number;
+  /**
+   * Rows past MAX_FAQ_IMPORT_ROWS that were not read at all.
+   *
+   * Reported because the alternative is what this used to do: slice silently,
+   * compute every count from the slice, and tell somebody who pasted 1,700
+   * answers that 1,500 were saved — a number that differs from no expectation
+   * they hold, so 200 answers vanish with nothing anywhere disagreeing. The
+   * opt-out importer already refuses with a count rather than trimming; this
+   * at least says how many it did not look at.
+   */
+  ignoredBeyondLimit: number;
   detectedHeaders: { question: string | null; answer: string | null; workspace: string | null };
 };
 
@@ -159,6 +170,7 @@ export function buildFaqImportPreview(text: string, ctx: {
     shared: usable.filter((r) => r.workspaceId === null).length,
     replacing,
     duplicates,
+    ignoredBeyondLimit: Math.max(0, rows.length - MAX_FAQ_IMPORT_ROWS),
     detectedHeaders: { question: qCol, answer: aCol, workspace: wCol },
   };
 }

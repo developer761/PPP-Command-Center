@@ -193,4 +193,29 @@ describe("saying what would actually happen", () => {
     )];
     expect(buildFaqImportPreview(csv(...many), ctx()).rows).toHaveLength(MAX_FAQ_IMPORT_ROWS);
   });
+
+  /**
+   * AND SAYS HOW MANY IT DID NOT READ.
+   *
+   * The cap itself is right — a file of 50,000 rows should not hang the
+   * browser. What was wrong is that every count was computed from the SLICE,
+   * so somebody pasting 1,700 answers saw "1,500 to save", saved 1,500, and
+   * the other 200 did not exist anywhere, with no number on screen differing
+   * from what they expected. The assertion above locked that silence in by
+   * only checking the length.
+   */
+  it("says how many rows it did not read", () => {
+    const many = ["question,answer", ...Array.from(
+      { length: MAX_FAQ_IMPORT_ROWS + 50 }, (_, i) => `Question ${i}?,Answer ${i}.`
+    )];
+    expect(buildFaqImportPreview(csv(...many), ctx()).ignoredBeyondLimit).toBe(50);
+  });
+
+  it("reports none when the file fits, including exactly at the cap", () => {
+    const exact = ["question,answer", ...Array.from(
+      { length: MAX_FAQ_IMPORT_ROWS }, (_, i) => `Question ${i}?,Answer ${i}.`
+    )];
+    expect(buildFaqImportPreview(csv(...exact), ctx()).ignoredBeyondLimit).toBe(0);
+    expect(buildFaqImportPreview(csv("question,answer", "Are you insured?,Yes."), ctx()).ignoredBeyondLimit).toBe(0);
+  });
 });

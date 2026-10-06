@@ -19,7 +19,7 @@
  */
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { buildFaqImportPreview, type FaqImportPreview } from "@/lib/messaging/faq-import";
+import { buildFaqImportPreview, type FaqImportPreview, MAX_FAQ_IMPORT_ROWS } from "@/lib/messaging/faq-import";
 import { applyFaqImport, faqImportContext } from "@/lib/messaging/faq-import-write";
 
 export default function FaqImportForm() {
@@ -125,6 +125,22 @@ export default function FaqImportForm() {
               {preview.duplicates > 0 && <>, {preview.duplicates} repeated in the file</>}
               {preview.unusable > 0 && <>, {preview.unusable} that cannot be used</>}.
             </p>
+            {/*
+              ROWS NOBODY LOOKED AT, said out loud.
+
+              The parser slices at MAX_FAQ_IMPORT_ROWS and every count above is
+              computed from the slice, so a file of 1,700 answers previewed as
+              1,500 and saved 1,500 — a number that differs from no expectation
+              anybody holds. Two hundred answers would simply not be there, with
+              nothing on the screen disagreeing.
+            */}
+            {preview.ignoredBeyondLimit > 0 && (
+              <p className="text-[12.5px] text-ppp-orange-700">
+                {preview.ignoredBeyondLimit} row{preview.ignoredBeyondLimit === 1 ? "" : "s"} past
+                the first {MAX_FAQ_IMPORT_ROWS} were not read. Split the file and import the rest
+                separately, or none of those answers will exist.
+              </p>
+            )}
             {/*
               THE LINE THAT MATTERS. Adding is safe; replacing overwrites a
               sentence somebody wrote, and there is no undo. Loud when it is
