@@ -247,6 +247,37 @@ export function retrievalSummary(corpus: CorpusExample[]): {
   };
 }
 
+/**
+ * A REPAIR'S NOTE IS NOT A REASON IT IS GOOD.
+ *
+ * Found 2026-10-06 by printing the prompt the bot actually receives, which
+ * opened:
+ *
+ *   Good example 1:
+ *   Why it is good: T2: Asked for the full address including the zip code
+ *   while already holding 07920. It made the customer retype what we had...
+ *
+ * That is a DEFECT, rendered under a heading saying it is why the example is
+ * good. The data is fine — `derived` examples are repairs, and repairNote
+ * writes "what was wrong … Was: … Now: …", which is exactly what a repair
+ * record should say. The heading was putting the wrong frame on it, and the
+ * sentence a reader meets first is the fault rather than the fix.
+ *
+ * It matters most for the rule it keeps landing on: of the twelve good
+ * examples carrying a note, eight are repairs, and several describe asking for
+ * an address we already held — A11, the most breached rule in the corpus. The
+ * one lesson being reinforced under a "good" heading was the commonest mistake
+ * in the whole dataset.
+ *
+ * Approval is NOT the issue and was checked: both the main filter and the
+ * top-up require `approved`, so an unread repair never reaches the model.
+ */
+function noteHeading(e: CorpusExample): string {
+  return e.source === "derived"
+    ? "This is a CORRECTED version — what was wrong before, and what it now says"
+    : "Why it is good";
+}
+
 export function examplesPrompt(sel: Selection): string {
   const parts: string[] = [];
 
@@ -255,7 +286,7 @@ export function examplesPrompt(sel: Selection): string {
       `HOW THIS HAS BEEN DONE WELL BEFORE\n` +
       `Real conversations a person reviewed and approved. Follow the shape of these.\n\n` +
       sel.good.map((e, i) =>
-        `Good example ${i + 1}:\n${e.note ? `Why it is good: ${e.note}\n` : ""}${e.transcript}`
+        `Good example ${i + 1}:\n${e.note ? `${noteHeading(e)}: ${e.note}\n` : ""}${e.transcript}`
       ).join("\n\n")
     );
   }
