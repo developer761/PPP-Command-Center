@@ -113,7 +113,7 @@ export function schedulerDeps(): SchedulerDeps {
     async resolve(a) {
       const { data } = await sb
         .from("sms_conversations")
-        .select("state, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, origination_identity, reply_to_email, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+        .select("state, takeover_at, customer_phone, customer_name, customer_email, sms_sub_accounts(id, name, phone_e164, origination_identity, reply_to_email, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
         .eq("id", a.conversation_id)
         .maybeSingle();
       if (!data) return null;
@@ -192,6 +192,10 @@ export function schedulerDeps(): SchedulerDeps {
         to: data.customer_phone as E164,
         body, agent,
         conversationState: data.state as string,
+        // WHEN the person took it, not just that they have it. A deferral
+        // needs a horizon or it is a loop; see the human_active branch in
+        // scheduler.ts.
+        takeoverAt: (data as { takeover_at?: string | null }).takeover_at ?? null,
         channel,
         toEmail: data.customer_email as string | null,
         fromEmail: addresses.from,
