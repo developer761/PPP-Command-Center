@@ -361,7 +361,14 @@ export default function Simulator({
                   : "(tick every one you want this run to count towards)"}
               </span>
             </span>
-            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+            {/* NO INNER SCROLL. thread-teach caps its list because it sits in a
+                modal over a conversation; this one is the screen's own control,
+                and a capped box turns the page scroll into a scroll TRAP — the
+                wheel moves the rule list instead of the page whenever the
+                pointer is over it, which is most of the panel. Worse, it takes
+                the ticks you have already made out of sight. All of the rules
+                fit in about five rows. */}
+            <div className="flex flex-wrap gap-1.5">
               {tags.map((t) => {
                 const on = tagKeys.includes(t.key);
                 return (
