@@ -45,13 +45,13 @@ export async function sendHumanReply(input: {
 
   const { data: conv } = await sb
     .from("sms_conversations")
-    .select("id, state, customer_phone, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends)")
+    .select("id, state, customer_phone, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, send_on_holidays)")
     .eq("id", input.conversationId).maybeSingle();
   if (!conv) return { ok: false, error: "That conversation no longer exists." };
 
   const ws = conv.sms_sub_accounts as unknown as {
     id: string; name: string; phone_e164: string | null; origination_identity: string | null;
-    time_zone: string; quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean;
+    time_zone: string; quiet_hours_start: number; quiet_hours_end: number; send_on_weekends: boolean; send_on_holidays: boolean;
   } | null;
   if (!ws) return { ok: false, error: "That conversation has no workspace." };
 

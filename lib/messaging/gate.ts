@@ -23,6 +23,7 @@ import {
   DEFAULT_DAILY_CAP, FEDERAL_BOUND, type QuietHours,
 } from "./compliance";
 import { customerZone } from "./customer-clock";
+import { isHolidayIn } from "./holidays";
 import { sendingWindow, nextWindowOpen } from "./sending-window";
 
 /** The subset of a workspace row the gate needs. */
@@ -46,6 +47,13 @@ export type GateWorkspace = {
   quiet_hours_start: number;
   quiet_hours_end: number;
   send_on_weekends: boolean;
+  /**
+   * Optional so adding it cannot break an existing caller, and ABSENT READS AS
+   * FALSE — the column's own default and migration 179's stated policy,
+   * "Holidays default OFF". A workspace nobody has asked must not be the one
+   * that texts on Christmas morning.
+   */
+  send_on_holidays?: boolean | null;
 };
 
 /** PPP campaigns send both channels in one sequence — the CA LA campaign opens
@@ -206,6 +214,7 @@ export type GateRefusal =
   | "suppressed"        // they told us to stop. Never retried, never deferred.
   | "quiet_hours"       // legal later — the caller should reschedule.
   | "weekend"           // workspace policy, not law. Also deferrable.
+  | "holiday"           // same shape as weekend: policy, deferred to the next open day.
   | "daily_cap"         // five agents talking over each other.
   | "no_workspace_number"
   | "no_email_address"   // an email step with nowhere to send it
@@ -342,6 +351,30 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     return { ok: false, reason: "weekend", retryAt: nextWeekdayOpen(now, ws.time_zone, hours) };
   }
 
+  /**
+   * 3b. HOLIDAYS. The same shape as the weekend above, and for the same
+   *     reason: PPP's own policy rather than a legal bound, so it DEFERS to
+   *     the next open day instead of refusing outright.
+   *
+   * `send_on_holidays` has been a column on workspaces and campaigns since
+   * migration 179 — "Holidays default OFF: a painting estimate chase on
+   * Thanksgiving morning reads badly even where it is legal" — false on all 33
+   * workspaces, with no calendar and no check. The data said one thing and
+   * this function would have sent on Christmas morning.
+   *
+   * It is also the condition Kate attached to the event-park cadence,
+   * 2026-10-05: "as long as we have a mechanism that keeps customers from
+   * being messaged on specific holidays AND THE MSG WOULD SEND THE FOLLOWING
+   * OPEN DAY." The retryAt is that second half; a bare refusal would meet half
+   * her answer.
+   *
+   * After the weekend check on purpose, so Thanksgiving Friday defers to
+   * Monday rather than to Saturday.
+   */
+  if (!ws.send_on_holidays && isHolidayIn(now, ws.time_zone)) {
+    return { ok: false, reason: "holiday", retryAt: nextOpenDay(now, ws.time_zone, hours, ws.send_on_weekends) };
+  }
+
   // 4. Daily cap, per handset across every agent. Retried tomorrow, not today:
   //    the cap exists precisely to stop a fourth message today.
   const cap = deps.dailyCap ?? DEFAULT_DAILY_CAP;
@@ -421,6 +454,33 @@ function nextWeekdayOpen(now: Date, timeZone: string, hours: QuietHours): Date {
   for (let i = 0; i < 7; i++) {
     c = startOfNextDay(c, timeZone);
     if (!isWeekendIn(c, timeZone)) return nextSendableTime(c, timeZone, hours);
+  }
+  return nextSendableTime(c, timeZone, hours);
+}
+
+/**
+ * Kate's "the following open day", which is not the same as "tomorrow".
+ *
+ * Holidays come in pairs here — Christmas Eve into Christmas Day, Thanksgiving
+ * into the Friday after — and both run into a weekend about half the time.
+ * Stepping a single day would defer Christmas Eve onto Christmas Day, which is
+ * the thing this rule exists to prevent, so it steps until it finds a day that
+ * is neither.
+ *
+ * Ten days is the bound. The longest real run is Thursday Thanksgiving,
+ * Friday, Saturday, Sunday — four — and ten leaves room for a pairing nobody
+ * has thought of while still never looping. Falling out of the loop returns
+ * the last candidate rather than nothing, so a pathological calendar delays a
+ * message instead of dropping it.
+ */
+function nextOpenDay(now: Date, timeZone: string, hours: QuietHours, sendOnWeekends: boolean): Date {
+  let c = now;
+  for (let i = 0; i < 10; i++) {
+    c = startOfNextDay(c, timeZone);
+    const blockedByWeekend = !sendOnWeekends && isWeekendIn(c, timeZone);
+    if (!blockedByWeekend && !isHolidayIn(c, timeZone)) {
+      return nextSendableTime(c, timeZone, hours);
+    }
   }
   return nextSendableTime(c, timeZone, hours);
 }

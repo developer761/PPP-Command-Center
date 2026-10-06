@@ -156,6 +156,9 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
       return "cancel";
     case "quiet_hours":
     case "weekend":
+    // A holiday is the weekend's twin: PPP's own policy, true today and not
+    // tomorrow, and the gate has already worked out which day to come back on.
+    case "holiday":
     case "daily_cap":
     // A36's office window. PPP is not working right now and will be later —
     // the same kind of answer as a weekend, not a broken message.
