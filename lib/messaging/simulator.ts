@@ -17,10 +17,8 @@ import { composeNote } from "./scenario-note";
 import { officeIsOpen, recipientDayIsOver } from "./sending-window";
 import { classifyInbound } from "./compliance";
 import { helpReply } from "./help-reply";
-import { selectExamples, situationFrom } from "./retrieval";
 import { resolveServices } from "./services";
 import { agentConfigFor } from "./agent-config-for";
-import { normalizeInbound } from "./inbound-normalize";
 import { knownFromThread } from "./known-from-thread";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
 import type { Track } from "./agent-output";
@@ -152,7 +150,6 @@ export async function runSimTurn(input: {
   // Both round trips at once. They were sequential, so every turn paid for the
   // config lookup and the corpus load one after the other before the model was
   // even asked anything.
-  const inboundShape = normalizeInbound(input.customerText, input.mediaCount ?? 0);
   const [resolved, corpus, svc, faqs] = await Promise.all([
     agentConfigFor(input.workspaceId, track),
     loadRetrievalCorpus(),
@@ -440,27 +437,18 @@ export async function runSimTurn(input: {
      * back on its own when there is none, so this is safe with an empty panel.
      */
     customerZone: customerZone({ phone: customerPhone }).timeZone,
-    // The whole point of the corpus. Selected per turn, because which rule is
-    // live depends on where the conversation has got to.
-    examples: selectExamples(corpus, {
-      stage,
-      track,
-      // Which examples are worth showing depends on what the customer actually
-      // sent, not only on how far the flow has got.
-      // The CUSTOMER's own words, not the raw string.
-      //
-      // An iPhone reaction arrives as `Liked "<our message>"`, so scanning the
-      // raw text reads OUR sentence and attributes it to them: a customer who
-      // liked a message containing the phrase "real person" was recorded as
-      // asking whether they were talking to a bot, and got examples about it.
-      // normalizeInbound strips the wrapping; for a bare reaction there is no
-      // text of their own, which is the correct thing to scan.
-      ...situationFrom(inboundShape.text ?? (inboundShape.kind === "text" ? input.customerText : ""), {
-        mediaCount: input.mediaCount,
-        isReaction: inboundShape.kind === "reaction" || inboundShape.kind === "emoji_only",
-        isNegative: inboundShape.reaction?.sentiment === "negative",
-      }),
-    }),
+    /**
+     * The whole point of the corpus — and the whole corpus, because the
+     * selection now happens inside runAgentTurn.
+     *
+     * The stage, the track and the situation (photo, reaction, "are you a
+     * bot", callback, service area, price-only) all used to be assembled
+     * HERE, and production assembled a thinner version of them, so the
+     * sandbox showed the model examples a real conversation never got. One
+     * place decides it now, off the inbound message runAgentTurn has already
+     * normalised, which is also where the reaction-text trap is handled.
+     */
+    corpus,
   });
 
   if (!res.ok) {

@@ -23,7 +23,6 @@ import { knownFromThread } from "./known-from-thread";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
-import { selectExamples } from "./retrieval";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
 import { takeoverReasonFor, latestInboundIsAnswered, type TakeoverReason } from "./handoff";
@@ -618,7 +617,21 @@ export function schedulerDeps(): SchedulerDeps {
           inquiryScope: resolved.inquiryScope,
         },
         services: resolveServices(svc.services, svc.exceptions),
-        examples: selectExamples(corpus, { stage }),
+        /**
+         * THE WHOLE CORPUS, and runAgentTurn picks.
+         *
+         * This was `selectExamples(corpus, { stage })` — the stage and nothing
+         * else — while the sandbox passed the situation as well. selectExamples
+         * keeps only examples scoring above zero against the context given, so
+         * in every real conversation the photo, reaction, "are you a bot",
+         * callback, service-area and off-site examples scored zero and were
+         * dropped. Kate graded those and the model has never seen one.
+         *
+         * The selection happens inside runAgentTurn now, off the inbound
+         * message it has already normalised, so there is no longer a version of
+         * this for the two callers to disagree about.
+         */
+        corpus,
         // A26: acknowledge the photo they just sent. Read from the message
         // rather than the webhook because the turn runs seconds later, in a
         // different process, from the row.

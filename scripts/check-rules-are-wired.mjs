@@ -659,6 +659,30 @@ const CHAINS = [
     ],
   },
   {
+    rule: "the graded examples are chosen from the situation, in ONE place",
+    why:
+      "scheduler-db passed selectExamples(corpus, { stage }) and the simulator passed the " +
+      "situation as well — photo, reaction, 'are you a bot', callback, service area, " +
+      "price-only — so the sandbox showed the model examples a real conversation never got. " +
+      "The sandbox being the RICHER of the two is the inverse of every previous parity bug " +
+      "here, and simulator-parity compares the option KEYS at each call site, which both " +
+      "spelled `examples:`, so it stayed green. Selection moved inside runAgentTurn, off the " +
+      "inbound message it has already normalised, so there is no second version to drift",
+    links: [
+      // One selector, reading the situation from the customer's OWN words.
+      ["lib/messaging/agent-run.ts", /selectExamples\(opts\.corpus,/],
+      ["lib/messaging/agent-run.ts", /\.\.\.situationFrom\(ownWords,/],
+      // Both callers hand over the corpus and nothing else.
+      ["lib/messaging/scheduler-db.ts", /^\s*corpus,$/m],
+      ["lib/messaging/simulator.ts", /^\s*corpus,$/m],
+    ],
+    forbidden: [
+      // A caller making its own selection is how the two came apart.
+      ["lib/messaging/scheduler-db.ts", /examples:\s*selectExamples\(/],
+      ["lib/messaging/simulator.ts", /examples:\s*selectExamples\(/],
+    ],
+  },
+  {
     rule: "a bare yes to the availability question counts as availability",
     why:
       "Kate: a non-answer counts — 'yes please' in reply to the availability question IS " +
