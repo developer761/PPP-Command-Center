@@ -1132,6 +1132,37 @@ export function renderMessage(input: RenderInput): string {
 }
 
 function renderBody(input: RenderInput): string {
+  /**
+   * THE ANSWER HAS TO SURVIVE THE EARLY RETURNS TOO.
+   *
+   * answerIsOwed guards the rapport at the BOTTOM of this function, where the
+   * message is assembled from parts. A dozen branches above never reach it:
+   * the returning-customer reply, the requested-time reply, the week-aware
+   * availability ask, the callback branches, the discard lines. Each returns a
+   * template directly, and `input.freeText` — the model's answer, already
+   * through every tone and style check — is dropped.
+   *
+   * validateAction allows those turns BECAUSE the answer is present:
+   * `saysSomething` is one of the things that satisfies A29. So the validator
+   * believes the customer has been answered and the renderer sends only the
+   * question. It is the collision agent-output documents for the yes/no case,
+   * and worse here, because it does not escalate — it sends the half that asks
+   * and deletes the half that answers.
+   *
+   * One helper, applied at each early return, so a branch added later cannot
+   * reopen it quietly. Where nothing is owed it is the identity function.
+   */
+  const owedAnswer =
+    asksSomething(input.customerText) && !ANSWERS_A_QUESTION.has(input.intent)
+      ? (input.freeText ?? "").trim()
+      : "";
+  const keepingTheAnswer = (body: string): string => {
+    if (!owedAnswer || !body.trim()) return body;
+    // Some branches already build from freeText themselves.
+    if (body.includes(owedAnswer)) return body;
+    return `${owedAnswer} ${body}`.trim();
+  };
+
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
@@ -1307,12 +1338,12 @@ function renderBody(input: RenderInput): string {
       input.botMessages ?? []
     )
   ) {
-    return es ? returningCustomerReplyEs() : returningCustomerReply();
+    return keepingTheAnswer(es ? returningCustomerReplyEs() : returningCustomerReply());
   }
 
   if (input.intent === "ask_availability" || input.intent === "checking_availability") {
     const timed = replyToRequestedTime(input.customerText);
-    if (timed) return timed.reply;
+    if (timed) return keepingTheAnswer(timed.reply);
   }
 
   /**
@@ -1330,7 +1361,7 @@ function renderBody(input: RenderInput): string {
    */
   if (input.intent === "ask_availability" && !availGap && input.now && input.customerZone) {
     const week = weekToOffer(input.now, input.customerZone);
-    if (week) return es ? askAvailabilityEs(week) : askAvailability(week);
+    if (week) return keepingTheAnswer(es ? askAvailabilityEs(week) : askAvailability(week));
   }
 
   if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
@@ -1360,7 +1391,7 @@ function renderBody(input: RenderInput): string {
             "No problem at all. What's a good time to reach you?",
             "Of course. When's the best time to give you a call?",
           ];
-      return asks[(input.turn ?? 0) % asks.length];
+      return keepingTheAnswer(asks[(input.turn ?? 0) % asks.length]);
     }
 
     /**
@@ -1376,9 +1407,9 @@ function renderBody(input: RenderInput): string {
     if (phoneBranch(input.callback ?? {}) === "callback_outside_hours") {
       const from = clockHour(CALLBACK_WINDOW.startHour, es);
       const to = clockHour(CALLBACK_WINDOW.endHour, es);
-      return es
+      return keepingTheAnswer(es
         ? `Llamamos entre las ${from} y las ${to}. Hay alguna hora dentro de ese horario que le venga bien?`
-        : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`;
+        : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`);
     }
 
     /**
@@ -1408,7 +1439,7 @@ function renderBody(input: RenderInput): string {
           "No problem at all. We'll reach out then.",
           "Of course. We'll give you a call then.",
         ];
-    return variants[(input.turn ?? 0) % variants.length];
+    return keepingTheAnswer(variants[(input.turn ?? 0) % variants.length]);
   }
 
   /**
@@ -1451,12 +1482,12 @@ function renderBody(input: RenderInput): string {
       const aperture = (input.turn ?? 0) % 2 === 0
         ? "Creo que no podemos ayudar con este proyecto."
         : "No creo que esto sea algo que hagamos.";
-      return `${aperture} S\u00ed cubrimos ${input.covers}. Lo reviso y le aviso si me equivoco. Disculpe la molestia!`;
+      return keepingTheAnswer(`${aperture} S\u00ed cubrimos ${input.covers}. Lo reviso y le aviso si me equivoco. Disculpe la molestia!`);
     }
     const opener = (input.turn ?? 0) % 2 === 0
       ? "I don't think we can help with this project."
       : "I don't believe this is something we take on.";
-    return `${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`;
+    return keepingTheAnswer(`${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`);
   }
 
   const rapport = (input.freeText ?? "").trim();

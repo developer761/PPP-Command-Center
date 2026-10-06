@@ -106,3 +106,62 @@ describe("an answer is never dropped as redundant", () => {
     expect(out).toContain("prep work");
   });
 });
+
+/**
+ * AND IT HAS TO SURVIVE THE EARLY RETURNS, which is where it was still dying.
+ *
+ * The guard above sits at the bottom of renderBody, in the branch that
+ * assembles the message from parts. A dozen branches return a template
+ * directly before ever reaching it — the week-aware availability ask, the
+ * requested-time reply, the returning-customer reply, the callback window, the
+ * discard lines — and every one of them dropped `freeText` on the floor.
+ *
+ * Same collision, same silence: validateAction allows the turn BECAUSE the
+ * answer is there, and the customer receives only the question.
+ */
+describe("the answer survives the branches that return early", () => {
+  const asked = "ok. how long will the whole job take?";
+  const answer = "Most rooms take a day or two.";
+
+  /** Wednesday 2pm ET, so the week-aware ask has a week to name. */
+  const now = new Date("2026-07-15T18:00:00Z");
+
+  it("the week-aware availability ask keeps it", () => {
+    const out = renderMessage({
+      intent: "ask_availability", freeText: answer, customerText: asked,
+      now, customerZone: "America/New_York", flowStage: 3, turn: 0,
+    });
+    expect(out).toContain("day or two");
+    // And still asks the question it was rendering.
+    expect(out).toMatch(/\?/);
+  });
+
+  it("the callback-window reply keeps it", () => {
+    const out = renderMessage({
+      intent: "schedule_follow_up", freeText: answer,
+      customerText: "could you call me instead? and how long will the whole job take?",
+      turn: 0,
+    });
+    expect(out).toContain("day or two");
+  });
+
+  it("does not prepend when the intent's own template answers them", () => {
+    // defer_to_estimator is in ANSWERS_A_QUESTION: the template IS the answer,
+    // and prepending rapport saying the same thing is the duplication the
+    // redundancy rule exists to remove.
+    const out = renderMessage({
+      intent: "defer_to_estimator", freeText: "The estimator works that out.",
+      customerText: asked, flowStage: 0, track: "new_lead", turn: 0,
+    });
+    expect(out).not.toContain("The estimator works that out. The estimator");
+  });
+
+  it("does not prepend when the customer asked nothing", () => {
+    const out = renderMessage({
+      intent: "ask_availability", freeText: "Got it, thank you.",
+      customerText: "12 Hilton Ave, Garden City 11530",
+      now, customerZone: "America/New_York", flowStage: 3, turn: 0,
+    });
+    expect(out).not.toContain("Got it, thank you. Got it");
+  });
+});
