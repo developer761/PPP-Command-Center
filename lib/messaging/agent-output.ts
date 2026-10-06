@@ -1905,11 +1905,40 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   const answersIt =
     ANSWERS_A_QUESTION.has(a.intent) || saysSomething || templateAnswersTheTime || affirmsAYesNo;
   if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
+    /**
+     * AND SAY WHAT WOULD HAVE WORKED, because the refusal is fed back to the
+     * model and one retry is all it gets.
+     *
+     * Seen live on 2026-10-06, on the single commonest opening a painting lead
+     * has — "how much to paint a 12x14 bedroom?":
+     *
+     *   attempt 1  ask_address + "Our estimator handles pricing, so I can't
+     *              give a number myself."   refused: it pads the ask with a reason
+     *   attempt 2  ask_address + "Our estimator handles pricing, so I can't
+     *              give a number here."     refused: the same
+     *   → handed to a person, every time
+     *
+     * Both refusals were right, and both described the WORDING. The model read
+     * them as "say it differently", reworded, and hit the same wall — because
+     * the remedy is not a sentence, it is a different INTENT. The answer has to
+     * be the turn's own template, which is what ANSWERS_A_QUESTION means; a
+     * reason bolted onto an ask is A32's padding however it is phrased.
+     *
+     * defer_to_estimator is named because the intent guide in this file already
+     * defines it as "they want something only the estimator decides, including
+     * any price", and on the new-lead track it renders as the answer with its
+     * trailing availability question stripped at this stage.
+     */
+    const remedy =
+      " Rewording will not fix it: an answer cannot ride along on an ask."
+      + " Choose the intent whose own template answers them — defer_to_estimator"
+      + " covers anything only the estimator decides, including any price — and"
+      + " leave the next question for the turn after.";
     return {
       ok: false, reason: "question_left_unanswered",
       detail: droppedRapport
-        ? `the customer asked something and the answer was dropped because ${droppedRapport}`
-        : "the customer asked something and this turn only asks the next question back",
+        ? `the customer asked something and the answer was dropped because ${droppedRapport}.${remedy}`
+        : `the customer asked something and this turn only asks the next question back.${remedy}`,
     };
   }
 
