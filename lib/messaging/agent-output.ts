@@ -1754,7 +1754,26 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     // is how a customer ends up waiting for an estimator who was never booked.
     if (TIME_COMMITMENT.test(text) && !hasVerifiedSlot(ctx, "times")) {
       const m = TIME_COMMITMENT.exec(text);
-      return { ok: false, reason: "invented_availability", detail: `free text names "${m?.[0]}" with no verified availability behind it` };
+      /**
+       * SAYS WHAT TO DO INSTEAD, because a refused turn now gets one more
+       * attempt with this sentence in front of it (see MAX_ATTEMPTS in
+       * agent-run). A refusal that only names the fault spends that attempt
+       * on a guess.
+       *
+       * Seen live 2026-10-05: the customer asked "what times do you have
+       * available THIS WEEK?", the model corrected its intent on the retry —
+       * so the retry was working — and then answered by repeating their own
+       * words back, which is the one phrasing this rule forbids. Echoing the
+       * customer's time phrase is the natural way to answer them, so the
+       * remedy has to be said rather than inferred.
+       */
+      return {
+        ok: false, reason: "invented_availability",
+        detail: `free text names "${m?.[0]}" with no verified availability behind it. `
+          + `There is no calendar here, so do not repeat their words for WHEN — `
+          + `answer that the office owns the scheduling and will confirm what is open, `
+          + `naming no day, week or time of your own (A15)`,
+      };
     }
     // THE BACKSTOP. Anything numeric the two lists above did not recognise.
     // Rapport is "Got it" and "Happy to help"; every value the customer
