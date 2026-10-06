@@ -16,8 +16,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { selectAll } from "./paging";
 import {
-  keepUsableFindings, type RaterFinding, type RuleForRating, type RatableTurn,
+  keepUsableFindings, conductFromFindings,
+  type RaterFinding, type RuleForRating, type RatableTurn,
 } from "./rater";
+import { loadClassARules } from "./class-a-rules-db";
 
 /**
  * Every live rule WITH its rater-only guidance.
@@ -81,7 +83,13 @@ export async function loadTurnsForRating(
  */
 export async function saveFindings(
   sb: SupabaseClient,
-  input: { exampleId: string; findings: readonly RaterFinding[] }
+  input: {
+    exampleId: string;
+    findings: readonly RaterFinding[];
+    /** Rule severity by code. Optional so existing callers are unaffected;
+     *  absent simply leaves the column as it has always been. */
+    severityOf?: (code: string) => string | null | undefined;
+  }
 ): Promise<number> {
   if (!input.findings.length) return 0;
   const { error } = await sb.from("sms_example_findings").insert(
@@ -92,6 +100,10 @@ export async function saveFindings(
       kind: f.kind,
       what: f.reason,
       basis: "auto_rater",
+      // The column has existed with nothing filling it: every auto_rater
+      // finding in production reads NULL, so nothing downstream can tell a
+      // critical breach from a mild one.
+      ...(input.severityOf ? { severity: input.severityOf(f.code) ?? null } : {}),
     }))
   );
   if (error) throw new Error(`could not save findings: ${error.code} ${error.message}`);
@@ -215,6 +227,22 @@ export async function sweepUnrated(
     .order("ended_at", { ascending: false })
     .limit(limit * 4);           // room to skip the already-rated
 
+  /**
+   * Rule severity by code, read ONCE for the sweep rather than per
+   * conversation. It decides the verdict band (critical breach -> bad) and is
+   * written onto each finding, where `severity` has been a column with nothing
+   * filling it: every auto_rater finding in production has severity NULL, so
+   * the repair console cannot tell a critical breach from a mild one.
+   *
+   * loadClassARules caches, so this is cheap; naming it here keeps the two
+   * uses — the band and the finding row — reading the same source.
+   */
+  const rules = await loadClassARules();
+  const severityByCode = new Map<string, string | null>(
+    rules.map((r) => [r.code, (r.severity as string | null) ?? null])
+  );
+  const severityOf = (code: string) => severityByCode.get(code) ?? null;
+
   const convs = ended ?? [];
   for (const c of convs) {
     if (rated + failed >= limit) break;
@@ -278,7 +306,31 @@ export async function sweepUnrated(
       const out = await rateConversation(sb, {
         conversationId: c.id, exampleId: ex[0].id, ask,
       });
-      findingCount += await saveFindings(sb, { exampleId: ex[0].id, findings: out.findings });
+      findingCount += await saveFindings(sb, {
+        exampleId: ex[0].id, findings: out.findings, severityOf,
+      });
+
+      /**
+       * AND THE VERDICT, which was never written.
+       *
+       * Without it repairQueue — `.in("conduct", ["mixed","bad"])` — can never
+       * see a conversation the rater has just described in detail, so every
+       * rating reaches one list page and no queue. See conductFromFindings for
+       * the banding and why "mixed" is the useful answer rather than a hedge.
+       *
+       * A SECOND WRITE rather than part of the insert above, deliberately: the
+       * verdict is derived from findings that do not exist until the model has
+       * answered, and the row has to exist first for those findings to hang
+       * off. A failure here leaves the example and its findings intact and
+       * merely unbanded — which is exactly today's state, and recoverable by
+       * re-running. Losing the rating would not be.
+       */
+      const conduct = conductFromFindings(out.findings, severityOf);
+      const { error: verdictErr } = await sb.from("sms_training_examples")
+        .update({ conduct, graded_at: new Date().toISOString() })
+        .eq("id", ex[0].id);
+      if (verdictErr) note(`verdict not recorded: ${verdictErr.code}`);
+
       if (out.dropped.length) note(`dropped ${out.dropped.length} unusable finding(s)`);
       rated++;
     } catch (err) {

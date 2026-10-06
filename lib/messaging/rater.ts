@@ -183,3 +183,55 @@ export const RATER_SCHEMA = {
   },
   required: ["findings"],
 };
+
+/**
+ * THE VERDICT THE AUTO-RATER NEVER WROTE.
+ *
+ * ── WHAT WAS BROKEN ─────────────────────────────────────────────────────
+ *
+ * sweepUnrated inserts the example, calls the model, and saves the findings —
+ * and never writes `conduct`. Checked against production 2026-10-06: all four
+ * live-rated conversations have conduct NULL, between them carrying 18 coded
+ * findings (13 fell_short, 5 did_well) naming real failures.
+ *
+ * repairQueue selects `.in("conduct", ["mixed", "bad"])`, so a conversation
+ * the rater has just described in detail is STRUCTURALLY unable to enter the
+ * repair console. The grading screen shows none of the findings either, so the
+ * review that was meant to "start from a rating instead of from nothing"
+ * started from nothing. Every rating is a paid Opus call whose output reaches
+ * one list page and no queue.
+ *
+ * ── WHY THESE THREE BANDS ───────────────────────────────────────────────
+ *
+ * `mixed` is not a hedge here, it is the most useful answer: repairQueue sorts
+ * mixed FIRST, because the console is called "Fix a near-miss" and a
+ * conversation that went mostly right with a fixable turn is the one worth a
+ * person's time. So a shortfall against a non-critical rule lands there.
+ *
+ * A CRITICAL breach is `bad`. Those are the 32 rules Kate marks critical, and
+ * a conversation that broke one is not a near-miss whatever else it did well.
+ *
+ * No shortfalls at all is `good`, and it stays unapproved: approving is a
+ * separate human decision, which is what keeps an unread auto-rating out of
+ * the model's examples.
+ *
+ * ── IT IS A PROPOSAL, NOT A VERDICT ─────────────────────────────────────
+ *
+ * The spec says "a person then validates that rating or adjusts it, naming the
+ * rule that should have applied instead". This writes the starting point for
+ * that conversation; `approved` stays false and a human still decides.
+ *
+ * Pure, so the banding can be argued about in a test rather than in the
+ * database.
+ */
+export function conductFromFindings(
+  findings: readonly RaterFinding[],
+  severityOf: (code: string) => string | null | undefined,
+): "good" | "mixed" | "bad" {
+  const shortfalls = findings.filter((f) => f.kind === "fell_short");
+  if (!shortfalls.length) return "good";
+  const critical = shortfalls.some(
+    (f) => String(severityOf(f.code) ?? "").toLowerCase() === "critical"
+  );
+  return critical ? "bad" : "mixed";
+}
