@@ -997,6 +997,10 @@ export function templateAsks(intent: Intent, turn = 0): boolean {
 const NAMES_A_DAY_OR_TIME =
   /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:at|around)\s+\d{1,2}(?::\d{2})?\b/i;
 
+/** The same day and time words, for removing rather than for detecting. */
+const DAY_OR_TIME_WORDS =
+  /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:at|around)\s+\d{1,2}(?::\d{2})?\b/gi;
+
 export function scopeForReadback(scope: string | null | undefined): string {
   const t = (scope ?? "").trim();
   if (!t) return "";
@@ -1005,7 +1009,41 @@ export function scopeForReadback(scope: string | null | undefined): string {
     .filter((sentence) => sentence.trim() && !NAMES_A_DAY_OR_TIME.test(sentence))
     .join(" ")
     .trim();
-  return kept;
+  if (kept) return kept;
+
+  /**
+   * A ONE-SENTENCE SCOPE THAT NAMES A DAY LEFT NOTHING AT ALL — and nothing is
+   * the one answer that breaks the conversation.
+   *
+   * Web-form scopes are often a single sentence, and a customer who is ready
+   * to book writes the readiest one there is:
+   *
+   *   "Can someone come out Monday to look at my kitchen"
+   *
+   * Sentence-level stripping removed the whole thing, so confirm_scope
+   * rendered the empty string. That turn says nothing, the conversation is
+   * handed to a person with no draft written, and because the intent is never
+   * recorded, A3's first leg stays open for the life of the conversation. The
+   * only other intent that could satisfy it, ask_project_details, is refused
+   * for the opposite reason: the scope IS on file. No legal move at all, on
+   * turn one, for the most ready lead in the queue.
+   *
+   * So when stripping by sentence empties it, strip the WORDS instead. The day
+   * must still not survive — reading a requested day back reads as agreeing to
+   * it, which is what the rule above exists to prevent — but "come out to look
+   * at my kitchen" is a scope we can confirm, and the appointment half is
+   * collected properly at the availability leg.
+   */
+  const withoutTheTime = t
+    .replace(DAY_OR_TIME_WORDS, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/^[\s,;:-]+|[\s,;:-]+$/g, "")
+    .trim();
+  // Still carrying a time, or too little left to read back: say nothing rather
+  // than something wrong. Two words is a fragment, not a scope.
+  if (!withoutTheTime || NAMES_A_DAY_OR_TIME.test(withoutTheTime)) return "";
+  return withoutTheTime.split(/\s+/).length >= 3 ? withoutTheTime : "";
 }
 
 /** Shared with the A29 guard — see TIME_IS_ACKNOWLEDGED_BY. */
