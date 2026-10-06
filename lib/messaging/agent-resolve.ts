@@ -34,7 +34,26 @@ export type AgentConfigLayer = {
   confidence_threshold?: number | null;
   autosend?: boolean | null;
   max_turns?: number | null;
-  booking_hours?: unknown;
+  /**
+   * NOT HERE ANY MORE: `booking_hours`.
+   *
+   * Migration 184 defined it as "business hours the AGENT reasons about when
+   * offering slots — the agent may say 'our earliest slot is 10 AM'". A15
+   * later forbade exactly that: the bot never offers an appointment time, the
+   * office does. The capability this column existed for is not one the bot is
+   * allowed to have, which is why nothing has ever read it.
+   *
+   * Keeping it in this list made it look tunable and inherited. Worse, its
+   * default says callbacks run 08:00-18:00 while the sentence customers
+   * actually receive says 9 AM to 8 PM — A36's weekday office window, via
+   * CALLBACK_WINDOW in channel-preference.ts, which is the real and only
+   * source. Two numbers disagreeing, one of them unreachable, is how somebody
+   * later "corrects" the hours in the config and changes nothing.
+   *
+   * The COLUMN stays: dropping it needs a migration and this repo has no
+   * runner. It is just no longer carried through the code, so nothing can come
+   * to depend on it by accident.
+   */
 };
 
 /** Where each resolved value came from, so the UI can show inheritance rather
@@ -54,7 +73,7 @@ const FIELDS: (keyof AgentConfigLayer)[] = [
   "persona_name", "persona_role", "required_flow",
   "services_included", "services_excluded", "offsite_rules", "tone_rules",
   "office_location", "service_area_note",
-  "confidence_threshold", "autosend", "max_turns", "booking_hours",
+  "confidence_threshold", "autosend", "max_turns",
 ];
 
 /**

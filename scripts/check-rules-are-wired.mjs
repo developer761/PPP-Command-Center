@@ -121,6 +121,21 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A36 — one source for the callback hours, and booking_hours is not it",
+    why: "the sentence customers receive says 9 AM to 8 PM from CALLBACK_WINDOW (A36's weekday office window). sms_agent_configs.booking_hours defaults to a callback window of 08:00-18:00, was built so the agent could offer slots -- which A15 forbids -- and has never had a reader. Two numbers disagreeing, one unreachable, is how somebody 'corrects' the hours in config and changes nothing",
+    links: [
+      ["lib/messaging/channel-preference.ts", /export const CALLBACK_WINDOW/],
+      ["lib/messaging/render.ts", /CALLBACK_WINDOW\.startHour/],
+    ],
+    forbidden: [
+      // Carrying it through the config again makes it look tunable. If it is
+      // ever genuinely wanted, CALLBACK_WINDOW has to read it rather than the
+      // two sitting side by side disagreeing.
+      ["lib/messaging/agent-resolve.ts", /"booking_hours"/],
+      ["lib/messaging/db.ts", /booking_hours:\s*Record/],
+    ],
+  },
+  {
     rule: "A25 — the phone branch knows whether we hold a callback time",
     why: "Kate, 2026-09-18: 'Ending without capturing when to call is the defect.' The parser existing is not the rule working",
     links: [
