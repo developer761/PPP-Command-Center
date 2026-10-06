@@ -61,8 +61,19 @@ export default async function AgentConfigPage({
     <main className="max-w-3xl mx-auto px-4 py-4 pb-safe space-y-4">
       <AgentScopePicker workspaces={workspaces} current={sp.ws} currentState={sp.state} states={states} overrides={overrides} track={track} />
 
+      {/*
+        KEYED ON THE WORKSPACE, the same reason as the review queue.
+
+        WorkspaceServices seeds its ticks with useState(services), which runs
+        once, and the switcher is a client-side router.push — so the ticks
+        stayed on the PREVIOUS workspace while the heading, which reads a prop,
+        updated. "What Pasadena covers" over Nassau's answers, with the
+        differences count and the reset button both about the wrong place, and
+        a click writing A's value onto B.
+      */}
       {sp.ws && wsName && svc.services.length > 0 && (
         <WorkspaceServices
+          key={sp.ws}
           workspaceId={sp.ws}
           workspaceName={wsName}
           services={resolveServices(svc.services, svc.exceptions)}

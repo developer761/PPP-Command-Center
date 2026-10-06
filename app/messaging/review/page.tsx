@@ -37,7 +37,23 @@ export default async function DraftReviewPage() {
         </section>
       )}
 
-      <DraftReview drafts={drafts} thread={thread} remaining={drafts.length} />
+      {/*
+        KEYED ON THE DRAFT, and this one is not cosmetic.
+
+        DraftReview seeds its textarea with useState(draft.body), which runs
+        once, and both send and reject end in router.refresh() — which refetches
+        the server tree WITHOUT remounting. So on the SECOND item in the queue
+        the box still held the FIRST draft's text: wasEdited went true, the
+        button relabelled itself "Send my version", and one tap would send
+        customer A's message to customer B and then store it as B's final_body.
+        A sent text cannot be unsent.
+
+        Both production drafts are still pending, so this has never run against
+        a real queue — the bug is in the code, not yet in anybody's thread.
+        The repo already keys WorkspaceFaqs, SnippetsEditor and Grader for this
+        exact reason; this is the sibling that never got it.
+      */}
+      <DraftReview key={drafts[0]?.id ?? "empty"} drafts={drafts} thread={thread} remaining={drafts.length} />
 
       <p className="text-[12px] text-ppp-charcoal-500 leading-relaxed">
         Approving does not override the send gate. Someone who has opted out,
