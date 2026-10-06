@@ -41,15 +41,55 @@ const RATHER_NOT_REPEAT =
   /\b(?:you\s+(?:already\s+)?have\b|\bon\s+file\b|\bsame\s+as\s+(?:before|last)\b|\bwhy\s+(?:do\s+)?(?:you|i)\s+need\b|\bagain\??$|\bdon'?t\s+(?:you|i)\s+(?:already\s+)?have\b|\bshouldn'?t\s+you\s+have\b|\bno\s+need\s+to\b|\bisn'?t\s+it\s+on\s+file\b)/i;
 
 /**
+ * BOTH HALVES AGAIN, IN SPANISH.
+ *
+ * returningCustomerReplyEs() was written, approved and unreachable: the two
+ * matchers above are English-only, so the Spanish branch in render.ts could
+ * never be entered. alreadyAskedToConfirm even looks for that reply's Spanish
+ * marker, "siga correcto", which nothing was able to write.
+ *
+ * The cost falls on the one customer who should never be re-interrogated —
+ * somebody PPP has already painted for, saying in Spanish that we have their
+ * details, and getting the plain ask again.
+ */
+const WORKED_WITH_US_BEFORE_ES = new RegExp(
+  [
+    String.raw`\b(?:ya\s+)?(?:me\s+)?(?:pintaron|pintaste|trabajaron|hicieron)\b`,
+    String.raw`\bya\s+(?:soy|somos)\s+clientes?\b`,
+    String.raw`\bcliente\s+(?:de\s+ustedes|frecuente|anterior)\b`,
+    String.raw`\b(?:el\s+)?a[ñn]o\s+pasado\b[^.?!]{0,30}\b(?:pintaron|trabajaron|hicieron)\b`,
+    String.raw`\bla\s+vez\s+(?:pasada|anterior)\b`,
+  ].join("|"),
+  "i"
+);
+
+/** They would rather not type it all again — in Spanish. */
+const RATHER_NOT_REPEAT_ES = new RegExp(
+  [
+    String.raw`\bya\s+(?:la|lo|les|le)?\s*(?:tienen|tiene|tienes)\b`,
+    String.raw`\bya\s+(?:se\s+)?(?:la|lo|les)?\s*(?:di|dije|mand[ée]|envi[ée])\b`,
+    String.raw`\bno\s+quiero\s+(?:repetir|volver)\b`,
+    String.raw`\bpara\s+qu[ée]\s+(?:la|lo|me)\b`,
+    String.raw`\bno\s+(?:hace\s+falta|es\s+necesario)\b`,
+    String.raw`\botra\s+vez\b`,
+  ].join("|"),
+  "i"
+);
+
+/**
  * Is this a returning customer declining to repeat themselves?
  *
  * Both halves required. "You painted my kitchen last year and now I need the
  * deck" is a returning customer giving us work, not refusing a field.
+ *
+ * The halves are not mixed across languages: somebody writes in one or the
+ * other, and a cross-match would only add false positives.
  */
 export function returningCustomerDeclining(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
-  return WORKED_WITH_US_BEFORE.test(t) && RATHER_NOT_REPEAT.test(t);
+  return (WORKED_WITH_US_BEFORE.test(t) && RATHER_NOT_REPEAT.test(t))
+    || (WORKED_WITH_US_BEFORE_ES.test(t) && RATHER_NOT_REPEAT_ES.test(t));
 }
 
 /**

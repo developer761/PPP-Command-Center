@@ -49,18 +49,30 @@ const SLOT = /\{[^}]+\}/g;
  * Address is deliberately one entry covering all its parts, per the rule:
  * naming the house number, the street and the zip is still one field.
  */
+/*
+ * EACH ENTRY CARRIES BOTH LANGUAGES.
+ *
+ * A22 is counted off these, and they were English-only — so a Spanish message
+ * produced ZERO fields whatever it asked for. tooManyAsks could not fire, and
+ * neither could render.ts's rapport-dropping rule that depends on it:
+ *
+ *   "Cuál es su nombre, su correo electrónico y la dirección del proyecto?"
+ *
+ * is three asks in one message, Kate's most-cited tone breach, and it counted
+ * as none. The templates were translated; this was not.
+ */
 const PRODUCED_FIELD: { field: string; re: RegExp }[] = [
-  { field: "name", re: /\bname\b/i },
-  { field: "email", re: /\be-?mail\b/i },
-  { field: "phone", re: /\b(?:phone|mobile|cell|number to reach)\b/i },
-  { field: "address", re: /\b(?:address|street|zip|post ?code|property located|whereabouts)\b/i },
-  { field: "availability", re: /\b(?:day|days|time|window|weekday|weekend|availability|available)\b/i },
-  { field: "scope", re: /\b(?:project|painted|painting|have done|looking to have)\b/i },
+  { field: "name", re: /\bname\b|\bnombre\b/i },
+  { field: "email", re: /\be-?mail\b|\bcorreo(?:\s+electr[óo]nico)?\b/i },
+  { field: "phone", re: /\b(?:phone|mobile|cell|number to reach)\b|\b(?:tel[ée]fono|celular|n[úu]mero)\b/i },
+  { field: "address", re: /\b(?:address|street|zip|post ?code|property located|whereabouts)\b|\b(?:direcci[óo]n|calle|c[óo]digo\s+postal|ubicaci[óo]n)\b/i },
+  { field: "availability", re: /\b(?:day|days|time|window|weekday|weekend|availability|available)\b|\b(?:d[íi]as?|horas?|horario|disponibilidad|fin\s+de\s+semana)\b/i },
+  { field: "scope", re: /\b(?:project|painted|painting|have done|looking to have)\b|\b(?:proyecto|pintar|pintura|trabajo)\b/i },
 ];
 
 /** A question expecting a bare yes or no. */
 const YES_NO =
-  /\b(?:is|are|was|were|do|does|did|would|will|can|could|should|have|has|want|shall)\b[^.?!]*\?/gi;
+  /\b(?:is|are|was|were|do|does|did|would|will|can|could|should|have|has|want|shall)\b[^.?!]*\?|\b(?:es|son|est[áa]|est[áa]n|tiene|tienen|puede|pueden|quiere|quieren|ser[íi]a|podr[íi]a)\b[^.?!]*\?/gi;
 
 /**
  * Verbs that REQUEST without a question mark. "Let me know your name and
@@ -68,6 +80,10 @@ const YES_NO =
  */
 const REQUESTING =
   /\b(?:need|send|give|tell|let me know|provide|share|confirm|grab|put|reach you|best way)\b/i;
+
+/** The same verbs in Spanish, plus the bare "cuál es / cómo se" question forms. */
+const REQUESTING_ES =
+  /\b(?:necesit\w+|env[íi]\w+|mand\w+|d[ée]me|deme|d[íi]game|digame|comp[áa]rta\w+|confirm\w+|indique\w*|proporcione\w*|av[íi]se\w*|cu[áa]l\s+es|c[óo]mo\s+se)\b/i;
 
 /**
  * ONLY THE PARTS THAT ACTUALLY ASK.
@@ -91,7 +107,7 @@ const REQUESTING =
 function asking(text: string): string {
   return text
     .split(/(?<=[.?!])\s+/)
-    .filter((sentence) => sentence.includes("?") || REQUESTING.test(sentence))
+    .filter((sentence) => sentence.includes("?") || REQUESTING.test(sentence) || REQUESTING_ES.test(sentence))
     .join(" ");
 }
 

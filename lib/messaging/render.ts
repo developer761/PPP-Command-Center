@@ -1035,13 +1035,31 @@ const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
  * message is the answer and must survive. If stripping would leave nothing,
  * the original stands, because a silent turn is worse than a third ask.
  */
+/**
+ * BOTH LANGUAGES, because the template this strips exists in both.
+ *
+ * render-es.ts's defer_to_estimator ends "Mientras tanto, qué días le
+ * funcionan mejor?" and this matcher was English-only, so the question
+ * survived — and a Spanish lead was asked for appointment days at stage 0,
+ * which is the exact breach the comment below records fixing. The same leak
+ * reopened the availability stand-off in Spanish: the third ask could not be
+ * suppressed because it could not be recognised.
+ *
+ * A rule enforced per-INTENT, walked round by another intent's TEMPLATE —
+ * and then walked round again by the translation of that template.
+ */
 const ASKS_ABOUT_TIMING =
-  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i;
+  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i
+  ;
+
+const ASKS_ABOUT_TIMING_ES =
+  /\b(?:d[íi]as?|horas?|horario|hora|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?|funcionan?|conviene|sirve|mejor)\b/i;
 
 function withoutATimingQuestion(body: string): string {
   const sentences = body.split(/(?<=[.?!])\s+/);
   const last = sentences[sentences.length - 1] ?? "";
-  if (!last.includes("?") || !ASKS_ABOUT_TIMING.test(last)) return body;
+  if (!last.includes("?")) return body;
+  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last)) return body;
   const kept = sentences.slice(0, -1).join(" ").trim();
   return kept || body;
 }
