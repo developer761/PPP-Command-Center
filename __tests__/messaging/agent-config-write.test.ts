@@ -49,7 +49,38 @@ describe("editing the agent's rules", () => {
       values: { confidence_threshold: 1.5 },
     });
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toMatch(/between 0 and 1/);
+    if (!res.ok) expect(res.error).toMatch(/above 0 and at most 1/);
+  });
+
+  /**
+   * THE EMPTY BOX, which is the one somebody actually produces.
+   *
+   * The editor sends Number(conf) and Number("") is 0. Clearing a field means
+   * "inherit" for every other control on that form, so the obvious action sent
+   * 0 — which the old `c < 0` allowed through to Postgres, where the column's
+   * CHECK refused it and the person who emptied a box read a raw SQL message.
+   *
+   * And a threshold of 0 is not a setting worth having: shouldEscalate asks
+   * `confidence < threshold`, so it would mean never handing a conversation to
+   * a person at all.
+   */
+  it("refuses an emptied box rather than saving zero", async () => {
+    for (const value of [Number(""), 0, Number("abc")]) {
+      const res = await saveAgentConfig({
+        where: { scope: "global" }, track: "new_lead",
+        values: { confidence_threshold: value },
+      });
+      expect(res.ok, String(value)).toBe(false);
+      if (!res.ok) expect(res.error).toMatch(/never handing a conversation to a person/);
+    }
+  });
+
+  it("still accepts a real threshold", async () => {
+    const res = await saveAgentConfig({
+      where: { scope: "global" }, track: "new_lead",
+      values: { confidence_threshold: 0.9 },
+    });
+    expect(res.ok).toBe(true);
   });
 
   it("refuses a fractional max turns", async () => {

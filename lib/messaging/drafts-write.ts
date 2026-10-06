@@ -38,6 +38,34 @@ function claimCutoff(): string {
   return new Date(Date.now() - CLAIM_HOLD_MS).toISOString();
 }
 
+/**
+ * HOW MANY ARE REALLY WAITING — which is not how many were fetched.
+ *
+ * The review screen rendered `{drafts.length} waiting` and the list is capped
+ * at 25. Sixty customers waiting for an answer read as "25 waiting", and the
+ * number stopped moving as the queue grew: work through five and it still says
+ * 25, which reads as making no progress at all. It is the mistake the board
+ * already had, where db.ts explains at length why a capped list must never be
+ * shown as a total — that fix landed there and not here.
+ *
+ * head+count, so the database counts and no rows are read. The filters have to
+ * stay identical to the query below, or the number describes a different queue
+ * from the list underneath it.
+ */
+export async function pendingDraftCount(): Promise<number> {
+  await assertMessagingAccess();
+  const sb = messagingDb();
+  const { count, error } = await sb
+    .from("sms_drafts")
+    .select("id", { count: "exact", head: true })
+    .eq("state", "pending")
+    .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`);
+  // Thrown for the same reason the list throws: a review queue that lies about
+  // being empty is the most expensive lie in this product.
+  if (error) throw new Error(`could not count the review queue: ${error.message}`);
+  return count ?? 0;
+}
+
 export async function pendingDrafts(limit = 25): Promise<DraftForReview[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
