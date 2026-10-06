@@ -106,7 +106,12 @@ try {
     // app/commercial and every /dashboard page 307'd to /commercial. "All 73
     // pages returned 200" was true and covered NONE of the residential
     // Command Center, which is the side being launched.
+    // ALL THREE platforms, for the reason above: the probe user's flags decide
+    // which trees it can see, and a tree it cannot see reports 20 pages "down"
+    // (they redirect to /choose-platform) rather than being tested. This said
+    // two platforms while the paths list walked three.
     is_active: true, has_new_platform_access: true, has_command_center_access: true,
+    has_messaging_access: true,
     auth_provider: "password",
   });
 
@@ -159,6 +164,16 @@ try {
   const paths = [
     ...staticPages(),                              // /commercial/*
     ...staticPages("app/dashboard", "/dashboard"), // residential Command Center
+    /**
+     * AND CONNECT HUB, which was not here — the same omission the comment on
+     * the probe user above describes, a third time.
+     *
+     * Every page of the SMS console: the dashboard, the agent settings, the
+     * rules, the training hub, the review queues. That is the surface being
+     * launched to Kate and the one being changed daily, and "all pages
+     * returned 200" has never once included it.
+     */
+    ...staticPages("app/messaging", "/messaging"),
   ];
   if (build?.[0]) {
     const wo = encodeURIComponent(build[0].work_order_id);
@@ -174,6 +189,23 @@ try {
   }
   if (acc?.[0]) paths.push(`/commercial/accounts/${acc[0].id}`, `/commercial/accounts/${acc[0].id}/edit`);
   if (inv?.[0]) paths.push(`/commercial/invoices/${inv[0].id}`);
+
+  /**
+   * ONE CONVERSATION OF EACH STATE, for the reason spelled out below about
+   * opportunities: the thread page branches on state. An ai_active thread
+   * renders the agent's drafts and the approve controls; a human_active one
+   * renders the takeover banner and the reply box; an ended one renders
+   * neither. Whichever came back first would be the only path covered.
+   *
+   * This is the screen somebody at PPP will have open all day, and until now
+   * it was not loaded by anything.
+   */
+  for (const state of ["ai_active", "human_active", "ended"]) {
+    const { data: conv } = await admin
+      .from("sms_conversations").select("id").eq("state", state).limit(1);
+    if (conv?.[0]) paths.push(`/messaging/${conv[0].id}`);
+    else console.log(`  ⚠ no ${state} conversation — that thread state was NOT smoke-tested`);
+  }
   // ONE DEAL OF EVERY STATUS, not just one deal.
   //
   // This picked a single opportunity and walked its tabs. But the detail page
