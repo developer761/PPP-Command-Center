@@ -12,6 +12,8 @@
  * other guard were removed.
  */
 import { messagingDb } from "./db";
+// Pure, and in its own file because this one is "use server".
+import { composeNote } from "./scenario-note";
 import { officeIsOpen, recipientDayIsOver } from "./sending-window";
 import { classifyInbound } from "./compliance";
 import { helpReply } from "./help-reply";
@@ -490,41 +492,107 @@ export async function runSimTurn(input: {
   };
 }
 
-/** Persist a graded run so it can be replayed after a prompt change. */
+/**
+ * Persist a graded run so it can be replayed after a prompt change.
+ *
+ * ── SAVING TWICE IS THE NORMAL THING TO DO ──────────────────────────────
+ *
+ * Reported by Kate on her first session, 2026-10-06: she saved, read the run
+ * back, added more detail to "where it fell short", saved again, and got
+ *
+ *   Could not save: duplicate key value violates unique constraint
+ *   "sms_scenarios_name_key"
+ *
+ * The name was stamped to the MINUTE, so a second save inside the same minute
+ * collided — and a save a minute later was worse, not better: it wrote a
+ * SECOND scenario, leaving her first one on file without the feedback she had
+ * just added. Either way the work she typed was the thing at risk.
+ *
+ * So `id` makes a re-save an UPDATE of the run she is looking at, which is
+ * what pressing save twice means to a person. Its turns are replaced rather
+ * than merged — the grades on screen are the current truth, and a merge would
+ * quietly keep a verdict she had changed her mind about.
+ */
 export async function saveScenario(input: {
+  /** Present on a re-save: update this run rather than creating another. */
+  id?: string;
   name: string;
   customerBrief: string;
   tagKey?: string;
   workspaceId?: string;
-  turns: (SimTurn & { verdict?: "good" | "acceptable" | "wrong"; verdictNote?: string; expectedIntent?: string })[];
+  turns: (SimTurn & {
+    verdict?: "good" | "acceptable" | "wrong";
+    verdictNote?: string;
+    expectedIntent?: string;
+    /**
+     * THE THREE BOXES A RATER ACTUALLY FILLS IN, and they were being dropped.
+     *
+     * Kate's first session, 2026-10-06: she marked a turn Wrong and wrote all
+     * three — what it got right, where it fell short, what it should have said
+     * — and the save wrote only the verdict. `sms_scenario_turns` has one text
+     * column, `verdict_note`, and nothing was putting her words in it, so the
+     * row read "wrong" with an empty note. The most useful thing on the sheet,
+     * silently discarded, with a success message on screen.
+     *
+     * "Send to training" already used all three (as what / should_have), which
+     * is what made the gap invisible: one of the two buttons kept her work.
+     */
+    didWell?: string;
+    shortfall?: string;
+    shouldHave?: string;
+  })[];
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const { data: scenario, error } = await sb.from("sms_scenarios").insert({
-    name: input.name,
+  const fields = {
     customer_brief: input.customerBrief,
     tag_key: input.tagKey ?? null,
     workspace_id: input.workspaceId ?? null,
     // Only a run where every turn was judged acceptable becomes a test. A
     // scenario with a known-wrong turn is a bug report, not a baseline.
     is_regression_test: input.turns.length > 0 && input.turns.every((t) => t.verdict === "good" || t.verdict === "acceptable"),
-  }).select().single();
-  if (error) return { ok: false, error: error.message };
+  };
+
+  let scenarioId: string;
+  if (input.id) {
+    const { error } = await sb.from("sms_scenarios").update(fields).eq("id", input.id);
+    if (error) return { ok: false, error: error.message };
+    scenarioId = input.id;
+    // Replace, not merge. See the note above.
+    const { error: delErr } = await sb.from("sms_scenario_turns")
+      .delete().eq("scenario_id", scenarioId);
+    if (delErr) return { ok: false, error: delErr.message };
+  } else {
+    const { data: scenario, error } = await sb.from("sms_scenarios")
+      .insert({ name: input.name, ...fields }).select().single();
+    if (error) return { ok: false, error: error.message };
+    scenarioId = scenario.id as string;
+  }
 
   const rows = input.turns.map((t) => ({
-    scenario_id: scenario.id,
+    scenario_id: scenarioId,
     ordinal: t.ordinal,
     customer_text: t.customerText,
     bot_intent: t.intent,
     bot_message: t.message,
     confidence: t.confidence,
     verdict: t.verdict ?? null,
-    verdict_note: t.verdictNote ?? null,
+    /**
+     * All three boxes into the one column the table has, labelled so a person
+     * reading the row can tell them apart and so the parts stay separable.
+     *
+     * Composed rather than given three columns of their own because this repo
+     * has no migration runner — a schema change is hand-run against production
+     * and is Karan's call. Losing a rater's words for a week while that is
+     * decided is the worse option, and the labels mean nothing is lost if the
+     * columns do arrive later.
+     */
+    verdict_note: composeNote(t) ?? null,
     expected_intent: t.expectedIntent ?? null,
     graded_at: t.verdict ? new Date().toISOString() : null,
   }));
   const { error: turnErr } = await sb.from("sms_scenario_turns").insert(rows);
   if (turnErr) return { ok: false, error: turnErr.message };
 
-  return { ok: true, id: scenario.id };
+  return { ok: true, id: scenarioId };
 }
