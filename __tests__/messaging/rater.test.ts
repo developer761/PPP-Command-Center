@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  buildRaterPrompt, renderTurnsForRating, keepUsableFindings,
+  buildRaterPrompt, renderTurnsForRating, keepUsableFindings, conductFromFindings,
   type RuleForRating, type RatableTurn,
 } from "@/lib/messaging/rater";
 import { forPrompt, type ClassARule } from "@/lib/messaging/class-a-rules";
@@ -153,5 +153,81 @@ describe("the transcript the rater reads", () => {
     ]);
     expect(out).toContain("[turn 1] CUSTOMER: hi");
     expect(out).toContain("[turn 2] BOT: hello");
+  });
+});
+
+/**
+ * THE VERDICT THE AUTO-RATER NEVER WROTE.
+ *
+ * sweepUnrated inserted the example, called the model, saved the findings —
+ * and never wrote `conduct`. Checked against production 2026-10-06: all four
+ * live-rated conversations have conduct NULL while carrying 18 coded findings
+ * between them (13 fell_short, 5 did_well) naming real failures.
+ *
+ * repairQueue selects `.in("conduct", ["mixed","bad"])`, so a conversation the
+ * rater had just described in detail was STRUCTURALLY unable to enter the
+ * repair console. Every rating is a paid Opus call whose output reached one
+ * list page and no queue, and the review that was meant to "start from a
+ * rating instead of from nothing" started from nothing.
+ */
+describe("the verdict derived from the findings", () => {
+  const f = (code: string, kind: "fell_short" | "did_well") =>
+    ({ code, turn: 2, kind, reason: "because" });
+  /** A13 and A11 are critical in production; A33 is mild. */
+  const sev = (code: string) =>
+    code === "A33" ? "mild" : code === "A13" || code === "A11" ? "critical" : null;
+
+  it("is good when nothing fell short", () => {
+    expect(conductFromFindings([f("A13", "did_well"), f("A11", "did_well")], sev)).toBe("good");
+  });
+
+  it("is good when there are no findings at all", () => {
+    expect(conductFromFindings([], sev)).toBe("good");
+  });
+
+  /**
+   * `mixed` is the useful answer, not a hedge: repairQueue sorts mixed FIRST
+   * because the console is called "Fix a near-miss".
+   */
+  it("is mixed for a shortfall against a non-critical rule", () => {
+    expect(conductFromFindings([f("A33", "fell_short")], sev)).toBe("mixed");
+  });
+
+  it("is mixed when a rule has no severity recorded", () => {
+    expect(conductFromFindings([f("A99", "fell_short")], sev)).toBe("mixed");
+  });
+
+  it("is bad when a critical rule was broken", () => {
+    expect(conductFromFindings([f("A13", "fell_short")], sev)).toBe("bad");
+  });
+
+  /** Doing something well elsewhere does not downgrade a critical breach. */
+  it("stays bad even alongside things done well", () => {
+    expect(conductFromFindings(
+      [f("A13", "fell_short"), f("A33", "did_well"), f("A11", "did_well")], sev
+    )).toBe("bad");
+  });
+
+  it("ignores severity on the things done WELL", () => {
+    // A13 is critical, but doing it well is not a breach of anything.
+    expect(conductFromFindings([f("A13", "did_well"), f("A33", "fell_short")], sev)).toBe("mixed");
+  });
+
+  it("is case-insensitive about the severity string", () => {
+    expect(conductFromFindings([f("X", "fell_short")], () => "CRITICAL")).toBe("bad");
+  });
+
+  /**
+   * EVERY BAND THE QUEUE CAN SEE. good is excluded by design — there is
+   * nothing to repair — and both of the others must reach it, or this whole
+   * change achieves nothing.
+   */
+  it.each([
+    [[f("A33", "fell_short")], "mixed"],
+    [[f("A13", "fell_short")], "bad"],
+  ])("produces a band repairQueue selects: %#", (findings, expected) => {
+    const got = conductFromFindings(findings, sev);
+    expect(got).toBe(expected);
+    expect(["mixed", "bad"]).toContain(got);
   });
 });

@@ -324,6 +324,7 @@ export type RejectReason =
   | "parked_a_field_then_quit"
   | "parked_before_running_a7"    // A40 (1): ended having gathered nothing
   | "partial_address_walked_past" // A11: moved on holding half an address
+  | "address_question_walked_past" // A11: advanced on a question, which is not a refusal
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected";// closing a two-property job having collected one
@@ -555,8 +556,42 @@ export function outOfScopePromise(text: string): { word: string; clause: string 
  * discards: "not an estimate request" (a wrong number, and silence is right)
  * from "work we do not cover" (a real customer owed an answer).
  */
+/**
+ * THE SAME QUESTION IN SPANISH, AND WHY IT IS A SEPARATE LIST.
+ *
+ * isSilent() keeps a discard silent unless there is a project on file OR the
+ * customer NAMED work we do not cover. Every word above is English, so
+ * "pintan muebles?" matched nothing and a Spanish speaker asking a real
+ * question got silence — and because discard is an ending, no person saw it
+ * either. That is the precise harm the comment on isSilent says was fixed;
+ * the fix only ever landed on the English half.
+ *
+ * ── WHY NOT JUST ADD THESE TO OUT_OF_SCOPE ──────────────────────────────
+ *
+ * Because that regex is read in BOTH directions. outOfScopePromise() runs it
+ * over OUR outbound text to catch the bot promising work we do not do, and it
+ * clears a match only when the clause also matches DECLINING — which is
+ * English. Adding Spanish nouns there would make "No pintamos muebles" look
+ * like a PROMISE to paint furniture, refusing the one sentence the
+ * configuration tells the bot to say. A false refusal escalates, so the
+ * customer loses either way.
+ *
+ * So this list answers only the customer-side question. The promise test is
+ * unchanged and still English-only, which is safe: it is a check on text we
+ * generate, and a missed check there is a draft a person still reviews.
+ *
+ * ── DELIBERATELY NOT HERE ───────────────────────────────────────────────
+ *
+ * `techo` — it is the ordinary word for CEILING, which PPP paints on nearly
+ * every interior job, as well as for a roof. Matching it would read "pintar
+ * el techo de la sala" as out-of-scope roofing and discard a live lead.
+ * `ventanas` and `concreto` are out for the same reason: trim and floors.
+ */
+const OUT_OF_SCOPE_ES =
+  /\b(?:muebles?|libreros?|estanter[íi]as?|ba[ñn]eras?|tinas?\s+de\s+ba[ñn]o|electrodom[ée]sticos?|murales?|mural|plomer[íi]a|fontaner[íi]a|jardiner[íi]a|alba[ñn]iler[íi]a|tapicer[íi]a|retapiz\w*|techado|techumbre)\b/i;
+
 export function mentionsWorkWeDoNotDo(text: string | null | undefined): boolean {
-  return !!text && OUT_OF_SCOPE.test(text);
+  return !!text && (OUT_OF_SCOPE.test(text) || OUT_OF_SCOPE_ES.test(text));
 }
 
 /** True when the text PROMISES work PPP does not do. A refusal is not a promise. */
@@ -771,7 +806,7 @@ export function checkRapport(text: string, customerText?: string, templateAsks =
  * read a value back, which answers "do you have my details". escalate hands
  * the question to a person, which is the honest answer when there is none.
  */
-const ANSWERS_A_QUESTION = new Set<string>([
+export const ANSWERS_A_QUESTION = new Set<string>([
   "answer_question", "defer_to_estimator", "escalate",
   "present_offsite_quote", "offer_offsite_quote",
   "confirm_scope", "confirm_address", "confirm_contact",
@@ -1196,6 +1231,59 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * The effect is narrow: after any detour, the bot must come back for the
    * missing piece before advancing, and exactly one attempt is owed.
    */
+  /**
+   * A QUESTION BACK IS NOT A REFUSAL, SO THE ADDRESS IS STILL OWED.
+   *
+   * The guard above covers HALF an address. This covers none of it, and only
+   * the one case where moving on is clearly wrong.
+   *
+   * Played live 2026-10-05, twice, the second time against a build whose
+   * prompt had just been told not to do it:
+   *
+   *   bot       "What's the address for the project?"
+   *   customer  "what times do you have available this week?"
+   *   bot       answered honestly — then asked for NAME AND EMAIL,
+   *             and never asked for the address again
+   *
+   * Four turns later the close was refused for the address we never got and
+   * the lead went to a person. Answering was right (A29); advancing was not.
+   * A41 says do not block on a REFUSAL — and a question is not a refusal.
+   * Somebody asking what times we have still has not said where the property
+   * is, and this is the commonest way an address ask goes unanswered.
+   *
+   * ── WHY THIS IS A REFUSAL AND NOT A PROMPT LINE ─────────────────────────
+   *
+   * Because the prompt line was tried first and the model declined it. The
+   * instruction is still there and still right; this is what makes it true.
+   *
+   * ── WHY IT CANNOT LOOP ──────────────────────────────────────────────────
+   *
+   * Three bounds, and all three matter:
+   *   - it needs the customer's last message to be a QUESTION. A refusal
+   *     ("I'd rather not give my address out over text") is not one, so the
+   *     refusal ladder — zip floor, contact, phone price — is untouched.
+   *   - it stops after the SECOND ask. Two attempts is what Kate already
+   *     accepted for the zip floor; a third would be the nagging A41 forbids.
+   *   - MOVES_PAST_ADDRESS holds no exit. escalate, bailout, discard, lost,
+   *     answer_question and defer_to_estimator stay legal throughout, so a
+   *     customer who opts out, turns abusive or just wants an answer is never
+   *     held here.
+   */
+  if (
+    !ctx.addressGap
+    && !ctx.knownFields?.address
+    && MOVES_PAST_ADDRESS.has(a.intent)
+    && asksSomething(ctx.customerText)
+    && (ctx.priorIntents ?? []).filter((i) => i === "ask_address").length === 1
+  ) {
+    return {
+      ok: false, reason: "address_question_walked_past",
+      detail: "they asked you something instead of giving the address, which is not a "
+        + "refusal — so the address is still owed. Answer them AND ask for it again in "
+        + "the same message, rather than moving on to the next step (A11)",
+    };
+  }
+
   if (
     ctx.addressGap
     && MOVES_PAST_ADDRESS.has(a.intent)
@@ -1666,7 +1754,26 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     // is how a customer ends up waiting for an estimator who was never booked.
     if (TIME_COMMITMENT.test(text) && !hasVerifiedSlot(ctx, "times")) {
       const m = TIME_COMMITMENT.exec(text);
-      return { ok: false, reason: "invented_availability", detail: `free text names "${m?.[0]}" with no verified availability behind it` };
+      /**
+       * SAYS WHAT TO DO INSTEAD, because a refused turn now gets one more
+       * attempt with this sentence in front of it (see MAX_ATTEMPTS in
+       * agent-run). A refusal that only names the fault spends that attempt
+       * on a guess.
+       *
+       * Seen live 2026-10-05: the customer asked "what times do you have
+       * available THIS WEEK?", the model corrected its intent on the retry —
+       * so the retry was working — and then answered by repeating their own
+       * words back, which is the one phrasing this rule forbids. Echoing the
+       * customer's time phrase is the natural way to answer them, so the
+       * remedy has to be said rather than inferred.
+       */
+      return {
+        ok: false, reason: "invented_availability",
+        detail: `free text names "${m?.[0]}" with no verified availability behind it. `
+          + `There is no calendar here, so do not repeat their words for WHEN — `
+          + `answer that the office owns the scheduling and will confirm what is open, `
+          + `naming no day, week or time of your own (A15)`,
+      };
     }
     // THE BACKSTOP. Anything numeric the two lists above did not recognise.
     // Rapport is "Got it" and "Happy to help"; every value the customer

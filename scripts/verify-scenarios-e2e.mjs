@@ -114,6 +114,109 @@ const SCENARIOS = [
    * The event is named ONCE and referred to loosely afterwards, which is the
    * half that made the detector say "no event" on the turn that mattered.
    */
+  /**
+   * KATE'S #4, 2026-10-05: "We wouldn't be able to provide an in-person
+   * estimate without a confirmed address, so a phone pricing would be
+   * offered/required in this case."
+   *
+   * Found in the sandbox: the customer refuses the address, the bot collects
+   * everything else and then tries to CLOSE, which is refused for the address
+   * it does not hold — a refusal and a handover where Kate wants a phone
+   * price. phone_pricing was legal the whole time; nothing told the model to
+   * reach for it.
+   */
+  { name: "refuses the address, so it has to be a phone price",
+    history: [
+      "i need my kitchen and living room painted",
+      "id rather not give my address out over text",
+      "Dana Reed, dana@example.com",
+    ],
+    text: "Wednesday afternoon works",
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "kitchen and living room", email: "dana@example.com",
+      phone: "999-784-6046", name: "Dana" },
+    wants: "phone_pricing",
+    refuses: "success" },
+
+  /**
+   * THE RUNG ABOVE IT, which the scenario above skips by handing the harness a
+   * priorIntents that already contains ask_contact.
+   *
+   * Played live 2026-10-05: at THIS point the model reached straight for
+   * phone_pricing and was refused — "details_never_collected: contact details
+   * was never asked for or confirmed". Kate puts phone_pricing in the set that
+   * owes all three legs ("the quote going out by text or phone still requires
+   * all three here"), so a phone price is where this ENDS, not how it escapes.
+   * The legal move is to ask for contact first, and nothing asserted one
+   * existed.
+   */
+  /**
+   * DODGED, NOT REFUSED — and the difference decides whether the flow may
+   * advance. Played live 2026-10-05:
+   *
+   *   bot       "What's the address for the project?"
+   *   customer  "what times do you have available this week?"
+   *   bot       answered honestly, then asked for NAME AND EMAIL
+   *   ...and never asked for the address again, so four turns later the close
+   *   was refused for the address we never got, and the lead went to a person.
+   *
+   * Answering was right (A29). Advancing was not. A41 lets the flow move past
+   * a REFUSAL; a question is not a refusal, and this is the commonest way an
+   * address ask goes unanswered. A11 is the most-breached rule in the corpus.
+   *
+   * TOLD THE MODEL FIRST, AND IT DECLINED. The prompt gained "a question back
+   * is not an answer" and the next live replay advanced to ask_contact anyway,
+   * so `address_question_walked_past` is what makes the instruction true.
+   *
+   * `refuses: ask_contact` is the whole point — advancing to the NEXT field is
+   * the bug. The run prints the reason, so a pass here cannot be the generic
+   * question_left_unanswered standing in for it.
+   */
+  { name: "dodges the address with a question, so the flow may not advance",
+    history: ["i need my living room painted"],
+    text: "what times do you have available this week?",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "living room" },
+    wants: "answer_question",
+    refuses: "ask_contact" },
+
+  /*
+    THE RELEASE — that it lets go after two asks — is NOT testable here, and
+    the reason is the harness rather than the rule. The guard only fires when
+    the customer's message is a QUESTION, and a question also means every
+    intent owes an answer; the harness has only generic rapport ("Got it,
+    thank you.") to offer, so ask_contact is refused as
+    question_left_unanswered whatever this guard does. A scenario asserting
+    the release would fail for a reason that has nothing to do with it.
+    Proved in __tests__/messaging/address-dodged.test.ts instead, where the
+    free text can carry the answer.
+  */
+
+  { name: "refuses the address: the phone price is not a way out of the flow",
+    history: [
+      "i need my kitchen and living room painted",
+      "id rather not give my address out over text",
+    ],
+    text: "no im not giving that out, i told you",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "kitchen and living room", phone: "999-784-6046" },
+    wants: "ask_contact",
+    refuses: "phone_pricing" },
+
+  /**
+   * And the WORDING of the re-ask, the other half of the same run: a refusal
+   * is not a PARTIAL address, so A11's gap narrowing did not apply and the
+   * second ask was the plain question over again — "What address should we
+   * have the estimator go to?" Kate's zip floor applies here too.
+   */
+  { name: "the second address ask narrows to the zip and says why",
+    history: ["i need my kitchen and living room painted"],
+    text: "id rather not give my address out over text",
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "kitchen and living room" },
+    wants: "ask_address",
+    saysMatch: /zip code to price it accurately/i },
+
   { name: "blocked on a closing, then defers",
     history: [
       "we want the whole upstairs painted but we are closing on the house on the 14th",
@@ -325,6 +428,136 @@ const SCENARIOS = [
   { name: "sends an emoji only", text: "😀", priorIntents: ["ask_project_details"], wants: "ask_project_details" },
   { name: "sends a very long message", text: "hi there so we bought this house last year and its a colonial built in 1974 and honestly the whole thing needs doing, the living room and dining room have wallpaper we hate, the kitchen cabinets are that orange oak, upstairs there are three bedrooms and a hallway, and outside the trim is peeling badly on the south side, we are not in a rush but would like it done before the holidays if possible", wants: "ask_address" },
   { name: "sends two photos with a caption", text: "here is the wall I mean", mediaCount: 2, wants: "ask_project_details" },
+
+  /**
+   * ── SPANISH, PAST THE FIRST MESSAGE ───────────────────────────────────
+   *
+   * One scenario reached Spanish ("writes in Spanish" → ask_address) and
+   * stopped there, so every Spanish template after the opening question was
+   * shipped untested. render-es.ts is a full parallel copy of the wording —
+   * the fix-lands-on-one-twin shape with a whole file as the twin — and the
+   * zip floor and the no-address phone price both just added an ES half.
+   *
+   * These walk the same legs the English ones do and assert the reply is
+   * actually IN Spanish, because the failure that matters is not a missing
+   * template, it is an English sentence going to somebody who told us they do
+   * not speak it.
+   */
+  /**
+   * THE ADDRESS IS IN US FORMAT, and that is not laziness in the fixture.
+   *
+   * Checked against the 1,298 graded conversations in production: THREE carry
+   * any Spanish at all, and the only Spanish-street-word hit in the whole
+   * corpus is "7720 El Camino Real" — an English-context US street NAME. So a
+   * Spanish-FORMATTED street ("Calle 12 Oak") appears zero times, and teaching
+   * STREET_IN_PROSE the words calle/avenida/camino would mis-read that real
+   * address while fixing nothing anybody has ever sent. A Spanish speaker in
+   * Nassau County writes their address the way the post office does.
+   *
+   * Spanish still matters: one of those three IS a real customer writing
+   * "Quiero pintar el exterior de mi vivienda". What has to hold is that the
+   * REPLIES stay Spanish all the way through, which is what these check.
+   */
+  { name: "es: gives the address", text: "12 Oak St, Garden City NY 11530", speaks: "es",
+    history: ["Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo"],
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo" },
+    wants: "ask_contact",
+    saysMatch: /[áéíóúñ¿]|correo|nombre|estimado/i },
+
+  /**
+   * AND THE LANGUAGE HAS TO SURVIVE A MESSAGE WITH NO LANGUAGE IN IT.
+   *
+   * "Ana Ruiz, ana@example.com" is not Spanish, or English, or anything — a
+   * name and an email carry no markers at all. conversationLanguage reads the
+   * WHOLE thread for exactly this reason, so the history here is the test: a
+   * Spanish conversation must not flip to English the moment somebody answers
+   * with their contact details.
+   */
+  { name: "es: gives contact details", text: "Ana Ruiz, ana@example.com", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530" },
+    wants: "ask_availability",
+    saysMatch: /[áéíóúñ¿]|días|semana/i },
+
+  { name: "es: asks whether it is a bot", text: "oiga, es una persona real o un robot?",
+    speaks: "es", wants: "bot_suspected", saysMatch: /[áéíóúñ¿]|persona|equipo/i },
+
+  /**
+   * THE ONE THAT USED TO SEND NOTHING AT ALL.
+   *
+   * isSilent splits Kate's two discards by asking whether the customer NAMED
+   * work we do not cover, and that list was English — so "pintan muebles?"
+   * fell into the silent branch and a real customer got no reply, with no
+   * person seeing it either because a discard is an ending.
+   *
+   * NO `speaks` HERE, deliberately, and it is not the check being dodged.
+   * The reply is Kate's Spanish sentence followed by the workspace's SERVICES
+   * LIST, and that list is data — sms_workspace_services, stored in English,
+   * one row per service — so what renders is "Sí cubrimos interior and
+   * exterior painting, cabinets, wallpaper and drywall repair." Half Spanish,
+   * half English, and understandable, but not right. Translating it is a
+   * content decision about workspace data rather than anything this code can
+   * settle, so it is QUESTIONS_FOR_KATE item 25 and the assertion below tests
+   * the part that IS ours: the Spanish sentence renders and is not silence.
+   */
+  { name: "es: asks for work we do not cover",
+    text: "Hola, pintan muebles? Tengo un librero grande y una cómoda",
+    wants: "discard",
+    saysMatch: /Creo que no podemos ayudar con este proyecto/ },
+
+  { name: "es: refuses the address, so the zip floor applies",
+    text: "prefiero no dar mi dirección por mensaje", speaks: "es",
+    history: ["necesito pintar mi cocina y la sala"],
+    priorIntents: ["ask_project_details", "ask_address"],
+    known: { inquiryScope: "la cocina y la sala" },
+    wants: "ask_address",
+    saysMatch: /código postal/i },
+
+  /**
+   * THE SPANISH CLOSE, which is where the live run actually broke.
+   *
+   * "el miércoles" was answered with A4's refusal — "no day and no time of day
+   * has been given anywhere in the conversation" — because the day patterns
+   * were English. A Spanish lead that answered every question could not close,
+   * and the Spanish "and roughly what time of day?" could not fire either,
+   * since the gap only becomes "window" once a DAY has been found.
+   */
+  { name: "es: names a day, so the ask narrows to the time of day",
+    text: "el miércoles", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+      "Ana Ruiz, ana@example.com",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530", email: "ana@example.com",
+      phone: "999-784-6046", name: "Ana" },
+    wants: "ask_availability",
+    refuses: "success",
+    saysMatch: /[áéíóúñ¿]|hora/i },
+
+  { name: "es: gives both halves, so it can close",
+    text: "el miércoles por la tarde", speaks: "es",
+    history: [
+      "Hola, necesito pintar el interior de mi casa, tres recámaras y el pasillo",
+      "12 Oak St, Garden City NY 11530",
+      "Ana Ruiz, ana@example.com",
+    ],
+    priorIntents: ["ask_project_details", "ask_address", "ask_contact", "ask_availability"],
+    known: { inquiryScope: "pintar el interior, tres recámaras y el pasillo",
+      address: "12 Oak St, 11530", email: "ana@example.com",
+      phone: "999-784-6046", name: "Ana" },
+    wants: "success" },
+
+  { name: "es: declines the work", text: "No gracias, ya contratamos a alguien más",
+    speaks: "es", wants: "lost" },
 
   // ── nurture, further in ───────────────────────────────────────────────
   { name: "quote already sent, wants a call", track: "nurture", text: "can the estimator call me to go through it?", wants: "offer_estimator_call" },

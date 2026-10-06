@@ -37,7 +37,12 @@ export default function TrainingImportForm() {
         `Imported ${res.imported}.` +
         (res.alreadyThere ? ` ${res.alreadyThere} were already here.` : "") +
         (res.heldBack ? ` ${res.heldBack} held back for still containing personal details.` : "") +
-        (res.needGrading ? ` ${res.needGrading} need grading before the bot can use them.` : "")
+        (res.needGrading ? ` ${res.needGrading} need grading before the bot can use them.` : "") +
+        // Said out loud, including when it is none: 1,286 conversations were
+        // imported with no region attached and nothing ever mentioned it.
+        (res.imported
+          ? ` ${res.attributed} matched to a workspace${res.attributed === 0 ? " — check the workspace column names match" : ""}.`
+          : "")
       );
       router.refresh();
     } catch {

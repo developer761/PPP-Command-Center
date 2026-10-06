@@ -336,3 +336,61 @@ describe("a real conversation outranks a simulated one", () => {
     expect(sel.good[0].id).toBe("unknown");
   });
 });
+
+/**
+ * A REPAIR'S NOTE IS NOT A REASON IT IS GOOD.
+ *
+ * Found 2026-10-06 by printing the prompt the live bot actually receives —
+ * not by a test, and not by driving the chatbot, which is how it survived
+ * three days of scenario testing. It opened:
+ *
+ *   Good example 1:
+ *   Why it is good: T2: Asked for the full address including the zip code
+ *   while already holding 07920. It made the customer retype what we had...
+ *
+ * A defect, under a heading saying it is why the example is good. The data is
+ * right — `derived` examples are repairs and repairNote writes "what was wrong
+ * … Was: … Now: …" — and the heading was putting the wrong frame on it.
+ *
+ * Of the twelve approved good examples carrying a note in production, eight
+ * are repairs, several of them describing an address asked for twice: A11, the
+ * most breached rule in the corpus. The lesson being reinforced under "good"
+ * was the commonest mistake in the dataset.
+ */
+describe("a corrected example is labelled as a correction", () => {
+  const repair = (o: Partial<CorpusExample> = {}): CorpusExample => ({
+    id: "r1", source: "derived",
+    transcript: "Customer: hi\nEmily: what are you looking to have painted?",
+    conduct: "good", approved: true, piiScrubbed: true,
+    note: 'T2 [A11]: Asked for the full address while already holding the zip. Was: "full address?" Now: "what is the zip there?"',
+    tags: ["flow_details"], ...o,
+  });
+
+  it("does not call the defect a reason it is good", () => {
+    const out = examplesPrompt({ good: [repair()], bad: [] });
+    expect(out).not.toMatch(/Why it is good: T2 \[A11\]/);
+  });
+
+  it("says plainly that it is a corrected version", () => {
+    const out = examplesPrompt({ good: [repair()], bad: [] });
+    expect(out).toMatch(/CORRECTED version/);
+    // The note itself is unchanged — only the frame around it.
+    expect(out).toContain("Asked for the full address while already holding the zip");
+  });
+
+  /** An ordinary approved conversation keeps the plain heading. */
+  it("leaves a real approved example alone", () => {
+    const out = examplesPrompt({
+      good: [repair({ id: "h1", source: "hatch", note: "asked one thing at a time" })],
+      bad: [],
+    });
+    expect(out).toMatch(/Why it is good: asked one thing at a time/);
+    expect(out).not.toMatch(/CORRECTED/);
+  });
+
+  it("still says nothing extra when a repair carries no note", () => {
+    const out = examplesPrompt({ good: [repair({ note: null })], bad: [] });
+    expect(out).not.toMatch(/CORRECTED/);
+    expect(out).not.toMatch(/Why it is good/);
+  });
+});

@@ -28,6 +28,10 @@ import { parkKind } from "./parking";
 import { helpReply } from "./help-reply";
 import { afterHoursReply, AFTER_HOURS_INTENT } from "./after-hours";
 import { trackForWorkspace } from "./track";
+// The SAME detector A25 uses, not a second one. Two patterns for "they asked
+// to be phoned" is how one of them gets Spanish and the other does not — this
+// one already has it.
+import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { statedConstraint } from "./reachability";
 
 export type Accepted = Extract<InboundDecision, { kind: "accept" }>;
@@ -55,6 +59,36 @@ export type RecordedInbound = {
 };
 
 export async function recordInbound(sb: SupabaseClient, decision: Accepted): Promise<RecordedInbound> {
+  /**
+   * "DON'T TEXT ME, JUST CALL ME" IS A CHANNEL, NOT A GOODBYE.
+   *
+   * Kate, 2026-10-05: "Yes if they ask for us to stop texting and to call,
+   * it's okay to route to a person. I don't think this is considered an
+   * explicit opt-out, just a communication preference."
+   *
+   * Found in the simulator 2026-09-27, where every step behaved as written and
+   * the outcome was still wrong: A24 reads "don't text me" as a revocation and
+   * suppresses the number — correctly — and then the thread ended as `discard`,
+   * so nothing recorded that this customer had asked to be CALLED. A person
+   * reviewing saw "opted out" and moved on. Somebody who asked us to phone them
+   * was filed as somebody who asked us to go away.
+   *
+   * HALF HER ANSWER IS TAKEN AND HALF IS NOT, deliberately. The routing is hers
+   * to decide and is done. Whether the number stays suppressed is NOT —
+   * legally "don't text me" is still a revocation of consent for texts, and
+   * that is Katie's call with Karan. Suppressing somebody who need not have
+   * been costs one text; failing to suppress somebody who should have been
+   * costs $500-$1,500 a message. So the suppression below is untouched and
+   * only the ENDING changes.
+   *
+   * Decided once, here, because it is read in two places — the conversation
+   * this message opens and the conversation it joins. Two copies of this
+   * expression is how the new-number path and the existing-thread path end up
+   * disagreeing about the same customer.
+   */
+  const wantsACallInstead =
+    decision.keyword === "opt_out" && ASKED_FOR_A_CALL.test(decision.body ?? "");
+
   // 1. Opt-out FIRST. Before threading, before the workspace lookup, before
   //    anything that can fail.
   if (decision.keyword === "opt_out") {
@@ -129,8 +163,14 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         customer_phone: decision.from,
         // Somebody texting a number we own without an open thread is an
         // inbound lead, not an error.
-        state: decision.keyword === "opt_out" ? "ended" : "ai_active",
-        outcome: decision.keyword === "opt_out" ? "discard" : null,
+        // A call request lands in front of a person instead of ending — see
+        // wantsACallInstead at the top. The number is still suppressed.
+        state: wantsACallInstead ? "human_active"
+          : decision.keyword === "opt_out" ? "ended" : "ai_active",
+        outcome: decision.keyword === "opt_out" && !wantsACallInstead ? "discard" : null,
+        ...(wantsACallInstead
+          ? { takeover_reason: "customer_asked_human", takeover_at: new Date().toISOString() }
+          : {}),
         // ended_at, NOT just outcome. sms_conversations_ended_shape demands
         // all three together, and this insert set only two — so a STOP from
         // somebody with no open conversation (a second STOP, or a number that
@@ -138,7 +178,11 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
         // 500. SNS then retried that same message for hours, failing every
         // time. Found the moment verify-inbound-e2e started running this code
         // instead of its own copy, which had quietly skipped the whole path.
-        ended_at: decision.keyword === "opt_out" ? new Date().toISOString() : null,
+        // All three of state/outcome/ended_at move together or
+        // sms_conversations_ended_shape rejects the insert, which is why the
+        // call-request branch clears this one too rather than only the state.
+        ended_at: decision.keyword === "opt_out" && !wantsACallInstead
+          ? new Date().toISOString() : null,
         first_inbound_at: new Date().toISOString(),
         // Same rule as enrolment: somebody texting an AM number already has a
         // quote, and is not a new lead.
@@ -379,11 +423,24 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
       }
     }
 
+    /**
+     * The same decision as the insert above — see wantsACallInstead at the top
+     * of the function. The call signal stays skipped either way (A45 below):
+     * handing the call centre an "in conversation" flag is a different thing
+     * from putting the thread in front of a person, and only the second is
+     * wanted here.
+     */
     await sb.from("sms_conversations").update({
       last_message_at: new Date().toISOString(),
-      ...(decision.keyword === "opt_out"
-        ? { state: "ended", outcome: "discard", ended_at: new Date().toISOString() }
-        : {}),
+      ...(wantsACallInstead
+        ? {
+            state: "human_active",
+            takeover_reason: "customer_asked_human",
+            takeover_at: new Date().toISOString(),
+          }
+        : decision.keyword === "opt_out"
+          ? { state: "ended", outcome: "discard", ended_at: new Date().toISOString() }
+          : {}),
     }).eq("id", conversationId);
 
     /**

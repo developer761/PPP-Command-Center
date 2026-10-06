@@ -67,6 +67,8 @@ export default function Simulator({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  /** The run already written, so a second save edits it instead of colliding. */
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [photos, setPhotos] = useState(0);
   const [track, setTrack] = useState<"new_lead" | "nurture">("new_lead");
   const [overall, setOverall] = useState<"good" | "mid" | "bad" | null>(null);
@@ -186,10 +188,45 @@ export default function Simulator({
   const grade = (i: number, patch: Partial<Graded>) =>
     setTurns((t) => t.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
+  /**
+   * SAVING TWICE IS THE NORMAL THING TO DO, and it used to fail.
+   *
+   * Kate, first session 2026-10-06: saved, read the run back, added more to
+   * "where it fell short", saved again, and got "duplicate key value violates
+   * unique constraint sms_scenarios_name_key". The name was stamped to the
+   * minute, so a second save inside the same minute collided — and a save a
+   * minute later was worse, because it wrote a SECOND scenario and left the
+   * first one on file without the feedback she had just typed.
+   *
+   * So the id of the saved run is held here and passed back: pressing save
+   * again updates the run she is looking at. Seconds in the name as well, so
+   * two DIFFERENT runs in one minute cannot collide either.
+   */
   const save = async () => {
-    const name = `${selectedTag?.label ?? "Scenario"} — ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
-    const res = await saveScenario({ name, customerBrief: brief, tagKey: tagKey || undefined, workspaceId: workspaceId || undefined, turns });
-    setSaved(res.ok ? "Saved. It will replay after a prompt change." : `Could not save: ${res.error}`);
+    setSaved("Saving…");
+    const name = `${selectedTag?.label ?? "Scenario"} — ${new Date().toISOString().slice(0, 19).replace("T", " ")}`;
+    const res = await saveScenario({
+      id: savedId ?? undefined,
+      name, customerBrief: brief, tagKey: tagKey || undefined,
+      workspaceId: workspaceId || undefined,
+      // The three boxes explicitly, because they were silently dropped: the
+      // save wrote the verdict and none of the words. "Send to training"
+      // already used them, which is what made the gap invisible.
+      turns: turns.map((t) => ({
+        ...t,
+        didWell: t.didWell,
+        shortfall: t.shortfall,
+        shouldHave: t.shouldHave,
+      })),
+    });
+    if (res.ok) {
+      setSavedId(res.id);
+      setSaved(savedId
+        ? "Updated. Your latest notes are the ones saved."
+        : "Saved. It will replay after a prompt change, and you can keep editing and save again.");
+    } else {
+      setSaved(`Could not save: ${res.error}`);
+    }
   };
 
   const allGraded = turns.length > 0 && turns.every((t) => t.verdict);
@@ -443,6 +480,21 @@ export default function Simulator({
                       <>
                         <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">Blocked before sending: {t.rejected}</p>
                         {/*
+                          BOTH REFUSALS, BECAUSE THEY MEAN DIFFERENT THINGS.
+                          The turn gets one retry with the refusal fed back, so
+                          a second DIFFERENT reason means the model moved and
+                          still missed — the rule is probably unsatisfiable —
+                          while the same reason twice means it declined the
+                          instruction outright. Guessing between those is what
+                          made the first draft of the dodge fix a prompt line
+                          that did nothing.
+                        */}
+                        {t.retriedAfter && (
+                          <p className="mt-1 text-[11px] text-ppp-orange-700/90 leading-snug">
+                            It had already been refused once, for: {t.retriedAfter}
+                          </p>
+                        )}
+                        {/*
                           WITHOUT THIS LINE THE SANDBOX LIES ABOUT PRODUCTION.
                           A refusal reads as the customer getting silence, and
                           it is not: scheduler-db calls handToAPerson on a
@@ -504,6 +556,21 @@ export default function Simulator({
                       {t.escalate && (
                         <span className="rounded-full bg-ppp-orange-50 px-1.5 py-0.5 text-[9.5px] font-medium text-ppp-orange-700">
                           hands to a person
+                        </span>
+                      )}
+                      {/*
+                        A TURN THE RETRY RESCUED. Without it this reply would
+                        not exist and the conversation would have gone to a
+                        person here, so it is worth seeing while grading: a
+                        reply that needed two goes is a rule the model keeps
+                        getting wrong, even though the customer saw something
+                        correct.
+                      */}
+                      {t.retriedAfter && (
+                        <span
+                          title={t.retriedAfter}
+                          className="rounded-full bg-ppp-charcoal-50 px-1.5 py-0.5 text-[9.5px] font-medium text-ppp-charcoal-500">
+                          took two tries
                         </span>
                       )}
                     </div>
@@ -656,12 +723,35 @@ export default function Simulator({
             should copy — but it is exactly what to replay after changing the
             instructions, to see what broke.
           </p>
+          {/* The label says which of the two things pressing it does, because
+              the first time Kate pressed it she could not tell whether it had
+              worked — the panel stays open by design so she can keep editing,
+              and nothing on screen said so. */}
           <button type="button" onClick={() => void save()} disabled={!allGraded}
             className="mt-2.5 min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold touch-manipulation disabled:bg-ppp-charcoal-200 disabled:text-ppp-charcoal-500">
-            Save as a test
+            {savedId ? "Save changes" : "Save as a test"}
           </button>
           {!allGraded && <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500">Grade every reply first.</p>}
-          {saved && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600">{saved}</p>}
+          {saved && (
+            <p className={`mt-1.5 text-[12px] ${
+              saved.startsWith("Could not save")
+                ? "text-ppp-orange-700 font-medium"
+                : "text-ppp-charcoal-600"
+            }`}>
+              {saved}
+            </p>
+          )}
+          {/* THE PANEL STAYING OPEN IS DELIBERATE, so say so once it has been
+              saved rather than leaving somebody wondering whether to press it
+              again. Her words: "I clicked save as a test, but this feedback
+              window is still open." */}
+          {savedId && (
+            <p className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+              This stays open on purpose — keep adding notes and press Save changes
+              again, as often as you like. Nothing is sent to the customer from
+              this screen.
+            </p>
+          )}
 
           {/* Karan's idea, and it resolves the tension rather than ignoring it.
               Migration 195 forbids a sandbox run SILENTLY becoming training

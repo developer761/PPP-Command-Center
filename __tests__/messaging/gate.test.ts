@@ -353,3 +353,88 @@ describe("answering somebody who texted after hours", () => {
     expect(r.ok).toBe(false);
   });
 })
+
+/**
+ * HOLIDAYS — migration 179's stated policy, finally enforced.
+ *
+ * `send_on_holidays` has been a column on workspaces and campaigns since that
+ * migration — "Holidays default OFF: a painting estimate chase on Thanksgiving
+ * morning reads badly even where it is legal" — false on all 33 workspaces,
+ * with no calendar and no check anywhere. The data said one thing and this
+ * function would have sent on Christmas morning. Found 2026-10-06 auditing for
+ * settings that are saved and never read.
+ *
+ * Also Kate's condition on the event-park cadence, 2026-10-05: "as long as we
+ * have a mechanism that keeps customers from being messaged on specific
+ * holidays AND the msg would send the following open day." Both halves are
+ * tested, because a bare refusal would meet only the first.
+ */
+describe("gatedSend — holidays", () => {
+  /** Christmas Day 2026 is a Friday, 2pm EST. */
+  const XMAS = utc("2026-12-25T19:00:00Z");
+  /** Thanksgiving 2026, Thursday 26 November, 2pm EST. */
+  const THANKS = utc("2026-11-26T19:00:00Z");
+  const dayIn = (d: Date) =>
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric" }).format(d);
+
+  it("refuses on Christmas Day when the workspace has not opted in", async () => {
+    const res = await gatedSend(req({ now: XMAS }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("holiday");
+  });
+
+  it("sends on a holiday when the workspace explicitly allows it", async () => {
+    const ws = { ...NASSAU, send_on_holidays: true };
+    const res = await gatedSend(req({ now: XMAS, workspace: ws }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  /** Absent must read as OFF — the column default and the stated policy. */
+  it("treats an absent setting as off rather than on", async () => {
+    const ws = { ...NASSAU };
+    delete (ws as { send_on_holidays?: unknown }).send_on_holidays;
+    const res = await gatedSend(req({ now: XMAS, workspace: ws }), deps());
+    expect(res.ok).toBe(false);
+  });
+
+  /**
+   * THE SECOND HALF OF KATE'S ANSWER. Christmas Eve must not defer onto
+   * Christmas Day, which is what a naive "try tomorrow" would do — the two are
+   * consecutive holidays, and 2026 then runs them into a weekend.
+   */
+  it("steps over a run of holidays rather than onto the next one", async () => {
+    const eve = utc("2026-12-24T19:00:00Z");
+    const res = await gatedSend(req({ now: eve, workspace: { ...NASSAU, send_on_weekends: false } }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      // 24th Thu (hol), 25th Fri (hol), 26th Sat, 27th Sun -> Monday 28th.
+      expect(dayIn(res.retryAt!)).toMatch(/Mon, Dec 28/);
+    }
+  });
+
+  it("steps over Thanksgiving, the Friday after it, and the weekend", async () => {
+    const res = await gatedSend(req({ now: THANKS, workspace: { ...NASSAU, send_on_weekends: false } }), deps());
+    expect(res.ok).toBe(false);
+    // Thu 26 (hol), Fri 27 (hol), Sat 28, Sun 29 -> Monday 30 November.
+    if (!res.ok) expect(dayIn(res.retryAt!)).toMatch(/Mon, Nov 30/);
+  });
+
+  /** A workspace that works weekends still skips the holidays themselves. */
+  it("lands on the Saturday when the workspace sends at weekends", async () => {
+    const res = await gatedSend(req({ now: THANKS, workspace: { ...NASSAU, send_on_weekends: true } }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(dayIn(res.retryAt!)).toMatch(/Sat, Nov 28/);
+  });
+
+  it("is deferred by the scheduler, never cancelled", async () => {
+    const res = await gatedSend(req({ now: XMAS }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(classifyRefusal(res)).toBe("reschedule");
+  });
+
+  it("leaves an ordinary working day alone", async () => {
+    // Presidents' Day: federal, and a normal day for a contractor.
+    const res = await gatedSend(req({ now: utc("2026-02-16T19:00:00Z") }), deps());
+    expect(res.ok).toBe(true);
+  });
+});

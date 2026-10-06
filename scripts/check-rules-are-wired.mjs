@@ -85,6 +85,21 @@ const CHAINS = [
       // The renderer stays per-message, but on ownWords rather than the narration.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
+      /**
+       * AND THE MODEL IS TOLD, which is the half that was missing.
+       *
+       * The validator knew a day alone is not bookable and the renderer knew
+       * how to ask for the other half; nothing told the MODEL. So "Wednesday
+       * works" — one of the commonest answers there is — had it choose
+       * `success`, get refused, and hand a fully collected lead to a person.
+       * Seen live in Spanish and identical in English.
+       */
+      ["lib/messaging/agent-run.ts", /A DAY IS NOT AN APPOINTMENT/],
+      // Spanish days and windows, or none of the above fires for a Spanish
+      // lead: "el miércoles" read as no day given, so the close was refused
+      // and ASK_AVAILABILITY_GAP_ES could never render.
+      ["lib/messaging/availability.ts", /lunes\|martes\|mi\[[^\]]*\]rcoles/],
+      ["lib/messaging/availability.ts", /ma\[[^\]]*\]anas\?\|tardes\?\|noches\?/],
     ],
     forbidden: [
       /**
@@ -103,6 +118,21 @@ const CHAINS = [
       ["lib/messaging/offsite.ts", /export function offsiteReasonFor/],
       ["lib/messaging/agent-run.ts", /offsiteReason:\s*offsiteReasonFor\(/],
       ["lib/messaging/render.ts", /offsiteReason/],
+    ],
+  },
+  {
+    rule: "A36 — one source for the callback hours, and booking_hours is not it",
+    why: "the sentence customers receive says 9 AM to 8 PM from CALLBACK_WINDOW (A36's weekday office window). sms_agent_configs.booking_hours defaults to a callback window of 08:00-18:00, was built so the agent could offer slots -- which A15 forbids -- and has never had a reader. Two numbers disagreeing, one unreachable, is how somebody 'corrects' the hours in config and changes nothing",
+    links: [
+      ["lib/messaging/channel-preference.ts", /export const CALLBACK_WINDOW/],
+      ["lib/messaging/render.ts", /CALLBACK_WINDOW\.startHour/],
+    ],
+    forbidden: [
+      // Carrying it through the config again makes it look tunable. If it is
+      // ever genuinely wanted, CALLBACK_WINDOW has to read it rather than the
+      // two sitting side by side disagreeing.
+      ["lib/messaging/agent-resolve.ts", /"booking_hours"/],
+      ["lib/messaging/db.ts", /booking_hours:\s*Record/],
     ],
   },
   {
@@ -393,6 +423,29 @@ const CHAINS = [
        * two, so a rule that requires two can never be satisfied.
        */
       ["lib/messaging/agent-run.ts", /addressesHeld: kf\.address \? \[kf\.address\] : \[\]/],
+    ],
+  },
+  {
+    rule: "A41/A3 — a refused address gets the zip floor, then a phone price",
+    why: "played live: 'id rather not give my address out over text' was answered with "
+      + "'What address should we have the estimator go to?' — the same question with no "
+      + "reason — and then phone_pricing was refused for never having asked for contact. "
+      + "Kate: a phone quote 'still requires all three', so it is the END of the flow, not "
+      + "a way out of it. Both halves have to be wired or the lead goes to a person",
+    links: [
+      // The wording exists once and both branches reach it.
+      ["lib/messaging/render.ts", /export const ASK_ZIP_WITH_REASON\b/],
+      ["lib/messaging/render.ts", /const ASK_ADDRESS_REFUSED = \[ASK_ZIP_WITH_REASON\]/],
+      ["lib/messaging/render.ts", /refused\s*\n?\s*\?\s*\(es \? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED\)/],
+      // And BOTH callers set the flag, or the harness cannot see the wording.
+      ["lib/messaging/agent-run.ts", /addressAskedBefore: !kf\.address/],
+      ["scripts/scenario-engine.mjs", /addressAskedBefore: !derived\.address/],
+      // The model is told phone_pricing owes contact, which is what it got wrong.
+      ["lib/messaging/agent-run.ts", /A phone quote is NOT a way out of the rest/],
+      ["lib/messaging/agent-run.ts", /ASK FOR THOSE FIRST/],
+      // And the price itself says no appointment, because none can happen.
+      ["lib/messaging/render.ts", /const PHONE_PRICING_NO_ADDRESS = \[/],
+      ["lib/messaging/render.ts", /phonePriceNoAddress = input\.intent === "phone_pricing" && !input\.known\?\.address/],
     ],
   },
   {

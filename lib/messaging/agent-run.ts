@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   validateAction, shouldEscalate, intentsForTrack, intentGuideFor, FLOW_ORDER,
   type AgentAction, type ValidateContext, type Track,
-  isYesNoQuestion,
+  isYesNoQuestion, asksSomething,
 } from "./agent-output";
 import { normalizeInbound, reactionResponse } from "./inbound-normalize";
 import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-customer";
@@ -33,6 +33,7 @@ import type { Intent } from "./agent-output";
 import { conversationLanguage, type Language } from "./language";
 import { addressesInThread, secondPropertyAskDue } from "./multi-property";
 import { isAvailabilityStandOff } from "./availability-ask";
+import { reportWarn } from "@/lib/observability";
 import { stallFollowUpGoal, isFollowUpStep, FOLLOW_UP_COUNT } from "./stall-followup-goals";
 
 const MODEL = "claude-opus-5";
@@ -65,9 +66,20 @@ export type RunResult =
       /** Rapport that broke a tone rule and was not sent, with the reason —
        *  surfaced rather than swallowed so grading can see it. */
       droppedRapport?: string;
+      /**
+       * The first attempt was refused and the SECOND one is what is being
+       * sent, with the refusal that produced it. Carried rather than counted
+       * internally so the rate is visible: a retry rescuing most turns means
+       * the rules are fine and the model needs the feedback, and a retry
+       * rescuing almost none means the instruction itself is wrong.
+       */
+      retriedAfter?: string;
     }
   | {
       ok: false; error: string; rejected?: string;
+      /** Both attempts were refused; this is the FIRST refusal. The one in
+       *  `rejected` is the second, which is what the model saw last. */
+      retriedAfter?: string;
       /**
        * What the model actually tried, when a rule refused it.
        *
@@ -161,7 +173,7 @@ function languagePrompt(language: Language): string {
   ].join("\n");
 }
 
-export function buildSystemPrompt(
+export function buildSystemPromptParts(
   cfg: AgentConfigForRun,
   hardNos: string[],
   track: Track = "new_lead",
@@ -204,7 +216,7 @@ export function buildSystemPrompt(
     zip?: string | null;
     state?: string | null;
   } | null,
-): string {
+): { stable: string; variable: string } {
   const flow = cfg.required_flow.map((f, i) => `${i + 1}. ${f.replace(/_/g, " ")}`).join("\n");
 
   /**
@@ -249,7 +261,7 @@ Your job is to confirm what they need, check it is work we do and an area we cov
 COLLECT IN THIS ORDER, and do not reorder or skip:
 ${flow}`;
 
-  return `${opening}
+  const stable = `${opening}
 
 ${services?.length ? servicesPrompt(services) : `WHAT WE DO:\n${cfg.services_included ?? "Interior and exterior painting."}`}
 
@@ -265,7 +277,6 @@ hands to a person, who checks. Only choose "area_not_serviced" when the state
 itself is one we do not serve, and that message names the zip we hold and
 asks whether the project is somewhere else, because the zip on file is often
 out of date.
-${areaLine}
 
 OFFSITE QUOTES. There are two of these and they are not the same move:
 present_offsite_quote  the JOB is small and clearly defined, so a quick quote
@@ -294,6 +305,13 @@ does the quick quote come up, and only if they turn both down is it parked.
 Somebody who says "we move in on the 14th" is telling you when they are
 ready, not asking you to go away.
 
+A DAY IS NOT AN APPOINTMENT. "Wednesday works" is half an answer: an estimator
+cannot be sent to a day. When they name a day but no time of day, ask which
+part of that day suits them — morning or afternoon is enough — and only then
+is availability collected. The same the other way round: a time with no day is
+also half. Do NOT treat either half as done and do NOT close on it; the system
+refuses that close and the conversation goes to a person instead of forward.
+
 MORE THAN ONE PROPERTY. If they mention a second place, take them ONE AT A
 TIME: finish the whole flow for the first property, then start again for the
 next. Do not ask for both addresses in one message. Contact details are shared
@@ -303,19 +321,37 @@ told you about still has no address, so keep going rather than handing over.
 
 HOW YOU SOUND:
 ${cfg.tone_rules ?? "Friendly, brief, one question at a time."}
-${languagePrompt(language)}
 
 ${cfg.office_location ? `Our office is in ${cfg.office_location}.` : ""}
 ${cfg.service_area_note ? `Where we serve: ${cfg.service_area_note}` : ""}
-${knownCustomerPrompt(known)}
 
-${examples ? examplesPrompt(examples) : ""}
+
+
 
 ${track === "new_lead" ? `BEFORE SWITCHING TO A PHONE QUOTE:
 Say so first. If the job is small enough, or they want somebody out the same
 day, we quote it over the phone instead of visiting, but tell them that is
 what is happening and why, and confirm their contact details before you do.
 Kate graded two conversations bad for moving to a phone quote with no warning.
+
+A QUESTION BACK IS NOT AN ANSWER. If you asked for something and their reply
+does not contain it — they asked you something instead, or changed the subject
+— ANSWER THEM AND ASK AGAIN IN THE SAME MESSAGE. Do not move on to the next
+step as though they had given it. Only an actual refusal lets you move past a
+step; a question is not a refusal, and somebody who asks "what times do you
+have?" still has not told you where the property is. Moving on anyway walks
+the whole conversation to the end with nothing to book against, and the close
+is then refused and the lead goes to a person.
+
+WHEN THEY WILL NOT GIVE AN ADDRESS, THE ANSWER IS A PHONE QUOTE.
+Ask once more for the ZIP CODE on its own — not the street again — and say why:
+an accurate estimate needs to know the area. If they still will not, stop
+asking, because an estimator cannot be sent to an address we do not have.
+
+A phone quote is NOT a way out of the rest of the conversation. It still owes
+their contact details, so ASK FOR THOSE FIRST and choose "phone_pricing" only
+once you have. Choosing it before contact has been asked for is refused before
+it can be sent, and the lead goes to a person instead of to a price.
 ` : ""}
 ${hardNos.length ? `\nNEVER, under any circumstances:\n${hardNos.map((h) => `- ${h}`).join("\n")}` : ""}
 ${classARules ? `\n${classARules}\n` : ""}${workspaceFaqs ? `\n${workspaceFaqs}\n` : ""}
@@ -333,6 +369,44 @@ ${UNTRUSTED_NOTE}
 You reply by choosing an intent and filling its slots. You never write the
 message that is sent. If you are unsure, choose "escalate". A person picking
 it up costs far less than a wrong answer to a customer.`;
+
+  /**
+   * EVERYTHING THAT CHANGES, AFTER EVERYTHING THAT DOES NOT.
+   *
+   * These four used to sit in the middle of the prompt, which is a reasonable
+   * place to read them and the worst possible place to cache them: a cache
+   * breakpoint covers a PREFIX, so one varying line early on makes everything
+   * after it uncacheable too. About 6,000 of the ~7,200 input tokens on every
+   * turn are identical — the 37 rule cards, the persona, the intent guide,
+   * the workspace's FAQs — and they were being paid for in full, every turn,
+   * on two models.
+   *
+   * Moved rather than duplicated. The text is unchanged and so is the order
+   * within each piece; only the position of these four relative to the stable
+   * body has changed.
+   */
+  const variable = [
+    languagePrompt(language),
+    areaLine,
+    knownCustomerPrompt(known),
+    examples ? examplesPrompt(examples) : "",
+  ].map((x) => x.trim()).filter(Boolean).join("\n\n");
+
+  return { stable, variable };
+}
+
+/**
+ * The whole prompt as one string.
+ *
+ * Kept because the simulator, the tests and verify-iteration-1 all read it,
+ * and because a caller that does not care about caching should not have to
+ * know the prompt has two halves.
+ */
+export function buildSystemPrompt(
+  ...args: Parameters<typeof buildSystemPromptParts>
+): string {
+  const { stable, variable } = buildSystemPromptParts(...args);
+  return variable ? `${stable}\n\n${variable}` : stable;
 }
 
 /**
@@ -621,9 +695,69 @@ ${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
 
 Choose the next action.`;
 
+  /**
+   * ── ONE RETRY, AND ONLY FOR A REFUSAL THAT NAMES ITS OWN FIX ────────────
+   *
+   * A rejection used to end the turn, on the reasoning in
+   * agentFailureIsTransient: "the same input will be refused again next
+   * minute, so retrying is pointless". That is true of a banned phrase or a
+   * price — the model would write the same thing — and it was NOT true of the
+   * refusals seen live on 2026-10-05, because every one of them says what to
+   * do instead:
+   *
+   *   address_question_walked_past: ...so the address is still owed. Answer
+   *   them AND ask for it again in the same message
+   *
+   * The model never saw that sentence. It got one roll and the lead went to a
+   * person. Three times in one afternoon: it chose ask_contact where the
+   * refusal said ask_address, wrote "Wednesday" into rapport where the prompt
+   * says never name a day, and reached for phone_pricing before contact.
+   * Replaying identical input gave different intents, so these are variance
+   * rather than determinism — exactly what a second attempt fixes.
+   *
+   * EXACTLY ONE. The retry costs an API call and the system prompt is already
+   * cached, so the marginal cost is small; an unbounded loop is not, and a
+   * model that declines the same instruction twice is telling us the
+   * instruction is wrong rather than unlucky.
+   *
+   * THE TERMINAL SEMANTICS ARE UNCHANGED. After the retry is spent the result
+   * is the same `rejected` shape it always was, so agentFailureIsTransient
+   * still reads it as terminal and the scheduler still cancels rather than
+   * counting a failure. That contract is what stops a rate-limited minute
+   * silently dropping replies, which this codebase has already done once.
+   */
+  const MAX_ATTEMPTS = 2;
+
   try {
     const client = new Anthropic({ apiKey });
-    const res = await client.messages.create({
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
+    /** The first refusal, once there has been one. */
+    let firstRefusal: string | undefined;
+
+    /**
+     * BUILT ONCE, SENT ON BOTH ATTEMPTS — which is also what makes the retry
+     * cheap. The cached prefix is the same bytes, so a retry reads the cache
+     * rather than paying for 6,000 tokens of rules a second time.
+     */
+    const systemBlocks = (() => {
+      const { stable, variable } = buildSystemPromptParts(
+        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
+        opts.classARules, opts.workspaceFaqs, language,
+        // A2: the verdict the caller already looked up. It reached the
+        // validator and stopped there, so the model was asked to apply a
+        // rule whose one input it could not see.
+        opts.serviceArea
+          ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
+          : null,
+      );
+      const blocks: Anthropic.TextBlockParam[] = [
+        { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+      ];
+      if (variable) blocks.push({ type: "text", text: variable });
+      return blocks;
+    })();
+
+    let res = await client.messages.create({
       model: MODEL,
       // Choosing one of eighteen intents and a line of rapport is a
       // classification, not a reasoning problem. Adaptive thinking plus a
@@ -631,22 +765,60 @@ Choose the next action.`;
       // reply that is two sentences long, and the extra thinking changed the
       // chosen intent in none of the cases that were checked.
       max_tokens: 700,
-      system: buildSystemPrompt(
-        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
-        opts.classARules, opts.workspaceFaqs, language,
-        // A2: the verdict the caller already looked up. It reached the
-        // validator and stopped there, so the model was asked to apply a rule
-        // whose one input it could not see.
-        opts.serviceArea
-          ? { outcome: opts.serviceArea, zip: opts.zip, state: opts.stateName }
-          : null,
-      ),
-      messages: [{ role: "user", content: prompt }],
+      /**
+       * TWO BLOCKS, AND THE FIRST ONE IS CACHED.
+       *
+       * About 6,000 of the ~7,200 input tokens on every turn never change:
+       * the 37 rule cards, the persona, the intent guide, the workspace's
+       * standing answers. Measured, not guessed — the rules block alone is
+       * 9,566 characters.
+       *
+       * They were being paid for in full on every turn, on two models, and
+       * the account ran out of credit mid-session. A cache breakpoint covers
+       * a PREFIX, which is why the four varying pieces had to move to the end
+       * first; see buildSystemPromptParts.
+       *
+       * The cached prefix is stable PER WORKSPACE — persona, services, tone,
+       * rules, FAQs — so there is one entry per workspace rather than one per
+       * conversation, and sixteen live workspaces means sixteen.
+       *
+       * Correctness is unaffected either way: a cache miss sends exactly the
+       * same bytes and costs exactly what it used to.
+       */
+      system: systemBlocks,
+      messages,
       tools: [actionTool(track)],
       // One tool, and it must be used. There is no path where the model
       // replies with prose instead of choosing an action.
       tool_choice: { type: "tool", name: "choose_action" },
     });
+
+    /**
+     * IS THE CACHE ACTUALLY BEING HIT?
+     *
+     * A broken prompt cache costs money and changes nothing a test can see:
+     * the same bytes go out, the same reply comes back, and the bill quietly
+     * stays where it was. Exactly the invisible failure this codebase keeps
+     * producing, so it gets a signal rather than a hope.
+     *
+     * ZERO ON BOTH COUNTERS IS THE FAULT. A read of 0 with a non-zero
+     * creation is a cold cache, which is normal and expected once per
+     * workspace every few minutes; a read of 0 with a creation of 0 means the
+     * breakpoint is not being honoured at all — usually because something
+     * that varies per turn has drifted back into the stable half.
+     *
+     * Deduped by the observability layer, so a sustained fault says so once
+     * rather than once per turn.
+     */
+    const usage = res.usage as { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } | undefined;
+    if (usage && !usage.cache_read_input_tokens && !usage.cache_creation_input_tokens) {
+      reportWarn({
+        key: "sms_prompt_cache_not_used",
+        message: "The agent prompt cache was neither read nor written — the stable prefix is not being cached",
+        platform: "ppp_cc",
+        context: { model: MODEL, inputTokens: res.usage?.input_tokens ?? null },
+      });
+    }
 
     const call = res.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "choose_action"
@@ -687,7 +859,11 @@ Choose the next action.`;
     });
 
     // The post-filter. Even with a constrained schema, freeText is free text.
-    const v = validateAction(parsed, {
+    //
+    // Named rather than inlined so BOTH attempts are judged by exactly the
+    // same context. Building it twice is how a retry quietly gets an easier
+    // test than the attempt it is replacing.
+    const validateCtx = {
       confidenceThreshold: cfg.confidence_threshold,
       hardNoPhrases: opts.hardNos,
       track,
@@ -743,7 +919,7 @@ Choose the next action.`;
        */
       availabilityGap: availabilityGapAcross(customerSaid),
       // Whether the template for the chosen intent already asks something.
-      templateAsks: (intent) => templateAsks(intent as Intent, history.length),
+      templateAsks: (intent: string) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
       // The last thing WE said. Only meaningful when they reacted to it.
       lastIntent: opts.lastIntent,
@@ -769,7 +945,53 @@ Choose the next action.`;
       // A2: nothing may promise coverage until the zip says we have it.
       serviceArea: opts.serviceArea ?? null,
       ...opts.ctx,
-    });
+    };
+
+    let attempted: unknown = parsed;
+    let v = validateAction(attempted, validateCtx);
+
+    /**
+     * THE RETRY. See MAX_ATTEMPTS above for why this exists and why it is one.
+     *
+     * The refusal goes back as a tool_result against the model's own tool_use,
+     * which is the shape the API requires and also the honest one: it is the
+     * RESULT of the action it chose, not a new instruction appended to the
+     * system prompt. The detail already says what to do instead, so nothing
+     * here rewrites or softens it.
+     */
+    let currentCall = call;
+    for (let attempt = 2; !v.ok && attempt <= MAX_ATTEMPTS; attempt++) {
+      firstRefusal ??= `${v.reason}: ${v.detail}`;
+      messages.push({ role: "assistant", content: res.content });
+      messages.push({
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: currentCall.id,
+          is_error: true,
+          content: `That reply was REFUSED before sending and the customer did not see it.\n\n`
+            + `${firstRefusal}\n\n`
+            + `Choose again, fixing exactly that. Do not repeat the same choice.`,
+        }],
+      });
+      res = await client.messages.create({
+        model: MODEL,
+        max_tokens: 700,
+        system: systemBlocks,
+        messages,
+        tools: [actionTool(track)],
+        tool_choice: { type: "tool", name: "choose_action" },
+      });
+      const again = res.content.find(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "choose_action"
+      );
+      // No action on the retry is the same dead end as none on the first try,
+      // so keep the refusal we already have rather than inventing a new one.
+      if (!again) break;
+      currentCall = again;
+      attempted = again.input;
+      v = validateAction(attempted, validateCtx);
+    }
     /**
      * A REJECTION HAS TO SAY WHAT WAS REJECTED.
      *
@@ -791,10 +1013,17 @@ Choose the next action.`;
       return {
         ok: false,
         error: "The reply was rejected before sending.",
+        // The LAST refusal, which is what the model saw most recently and what
+        // a grader needs to read first.
         rejected: `${v.reason}: ${v.detail}`,
+        // And the first, when a retry was spent — two different refusals mean
+        // the model moved and still missed, one repeated means it did not.
+        ...(firstRefusal && firstRefusal !== `${v.reason}: ${v.detail}`
+          ? { retriedAfter: firstRefusal }
+          : {}),
         attempted: {
-          intent: (parsed as { intent?: string })?.intent ?? "(none)",
-          freeText: (parsed as { freeText?: string })?.freeText ?? null,
+          intent: (attempted as { intent?: string })?.intent ?? "(none)",
+          freeText: (attempted as { freeText?: string })?.freeText ?? null,
         },
       };
     }
@@ -820,6 +1049,23 @@ Choose the next action.`;
        * already given one.
        */
       secondProperty: wantsSecondAddress,
+      /**
+       * A REPEAT ask, which is Kate's zip floor rather than the same question
+       * twice. "We hold nothing AND we have asked" stands in for a refusal
+       * without having to detect one — the same ask-based test the A3 legs use.
+       *
+       * EXCEPT WHEN THEY ASKED US SOMETHING, which is the case it got wrong.
+       * The zip floor is the concession we make AFTER a refusal — "we at least
+       * need the zip code" gives up the street on purpose, and says "No
+       * problem" to having been turned down. A customer who answered the
+       * address question with a question of their own has refused nothing, and
+       * played live that read as conceding to a refusal that never happened
+       * while handing back the street for free. They get the ordinary ask
+       * again; the floor is still there for when they actually decline.
+       */
+      addressAskedBefore: !kf.address
+        && (opts.priorIntents ?? []).includes("ask_address")
+        && !asksSomething(ownWords),
       /**
        * A4: and the same for availability. Read from what the customer just
        * said, because that is where an answer to an availability question
@@ -931,6 +1177,10 @@ Choose the next action.`;
         || shouldEscalate(v.action, { confidenceThreshold: cfg.confidence_threshold }),
       saysNothing,
       droppedRapport: v.droppedRapport,
+      // A retry rescued this turn: without it, the conversation would have
+      // gone to a person here. Carried so the rate is countable rather than
+      // assumed — see MAX_ATTEMPTS.
+      ...(firstRefusal ? { retriedAfter: firstRefusal } : {}),
       // Rendered from the intent, NOT from the model's prose. This is the line
       // that used to read `v.action.freeText ?? ""`, which is why a correctly
       // chosen ask_project_details went out as "Hi there!".

@@ -302,7 +302,10 @@ export type AgentConfig = {
   confidence_threshold: number;
   autosend: boolean;
   max_turns: number;
-  booking_hours: Record<string, { open: string; close: string }>;
+  /** `booking_hours` is deliberately absent — see agent-resolve.ts. A15
+   *  forbids the bot offering an appointment time, so the column it was built
+   *  for has no reader, and its default disagrees with the hours customers are
+   *  actually told (CALLBACK_WINDOW, A36). The column still exists. */
 };
 
 /**

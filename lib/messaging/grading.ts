@@ -115,11 +115,40 @@ export async function saveGrade(input: {
   }).eq("id", input.exampleId);
   if (error) return { ok: false, error: error.message };
 
+  /**
+   * THE SAME BUG AS THE GUARD ABOVE, ON THE SIBLING COLUMN.
+   *
+   * That guard exists because saving a re-grade used to wipe `conduct_note`,
+   * "including the ones imported from Kate's sheet". The TAG rows carry their
+   * own `note` — "free text from the reviewer", migration 194 — and this
+   * replaced them without it, so one keystroke destroyed the same kind of
+   * writing, one table across, with no error and nothing on screen to show
+   * anything had gone.
+   *
+   * Not hypothetical and not historical. Checked against production
+   * 2026-10-06: 158 tag rows, 14 carrying a note, several of them Kate's own
+   * ("Should've introduced phone pricing due to small scope..."). She is
+   * reviewing today, and Rated -> change the grade -> Save is the ordinary
+   * path to it.
+   *
+   * Replace still means replace: a tag the reviewer removed is still removed.
+   * A tag that SURVIVES keeps what somebody wrote against it.
+   */
+  const { data: existingTags } = await sb.from("sms_training_example_tags")
+    .select("tag_key, note").eq("example_id", input.exampleId);
+  const noteFor = new Map<string, string>();
+  for (const r of (existingTags ?? []) as { tag_key: string; note: string | null }[]) {
+    if (r.note?.trim()) noteFor.set(r.tag_key, r.note);
+  }
+
   // Replace rather than append, so removing a tag actually removes it.
   await sb.from("sms_training_example_tags").delete().eq("example_id", input.exampleId);
   if (input.tagKeys.length) {
     const { error: tagErr } = await sb.from("sms_training_example_tags")
-      .insert(input.tagKeys.map((tag_key) => ({ example_id: input.exampleId, tag_key })));
+      .insert(input.tagKeys.map((tag_key) => ({
+        example_id: input.exampleId, tag_key,
+        ...(noteFor.has(tag_key) ? { note: noteFor.get(tag_key) } : {}),
+      })));
     if (tagErr) return { ok: false, error: tagErr.message };
   }
   return { ok: true };

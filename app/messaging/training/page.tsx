@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { trainingStats, loadTrainingCoverage } from "@/lib/messaging/db";
 import { repairQueue } from "@/lib/messaging/repair-write";
+import { draftEditCount } from "@/lib/messaging/draft-edits";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,8 @@ export const dynamic = "force-dynamic";
  * real conversations, and check what is still missing.
  */
 export default async function TrainingPage() {
-  const [s, cov, repairs] = await Promise.all([
-    trainingStats(), loadTrainingCoverage(), repairQueue(100),
+  const [s, cov, repairs, edits] = await Promise.all([
+    trainingStats(), loadTrainingCoverage(), repairQueue(100), draftEditCount(),
   ]);
   const needsWork = s.needsScrub + s.needsReview + cov.ungraded + cov.gradedNoReason;
 
@@ -84,6 +85,12 @@ export default async function TrainingPage() {
       title: "Fix a near-miss",
       blurb: "A conversation that nearly went right. Rewrite every line Emily got wrong.",
       meta: "Builds good examples",
+    },
+    {
+      href: "/messaging/training/edits",
+      title: "What you changed",
+      blurb: "Replies somebody rewrote before sending, or binned, beside what the bot had written.",
+      meta: edits > 0 ? `${edits} so far` : "Fills up on its own",
     },
     {
       href: "/messaging/training/replay",

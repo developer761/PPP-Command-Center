@@ -19,11 +19,17 @@
  * better." Selection is deterministic on the turn number rather than random —
  * same conversation, same words, so a regression test can assert output.
  */
-import { BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun } from "./agent-output";
+import {
+  BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  ANSWERS_A_QUESTION,
+} from "./agent-output";
 import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
-import { SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES } from "./render-es";
+import {
+  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
+  PHONE_PRICING_NO_ADDRESS_ES,
+} from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch, CALLBACK_WINDOW } from "./channel-preference";
@@ -657,6 +663,15 @@ export type RenderInput = {
    * would unblock it.
    */
   secondProperty?: boolean;
+  /**
+   * We have asked for the address already and still hold none of it — so this
+   * ask is a REPEAT, and Kate's zip floor applies. See ASK_ADDRESS_REFUSED.
+   *
+   * A flag rather than something the renderer works out, for the same reason as
+   * addressGap and secondProperty: the system knows what it has already sent,
+   * and the model does not.
+   */
+  addressAskedBefore?: boolean;
   /** What is missing from a partial availability. Narrows ask_availability,
    *  which is A4's own remedy. See ASK_AVAILABILITY_GAP below. */
   availabilityGap?: AvailabilityGap;
@@ -784,6 +799,18 @@ export type RenderInput = {
  * more attempt has been made — including to phone_pricing, which is exactly
  * the fallback Kate names when no address is ever confirmed.
  */
+/**
+ * THE ZIP FLOOR, said once and referenced everywhere it is needed.
+ *
+ * Kate's "we at least need the zip, and here is why" lands in two different
+ * places: the third ask when we hold HALF an address, and the second ask when
+ * we hold NONE of it because they refused. Same sentence, same rule, so it is
+ * one string — the fourth copy of a line is how the wording in one branch gets
+ * fixed and the wording in another does not.
+ */
+export const ASK_ZIP_WITH_REASON =
+  "No problem. We at least need the zip code to price it accurately. What's the zip there?";
+
 const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   zip: [
     "Thanks! What's the zip code for {address}?",
@@ -793,9 +820,49 @@ const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   street: [
     "Thanks! And what's the street address?",
     "Got it. What's the street address there?",
-    "No problem. We at least need the zip code to price it accurately. What's the zip there?",
+    ASK_ZIP_WITH_REASON,
   ],
 };
+
+/**
+ * WHEN THEY GAVE US NOTHING AND WE ALREADY ASKED.
+ *
+ * A refusal is not a partial address, so none of the gap narrowing above
+ * applies and ask_address fell through to its ordinary variants — which is how
+ * "I'd rather not give my address out over text" was answered with "What
+ * address should we have the estimator go to?", the same question again with
+ * no reason attached. Kate, 2026-10-05: "Letting them know we at least need to
+ * confirm the zip code to provide an accurate estimate is valid."
+ *
+ * So the re-ask narrows to the zip and says why, exactly as it does for half
+ * an address. A41 still caps it at this one more attempt; after that the
+ * conversation moves to a phone price.
+ */
+const ASK_ADDRESS_REFUSED = [ASK_ZIP_WITH_REASON];
+
+/**
+ * A PHONE PRICE WHEN WE HAVE NO ADDRESS AT ALL.
+ *
+ * The ordinary phone_pricing wording says "I'm getting that appointment set up
+ * for you… if a number is all you need, they can do a quick quote instead".
+ * That is right for the case it was written for — a small job, or somebody who
+ * wants a number today — where the visit is the default and the phone quote is
+ * the alternative offered.
+ *
+ * It is a FALSE PROMISE for the customer who just refused to give an address.
+ * Played live 2026-10-05: they said "no im not giving that out, i told you",
+ * and two turns later the bot said it was setting up their appointment — to a
+ * property we cannot locate, which the office cannot send anybody to. It also
+ * ignores the thing they just said twice.
+ *
+ * So the branches swap: here the phone quote is the plan, not the fallback,
+ * and no appointment is mentioned because none can happen. Still names no time
+ * (A15) and still promises no price (A1).
+ */
+const PHONE_PRICING_NO_ADDRESS = [
+  "That's no problem — we can do this over the phone instead. One of our estimators will call you to go through the details and get you a price.",
+  "Not a problem at all. We'll price it over the phone instead, and an estimator will reach out to go through the details with you.",
+];
 
 /**
  * Asking for the half of the availability we are missing.
@@ -1072,8 +1139,25 @@ function renderBody(input: RenderInput): string {
    * that gap narrowing exists to prevent.
    */
   const secondProperty = input.intent === "ask_address" && !gap && !!input.secondProperty;
+  /**
+   * A re-ask after a refusal. Checked after `gap` and `secondProperty` for the
+   * same reason they are ordered that way: holding half an address, or being on
+   * the second property, is the more specific fact and keeps its own wording.
+   */
+  const refused = input.intent === "ask_address" && !gap && !secondProperty
+    && !!input.addressAskedBefore;
+  /**
+   * No flag for this one: the renderer already holds the address, so it can
+   * see for itself that there is none. Derived beats passed — a flag would be
+   * a fourth thing two callers have to remember to set.
+   */
+  const phonePriceNoAddress = input.intent === "phone_pricing" && !input.known?.address;
   const variants = secondProperty
     ? [es ? askSecondPropertyAddressEs() : askSecondPropertyAddress()]
+    : phonePriceNoAddress
+    ? (es ? PHONE_PRICING_NO_ADDRESS_ES : PHONE_PRICING_NO_ADDRESS)
+    : refused
+    ? (es ? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED)
     : gap
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap
@@ -1358,6 +1442,19 @@ function renderBody(input: RenderInput): string {
   }
 
   const rapport = (input.freeText ?? "").trim();
+  /**
+   * The customer asked us something AND this intent's own template does not
+   * answer it — so the rapport is the only place an answer can come from, and
+   * dropping it sends a turn that ignores them.
+   *
+   * ANSWERS_A_QUESTION is the same set validateAction uses to decide whether
+   * A29 is satisfied without any rapport at all, which is exactly the right
+   * line: where the template answers, rapport saying the same thing again is
+   * the duplicate the redundancy rule exists to remove — "Pricing comes from
+   * our estimator… That's one for the estimator…" — and it keeps doing that.
+   */
+  const answerIsOwed =
+    asksSomething(input.customerText) && !ANSWERS_A_QUESTION.has(input.intent);
   const parts: string[] = [];
   /** Where the model's rapport ended up, or -1 when it was not used at all. */
   let rapportAt = -1;
@@ -1379,7 +1476,33 @@ function renderBody(input: RenderInput): string {
     // Two acknowledgements in a row is how "Got it. Got it." reaches a
     // customer. The template's own opener wins, because it is the one that
     // goes on to say something.
-    && !rapportIsRedundant(rapport, pick)
+    //
+    // UNLESS AN ANSWER IS OWED, in which case the rapport is not a pleasantry
+    // and dropping it ships the exact breach A29 exists to prevent.
+    //
+    // Found live 2026-10-05. The customer asked "what times do you have
+    // available this week?", the model answered it in freeText and asked for
+    // the address, and validateAction ALLOWED the turn precisely because the
+    // answer was there — `saysSomething` is one of the things that satisfies
+    // the A29 guard. Then this line dropped the answer for sharing words with
+    // the template, and what went out was:
+    //
+    //   "What address should we have the estimator go to?"
+    //
+    // and nothing else. The customer's question ignored, while the validator
+    // believed it had been answered.
+    //
+    // agent-output already documents this collision for the yes/no case —
+    // "the echo rule removes the answer, and then this guard sees no answer
+    // and escalates... two correct rules with no legal move between them" —
+    // and fixed it there with affirmsAYesNo. This is the same collision for
+    // every other kind of question, and it is worse, because it does not
+    // escalate: it sends the half that asks and drops the half that answers.
+    //
+    // The redundancy rule keeps its whole job whenever nothing is owed. When
+    // something is, two acknowledgements stacked is a much smaller fault than
+    // ignoring a customer who asked us a direct question.
+    && !(rapportIsRedundant(rapport, pick) && !answerIsOwed)
   ) {
     parts.push(rapport);
     rapportAt = parts.length - 1;

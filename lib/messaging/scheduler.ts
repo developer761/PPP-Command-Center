@@ -18,6 +18,16 @@ import { FOLLOW_UP_COUNT } from "./stalled";
  *  than that is a broken thing being hammered, not a flaky one recovering. */
 export const MAX_ATTEMPTS = 5;
 
+/**
+ * How long a person may hold a conversation before its queued steps are given
+ * up on rather than deferred again. See the human_active branch below.
+ *
+ * Two weeks, because that is already this system's unit for "come back to this
+ * later" — A40's event park waits exactly that long. A step still waiting
+ * after it has outlived the longest pause the rules describe.
+ */
+export const HUMAN_HOLD_HORIZON_MS = 14 * 24 * 3600_000;
+
 export type DueAction = {
   id: string;
   conversation_id: string;
@@ -55,6 +65,10 @@ export type SchedulerDeps = {
     body: string;
     agent: string;
     conversationState: string;
+    /** When a person took it over, for bounding the deferral below. Null reads
+     *  as "no horizon" and keeps deferring, so a missing value can never cause
+     *  a cancellation. */
+    takeoverAt?: string | null;
     /** Which channel this step is. An email step sent as an SMS blasts a
      *  subject line and newlines at a phone number. */
     channel?: "sms" | "email";
@@ -142,6 +156,9 @@ export function classifyRefusal(r: Extract<GateResult, { ok: false }>): "cancel"
       return "cancel";
     case "quiet_hours":
     case "weekend":
+    // A holiday is the weekend's twin: PPP's own policy, true today and not
+    // tomorrow, and the gate has already worked out which day to come back on.
+    case "holiday":
     case "daily_cap":
     // A36's office window. PPP is not working right now and will be later —
     // the same kind of answer as a weekend, not a broken message.
@@ -252,6 +269,37 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   // step wrong forever, and they may hand it straight back. An hour, the same
   // guess this function already makes when the gate cannot say when.
   if (ctx.conversationState === "human_active") {
+    /**
+     * AND THE DEFERRAL NEEDS A HORIZON, or it is a loop wearing a reason.
+     *
+     * Found in production 2026-10-06, not by a test: FOUR pending actions,
+     * every one of them deferring on this exact line, created 2026-09-26 and
+     * still going ten days and roughly 240 reschedules later. That was 100% of
+     * the pending queue. Nothing was wrong with any single deferral; there was
+     * simply nothing that ever ended one.
+     *
+     * The reasoning above holds for an hour or a day — they may hand it
+     * straight back. It does not hold for a fortnight. By then a scripted step
+     * is not late, it is wrong: a stall follow-up chasing somebody a person
+     * has been handling for two weeks reads as the left hand not knowing what
+     * the right is doing, which is the failure handing over exists to prevent.
+     *
+     * At launch scale this is the shape that matters. Every conversation a
+     * person ever touches would leave its remaining steps cycling hourly for
+     * ever, each one costing a claim, a read and a write, and none of them
+     * ever completing.
+     *
+     * Cancelled rather than failed: nothing broke. A person has it, which is
+     * a legitimate ending for a step that was only ever a guess about silence.
+     */
+    const takenAt = ctx.takeoverAt ? Date.parse(ctx.takeoverAt) : NaN;
+    const heldFor = Number.isNaN(takenAt) ? 0 : (deps.now ?? new Date()).getTime() - takenAt;
+    if (heldFor > HUMAN_HOLD_HORIZON_MS) {
+      const reason = "a person has held this conversation for over two weeks, "
+        + "so the scripted step is no longer the right thing to send";
+      await deps.cancel(a, reason);
+      return { kind: "cancelled", reason };
+    }
     const reason = "a person has taken this conversation over";
     const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
     await deps.reschedule(a, at, reason, "deferral");

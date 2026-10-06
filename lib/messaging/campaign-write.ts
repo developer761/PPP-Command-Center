@@ -104,12 +104,17 @@ export async function updateStep(input: { stepId: string; edit: StepEdit }): Pro
   if (next.schedule_mode === "at_launch") {
     next.delay_minutes = null; next.day_offset = null; next.time_of_day = null;
   } else if (next.schedule_mode === "delay_after_last") {
-    if (next.delay_minutes === null || next.delay_minutes < 0) {
+    // Integer and non-negative. A client is not the authority on this: the
+    // editor now sends null for a blank box, and this still refuses NaN,
+    // Infinity and 1.5 rather than letting the CHECK explain it in Postgres.
+    if (next.delay_minutes === null || !Number.isInteger(next.delay_minutes) || next.delay_minutes < 0) {
       return { ok: false, error: "Say how long after the last message this should go." };
     }
     next.day_offset = null; next.time_of_day = null;
   } else {
-    if (next.day_offset === null || next.day_offset < 0) return { ok: false, error: "Say which day this should go on." };
+    if (next.day_offset === null || !Number.isInteger(next.day_offset) || next.day_offset < 0) {
+      return { ok: false, error: "Say which day this should go on." };
+    }
     if (parseTimeOfDay(next.time_of_day) === null) return { ok: false, error: "That is not a time this understands." };
     next.delay_minutes = null;
   }

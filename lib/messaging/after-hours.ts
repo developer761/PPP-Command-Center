@@ -23,6 +23,33 @@ import { fillNextOpen } from "./next-open";
 /** Marks the message, so "once a day" can be counted without a new column. */
 export const AFTER_HOURS_INTENT = "after_hours";
 
+/**
+ * WHAT IT SAYS WHEN NOBODY HAS WRITTEN ANYTHING.
+ *
+ * Checked against production 2026-10-06: `after_hours_message` is NULL on all
+ * 33 workspaces and the toggle is false on all 33. The feature has never done
+ * anything, while two screens advertise it as working.
+ *
+ * Needing somebody to type a sentence into every workspace before the feature
+ * exists at all is why. Settings already shows this exact wording as a
+ * PLACEHOLDER — a suggestion nobody can act on thirty-three times — so it
+ * becomes the default and the box becomes an override.
+ *
+ * Switching the TOGGLE on is deliberately NOT done here. All 33 read false
+ * rather than null, so "never configured" and "turned off on purpose" are
+ * indistinguishable, and a code change that ignored the setting would make
+ * the switch mean nothing. That one is a decision with sending attached to it.
+ *
+ * Bounded by design: one message, no price, no appointment time, and
+ * {{next_open}} resolves against the same function the gate uses, so the hour
+ * it promises is the hour the system will act.
+ *
+ * No em dash. A23 bans it and this is customer-facing.
+ */
+export const DEFAULT_AFTER_HOURS_MESSAGE =
+  "Thanks for reaching out! Our office is closed right now, but we'll pick "
+  + "this up and get back to you after we open at {{next_open}}.";
+
 export type AfterHoursWorkspace = {
   after_hours_autoreply?: boolean | null;
   after_hours_message?: string | null;
@@ -59,8 +86,10 @@ export function afterHoursReply(input: {
   const ws = input.workspace;
   if (!ws.after_hours_autoreply) return { send: false, why: "not switched on for this workspace" };
 
-  const body = (ws.after_hours_message ?? "").trim();
-  if (!body) return { send: false, why: "no after-hours message has been written" };
+  // An empty box is "nobody has written one", not "say nothing". Switching the
+  // feature on and getting silence because a second field was left blank is
+  // the trap this removes; see DEFAULT_AFTER_HOURS_MESSAGE.
+  const body = (ws.after_hours_message ?? "").trim() || DEFAULT_AFTER_HOURS_MESSAGE;
 
   // Somebody saying STOP gets suppressed, not chatted to; HELP has its own
   // legally required reply. Neither is an out-of-hours enquiry.

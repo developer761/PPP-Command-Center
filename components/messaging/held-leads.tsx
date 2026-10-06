@@ -14,7 +14,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { releaseHeldLeads } from "@/lib/messaging/lead-redrive-write";
+import { releaseHeldLeads, heldLeads } from "@/lib/messaging/lead-redrive-write";
 import type { HeldSummary } from "@/lib/messaging/lead-redrive-write";
 
 /** Above this many, a release asks twice. */
@@ -26,8 +26,28 @@ const WINDOWS = [
   { hours: 24 * 7, label: "Last week" },
 ];
 
-export function HeldLeads({ summary }: { summary: HeldSummary }) {
-  const [hours, setHours] = useState(summary.maxAgeHours);
+export function HeldLeads({ summary: initial }: { summary: HeldSummary }) {
+  /**
+   * THE COUNT FOLLOWS THE WINDOW, which is what makes the confirmation real.
+   *
+   * It used to be a fixed prop. The page calls heldLeads() with no argument,
+   * so the summary was always the 24-hour one and nothing re-read it. Picking
+   * a wider window therefore made `stale` true for ever, and `needsConfirm`
+   * is `!stale && ...` — so the second press was required for the SMALL
+   * default and skipped for the big ones. The button lost its number too and
+   * read a bare "Release".
+   *
+   * The file's own comment describes the hazard it then had: "Widening the
+   * window to a week turns 'release 73' into 'release 504' — one dropdown and
+   * one click away from putting five hundred people into a campaign." That was
+   * exactly the path with no confirmation on it.
+   *
+   * heldLeads already takes the window, so the honest fix is to ask it rather
+   * than to guess or to disable the rail.
+   */
+  const [summary, setSummary] = useState(initial);
+  const [hours, setHours] = useState(initial.maxAgeHours);
+  const [counting, setCounting] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -36,15 +56,14 @@ export function HeldLeads({ summary }: { summary: HeldSummary }) {
 
   if (summary.total === 0) return null;
 
-  // The count shown is for the window the summary was BUILT with. Changing the
-  // selector changes what a release would do, and saying "6" next to a
-  // different window would be a lie — so it reloads rather than guessing.
-  const stale = hours !== summary.maxAgeHours;
-  // DERIVED, not set during render. Changing the window invalidates a pending
-  // confirmation — the number the person agreed to is not the number they
-  // would now get — and calling setState while rendering to express that is a
-  // loop waiting to happen.
-  const confirming = armed && !stale;
+  /**
+   * The summary now always belongs to the chosen window — chooseWindow
+   * re-counts and disarms — so there is no longer a "stale" state to reason
+   * about. That flag is gone deliberately rather than left at false: it was
+   * the mechanism of the bug, and `!stale` in the two lines below is what
+   * switched the confirmation off exactly when the number was largest.
+   */
+  const confirming = armed;
 
   /**
    * A second press for a big release.
@@ -54,7 +73,21 @@ export function HeldLeads({ summary }: { summary: HeldSummary }) {
    * campaign. The number is shown in the confirm text because "are you sure"
    * without a quantity is a dialog people learn to click through.
    */
-  const needsConfirm = !stale && summary.releasable > CONFIRM_ABOVE;
+  const needsConfirm = summary.releasable > CONFIRM_ABOVE;
+
+  /** Re-count for a newly chosen window, and disarm: the number somebody
+   *  agreed to is not the number they would now get. */
+  const chooseWindow = (next: number) => {
+    setHours(next);
+    setArmed(false);
+    setDone(null);
+    setProblem(null);
+    setCounting(true);
+    void heldLeads(next)
+      .then(setSummary)
+      .catch(() => setProblem("Could not count the leads for that window."))
+      .finally(() => setCounting(false));
+  };
 
   const release = () => {
     if (needsConfirm && !confirming) { setArmed(true); setProblem(null); setDone(null); return; }
@@ -106,7 +139,7 @@ export function HeldLeads({ summary }: { summary: HeldSummary }) {
           <select
             id="held-window"
             value={hours}
-            onChange={(e) => setHours(Number(e.target.value))}
+            onChange={(e) => chooseWindow(Number(e.target.value))}
             className="min-h-[44px] rounded-lg border border-ppp-charcoal-200 px-2 text-[16px] text-ppp-charcoal"
           >
             {WINDOWS.map((w) => <option key={w.hours} value={w.hours}>{w.label}</option>)}
@@ -114,12 +147,12 @@ export function HeldLeads({ summary }: { summary: HeldSummary }) {
           <button
             type="button"
             onClick={release}
-            disabled={pending || (!stale && summary.releasable === 0)}
+            disabled={pending || counting || summary.releasable === 0}
             className="min-h-[44px] px-4 rounded-lg bg-ppp-charcoal text-white text-[13px] font-medium disabled:opacity-40 touch-manipulation"
           >
             {pending ? "Releasing…"
+              : counting ? "Counting…"
               : confirming ? `Yes — release ${summary.releasable}`
-              : stale ? "Release"
               : `Release ${summary.releasable}`}
           </button>
         </div>

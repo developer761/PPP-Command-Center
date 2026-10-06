@@ -153,8 +153,24 @@ export function startsAStreetAddress(text: string, index: number): boolean {
  * A zip, but not a measurement. "1450 sq ft" and "10000 square feet" are the
  * numbers a painting customer types most, and a bare five-digit match reads
  * the second one as a zip code.
+ *
+ * `pies` and `metros` are the same guard finished. The English words were here
+ * and the Spanish ones were not, so "necesito pintar 10000 pies cuadrados"
+ * recorded 10000 as this customer's ZIP CODE — a fabricated address on a real
+ * lead, which then gets asked for "the street" of a number it invented. Only
+ * five-digit figures reach it, so "1450 pies cuadrados" was always safe and
+ * a big job was not.
+ *
+ * It does NOT reach A2's "we do not service your state", which is the thing
+ * worth checking before worrying: an unknown zip has no row, so the state test
+ * is skipped and checkServiceZip returns needs_a_person. A person looks at it.
+ *
+ * This is not the Spanish street-word question, which is settled and closed —
+ * a measurement word is not a street word, and this one costs us a wrong
+ * address rather than a missed one.
  */
-const ZIP_IN_PROSE = /\b(\d{5})(?:-\d{4})?\b(?!\s*(?:sq|square|ft|feet|sqft))/i;
+const ZIP_IN_PROSE =
+  /\b(\d{5})(?:-\d{4})?\b(?!\s*(?:sq|square|ft|feet|sqft|pies|metros|mts|m2|pies\s*cuadrados))/i;
 
 export function addressFromCustomer(text: string | null | undefined): string | null {
   const t = (text ?? "").trim();

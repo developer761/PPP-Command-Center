@@ -415,6 +415,56 @@ describe("a person has taken the conversation over", () => {
     expect(String(d.last.reason)).toMatch(/person has taken/i);
   });
 
+  /**
+   * AND THE DEFERRAL HAS AN END, which it did not until 2026-10-06.
+   *
+   * Found in production, not here: four pending actions were deferring on this
+   * branch, created 2026-09-26 and still cycling ten days and roughly 240
+   * reschedules later. That was every pending action in the queue. No single
+   * deferral was wrong; nothing ever ended one.
+   *
+   * At launch scale every conversation a person touches would leave its
+   * remaining steps rescheduling hourly for ever, each costing a claim, a read
+   * and a write, none ever completing.
+   */
+  it("gives up once a person has held it past the horizon", async () => {
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+        takeoverAt: new Date(NOW.getTime() - 15 * 24 * 3600_000).toISOString(),
+      }),
+    });
+    const out = await runAction(action(), d);
+    expect(out.kind).toBe("cancelled");
+    expect(d.calls.reschedule).toBe(0);
+    expect(d.calls.markSent).toBe(0);
+    expect(String(d.last.reason)).toMatch(/over two weeks/i);
+  });
+
+  it("still waits while the hold is recent", async () => {
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+        takeoverAt: new Date(NOW.getTime() - 2 * 24 * 3600_000).toISOString(),
+      }),
+    });
+    expect((await runAction(action(), d)).kind).toBe("rescheduled");
+  });
+
+  /** A missing timestamp must never be read as "held for ever". */
+  it("keeps deferring when there is no takeover time recorded", async () => {
+    const d = deps({
+      resolve: async () => ({
+        workspace: WS, to: "+15165550147" as E164, body: "hi",
+        agent: "lead_nurture", conversationState: "human_active",
+        takeoverAt: null,
+      }),
+    });
+    expect((await runAction(action(), d)).kind).toBe("rescheduled");
+  });
+
   it("it is deferred, not dropped — they may hand it straight back", async () => {
     const d = deps({
       resolve: async () => ({

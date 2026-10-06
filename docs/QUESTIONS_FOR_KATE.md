@@ -35,24 +35,45 @@ shipped, chosen to be the safe or the conservative reading. Each entry says
 what we do today and what would change if she says otherwise, so she can
 answer fast and nothing has to wait on her.
 
-## What is actually left — updated 2026-09-28
+## What is actually left — updated 2026-10-06
 
-All five she was asked are **answered**, and the answers are built. This table
-was stale for a day and cost real time working out which reply belonged to
-which item, so it is now kept current rather than as a record of the original
-ask.
+Her 2026-10-05 reply answered most of the batch. Those items are marked and
+built; **this list is only what still needs her**, so it should be short enough
+to work through in one sitting.
 
-| # | Question | State |
+### Genuinely waiting on Kate
+
+| # | Question | Why it matters |
 |---|---|---|
-| 5 | What a park defaults to when no time is named | **ANSWERED** — park cadence built; two sub-cases still open, see the item |
-| 2 | A3 and A6 contradict each other on "tenant" | **ANSWERED and DONE** — her reissued sheet fixed it at source; imported 2026-09-28 |
-| 9 | A46's approved strings are English only | **ANSWERED** — no inverted punctuation; built |
-| 10 | Which closing lines come out of A44 | **ANSWERED** — our ending confirmed; follow-up wording waits on her copy |
-| 4 | A25's corrective_action contradicts her own rule card | **ANSWERED** — we had the handoff backwards; rebuilt |
+| — | **The ~375 FAQ answers** | The long pole. One spreadsheet, company-wide rows and per-region rows mixed. Nothing else is blocked on it, but it is the biggest single piece outstanding. |
+| 5 | **Two properties, one customer** — one visit or two? | She answered "TBD". Until it is settled the bot asks for availability twice and can hold only one answer. Also gates item 16. |
+| 17 | **Containment** — does a correctly-refused price that a person then rings about count as contained? | She answered the bot's BEHAVIOUR, not the measure. One yes/no. |
+| 20 | **Should a thread a person released go back into the follow-up cadence?** | Re-asked with the concrete case, since "need more context" was fair. |
+| 23 | One of the three "ask the estimator" lines stops making sense | Her wording. |
+| 22 | A6's shared-space list says "corridor" but not "hallway" | One word, but it decides a routing branch. |
+| 6 / 6b | Sign-off on the English bot-disclosure and the availability ask | She approved the SPANISH disclosure; this is confirming the English says the same. |
+| 25 | A Spanish conversation ends with an English list of what we cover | Low stakes, cheap to fix, easy to forget. |
+| 26 | **Do you want an after-hours auto-reply at all?** | You graded one as a negative once. It is off everywhere today. Only affects 8-9am and 8-9pm. |
 
-**Open, and waiting on her:** the A7 note behind the two-week event park (5),
-the final follow-up verbiage (10), the bare "our building" — now answered,
-see item 2 — plus 13 and 14, which were never in this five.
+### Ours to do, not hers
+
+| # | What | State |
+|---|---|---|
+| 19 | Send her the 214 findings outside her pass | **Export is ready** — `npm run export:findings-outside-kates-pass`. Her assumption that they were "properly rated with the new rulings" does not hold: 192 of the 214 were rated BEFORE their rule last changed, and the sheet marks that per row. |
+| 14 | Route "stop texting, call me" to a person | She approved the routing; being built. The suppression half is Karan/Katie, not hers. |
+| 1 | Holiday suppression | Her event-park answer is conditional on it — "as long as we have a mechanism that keeps customers from being messaged on specific holidays and the msg would send the following open day". No calendar exists. **Karan's call whether it is in scope for launch.** |
+
+### Answered 2026-10-05 and built — no action
+
+2 (A7 note, found in A40's own Note column), 3 → see 14, 4 → see 13 (zip floor
+then phone price), 6 (phone-pricing behaviour), 7 → see 17 (bookable split),
+8 → see 18 (Rule Hub: Keep), 11 → see 9 (Spanish disclosure: "Yes"),
+12 (discard wording, rebuilt in all three places).
+
+**One thing to ignore in her own rules, on her instruction:** A7's Rating
+guidance column still says *"the customer parked — A40 owns it, A7 does not
+fire"*. That is from 09-22, before A40 changed on 09-28, and she is amending
+it. It is rater-only and must never reach the model, which is already enforced.
 
 ---
 
@@ -566,7 +587,12 @@ version of the campaign's times applied to the stall cadence.
 
 ---
 
-## 9. A46's Spanish wording needs sign-off
+## 9. A46's Spanish wording needs sign-off — **ANSWERED 2026-10-05, CLOSED**
+
+> **Kate, 2026-10-05**, to the exact string below: *"Yes"*
+>
+> Live and unchanged since. Verified in the simulator 2026-10-05: a Spanish
+> "es una persona real o un robot?" returns it word for word.
 
 A46 supplies two approved strings in English. A30 says we answer Spanish
 ourselves, and A46 says the bot "never denies being a bot, **in any state**"
@@ -714,9 +740,24 @@ reused. It cannot have a change type.
 those rules is correct. If anything is worth doing it is ours: label them
 "predates change tracking" so they do not read as missing data.
 
-## 14. "Don't text me, just call me" is suppressed and the lead is closed
+## 14. "Don't text me, just call me" is suppressed and the lead is closed — **HALF ANSWERED 2026-10-05**
 
-**OPEN.** Found in the simulator on 2026-09-27. Not a bug report — a policy
+> **Kate, 2026-10-05:** *"Yes if they ask for us to stop texting and to call,
+> it's okay to route to a person. I don't think this is considered an explicit
+> opt-out, just a communication preference."*
+>
+> **The routing half is settled and is being built.** A text-stop that also asks
+> for a call reaches a person instead of ending the thread silently.
+>
+> **The suppression half is NOT hers to settle and stays open — Karan/Katie.**
+> Kate's reading is that this is a preference rather than an opt-out. Legally
+> "don't text me" is still a revocation of consent for texts, and the safe
+> reading is the one already shipped: keep the number suppressed, and route to a
+> person so somebody rings them. Suppressing somebody who did not have to be
+> suppressed costs a text; failing to suppress somebody who did costs
+> $500–$1,500 a message. **Nothing un-suppresses without Katie.**
+
+**Found** in the simulator on 2026-09-27. Not a bug report — a policy
 question, because every step is behaving as written.
 
     customer  "dont text me just call me"
@@ -755,9 +796,25 @@ Salesforce interaction is Katie's call as much as yours.
 
 ---
 
-## 13. Parity 7 — after one refusal, does "move on" mean stop asking?
+## 13. Parity 7 — after one refusal, does "move on" mean stop asking? — **ANSWERED 2026-10-05, CLOSED**
 
-**OPEN.** Raised by the persona hunt on 2026-09-27, not by Kate.
+> **Kate, 2026-10-05:** *"Letting them know we at least need to confirm the zip
+> code to provide an accurate estimate is valid. We wouldn't be able to provide
+> an in-person estimate without a confirmed address, so a phone pricing would be
+> offered/required in this case."*
+>
+> **Built to that, 2026-10-05, and replayed against production.** The second ask
+> narrows to the zip and says why — "No problem. We at least need the zip code
+> to price it accurately. What's the zip there?" — and if they still decline, the
+> conversation goes contact → `phone_pricing` rather than looping or closing.
+>
+> Two things that answer forced, both of which were wrong before and are fixed:
+> a phone quote still owes contact details (it is in the set that claims the flow
+> finished), so reaching for it early was refused and the lead went to a person;
+> and the phone-price copy promised "I'm getting that appointment set up for you"
+> to somebody who had just refused an address, which we cannot do.
+
+**Originally raised** by the persona hunt on 2026-09-27, not by Kate.
 
 Hatch's own wording is *"Ask if they'd mind confirming their address, BUT MOVE
 ON IF THEY DON'T PROVIDE IT."*
@@ -899,7 +956,27 @@ the customer.
 
 ---
 
-## 17. Containment and Bookable-to-Booked — we had to define them ourselves
+## 17. Containment and Bookable-to-Booked — **BOOKABLE ANSWERED 2026-10-05; CONTAINMENT STILL OPEN**
+
+> **Kate, 2026-10-05, on "bookable":** *"Bookable phone pricing = scope,
+> address, contact = confirmed. Availability is needed to consider an in-person
+> bookable. Only when customers are hesitant would scope, contact, and only
+> confirming their zip be fine for a phone pricing."*
+>
+> **Built exactly that.** `wasBookableByPhone` is stage 3 (scope, address,
+> contact) and `wasBookableInPerson` is stage 4 (availability as well), so the
+> two are reported separately rather than one number standing for both. Her
+> third clause is deliberately NOT measured: neither "hesitant" nor "zip but no
+> street" is a stage, so counting it would mean inventing a signal, and a metric
+> nobody can derive gets quoted and then defended. `HESITANT_ZIP_ONLY_NOT_MEASURED`
+> in metrics.ts says so in the code rather than in a comment nobody reads.
+>
+> **CONTAINMENT IS STILL OPEN.** The question was whether a correctly-refused
+> price that a person then rings about counts as contained. She answered the
+> BEHAVIOUR — *"the bot states that our estimators provide pricing and that it is
+> setting up that appointment. If they just want a price, the estimator can
+> provide a quick quote"* — which is now the phone_pricing copy, but not the
+> measure. Still need a yes/no on counting it as not contained.
 
 **Shipped with a default, 2026-09-29.** Both now appear per workspace on the
 reporting screen. Neither needed a migration; every field was already on the
@@ -1013,7 +1090,14 @@ a thing NOT to build until she says.
 after parts of the corpus were rated. Not a blocker, and the rule text we
 build against is current either way.
 
-## 18. Two Rule Hub bullets the spec and the data disagree about
+## 18. Two Rule Hub bullets the spec and the data disagree about — **ANSWERED 2026-10-05, CLOSED**
+
+> **Kate, 2026-10-05:** *"Keep"*
+>
+> So both stay as built: the Background/History column renders, and the 9
+> retired rules show in a greyed section below the live 37. Nothing changed —
+> this was a confirmation that what we shipped against her spec was right to
+> depart from it, because a retired rule still explains an old grading.
 
 Both found auditing the build against the Iteration 1 spec. Neither is
 urgent and neither has been changed, because guessing would remove something
@@ -1040,7 +1124,24 @@ bullet mean "not in the live list" (which is already true), or "not on the
 screen at all"?** If the latter, the retired pages become unreachable and old
 gradings stop being explicable.
 
-## 19. A13's baseline: 192 or 206?
+## 19. A13's baseline: 192 or 206? — **SHE ASKED US BACK; THE ANSWER IS READY TO SEND**
+
+> **Kate, 2026-10-05:** *"Is it possible to see which ones you've rated that
+> were not rated on my side? I'm assuming the extras were properly rated with
+> the new rulings"*
+>
+> **Yes, and the export exists:** `npm run export:findings-outside-kates-pass`
+> (scripts/export-findings-outside-kates-pass.mjs) lists all 214 findings outside
+> her 24 Sep pass.
+>
+> **Her assumption does not hold, and that is the thing to tell her.** 192 of the
+> 214 were rated BEFORE the rule they cite last changed, so they were graded
+> against wording that has since moved — not "properly rated with the new
+> rulings". The export marks that staleness per row. Nothing here is broken;
+> the 206 is a different, older pass rather than our importer over-counting.
+>
+> **→ Action is ours, not hers: send the sheet.** The only thing left for her
+> after that is whether 192 stays the number to beat.
 
 The spec says A13 carries **192 defects and 77 good turns**, and names that
 192 as the baseline to beat. The rated CSVs do yield 192/77 when filtered to
@@ -1094,7 +1195,32 @@ finding before any figure is quoted in a meeting.
 
 </details>
 
-## 20. Does a conversation that was briefly taken over ever stall?
+## 20. Does a conversation that was briefly taken over ever stall? — **RE-ASKED WITH CONTEXT 2026-10-05**
+
+> **Kate, 2026-10-05:** *"Need more context on the ask / where this takes
+> place"* — fair, the original was too abstract. Re-stated concretely:
+>
+> **Where:** the A44 stalled-follow-up cadence, deciding which conversations
+> get the three nudges.
+>
+> **The case, start to finish.** A customer is mid-flow with the bot. They ask
+> something the bot cannot answer, so it hands to a person. The person replies
+> once — "yes we do that" — and releases the thread back to the bot. The
+> customer then goes quiet.
+>
+> **What happens today:** nothing, ever. That conversation is excluded from the
+> three follow-ups permanently, because `takeover_at` is stamped the moment a
+> person touches it and never cleared. Your spec's test is "the last turn is a
+> bot turn and no human ever picked it up", and a human did pick it up — once,
+> for one message, two weeks ago.
+>
+> **Why it may be wrong:** in the Hatch corpus a takeover was terminal, so "no
+> human ever picked it up" and "a human is handling this" were the same thing.
+> In the Hub they are not — a person can answer one question and hand it back,
+> and the lead is then dropped silently.
+>
+> **The one question: should a thread a person released go back into the
+> cadence?** Left exactly as the spec says until you answer.
 
 The spec's test for A44 is mechanical: "the last turn is a bot turn and **no
 human ever picked it up**." We implement that literally — `takeover_at`
@@ -1278,3 +1404,101 @@ in the same breath as the workspace is activated.** Flagging it because it is
 the kind of thing discovered by a customer rather than by us. If you would
 rather the gate refuse to *activate* a workspace whose state is not covered,
 that is a small change and a better place for the failure than a text message.
+
+---
+
+## 25. A Spanish conversation ends with an English list of what we do cover
+
+**Found by testing, 2026-10-05. Low stakes, but it reaches a customer.**
+
+When somebody asks about work we do not cover, the bot says we cannot help and
+then names what we DO cover — so a person can say "oh, mine are built in".
+That list is the workspace's own services, read from `sms_workspace_services`,
+one row per service.
+
+Those rows are stored in English, and there is no Spanish column. So a Spanish
+conversation ends like this:
+
+> Creo que no podemos ayudar con este proyecto. Sí cubrimos **interior
+> painting, exterior painting, lime washing, skim coating and more**. Lo
+> reviso y le aviso si me equivoco. Disculpe la molestia!
+
+That is copied from the live bot, not a mock-up — played in the simulator
+against production on 2026-10-05. Worth noting the joining words are English
+too ("and more"), so this is not only the service names.
+
+Understandable, and not wrong in substance — but half the sentence is in the
+wrong language, in the one message whose entire job is to be clear about what
+we sell.
+
+**Worth saying plainly: this is rare.** Of the 1,298 graded conversations in
+production, **three** carry any Spanish at all and only one is a customer
+writing to us in it. So this is not urgent; it is cheap to fix and easy to
+forget.
+
+**→ Three options, and it is your call which:**
+
+1. **Leave it.** Defensible at this volume. The sentence still communicates.
+2. **A Spanish name per service** — a `name_es` column on the services rows,
+   filled in once. Then both languages read naturally. This is the one I would
+   pick if Spanish is going to matter at all.
+3. **Drop the list in Spanish only** — say we cannot help and that we will come
+   back to them, without naming the services. Loses the "mine are built in"
+   recovery, which is the point of naming them, so I would not.
+
+Nothing is blocked on this. If you choose (2), the service names are yours to
+write and I will wire the column.
+
+**Separately, and already fixed:** the same test found that a Spanish speaker
+asking about work we do not cover previously got **no reply at all**. The rule
+that decides whether a discard is silent — a wrong number gets silence, a real
+customer gets an answer — was deciding it on an English word list, so
+"pintan muebles?" looked like a wrong number. It now reads Spanish too, and
+because a discard is an ending, nobody would have seen those threads.
+
+---
+
+## 26. Do you want an after-hours auto-reply at all?
+
+**Raised 2026-10-06, and you have already voted once.** The note on the
+Settings screen records that **you marked an after-hours reply as a negative on
+a graded conversation**, so this is us checking whether that was the general
+rule or that one conversation.
+
+**Where it stands today:** off. Checked against production — the toggle is off
+on all 33 workspaces and no message has been written in any of them. Somebody
+texting at 10pm gets nothing until the office opens, when Emily answers them
+normally. Nothing is lost and nobody is told to wait; they just wait.
+
+**What it would say if it were on** (ours, not approved by anyone):
+
+> Thanks for reaching out! Our office is closed right now, but we'll pick this
+> up and get back to you after we open at **9 AM tomorrow**.
+
+That bold part is resolved, not typed: it reads the same opening-hours
+function the sending gate uses, in the CUSTOMER's timezone, so it cannot
+promise an hour the system will not act on. If it cannot be worked out, no
+reply is sent rather than a wrong one.
+
+**The part that makes this a smaller question than it sounds.** An
+after-hours reply can only go out inside the federal 8am-9pm window, and
+inside your 9am-8pm office hours the ordinary reply already covers it. So the
+only times this can ever fire are:
+
+| Local time | What happens |
+|---|---|
+| 8am - 9am | after-hours reply (office not open yet) |
+| 9am - 8pm | normal conversation, unaffected |
+| 8pm - 9pm | after-hours reply |
+| 9pm - 8am | silence either way, by law |
+
+So switching it on changes two hours of the day. It is capped at one per
+person per 24 hours, and never replaces STOP or HELP.
+
+**→ Recommendation: leave it OFF unless you say otherwise.** You have graded
+one as a negative, it only covers two hours, and a bot that says "we are
+closed" and then says nothing for eleven hours can read worse than a bot that
+simply answers in the morning. Say the word and it is one toggle.
+
+**If you do want it on, the other question is the wording** — the sentence
+above is ours and would want to be yours.

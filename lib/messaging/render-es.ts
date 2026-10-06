@@ -180,6 +180,10 @@ export const SAYS_ES: Record<Intent, string[]> = {
  * el código postal es el mínimo y conviene decir por qué, porque una segunda
  * pregunta a secas se lee como insistencia. Ver render.ts.
  */
+/** El piso del código postal, dicho una vez. Ver ASK_ZIP_WITH_REASON. */
+export const ASK_ZIP_WITH_REASON_ES =
+  "Sin problema. Necesitamos al menos el código postal para cotizarlo bien. Cuál es el de ahí?";
+
 export const ASK_ADDRESS_GAP_ES: Record<"zip" | "street", string[]> = {
   zip: [
     "Gracias! Cuál es el código postal de {address}?",
@@ -189,9 +193,22 @@ export const ASK_ADDRESS_GAP_ES: Record<"zip" | "street", string[]> = {
   street: [
     "Gracias! Y cuál es la dirección de la calle?",
     "Entendido. Cuál es la dirección de la calle?",
-    "Sin problema. Necesitamos al menos el código postal para cotizarlo bien. Cuál es el de ahí?",
+    ASK_ZIP_WITH_REASON_ES,
   ],
 };
+
+/** Se negaron a dar la dirección y ya preguntamos. Ver ASK_ADDRESS_REFUSED. */
+export const ASK_ADDRESS_REFUSED_ES = [ASK_ZIP_WITH_REASON_ES];
+
+/**
+ * Cotización por teléfono cuando no tenemos dirección: aquí la llamada es el
+ * plan, no la alternativa, y no se menciona ninguna cita porque no puede
+ * haberla. Ver PHONE_PRICING_NO_ADDRESS.
+ */
+export const PHONE_PRICING_NO_ADDRESS_ES = [
+  "No hay problema, lo podemos hacer por teléfono. Uno de nuestros estimadores lo llamará para repasar los detalles y darle un precio.",
+  "Sin ningún problema. Lo cotizamos por teléfono, y un estimador se comunicará con usted para repasar los detalles.",
+];
 
 export const ASK_AVAILABILITY_GAP_ES: Record<"window" | "day", string[]> = {
   window: [

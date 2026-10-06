@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { saveWorkspaceHours } from "@/lib/messaging/workspace-settings";
 import { describeDelay, validateDelay, DEFAULT_DELAY } from "@/lib/messaging/reply-delay";
 import { validateReplyTo } from "@/lib/messaging/reply-to";
+// The same constant the sender uses, so the box cannot show one sentence and
+// the customer receive another.
+import { DEFAULT_AFTER_HOURS_MESSAGE } from "@/lib/messaging/after-hours";
 
 export type Row = {
   id: string;
@@ -173,9 +176,18 @@ export default function WorkspaceHoursForm({
       {autoreply && (
         <label className="block">
           <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">What the auto-reply says</span>
+          {/* The placeholder IS the default now, rather than a suggestion
+              somebody had to retype into thirty-three workspaces. Reading it
+              from the same constant the sender uses means the box cannot show
+              one sentence and the customer receive another. */}
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3}
-            placeholder="Thanks for reaching out! We are currently closed and will get back to you after we open at {{next_open}}."
+            placeholder={DEFAULT_AFTER_HOURS_MESSAGE}
             className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-[13px] leading-relaxed resize-y" />
+          {!message.trim() && (
+            <span className="mt-1 block text-[11.5px] text-ppp-charcoal-500">
+              Left blank, that is exactly what gets sent. Type here only to say it differently.
+            </span>
+          )}
           {/*
             A MERGE FIELD NOBODY KNOWS ABOUT IS A FEATURE THAT DOES NOT EXIST.
             The FAQ store shipped complete and unusable for exactly this reason
@@ -194,6 +206,23 @@ export default function WorkspaceHoursForm({
             Kate marked an after-hours reply as a negative on a graded conversation. Leaving this off is a valid answer.
           </span>
         </label>
+      )}
+
+      {/*
+        SAY WHAT OFF ACTUALLY MEANS.
+        Checked 2026-10-06: this is off on all 33 workspaces, and two other
+        screens describe after-hours replies as a working feature. Somebody
+        reading those could reasonably believe a 10pm text gets answered. It
+        does not — it waits. That is a defensible choice, and Kate has graded
+        an after-hours reply as a negative, so it stays a choice rather than
+        something flipped on from here. It should just be a visible one.
+      */}
+      {!autoreply && (
+        <p className="text-[11.5px] text-ppp-charcoal-500 leading-relaxed">
+          Off: a text arriving out of hours gets no reply at all until the office
+          opens, when Emily answers it normally. Nothing is lost, nobody is told
+          to wait.
+        </p>
       )}
 
       {/* How long before Emily answers.
