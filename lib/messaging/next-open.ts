@@ -137,6 +137,11 @@ export function fillNextOpen(input: {
   customerZone: string;
   officeZone?: string;
   officeHours?: QuietHours;
+  /** The workspace's closed-days policy. Absent means "we send then", which
+   *  is the behaviour this had before and is never wrong in a way that
+   *  promises a day PPP is shut. */
+  sendOnWeekends?: boolean;
+  sendOnHolidays?: boolean;
 }): NextOpenFill {
   const body = input.body ?? "";
   if (!wantsNextOpen(body)) return { ok: true, body };
@@ -164,6 +169,11 @@ export function fillNextOpen(input: {
     // the answer is governed by the OUTBOUND window. answersInbound would
     // widen it to the federal bound and promise a time nobody is working.
     answersInbound: false,
+    // And the closed days, for the same reason: naming a Saturday or
+    // Christmas Day as "when we open" is the promise this file exists to
+    // keep honest.
+    sendOnWeekends: input.sendOnWeekends,
+    sendOnHolidays: input.sendOnHolidays,
   });
 
   if (!when) {

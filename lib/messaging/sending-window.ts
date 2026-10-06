@@ -43,6 +43,7 @@
  * preference. See customer-clock.ts for how the recipient's zone is resolved
  * and what happens when it cannot be.
  */
+import { isHolidayIn } from "./holidays";
 import {
   clampToFederal, withinMinuteWindow, isWeekendIn, localMinutes, FEDERAL_BOUND, type QuietHours,
 } from "./compliance";
@@ -91,6 +92,23 @@ export function sendingWindow(input: {
   /** PPP's configured hours, when a workspace has narrowed them further. */
   officeHours?: QuietHours;
   answersInbound?: boolean;
+  /**
+   * PPP's own closed-days policy, so a PREDICTION can match the gate.
+   *
+   * The gate refuses a weekend or a holiday in its own steps, with their own
+   * refusal reasons and retry times, and this function knew nothing about
+   * them. nextWindowOpen loops on this one, and fillNextOpen turns its answer
+   * into a sentence a customer reads — so "we open at 9 AM tomorrow" could
+   * name Christmas Day, which the gate would then refuse. next-open.ts states
+   * the guarantee this breaks: "the sentence cannot be wrong unless the gate
+   * is wrong."
+   *
+   * Optional and defaulting to "we do send", so the gate's own call is
+   * unchanged and keeps its separate, better-labelled refusals. This exists
+   * for the prediction, not to move the policy.
+   */
+  sendOnWeekends?: boolean;
+  sendOnHolidays?: boolean;
 }): WindowVerdict {
   const officeZone = input.officeZone ?? OFFICE_ZONE;
 
@@ -125,6 +143,16 @@ export function sendingWindow(input: {
   // message, or only outbound PPP starts? This reads it as the latter. If she
   // means the former, delete this early return and the four tests change.
   if (input.answersInbound) return { open: true };
+
+  // The closed-days policy, when the caller supplied it. Same order as the
+  // gate: weekend first, then holiday, so a holiday Friday reads as closed
+  // for the holiday rather than for the weekend after it.
+  if (input.sendOnWeekends === false && isWeekendIn(input.now, input.customerZone)) {
+    return { open: false, why: "office_closed" };
+  }
+  if (input.sendOnHolidays === false && isHolidayIn(input.now, input.customerZone)) {
+    return { open: false, why: "office_closed" };
+  }
 
   // A36's weekday/weekend windows, narrowed by whatever the workspace has
   // configured but never widened past them.

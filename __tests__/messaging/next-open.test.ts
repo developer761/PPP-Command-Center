@@ -218,3 +218,83 @@ describe("through afterHoursReply, which is what actually sends", () => {
     expect(d.body).toBe("Thanks! We're closed right now.");
   });
 });
+
+/**
+ * AND IT MUST NOT NAME A DAY PPP IS SHUT.
+ *
+ * This file's own promise is that "the sentence cannot be wrong unless the
+ * gate is wrong". That stopped being true the moment the gate learned about
+ * weekends and holidays and sendingWindow did not: a customer texting at
+ * 8:30pm on Christmas Eve was told "we open at 9 AM tomorrow", and the gate
+ * would then refuse the 25th and defer to the 26th.
+ *
+ * The policy is now passed in, so the prediction and the refusal read the same
+ * closed days. Absent still means "we send then", which is how every existing
+ * caller behaved and never promises a closure that is not real.
+ */
+describe("the promised hour respects the closed days", () => {
+  /** 8:30pm ET on Thursday 24 December 2026. */
+  const XMAS_EVE_EVENING = new Date("2026-12-25T01:30:00Z");
+  const say = (over: Record<string, unknown> = {}) => fillNextOpen({
+    body: "We are closed. Back at {{next_open}}.",
+    now: XMAS_EVE_EVENING, customerZone: ET, ...over,
+  });
+
+  it("skips Christmas Day when the workspace does not send on holidays", () => {
+    const out = say({ sendOnHolidays: false });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.body).not.toMatch(/tomorrow/i);
+      // The 25th is skipped and it lands on Saturday the 26th — this
+      // workspace works weekends, so Saturday is a real opening. My first
+      // version of this expected Monday, which is the answer when BOTH
+      // policies are off; the next case covers that.
+      expect(out.body).toMatch(/Sat/);
+    }
+  });
+
+  it("skips the holiday AND the weekend when neither is sent on", () => {
+    const out = say({ sendOnHolidays: false, sendOnWeekends: false });
+    expect(out.ok).toBe(true);
+    // 25th holiday, 26th Sat, 27th Sun -> Monday 28 December.
+    if (out.ok) expect(out.body).toMatch(/Mon/);
+  });
+
+  it("still offers tomorrow when holidays are allowed", () => {
+    const out = say({ sendOnHolidays: true });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.body).toMatch(/tomorrow/i);
+  });
+
+  it("is unchanged when no policy is given, which is every old caller", () => {
+    const out = say();
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.body).toMatch(/tomorrow/i);
+  });
+
+  /** A Friday evening for a workspace that does not work weekends. */
+  it("skips the weekend", () => {
+    const friEvening = new Date("2026-07-18T01:30:00Z"); // 9:30pm ET Fri 17 Jul
+    const out = fillNextOpen({
+      body: "Back at {{next_open}}.", now: friEvening, customerZone: ET,
+      sendOnWeekends: false,
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.body).toMatch(/Mon/);
+  });
+
+  /**
+   * THE WHOLE POINT, asserted directly: whatever hour it names, the gate must
+   * agree that hour is sendable under the same policy.
+   */
+  it("names an hour the sending window actually opens at", async () => {
+    const { sendingWindow } = await import("@/lib/messaging/sending-window");
+    const { nextWindowOpen } = await import("@/lib/messaging/sending-window");
+    const policy = { sendOnHolidays: false, sendOnWeekends: false };
+    const when = nextWindowOpen({
+      now: XMAS_EVE_EVENING, customerZone: ET, answersInbound: false, ...policy,
+    });
+    expect(when).not.toBeNull();
+    expect(sendingWindow({ now: when!, customerZone: ET, answersInbound: false, ...policy }).open).toBe(true);
+  });
+});
