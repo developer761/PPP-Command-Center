@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
-import { customItemLabel, inBuyList, isOnOrder, nextCustomColorId, orderableQty } from "@/lib/supplier-order/color-note-items";
+import { inBuyList, isOfferOnOrder, nextCustomColorId, offerIdentity, orderableQty } from "@/lib/supplier-order/color-note-items";
 import type { ColorNoteOffer } from "@/lib/supplier-order/color-note-parse";
 import { formatRoomDimensions } from "@/lib/supplier-order/room-dimensions";
 import { groupExtras } from "@/lib/supplier-order/extras-groups";
@@ -679,12 +679,29 @@ export default function OrderBuilderView({
   const patch = (p: Partial<OrderBuildPayload>) => setPayload((cur) => ({ ...cur, ...p }));
   // A color added straight from a line's Color Notes. Functional update: two
   // quick taps on different rows must not drop the first one.
-  const addCustomColorItem = (label: string, qty: number, unit: string) =>
+  // `extra` carries the sheen the note already named and where the color goes
+  // (Kate 2026-10-06). The sundry adder below passes none, which is right —
+  // a hand-typed line has no note to read them from.
+  const addCustomColorItem = (
+    label: string,
+    qty: number,
+    unit: string,
+    extra?: { finish?: string | null; scope?: string | null }
+  ) =>
     setPayload((cur) => ({
       ...cur,
       customColorItems: [
         ...cur.customColorItems,
-        { id: nextCustomColorId(cur.customColorItems, label), label, qty, unit },
+        {
+          id: nextCustomColorId(cur.customColorItems, label),
+          label,
+          qty,
+          unit,
+          // Only set when the note actually said so — an empty string here
+          // would read as "the estimator cleared it" rather than "unknown".
+          ...(extra?.finish ? { finish: extra.finish } : {}),
+          ...(extra?.scope ? { scope: extra.scope } : {}),
+        },
       ],
     }));
 
@@ -839,6 +856,17 @@ export default function OrderBuilderView({
     toggleExtra({ id, name: value, unit: "gal", default_qty: 1 });
   };
 
+  /**
+   * The job's own product line — what a line falls back to when nobody picked
+   * one for it, and what the EMAIL falls back to (builder.ts: `?? materialType`).
+   *
+   * Resolved upstream in priority order: the estimator's pick on this screen,
+   * then the AM's or customer's pick on the entry form, then Salesforce's
+   * Product_Lines__c on the work order. Empty means the job genuinely has none
+   * and every line has to be answered individually.
+   */
+  const jobMaterialType = (currentDraft?.resolvedMaterialType ?? "").trim();
+
   /* ── Advance ───────────────────────────────────────────────────────────── */
   /**
    * Colors that would reach the vendor as "[NOT SET]".
@@ -855,12 +883,45 @@ export default function OrderBuilderView({
    */
   const needProductLine = estimates.filter((e) => {
     if (e.excluded) return false;
+    // Resolve EXACTLY as builder.ts does for the email:
+    //     readProductOverride(...) ?? materialType
+    // It did not, and that is Kate's 2026-10-06 report. The email falls back to
+    // the JOB's product line — the one resolved from the estimator's pick, then
+    // the entry form, then Salesforce's Product_Lines__c — while this gate only
+    // looked at the per-color overrides. So on any job carrying a product line,
+    // every line the estimator hadn't touched individually would have emailed
+    // correctly and was still refused with "Product line required".
+    //
+    // Which is also why "— Use default (no override) —" looked broken: it
+    // cleared the override so the job default would apply, which is right, and
+    // then this fired anyway. The option was fine; the gate was wrong.
     const picked = readProductOverride(payload.materialTypeOverrides, e) ?? "";
-    const resolved = picked || readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e) || "";
+    const resolved =
+      picked ||
+      readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e) ||
+      jobMaterialType ||
+      "";
     // A bare "Other" with nothing typed is the one that LOOKS answered and
     // prints "[NOT SET]" anyway — the trap Katie item 11 already named.
     return !materialTypeForVendor(resolved).trim();
   });
+
+  /**
+   * Custom color items heading for the vendor as "[NOT SET]".
+   *
+   * The gate above only ever looked at `estimates`, so a hand-typed line — or
+   * one added from the color notes — sailed past it and printed [NOT SET] in
+   * the email anyway. That is the line in Kate's 2026-10-06 screenshot, and it
+   * is the exact outcome Katie's "make product line required" was asked to
+   * prevent; the rule was just never applied to this half of the order.
+   *
+   * No job default to fall back on here: a hand-typed line has no work-order
+   * scope to read one from.
+   */
+  const customNeedProductLine = (payload.customColorItems ?? []).filter(
+    (c) => c.label.trim() && !materialTypeForVendor(c.materialType).trim()
+  );
+  const totalNeedProductLine = needProductLine.length + customNeedProductLine.length;
 
   // Scrolling from inside the click handler did not move the page: the button
   // sits in a sticky footer inside the dashboard's own scroll container, and
@@ -891,7 +952,7 @@ export default function OrderBuilderView({
     // is. A message at the bottom of a long page about a control at the top is
     // a message nobody can act on, so this scrolls to the buy-list and turns
     // the offending pickers red.
-    if (needProductLine.length > 0) {
+    if (totalNeedProductLine > 0) {
       setProductLineError(true);
       // The button lives in a STICKY FOOTER. Left focused, the browser scrolls
       // it back into view and lands the reader at the bottom of the page —
@@ -1159,13 +1220,22 @@ export default function OrderBuilderView({
             {/* Katie 2026-10-01 — the refusal is explained HERE, at the control
                 that has to change, because the button that refused is at the
                 bottom of a long page. */}
-            {productLineError && needProductLine.length > 0 && (
+            {productLineError && totalNeedProductLine > 0 && (
               <p role="alert" className="px-4 py-2.5 text-[12px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
-                Product line required — {needProductLine.length === 1
-                  ? "1 color below has no product line."
-                  : `${needProductLine.length} colors below have no product line.`}{" "}
+                Product line required — {totalNeedProductLine === 1
+                  ? "1 color has no product line."
+                  : `${totalNeedProductLine} colors have no product line.`}{" "}
                 <span className="font-normal">
                   Pick one on each row marked in red; the vendor is sent &ldquo;[NOT SET]&rdquo; without it.
+                  {customNeedProductLine.length > 0 && (
+                    <>
+                      {" "}
+                      {customNeedProductLine.length === 1
+                        ? "One of them is a custom color item"
+                        : `${customNeedProductLine.length} of them are custom color items`}{" "}
+                      further down the page.
+                    </>
+                  )}
                 </span>
               </p>
             )}
@@ -1258,6 +1328,19 @@ export default function OrderBuilderView({
                 // form on arrival scolds somebody who has not done anything yet.
                 const lineNeedsProduct =
                   productLineError && needProductLine.some((n) => quantityKey(n.colorId, n.finish, n.isBathroom) === key);
+                // What this line falls back to when no override is picked —
+                // the job's own product line from Salesforce. Read through the
+                // same fallback the value uses, or a pre-split draft loses the
+                // hint on a bathroom row while the value still shows. Empty
+                // means there is NOTHING to fall back to, which is why the
+                // clear option is withheld below.
+                // Same order the email uses: the per-color default first (the
+                // exterior line derived for exterior-only colors), then the
+                // job's own. Either is a real thing to fall back to; neither
+                // means the clear option would lead nowhere, so it is withheld.
+                const jobDefault =
+                  readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e) ||
+                  jobMaterialType;
                 return (
                   <li key={key} className="px-4 py-3 text-xs">
                     {/* basis-full sm:basis-auto makes the name take its own row
@@ -1512,15 +1595,17 @@ export default function OrderBuilderView({
                             // The fallback is NOT "use default" any more: item 14 removed
                             // the job-level default selector, so that phrase pointed at a
                             // control that no longer exists.
-                            placeholder={(() => {
-                              // Read through the same fallback the value uses,
-                              // or a pre-split draft loses the "(from the job)"
-                              // hint on a bathroom row while the value shows.
-                              const resolved = readForEstimate(currentDraft?.resolvedMaterialTypeOverrides ?? {}, e);
-                              return resolved ? `${resolved} (from the job)` : "— pick a product —";
-                            })()}
+                            placeholder={jobDefault ? `${jobDefault} (from the job)` : "— pick a product —"}
                             compact
-                            allowClear
+                            // Clearing is only offered when there is something
+                            // behind it. Kate 2026-10-06: the option read "Use
+                            // default (no override)" on every line, including
+                            // the ones with no job default — picking it set the
+                            // override to "" and tripped "Product line
+                            // required", which looked like the error was broken
+                            // when it was the option that was.
+                            allowClear={Boolean(jobDefault)}
+                            clearLabel={`— Use the job's ${jobDefault} —`}
                             availableValues={lineMaterialValues}
                           />
                         </div>
@@ -1583,6 +1668,7 @@ export default function OrderBuilderView({
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
             materialValues={lineMaterialValues}
+            showMissingProduct={productLineError}
           />
 
           {/* ── Color Notes (#16) ─────────────────────────────────────────── */}
@@ -1916,7 +2002,12 @@ function ColorNoteOffers({
   remarks: string[];
   items: Array<{ label: string }>;
   estimates: Array<{ colorName: string; colorCode: string | null }>;
-  onAdd: (label: string, qty: number, unit: string) => void;
+  onAdd: (
+    label: string,
+    qty: number,
+    unit: string,
+    extra?: { finish?: string | null; scope?: string | null }
+  ) => void;
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, PaintUnit>>({});
@@ -1924,8 +2015,10 @@ function ColorNoteOffers({
   // The room the NOTE named beats the line item's own — when a rep puts seven
   // rooms on one line, the line's name identifies none of them (Katie
   // 2026-10-01). Falls back to the line item for notes with no headings.
-  const labelFor = (o: ColorNoteOffer) => customItemLabel(o.room ?? room, o.line);
-  const pending = offers.filter((o) => !isOnOrder(items, labelFor(o))).length;
+  // Kate 2026-10-06: the color, its sheen and where it goes, kept apart —
+  // the whole string used to become the color and reached the vendor that way.
+  const identityFor = (o: ColorNoteOffer) => offerIdentity(o, room);
+  const pending = offers.filter((o) => !isOfferOnOrder(items, identityFor(o))).length;
   return (
     <div className="mt-2 rounded-lg border border-ppp-charcoal-100 px-3 py-2">
       {offers.length > 0 && (
@@ -1938,20 +2031,24 @@ function ColorNoteOffers({
       <ul className="mt-1 divide-y divide-ppp-charcoal-100">
         {offers.map((offer) => {
           const line = offer.line;
-          const label = labelFor(offer);
-          const added = isOnOrder(items, label);
+          const id = identityFor(offer);
+          const added = isOfferOnOrder(items, id);
           const covered = inBuyList(line, estimates);
           const q = qty[line] ?? "";
           return (
             <li key={line} className="py-1.5">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {/* Shaped like a buy row (Kate 2026-10-06): the color and its
+                    sheen on top, where it goes underneath — rather than one
+                    run-on string that then became the color on the order. */}
                 <span className="flex-1 min-w-[8rem] text-[12px] leading-snug text-ppp-charcoal break-words">
-                  {/* The room the note named, carried onto the line the way
-                      the exterior buy-list already shows its areas. */}
-                  {offer.room && (
-                    <span className="font-semibold text-ppp-charcoal-600">{offer.room} · </span>
+                  <span className="font-medium">{id.label}</span>
+                  {id.finish && (
+                    <span className="text-ppp-charcoal-500"> · {id.finish}</span>
                   )}
-                  {line}
+                  {id.scope && (
+                    <span className="block text-[11px] text-ppp-charcoal-500">{id.scope}</span>
+                  )}
                 </span>
                 {added ? (
                   <span className="shrink-0 text-[11px] font-medium text-ppp-green-700">✓ On order</span>
@@ -1966,7 +2063,7 @@ function ColorNoteOffers({
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && q.trim()) {
                           e.preventDefault();
-                          onAdd(label, orderableQty(q), unit[line] ?? "gal");
+                          onAdd(id.label, orderableQty(q), unit[line] ?? "gal", { finish: id.finish, scope: id.scope });
                         }
                       }}
                       placeholder="Qty"
@@ -1986,7 +2083,7 @@ function ColorNoteOffers({
                     <button
                       type="button"
                       disabled={!q.trim()}
-                      onClick={() => onAdd(label, orderableQty(q), unit[line] ?? "gal")}
+                      onClick={() => onAdd(id.label, orderableQty(q), unit[line] ?? "gal", { finish: id.finish, scope: id.scope })}
                       className="text-[11px] font-semibold text-ppp-blue-700 hover:underline disabled:text-ppp-charcoal-400 disabled:no-underline disabled:cursor-not-allowed px-2 min-h-[44px] sm:min-h-[28px] inline-flex items-center touch-manipulation"
                     >
                       Add
@@ -2033,6 +2130,15 @@ function ColorNoteOffers({
   );
 }
 
+/**
+ * MUST mirror `CustomColorItem` in lib/supplier-order/builder.ts.
+ *
+ * It is duplicated rather than imported because builder.ts is `server-only`.
+ * A second copy is how two shapes drift — and this one already had: `scope`
+ * was added to the canonical type and not here, which tsc caught. The
+ * order-builder-custom-item test asserts the two field lists match, so the
+ * next person who adds a field to one is told about the other.
+ */
 type CustomItem = {
   id: string;
   label: string;
@@ -2040,17 +2146,24 @@ type CustomItem = {
   unit: string;
   finish?: string | null;
   materialType?: string | null;
+  /** Where it goes — "Ceiling — All rooms". Screen only, never emailed. */
+  scope?: string | null;
 };
 
 function CustomColorItems({
   items,
   onChange,
   materialValues,
+  showMissingProduct = false,
 }: {
   items: CustomItem[];
   onChange: (items: CustomItem[]) => void;
   /** The same product list the buy-list rows offer, filtered to this job. */
   materialValues?: ReadonlySet<string>;
+  /** The estimator pressed "Continue to sending" and these lines would have
+   *  reached the vendor as "[NOT SET]". Marks them the same way the buy rows
+   *  are marked, so "the rows marked in red" means something down here too. */
+  showMissingProduct?: boolean;
 }) {
   const [label, setLabel] = useState("");
   const [qty, setQty] = useState("1");
@@ -2097,9 +2210,25 @@ function CustomColorItems({
       {items.length > 0 && (
         <ul className="space-y-1.5 mb-3">
           {items.map((it) => (
-            <li key={it.id} className="text-xs bg-ppp-green-50/50 border border-ppp-green-100 rounded px-2.5 py-2">
+            <li
+              key={it.id}
+              className={`text-xs rounded px-2.5 py-2 border ${
+                showMissingProduct && !materialTypeForVendor(it.materialType).trim()
+                  ? "bg-ppp-orange-50 border-ppp-orange-100"
+                  : "bg-ppp-green-50/50 border-ppp-green-100"
+              }`}
+            >
               <div className="flex items-center gap-2">
-                <span className="flex-1 min-w-0 truncate text-ppp-charcoal">{it.label}</span>
+                {/* Color on top, where it goes underneath — the buy-row shape
+                    (Kate 2026-10-06). `truncate` would clip the scope line, so
+                    this wraps instead: a room list is exactly the text that
+                    outgrows its track. */}
+                <span className="flex-1 min-w-0 text-ppp-charcoal break-words">
+                  {it.label}
+                  {it.scope && (
+                    <span className="block text-[10px] text-ppp-charcoal-500">{it.scope}</span>
+                  )}
+                </span>
                 <span className="text-[10px] text-ppp-charcoal-500 shrink-0">×{it.qty} {it.unit}</span>
                 <button
                   type="button"
@@ -2127,17 +2256,34 @@ function CustomColorItems({
                   placeholder="e.g. Eggshell"
                   className="w-32 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 min-h-[44px] sm:min-h-0"
                 />
-                <label className="text-[10px] text-ppp-charcoal-500" htmlFor={`cc-mt-${it.id}`}>
+                <label
+                  className={`text-[10px] ${
+                    showMissingProduct && !materialTypeForVendor(it.materialType).trim()
+                      ? "text-ppp-orange-700 font-semibold"
+                      : "text-ppp-charcoal-500"
+                  }`}
+                  htmlFor={`cc-mt-${it.id}`}
+                >
                   Product line
                 </label>
-                <div className="w-[190px]">
+                <div
+                  className={`w-[190px] ${
+                    showMissingProduct && !materialTypeForVendor(it.materialType).trim()
+                      ? "rounded-lg ring-2 ring-ppp-orange-700"
+                      : ""
+                  }`}
+                >
                   <MaterialTypePicker
                     id={`cc-mt-${it.id}`}
                     value={it.materialType ?? ""}
                     onChange={(v) => patchItem(it.id, { materialType: v })}
                     placeholder="— pick a product —"
                     compact
-                    allowClear
+                    // No clear option: a hand-typed line has no job default
+                    // behind it, so clearing sends the vendor "[NOT SET]" —
+                    // the line in Kate's 2026-10-06 screenshot. The picker is
+                    // the only place this can be answered, so it does not
+                    // offer a way to un-answer it.
                     availableValues={materialValues}
                   />
                 </div>

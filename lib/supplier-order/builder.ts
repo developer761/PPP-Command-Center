@@ -194,6 +194,19 @@ export type CustomColorItem = {
    */
   finish?: string | null;
   materialType?: string | null;
+  /**
+   * Where it goes — "Ceiling — All rooms". SCREEN ONLY; never emailed.
+   *
+   * Kate, 2026-10-06: a color added from the parsed notes put the whole string
+   * on the order, so the vendor read "All rooms · Ceiling: Super White - Flat"
+   * where every other line read "HC-172 Revere Pewter · Eggshell". The room
+   * and surface now live here instead of inside `label`, which is what keeps
+   * two rooms sharing one color from matching as the same item while leaving
+   * the emailed line the same shape as the rest.
+   *
+   * Optional: items added before today carry the flattened label and no scope.
+   */
+  scope?: string | null;
 };
 
 export type CustomerSubmittedPayload = {

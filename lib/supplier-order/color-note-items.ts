@@ -1,4 +1,5 @@
 import { parseColorNotes } from "@/lib/supplier-order/color-note-parse";
+import { splitColorNoteOffer } from "@/lib/supplier-order/color-note-split";
 
 /**
  * Color Notes → custom color items, one color at a time.
@@ -57,6 +58,68 @@ export function itemKey(label: string): string {
 export function isOnOrder(items: ReadonlyArray<{ label: string }>, line: string): boolean {
   const k = itemKey(line);
   return k.length > 0 && items.some((it) => itemKey(it.label) === k);
+}
+
+/**
+ * One color-note offer, as the order line it becomes.
+ *
+ * Kate 2026-10-06 — see color-note-split.ts. `label` is now the COLOR alone so
+ * the vendor email reads like every other line; the room and surface move to
+ * `scope`, and the sheen the note already named prefills `finish` instead of
+ * being retyped.
+ */
+export type OfferIdentity = {
+  /** The color alone — what goes on the order and to the vendor. */
+  label: string;
+  finish: string | null;
+  /** "Ceiling — All rooms". Screen only. */
+  scope: string | null;
+  /**
+   * The old flattened form, kept ONLY so an item added before today is still
+   * recognized as on-order. Without it, reopening a draft would offer every
+   * previously-added color again and the estimator would buy it twice.
+   */
+  legacyLabel: string;
+};
+
+export function offerIdentity(
+  offer: { line: string; room?: string | null },
+  fallbackRoom?: string | null
+): OfferIdentity {
+  const room = offer.room ?? fallbackRoom ?? null;
+  const split = splitColorNoteOffer(offer.line, room);
+  return {
+    label: split.color,
+    finish: split.finish,
+    scope: split.scope,
+    legacyLabel: customItemLabel(room, offer.line),
+  };
+}
+
+/**
+ * Is this offer already on the order?
+ *
+ * Matched on color AND scope, not on color alone: "Door: Super White" written
+ * identically into the Kitchen, Hall and Bedroom line items is three separate
+ * things to buy, and collapsing them to one is the bug customItemLabel was
+ * written to fix — splitting the room back out of the label would have
+ * reintroduced it.
+ *
+ * Still answers true for an item saved in the old flattened form, so a draft
+ * from before today does not re-offer everything it already holds.
+ */
+export function isOfferOnOrder(
+  items: ReadonlyArray<{ label: string; scope?: string | null }>,
+  id: OfferIdentity
+): boolean {
+  const color = itemKey(id.label);
+  if (!color) return false;
+  const scope = itemKey(id.scope ?? "");
+  const legacy = itemKey(id.legacyLabel);
+  return items.some((it) => {
+    if (itemKey(it.label) === legacy) return true; // added before 2026-10-06
+    return itemKey(it.label) === color && itemKey(it.scope ?? "") === scope;
+  });
 }
 
 /**

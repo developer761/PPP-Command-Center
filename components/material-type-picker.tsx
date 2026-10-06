@@ -48,10 +48,19 @@ type Props = {
   id?: string;
   /** Optional class added to the trigger. */
   triggerClassName?: string;
-  /** When true, the "— use default —" choice appears at the top so admin
-   *  can explicitly clear an override. Disabled by default (customer form
-   *  uses a placeholder option instead). */
+  /** When true, a "clear this choice" option appears at the top. Disabled by
+   *  default (customer form uses a placeholder option instead).
+   *
+   *  Only pass it where clearing actually falls back to SOMETHING. Kate,
+   *  2026-10-06: "when 'Use default no override' is selected it acts as if no
+   *  product line has been selected and the product line required error
+   *  shows." It did, and correctly — the job-level default selector was
+   *  removed (item 14), so on a line with no default from Salesforce there was
+   *  nothing behind the option and clearing guaranteed the error. */
   allowClear?: boolean;
+  /** What the clear option says. Name the thing it falls back to — an option
+   *  reading "use default" where no default exists is the bug above. */
+  clearLabel?: string;
 };
 
 export default function MaterialTypePicker({
@@ -63,6 +72,7 @@ export default function MaterialTypePicker({
   id,
   triggerClassName,
   allowClear = false,
+  clearLabel = "— Clear —",
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -319,7 +329,7 @@ export default function MaterialTypePicker({
                   !value ? "font-semibold text-ppp-blue-700" : "text-ppp-charcoal-500 italic",
                 ].join(" ")}
               >
-                — Use default (no override) —
+                {clearLabel}
               </button>
             )}
             {visibleGroups.length === 0 ? (
