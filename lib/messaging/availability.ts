@@ -181,13 +181,66 @@ export function availabilityGap(
  * test — could a person reply "you're booked for X" without asking anything
  * further — is satisfied by the pair.
  */
+/**
+ * THEY TOOK IT BACK.
+ *
+ * Availability accumulates across the whole thread and nothing ever cleared
+ * it, so once a day and a window had appeared the gap was null for the rest of
+ * the conversation — permanently. "Something came up, Tuesday won't work" then
+ * left the bot unable to ask what day would: ask_availability is refused as
+ * availability_already_given, and the refusal detail actively tells the model
+ * to move the conversation on rather than ask again.
+ *
+ * The rule it trips over is a good one. Asking twice for something already
+ * given is A13, which is exactly what the accumulation protects. But "do not
+ * ask twice" was never meant to mean "never ask again after they change their
+ * mind" — that is the correct-rules-with-no-legal-move-between-them shape, and
+ * here it costs the booking.
+ *
+ * BOUND TO A DAY OR A WINDOW IN THE SAME MESSAGE, deliberately. Several of
+ * these phrases are ordinary objections to something else: "no me sirve" is as
+ * likely to be about the price, "that won't work" about a paint shade. Requiring a
+ * time word beside it means a price complaint cannot silently reopen
+ * availability, at the cost of missing a bare "that no longer works" with no
+ * day in it. Of the two, re-asking somebody who objected to a quote is worse.
+ */
+const RETRACTS =
+  /\b(?:wo|does|do|did|will|ca|could)n'?t\s+(?:work|happen|make\s+it)\b|\b(?:will\s+not|does\s+not|cannot)\s+work\b|\bno\s+longer\s+(?:works?|good|available|able)\b|\b(?:is|are|ai)?n'?t\s+going\s+to\s+work\b|\bnot\s+going\s+to\s+work\b|\bsomething\s+came\s+up\b|\b(?:need|have|has|got)\s+to\s+(?:resched|move|change|push)\w*\b|\bchanged\s+my\s+mind\b|\b(?:scratch|cancel|forget)\s+that\b|\bya\s+no\s+(?:puedo|podr[ée]|me\s+sirve|funciona|va)\b|\bno\s+(?:me\s+)?(?:sirve|funciona|va\s+a\s+funcionar)\b|\bsurgi[óo]\s+algo\b|\btengo\s+que\s+(?:cambiar|reprogramar|mover)\b|\bcambi[ée]\s+de\s+opini[óo]n\b|\bmejor\s+otro\s+d[íi]a\b/i;
+
+/** A retraction only counts where there is something in it to retract. */
+export function retractsAvailability(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  return RETRACTS.test(t) && (DAY.test(t) || WINDOW.test(t));
+}
+
 export function availabilityGapAcross(
   texts: readonly (string | null | undefined)[],
   opts: { justAskedForAvailability?: boolean } = {}
 ): AvailabilityGap {
   let haveDay = false;
   let haveWindow = false;
+  /**
+   * Tracked rather than returned on, because a `null` from one message used to
+   * end the loop and could therefore never be undone by a later one.
+   */
+  let complete = false;
   for (const [i, text] of texts.entries()) {
+    /**
+     * CLEARED, AND THIS MESSAGE IS NOT THEN READ FOR A NEW DAY.
+     *
+     * "Tuesday won't work" contains Tuesday, so reading it would set haveDay
+     * and leave the bot narrowing for a window against a day they have just
+     * withdrawn. Skipping it reopens the gap to "both" and the bot asks what
+     * day works, which is what a person would ask. If they offered a
+     * replacement in the same breath, their next message settles it.
+     */
+    if (retractsAvailability(text)) {
+      haveDay = false;
+      haveWindow = false;
+      complete = false;
+      continue;
+    }
     /**
      * THE BARE-ASSENT CARVE-OUT BELONGS TO THE LAST MESSAGE ONLY.
      *
@@ -202,11 +255,12 @@ export function availabilityGapAcross(
      * answering us.
      */
     const gap = availabilityGap(text, i === texts.length - 1 ? opts : {});
-    if (gap === null) return null;
+    if (gap === null) { complete = true; continue; }
     // "window" means a DAY was found and the window is what is missing.
     if (gap === "window") haveDay = true;
     if (gap === "day") haveWindow = true;
   }
+  if (complete) return null;
   if (haveDay && haveWindow) return null;
   if (haveDay) return "window";
   if (haveWindow) return "day";
