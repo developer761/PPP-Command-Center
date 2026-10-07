@@ -68,7 +68,8 @@
     "check:rules": "node scripts/check-rules-are-wired.mjs",
     "check:options": "node scripts/check-unpassed-options.mjs",
     "gates": "node scripts/gates.mjs",
-    "prepare": "node scripts/install-hooks.mjs"
+    "prepare": "node scripts/install-hooks.mjs",
+    "check:writers": "node scripts/check-settings-have-writers.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

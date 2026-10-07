@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { COPYABLE_SETTINGS, SETTING_LABELS } from "@/lib/messaging/settings-copy";
 
 const writes: Record<string, unknown>[] = [];
 // The access check is asserted structurally in server-action-auth.test.ts and
@@ -93,5 +95,56 @@ describe("workspace hours", () => {
   it("stores an empty auto-reply as null rather than an empty message", async () => {
     await saveWorkspaceHours({ ...base, afterHoursMessage: "   " });
     expect(writes[0].after_hours_message).toBeNull();
+  });
+});
+
+/**
+ * A SETTING THE GATE ENFORCES THAT NOTHING COULD SET.
+ *
+ * send_on_holidays shipped on 2026-10-07 read by the gate in nine places and
+ * written in none. It was absent from COPYABLE_SETTINGS and from NEVER_COPIED,
+ * from the settings page's select list, from the hours form and from the patch
+ * builder — so it sat at its column default of false on all thirty-three
+ * workspaces, permanently, and PPP could not decide to work July 4th.
+ *
+ * send_on_weekends, added months earlier, had every one of those. The two are
+ * twins and only one was wired.
+ *
+ * Asserted on the whole chain rather than one hop, because the hop that was
+ * missing is the one a unit test of either end would not have noticed.
+ */
+describe("the holiday setting can actually be set", () => {
+  const hop = (path: string) => readFileSync(path, "utf8");
+
+  it("the patch builder writes the column", () => {
+    const src = hop("lib/messaging/workspace-settings.ts");
+    expect(src).toMatch(/input\.sendOnHolidays !== undefined/);
+    expect(src).toMatch(/patch\.send_on_holidays = input\.sendOnHolidays/);
+  });
+
+  it("the save action accepts it", () => {
+    expect(hop("lib/messaging/workspace-settings.ts")).toMatch(/sendOnHolidays\?: boolean/);
+  });
+
+  it("the form has a control and passes it to the action", () => {
+    const src = hop("components/messaging/workspace-hours-form.tsx");
+    expect(src, "no state for the toggle").toMatch(/useState\(!!row\.send_on_holidays\)/);
+    expect(src, "no visible control").toMatch(/Send on public holidays/);
+    expect(src, "the control is not passed to the action").toMatch(/sendOnHolidays:\s*holidays/);
+  });
+
+  it("the page reads the column, or the form renders it as off whatever it is", () => {
+    expect(hop("app/messaging/settings/page.tsx")).toMatch(/send_on_holidays/);
+  });
+
+  /**
+   * And it is classified for copying. The settings-copy module's premise is
+   * that a column the gate reads is either copyable or named as regional with
+   * a reason; this one was in neither list, which is precisely the drift that
+   * file exists to prevent.
+   */
+  it("is classified as copyable company policy, like its weekend twin", () => {
+    expect([...COPYABLE_SETTINGS]).toContain("send_on_holidays");
+    expect(SETTING_LABELS.send_on_holidays).toBeTruthy();
   });
 });

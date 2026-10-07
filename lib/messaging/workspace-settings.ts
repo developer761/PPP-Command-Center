@@ -54,6 +54,7 @@ export type WorkspaceHours = {
   quiet_hours_end: number | null;
   time_zone: string | null;
   send_on_weekends: boolean | null;
+  send_on_holidays: boolean | null;
   after_hours_autoreply: boolean | null;
   after_hours_message: string | null;
 };
@@ -70,6 +71,8 @@ export async function saveWorkspaceHours(input: {
   quietEnd?: string | number | null;
   timeZone?: string;
   sendOnWeekends?: boolean;
+  /** US federal holidays, enforced by the gate. See lib/messaging/holidays.ts. */
+  sendOnHolidays?: boolean;
   afterHoursAutoreply?: boolean;
   afterHoursMessage?: string;
   replyDelayMin?: number;
@@ -140,6 +143,7 @@ export async function saveWorkspaceHours(input: {
     patch.time_zone = tz;
   }
   if (input.sendOnWeekends !== undefined) patch.send_on_weekends = input.sendOnWeekends;
+  if (input.sendOnHolidays !== undefined) patch.send_on_holidays = input.sendOnHolidays;
   if (input.afterHoursAutoreply !== undefined) patch.after_hours_autoreply = input.afterHoursAutoreply;
   if (input.afterHoursMessage !== undefined) {
     patch.after_hours_message = input.afterHoursMessage.trim() || null;

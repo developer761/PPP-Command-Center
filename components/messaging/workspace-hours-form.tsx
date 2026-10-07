@@ -17,6 +17,7 @@ export type Row = {
   quiet_hours_start: number | null;
   quiet_hours_end: number | null;
   send_on_weekends: boolean | null;
+  send_on_holidays: boolean | null;
   after_hours_autoreply: boolean | null;
   after_hours_message: string | null;
   autosend_enabled: boolean | null;
@@ -58,6 +59,7 @@ export default function WorkspaceHoursForm({
   const [end, setEnd] = useState(String(row.quiet_hours_end ?? 20));
   const [tz, setTz] = useState(row.time_zone ?? "");
   const [weekends, setWeekends] = useState(!!row.send_on_weekends);
+  const [holidays, setHolidays] = useState(!!row.send_on_holidays);
   const [autoreply, setAutoreply] = useState(!!row.after_hours_autoreply);
   const [message, setMessage] = useState(row.after_hours_message ?? "");
   const [delayMin, setDelayMin] = useState(String(row.reply_delay_min_seconds ?? DEFAULT_DELAY.minSeconds));
@@ -82,7 +84,8 @@ export default function WorkspaceHoursForm({
         replyDelayMin: Math.round(Number(delayMin) || 0),
         replyDelayMax: Math.round(Number(delayMax) || 0),
         workspaceId: row.id, quietStart: start, quietEnd: end, timeZone: tz,
-        sendOnWeekends: weekends, afterHoursAutoreply: autoreply, afterHoursMessage: message,
+        sendOnWeekends: weekends, sendOnHolidays: holidays,
+        afterHoursAutoreply: autoreply, afterHoursMessage: message,
         replyToEmail: replyTo,
       });
       if (!res.ok) { setErr(res.error); return; }
@@ -161,6 +164,11 @@ export default function WorkspaceHoursForm({
 
       {[
         ["Send at weekends", weekends, setWeekends] as const,
+        // The gate enforces this and nothing could set it, so it was false on
+        // all thirty-three workspaces with no way to change it — PPP could not
+        // decide to work July 4th. See lib/messaging/holidays.ts for which
+        // days it covers.
+        ["Send on public holidays", holidays, setHolidays] as const,
         ["Auto-reply outside hours", autoreply, setAutoreply] as const,
       ].map(([label, val, set]) => (
         <button key={label} type="button" onClick={() => set(!val)} aria-pressed={val}

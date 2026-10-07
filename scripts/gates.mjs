@@ -50,6 +50,7 @@ const GATES = [
   ["types", "npx", ["tsc", "--noEmit"]],
   ["rules are wired", "node", ["scripts/check-rules-are-wired.mjs"]],
   ["options nothing passes", "node", ["scripts/check-unpassed-options.mjs"]],
+  ["settings with no writer", "node", ["scripts/check-settings-have-writers.mjs"]],
   ["lint budget", "node", ["scripts/check-lint-budget.mjs"]],
   ...(fast ? [] : [
     ["tests", "npx", ["vitest", "run"]],

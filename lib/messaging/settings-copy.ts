@@ -41,6 +41,12 @@ export const COPYABLE_SETTINGS = [
   "quiet_hours_start",
   "quiet_hours_end",
   "send_on_weekends",
+  // Copyable for exactly the reason send_on_weekends is: the US federal
+  // holidays in holidays.ts fall on the same days in every region PPP works
+  // in, so whether to work them is company policy rather than a regional
+  // fact. It appeared in NEITHER list, which is the drift this file exists to
+  // prevent — the gate enforced it while nothing anywhere could set it.
+  "send_on_holidays",
   "after_hours_autoreply",
   "after_hours_message",
   "reply_delay_min_seconds",
@@ -68,6 +74,7 @@ export const SETTING_LABELS: Record<CopyableSetting, string> = {
   quiet_hours_start: "Sending starts",
   quiet_hours_end: "Sending stops",
   send_on_weekends: "Sends at weekends",
+  send_on_holidays: "Sends on public holidays",
   after_hours_autoreply: "Out-of-hours auto-reply",
   after_hours_message: "What the auto-reply says",
   reply_delay_min_seconds: "Shortest reply delay",
