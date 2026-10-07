@@ -15,6 +15,8 @@
 
 type BalanceTxnLike = {
   type: string;
+  /** What Stripe kept for processing this transaction, in cents. */
+  fee?: number;
   source: string | { object?: string; payment_intent?: string | { id: string } | null } | null;
 };
 
@@ -30,4 +32,23 @@ export function paymentIntentIdsInPayout(txns: BalanceTxnLike[]): string[] {
     if (pi) ids.add(pi);
   }
   return [...ids];
+}
+
+/**
+ * Same payments, with what Stripe charged PPP to process each — for the
+ * Payments tab's "fee collected vs. what cards cost us". A payment split over
+ * more than one balance transaction has its fees summed.
+ */
+export function clearedPaymentsInPayout(txns: BalanceTxnLike[]): Map<string, { stripeFeeCents: number }> {
+  const out = new Map<string, { stripeFeeCents: number }>();
+  for (const t of txns) {
+    if (!PAYMENT_TYPES.has(t.type)) continue;
+    const src = t.source;
+    if (!src || typeof src === "string") continue;
+    const pi = typeof src.payment_intent === "string" ? src.payment_intent : src.payment_intent?.id;
+    if (!pi) continue;
+    const prev = out.get(pi)?.stripeFeeCents ?? 0;
+    out.set(pi, { stripeFeeCents: prev + (t.fee ?? 0) });
+  }
+  return out;
 }

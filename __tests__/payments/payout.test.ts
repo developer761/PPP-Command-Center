@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { paymentIntentIdsInPayout } from "@/lib/payments/payout";
+import { clearedPaymentsInPayout, paymentIntentIdsInPayout } from "@/lib/payments/payout";
 
 // Shaped like stripe.balanceTransactions.list({ payout, expand: ["data.source"] }).
 describe("paymentIntentIdsInPayout — which payments cleared in this payout", () => {
@@ -34,5 +34,22 @@ describe("paymentIntentIdsInPayout — which payments cleared in this payout", (
 
   it("an unexpanded source (just an id) can't be matched — skipped", () => {
     expect(paymentIntentIdsInPayout([{ type: "charge", source: "ch_123" }])).toEqual([]);
+  });
+});
+
+describe("clearedPaymentsInPayout — what Stripe charged PPP per payment", () => {
+  it("keeps each payment's processing fee; refunds and fees aren't payments", () => {
+    const m = clearedPaymentsInPayout([
+      { type: "charge", fee: 4483, source: { object: "charge", payment_intent: "pi_card" } },
+      { type: "payment", fee: 500, source: { object: "charge", payment_intent: { id: "pi_ach" } } },
+      { type: "refund", fee: 0, source: { object: "refund", payment_intent: "pi_card" } },
+      { type: "stripe_fee", fee: 0, source: null },
+    ]);
+    expect(Object.fromEntries(m)).toEqual({ pi_card: { stripeFeeCents: 4483 }, pi_ach: { stripeFeeCents: 500 } });
+  });
+
+  it("a payment over two balance transactions has its fees summed", () => {
+    const t = { type: "charge", fee: 100, source: { object: "charge", payment_intent: "pi_x" } };
+    expect(clearedPaymentsInPayout([t, t]).get("pi_x")).toEqual({ stripeFeeCents: 200 });
   });
 });

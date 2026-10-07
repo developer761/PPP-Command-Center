@@ -17,7 +17,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
-import { paymentIntentIdsInPayout } from "@/lib/payments/payout";
+import { clearedPaymentsInPayout } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
 import {
   CARD_ELEMENT_FLOW,
@@ -76,6 +76,10 @@ export type PaymentRow = {
   paid_at: string | null;
   /** credit / debit / prepaid / unknown — card payments only. */
   card_funding: string | null;
+  customer_name: string | null;
+  payout_id: string | null;
+  cleared_at: string | null;
+  stripe_fee_cents: number | null;
 };
 
 export type PaymentLinkRow = {
@@ -330,6 +334,7 @@ export async function createCheckout(input: {
     livemode: session.livemode,
     checkout_url: session.url,
     customer_email: wo.contactEmail,
+    customer_name: wo.contactName,
   });
   if (error) {
     // No row means no way to reconcile what Stripe later sends. Kill the
@@ -470,6 +475,7 @@ export async function payByCard(input: {
       status: "open",
       livemode: pi.livemode,
       customer_email: wo.contactEmail,
+      customer_name: wo.contactName,
     });
     if (error) {
       await stripe.paymentIntents.cancel(pi.id).catch(() => undefined);
@@ -714,17 +720,40 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
  */
 export async function bookPaidOutPayments(payoutId: string): Promise<{ inPayout: number; booked: number }> {
   const stripe = getStripe();
-  const txns: Parameters<typeof paymentIntentIdsInPayout>[0] = [];
+  const txns: Parameters<typeof clearedPaymentsInPayout>[0] = [];
   for await (const t of stripe.balanceTransactions.list({ payout: payoutId, limit: 100, expand: ["data.source"] })) {
-    txns.push(t as unknown as Parameters<typeof paymentIntentIdsInPayout>[0][number]);
+    txns.push(t as unknown as Parameters<typeof clearedPaymentsInPayout>[0][number]);
   }
-  const piIds = paymentIntentIdsInPayout(txns);
-  if (!piIds.length) return { inPayout: 0, booked: 0 };
-  return { inPayout: piIds.length, booked: await bookClearedPayments(piIds, payoutId) };
+  const cleared = clearedPaymentsInPayout(txns);
+  if (!cleared.size) return { inPayout: 0, booked: 0 };
+  const payout = await stripe.payouts.retrieve(payoutId);
+  const clearedAt = new Date(payout.arrival_date * 1000).toISOString();
+  return { inPayout: cleared.size, booked: await bookClearedPayments([...cleared.keys()], payoutId, { clearedAt, fees: cleared }) };
 }
 
-/** Book the given cleared payments (ours only, not yet booked). Returns how many booked. */
-export async function bookClearedPayments(piIds: string[], payoutId: string): Promise<number> {
+/**
+ * Book the given cleared payments (ours only, not yet booked). Returns how
+ * many booked. `cleared` records what the Payments tab shows about clearing —
+ * when, which payout, what Stripe charged — before the Salesforce write.
+ */
+export async function bookClearedPayments(
+  piIds: string[],
+  payoutId: string,
+  cleared?: { clearedAt: string; fees: Map<string, { stripeFeeCents: number }> },
+): Promise<number> {
+  if (cleared) {
+    for (const pi of piIds) {
+      await db()
+        .from("stripe_payments")
+        .update({
+          payout_id: payoutId,
+          cleared_at: cleared.clearedAt,
+          stripe_fee_cents: cleared.fees.get(pi)?.stripeFeeCents ?? null,
+        })
+        .eq("payment_intent_id", pi)
+        .is("payout_id", null);
+    }
+  }
   const { data, error } = await db()
     .from("stripe_payments")
     .select("*")
@@ -807,4 +836,16 @@ export async function retrySalesforceWrite(paymentId: string): Promise<PaymentRo
   if (p.status !== "succeeded") throw new Error(`Payment is ${p.status}, not succeeded.`);
   if (p.sf_writeback_status === "written") throw new Error(`Already written as ${p.sf_transaction_id}.`);
   return recordInSalesforce(p);
+}
+
+/** Every online payment that moved money, newest first — the Payments tab filters these. */
+export async function listLedgerPayments(limit = 5000): Promise<PaymentRow[]> {
+  const { data, error } = await db()
+    .from("stripe_payments")
+    .select("*")
+    .in("status", ["processing", "succeeded", "refunded"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PaymentRow[];
 }
