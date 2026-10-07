@@ -3,6 +3,7 @@ import { asksOurAvailability, isAvailabilityStandOff } from "@/lib/messaging/ava
 import { returningCustomerDeclining } from "@/lib/messaging/returning-customer";
 import { mentionsSecondProperty } from "@/lib/messaging/multi-property";
 import { tooManyAsks } from "@/lib/messaging/one-ask";
+import { offsiteReasonFor } from "@/lib/messaging/offsite";
 import { renderMessage, rapportIsRedundant } from "@/lib/messaging/render";
 import { validateAction, BARE_ACKNOWLEDGEMENT } from "@/lib/messaging/agent-output";
 
@@ -175,5 +176,50 @@ describe("the acknowledgement rules apply in Spanish", () => {
     );
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.reason).toBe("question_left_unanswered");
+  });
+});
+
+describe("the off-site offer can be made in Spanish", () => {
+  /**
+   * The reason is a MANDATED slot: without it the A7 template refuses to
+   * render, which the renderer calls correct — "A7 without its reason is just
+   * A6 said in the wrong situation". The qualifiers were English-only, so for
+   * a Spanish lead the reason was always null, the offer always rendered
+   * empty, and every Spanish A7 escalated.
+   *
+   * A7 is the route for precisely the customers who cannot meet — out of
+   * state, no access to the property, a price only — so the people it exists
+   * for were the ones it never reached.
+   */
+  it("recognises the qualifiers in Spanish", () => {
+    for (const t of [
+      "estoy fuera del estado, no puedo estar en la propiedad",
+      "solo quiero un precio aproximado",
+      "le mandé fotos, puede cotizar con las fotos?",
+      "que me llame el estimador mejor",
+    ]) {
+      expect(offsiteReasonFor(t, "es"), t).not.toBeNull();
+    }
+  });
+
+  it("says the reason in the language the template is written in", () => {
+    const es = offsiteReasonFor("solo quiero un precio aproximado", "es");
+    expect(es).toMatch(/precio aproximado/i);
+    // Half-English inside a Spanish sentence is worse than the escalation.
+    expect(es).not.toMatch(/you/i);
+  });
+
+  it("renders the whole offer rather than nothing", () => {
+    const out = renderMessage({
+      intent: "offer_offsite_quote", language: "es",
+      offsiteReason: offsiteReasonFor("solo quiero un precio aproximado", "es"),
+      turn: 0,
+    });
+    expect(out.trim()).not.toBe("");
+    expect(out).toMatch(/cotizaci/i);
+  });
+
+  it("leaves English alone", () => {
+    expect(offsiteReasonFor("I just want a ballpark price")).toMatch(/rough price/i);
   });
 });

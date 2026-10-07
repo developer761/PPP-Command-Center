@@ -683,6 +683,28 @@ const CHAINS = [
     ],
   },
   {
+    rule: "A7's mandated reason is said in the customer's own language",
+    why:
+      "the reason is a required slot — without it the off-site template refuses to render, which " +
+      "is correct, because A7 without its reason is just A6 in the wrong situation. The " +
+      "qualifiers were English-only, so for a Spanish lead the reason was always null, the " +
+      "offer always rendered empty and EVERY Spanish A7 escalated instead of being made. A7 is " +
+      "the route for the customers who cannot meet, so the people it exists for were the ones " +
+      "it never reached. Both halves are needed: Spanish patterns to detect the situation, and " +
+      "the language passed through, or the reason comes back in English inside a Spanish " +
+      "sentence — which is worse than the escalation it replaces",
+    links: [
+      ["lib/messaging/offsite.ts", /A7_TRIGGERS_ES/],
+      ["lib/messaging/offsite.ts", /A7_TRIGGERS_ES\[i\]\.test\(t\)/],
+      ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords,\s*language\)/],
+    ],
+    forbidden: [
+      // The language dropped at the call site is invisible to every unit test:
+      // offsiteReasonFor defaults to English and answers perfectly happily.
+      ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords\)/],
+    ],
+  },
+  {
     rule: "a bare yes to the availability question counts as availability",
     why:
       "Kate: a non-answer counts — 'yes please' in reply to the availability question IS " +

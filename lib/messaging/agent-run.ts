@@ -1154,7 +1154,7 @@ Choose the next action.`;
       // A7's MANDATED reason, matched from what the customer actually said.
       // Nothing supplied this before, so offer_offsite_quote rendered empty
       // every time and the turn escalated instead of making the offer.
-      offsiteReason: offsiteReasonFor(ownWords),
+      offsiteReason: offsiteReasonFor(ownWords, language),
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
       customerText: ownWords,

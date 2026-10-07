@@ -1540,3 +1540,34 @@ line.
 **Worth knowing either way:** this only bites when autosend is on. Today
 Emily is not sending on her own in any workspace, so every reply already
 reaches a person before it goes out.
+
+## 28. Seven Spanish sentences that are ours, not Mac's or Jasmine's
+
+**Raised 2026-10-06, and small.** A7's off-site offer has to say WHY we are
+departing from the normal route — "we usually see a project like this in
+person, but **since you're not able to be at the property**, we can put a quick
+quote together instead." That reason is mandated: without it the message does
+not render at all.
+
+The seven reasons existed in English only, so for a Spanish-speaking customer
+the reason came back empty, the offer rendered as nothing, and **every Spanish
+off-site offer was handed to a person instead of being made**. A7 is the route
+for precisely the customers who cannot meet — out of state, no access, a price
+only — so the people it exists for were the ones it never reached.
+
+They are translated now, and **the Spanish is ours**, the same standing as the
+"I'll check the calendar for that time" line in item 9:
+
+| Situation | What it says |
+|---|---|
+| Cannot be at the property | no puede estar en la propiedad |
+| Cannot meet for a while | no puede reunirse por ahora |
+| Has sent photos | tenemos fotos con las que podemos trabajar |
+| Wants the quote by text | prefiere recibir la cotizacion por mensaje |
+| Wants the estimator to call | prefiere hablar con el estimador por telefono |
+| Only wants a price | por ahora solo quiere un precio aproximado |
+| Only free outside our hours | solo tiene tiempo fuera de nuestro horario |
+
+**→ Nothing is blocked on this.** The alternative was leaving every Spanish A7
+escalating, which is worse than an unreviewed clause. If Mac or Jasmine would
+word any of them differently, it is seven strings in one file.
