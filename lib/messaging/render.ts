@@ -477,7 +477,15 @@ export function clip(v: string | null | undefined, max = MAX_QUOTED): string | n
 /** Rapport that would collide with the template's own opener. The model likes
  *  to lead with a greeting; the template often does too, and "Hi there! Happy
  *  to help — what's the project?" reads like two people talking. */
-const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]*$/i;
+/**
+ * Rapport that is only a greeting, so the template's own opener is the message.
+ *
+ * Spanish included, for the reason every matcher in this codebase has needed
+ * it: the templates were translated and the gates were not, so "Hola!" stacked
+ * in front of a Spanish template that greets perfectly well on its own.
+ */
+const BARE_GREETING =
+  /^(hi|hey|hello|hi there|good morning|good afternoon|good evening|hola|buenas|buenos d[íi]as|buenas tardes|buenas noches|saludos)[!.,]*$/i;
 
 /**
  * Rapport that acknowledges and says nothing else.
