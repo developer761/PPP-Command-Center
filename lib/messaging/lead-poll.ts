@@ -194,9 +194,28 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
   const phones = pending
     .map((p) => toE164(leadFromSalesforce(p.payload as SalesforceLead).lead.phone ?? null))
     .filter(Boolean) as string[];
-  const { data: optOuts } = phones.length
-    ? await sb.from("sms_opt_outs").select("phone_e164").in("phone_e164", phones)
-    : { data: [] as { phone_e164: string }[] };
+  /**
+   * THE SAME QUESTION THE GATE ASKS, ASKED THE SAME WAY.
+   *
+   * This matched any row for the number; gate-deps matches only rows where
+   * `opted_in_at IS NULL`, because migration 176 is explicit that a set
+   * opted_in_at means they came back — somebody who replied STOP and later
+   * replied START is NOT suppressed.
+   *
+   * So the two disagreed in the direction that loses work: the gate would
+   * happily text them, and this dropped their new lead before anything was
+   * created, permanently, with the row marked ignored. A customer who opted
+   * out in March, opted back in, and filled the form again in October was
+   * never contacted and nothing anywhere said why.
+   */
+  const { data: optOuts, error: optOutErr } = phones.length
+    ? await sb.from("sms_opt_outs").select("phone_e164")
+        .in("phone_e164", phones).is("opted_in_at", null)
+    : { data: [] as { phone_e164: string }[], error: null };
+  // Answering "nobody is suppressed" on a failed read is how an opted-out
+  // person gets enrolled in a campaign. The poll stops instead; the leads are
+  // still pending and the next tick picks them up.
+  if (optOutErr) throw new Error(`could not read the suppression list: ${optOutErr.message}`);
   const suppressed = new Set((optOuts ?? []).map((o) => o.phone_e164));
 
   for (const p of pending) {

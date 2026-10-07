@@ -51,6 +51,14 @@ import {
 /** A36 is written in Eastern because that is where PPP's office sits. */
 export const OFFICE_ZONE = "America/New_York";
 
+/**
+ * The two ends of PPP's territory, for the case where we do not know which end
+ * somebody is at. Eastern's evening arrives first; Pacific's morning arrives
+ * last. Satisfying both is the only window that is civil everywhere.
+ */
+const EARLIEST_ZONE = "America/New_York";
+const LATEST_ZONE = "America/Los_Angeles";
+
 /** Mon-Fri 9 AM - 8 PM Eastern. Minutes from midnight. */
 export const OFFICE_WEEKDAY = { start: 9 * 60, end: 20 * 60 };
 /** Sat and Sun 9 AM - 5:30 PM Eastern. The half hour is why minutes exist. */
@@ -87,6 +95,25 @@ export function sendingWindow(input: {
   now: Date;
   /** The recipient's IANA zone, from customerZone(). Never the workspace's. */
   customerZone: string;
+  /**
+   * TRUE WHEN WE ARE GUESSING — customerZone() fell back rather than reading a
+   * zip or a mapped area code.
+   *
+   * FALLBACK_ZONE is Los Angeles, and its comment reasons carefully about one
+   * end of the window: "Pacific wakes last, so holding a message to 8 AM
+   * Pacific cannot be early for anybody in the territory." That is true of the
+   * FLOOR and false of the CEILING. Pacific also goes to bed last, so 9 PM
+   * Pacific is midnight in New York — and an Eastern customer on an area code
+   * this file does not map, or on a ported number, could be texted at 9:40 PM
+   * their time. Past the federal bound, which is the one thing this module
+   * exists to prevent.
+   *
+   * So when the zone is a guess, the window is the INTERSECTION across the
+   * territory rather than one end of it: open no earlier than the latest
+   * sunrise and close no earlier than the earliest sunset. Narrower, and the
+   * only honest answer when we do not know where somebody is.
+   */
+  customerZoneUnknown?: boolean;
   /** PPP's operating window. Defaults to A36's Eastern office. */
   officeZone?: string;
   /** PPP's configured hours, when a workspace has narrowed them further. */
@@ -117,11 +144,18 @@ export function sendingWindow(input: {
   const customerHours = clampToFederal(
     input.answersInbound ? { ...FEDERAL_BOUND } : CUSTOMER_OUTBOUND
   );
-  if (!withinMinuteWindow(
-    input.now, input.customerZone,
-    customerHours.startHour * 60, customerHours.endHour * 60,
-  )) {
-    return { open: false, why: "customer_local_hours" };
+  // When the zone is a guess, every zone PPP serves has to be inside the
+  // window — see customerZoneUnknown. Otherwise, the one we resolved.
+  const zonesToSatisfy = input.customerZoneUnknown
+    ? [EARLIEST_ZONE, LATEST_ZONE]
+    : [input.customerZone];
+  for (const zone of zonesToSatisfy) {
+    if (!withinMinuteWindow(
+      input.now, zone,
+      customerHours.startHour * 60, customerHours.endHour * 60,
+    )) {
+      return { open: false, why: "customer_local_hours" };
+    }
   }
 
   // THE OFFICE — and answering somebody does not need the office to be open.

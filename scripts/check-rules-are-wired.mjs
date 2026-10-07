@@ -683,6 +683,24 @@ const CHAINS = [
     ],
   },
   {
+    rule: "everything that asks 'is this person suppressed' asks it the same way",
+    why:
+      "migration 176 is explicit that a set opted_in_at means they came back — somebody who " +
+      "replied STOP and later replied START is NOT suppressed. gate-deps filters on it; the " +
+      "lead poll did not, so the two disagreed in the direction that loses work: the gate would " +
+      "text them, and the poll dropped their new lead before a conversation existed, marked " +
+      "ignored, permanently, with nothing anywhere saying why. A customer who opted out in " +
+      "March, opted back in, and filled the form again in October was never contacted",
+    links: [
+      ["lib/messaging/gate-deps.ts", /\.eq\("phone_e164", target\.phone\)\.is\("opted_in_at", null\)/],
+      ["lib/messaging/lead-poll.ts", /\.in\("phone_e164", phones\)\.is\("opted_in_at", null\)/],
+    ],
+    forbidden: [
+      // The unfiltered read is the bug, and it looks perfectly reasonable.
+      ["lib/messaging/lead-poll.ts", /select\("phone_e164"\)\.in\("phone_e164", phones\)\s*$/m],
+    ],
+  },
+  {
     rule: "A7's mandated reason is said in the customer's own language",
     why:
       "the reason is a required slot — without it the off-site template refuses to render, which " +

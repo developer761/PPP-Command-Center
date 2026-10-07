@@ -332,3 +332,87 @@ describe("too early is not the same as too late", () => {
   });
 });
 const TICK_UNUSED = new Date("2026-09-30T23:30:00Z");
+
+/**
+ * WHEN WE DO NOT KNOW WHERE SOMEBODY IS.
+ *
+ * customerZone() falls back to Los Angeles, and that comment reasons about one
+ * end of the window only: "Pacific wakes last, so holding a message to 8 AM
+ * Pacific cannot be early for anybody in the territory." True of the floor,
+ * false of the ceiling — Pacific goes to bed last too, so 9 PM Pacific is
+ * midnight in New York.
+ *
+ * An Eastern customer on an area code this repo does not map, or on a ported
+ * number, could therefore be texted at 9:40 PM their own time: past the
+ * federal bound, which is the single thing this module exists to prevent.
+ */
+describe("a zone we had to guess is civil at both ends of the territory", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("refuses the evening that is fine in California and not in New York", () => {
+    // 01:00Z = 9 PM Eastern, 6 PM Pacific. PPP's office is shut either way at
+    // that hour, so the REASON is what distinguishes them: a guessed zone is
+    // refused on the customer's own clock — the legal bound — while a known
+    // Californian is refused only because PPP is closed, which is policy and
+    // defers rather than forbids.
+    const guessed = sendingWindow({
+      now: at("2026-07-16T01:00:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: true,
+    });
+    expect(guessed.open).toBe(false);
+    if (!guessed.open) expect(guessed.why).toBe("customer_local_hours");
+
+    const known = sendingWindow({
+      now: at("2026-07-16T01:00:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: false,
+    });
+    expect(known.open).toBe(false);
+    if (!known.open) expect(known.why).toBe("office_closed");
+  });
+
+  it("a reply to an inbound still goes to a known Californian that evening", () => {
+    // answersInbound stands the office down, and the customer's own clock is
+    // what is left. 6 PM Pacific is inside the federal window.
+    const w = sendingWindow({
+      now: at("2026-07-16T01:00:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: false,
+      answersInbound: true,
+    });
+    expect(w.open).toBe(true);
+  });
+
+  it("...and does NOT when we are only guessing they are in California", () => {
+    // 9 PM Eastern. If they are actually in New York this is the last legal
+    // minute, and we do not know that they are not.
+    const w = sendingWindow({
+      now: at("2026-07-16T01:30:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: true,
+      answersInbound: true,
+    });
+    expect(w.open).toBe(false);
+  });
+
+  it("refuses the morning that is fine in New York and not in California", () => {
+    // 13:30Z = 9:30 AM Eastern, 6:30 AM Pacific.
+    const w = sendingWindow({
+      now: at("2026-07-15T13:30:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: true,
+    });
+    expect(w.open).toBe(false);
+  });
+
+  it("leaves the middle of the day open", () => {
+    // 18:00Z = 2 PM Eastern, 11 AM Pacific. Civil everywhere.
+    const w = sendingWindow({
+      now: at("2026-07-15T18:00:00Z"),
+      customerZone: "America/Los_Angeles",
+      customerZoneUnknown: true,
+    });
+    expect(w.open).toBe(true);
+  });
+});
