@@ -130,12 +130,21 @@ describe("sentToday — the daily cap must not fail open", () => {
     const spy = { calls: [] as string[] };
     const deps = gateDeps(sbStub({ data: [{ id: "c1" }], error: null, count: 1 }, spy));
     await deps.sentToday!(PHONE, DAY_START);
+    /**
+     * EXACTLY ONE BOUNDARY, AND IT IS THE ONE PASSED IN.
+     *
+     * The first version of this compared against `Date.now() - 24h` to the
+     * hour, to prove no rolling window was computed in here — and DAY_START is
+     * a fixed date, so on the morning after it, the two strings matched and the
+     * test failed for no reason but the calendar. It did exactly that at 04:40
+     * UTC the next day.
+     *
+     * Asserting the set of boundaries is both stricter and clock-independent:
+     * a rolling window computed inside the dep would be a SECOND gte, and
+     * there is only one.
+     */
     const gte = spy.calls.filter((c) => c.startsWith("gte("));
-    expect(gte).toContain(`gte(created_at,${DAY_START.toISOString()})`);
-    // And nothing resembling a rolling window computed in here. To the hour,
-    // so the assertion does not depend on the second the test runs in.
-    const rolling = new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 13);
-    expect(gte.some((c) => c.includes(rolling))).toBe(false);
+    expect(gte).toEqual([`gte(created_at,${DAY_START.toISOString()})`]);
   });
 });
 

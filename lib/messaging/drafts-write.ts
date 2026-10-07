@@ -225,8 +225,27 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   const body = input.body.trim();
   if (!body) { await release(null); return { ok: false, error: "There is nothing to send." }; }
 
+  /**
+   * A DRAFT ANSWERS AN INBOUND, BY DEFINITION, AND DID NOT SAY SO.
+   *
+   * Every draft carries answers_message_id — it exists because the customer
+   * wrote. Without answersInbound the gate applies CUSTOMER_OUTBOUND, 9 AM to
+   * 7 PM on the recipient's clock plus PPP's office window, which is the rule
+   * for contact PPP STARTS.
+   *
+   * So after 7 PM a reviewer pressing "Send it" was refused as quiet_hours and
+   * the draft bounced back with send_error, while the bot's own held reply to
+   * the very same message would have gone out under the federal window. The
+   * same reply, legal or not depending on which door it came through — and
+   * which door it came through depends only on whether a reply delay happens
+   * to be configured for that workspace.
+   *
+   * The comment in sendHeldReply states the rule this follows: "Every held
+   * reply is by definition a reply to a message the customer sent — that is
+   * what answers_message_id means."
+   */
   const res = await gatedSend(
-    { workspace: ws, to, body, agent: "human_review" },
+    { workspace: ws, to, body, agent: "human_review", answersInbound: true },
     gateDeps(sb)
   );
 

@@ -725,8 +725,12 @@ export function schedulerDeps(): SchedulerDeps {
           return { kind: "held" as const, at: dueAt };
         }
 
+        // ANSWERS THE INBOUND IT WAS WRITTEN FOR, like the held reply below.
+        // Without this the immediate autosend obeyed the window for contact
+        // PPP STARTS, so the same reply to the same message was legal or not
+        // depending only on whether that workspace has a reply delay set.
         const sent = await gatedSend(
-          { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend" },
+          { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend", answersInbound: true },
           gateDeps(sb)
         );
         if (sent.ok) {

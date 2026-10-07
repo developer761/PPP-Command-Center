@@ -24,6 +24,7 @@ import { assertMessagingAccess } from "./auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { createClient } from "@/lib/supabase/server";
 import { gatedSend } from "./gate";
+import { latestInboundIsAnswered } from "./handoff";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
 import { queueTurnIfUnanswered } from "./turn-queue";
@@ -71,7 +72,29 @@ export async function sendHumanReply(input: {
   const to = toE164(conv.customer_phone);
   if (!to) return { ok: false, error: "That conversation has no usable phone number." };
 
-  const res = await gatedSend({ workspace: ws, to, body, agent: "human_reply" }, gateDeps(sb));
+  /**
+   * IS THIS AN ANSWER, OR IS PPP STARTING SOMETHING?
+   *
+   * Unlike a draft, a person typing into a thread may be doing either: replying
+   * to a customer who just wrote, or picking a conversation back up days later,
+   * which is contact PPP initiates and obeys the narrower outbound window.
+   *
+   * So it is asked rather than assumed, with the same function the handover
+   * screens use. Without it, a person answering somebody at 7:30 PM was
+   * refused as quiet_hours while the bot's own reply to that same message
+   * would have gone out — and the customer, who wrote at 7:25, got nothing.
+   */
+  const { data: msgs } = await sb.from("sms_messages")
+    .select("direction, created_at").eq("conversation_id", conv.id)
+    .order("created_at", { ascending: false }).limit(50);
+  const answering = !latestInboundIsAnswered(
+    (msgs ?? []) as { direction: string; created_at: string }[]
+  );
+
+  const res = await gatedSend(
+    { workspace: ws, to, body, agent: "human_reply", answersInbound: answering },
+    gateDeps(sb)
+  );
   if (!res.ok) return { ok: false, refused: res.reason };
 
   // WHO SENT IT, by name. sms_messages.sent_by_agent has been selected by the
