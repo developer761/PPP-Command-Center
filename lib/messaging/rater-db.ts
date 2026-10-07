@@ -14,7 +14,7 @@
  * as a usable finding are worth testing without a database.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { selectAll } from "./paging";
+import { selectAll, selectAllIn } from "./paging";
 import {
   keepUsableFindings, conductFromFindings,
   type RaterFinding, type RuleForRating, type RatableTurn,
@@ -272,11 +272,15 @@ export async function sweepUnrated(
   let windowExhausted = false;
   for (let page = 0; page < MAX_PAGES; page++) {
     pagesRead = page + 1;
+    // ended_at is nullable, so `id` carries the stable order. Paging without a
+    // unique sort returns an arbitrary window rather than the next page.
+    //
+    // The comment sits ABOVE the chain rather than inside it: verify-truncation
+    // looks for .range() NEAR the .from(), and two comment lines in the middle
+    // pushed it out of that window and flagged a read that really is bounded.
     const { data: batch, error: endedErr } = await sb.from("sms_conversations")
       .select("id, workspace_id, outcome")
       .eq("state", "ended")
-      // ended_at is nullable, so `id` carries the stable order. Paging without
-      // a unique sort returns an arbitrary window, not the next page.
       .order("ended_at", { ascending: true, nullsFirst: true })
       .order("id")
       .range(page * PAGE, page * PAGE + PAGE - 1);
@@ -291,13 +295,30 @@ export async function sweepUnrated(
     if (!rows.length) { windowExhausted = true; break; }
 
     const ids = rows.map((r) => r.id as string);
-    const { data: ratedRows, error: ratedErr } = await sb.from("sms_training_examples")
-      .select("source_ref").eq("source", "live").in("source_ref", ids);
-    // Same reasoning: an unreadable list of what is already rated must not
-    // read as "none of these are rated", which would rate them all a second
-    // time and teach the model from a duplicate.
-    if (ratedErr) throw new Error(`could not check which conversations are already rated: ${ratedErr.message}`);
-    const done = new Set((ratedRows ?? []).map((r) => r.source_ref as string));
+    /**
+     * PAGED, BECAUSE .in() BOUNDS THE FILTER AND NOT THE RESULT.
+     *
+     * Fifty conversation ids, but nothing says a conversation has only one
+     * source='live' example — Kate's imports and the auto-rater both write to
+     * this table — so fifty ids can return more than fifty rows and the
+     * thousand-row cap is reachable with the id list nowhere near it. A row
+     * that fell off would read as "that conversation is not rated", and it
+     * would be rated a second time and taught from twice.
+     *
+     * Caught by verify:truncation on the very commit whose message was about
+     * a read being correct only by coincidence. selectAllIn throws, which is
+     * what the rule below depends on: an unreadable list of what is already
+     * rated must not read as "none of these are rated".
+     */
+    const ratedRows = await selectAllIn<{ source_ref: string }>(
+      ids,
+      (chunk, from, to) => sb.from("sms_training_examples")
+        .select("source_ref").eq("source", "live").in("source_ref", chunk)
+        // source_ref is not unique here, so id carries the stable page order.
+        .order("source_ref").order("id").range(from, to),
+      "which conversations are already rated"
+    );
+    const done = new Set(ratedRows.map((r) => r.source_ref));
 
     for (const r of rows) {
       if (done.has(r.id as string)) { note("already rated"); continue; }
