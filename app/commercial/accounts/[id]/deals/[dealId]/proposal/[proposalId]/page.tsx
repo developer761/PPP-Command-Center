@@ -2732,7 +2732,14 @@ export default async function ProposalEditorPage({
                       <input type="hidden" name="account_id" value={accountId} />
                       <input type="hidden" name="deal_id" value={dealId} />
                       <input type="hidden" name="proposal_id" value={proposalId} />
-                      <input type="hidden" name="line_item_id" value={b.id} />
+                      {/* `id`, not `line_item_id`. deleteLineItemAction reads
+                          formData.get("id"); the wrong name left it empty, the
+                          UUID guard failed, and the action redirected to
+                          /commercial — which Stephanie saw as "it glitches and
+                          brings me back to the dashboard and doesn't remove
+                          it". The guard was right; the form was feeding it
+                          nothing. */}
+                      <input type="hidden" name="id" value={b.id} />
                       <input type="hidden" name="back" value={backParam ?? ""} />
                       <ConfirmSubmitButton
                         message={`Remove this block${b.block_title ? ` (${b.block_title})` : ""}?`}
