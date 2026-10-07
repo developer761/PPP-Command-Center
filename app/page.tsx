@@ -5,24 +5,39 @@ import EmailPasswordSignIn from "@/components/email-password-sign-in";
 
 type SearchParams = Promise<{ error?: string; redirectTo?: string }>;
 
+/**
+ * Every message names the WAY IN, not just the way it failed.
+ *
+ * Before the 2026-10-07 rollout none of them did. Of 25 active field reps, 24
+ * had no account yet and were expected to create one by signing in with
+ * Google — which only works if PPP IT has actually issued them a Google
+ * Workspace account on the PPP domain. A rep who has a Salesforce user but no
+ * Workspace account signs in with their personal Gmail, lands on
+ * `domain_not_allowed`, and reads "sign in with your PPP account" — advice
+ * they cannot take, with no mention of the email-and-password box sitting
+ * directly underneath the button they just pressed.
+ *
+ * So each one ends by pointing at the fallback that exists. The dead end was
+ * the failure, not the error.
+ */
 const ERROR_COPY: Record<string, string> = {
   domain_not_allowed:
-    "Your account isn't part of Precision Painting Plus. Sign in with your @precisionpaintingplus.net or @precisionpaintingplus.com account.",
+    "That isn't a Precision Painting Plus account. Use your @precisionpaintingplus.com or @precisionpaintingplus.net address — or, if you don't have a PPP Google account, ask an admin for an email and password and sign in with those below.",
   oauth_failed:
-    "Sign-in didn't complete. Please try again — if it keeps failing, contact an admin.",
+    "Google sign-in didn't complete. Try again — or sign in with an email and password below if an admin has set one up for you.",
   no_code:
-    "Sign-in didn't complete. Please try again.",
+    "Google sign-in didn't complete. Try again, or use an email and password below.",
   // Kate 2026-08-31: both cases mean the same thing to the person standing
   // there — nobody active answers to this address — so both say it plainly.
   // The old inactive copy also implied we had found THEIR user and it was
   // switched off, which was wrong when the lookup had actually matched a
   // long-dead record on the other domain.
   no_sf_user:
-    "There's no active Salesforce user with these credentials. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to confirm your Salesforce user is active.",
+    "There's no active Salesforce user for this address. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to activate your Salesforce user — they can also give you an email and password to use in the meantime.",
   sf_user_inactive:
-    "There's no active Salesforce user with these credentials. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to confirm your Salesforce user is active.",
+    "There's no active Salesforce user for this address. Both @precisionpaintingplus.com and @precisionpaintingplus.net were checked. Ask an admin to activate your Salesforce user — they can also give you an email and password to use in the meantime.",
   access_revoked:
-    "Your account has been deactivated. Contact an admin if you think this is a mistake.",
+    "This account has been switched off. Contact an admin if that's a mistake — signing in another way won't get you back in until they switch it on again.",
 };
 
 export default async function LoginLanding({
