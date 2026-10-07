@@ -104,8 +104,44 @@ for (const f of files) {
      * on those forms reads as dead.
      */
     ...[...src.matchAll(/\b(?:body|payload|input|json|parsed|args)\.([a-zA-Z0-9_]+)\b/g)].map((m) => m[1]),
-    // `idFrom(formData, "x")` / `readWaiver("x")` — a helper doing the read.
-    ...[...src.matchAll(/\b[a-zA-Z_$][\w$]*\(\s*(?:formData\s*,\s*)?["'`]([a-z][a-zA-Z0-9_\-]{2,40})["'`]\s*[,)]/g)].map((m) => m[1]),
+    /*
+     * `idFrom(formData, "x")` — a helper doing the read. THE CALL MUST NAME
+     * formData.
+     *
+     * It used to match any call whose first argument was a lowercase string,
+     * which is most of the codebase: `.eq("line_item_id", …)` in a Supabase
+     * query counted as somebody reading a form field called line_item_id. So
+     * when the proposal editor's Remove button posted the block id under that
+     * name — while deleteLineItemAction reads `id` — this check said 0
+     * findings, and Stephanie found it instead, as a button that bounced her
+     * to the dashboard. A database column vouching for a form field is not a
+     * near miss; it is the check answering a question it was never asked.
+     *
+     * Verified by putting that bug back and watching this go from silent to
+     * naming the field.
+     */
+    ...[...src.matchAll(/\b[a-zA-Z_$][\w$]*\(\s*formData\s*,\s*["'`]([a-z][a-zA-Z0-9_\-]{2,40})["'`]/g)].map((m) => m[1]),
+    ...[...src.matchAll(/\b[a-zA-Z_$][\w$]*\(\s*["'`]([a-z][a-zA-Z0-9_\-]{2,40})["'`]\s*,\s*formData\b/g)].map((m) => m[1]),
+    /*
+     * A LOCAL READER TAKING THE NAME AS A VARIABLE.
+     *
+     *     const cents = (name) => parseDollarsToCents(formData.get(name))
+     *     ... cents("from_previous"), cents("this_period")
+     *
+     * The AIA line autosave is written exactly this way, and narrowing the
+     * rule above turned its three money fields into false positives — which
+     * would have taught everyone to ignore this list, the thing it must never
+     * do. The literal is a read here; it is just one indirection away.
+     *
+     * So the broad "any call with a string literal" rule is kept, but ONLY in
+     * a file that demonstrably reads FormData by variable. In a file with no
+     * such read — a Supabase data layer, say — `.eq("line_item_id", …)` is a
+     * column name and nothing else, which is the hole that let Stephanie's
+     * Remove button ship broken.
+     */
+    ...(/formData\.get(?:All)?\(\s*[A-Za-z_$]/.test(src)
+      ? [...src.matchAll(/\b[a-zA-Z_$][\w$]*\(\s*["'`]([a-z][a-zA-Z0-9_\-]{2,40})["'`]\s*[,)]/g)].map((m) => m[1])
+      : []),
 
   ];
   /*
@@ -209,13 +245,62 @@ const NOT_A_FIELD = new Set([
    * teach everyone to ignore the whole list.
    */
   "proposed_start_at", "proposed_end_at", "probability_pct",
+  /*
+   * VERDICTS RECORDED 2026-10-07, each checked by opening the file.
+   *
+   * Left in the output they would be eleven permanent false positives, and a
+   * list with permanent false positives is one everybody learns to skip —
+   * which is how the real finding underneath them goes unread.
+   *
+   * REDIRECT FLAGS. Posted or appended to a URL and read back through
+   * searchParams (`sp.heads_up`, `pickFirst(sp.paid_capped)`), never out of a
+   * FormData. They are how an action tells the page what just happened.
+   */
+  "heads_up", "email_headsup", "paid_capped", "paid_heads_up",
+  "failed", "oneoff", "show", "empty", "needsconfirm", "parent",
+  /*
+   * Supabase Storage's own upload option, appended to the FormData that goes
+   * to the storage API — not a field any action of ours reads.
+   */
+  "cacheControl",
 ]);
 
-/** Names a registry lists, and so a loop somewhere reads. */
+/**
+ * Names a registry lists, and so a loop somewhere reads.
+ *
+ * ONLY from an UPPER_SNAKE const's own literal, not from every quoted string
+ * in lib/commercial. The blanket version let a DATABASE COLUMN NAME vouch for
+ * a form field: `line_item_id` appears in a `.select(...)` in
+ * invoices/db.ts, so when the proposal editor's Remove button posted the block
+ * id under that name — while deleteLineItemAction reads `id` — this check said
+ * 0 findings and Stephanie found it instead, as a button that bounced her to
+ * the dashboard. Verified by putting that bug back and watching this go from
+ * silent to catching it.
+ *
+ * A registry is `const PROPOSAL_FIELD_GROUPS = { header: ["gc_company", ...] }`
+ * — a named list a loop walks. Strings inside ordinary calls are not that.
+ */
 const registryNames = new Set();
+const UPPER_CONST = /(?:export\s+)?const\s+[A-Z][A-Z0-9_]{2,}\s*(?::[^=]*)?=\s*[[{]/g;
 for (const f of registryFiles) {
   const src = strip(readFileSync(f, "utf8"));
-  for (const m of src.matchAll(/["'`]([a-z][a-z0-9_]{2,40})["'`]/g)) registryNames.add(m[1]);
+  for (const m of src.matchAll(UPPER_CONST)) {
+    // Walk from the opening bracket to its match, so the literal is bounded by
+    // its own shape rather than by a guessed line count.
+    const open = m.index + m[0].length - 1;
+    let depth = 0;
+    let end = open;
+    for (let i = open; i < src.length && i < open + 20000; i++) {
+      const c = src[i];
+      if (c === "[" || c === "{") depth++;
+      else if (c === "]" || c === "}") {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    const body = src.slice(open, end + 1);
+    for (const s of body.matchAll(/["'`]([a-z][a-z0-9_]{2,40})["'`]/g)) registryNames.add(s[1]);
+  }
 }
 
 const dead = [];
