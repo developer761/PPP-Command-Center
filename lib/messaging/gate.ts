@@ -24,6 +24,7 @@ import {
 } from "./compliance";
 import { customerZone } from "./customer-clock";
 import { isHolidayIn } from "./holidays";
+import { reportWarn } from "@/lib/observability";
 import { sendingWindow, nextWindowOpen } from "./sending-window";
 
 /** The subset of a workspace row the gate needs. */
@@ -196,6 +197,30 @@ export type SendRequest = {
    */
   answersInbound?: boolean;
   /**
+   * A REPLY THE CARRIER OR THE LAW REQUIRES, which PPP's own rails may not
+   * silently swallow.
+   *
+   * Today this is HELP, and HELP alone. CTIA requires it, carriers test it
+   * during A2P vetting, and record-inbound queues it through the ordinary
+   * reply queue precisely so that it passes through this gate — which was
+   * right, except that two of the rules here are PPP's own volume policy
+   * rather than a legal bound, and both of them could eat it:
+   *
+   *   the daily cap        somebody who has had three messages today and then
+   *                        texts HELP gets silence, and the reply becomes a
+   *                        draft in a queue
+   *   the empty-list rail  a safety rail for the port, which refuses every
+   *                        send while sms_opt_outs is empty — so until the
+   *                        list was imported, EVERY HELP reply became a draft
+   *
+   * Suppression and the sending window are deliberately NOT bypassed. Those
+   * are legal bounds rather than policy, and relaxing either is a decision for
+   * Kate and for whoever owns the compliance answer, not a flag. A HELP reply
+   * refused by one of them is reported loudly rather than dropped, so the gap
+   * is visible instead of silent.
+   */
+  required?: boolean;
+  /**
    * The customer's state, when the caller knows it — from their zip through
    * sms_service_zips, which is the most authoritative thing PPP holds.
    *
@@ -292,7 +317,10 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   //    list makes the suppression check below answer "not suppressed" for
   //    everybody, including the people most important to refuse.
   if (deps.suppressionListLoaded && !(await deps.suppressionListLoaded())) {
-    return { ok: false, reason: "suppression_list_empty" };
+    // ...unless the law requires this one. The rail exists to stop PPP
+    // STARTING conversations with a list that cannot refuse anybody; it was
+    // never meant to stop us answering HELP. See SendRequest.required.
+    if (!req.required) return { ok: false, reason: "suppression_list_empty" };
   }
 
   // 1. Suppression, on the channel we are about to use. Absolute, and first,
@@ -301,7 +329,25 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     { phone: to ?? null, email: req.toEmail ?? null },
     channel
   );
-  if (suppressed) return { ok: false, reason: "suppressed" };
+  if (suppressed) {
+    /**
+     * A REQUIRED REPLY REFUSED HERE IS A GAP SOMEBODY HAS TO DECIDE ABOUT.
+     *
+     * Somebody who opted out and then texts HELP is asking us a question, and
+     * CTIA requires an answer — but suppression is the one rule in this file
+     * that is absolute, and quietly carving a hole in it is not a change to
+     * make from a bug report. Reported so it is visible and can be decided,
+     * rather than disappearing into a draft queue.
+     */
+    if (req.required) {
+      reportWarn({
+        key: "required_reply_refused_suppressed", platform: "ppp_cc",
+        message: "a legally required reply (HELP) was refused because the number is suppressed",
+        context: { to: to ?? null, agent: req.agent },
+      });
+    }
+    return { ok: false, reason: "suppressed" };
+  }
 
   // A reply to a message the customer just sent answers within the FEDERAL
   // window rather than the workspace's own narrower one. See answersInbound:
@@ -444,7 +490,8 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
    */
   const cap = deps.dailyCap ?? DEFAULT_DAILY_CAP;
   const dayStart = startOfDayIn(now, zone.timeZone);
-  if (!withinDailyCap(await deps.sentToday(to, dayStart), cap)) {
+  // A required reply is not a fourth marketing message; see SendRequest.required.
+  if (!req.required && !withinDailyCap(await deps.sentToday(to, dayStart), cap)) {
     // Anchored at the start of the recipient's NEXT day — the first moment the
     // count above is 0 — and then moved to the first legal sending moment by
     // the same function the window refusal uses, so the two cannot disagree.

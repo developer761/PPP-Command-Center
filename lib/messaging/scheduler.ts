@@ -240,7 +240,19 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
   // step afterwards, but Emily's answer to a message a person is now dealing
   // with is not. It is dropped, never sent late.
   if (a.action === "send_reply") {
-    if (ctx.conversationState === "human_active") {
+    /**
+     * THE CTIA REPLY IS NOT AN OPINION ABOUT THE CONVERSATION.
+     *
+     * Everything below this line decides whether Emily's ANSWER is still the
+     * right thing to say — a person has taken over, or the customer has moved
+     * on. Both are good reasons to drop a reply and bad reasons to drop HELP:
+     * that one is a fixed, required string about how to stop and where to get
+     * help, and it is just as true after somebody claims the thread.
+     *
+     * Carriers test HELP during A2P vetting, and these two cancels are silent.
+     */
+    const required = a.reply_intent === "help_response";
+    if (!required && ctx.conversationState === "human_active") {
       const reason = "a person took the conversation over before the reply was due";
       await deps.cancel(a, reason);
       return { kind: "cancelled", reason };

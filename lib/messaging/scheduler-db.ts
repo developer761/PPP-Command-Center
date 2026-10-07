@@ -331,13 +331,18 @@ export function schedulerDeps(): SchedulerDeps {
       // message, this turn has nothing to add: it is the second turn queued by
       // a burst of texts. If it answers an older one, the customer has said
       // more since, so it is dropped and this turn answers everything.
+      // reply_intent as well, because the CTIA HELP reply must not be cancelled
+      // as stale: it is a fixed string about how to stop and where to get help,
+      // and it stays true however many times the customer writes.
       const { data: held } = await sb.from("sms_scheduled_actions")
-        .select("id, answers_message_id")
+        .select("id, answers_message_id, reply_intent")
         .eq("conversation_id", conv.id).eq("action", "send_reply").in("state", ["pending", "claimed"]);
       if (!isStallFollowUp && (held ?? []).some((h) => h.answers_message_id === lastInbound.id)) {
         return { kind: "skipped" as const, reason: "a reply to the latest message is already on its way" };
       }
-      const stale = (held ?? []).map((h) => h.id);
+      const stale = (held ?? [])
+        .filter((h) => (h as { reply_intent?: string | null }).reply_intent !== "help_response")
+        .map((h) => h.id);
       if (stale.length) {
         await sb.from("sms_scheduled_actions").update({
           state: "cancelled", cancelled_reason: "the customer texted again before it was due",
@@ -791,7 +796,7 @@ export function schedulerDeps(): SchedulerDeps {
       const { data: latest } = await sb.from("sms_messages")
         .select("id").eq("conversation_id", conv.id).eq("direction", "inbound")
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (latest && latest.id !== a.answers_message_id) {
+      if (latest && latest.id !== a.answers_message_id && a.reply_intent !== "help_response") {
         return { kind: "skipped" as const, reason: "the customer texted again before it was due" };
       }
 
@@ -804,8 +809,22 @@ export function schedulerDeps(): SchedulerDeps {
       // reach somebody who texted at half past eight. Nothing else relaxes:
       // suppression, the empty-list rail, the daily cap and the federal window
       // all still apply, and 2am is still refused.
+      /**
+       * HELP IS REQUIRED, and PPP's own volume rails may not eat it.
+       *
+       * record-inbound queues the CTIA-required HELP reply through this same
+       * queue, deliberately, so it passes the gate like everything else. The
+       * daily cap and the empty-list rail are PPP policy rather than legal
+       * bounds, and either could turn it into a draft nobody reads: somebody
+       * who has had three messages today and then texts HELP got silence.
+       * See SendRequest.required — suppression and the hours still bind.
+       */
       const sent = await gatedSend(
-        { workspace: ws, to, body: a.reply_body, agent: "agent_autosend", answersInbound: true },
+        {
+          workspace: ws, to, body: a.reply_body, agent: "agent_autosend",
+          answersInbound: true,
+          required: a.reply_intent === "help_response",
+        },
         gateDeps(sb)
       );
       if (sent.ok) return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
