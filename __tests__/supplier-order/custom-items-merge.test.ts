@@ -66,3 +66,26 @@ describe("identical custom lines merge for the vendor", () => {
     expect(block([custom({ qty: 3 })])).toMatch(/3 gal — Regal Select — Super White · Flat/);
   });
 });
+
+describe("the 'no product line' warning tells the truth", () => {
+  const WARN = /Paint product line not specified/;
+
+  it("does not fire when the custom lines DO carry a product", () => {
+    // On a job where every color came through the Color Notes, `estimates` is
+    // empty — so the warning fired on an order whose every line named its
+    // product correctly. A warning on a correct order teaches the vendor to
+    // ignore the warning that matters.
+    expect(block([custom({ materialType: "Regal Select" })])).not.toMatch(WARN);
+  });
+
+  it("still fires when nothing anywhere has one", () => {
+    expect(block([custom({ materialType: null })])).toMatch(WARN);
+  });
+
+  it("marks the unset line rather than hiding it, once anything is set", () => {
+    // A row with no product must not look identical to one that has a product.
+    const out = block([custom({ materialType: "Regal Select" }), custom({ label: "Hale Navy", materialType: null })]);
+    expect(out).toMatch(/\[NOT SET\] — Hale Navy/);
+    expect(out).not.toMatch(WARN);
+  });
+});

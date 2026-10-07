@@ -412,6 +412,18 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   }, [datePreset, dateFrom, dateTo, todayEtStr]);
 
   const filtersActive = filterStatus !== "all" || datePreset !== "any" || dateSort !== "off";
+
+  /** The status picker's own wording, so the empty state can name what it
+   *  filtered to rather than describing it a second, different way. */
+  const STATUS_LABELS: Record<string, string> = {
+    needs_form: "Needs form sent",
+    awaiting_customer: "Awaiting customer",
+    ready_to_order: "Ready to order",
+    ordered: "Ordered",
+    cancelled: "Order cancelled",
+    delivered: "Materials delivered",
+    no_line_items: "No line items yet",
+  };
   const clearFilters = () => {
     setFilterStatus("all");
     setDateSort("off");
@@ -1229,7 +1241,44 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
                     here — check it in Salesforce.
                   </p>
                 </div>
-              ) : null
+              ) : filtersActive ? (
+                /* An empty screen must say WHY. This branch was `null`: with no
+                   search text and a filter that matched nothing, the list body
+                   rendered NOTHING — no row, no message, no hint which control
+                   did it. Reachable on the first screen of the day by picking
+                   Status → Order cancelled on a job set that has none. */
+                <div className="px-5 py-6 text-center text-xs text-ppp-charcoal-500">
+                  <p className="italic">
+                    No open paint jobs
+                    {filterStatus !== "all" && STATUS_LABELS[filterStatus]
+                      ? ` are at “${STATUS_LABELS[filterStatus]}”`
+                      : " match these filters"}
+                    {datePreset !== "any" ? " in that date range" : ""}.
+                  </p>
+                  <p className="mt-1.5 text-[11px] text-ppp-charcoal-400 not-italic">
+                    Nothing is wrong — there are {openJobs.length} open{" "}
+                    {openJobs.length === 1 ? "job" : "jobs"} in total.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-3 inline-flex items-center px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-[11px] font-semibold text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors touch-manipulation"
+                  >
+                    Clear the filters
+                  </button>
+                </div>
+              ) : (
+                /* No search, no filters, and still nothing: the person has no
+                   open paint jobs at all. Distinct from the case above, and it
+                   was also rendering blank. */
+                <div className="px-5 py-6 text-center text-xs text-ppp-charcoal-500">
+                  <p className="italic">No open paint jobs right now.</p>
+                  <p className="mt-1.5 text-[11px] text-ppp-charcoal-400 not-italic">
+                    Jobs appear here once they are open in Salesforce and have
+                    paint line items on them.
+                  </p>
+                </div>
+              )
             ) : (
               <Virtuoso
                 data={visibleJobs}
