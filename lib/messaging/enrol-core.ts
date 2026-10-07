@@ -254,9 +254,15 @@ export async function sweepExitsWith(sb: SupabaseClient, input: {
       const d = shouldExit(w, record, now);
       if (!d.exit) continue;
 
-      await sb.from("sms_conversations").update({
-        state: "ended", outcome: "success", ended_at: new Date().toISOString(),
+      // THE OUTCOME THE RECORD ACTUALLY SHOWS, not "success" for everything.
+      // Two of the five seeded exit rules are Unqualified and Opt-Out, and
+      // both were being filed as bookings. See outcomeForExit.
+      const { error: endErr } = await sb.from("sms_conversations").update({
+        state: "ended", outcome: d.outcome, ended_at: new Date().toISOString(),
       }).eq("id", c.id);
+      // Counted as ended below, so a silent failure would report an exit that
+      // did not happen and the campaign would keep chasing.
+      if (endErr) throw new Error(`could not end the conversation: ${endErr.message}`);
 
       // Everything still queued stops. The trigger from migration 181 does
       // this too; doing it here as well means the reason is recorded.

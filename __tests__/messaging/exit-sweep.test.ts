@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { leadStateFor, byConversation, batches, idList, EXIT_LEAD_FIELDS, EXIT_OPP_FIELDS } from "@/lib/messaging/exit-sweep";
-import { shouldExit } from "@/lib/messaging/enrollment";
+import { shouldExit, outcomeForExit } from "@/lib/messaging/enrollment";
 import { readField } from "@/lib/messaging/rules";
 import type { LeadRecord } from "@/lib/messaging/rules";
 
@@ -147,5 +147,49 @@ describe("the SOQL this builds", () => {
     for (const f of ["StageName", "AppointmentDate__c"]) {
       expect(EXIT_OPP_FIELDS).toContain(f);
     }
+  });
+});
+
+/**
+ * EVERY EXIT WAS FILED AS A BOOKING.
+ *
+ * The seeded exit set is "Stop chasing — booked, qualified or opted out", and
+ * two of its five rules are not successes by anybody's reading: Status =
+ * Unqualified, and SMS_Opt_In__c = Opt-Out. Both wrote outcome: "success".
+ *
+ * That is the headline number Kate judges the bot by, wrong in the most
+ * flattering direction — the worst way for a number to be wrong. A bot that
+ * drove people to opt out would have read as a bot that books.
+ */
+describe("how a conversation that stops chasing is recorded", () => {
+  it("an unqualified lead is not a booking", () => {
+    expect(outcomeForExit({ Status: "Unqualified" })).toBe("lost");
+  });
+
+  it("somebody who opted out is not a booking", () => {
+    expect(outcomeForExit({ SMS_Opt_In__c: "Opt-Out" })).toBe("lost");
+  });
+
+  it("the four genuine successes stay successes", () => {
+    expect(outcomeForExit({ IsConverted: true })).toBe("success");
+    expect(outcomeForExit({ Status: "Qualified" })).toBe("success");
+    expect(outcomeForExit({ "Opportunity.AppointmentDate__c": "2026-10-20" })).toBe("success");
+    expect(outcomeForExit({ "Opportunity.StageName": "Opportunity Assigned" })).toBe("success");
+  });
+
+  it("reads the record however Salesforce cased it", () => {
+    expect(outcomeForExit({ Status: "unqualified" })).toBe("lost");
+    expect(outcomeForExit({ SMS_Opt_In__c: " opt-out " })).toBe("lost");
+  });
+
+  it("comes through shouldExit, which is what the sweep actually calls", () => {
+    const w = {
+      id: "w1", workspaceId: "ws1", name: "Stop chasing", isActive: true,
+      campaignId: "c1", entryRules: [],
+      exitRules: [{ ordinal: 1, field: "SMS_Opt_In__c", operator: "equals" as const, values: ["Opt-Out"] }],
+    };
+    const d = shouldExit(w, { Id: "00Q1", SMS_Opt_In__c: "Opt-Out" }, new Date());
+    expect(d.exit).toBe(true);
+    if (d.exit) expect(d.outcome).toBe("lost");
   });
 });
