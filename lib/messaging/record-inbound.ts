@@ -1,4 +1,4 @@
-import { optOutSource } from "./compliance";
+import { optOutSource, HELP_INTENT } from "./compliance";
 /**
  * Writing down a message a customer sent us.
  *
@@ -328,11 +328,45 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     // A fixed body rather than a generated one: what a HELP reply must contain
     // is a rule, not a judgement, and a model that improvises it could drop
     // half the obligations on a bad day. It goes out as a send_reply so it
-    // passes through the same gate as everything else — the suppression check,
-    // the cap and the hours all still apply.
+    // passes through the same gate as everything else — the suppression check
+    // and the hours still apply. The daily CAP does not, because this reply is
+    // required: see SendRequest.required.
+    //
+    // ── AND THAT IS WHY IT NEEDS ITS OWN BRAKE ──────────────────────────────
+    //
+    // The cap was the only thing bounding how many of these could go out, and
+    // exempting the reply from it left nothing at all. isNew dedupes a carrier
+    // REDELIVERY of one text, not a person sending twenty: twenty HELPs in ten
+    // minutes queued twenty replies, every one of them exempt, all from one
+    // 10DLC number. That is the pattern a carrier spam filter flags — during
+    // the A2P vetting this block exists to pass — and PPP pays for each.
+    //
+    // CTIA requires answering a HELP request. It does not require answering
+    // the twentieth one in ten minutes. So: once per conversation per day, the
+    // same brake and the same window the after-hours reply below uses.
+    //
+    // Two things are counted, because they fail differently. A reply already
+    // SENT is the ordinary case. A reply already QUEUED is the burst case —
+    // five texts in five seconds all see zero sent replies, so without this
+    // they all queue, and the gate would then send five.
     if (isNew && decision.keyword === "help" && ws?.id) {
-      const { data: inbound } = await sb.from("sms_messages")
-        .select("id").eq("provider_id", decision.providerId).maybeSingle();
+      const helpDayAgo = new Date(receivedAt.getTime() - 24 * 3600_000).toISOString();
+      const { count: helpSent } = await sb.from("sms_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("agent_intent", HELP_INTENT)
+        .gte("created_at", helpDayAgo);
+      const { count: helpQueued } = await sb.from("sms_scheduled_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("reply_intent", HELP_INTENT)
+        .in("state", ["pending", "claimed"]);
+      const alreadyHelped = (helpSent ?? 0) > 0 || (helpQueued ?? 0) > 0;
+
+      const { data: inbound } = alreadyHelped
+        ? { data: null }
+        : await sb.from("sms_messages")
+          .select("id").eq("provider_id", decision.providerId).maybeSingle();
       // Needs the message it answers: sms_scheduled_actions_send_reply_chk
       // requires body, moment and answers_message_id together.
       if (inbound?.id) {
@@ -345,7 +379,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
           run_at: receivedAt.toISOString(),
           reply_due_at: receivedAt.toISOString(),
           reply_body: helpReply(ws.phone_e164 ?? null),
-          reply_intent: "help_response",
+          reply_intent: HELP_INTENT,
           answers_message_id: inbound.id,
         });
         if (hErr) {

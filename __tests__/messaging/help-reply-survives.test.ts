@@ -96,25 +96,52 @@ describe("the required reply survives PPP's own rails", () => {
 /**
  * The scheduler's two cancels, asserted on the source: both run before any
  * transport is involved, so there is no send to observe — the thing that
- * matters is that `help_response` is exempt from each.
+ * matters is that the HELP reply is exempt from each.
+ *
+ * MATCHED ON THE CONSTANT, NOT THE STRING IT HOLDS. The first version of these
+ * three asserted the literal "help_response" at each site. That is the
+ * spelling, not the rule: lifting the five copies into one exported constant —
+ * which is strictly better, because a typo in any copy is a silent CTIA
+ * failure — turned all three red while every exemption they guard was intact.
+ * A literal in an assertion pins the implementation it happened to find.
  */
 describe("the required reply is not cancelled before it is sent", () => {
+  /** The constant, or the string, so neither spelling of the same rule fails. */
+  const INTENT = /(?:HELP_INTENT|"help_response")/.source;
+
   it("a person claiming the thread does not drop it", () => {
     const src = readFileSync("lib/messaging/scheduler.ts", "utf8");
-    expect(src).toMatch(/const required = a\.reply_intent === "help_response"/);
+    expect(src).toMatch(new RegExp(`const required = a\\.reply_intent === ${INTENT}`));
     expect(src).toMatch(/if \(!required && ctx\.conversationState === "human_active"\)/);
   });
 
   it("the customer texting again does not drop it", () => {
     const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
     // Both staleness paths: the one that cancels older held replies...
-    expect(src).toMatch(/reply_intent !== "help_response"\)\s*\n?\s*\.map\(\(h\) => h\.id\)/);
+    expect(src).toMatch(new RegExp(`reply_intent !== ${INTENT}\\)\\s*\\n?\\s*\\.map\\(\\(h\\) => h\\.id\\)`));
     // ...and the one inside sendHeldReply.
-    expect(src).toMatch(/latest\.id !== a\.answers_message_id && a\.reply_intent !== "help_response"/);
+    expect(src).toMatch(new RegExp(`latest\\.id !== a\\.answers_message_id && a\\.reply_intent !== ${INTENT}`));
   });
 
   it("and the send marks it required, or none of the above matters", () => {
     const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
-    expect(src).toMatch(/required: a\.reply_intent === "help_response"/);
+    expect(src).toMatch(new RegExp(`required: a\\.reply_intent === ${INTENT}`));
+  });
+
+  /**
+   * AND THE CONSTANT HAS ONE DEFINITION.
+   *
+   * The reason to lift it was that five places compare against it to decide
+   * whether a send is cap-exempt and whether it may be cancelled. A second
+   * declaration anywhere would put that back — two spellings that agree today
+   * and need not tomorrow.
+   */
+  it("is declared exactly once", () => {
+    const files = ["compliance", "scheduler", "scheduler-db", "record-inbound"]
+      .map((f) => readFileSync(`lib/messaging/${f}.ts`, "utf8"));
+    const declarations = files.flatMap((src) =>
+      [...src.matchAll(/(?:const|let)\s+HELP_INTENT\s*=/g)]
+    );
+    expect(declarations).toHaveLength(1);
   });
 });

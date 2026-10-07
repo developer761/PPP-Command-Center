@@ -52,6 +52,20 @@ const OPT_IN_KEYWORDS = ["start", "unstop"] as const;
 /** Help keywords. A reply is legally required. */
 const HELP_KEYWORDS = ["help", "info"] as const;
 
+/**
+ * The intent the required HELP reply carries — as a queued action's
+ * reply_intent, and as the sent message's agent_intent.
+ *
+ * ONE SPELLING, because five places compare against it and they are not
+ * independent opinions: the scheduler reads it to mark the send `required`,
+ * which exempts it from the daily cap; two more refuse to cancel or stale out
+ * a legally required reply; and record-inbound both writes it and counts it,
+ * so twenty HELP texts do not get twenty replies. A typo in any one of them is
+ * either a silent CTIA failure or an unthrottled burst from a 10DLC number,
+ * and neither announces itself.
+ */
+export const HELP_INTENT = "help_response";
+
 export type InboundIntent = "opt_out" | "opt_in" | "help" | "normal";
 
 /**

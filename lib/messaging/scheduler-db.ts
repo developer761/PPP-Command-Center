@@ -7,6 +7,7 @@
 import { messagingDb } from "./db";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
+import { HELP_INTENT } from "./compliance";
 import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
@@ -341,7 +342,7 @@ export function schedulerDeps(): SchedulerDeps {
         return { kind: "skipped" as const, reason: "a reply to the latest message is already on its way" };
       }
       const stale = (held ?? [])
-        .filter((h) => (h as { reply_intent?: string | null }).reply_intent !== "help_response")
+        .filter((h) => (h as { reply_intent?: string | null }).reply_intent !== HELP_INTENT)
         .map((h) => h.id);
       if (stale.length) {
         await sb.from("sms_scheduled_actions").update({
@@ -800,7 +801,7 @@ export function schedulerDeps(): SchedulerDeps {
       const { data: latest } = await sb.from("sms_messages")
         .select("id").eq("conversation_id", conv.id).eq("direction", "inbound")
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (latest && latest.id !== a.answers_message_id && a.reply_intent !== "help_response") {
+      if (latest && latest.id !== a.answers_message_id && a.reply_intent !== HELP_INTENT) {
         return { kind: "skipped" as const, reason: "the customer texted again before it was due" };
       }
 
@@ -827,7 +828,7 @@ export function schedulerDeps(): SchedulerDeps {
         {
           workspace: ws, to, body: a.reply_body, agent: "agent_autosend",
           answersInbound: true,
-          required: a.reply_intent === "help_response",
+          required: a.reply_intent === HELP_INTENT,
         },
         gateDeps(sb)
       );

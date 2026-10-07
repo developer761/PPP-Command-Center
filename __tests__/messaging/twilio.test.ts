@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { TwilioTransport, TWILIO_UNSUBSCRIBED } from "@/lib/messaging/transports/twilio";
 import { activeTransport, LoggingTransport } from "@/lib/messaging/transport";
 import { transportChoice } from "@/lib/messaging/transport-config";
@@ -194,13 +195,92 @@ describe("the Twilio adapter", () => {
       .rejects.toThrow(/unreachable carrier/);
   });
 
-  it("closes the row when Twilio accepts with a body we cannot read", async () => {
-    // A 2xx carrying HTML is usually an intermediary, and it is genuinely
-    // ambiguous whether Twilio saw the request. Ambiguity resolves towards not
-    // sending twice: the alert says what happened and a person can check.
-    vi.stubGlobal("fetch", async () => new Response("<html>502</html>", { status: 200 }));
+  it("closes the row when TWILIO accepts with a body we cannot read", async () => {
+    // 201 is Twilio's documented success. At that status the message really
+    // was created, so the ambiguity resolves towards not sending it twice:
+    // the alert says what happened and a person can check.
+    vi.stubGlobal("fetch", async () => new Response("<weird/>", { status: 201 }));
     const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
     expect(res.providerId).toMatch(/^twilio-unparsed-/);
+  });
+
+  /**
+   * AND THE CORRECTION TO THE ABOVE, which this file previously had backwards.
+   *
+   * The first version of this test asserted that a 200 carrying HTML closes
+   * the row. Its own comment admitted the case was "genuinely ambiguous" and
+   * then resolved it towards recording a send — which is the expensive
+   * direction, because nothing can ever un-record it. delivery_status is only
+   * moved by a status callback carrying the sid, and there is no sid, so the
+   * message sits in the thread marked sent for ever and nobody asks again.
+   *
+   * A 200 with an HTML body is not Twilio. It is a proxy, a captive portal or
+   * an egress appliance, and the message never left the building. A duplicate
+   * is visible and embarrassing; a drop is invisible and the customer simply
+   * never hears back.
+   */
+  it("treats a 200 carrying HTML as never sent, because that is not Twilio", async () => {
+    vi.stubGlobal("fetch", async () => new Response("<html>502 Bad Gateway</html>", { status: 200 }));
+    await expect(t().send("+15167885933" as E164, "+15163448418" as E164, "x"))
+      .rejects.toThrow(/NOT SENT/);
+  });
+
+  it("treats a 200 whose JSON carries no sid as never sent", async () => {
+    // Parses perfectly and proves nothing. Only a sid proves Twilio answered.
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await expect(t().send("+15167885933" as E164, "+15163448418" as E164, "x"))
+      .rejects.toThrow(/no sid/);
+  });
+
+  it("accepts any 2xx that carries a sid, because a sid is proof", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ sid: "SM7", status: "queued" }), { status: 200 }));
+    const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    expect(res.providerId).toBe("SM7");
+  });
+
+  /**
+   * The no-throw invariant above this block says nothing past acceptance may
+   * throw. A 2xx body of literal `null` parses fine and is not an object, so
+   * reading .status off it threw a TypeError right through that promise — the
+   * one shape the invariant's own wording did not cover.
+   */
+  it("does not crash on a 2xx body of literal null", async () => {
+    vi.stubGlobal("fetch", async () => new Response("null", { status: 201 }));
+    const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    expect(res.providerId).toMatch(/^twilio-unparsed-/);
+  });
+
+  it("raises the untraceable send as an error, not a warning", async () => {
+    // A warn is dropped entirely inside the first 30 seconds of a cold start
+    // and this transport is driven by a one-minute cron, so a warning about a
+    // message nobody can confirm would usually reach nobody.
+    const src = readFileSync("lib/messaging/transports/twilio.ts", "utf8");
+    for (const key of ["twilio_unreadable_accept", "twilio_accept_without_sid"]) {
+      const at = src.indexOf(key);
+      expect(at, key).toBeGreaterThan(-1);
+      expect(src.slice(Math.max(0, at - 200), at)).toMatch(/reportError\(\{/);
+    }
+  });
+
+  /**
+   * A customer's phone number is not alert context. observability.ts states
+   * the rule in its own header — "Customer emails… none of those go into Slack
+   * messages. Use UUID prefixes" — and these two alerts were added carrying
+   * the full E.164.
+   */
+  it("does not put a customer's phone number into either alert", async () => {
+    // Comments stripped first: this file explains at length why the number is
+    // NOT passed, and a negative assertion that reads prose finds the thing it
+    // is looking for in the explanation of its own absence.
+    const src = readFileSync("lib/messaging/transports/twilio.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const contexts = [...src.matchAll(/context:\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    expect(contexts.length, "no alert context found at all").toBeGreaterThanOrEqual(2);
+    for (const c of contexts) {
+      // `to` or `to: to` — the shorthand is the one that slipped in.
+      expect(c, `an alert context carries the raw number: ${c.trim()}`)
+        .not.toMatch(/(^|[\s,{])to\s*(?:,|:\s*to\b|$)/);
+    }
   });
 });
 

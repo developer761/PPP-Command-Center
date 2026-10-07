@@ -12,6 +12,7 @@
 import type { E164 } from "./phone";
 import type { GateResult, GateWorkspace, SendRequest, GateDeps } from "./gate";
 import { FOLLOW_UP_COUNT } from "./stalled";
+import { HELP_INTENT } from "./compliance";
 import { CarrierUnsubscribedError } from "./transports/twilio";
 
 /** After this many tries a row stops retrying and asks for a human. Five
@@ -251,7 +252,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
      *
      * Carriers test HELP during A2P vetting, and these two cancels are silent.
      */
-    const required = a.reply_intent === "help_response";
+    const required = a.reply_intent === HELP_INTENT;
     if (!required && ctx.conversationState === "human_active") {
       const reason = "a person took the conversation over before the reply was due";
       await deps.cancel(a, reason);
