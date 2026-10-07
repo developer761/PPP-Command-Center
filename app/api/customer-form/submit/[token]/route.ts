@@ -1047,10 +1047,23 @@ export async function POST(
     }
   }
 
-  // Deliberately not gated on `runWrites` or on the Salesforce writeback: the
-  // receipt reports what the CUSTOMER sent, and staying silent because our own
-  // integration failed is exactly the dispute it exists to prevent.
-  if (notifySender && hasMeaningfulSubmission && status.token.customer_email) {
+  // Still deliberately NOT gated on the Salesforce writeback: the receipt
+  // reports what the CUSTOMER sent, and staying silent because our own
+  // integration failed is exactly the dispute it exists to prevent. That rule
+  // is unchanged.
+  //
+  // It IS gated on `runWrites` now, which is a different thing despite the
+  // name — `runWrites` is the double-submit RACE flag (markSubmitted returns
+  // `fresh` only to the winner), not the writeback decision, which is
+  // `decision.shouldWrite`. A race-loser is a duplicate of the submission the
+  // winner already handled, so sending a second identical receipt tells the
+  // customer nothing and reads like a system stuttering at them. The rate
+  // limit allows 8 attempts a minute, so a double-tap on a slow phone could
+  // produce several.
+  //
+  // The sender notification below has been gated this way all along — the team
+  // was protected from the duplicate noise and the customer was not.
+  if (notifySender && runWrites && hasMeaningfulSubmission && status.token.customer_email) {
     const receiptRoomLabels = new Map<string, string>();
     for (const li of fresh.lineItems) {
       if (li.id) receiptRoomLabels.set(li.id, roomLabelFrom(li.areaLabel, li.productName));

@@ -108,3 +108,25 @@ describe("a re-edit is exempt, because an empty one is an instruction", () => {
     expect(route).toMatch(/nothing_submitted/);
   });
 });
+
+describe("a double-tap does not send two receipts", () => {
+  it("gates the receipt on winning the submit race", () => {
+    // `runWrites` is the RACE flag — markSubmitted returns `fresh` only to the
+    // winner — not the writeback decision, which is `decision.shouldWrite`.
+    // A race-loser is a duplicate of the submission the winner already
+    // handled, so a second identical receipt tells the customer nothing. The
+    // rate limit allows 8 attempts a minute, so a double-tap on a slow phone
+    // could produce several.
+    expect(route).toMatch(/notifySender && runWrites && hasMeaningfulSubmission/);
+  });
+
+  it("is still NOT gated on the Salesforce writeback", () => {
+    // The separate, deliberate rule: the receipt reports what the CUSTOMER
+    // sent, and staying silent because our own integration failed is the
+    // dispute it exists to prevent. Widening the gate must not have swallowed
+    // this.
+    const block = route.slice(route.indexOf("notifySender && runWrites"));
+    expect(block.slice(0, 1200)).not.toMatch(/decision\.shouldWrite/);
+    expect(block.slice(0, 1200)).not.toMatch(/writebackHappened/);
+  });
+});

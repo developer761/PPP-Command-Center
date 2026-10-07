@@ -269,12 +269,22 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
   },
   {
     value: "SW Super Paint", group: "Sherwin Williams", category: "any",
-    // ⚠ "Velvet" (interior) and "High-Gloss" (exterior) are NOT values on
-    // Salesforce's restricted Finish*__c picklists. Kept because Jason is the
-    // authority on what PPP paints with and hiding a real sheen makes the
-    // picker wrong — but until Katie adds them in Salesforce, choosing one
-    // saves the color and drops the sheen. `npm run check:sf-picklists` names
-    // them on every run so this cannot go quiet.
+    // "Velvet" (interior) and "High-Gloss" (exterior) both SAVE correctly.
+    //
+    // This said the opposite for months — that neither was a value on the
+    // restricted Finish*__c picklists, so choosing one "saves the color and
+    // drops the sheen". It was written while Katie was mid-way through adding
+    // them and never revisited. Katie, 2026-10-02: "High-Gloss is a finish in
+    // Salesforce! I see it on the finish picklist for walls, ceiling, trim, and
+    // other." Read back from the live describe: all five restricted
+    // Finish*__c picklists hold both as ACTIVE, spelled exactly so, and
+    // `npm run check:sf-picklists` reports 133 picker options with 0 rejected
+    // and 0 unwritten (re-run 2026-10-06).
+    //
+    // Left as a comment rather than deleted because a stale warning is worse
+    // than none: this one would have had the next person hunting a sheen-loss
+    // bug that does not exist. See surface-mapping.ts, which carries the same
+    // correction next to the values themselves.
     finishes: {
       interior: ["Flat", "Satin", "Velvet", "Semi-Gloss"],
       exterior: ["Flat", "Low Lustre", "Satin", "Gloss", "High-Gloss"],

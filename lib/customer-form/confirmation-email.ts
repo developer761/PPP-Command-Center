@@ -146,7 +146,14 @@ export function buildConfirmationEmail(input: {
     })
     .join("\n");
 
-  const roomsHtml = `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:1px solid #e0e0e0; border-collapse:collapse;">
+  // A notes-only submission has no color rows, and this used to render the
+  // table anyway: three column headings — SURFACE / COLOR / FINISH — over
+  // nothing, beneath a green "Color selections received". Both halves were
+  // wrong at once, and the reader is a customer who had just told us they
+  // were not ready to pick yet.
+  const hasAnyColors = rooms.some((r) => r.surfaces.some((s) => s.colorName || s.skipped));
+
+  const roomsHtml = !hasAnyColors ? "" : `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:1px solid #e0e0e0; border-collapse:collapse;">
         <tbody>
           <tr>
             <th align="left" style="padding:6px 10px; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold; border-bottom:1px solid #e0e0e0;">Surface</th>
@@ -163,9 +170,12 @@ export function buildConfirmationEmail(input: {
   const escWo = (vars.wo_number ?? "").trim() ? escapeHtml(vars.wo_number) : "";
   // One line, not a two-line box. The old version repeated "Work Order" and
   // "Status" as a stacked block that competed with the table underneath it.
+  // Say what actually arrived. "Color selections received" over a notes-only
+  // submission tells the customer we have something we do not have.
+  const receivedLabel = hasAnyColors ? "Color selections received" : "Notes received";
   const woBlock = escWo
-    ? `Work Order <strong>#${escWo}</strong> &nbsp;·&nbsp; <span style="color:#27772f; font-weight:bold;">Color selections received</span>`
-    : `<span style="color:#27772f; font-weight:bold;">Color selections received</span>`;
+    ? `Work Order <strong>#${escWo}</strong> &nbsp;·&nbsp; <span style="color:#27772f; font-weight:bold;">${receivedLabel}</span>`
+    : `<span style="color:#27772f; font-weight:bold;">${receivedLabel}</span>`;
 
   const html = `<table border="0" cellpadding="0" cellspacing="0" style="width:600px; font-family:tahoma,geneva,sans-serif; font-size:10pt; line-height:1.5; color:#333;">
   <tbody>
