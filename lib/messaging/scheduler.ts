@@ -591,6 +591,14 @@ export type TickSummary = {
   cancelled: number;
   failed: number;
   skipped: number;
+  /**
+   * The budget was already spent before a single row was claimed, so none was.
+   *
+   * Distinguished from a quiet tick because the two need opposite responses: a
+   * tick with nothing due is healthy, and a tick that never got to the queue
+   * means the work in front of it is eating the lambda.
+   */
+  outOfTimeBeforeClaiming?: boolean;
 };
 
 /** One tick. Returns counts so the caller can alert on them — a tick that
@@ -628,6 +636,29 @@ export async function runDueActions(
   /** Overridable so the budget can be tested in milliseconds rather than by
    *  waiting four minutes. Production uses the default. */
   budgetMs = TICK_BUDGET_MS,
+  /**
+   * WHEN THE LAMBDA STARTED, not when this function did.
+   *
+   * The budget exists to stop claiming work the lambda has no time to finish,
+   * because an abandoned claim costs an attempt that is never refunded — "gave
+   * up after 6 attempts" about a send nobody tried. It was measured from the
+   * first line of this function, and by then the tick route has already made
+   * FOUR Salesforce round trips: the lead poll, the exit sweep, the
+   * service-zip refresh and the opt-out writeback. None of that counted.
+   *
+   * So on a slow Salesforce day the route could spend 90 seconds, hand over
+   * here, and this would happily budget a further 240 — 330 against a
+   * maxDuration of 300. The lambda is killed mid-tick, every row still claimed
+   * is abandoned, and the three sweeps AFTER this never run at all. The exact
+   * failure the budget was written to prevent, caused by the budget.
+   *
+   * Measured from the request instead, so the prelude spends the same money as
+   * the queue does and the budget adapts: a 90-second Salesforce leg leaves
+   * 150 seconds of rows rather than pretending it leaves 240.
+   *
+   * Defaults to now so every existing caller and test is unchanged.
+   */
+  startedAt = Date.now(),
 ): Promise<TickSummary> {
   /**
    * REAL elapsed time, never deps.now. That clock is injected for business
@@ -636,7 +667,24 @@ export async function runDueActions(
    * every tick instantly over budget, which is how the first version of this
    * skipped every row in the suite.
    */
-  const startedAt = Date.now();
+  /**
+   * CHECKED BEFORE CLAIMING, which is the half that cost attempts.
+   *
+   * The per-row check below only runs after claimDue has already taken up to
+   * fifty rows, and `sms_claim_due_actions` increments attempts on the CLAIM.
+   * So a tick that arrived here with no budget left still burned an attempt on
+   * fifty messages it never looked at, every minute, until they failed.
+   *
+   * Claiming nothing leaves them pending with their attempts intact for the
+   * next tick, which is the whole point.
+   */
+  if (Date.now() - startedAt > budgetMs) {
+    return {
+      claimed: 0, sent: 0, drafted: 0, held: 0,
+      rescheduled: 0, cancelled: 0, failed: 0, skipped: 0,
+      outOfTimeBeforeClaiming: true,
+    };
+  }
   const claimed = await deps.claimDue(limit);
   const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {

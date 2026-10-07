@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   runAction, runDueActions, classifyRefusal, backoffMs, MAX_ATTEMPTS,
   type DueAction, type SchedulerDeps,
@@ -881,5 +882,86 @@ describe("a deferral that would never end is ended", () => {
     await runDueActions(d);
     expect(d.calls.reschedule).toBe(1);
     expect(d.calls.fail).toBe(0);
+  });
+});
+
+/**
+ * THE BUDGET WAS SPENT BEFORE IT STARTED COUNTING.
+ *
+ * runDueActions exists to stop claiming work the lambda has no time to
+ * finish, because `sms_claim_due_actions` increments attempts on the CLAIM and
+ * `sms_reclaim_stale_actions` never gives them back — six abandoned ticks
+ * produce "gave up after 6 attempts" about a send nobody tried.
+ *
+ * It measured from its own first line. By then the tick route has made four
+ * Salesforce round trips: the lead poll, the exit sweep, the service-zip
+ * refresh and the opt-out writeback. None counted. So a slow Salesforce day
+ * could spend 90 seconds, hand over, and this would budget a further 240
+ * against a maxDuration of 300 — killed mid-tick, every claimed row abandoned,
+ * and the three sweeps after it never run. The failure the budget was written
+ * to prevent, produced by the budget.
+ */
+describe("the tick budget is spent against the lambda, not against itself", () => {
+  const tiny = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "b1", conversation_id: "c1", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 1, ...over,
+  });
+
+  it("works through the queue when there is budget left", async () => {
+    let claimCalls = 0;
+    const d = deps({
+      claimDue: async () => { claimCalls++; return [tiny()]; },
+      draftReply: async () => ({ kind: "skipped" as const, reason: "conversation has ended" }),
+    });
+    const out = await runDueActions(d, 50, 240_000, Date.now());
+    expect(claimCalls).toBe(1);
+    expect(out.outOfTimeBeforeClaiming).toBeFalsy();
+  });
+
+  /**
+   * THE HALF THAT COST ATTEMPTS. The per-row check only runs after claimDue
+   * has already taken up to fifty rows, and the claim is what increments
+   * attempts — so a tick arriving with no budget burned an attempt on fifty
+   * messages it never looked at, every minute, until they failed.
+   */
+  it("claims NOTHING when the lambda has already spent the budget", async () => {
+    let claimCalls = 0;
+    const d = deps({ claimDue: async () => { claimCalls++; return [tiny()]; } });
+    // The lambda started four minutes and one second ago.
+    const out = await runDueActions(d, 50, 240_000, Date.now() - 240_001);
+    expect(claimCalls, "rows were claimed with no time to run them").toBe(0);
+    expect(out.claimed).toBe(0);
+    expect(out.outOfTimeBeforeClaiming).toBe(true);
+  });
+
+  /**
+   * And it is reported as its own thing. A tick with nothing due is healthy; a
+   * tick that never reached the queue means the work in front of it is eating
+   * the lambda, and the two need opposite responses.
+   */
+  it("distinguishes out-of-time from a quiet queue", async () => {
+    const quiet = await runDueActions(deps({ claimDue: async () => [] }), 50, 240_000, Date.now());
+    expect(quiet.claimed).toBe(0);
+    expect(quiet.outOfTimeBeforeClaiming).toBeFalsy();
+  });
+
+  it("the tick route measures from the start of the request", () => {
+    const src = readFileSync("app/api/cron/messaging-tick/route.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    // Taken before any Salesforce work, and handed to runDueActions.
+    expect(src).toMatch(/const lambdaStartedAt = Date\.now\(\)/);
+    expect(src, "runDueActions is not told when the lambda started")
+      .toMatch(/runDueActions\([\s\S]{0,120}lambdaStartedAt/);
+    /**
+     * And taken before the Salesforce work, not after it — otherwise the
+     * prelude still costs nothing and the change is decoration.
+     *
+     * Against the first CALL, `await getSalesforceClient`, rather than the
+     * bare name: the first occurrence of that is the import at the top of the
+     * file, which is before everything, so the first version of this
+     * assertion passed on a fact about import order.
+     */
+    expect(src.indexOf("lambdaStartedAt = Date.now()"))
+      .toBeLessThan(src.indexOf("await getSalesforceClient"));
   });
 });
