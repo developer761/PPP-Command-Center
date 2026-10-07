@@ -327,7 +327,8 @@ export type RejectReason =
   | "address_question_walked_past" // A11: advanced on a question, which is not a refusal
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
-  | "second_property_uncollected";// closing a two-property job having collected one
+  | "second_property_uncollected" // closing a two-property job having collected one
+  | "availability_already_given";  // asking a fourth time for what Kate says we have
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -1748,6 +1749,39 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
           : "the job routes on-site, so the quick quote is OFFERED as an option with the reason the customer qualifies (A7), not presented as the plan",
       };
     }
+  }
+
+  /**
+   * ASKING FOR AVAILABILITY WE ALREADY HAVE.
+   *
+   * ASK_SUPERSEDED_BY covers the three legs that live in knownFields. The
+   * fourth does not: availability is derived from the conversation, so it has
+   * no field to be superseded by, and nothing stopped the bot asking again.
+   *
+   * Seen in the sandbox against production, after the whole flow had been
+   * collected:
+   *
+   *   Emily     "What days work best for you this week?"
+   *   customer  "yes please"
+   *   Emily     "What days work best for you this week?"
+   *
+   * Kate's rule is that a bare yes to that question IS availability — "a
+   * non-answer counts" — and the close guard was taught it this morning, so
+   * the gap is null and a close WOULD be allowed. The model asked again
+   * anyway, because nothing told it the answer had landed. One rule fixed and
+   * the loop still running: the validator permitted the way out and the model
+   * could not see it.
+   *
+   * So the redundant ask is refused, the same as asking for an address we
+   * hold. `null` means collected; `undefined` means the caller did not say,
+   * and then this does not fire — the usual shape for every guard here.
+   */
+  if (a.intent === "ask_availability" && ctx.availabilityGap === null) {
+    return {
+      ok: false,
+      reason: "availability_already_given",
+      detail: "availability has already been given — a bare yes to the availability question counts as open availability (A4), so move the conversation on rather than asking again",
+    };
   }
 
   const supersededBy = ASK_SUPERSEDED_BY[a.intent];
