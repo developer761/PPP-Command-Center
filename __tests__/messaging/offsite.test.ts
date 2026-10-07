@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { jobRoute, roomCount, isCommercial } from "@/lib/messaging/offsite";
+import { readFileSync } from "node:fs";
+import { jobRoute, roomCount, isCommercial, offsiteReasonFor } from "@/lib/messaging/offsite";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
 
@@ -384,6 +385,69 @@ describe("a job described without a painting verb still routes", () => {
       "call me at 3",
     ]) {
       expect(jobRoute(t), t).toBeNull();
+    }
+  });
+});
+
+/**
+ * THE SPANISH A7 QUALIFIER WAS WIDER THAN KATE'S RULE.
+ *
+ * A7's third qualifier is that the customer ASKS to be quoted from photos
+ * they supplied. The English pattern says so throughout — "quote it from",
+ * "can you just quote", "go off the pictures". Its Spanish sibling matched a
+ * bare mention of photos, so a lead who merely attached some, or apologised
+ * for them, qualified for a remote quote on a job that should be seen —
+ * citing a reason they never gave.
+ *
+ * Sending photos is what nearly every lead does. Asking us to price off them
+ * is the qualifier.
+ */
+describe("the Spanish photo qualifier needs the ask, not the photos", () => {
+  it.each([
+    "Le mande fotos de la cocina",
+    "Perdon por las fotos borrosas",
+    "Aqui estan las fotos del bano",
+    "Ya le envie unas imagenes del exterior",
+  ])("does not qualify a bare mention: %j", (text) => {
+    expect(offsiteReasonFor(text, "es")).toBeNull();
+  });
+
+  it.each([
+    "Me puede cotizar con las fotos que le mande?",
+    "Puede darme un presupuesto de las fotos?",
+    "Quiero un precio con las fotos que ya tiene",
+    "Puede estimar el costo con las medidas que le di?",
+  ])("qualifies a genuine ask: %j", (text) => {
+    expect(offsiteReasonFor(text, "es")).toBe("tenemos fotos con las que podemos trabajar");
+  });
+
+  /** The English half is untouched, and was always the stricter of the two. */
+  it("still qualifies the English ask", () => {
+    expect(offsiteReasonFor("can you quote it from the pictures I sent?", "en"))
+      .toBe("you've got photos we can work from");
+  });
+});
+
+/**
+ * AND THE TWO HALVES OF A QUALIFIER CANNOT DRIFT APART.
+ *
+ * They were two arrays, index-paired, read as A7_TRIGGERS_ES[i].test(t) with
+ * nothing asserting the lengths matched. Both were seven. An eighth English
+ * qualifier — a thing Kate can ask for at any time — would make the Spanish
+ * entry undefined and throw on .test, inside an agent turn.
+ */
+describe("every A7 qualifier has both languages on one object", () => {
+  it("has no second index-paired list left to drift", () => {
+    const src = readFileSync("lib/messaging/offsite.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(src).not.toMatch(/A7_TRIGGERS_ES\s*\[/);
+    expect(src).not.toMatch(/const\s+A7_TRIGGERS_ES\b/);
+  });
+
+  it("never throws on any input, whatever the qualifier count", () => {
+    for (const t of ["", "hello", "no puedo estar", "x".repeat(400), "¿?", "fotos"]) {
+      expect(() => offsiteReasonFor(t, "es")).not.toThrow();
+      expect(() => offsiteReasonFor(t, "en")).not.toThrow();
     }
   });
 });

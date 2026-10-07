@@ -323,11 +323,35 @@ export async function resumeCallingIfSpent(
   sb: SupabaseClient,
   input: { conversationId: string; leadId: string | null }
 ): Promise<boolean> {
+  /**
+   * SPENT MEANS "WE WILL NOT TRY THIS STEP AGAIN", NOT "IT WENT OUT".
+   *
+   * This counted `done` alone, and `failed` is terminal — nothing re-sends it.
+   * So one failed step left the cadence permanently short of FOLLOW_UP_COUNT,
+   * resumeAfterCadence returned null, and the lead was neither texted again
+   * nor handed back to the call centre. It fell out of both systems in
+   * silence, which is the dead end A45 exists to close.
+   *
+   * And the commonest route to `failed` is not a failure to send. markSent
+   * marks the row failed when the carrier ACCEPTED the message and the close
+   * write would not go through — deliberately, because a row left `claimed`
+   * is reclaimed and sent up to five times. On that path the customer did get
+   * the follow-up and the count was still short.
+   *
+   * Either way the answer is the same. The resume fires only where the
+   * customer never replied, so handing back to the phone team is right whether
+   * the last text reached them or not, and a step nothing will retry is spent
+   * however it ended.
+   *
+   * `cancelled` is deliberately NOT counted: something superseded that step —
+   * the customer wrote, or a person took the thread over — which is the
+   * opposite of never having been reached.
+   */
   const { count: done } = await sb.from("sms_scheduled_actions")
     .select("id", { count: "exact", head: true })
     .eq("conversation_id", input.conversationId)
     .eq("action", "stall_followup")
-    .eq("state", "done");
+    .in("state", ["done", "failed"]);
 
   // Did they answer any of them? An inbound after the cadence started is a
   // reply, and a reply means we reached them.

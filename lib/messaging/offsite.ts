@@ -487,58 +487,70 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
  * because an escalation is worse than a plain sentence, and raised for sign-off
  * as docs/QUESTIONS_FOR_KATE.md item 28.
  */
-const A7_TRIGGERS: { re: RegExp; reason: string; reasonEs: string }[] = [
+/**
+ * EACH QUALIFIER CARRIES ITS OWN SPANISH PATTERN.
+ *
+ * These used to be two arrays read as `A7_TRIGGERS_ES[i].test(t)` —
+ * index-paired, with nothing asserting the lengths matched. Both were seven.
+ * An eighth English qualifier, which Kate can ask for at any time, makes
+ * `A7_TRIGGERS_ES[7]` undefined and the agent turn throws on `.test`.
+ *
+ * The old comment argued for keeping the languages apart and it was right: the
+ * English patterns are tuned against Kate's corpus, and stuffing Spanish
+ * alternatives into them would make both harder to read and to change. Separate
+ * FIELDS on one qualifier keep that and lose the pairing — two halves of the
+ * same object cannot drift out of step.
+ */
+const A7_TRIGGERS: { re: RegExp; reEs: RegExp; reason: string; reasonEs: string }[] = [
   // "cannot meet within 2 weeks, INCLUDING no access to the property yet"
   { re: /\b(?:no|not have|don'?t have|without)\s+access\b|\bcan'?t\s+(?:be|get)\s+(?:at|to|into)\b|\bnot\s+(?:be\s+)?able\s+to\s+be\s+at\b|\bdon'?t\s+live\s+(?:there|near)\b|\bout\s+of\s+(?:state|town|the country)\b|\bit\s+is\s+a\s+rental\b/i,
+    // Out of state, a rental, no access.
+    reEs: /\bno\s+(?:puedo|podemos|tengo|tenemos)\s+(?:estar|acceso|entrar)\b|\bno\s+vivo\s+(?:ah[íi]|cerca)\b|\b(?:estoy|estamos)\s+fuera\s+(?:del?\s+)?(?:estado|pa[íi]s|ciudad)\b|\bes\s+(?:una\s+)?(?:renta|propiedad\s+rentada)\b|\bsoy\s+inquilin[oa]\b/i,
     reason: "you're not able to be at the property",
     reasonEs: "no puede estar en la propiedad" },
   { re: /\bcannot\s+meet\b|\bcan'?t\s+meet\b|\bnot\s+(?:around|available)\s+for\s+(?:the\s+next\s+)?(?:\w+\s+)?(?:weeks?|months?)\b|\baway\s+for\b|\bnext\s+month\b/i,
+    reEs: /\bno\s+(?:puedo|podemos)\s+(?:reunirme|reunirnos|vernos|verlos)\b|\b(?:estar[ée]|estaremos)\s+fuera\b|\bel\s+(?:pr[óo]ximo\s+)?mes\b[^.?!]{0,20}\bno\b|\bhasta\s+(?:el\s+)?(?:pr[óo]ximo\s+)?mes\b/i,
     reason: "you're not able to meet for a while",
     reasonEs: "no puede reunirse por ahora" },
   // "ASKS to be quoted from photos or measurements they supplied"
   { re: /\bquote\s+it\s+from\s+the\s+(?:pictures?|photos?|images?)\b|\b(?:from|off)\s+(?:the\s+)?(?:pictures?|photos?)\s+I\s+sent\b|\bcan\s+(?:you|I)\s+(?:just\s+)?(?:quote|send)\b[^.?!]{0,24}\b(?:pictures?|photos?|measurements?)\b|\bgo\s+off\s+(?:the\s+)?(?:pictures?|photos?)\b/i,
+    /**
+     * THE ASK, NOT THE PHOTOS.
+     *
+     * Kate's qualifier is that they ASK to be quoted from photos. The English
+     * pattern says so throughout — "quote it from", "can you just quote", "go
+     * off the pictures". The Spanish half matched a bare mention instead:
+     * `(?:con|de|desde) las fotos`, `por las fotos`, `le mandé fotos`. So
+     * "Le mandé fotos de la cocina" qualified a lead for a remote quote, and
+     * so did "perdón por las fotos borrosas" — on a job that should be seen,
+     * citing a reason the customer never gave.
+     *
+     * Sending photos is what nearly every lead does. Asking us to price off
+     * them is the qualifier. So: a quoting word AND a photo word, either order.
+     */
+    reEs: /\b(?:cotiz\w*|presupuest\w*|estim\w*|precio)\b[^.?!]{0,30}\b(?:con|de|desde|por|sobre)\s+(?:las?\s+)?(?:fotos?|im[áa]genes?|medidas?)\b|\b(?:con|de|desde|por|sobre)\s+(?:las?\s+)?(?:fotos?|im[áa]genes?|medidas?)\b[^.?!]{0,30}\b(?:cotiz\w*|presupuest\w*|estim\w*|precio)\b/i,
     reason: "you've got photos we can work from",
     reasonEs: "tenemos fotos con las que podemos trabajar" },
   // "explicitly wants the QUOTE by text"
   { re: /\b(?:text|email)\s+me\s+the\s+(?:quote|estimate|price)\b|\bquote\s+(?:by|over|via)\s+(?:text|email)\b|\bsend\s+(?:me\s+)?(?:the\s+)?(?:quote|estimate)\b[^.?!]{0,20}\b(?:text|email)\b/i,
+    reEs: /\b(?:m[áa]nde|env[íi]e|mandar|enviar)\w*\s+(?:me\s+)?(?:la\s+)?cotizaci[óo]n\b[^.?!]{0,24}\b(?:mensaje|texto|correo|email)\b|\bcotizaci[óo]n\s+por\s+(?:mensaje|texto|correo|email)\b/i,
     reason: "you'd rather have the quote by text",
     reasonEs: "prefiere recibir la cotizacion por mensaje" },
   // "ASKS TO SPEAK WITH THE ESTIMATOR BY PHONE rather than meet"
   { re: /\b(?:speak|talk)\s+(?:to|with)\s+(?:the\s+)?estimator\b[^.?!]{0,24}\b(?:phone|call)\b|\bestimator\s+call\s+me\b/i,
+    reEs: /\b(?:hablar|platicar)\s+con\s+(?:el\s+)?estimador\b[^.?!]{0,24}\b(?:tel[ée]fono|llamada|llamar)\b|\bque\s+(?:me\s+)?llame\s+el\s+estimador\b/i,
     reason: "you'd rather speak with the estimator by phone",
     reasonEs: "prefiere hablar con el estimador por telefono" },
   // "wants only a price / rough estimate / ballpark"
   { re: /\b(?:just|only)\s+(?:want|need|after|looking for)\b[^.?!]{0,20}\b(?:a\s+)?(?:price|ballpark|rough\s+(?:idea|estimate|number)|estimate)\b|\bballpark\b|\brough\s+(?:price|idea|number)\b/i,
+    reEs: /\b(?:solo|s[óo]lo|nada\s+m[áa]s)\s+(?:quiero|queremos|necesito|necesitamos)\b[^.?!]{0,20}\b(?:precio|costo|cotizaci[óo]n|estimado)\b|\bprecio\s+aproximado\b|\bm[áa]s\s+o\s+menos\s+cu[áa]nto\b/i,
     reason: "you're just after a rough price for now",
     reasonEs: "por ahora solo quiere un precio aproximado" },
   // "available ONLY outside our booking windows"
   { re: /\bonly\s+(?:free|available)\b[^.?!]{0,24}\b(?:evenings?|weekends?|nights?|after\s+\d)\b|\bafter\s+hours\b/i,
+    reEs: /\bsolo\s+(?:estoy|puedo|tengo\s+tiempo)\b[^.?!]{0,24}\b(?:tardes?|noches?|fines?\s+de\s+semana)\b|\bdespu[ée]s\s+del?\s+(?:horario|trabajo)\b/i,
     reason: "you're only free outside our usual hours",
     reasonEs: "solo tiene tiempo fuera de nuestro horario" },
-];
-
-/**
- * The same seven qualifiers in Spanish, in the same order, so a match lines up
- * with the reason beside it. Separate from the English patterns rather than
- * merged into them: the English ones are tuned against Kate's corpus and
- * widening them with Spanish alternatives would make both harder to read and
- * to change.
- */
-const A7_TRIGGERS_ES: RegExp[] = [
-  // Cannot be at the property — out of state, a rental, no access.
-  /\bno\s+(?:puedo|podemos|tengo|tenemos)\s+(?:estar|acceso|entrar)\b|\bno\s+vivo\s+(?:ah[íi]|cerca)\b|\b(?:estoy|estamos)\s+fuera\s+(?:del?\s+)?(?:estado|pa[íi]s|ciudad)\b|\bes\s+(?:una\s+)?(?:renta|propiedad\s+rentada)\b|\bsoy\s+inquilin[oa]\b/i,
-  // Cannot meet for a while.
-  /\bno\s+(?:puedo|podemos)\s+(?:reunirme|reunirnos|vernos|verlos)\b|\b(?:estar[ée]|estaremos)\s+fuera\b|\bel\s+(?:pr[óo]ximo\s+)?mes\b[^.?!]{0,20}\bno\b|\bhasta\s+(?:el\s+)?(?:pr[óo]ximo\s+)?mes\b/i,
-  // Quote it from the photos they sent.
-  /\b(?:con|de|desde)\s+las?\s+(?:fotos?|im[áa]genes?)\b|\bpor\s+las?\s+fotos?\b|\ble\s+mand[ée]\s+fotos?\b/i,
-  // Wants the quote by text or email.
-  /\b(?:m[áa]nde|env[íi]e|mandar|enviar)\w*\s+(?:me\s+)?(?:la\s+)?cotizaci[óo]n\b[^.?!]{0,24}\b(?:mensaje|texto|correo|email)\b|\bcotizaci[óo]n\s+por\s+(?:mensaje|texto|correo|email)\b/i,
-  // Would rather speak to the estimator by phone.
-  /\b(?:hablar|platicar)\s+con\s+(?:el\s+)?estimador\b[^.?!]{0,24}\b(?:tel[ée]fono|llamada|llamar)\b|\bque\s+(?:me\s+)?llame\s+el\s+estimador\b/i,
-  // Only wants a price for now.
-  /\b(?:solo|s[óo]lo|nada\s+m[áa]s)\s+(?:quiero|queremos|necesito|necesitamos)\b[^.?!]{0,20}\b(?:precio|costo|cotizaci[óo]n|estimado)\b|\bprecio\s+aproximado\b|\bm[áa]s\s+o\s+menos\s+cu[áa]nto\b/i,
-  // Only free outside our hours.
-  /\bsolo\s+(?:estoy|puedo|tengo\s+tiempo)\b[^.?!]{0,24}\b(?:tardes?|noches?|fines?\s+de\s+semana)\b|\bdespu[ée]s\s+del?\s+(?:horario|trabajo)\b/i,
 ];
 
 /**
@@ -553,8 +565,8 @@ export function offsiteReasonFor(
 ): string | null {
   const t = (customerText ?? "").trim();
   if (!t) return null;
-  for (const [i, { re, reason, reasonEs }] of A7_TRIGGERS.entries()) {
-    if (re.test(t) || A7_TRIGGERS_ES[i].test(t)) return language === "es" ? reasonEs : reason;
+  for (const { re, reEs, reason, reasonEs } of A7_TRIGGERS) {
+    if (re.test(t) || reEs.test(t)) return language === "es" ? reasonEs : reason;
   }
   return null;
 }
