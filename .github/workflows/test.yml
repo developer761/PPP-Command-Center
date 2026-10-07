@@ -15,9 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # THE NODE VERSION COMES FROM .nvmrc, AND FROM NOWHERE ELSE.
+      #
+      # This said "20" while Vercel builds and runs this project on 24.x and
+      # both developers are on 24 — so CI was the only thing testing against a
+      # runtime production does not use. That is not a theoretical gap. On
+      # 2026-10-06 it cost a day's worth of red runs and an email per push:
+      #
+      #   Intl renders midnight as "24:00" on Node 20's ICU and "00:00" on 24
+      #   node:module.stripTypeScriptTypes does not exist before 22.18
+      #
+      # Both passed locally, failed here, and neither was a bug in the product.
+      # The reverse is worse and was only ever luck: a green run on 20 proves
+      # nothing about the runtime the code actually executes on.
+      #
+      # node-version-file rather than a literal, so the version lives in one
+      # place that `nvm use` also reads. package.json's engines field states
+      # the same bound for anyone installing without nvm.
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: "npm"
 
       - run: npm ci --no-audit --no-fund
