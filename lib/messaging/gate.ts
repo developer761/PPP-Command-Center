@@ -380,13 +380,21 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   const window = sendingWindow({
     now,
     customerZone: zone.timeZone,
+    // WHETHER WE ACTUALLY KNOW. A fallback zone is Los Angeles, whose evening
+    // runs three hours past New York's — so an Eastern customer on an area
+    // code we do not map could be texted at 9:40 PM their time, past the
+    // federal bound. When the zone is a guess the window has to be civil at
+    // both ends of the territory. See customerZoneUnknown.
+    customerZoneUnknown: zone.source === "fallback",
     officeZone: ws.time_zone,
     officeHours: hours,
     answersInbound: req.answersInbound,
   });
   if (!window.open) {
     const retryAt = nextWindowOpen({
-      now, customerZone: zone.timeZone, officeZone: ws.time_zone,
+      now, customerZone: zone.timeZone,
+      customerZoneUnknown: zone.source === "fallback",
+      officeZone: ws.time_zone,
       officeHours: hours, answersInbound: req.answersInbound,
     });
     // office_closed is PPP's own policy and quiet_hours is the legal bound.
@@ -497,7 +505,9 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     // the same function the window refusal uses, so the two cannot disagree.
     const tomorrow = startOfNextDay(now, zone.timeZone);
     const retryAt = nextWindowOpen({
-      now: tomorrow, customerZone: zone.timeZone, officeZone: ws.time_zone,
+      now: tomorrow, customerZone: zone.timeZone,
+      customerZoneUnknown: zone.source === "fallback",
+      officeZone: ws.time_zone,
       officeHours: hours, answersInbound: req.answersInbound,
     }) ?? nextSendableTime(tomorrow, ws.time_zone, hours);
     return { ok: false, reason: "daily_cap", retryAt };
