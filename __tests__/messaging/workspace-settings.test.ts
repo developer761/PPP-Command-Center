@@ -54,20 +54,40 @@ describe("workspace hours", () => {
   });
 
   /**
-   * The important one. A wider window can be SAVED, and is reported as
-   * narrower than it looks, because the clamp runs at send time — which is
-   * also what protects a row edited directly in the database.
+   * THIS USED TO ASSERT THE OPPOSITE, AND THE OPPOSITE NEVER WORKED.
+   *
+   * It said a wider window could be saved and reported back as narrower, with
+   * the clamp doing the work at send time. But migration 178 puts
+   * CHECK (quiet_hours_start BETWEEN 8 AND 20) on the column, under the
+   * heading "a campaign author must not be able to configure their way past
+   * these" — so 6am reached Postgres and came back as
+   * sms_sub_accounts_quiet_hours_start_check.
+   *
+   * The test passed because it stubs the database. That is the shape worth
+   * remembering: a test can only disagree with a constraint it never meets.
    */
-  it("says so when the window is wider than the law allows", async () => {
+  it("refuses an hour the column will not store, in words", async () => {
     const res = await saveWorkspaceHours({ ...base, quietStart: 6, quietEnd: 23 });
-    expect(res.ok).toBe(true);
-    if (res.ok) expect(res.clamped).toBe(true);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/8 AM/);
   });
 
-  it("does not claim clamping for a window inside the bound", async () => {
+  it("refuses an end past the federal ceiling", async () => {
+    const res = await saveWorkspaceHours({ ...base, quietStart: 9, quietEnd: 23 });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/9 PM/);
+  });
+
+  it("refuses clearing the window, which the column cannot hold", async () => {
+    // The old branch said "set both or neither". Neither is NOT NULL.
+    const res = await saveWorkspaceHours({ ...base, quietStart: "", quietEnd: "" });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/cannot be left blank/i);
+  });
+
+  it("saves a window inside the bound", async () => {
     const res = await saveWorkspaceHours({ ...base, quietStart: 9, quietEnd: 20 });
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.clamped).toBe(false);
   });
 
   it("stores an empty auto-reply as null rather than an empty message", async () => {

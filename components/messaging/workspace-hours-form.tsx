@@ -86,9 +86,11 @@ export default function WorkspaceHoursForm({
         replyToEmail: replyTo,
       });
       if (!res.ok) { setErr(res.error); return; }
-      setNote(res.clamped
-        ? `Saved. The law is narrower than that, so sending still stops outside ${hh(bound.startHour)}–${hh(bound.endHour)}.`
-        : "Saved. This applies to the next message.");
+      // The options here stop at the federal bound and the column refuses
+      // anything outside it, so there is no longer a window that saves and is
+      // then narrowed — `clamped` could only ever be false. See the header of
+      // lib/messaging/workspace-settings.ts.
+      setNote("Saved. This applies to the next message.");
       router.refresh();
     } catch {
       setErr("Could not save. Nothing was changed.");
