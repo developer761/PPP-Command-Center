@@ -19,7 +19,9 @@ const q: LedgerQuery = { preset: "month", from: "2026-10-01", to: "2026-10-31", 
 
 async function readBack() {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(await buildLedgerWorkbook(rows, q));
+  const buf = await buildLedgerWorkbook(rows, q);
+  // exceljs types load() against its own Buffer interface; the bytes are the same.
+  await wb.xlsx.load(buf as unknown as Parameters<typeof wb.xlsx.load>[0]);
   return wb;
 }
 
