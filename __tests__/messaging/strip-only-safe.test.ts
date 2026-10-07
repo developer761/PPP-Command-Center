@@ -27,7 +27,9 @@ const stripTypeScriptTypes = (nodeModule as unknown as {
 /** The constructs node's strip-only mode refuses. */
 const UNSUPPORTED: { why: string; re: RegExp }[] = [
   // constructor(public readonly to: string) — the one that bit.
-  { why: "a constructor parameter property", re: /constructor\s*\([^)]*\b(?:public|private|protected|readonly)\s+\w/s },
+  // [^)] already matches newlines, so no dotAll flag — this repo's tsc
+  // target refuses one (TS1501) and the local run missed it.
+  { why: "a constructor parameter property", re: /constructor\s*\([^)]*\b(?:public|private|protected|readonly)\s+\w/ },
   { why: "an enum", re: /(?:^|\n)\s*(?:export\s+)?(?:const\s+)?enum\s+\w/ },
   { why: "a namespace or module block", re: /(?:^|\n)\s*(?:export\s+)?(?:namespace|module)\s+\w+\s*\{/ },
   // import x = require(...) / export = x
@@ -93,7 +95,7 @@ describe("every messaging module survives node's strip-only TypeScript", () => {
     expect(() => strip(
       "class A extends Error { constructor(public readonly to: string) { super(); } }"
     )).toThrow();
-    expect(() => strip("export enum Colour { Red, Green }")).toThrow();
+    expect(() => strip("export enum Shade { Light, Dark }")).toThrow();
     expect(() => strip("export namespace X { export const y = 1; }")).toThrow();
     // And does not fire on ordinary TypeScript.
     expect(() => strip("export function f(a: string): number { return a.length; }")).not.toThrow();
