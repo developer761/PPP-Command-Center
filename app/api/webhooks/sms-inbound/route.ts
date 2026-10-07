@@ -120,9 +120,26 @@ export async function POST(req: Request) {
     const { conversationId, unknownNumber } = await recordInbound(db(), decision);
 
     if (unknownNumber) {
-      reportWarn({
+            /**
+       * reportError, not reportWarn, and the severity is the point.
+       *
+       * With no workspace, nothing below records the message: the
+       * conversation is never created, so sms_messages never gets a row, no
+       * turn is queued, and the CTIA HELP reply is skipped because that
+       * block is gated on ws?.id. The customer's text is gone and the only
+       * trace is this line.
+       *
+       * A warn is dropped entirely inside the first 30 seconds of an
+       * instance's life (observability.ts) and collapsed to one alert per
+       * five minutes after that, so the quiet failure had a quiet alarm.
+       *
+       * It is live right now: +16466933560 has its messaging webhook
+       * pointed here and belongs to no workspace, and HELP to that number
+       * is exactly what carriers test during the A2P vetting it is in.
+       */
+      reportError({
         key: "sms_inbound_unknown_number",
-        message: `A customer texted ${decision.to} and no workspace owns that number`,
+        message: `A customer texted ${decision.to} and no workspace owns that number — the message was NOT recorded and a HELP would NOT have been answered`,
         platform: "ppp_cc",
         context: { to: decision.to, messageId: envelope.MessageId },
       });

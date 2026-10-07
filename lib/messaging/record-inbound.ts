@@ -184,9 +184,30 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
   // 2. Which workspace was texted. Unknown is recorded, not discarded — a
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
-  const { data: ws } = await sb.from("sms_sub_accounts")
+  const { data: ws, error: wsErr } = await sb.from("sms_sub_accounts")
     .select("id, name, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, send_on_holidays, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
+  /**
+   * A FAILED LOOKUP IS NOT "NOBODY OWNS THIS NUMBER".
+   *
+   * This discarded its error, and the two outcomes are indistinguishable
+   * afterwards: `ws` is null either way. Everything below is gated on
+   * `ws?.id` — no conversation is created, so the message is never recorded in
+   * sms_messages at all, no turn is queued, and no HELP reply goes out. The
+   * webhook then answers 204, so the carrier does not retry and the text is
+   * gone for good.
+   *
+   * One timeout therefore drops every inbound message for as long as it lasts,
+   * and the only trace is a warning saying a customer texted a number no
+   * workspace owns — a configuration message, which would send whoever read it
+   * looking in entirely the wrong place.
+   *
+   * Throwing gets the route's own retry and then a non-2xx, which is what
+   * makes the CARRIER retry. The opt-out insert above has already run, so a
+   * STOP is still honoured even when this throws; that ordering is deliberate
+   * and is unchanged.
+   */
+  if (wsErr) throw asError("looking up the workspace for this number", wsErr);
 
   // 3. The open conversation on this pair, if there is one.
   let conversationId: string | null = null;
