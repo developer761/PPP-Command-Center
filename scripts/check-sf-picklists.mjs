@@ -16,7 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import jsforce from "jsforce";
 import { readFileSync } from "node:fs";
 import { finishOptionsFor, PAINT_LINES } from "../lib/customer-form/material-types.ts";
-import { normalizeFinishToSf } from "../lib/customer-form/surface-mapping.ts";
+import { normalizeFinishToSf, classifySurface } from "../lib/customer-form/surface-mapping.ts";
 import { resolveFinishValue } from "../lib/salesforce/picklists.ts";
 
 const env = Object.fromEntries(
@@ -110,3 +110,43 @@ if (problems.length) {
   process.exit(1);
 }
 console.log("  ✅ every offered finish is a value Salesforce accepts.");
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Surfaces__c — the OTHER restricted picklist, and the one with no live check.
+ *
+ * __tests__/customer-form/surface-coverage.test.ts calls itself the tripwire
+ * for the org adding a surface we do not classify. It cannot be: it compares
+ * our list against a SECOND HARDCODED COPY of the picklist in its own file, so
+ * the org can drift and it stays green. Its own docblock describes the failure
+ * exactly — "the form will happily show the surface, the customer will pick a
+ * color for it, and the submit will drop it on the floor with no error on
+ * either end" — and then nothing looks at the org.
+ *
+ * This does. It is the right place for it: the unit suite is offline by design,
+ * and a check that needs the live describe belongs with the other one that
+ * already has a connection open.
+ * ───────────────────────────────────────────────────────────────────────── */
+const surfacesField = desc.fields.find((f) => f.name === "Surfaces__c");
+if (!surfacesField?.picklistValues?.length) {
+  console.log("\n  ⚠ Surfaces__c not found on the describe — INCONCLUSIVE, not a pass.");
+  process.exit(1);
+}
+
+const liveSurfaces = surfacesField.picklistValues.filter((v) => v.active).map((v) => String(v.value));
+const unclassified = liveSurfaces.filter((s) => classifySurface(s).kind === "unknown");
+
+console.log(`\n  SURFACES__c — ${liveSurfaces.length} active value(s) on the live org.`);
+if (liveSurfaces.length < 4) {
+  console.log(`  ⚠ Only ${liveSurfaces.length} values returned — too few to trust. INCONCLUSIVE.`);
+  process.exit(1);
+}
+for (const s of liveSurfaces) {
+  const kind = classifySurface(s).kind;
+  console.log(`    ${kind === "unknown" ? "✗" : "·"} ${String(s).padEnd(22)} ${kind}`);
+}
+if (unclassified.length) {
+  console.log(`\n  ${unclassified.length} SURFACE(S) THE SUBMIT ROUTE WOULD SILENTLY DROP:`);
+  for (const s of unclassified) console.log(`    ✗ ${s} — add it to ORPHAN_SURFACES in lib/customer-form/surface-mapping.ts`);
+  process.exit(1);
+}
+console.log("  ✅ every live surface is classified — none would be dropped on submit.");

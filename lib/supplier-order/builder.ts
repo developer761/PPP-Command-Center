@@ -971,7 +971,20 @@ export function formatOrderSummaryBlock(
   // Only group when at least ONE line is actually set. Grouping an order where
   // nobody picked anything would render a single "[NOT SET]" heading over the
   // whole list, which is noise, not information.
-  const anyLineSet = orderedEffective.some((m) => !!m);
+  // Counts the CUSTOM lines too. It read only `orderedEffective`, which comes
+  // from `estimates` — so on a job where every color arrived through the Color
+  // Notes (estimates empty, the documented WO 00316248 shape) the lines printed
+  // their products correctly and the email STILL appended "⚠ Paint product line
+  // not specified". A warning on a correct order is worse than none: it teaches
+  // the vendor to ignore the warning that matters.
+  //
+  // Widening it is also the more correct rule for a mixed job. If any line
+  // anywhere carries a product, the ones that do not have to be marked
+  // [NOT SET] rather than quietly omitting the segment — a row with no product
+  // must not look identical to a row that has one.
+  const anyLineSet =
+    orderedEffective.some((m) => !!m) ||
+    customColorItems.some((c) => c.label.trim() && materialTypeForVendor(c.materialType).trim());
   const NOT_SET = "[NOT SET]";
   const groups = new Map<string, string[]>();
   const groupOrder: string[] = [];
@@ -1017,7 +1030,13 @@ export function formatOrderSummaryBlock(
     // R4.24: the name usually already carries the code ("1421 Bistro Blue"),
     // and sometimes IS the code ("Super White"). Appending unconditionally
     // produced "1421 Bistro Blue 1421".
-    const label = formatColorLabel(e.colorName, e.colorCode);
+    // formatColorLabel returns "" when the name AND the code are both blank,
+    // which emailed a vendor "4 gal — Ultra Spec —  · Eggshell": a quantity, a
+    // product, a sheen, and no color. Dropping the line instead would be worse
+    // — PPP is still buying it, and a silently missing line is the one nobody
+    // notices until the crew is on site. Say it where it cannot be missed, the
+    // same way [NOT SET] marks a missing product line.
+    const label = formatColorLabel(e.colorName, e.colorCode) || "[COLOR NOT SET]";
     // Finish stays. Kate's R4.30 mock-up omits it, but the estimator buckets on
     // `colorId::finish` precisely because two sheens of one color are two
     // different SKUs — dropping it would have a vendor mix one sheen for a

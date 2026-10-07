@@ -741,6 +741,28 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             </span>
           </div>
         )}
+        {/* The customer gets told too — in their own terms.
+            This was gated on isStaffEntry alone, so when the write failed on
+            the CUSTOMER path the page said "Thanks — we've got your color
+            picks!" and nothing else. True, as far as it goes: the picks are
+            saved here and the team is alerted automatically. But it is the
+            same screen whether everything worked or half of it did, and if the
+            colors later turn out to be wrong on the job, the customer was
+            never given a reason to mention it.
+            Deliberately says nothing about Salesforce, writebacks or the
+            Command Center — none of that is theirs to carry. It tells them
+            what is true for them: it is saved, we know, you need do nothing. */}
+        {sfWriteFailed && !isStaffEntry && (
+          <div role="status" className="mt-4 text-left text-xs sm:text-sm text-ppp-charcoal bg-ppp-blue-50 border border-ppp-blue-100 rounded-lg px-4 py-3 max-w-md mx-auto">
+            <strong className="block">Your colors are saved.</strong>
+            <span className="block mt-1">
+              One of our systems was slow to confirm, so your project manager is
+              double-checking this one by hand. Nothing is lost and there&rsquo;s nothing
+              you need to do — if anything looks wrong, just reply to your confirmation
+              email.
+            </span>
+          </div>
+        )}
       </div>
     );
   }
