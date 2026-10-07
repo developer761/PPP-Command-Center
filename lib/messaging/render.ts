@@ -1160,21 +1160,80 @@ const AVAILABILITY_STEP = 3;
  * The ask the flow is actually waiting for, for a turn whose own question was
  * stripped as too early. See the use below.
  *
- * Deliberately the plainest variant of each rather than the turn-rotated one:
- * this sentence is being bolted onto another template, and the shortest form
- * reads least like two messages stitched together.
+ * ── WHAT IT ASKS IS DECIDED BY WHAT IS MISSING, NOT BY flowStage ────────────
+ *
+ * The first version took flowStage and mapped 0/1/2 to project details,
+ * address and contact. flowStage is stageFromIntents(priorIntents) — the
+ * highest leg the BOT has asked about, which is not the same as what we hold.
+ * The ordinary PPP web-form lead arrives with Inquiry Notes, an address and an
+ * email already on the record and flowStage 0, so:
+ *
+ *   stage 0   "What are you looking to have painted?" to a lead whose Inquiry
+ *             Notes say what they want painted — A13, on message one.
+ *   stage 1   "What's the address for the project?" with the address on file.
+ *
+ * Both are asks the validator refuses outright when the agent chooses them:
+ * ASK_SUPERSEDED_BY refuses ask_address when an address is held and
+ * ask_contact when name and email are held. Appending the template directly
+ * walked around that, so a refused intent went out as part of another one.
+ *
+ * So the legs are checked in order and the first UNMET one is asked. A second
+ * property reopens the address leg — the customer has told us about a place we
+ * have no address for — which is the same exception renderBody makes.
+ *
+ * Returns null when we hold everything. The caller then keeps the original
+ * availability question rather than appending nothing: if scope, address and
+ * contact are all in hand, availability genuinely is the next leg, and the
+ * only reason it was stripped is that flowStage disagreed.
  */
-function nextFlowAsk(stage: number, es: boolean, turn: number): string | null {
-  const intent = ({
-    0: "ask_project_details",
-    1: "ask_address",
-    2: "ask_contact",
-  } as Record<number, Intent>)[stage];
+function nextFlowAsk(input: RenderInput): string | null {
+  const es = input.language === "es";
+  const known = input.known ?? {};
+  const haveAddress = !!known.address?.trim() && !input.secondProperty;
+  const legs: [boolean, Intent][] = [
+    [!known.scope?.trim(), "ask_project_details"],
+    [!haveAddress && !input.addressAskedBefore, "ask_address"],
+    [!known.email?.trim() && !known.phone?.trim(), "ask_contact"],
+  ];
+  /**
+   * UNMET, AND PREFERABLY NOT ONE ALREADY PUT TO THEM.
+   *
+   * flowStage is the wrong thing to pick the ask FROM — that was the bug — but
+   * it is still the only record of what the bot has already asked this
+   * customer. A leg behind flowStage was asked and went unanswered, and asking
+   * it again in the same breath as another intent's answer is how a thread
+   * starts repeating itself.
+   *
+   * So: the first unmet leg at or after where the flow has reached, and
+   * failing that the first unmet leg at all — something we still do not have
+   * is worth asking twice rather than never.
+   */
+  const stage = input.flowStage ?? 0;
+  const intent = legs.find(([unmet], i) => unmet && i >= stage)?.[1]
+    ?? legs.find(([unmet]) => unmet)?.[1];
   if (!intent) return null;
+
   const variants = (es ? SAYS_ES[intent] : SAYS[intent]) ?? [];
-  const pick = variants[turn % Math.max(variants.length, 1)] ?? variants[0] ?? "";
-  // Only a question is worth appending: the point is to leave it open.
-  return pick.includes("?") ? pick : (variants.find((v) => v.includes("?")) ?? null);
+  const pick = variants.find((v) => v.includes("?")) ?? "";
+  if (!pick) return null;
+  /**
+   * THE QUESTION ONLY, NOT THE WHOLE TEMPLATE.
+   *
+   * The comment here used to promise "the plainest variant rather than the
+   * turn-rotated one" and the code then indexed by turn, so what got bolted on
+   * was a complete message including its own opener:
+   *
+   *   "That's one for the estimator, and they'll go through it with you.
+   *    Happy to help. What's the project you're looking to get done?"
+   *
+   * Two openers in one SMS, with the rapport arriving in the middle — the
+   * stacked-acknowledgement shape OPENS_WITH_ACKNOWLEDGEMENT exists to stop,
+   * and invisible to it because this concatenation happens after renderBody
+   * has finished. Taking the last interrogative sentence leaves the ask and
+   * drops the greeting in front of it.
+   */
+  const sentences = pick.split(/(?<=[.?!])\s+/).filter((s) => s.trim());
+  return sentences.reverse().find((s) => s.includes("?"))?.trim() ?? null;
 }
 
 export function renderMessage(input: RenderInput): string {
@@ -1244,8 +1303,18 @@ export function renderMessage(input: RenderInput): string {
   const rendered = renderBody(input);
   let body = stripTiming ? withoutATimingQuestion(rendered) : rendered;
   if (stripTiming && tooEarlyToAskAboutDays && body !== rendered && body && !body.includes("?")) {
-    const due = nextFlowAsk(input.flowStage ?? 0, input.language === "es", input.turn ?? 0);
-    if (due) body = `${body} ${due}`;
+    const due = nextFlowAsk(input);
+    /**
+     * NO DUE ASK MEANS THE STRIP WAS WRONG, SO IT IS UNDONE.
+     *
+     * nextFlowAsk returns null only when scope, address and contact are all on
+     * file — in which case availability really is the next leg and the only
+     * thing that said otherwise was flowStage, which counts what the bot has
+     * ASKED rather than what we hold. Appending nothing would leave the dead
+     * end this whole branch exists to close: an answer with no question, and
+     * the next move the customer's to make or not.
+     */
+    body = due ? `${body} ${due}` : rendered;
   }
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
   const timed = replyToRequestedTime(input.customerText);
