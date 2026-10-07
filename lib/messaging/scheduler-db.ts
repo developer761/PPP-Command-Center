@@ -729,12 +729,19 @@ export function schedulerDeps(): SchedulerDeps {
         }
         // Refused. It becomes a draft rather than vanishing, so a person sees
         // the reply the gate would not let out and decides what to do.
-        await sb.from("sms_drafts").insert({
+        //
+        // THROWS IF THE DRAFT CANNOT BE WRITTEN, like the hold twelve lines
+        // above. This discarded its error and then returned "drafted", which
+        // marks the action done — so a failed insert meant no message, no
+        // draft and a closed action: the customer's text answered by nobody,
+        // permanently, with the tick reporting a draft.
+        const { error: draftErr } = await sb.from("sms_drafts").insert({
           conversation_id: conv.id, answers_message_id: lastInbound.id,
           intent: res.action.intent, confidence: res.action.confidence,
           body: res.rendered, review_reason: "autosend_off",
           send_error: sent.reason,
         });
+        if (draftErr) throw new Error(`could not write the refused reply as a draft: ${draftErr.message}`);
         return { kind: "drafted" as const };
       }
 
@@ -804,12 +811,16 @@ export function schedulerDeps(): SchedulerDeps {
       if (sent.ok) return { kind: "sent" as const, providerId: sent.providerId, body: sent.body };
 
       // Refused at its moment (quiet hours began, the cap was reached). It
-      // becomes a draft for a person, the same as an autosend refusal always has.
-      await sb.from("sms_drafts").insert({
+      // becomes a draft for a person, the same as an autosend refusal always has
+      // — and the insert is checked, for the reason given on its twin above:
+      // returning "drafted" closes the action, so a silent failure here loses
+      // the reply altogether.
+      const { error: heldDraftErr } = await sb.from("sms_drafts").insert({
         conversation_id: conv.id, answers_message_id: a.answers_message_id,
         intent: a.reply_intent, confidence: a.reply_confidence,
         body: a.reply_body, review_reason: "autosend_off", send_error: sent.reason,
       });
+      if (heldDraftErr) throw new Error(`could not write the held reply as a draft: ${heldDraftErr.message}`);
       return { kind: "drafted" as const };
     },
 
@@ -817,17 +828,78 @@ export function schedulerDeps(): SchedulerDeps {
       await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
     },
 
+    /**
+     * CLOSING THE ROW IS THE OTHER HALF OF SENDING, AND IT WAS UNCHECKED.
+     *
+     * The carrier has accepted the message by the time this runs. The update
+     * below discarded its error — postgrest-js returns `{ error }` rather than
+     * throwing — so a timeout, an RLS change or a dropped connection left the
+     * row `claimed` while the tick reported `sent: 1`.
+     *
+     * sms_reclaim_stale_actions then returns any row still claimed after ten
+     * minutes to `pending`, deliberately WITHOUT refunding the attempt (see
+     * migration 183, which is right to: a worker that died mid-send must not
+     * retry for ever). The next tick picks it up and sends the same text
+     * again. Up to five times.
+     *
+     * So the close is checked, retried once, and if it still will not go
+     * through the row is marked FAILED rather than left for the reclaim. A
+     * failed row is terminal and is never re-sent: losing a follow-up is a
+     * great deal better than texting somebody the same thing five times, and
+     * the alert says exactly what happened.
+     *
+     * What this cannot fix is a database that is entirely unreachable — then
+     * even the failed write fails and the reclaim will re-send. Closing that
+     * needs an idempotency key the carrier can be asked about, which is a
+     * decision about what "unknown" means after a send, not a patch.
+     */
     async markSent(a, providerId, body, channel = "sms", intent) {
       // THE INTENT, on the message. A held reply carries it on the action
       // row; an immediate autosend passes it in. A campaign step has none,
       // and a person's own words have none — both correctly null.
       const agentIntent = intent ?? a.reply_intent ?? null;
+      // First, so there is a record of the message even if everything after
+      // this fails. recordOutbound warns rather than throwing, by design.
       await recordOutbound(sb, {
         conversation_id: a.conversation_id, body, provider_id: providerId,
         channel, agent_intent: agentIntent,
       });
-      await sb.from("sms_scheduled_actions").update({ state: "done", updated_at: new Date().toISOString() }).eq("id", a.id);
-      await sb.from("sms_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", a.conversation_id);
+
+      const close = () => sb.from("sms_scheduled_actions")
+        .update({ state: "done", updated_at: new Date().toISOString() })
+        .eq("id", a.id);
+      let { error } = await close();
+      if (error) ({ error } = await close());
+      if (error) {
+        const { error: failErr } = await sb.from("sms_scheduled_actions").update({
+          state: "failed",
+          last_error: `sent, but the row could not be closed: ${error.message}`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", a.id);
+        reportWarn({
+          key: "sms_sent_not_closed", platform: "ppp_cc",
+          message: failErr
+            ? "a message was SENT and the action could not be closed or failed — the reclaim will send it again"
+            : "a message was sent and the action could not be closed; marked failed so it is not sent again",
+          context: {
+            conversationId: a.conversation_id, actionId: a.id, providerId,
+            error: error.message, failError: failErr?.message ?? null,
+          },
+        });
+      }
+
+      // Neither of these can cause a re-send, so a failure here is reported
+      // and does not change the outcome of the send.
+      const { error: convErr } = await sb.from("sms_conversations")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", a.conversation_id);
+      if (convErr) {
+        reportWarn({
+          key: "sms_last_message_at_not_updated", platform: "ppp_cc",
+          message: "a message went out and the conversation's last_message_at was not updated",
+          context: { conversationId: a.conversation_id, error: convErr.message },
+        });
+      }
       await bumpStage(sb, a.conversation_id, agentIntent);
     },
 

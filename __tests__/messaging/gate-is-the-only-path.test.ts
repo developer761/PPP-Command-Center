@@ -75,6 +75,37 @@ describe("the gate is the only path to the carrier", () => {
     expect(senders).toEqual(["gatedSend"]);
   });
 
+  /**
+   * AND THE SCRIPTS, WHICH THIS DID NOT LOOK AT.
+   *
+   * ROOTS is app/lib/components and the walk takes .ts/.tsx, so scripts/*.mjs
+   * were invisible — and two of them called gatedSend with no transport
+   * injected. The gate resolves its own when the caller supplies none
+   * (`deps.transport ?? activeTransport()`), so `npm run verify` would have
+   * POSTed to the carrier the day live sending is switched on, from a script
+   * whose header says "it sends nothing".
+   *
+   * Scripts are allowed to call gatedSend — that is the point of an end-to-end
+   * check — but they must bring their own transport.
+   */
+  it("every script that calls gatedSend injects its own transport", () => {
+    const scripts = readdirSync("scripts").filter((f) => /\.mjs$/.test(f));
+    expect(scripts.length).toBeGreaterThan(10);
+    const offenders: string[] = [];
+    for (const f of scripts) {
+      const src = readFileSync(join("scripts", f), "utf8");
+      if (!/\bgatedSend\s*\(/.test(src)) continue;
+      // Every call has to pass deps carrying a transport. Checked as "the file
+      // never passes a bare gateDeps(sb)", which is the shape that resolves the
+      // live carrier.
+      if (/gatedSend\([\s\S]{0,400}?\n\s*gateDeps\(sb\),?\s*\)/.test(src)
+          || /,\s*gateDeps\(sb\)\s*\)/.test(src)) {
+        offenders.push(`scripts/${f}`);
+      }
+    }
+    expect(offenders, "a script would resolve the live carrier").toEqual([]);
+  });
+
   it("detects a violation — proving the check can fail", () => {
     // The exact shape that would break the chokepoint.
     const bad = `import { LoggingTransport } from "@/lib/messaging/transport";\nawait transport.send(a, b, c);`;

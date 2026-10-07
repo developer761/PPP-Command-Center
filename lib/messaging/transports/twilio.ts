@@ -27,6 +27,8 @@
 import type { E164 } from "../phone";
 import type { MessageTransport, SendResult } from "../transport";
 import type { TwilioChoice } from "../transport-config";
+import { randomUUID } from "crypto";
+import { reportWarn } from "@/lib/observability";
 
 /**
  * Twilio keeps its own opt-out list and enforces it before we do. A send
@@ -125,18 +127,54 @@ export class TwilioTransport implements MessageTransport {
       throw new Error(`Twilio ${res.status}: ${text.slice(0, 500)}`);
     }
 
+    /**
+     * PAST THIS LINE THE CARRIER HAS ACCEPTED THE MESSAGE, SO NOTHING MAY THROW.
+     *
+     * Every caller treats a throw as "it did not go out": the scheduler
+     * reschedules it as an error and retries up to five times, and the review
+     * queue leaves the draft claimed so it returns to the queue two minutes
+     * later. Both of those are right for a connection that dropped before the
+     * POST and catastrophic for one that answered 201 — the customer gets the
+     * same text two to five times, and the only evidence is an error message
+     * that literally begins "Twilio accepted the send".
+     *
+     * So an unreadable body or a missing sid now closes the row with an id of
+     * our own. ResendEmailTransport already does exactly this, and its comment
+     * explains the random suffix: provider_id carries a UNIQUE index, so a
+     * timestamp sentinel would collide for two sends in the same millisecond.
+     *
+     * What is lost is delivery-receipt correlation for that one message, which
+     * is a reporting gap. What is avoided is texting somebody five times.
+     */
     let parsed: { sid?: string; status?: string; error_message?: string | null };
     try { parsed = JSON.parse(text) as typeof parsed; }
-    catch { throw new Error(`Twilio accepted the send but returned unreadable JSON: ${text.slice(0, 200)}`); }
+    catch {
+      reportWarn({
+        key: "twilio_unreadable_accept", platform: "ppp_cc",
+        message: "Twilio accepted a send and returned a body we could not parse — recorded as sent with an id of ours",
+        context: { to, body: text.slice(0, 200) },
+      });
+      return { providerId: `twilio-unparsed-${randomUUID()}` };
+    }
 
-    // Twilio can answer 201 for a message it has already given up on.
+    /**
+     * The exception, and it is not a retry risk: a 201 whose status is already
+     * failed or undelivered is a message Twilio created and will not deliver.
+     * Nobody receives it, so a retry cannot duplicate anything — and the
+     * scheduler surfacing it is the right outcome, because the cause is
+     * usually a number that will fail every time.
+     */
     if (parsed.status === "failed" || parsed.status === "undelivered") {
       throw new Error(`Twilio created the message as ${parsed.status}: ${parsed.error_message ?? "no reason given"}`);
     }
+
     if (!parsed.sid) {
-      // Without an id we cannot correlate a delivery receipt, and a send we
-      // cannot trace is a send we cannot prove happened.
-      throw new Error("Twilio accepted the send but returned no sid");
+      reportWarn({
+        key: "twilio_accept_without_sid", platform: "ppp_cc",
+        message: "Twilio accepted a send and returned no sid — recorded as sent with an id of ours",
+        context: { to, status: parsed.status ?? null },
+      });
+      return { providerId: `twilio-nosid-${randomUUID()}` };
     }
     return { providerId: parsed.sid };
   }

@@ -19,11 +19,31 @@ import { startOfDayIn } from "@/lib/messaging/gate";
  * whichever rule is currently covering for it.
  */
 
-const fmt = (d: Date, timeZone: string) =>
-  new Intl.DateTimeFormat("en-US", {
-    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(d);
+/**
+ * MIDNIGHT IS "24:00" ON SOME ICU VERSIONS, which is how these three tests
+ * passed on Node 24 here and failed on Node 20 in CI.
+ *
+ * `hour12: false` renders midnight as hour 24 on older V8/ICU and as 00 on
+ * newer. The production code already knows: compliance.ts normalises it with
+ * the comment "Intl renders midnight as '24' in some ICU versions", and
+ * campaign-schedule.ts and park-time.ts both take `% 24`. Every place that
+ * matters was defended; this test was the only thing in the repo that assumed
+ * one of the two renderings, and it chose the one the local machine happened
+ * to produce.
+ *
+ * startOfDayIn itself formats no hours at all — year, month and day only — so
+ * the helper is unaffected either way. This is a test bug, not a bug it found.
+ */
+const fmt = (d: Date, timeZone: string) => {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(d).map((x) => [x.type, x.value])
+  );
+  const hour = String(Number(p.hour) % 24).padStart(2, "0");
+  return `${p.month}/${p.day}/${p.year}, ${hour}:${p.minute}`;
+};
 
 const ZONES = [
   "America/New_York", "America/Chicago", "America/Denver",
