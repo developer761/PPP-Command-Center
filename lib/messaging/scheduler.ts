@@ -126,8 +126,16 @@ export type SchedulerDeps = {
      * waiting on a reviewer, a person holding the thread. Without it every
      * skip was cancelled, and the cadence died on states that clear by
      * themselves. See the stall_followup branch below.
+     *
+     * `blockedSince` is when the thing being waited ON started, so "not for
+     * ever" can be CHECKED rather than taken on trust. Two of the three
+     * retryable reasons do clear by themselves. The draft one does not:
+     * nothing ages a pending draft out — `superseded` exists as a state and
+     * nothing in lib/ or app/ writes it — and a "deferral" reschedule refunds
+     * the attempt, so the step never reaches MAX_ATTEMPTS either. It defers
+     * hourly for ever.
      */
-    | { kind: "skipped"; reason: string; retryable?: boolean }
+    | { kind: "skipped"; reason: string; retryable?: boolean; blockedSince?: string | null }
   >;
   /**
    * Deliver a held reply at its moment: drop it if the customer has texted
@@ -410,6 +418,40 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
        * human_active horizon above still ends anything a person keeps.
        */
       if (out.retryable) {
+        /**
+         * AND "NOT FOR EVER" HAS TO BE CHECKED, OR IT IS FOR EVER.
+         *
+         * The comment above says the human_active horizon still ends anything
+         * a person keeps. It does not end THIS: that horizon is measured from
+         * ctx.takeoverAt, and a draft nobody ever opened has no takeover. So a
+         * stall_followup behind an abandoned draft deferred hourly with no
+         * bound at all — nothing ages a pending draft out, and a "deferral"
+         * reschedule refunds the attempt so MAX_ATTEMPTS is never reached
+         * either. The same four production rows this branch was written to
+         * rescue, in a different state.
+         *
+         * FAILED, NOT CANCELLED, and that distinction is the whole point.
+         * Cancelling is what produced the dead end above: stalled-db will not
+         * re-queue a cadence whose steps are cancelled, and a cancelled step
+         * does not count towards a spent one either, so the lead was neither
+         * chased nor called. A failed step DOES count (see
+         * resumeCallingIfSpent), so once the cadence is spent the lead goes
+         * back to the call centre — which is the right answer for a
+         * conversation the bot cannot advance and nobody is reviewing.
+         *
+         * The same fourteen days as the human hold, deliberately rather than a
+         * second number: the reasoning is identical — somebody has had this
+         * long enough that the scripted step is no longer the right thing to
+         * send — and a second horizon is one more thing to drift.
+         */
+        const since = out.blockedSince ? Date.parse(out.blockedSince) : NaN;
+        const stuck = Number.isNaN(since) ? 0 : (deps.now ?? new Date()).getTime() - since;
+        if (stuck > HUMAN_HOLD_HORIZON_MS) {
+          const reason = `${out.reason}, and has been for over two weeks — `
+            + "handing the lead back rather than deferring it again";
+          await deps.fail(a, reason);
+          return { kind: "failed", reason };
+        }
         const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
         await deps.reschedule(a, at, out.reason, "deferral");
         return { kind: "rescheduled", at, reason: out.reason };

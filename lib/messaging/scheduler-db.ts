@@ -288,8 +288,18 @@ export function schedulerDeps(): SchedulerDeps {
       // One pending draft per conversation is a database rule; checking here
       // turns a constraint violation into a clean skip.
       const { data: existing } = await sb.from("sms_drafts")
-        .select("id").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
-      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true };
+        .select("id, created_at").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
+      if (existing) {
+        return {
+          kind: "skipped" as const,
+          reason: "a reply is already waiting for review",
+          retryable: true,
+          // WHEN the wait began, so the scheduler can tell a wait from a
+          // standstill. Nothing ages a pending draft out, so without this the
+          // step defers hourly for ever. See SchedulerDeps.draftReply.
+          blockedSince: (existing as { created_at?: string | null }).created_at ?? null,
+        };
+      }
 
       const { data: msgs } = await sb.from("sms_messages")
         .select("id, direction, body, created_at, media_count")

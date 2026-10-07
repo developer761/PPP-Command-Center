@@ -803,3 +803,83 @@ describe("the carrier says they are unsubscribed", () => {
     expect(d.calls.cancel).toBe(0);
   });
 });
+
+/**
+ * "TRUE NOW AND NOT FOREVER" WAS TAKEN ON TRUST, AND FOR ONE REASON IT WAS
+ * FOREVER.
+ *
+ * The deferral above is right, and the comment beside it claimed the
+ * human_active horizon still ends anything a person keeps. It does not end
+ * this one: that horizon is measured from ctx.takeoverAt, and a draft nobody
+ * ever opened has no takeover. Nothing ages a pending draft out either —
+ * `superseded` is a state no code in lib/ or app/ writes — and a "deferral"
+ * reschedule refunds the attempt, so MAX_ATTEMPTS is never reached.
+ *
+ * So a stall follow-up behind an abandoned draft deferred hourly with no
+ * bound at all: the same production rows that branch was written to rescue,
+ * stuck in a different state.
+ */
+describe("a deferral that would never end is ended", () => {
+  const stuck = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "s9", conversation_id: "c9", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 3, ...over,
+  });
+  const blocked = (blockedSince: string | null) => ({
+    kind: "skipped" as const,
+    reason: "a reply is already waiting for review",
+    retryable: true,
+    blockedSince,
+  });
+  const daysBefore = (n: number) =>
+    new Date(NOW.getTime() - n * 24 * 3600_000).toISOString();
+
+  it("still defers while the wait is recent", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(3)) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("stops deferring once the draft has sat for over two weeks", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(15)) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(0);
+    expect(d.calls.fail).toBe(1);
+  });
+
+  /**
+   * FAILED, NOT CANCELLED, and that is the whole point of the choice.
+   * Cancelling is what produced the original dead end — stalled-db will not
+   * re-queue a cadence whose steps are cancelled, and a cancelled step does
+   * not count towards a spent one either, so the lead was neither chased nor
+   * called. A failed step DOES count, so the cadence completes and
+   * resumeCallingIfSpent hands the lead back to the call centre, which is the
+   * right answer for a thread the bot cannot advance and nobody is reviewing.
+   */
+  it("fails rather than cancelling, so the lead reaches the call centre", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(30)) });
+    await runDueActions(d);
+    expect(d.calls.cancel).toBe(0);
+    expect(d.calls.fail).toBe(1);
+    expect(d.last.reason).toMatch(/over two weeks/);
+  });
+
+  /**
+   * A missing timestamp must not be read as "infinitely old" — that would
+   * fail every deferral the moment a caller forgot the field. Unknown means
+   * keep waiting, which is what the behaviour was before this existed.
+   */
+  it("keeps deferring when nothing says when the wait began", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(null) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("is not thrown off by an unparseable timestamp", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked("not a date") });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+});
