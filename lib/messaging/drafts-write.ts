@@ -142,9 +142,15 @@ export async function draftThread(conversationId: string): Promise<{
 }[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const { data } = await sb
+  // THROWS RATHER THAN SHOWING AN EMPTY THREAD. A draft is judged against the
+  // conversation above it — "is this answering what they actually said?" — and
+  // a read that fails silently renders that judgement against nothing at all.
+  // app/messaging/error.tsx turns this into "the screen could not load", which
+  // is the truth.
+  const { data, error } = await sb
     .from("sms_messages").select("direction, body, created_at")
     .eq("conversation_id", conversationId).order("created_at");
+  if (error) throw new Error(`could not load the conversation behind this draft: ${error.message}`);
   return (data ?? []).map((m) => ({
     direction: m.direction as "inbound" | "outbound",
     body: m.body, createdAt: m.created_at,
@@ -167,11 +173,30 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   // people looking at the same queue can both press send. Setting reviewed_at
   // only where it is still NULL means exactly one of them wins, and the loser
   // is told rather than silently sending the customer a second copy.
-  const { data: claimedRows } = await sb.from("sms_drafts")
+  const { data: claimedRows, error: claimErr } = await sb.from("sms_drafts")
     .update({ reviewed_by: userId, reviewed_at: new Date().toISOString() })
     .eq("id", input.draftId).eq("state", "pending")
     .or(`reviewed_at.is.null,reviewed_at.lt.${claimCutoff()}`)
     .select("id, body, state, intent, answers_message_id, conversation_id, sms_conversations(customer_phone, state, owning_user_id, owning_agent, sms_sub_accounts(id, name, phone_e164, origination_identity, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, send_on_holidays))");
+
+  /**
+   * A FAILED CLAIM IS NOT SOMEBODY ELSE'S CLAIM.
+   *
+   * This destructured only `data`, so any failure — a timeout, a dropped
+   * connection, an RLS change — produced `d === undefined` and the reviewer
+   * was told "Somebody else is already dealing with this one". That is the
+   * one message guaranteed to make them move on and never look again, and
+   * the customer is still waiting. Two files up, this same module throws on a
+   * failed read for exactly that reason.
+   */
+  if (claimErr) {
+    reportWarn({
+      key: "sms_draft_claim_failed", platform: "ppp_cc",
+      message: "could not claim a draft for review",
+      context: { draftId: input.draftId, error: claimErr.message },
+    });
+    return { ok: false, error: "We could not pick that one up just now — try again in a moment." };
+  }
 
   const d = claimedRows?.[0];
   if (!d) return { ok: false, error: "Somebody else is already dealing with this one." };
