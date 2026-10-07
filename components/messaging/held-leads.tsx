@@ -115,6 +115,20 @@ export function HeldLeads({ summary: initial }: { summary: HeldSummary }) {
           after you switch a region on or publish a workflow, they stay here
           until somebody says otherwise.
         </p>
+        {/*
+          THE BREAKDOWN BELOW IS OF `scanned`, NOT OF `total`.
+          The heading counts the whole backlog from the database; one pass only
+          reads SCAN_LIMIT rows, so past that the reasons and the release
+          number describe a subset. Saying which is the difference between a
+          partial view and a wrong one — see HeldSummary.scanned.
+        */}
+        {summary.scanned < summary.total && (
+          <p className="mt-1 text-[12.5px] text-ppp-orange-700 leading-relaxed">
+            Showing the {summary.scanned} most recent. The breakdown and the
+            release count below cover those only — release them and the rest
+            move into range.
+          </p>
+        )}
       </div>
 
       <ul className="divide-y divide-ppp-charcoal-100">
