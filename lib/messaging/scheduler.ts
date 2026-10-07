@@ -12,6 +12,7 @@
 import type { E164 } from "./phone";
 import type { GateResult, GateWorkspace, SendRequest, GateDeps } from "./gate";
 import { FOLLOW_UP_COUNT } from "./stalled";
+import { CarrierUnsubscribedError } from "./transports/twilio";
 
 /** After this many tries a row stops retrying and asks for a human. Five
  *  minute-ly attempts is enough to ride out a transient carrier blip; more
@@ -119,7 +120,13 @@ export type SchedulerDeps = {
     | { kind: "drafted" }
     | { kind: "held"; at: Date }
     | { kind: "sent"; providerId: string; body: string; intent?: string | null }
-    | { kind: "skipped"; reason: string }
+    /**
+     * `retryable` means the reason is TRUE NOW AND NOT FOREVER — a draft
+     * waiting on a reviewer, a person holding the thread. Without it every
+     * skip was cancelled, and the cadence died on states that clear by
+     * themselves. See the stall_followup branch below.
+     */
+    | { kind: "skipped"; reason: string; retryable?: boolean }
   >;
   /**
    * Deliver a held reply at its moment: drop it if the customer has texted
@@ -136,6 +143,13 @@ export type SchedulerDeps = {
    * steps keeps working without supplying one.
    */
   onCadenceSpent?(a: DueAction): Promise<void>;
+  /**
+   * The carrier refused because THEY have this person suppressed and we did
+   * not. Closes the gap by writing our own row, so the next workspace to try
+   * is stopped by our gate rather than by a failed send. Optional, so a worker
+   * that only drains campaign steps need not supply one.
+   */
+  onCarrierSuppressed?(a: DueAction, to: E164): Promise<void>;
   sendHeldReply?(a: DueAction): Promise<
     | { kind: "sent"; providerId: string; body: string }
     | { kind: "drafted" }
@@ -358,6 +372,36 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       }
       if (out.kind === "drafted") { await deps.markDone(a); return { kind: "drafted" }; }
       if (out.kind === "held") { await deps.markDone(a); return { kind: "held", at: out.at }; }
+
+      /**
+       * A REASON THAT CLEARS BY ITSELF IS NOT A REASON TO GIVE UP.
+       *
+       * Every skip used to be cancelled here, and several of draftReply's
+       * skips describe a passing state: a draft waiting on a reviewer, a
+       * person holding the thread, a turn handed to a person. Confirmed in
+       * production 2026-10-06 — of the three A44 cadences that have ever run,
+       * NONE can complete:
+       *
+       *   conversation 022606b8…  step 1 done
+       *                           step 2 cancelled "a reply is already
+       *                           step 3 cancelled  waiting for review"
+       *
+       * And the damage outlives the cadence. It cannot be re-queued, because
+       * stalled-db counts non-cancelled rows and step 1 is done; and
+       * resumeCallingIfSpent needs three DONE steps before it tells the call
+       * centre it may dial again. So the lead is neither chased nor called —
+       * the exact dead end A44 and A45 exist to close, produced by the
+       * machinery built to close it.
+       *
+       * An hour, the same guess this file makes everywhere it defers, and the
+       * human_active horizon above still ends anything a person keeps.
+       */
+      if (out.retryable) {
+        const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
+        await deps.reschedule(a, at, out.reason, "deferral");
+        return { kind: "rescheduled", at, reason: out.reason };
+      }
+
       await deps.cancel(a, out.reason);
       return { kind: "cancelled", reason: out.reason };
     } catch (err) {
@@ -416,6 +460,31 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       agent: ctx.agent, now: deps.now,
     });
   } catch (err) {
+    /**
+     * A CARRIER-LEVEL OPT-OUT IS NOT TRANSIENT, and treating it as one is both
+     * useless and wrong.
+     *
+     * Twilio keeps its own suppression list and enforces it before we do. Code
+     * 21610 means this person is on it and NOT in sms_opt_outs — the two lists
+     * have drifted. twilio.ts already said so in a comment ("not a transient
+     * error, and retrying it will fail forever") and then threw a plain Error,
+     * which this catch read as transient: five retries, then failed, and the
+     * number never written down. Every other workspace went on trying them.
+     *
+     * So it cancels, and writes our own row first. The customer has told
+     * SOMEBODY to stop, which is the only fact that matters.
+     */
+    if (err instanceof CarrierUnsubscribedError) {
+      try {
+        await deps.onCarrierSuppressed?.(a, err.to as E164);
+      } catch {
+        // Recording it is best effort; not recording it must not turn a
+        // definite "do not text this person" back into a retry.
+      }
+      await deps.cancel(a, err.message);
+      return { kind: "cancelled", reason: err.message };
+    }
+
     // The carrier threw. Transient until proven otherwise — but attempts was
     // already incremented at claim time, so this cannot loop forever.
     const reason = err instanceof Error ? err.message : String(err);
@@ -471,10 +540,63 @@ export type TickSummary = {
 
 /** One tick. Returns counts so the caller can alert on them — a tick that
  *  processed nothing and a tick that failed everything must not look alike. */
-export async function runDueActions(deps: SchedulerDeps, limit = 50): Promise<TickSummary> {
+/**
+ * How long a tick may spend working before it stops starting new rows.
+ *
+ * The route's maxDuration is 300s. A claimed row the lambda never reaches is
+ * not free: `sms_claim_due_actions` increments `attempts` on the CLAIM, and
+ * `sms_reclaim_stale_actions` returns the row to pending WITHOUT giving the
+ * attempt back. So six abandoned ticks fail a message that was never once
+ * attempted — "gave up after 6 attempts" about a send nobody tried.
+ *
+ * The obvious fix is to reset attempts on reclaim, and it is WRONG. The
+ * migration says why: "Attempts increments on CLAIM, not completion, so a row
+ * that crashes mid-send cannot retry forever." A row abandoned because the
+ * tick ran out of time and a row abandoned because it crashed after the
+ * carrier accepted look identical from the reclaim's side, and refunding both
+ * would let the second retry for ever — a duplicate text, which is worse than
+ * a late one.
+ *
+ * So the cause is fixed instead of the symptom: stop starting work there is no
+ * time to finish. A row not claimed stays pending with its attempts intact and
+ * is picked up by the next tick a minute later.
+ *
+ * 240s of 300 leaves room for the slowest single action to finish — an agent
+ * turn is a model call and a handful of reads — plus the heartbeat write after
+ * the loop.
+ */
+export const TICK_BUDGET_MS = 240_000;
+
+export async function runDueActions(
+  deps: SchedulerDeps,
+  limit = 50,
+  /** Overridable so the budget can be tested in milliseconds rather than by
+   *  waiting four minutes. Production uses the default. */
+  budgetMs = TICK_BUDGET_MS,
+): Promise<TickSummary> {
+  /**
+   * REAL elapsed time, never deps.now. That clock is injected for business
+   * decisions — "is it a weekend where this customer is" — and tests pin it to
+   * a fixed instant. Measuring a wall-clock budget against a frozen clock made
+   * every tick instantly over budget, which is how the first version of this
+   * skipped every row in the suite.
+   */
+  const startedAt = Date.now();
   const claimed = await deps.claimDue(limit);
   const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {
+    /**
+     * OUT OF TIME: leave the rest claimed and let the reclaim return them.
+     *
+     * They each cost one attempt this way, which is the price of not knowing
+     * whether an abandoned row had already reached the carrier. Stopping here
+     * means only the rows we could not reach pay it, instead of every row in
+     * an oversized batch paying it every tick.
+     */
+    if (Date.now() - startedAt > budgetMs) {
+      s.skipped += claimed.length - (s.sent + s.drafted + s.held + s.rescheduled + s.cancelled + s.failed + s.skipped);
+      break;
+    }
     // One bad row must not stop the tick — the rest of the queue is unrelated.
     try {
       const out = await runAction(a, deps);

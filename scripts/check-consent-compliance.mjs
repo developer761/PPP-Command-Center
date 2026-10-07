@@ -64,6 +64,29 @@ const textOf = (html) =>
       .trim();
 
 /**
+ * THE SAME ESTIMATE FORM IS EMBEDDED IN EVERY PAGE, AND IT IS NOT THE PAGE.
+ *
+ * Both policy pages carry a copy of the estimate form in the footer, consent
+ * sentences and all. Asserting on the whole page therefore reads the FORM's
+ * words as the POLICY's words, and on 2026-10-06 that was wrong in both
+ * directions at once:
+ *
+ *   false PASS  Terms & Conditions "carries a rates disclosure" — it does not.
+ *               The page is promotions only; the sentence came from the form
+ *               in its footer. The headed-section check below already warns
+ *               about exactly this leak, one assertion further down.
+ *   false FAIL  Privacy "still quotes a combined marketing+SMS sentence" — it
+ *               does not. The policy separates them correctly in its own
+ *               words; the embedded form supplied both halves.
+ *
+ * A check that can fail a correct page is worse than no check, because
+ * somebody goes and "fixes" it. So the prose assertions run against the page
+ * with the form cut out, and the form assertions keep the full HTML.
+ */
+const withoutEmbeddedForm = (html) =>
+  html.replace(/<form[^>]*class="[^"]*wpcf7-form[^"]*"[\s\S]*?<\/form>/gi, " ");
+
+/**
  * Every wpcf7-acceptance block, with the two attributes that got us rejected
  * and the words that decide which box it is.
  */
@@ -132,7 +155,7 @@ if (marketingOnly.length) {
 /* ── 2. Privacy policy ─────────────────────────────────────────────────── */
 head("2. Privacy Policy");
 const privacy = await get(PRIVACY);
-const pText = textOf(privacy.html);
+const pText = textOf(withoutEmbeddedForm(privacy.html));
 ok("loads", privacy.status === 200, String(privacy.status));
 ok('titled "Privacy Policy"', /<title[^>]*>[^<]*Privacy Policy/i.test(privacy.html));
 ok("names the brand", /Precision Painting Plus/i.test(pText));
@@ -143,27 +166,102 @@ ok("has an SMS section", /SMS TERMS|SMS & EMAIL OPT/i.test(pText));
 /**
  * The policy quotes the form's consent sentence. If the form changes and this
  * does not, the two disagree and a reviewer reads both.
+ *
+ * NEARNESS IS NOT COMBINATION, which this used to assume. It matched the two
+ * subjects within 120 characters of each other, and the sentence a carrier
+ * most wants to see says both in one breath ON PURPOSE:
+ *
+ *   "Email marketing (special offers and home improvement tips) is offered as
+ *    a separate, optional opt-in and is not required to receive text messages."
+ *
+ * That is the fix for rejection 30507 written out in plain English, and the
+ * check marked it as the rejection. Somebody acting on that would have deleted
+ * the sentence that proves compliance.
+ *
+ * So it reads SENTENCES, and a sentence holding both subjects only fails when
+ * it reads as one CONSENT and does not say they are separate.
  */
-const quotesMarketingSms = /text messages[^.]{0,120}(special offers|home improvement tips)|(?:special offers|home improvement tips)[^.]{0,120}text messages/i.test(pText);
-ok("does not still quote a combined marketing+SMS consent sentence", !quotesMarketingSms,
-   quotesMarketingSms ? "the old combined wording is still reproduced here" : "");
+const SEPARATION = /\bseparate\b|\boptional\b|\bnot required\b|\bdoes not require\b/i;
+const CONSENT_VERB = /\bI agree\b|\bI'd also like\b|\bI would also like\b|\byou agree\b|\bby (?:submitting|checking)\b|\bconsent to receive\b/i;
+const findCombined = (text) => text
+  .split(/(?<=[.?!])\s+/)
+  .find((s) => SMS_WORDS.test(s) && MARKETING_WORDS.test(s)
+            && CONSENT_VERB.test(s) && !SEPARATION.test(s));
 
-/* ── 3. Terms & Conditions ─────────────────────────────────────────────── */
-head("3. Terms & Conditions");
-const terms = await get(TERMS);
-const tText = textOf(terms.html);
-ok("loads", terms.status === 200, String(terms.status));
-ok('titled "Terms & Conditions" or "Terms of Service"',
-   /<title[^>]*>[^<]*(Terms\s*(&amp;|&|and)?\s*Conditions|Terms of Service)/i.test(terms.html));
-ok("names the brand", /Precision Painting Plus/i.test(tText));
-ok("carries a rates disclosure", /rates may apply/i.test(tText));
 /**
- * A HEADED SECTION, not the consent sentence leaking in from an embedded copy
- * of the form. That is what the page had when it was first checked, and it is
- * not what the requirement asks for.
+ * The detector is checked against the two sentences it has to tell apart,
+ * every run. Narrowing a rule until it stops firing is the easy mistake here,
+ * and a rule that can no longer catch the original rejection would pass this
+ * page in silence for ever.
  */
-ok("has a headed SMS Terms section",
-   /SMS\s*TERMS|Text\s*Messaging\s*Terms/i.test(tText));
+{
+  const REJECTED = "I agree to receive text messages from Precision Painting Plus with special offers and home improvement tips.";
+  const CORRECT = "Email marketing (special offers and home improvement tips) is offered as a separate, optional opt-in and is not required to receive text messages.";
+  if (!findCombined(REJECTED) || findCombined(CORRECT)) {
+    console.error("\n✗  the combined-consent detector itself is broken — it no longer tells 30507's wording from the fix for it. Nothing below can be trusted.");
+    process.exit(1);
+  }
+}
+
+const combinedSentence = findCombined(pText);
+ok("does not still quote a combined marketing+SMS consent sentence", !combinedSentence,
+   combinedSentence ? `still reproduced here: "${combinedSentence.slice(0, 160)}"` : "");
+
+/* ── 3. The SMS programme terms ────────────────────────────────────────── */
+head("3. The SMS terms, wherever they live");
+/**
+ * ON WHICHEVER PAGE WE REGISTER, NOT NECESSARILY THE TERMS PAGE.
+ *
+ * This asserted the terms section on /terms-conditions/ because that is the
+ * URL first given to Twilio. Katie's question on 2026-10-06 was the right one:
+ * that page is PPP's promotions terms — the $199 room offer, the satisfaction
+ * guarantee — and SMS terms read oddly bolted onto it.
+ *
+ * The requirement is not about a page title. It is that the URL submitted as
+ * the campaign's terms link carries the programme terms a reviewer checks for.
+ * So the check looks on both candidate pages and NAMES the one to register,
+ * rather than dictating where PPP writes it.
+ */
+const terms = await get(TERMS);
+const tText = textOf(withoutEmbeddedForm(terms.html));
+ok("the terms page loads", terms.status === 200, String(terms.status));
+
+const SMS_TERMS_HEADING = /SMS\s*TERMS|Text\s*Messaging\s*Terms|SMS\s*Program\s*Terms/i;
+/** The section, from its heading to the next one, so the checks below read IT. */
+function smsTermsSection(text) {
+  const m = SMS_TERMS_HEADING.exec(text);
+  if (!m) return null;
+  const after = text.slice(m.index);
+  // Up to the next ALL-CAPS heading, or 1,200 characters, whichever is first.
+  const next = /\.\s+[A-Z][A-Z &'/]{9,}/.exec(after.slice(m[0].length));
+  return after.slice(0, next ? m[0].length + next.index + 1 : 1200);
+}
+
+const candidates = [
+  { label: "Privacy Policy", url: PRIVACY, section: smsTermsSection(pText) },
+  { label: "Terms & Conditions", url: TERMS, section: smsTermsSection(tText) },
+];
+const carrying = candidates.filter((c) => c.section);
+ok("a headed SMS Terms section exists somewhere we can point Twilio at",
+   carrying.length > 0,
+   carrying.length ? `on the ${carrying.map((c) => c.label).join(" and the ")}` : "neither page has one");
+
+if (carrying.length) {
+  // Read the FIRST one that has it; that is the URL to submit.
+  const s = carrying[0].section;
+  console.log(`     → register this URL as the campaign's terms link: ${carrying[0].url}`);
+  ok("  the section names the brand", /Precision Painting Plus/i.test(s));
+  ok("  the section says what the messages are about",
+     /estimate|scheduling|customer service|appointment/i.test(s));
+  ok("  the section carries message frequency", /frequency\s+varies|message\s+frequency/i.test(s));
+  ok("  the section carries the rates disclosure", /rates\s+may\s+apply/i.test(s));
+  ok("  the section carries STOP", /\bSTOP\b/.test(s));
+  ok("  the section carries HELP", /\bHELP\b/.test(s));
+  // Not required by every carrier, and reviewers look for it.
+  if (!/carriers?\s+are\s+not\s+liable|not\s+liable\s+for\s+delayed/i.test(s)) {
+    note("  no carrier-liability sentence", "accepted without it, but reviewers look for one");
+  }
+}
 
 /* ── 4. The URLs we gave Twilio ────────────────────────────────────────── */
 head("4. The URLs on the registrations resolve");

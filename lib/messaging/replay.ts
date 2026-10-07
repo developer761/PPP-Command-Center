@@ -37,6 +37,19 @@ export type TurnComparison = {
   after: { intent: string | null; message: string };
   /** What this means for somebody reading the result. */
   status: "fixed" | "broken" | "still_wrong" | "unchanged" | "reworded" | "changed_intent";
+  /**
+   * What the grader said it SHOULD have chosen, and whether it now does.
+   *
+   * The sandbox asks for this on every turn marked wrong — "What should it
+   * have done instead?" — and it was written to sms_scenario_turns and read by
+   * nobody: one writer, no reader, so the one person who knew the right answer
+   * typed it into a field that went nowhere. It is the only part of a replay
+   * that can say whether a change was the change that was ASKED for, rather
+   * than merely a change.
+   */
+  expectedIntent: string | null;
+  /** null when nothing was expected, so "no answer" is not read as "no". */
+  matchedExpectation: boolean | null;
   note: string | null;
 };
 
@@ -68,6 +81,14 @@ export function compareTurn(saved: SavedTurn, now: ReplayedTurn | undefined): Tu
       : "reworded";
   }
 
+  // Typed by a person into a free-text box, so compared forgivingly: trimmed,
+  // lowercased, and tolerant of the spaces somebody writes instead of
+  // underscores. A grader should not have to spell an identifier exactly for
+  // their answer to count.
+  const normalise = (v: string | null) =>
+    (v ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const expected = normalise(saved.expectedIntent);
+
   return {
     ordinal: saved.ordinal,
     customerText: saved.customerText,
@@ -75,6 +96,8 @@ export function compareTurn(saved: SavedTurn, now: ReplayedTurn | undefined): Tu
     after,
     status,
     note: saved.verdictNote,
+    expectedIntent: saved.expectedIntent,
+    matchedExpectation: expected ? normalise(after.intent) === expected : null,
   };
 }
 

@@ -5,6 +5,7 @@ import {
 } from "@/lib/messaging/scheduler";
 import type { GateResult, GateWorkspace } from "@/lib/messaging/gate";
 import type { E164 } from "@/lib/messaging/phone";
+import { CarrierUnsubscribedError } from "@/lib/messaging/transports/twilio";
 
 const WS: GateWorkspace = {
   id: "ws", name: "NY LI Nassau Leads", phone_e164: "+15163448418",
@@ -623,5 +624,182 @@ describe("a model that could not be reached is retried, not cancelled", () => {
     const out = await runAction(turn(), d);
     expect(out.kind).toBe("cancelled");
     expect(d.calls.cancel).toBe(1);
+  });
+});
+
+/**
+ * A REASON THAT CLEARS BY ITSELF IS NOT A REASON TO GIVE UP.
+ *
+ * Every skip from draftReply used to be cancelled, and several of those skips
+ * describe a passing state. Confirmed in production 2026-10-06: of the three
+ * A44 cadences that have ever run, NONE can complete.
+ *
+ *   conversation 022606b8…  step 1 done
+ *                           step 2 cancelled "a reply is already
+ *                           step 3 cancelled  waiting for review"
+ *
+ * The damage outlives the cadence. It cannot be re-queued — stalled-db counts
+ * non-cancelled rows and step 1 is done — and resumeCallingIfSpent needs three
+ * DONE steps before the call centre is told it may dial again. The lead is
+ * neither chased nor called, which is the exact dead end A44 and A45 exist to
+ * close, produced by the machinery built to close it.
+ */
+describe("a stall follow-up blocked by something temporary", () => {
+  const stall = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "s1", conversation_id: "c1", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 2, ...over,
+  });
+
+  it.each([
+    "a reply is already waiting for review",
+    "a person has taken this conversation over",
+    "handed to a person: question_left_unanswered: …",
+  ])("defers rather than cancelling: %s", async (reason) => {
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({ kind: "skipped" as const, reason, retryable: true }),
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(0);
+    expect(d.calls.reschedule).toBe(1);
+  });
+
+  /**
+   * The attempt is given BACK. attempts increments on claim, so a deferral
+   * that spent one would fail the row after five quiet hours — the bug the
+   * `why` parameter exists to prevent. The default spy does not record `why`,
+   * so this one captures it.
+   */
+  it("spends no attempt on such a deferral", async () => {
+    let why: string | undefined;
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({
+        kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true,
+      }),
+      reschedule: async (_a: DueAction, _at: Date, _r: string, w: "error" | "deferral") => { why = w; },
+    });
+    await runDueActions(d);
+    expect(why).toBe("deferral");
+  });
+
+  /**
+   * AND A REASON THAT IS TRUE FOR EVER STILL CANCELS. Without this the fix
+   * would just be the unbounded-deferral bug wearing a different hat.
+   */
+  it.each([
+    "conversation has ended",
+    "conversation no longer exists",
+    "somebody has already answered the customer",
+    "handed to a person after 20 replies (max_turns is 20)",
+  ])("still cancels: %s", async (reason) => {
+    const d = deps({
+      claimDue: async () => [stall()],
+      draftReply: async () => ({ kind: "skipped" as const, reason }),
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+});
+
+/**
+ * A TICK THAT RUNS OUT OF TIME MUST NOT FAIL MESSAGES NOBODY TRIED.
+ *
+ * `sms_claim_due_actions` increments `attempts` on the CLAIM, and
+ * `sms_reclaim_stale_actions` returns an abandoned row to pending without
+ * giving it back. So a tick that claims 50 slow rows and dies at 300s costs
+ * every unreached row an attempt, and six such ticks fail a message that was
+ * never once attempted.
+ *
+ * Refunding on reclaim would be the obvious fix and is wrong — the migration
+ * says why: a row that crashed AFTER the carrier accepted is indistinguishable
+ * from one the tick never reached, and refunding both lets the first retry for
+ * ever. A duplicate text is worse than a late one. So the tick stops starting
+ * work it cannot finish instead.
+ */
+describe("the tick stops before it runs out of time", () => {
+  it("does not start rows it has no time to finish", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => action({ id: `t${i}` }));
+    let started = 0;
+    // Each action eats a quarter of the budget, so it gets through four and
+    // then stops rather than being killed mid-way through the tenth.
+    const d = deps({
+      claimDue: async () => rows,
+      resolve: async () => { started++; await new Promise((r) => setTimeout(r, 60)); return null; },
+    });
+    const out = await runDueActions(d, 10, 150);   // 150ms of budget
+    expect(out.claimed).toBe(10);
+    expect(started).toBeLessThan(10);
+    // Everything claimed is accounted for, so the summary never under-reports.
+    const seen = out.sent + out.drafted + out.held + out.rescheduled
+      + out.cancelled + out.failed + out.skipped;
+    expect(seen).toBe(10);
+  }, 20_000);
+
+  it("processes the whole batch when there is time", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => action({ id: `q${i}` }));
+    const d = deps({ claimDue: async () => rows, resolve: async () => null });
+    const out = await runDueActions(d, 5);
+    expect(out.claimed).toBe(5);
+    expect(out.cancelled + out.skipped).toBe(5);
+  });
+});
+
+/**
+ * A CARRIER-LEVEL OPT-OUT IS NOT A TRANSIENT ERROR.
+ *
+ * Twilio keeps its own suppression list and enforces it before we do. Code
+ * 21610 means the person is on it and NOT in sms_opt_outs — the two lists
+ * have drifted. twilio.ts said exactly that in a comment, "not a transient
+ * error, and retrying it will fail forever", and then threw a plain Error,
+ * which this scheduler read as transient: five retries, then failed, and the
+ * number never written down. Every other workspace went on trying them.
+ */
+describe("the carrier says they are unsubscribed", () => {
+  const boom = () => {
+    throw new CarrierUnsubscribedError("+15165550147", "Twilio 400: on Twilio's own opt-out list");
+  };
+
+  it("cancels instead of retrying", async () => {
+    const d = deps({ claimDue: async () => [action()], send: async () => boom() });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("writes the number to our own list, so the next workspace is stopped by the gate", async () => {
+    let suppressed: string | null = null;
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => boom(),
+      onCarrierSuppressed: async (_a, to) => { suppressed = to; },
+    });
+    await runDueActions(d);
+    expect(suppressed).toBe("+15165550147");
+  });
+
+  /** Recording is best effort — failing to write it must not resurrect a retry. */
+  it("still cancels when the suppression cannot be recorded", async () => {
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => boom(),
+      onCarrierSuppressed: async () => { throw new Error("database down"); },
+    });
+    const out = await runDueActions(d);
+    expect(out.cancelled).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+
+  /** An ordinary carrier failure is still transient. */
+  it("still retries a plain carrier error", async () => {
+    const d = deps({
+      claimDue: async () => [action()],
+      send: async () => { throw new Error("Twilio 503: service unavailable"); },
+    });
+    const out = await runDueActions(d);
+    expect(out.rescheduled).toBe(1);
+    expect(d.calls.cancel).toBe(0);
   });
 });

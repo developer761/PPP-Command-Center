@@ -99,21 +99,43 @@ describe("isSuppressed — an email address is a value, not a pattern", () => {
 });
 
 describe("sentToday — the daily cap must not fail open", () => {
+  const DAY_START = new Date("2026-10-06T04:00:00Z");
+
   it("refuses to answer when the conversation lookup fails", async () => {
     const deps = gateDeps(sbStub(DB_DOWN));
     // Answering 0 here says "they have had nothing today", which is how a
     // capped customer gets a fourth message.
-    await expect(deps.sentToday!(PHONE)).rejects.toThrow(/cap|count/i);
+    await expect(deps.sentToday!(PHONE, DAY_START)).rejects.toThrow(/cap|count/i);
   });
 
   it("counts nothing when the customer genuinely has no conversations", async () => {
     const deps = gateDeps(sbStub({ data: [], error: null, count: 0 }));
-    expect(await deps.sentToday!(PHONE)).toBe(0);
+    expect(await deps.sentToday!(PHONE, DAY_START)).toBe(0);
   });
 
   it("returns the count when the database answers", async () => {
     const deps = gateDeps(sbStub({ data: [{ id: "c1" }], error: null, count: 2 }));
-    expect(await deps.sentToday!(PHONE)).toBe(2);
+    expect(await deps.sentToday!(PHONE, DAY_START)).toBe(2);
+  });
+
+  /**
+   * The boundary comes from the caller and nowhere else.
+   *
+   * This computed its own `now - 24h` while the gate deferred a capped message
+   * to the next calendar day. The two windows disagreed, so a message stopped
+   * on Monday evening came back on Tuesday morning to a window that still held
+   * the three that stopped it, and was refused again until Wednesday.
+   */
+  it("counts from the moment it was given, not from a window of its own", async () => {
+    const spy = { calls: [] as string[] };
+    const deps = gateDeps(sbStub({ data: [{ id: "c1" }], error: null, count: 1 }, spy));
+    await deps.sentToday!(PHONE, DAY_START);
+    const gte = spy.calls.filter((c) => c.startsWith("gte("));
+    expect(gte).toContain(`gte(created_at,${DAY_START.toISOString()})`);
+    // And nothing resembling a rolling window computed in here. To the hour,
+    // so the assertion does not depend on the second the test runs in.
+    const rolling = new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 13);
+    expect(gte.some((c) => c.includes(rolling))).toBe(false);
   });
 });
 

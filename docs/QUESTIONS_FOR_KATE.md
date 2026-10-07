@@ -1502,3 +1502,72 @@ simply answers in the morning. Say the word and it is one toggle.
 
 **If you do want it on, the other question is the wording** — the sentence
 above is ours and would want to be yours.
+
+## 27. Should a price question be answered by Emily, or handed to a person?
+
+**Raised 2026-10-06, from playing it rather than from the spec.** Typed two
+price questions into the sandbox against the live configuration:
+
+> "Hi, how much would it cost to paint a 12x14 bedroom? Just give me a
+> ballpark number please"
+>
+> "What would you charge to paint my kitchen cabinets? rough number is fine"
+
+Both got the right reply — **"The estimator will confirm that with you
+directly."** — and both were then marked **hands to a person**, at 0.85
+confidence against the 0.95 threshold set on the Agent screen. Price is the
+commonest thing a lead opens with, so once Emily is sending on her own, that
+is a large share of every conversation arriving in the human queue having
+already been answered correctly.
+
+**What changed today (the default, while you decide):** a turn that says the
+estimator owns the answer no longer needs 0.95. It is treated the way "are you
+a bot" already is — the reply is a fixed sentence, it quotes nothing, promises
+nothing and names no time, and an estimator following up is the flow we are
+collecting details for. Below 0.5 it still hands over, so a genuinely lost bot
+behaves as it did.
+
+**What stays strict either way:** actually answering a question about scope,
+offering or presenting an off-site quote, and closing a conversation. Those
+commit PPP to something; this does not.
+
+**→ The question for you:** when somebody asks for a number, do you want
+Emily to say "the estimator will confirm that with you directly" and carry on
+collecting details, or do you want a person on that conversation from the
+moment price comes up? Today's answer is the first. Say the word and it is one
+line.
+
+**Worth knowing either way:** this only bites when autosend is on. Today
+Emily is not sending on her own in any workspace, so every reply already
+reaches a person before it goes out.
+
+## 28. Seven Spanish sentences that are ours, not Mac's or Jasmine's
+
+**Raised 2026-10-06, and small.** A7's off-site offer has to say WHY we are
+departing from the normal route — "we usually see a project like this in
+person, but **since you're not able to be at the property**, we can put a quick
+quote together instead." That reason is mandated: without it the message does
+not render at all.
+
+The seven reasons existed in English only, so for a Spanish-speaking customer
+the reason came back empty, the offer rendered as nothing, and **every Spanish
+off-site offer was handed to a person instead of being made**. A7 is the route
+for precisely the customers who cannot meet — out of state, no access, a price
+only — so the people it exists for were the ones it never reached.
+
+They are translated now, and **the Spanish is ours**, the same standing as the
+"I'll check the calendar for that time" line in item 9:
+
+| Situation | What it says |
+|---|---|
+| Cannot be at the property | no puede estar en la propiedad |
+| Cannot meet for a while | no puede reunirse por ahora |
+| Has sent photos | tenemos fotos con las que podemos trabajar |
+| Wants the quote by text | prefiere recibir la cotizacion por mensaje |
+| Wants the estimator to call | prefiere hablar con el estimador por telefono |
+| Only wants a price | por ahora solo quiere un precio aproximado |
+| Only free outside our hours | solo tiene tiempo fuera de nuestro horario |
+
+**→ Nothing is blocked on this.** The alternative was leaving every Spanish A7
+escalating, which is worse than an unreviewed clause. If Mac or Jasmine would
+word any of them differently, it is seven strings in one file.

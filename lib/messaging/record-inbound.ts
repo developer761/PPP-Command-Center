@@ -141,7 +141,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
   const { data: ws } = await sb.from("sms_sub_accounts")
-    .select("id, name, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, reply_delay_min_seconds, reply_delay_max_seconds")
+    .select("id, name, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, send_on_holidays, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
 
   // 3. The open conversation on this pair, if there is one.

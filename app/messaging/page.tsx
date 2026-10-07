@@ -166,12 +166,12 @@ export default async function ConversationsBoard({
       <div className="px-4 py-4 pb-safe">
         {/* Mobile: one column. */}
         <div className="lg:hidden">
-          <Column col={BOARD_COLUMNS.find((c) => c.key === active)!} cards={columns[active]} />
+          <Column col={BOARD_COLUMNS.find((c) => c.key === active)!} cards={columns[active]} total={counts[active]} />
         </div>
         {/* Desktop: all four, as Hatch shows them. */}
         <div className="hidden lg:grid lg:grid-cols-4 lg:gap-3 lg:items-start">
           {BOARD_COLUMNS.map((c) => (
-            <Column key={c.key} col={c} cards={columns[c.key]} />
+            <Column key={c.key} col={c} cards={columns[c.key]} total={counts[c.key]} />
           ))}
         </div>
       </div>
@@ -192,16 +192,26 @@ function PageLink({ href, disabled, children }: { href: string; disabled: boolea
 }
 
 function Column({
-  col, cards,
+  col, cards, total,
 }: {
   col: (typeof BOARD_COLUMNS)[number];
   cards: BoardCard[];
+  /**
+   * The real number in this column, which is NOT cards.length.
+   *
+   * loadBoard fetches the most recent 200 conversations and counts the rest
+   * with a head query — db.ts says at length why the capped list must never be
+   * shown as a total. This header rendered cards.length anyway, so past 200 the
+   * desktop board quietly under-reported while the phone chips three
+   * components up showed the truth. The fix landed on one of the two.
+   */
+  total: number;
 }) {
   return (
     <section className="min-w-0">
       <div className="hidden lg:flex items-center gap-2 px-1 pb-2">
         <h2 className="text-[13px] font-semibold text-ppp-charcoal truncate">{col.label}</h2>
-        <span className="text-[11px] font-mono text-ppp-charcoal-400 tabular-nums">{cards.length}</span>
+        <span className="text-[11px] font-mono text-ppp-charcoal-400 tabular-nums">{total}</span>
       </div>
 
       {!col.derivable && (

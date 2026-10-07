@@ -62,7 +62,36 @@ export default function Simulator({
 }) {
   const [workspaceId, setWorkspaceId] = useState("");
   const [brief, setBrief] = useState("");
-  const [tagKey, setTagKey] = useState(initialTagKey);
+  /**
+   * EVERY RULE THE RUN SHOWS, not one of them.
+   *
+   * This was a single <select>, and Kate asked the question that exposes it:
+   * "if there are multiple missteps (a9, a23, a15) corrected in the convo,
+   * would i tag the main one (a9)? will that leave the others untagged?" It
+   * would have. She would have corrected three rules, got credit for one, and
+   * the other two would have read as untested on the coverage page for ever —
+   * so she would have gone back and re-run conversations she had already run.
+   *
+   * Nothing below the control needed changing: exportScenarioToTraining has
+   * always taken `tagKeys: string[]` and writes one sms_training_example_tags
+   * row per key, and that join table is what loadTrainingCoverage counts. The
+   * storage and the server action were already many-to-many; the picker was
+   * the only thing that was not.
+   *
+   * sms_scenarios.tag_key (migration 195) is still a single column, so the
+   * saved REPLAY test files under the first one picked. That is a different
+   * artefact from a training example and one tag is the right shape for it:
+   * a test is "re-run this and check the rule it was aimed at".
+   */
+  /**
+   * Checked against the real tag list, the way example-writer already does it.
+   * `?tag=` comes off a URL, and a <select> ignored a value with no matching
+   * option — chips do not. An unknown key would sit in this array invisibly,
+   * enable "Send to training", and fail on the foreign key at the insert.
+   */
+  const [tagKeys, setTagKeys] = useState<string[]>(
+    initialTagKey && tags.some((t) => t.key === initialTagKey) ? [initialTagKey] : []
+  );
   const [turns, setTurns] = useState<Graded[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -123,7 +152,12 @@ export default function Simulator({
   const held = [heldScope, heldAddress, heldContact, heldAvailability];
   /** The first thing still missing, which is what it should be working on. */
   const working = held.findIndex((h) => !h);
-  const selectedTag = tags.find((t) => t.key === tagKey);
+  /** In the order the rules are listed, not the order she happened to tap. */
+  const pickedTags = tags.filter((t) => tagKeys.includes(t.key));
+  /** The one the run is NAMED for, and the one the replay test files under. */
+  const selectedTag = pickedTags[0];
+  const toggleTag = (key: string) =>
+    setTagKeys((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
 
   /**
    * React to the bot's last message, in the format a phone actually sends.
@@ -207,7 +241,9 @@ export default function Simulator({
     const name = `${selectedTag?.label ?? "Scenario"} — ${new Date().toISOString().slice(0, 19).replace("T", " ")}`;
     const res = await saveScenario({
       id: savedId ?? undefined,
-      name, customerBrief: brief, tagKey: tagKey || undefined,
+      // One tag, deliberately: see tagKeys above. The replay test is aimed at
+      // a rule; the training example shows all of them.
+      name, customerBrief: brief, tagKey: tagKeys[0] || undefined,
       workspaceId: workspaceId || undefined,
       // The three boxes explicitly, because they were silently dropped: the
       // save wrote the verdict and none of the words. "Send to training"
@@ -250,9 +286,12 @@ export default function Simulator({
   const sendToTraining = async () => {
     setExporting(true); setExportNote(null);
     try {
-      const res = await exportScenarioToTraining({ sheet: asSheet(), tagKeys: tagKey ? [tagKey] : [] });
+      const res = await exportScenarioToTraining({ sheet: asSheet(), tagKeys });
       setExportNote(res.ok
-        ? `Sent to training${res.redacted.length ? ` (redacted ${res.redacted.join(", ")})` : ""}. It is marked as a sandbox run for ever, so it can never be mistaken for a real conversation.`
+        // Names the rules it counted towards, because that is the question
+        // somebody has after pressing it: did this teach the three things I
+        // corrected, or one of them?
+        ? `Sent to training as an example of ${pickedTags.map((t) => t.label).join(", ")}${res.redacted.length ? ` (redacted ${res.redacted.join(", ")})` : ""}. It is marked as a sandbox run for ever, so it can never be mistaken for a real conversation.`
         : res.error);
     } finally { setExporting(false); }
   };
@@ -305,23 +344,47 @@ export default function Simulator({
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Answer as</span>
-              <select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}
-                className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30">
-                <option value="">Default settings</option>
-                {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-            </label>
-            <label className="block">
-              <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Testing which rule</span>
-              <select value={tagKey} onChange={(e) => setTagKey(e.target.value)}
-                className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30">
-                <option value="">Not sure yet</option>
-                {tags.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </label>
+          <label className="block">
+            <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">Answer as</span>
+            <select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}
+              className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px] focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30">
+              <option value="">Default settings</option>
+              {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </label>
+          <div>
+            <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">
+              Testing which rules{" "}
+              <span className="font-normal text-ppp-charcoal-400">
+                {tagKeys.length > 0
+                  ? `(${tagKeys.length} picked — tick every one the run shows)`
+                  : "(tick every one you want this run to count towards)"}
+              </span>
+            </span>
+            {/* NO INNER SCROLL. thread-teach caps its list because it sits in a
+                modal over a conversation; this one is the screen's own control,
+                and a capped box turns the page scroll into a scroll TRAP — the
+                wheel moves the rule list instead of the page whenever the
+                pointer is over it, which is most of the panel. Worse, it takes
+                the ticks you have already made out of sight. All of the rules
+                fit in about five rows. */}
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => {
+                const on = tagKeys.includes(t.key);
+                return (
+                  <button key={t.key} type="button" onClick={() => toggleTag(t.key)}
+                    aria-pressed={on}
+                    className={[
+                      "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+                      on
+                        ? "bg-ppp-charcoal text-white border-ppp-charcoal"
+                        : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",
+                    ].join(" ")}>
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           {/* Kate: "In Hatch we had the ability to add inquiry details, customer
               contact information, etc. to the Customer Data section when
@@ -418,10 +481,20 @@ export default function Simulator({
             </div>
           )}
 
-          {selectedTag && (
-            <p className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed bg-ppp-charcoal-50 rounded-lg px-3 py-2">
-              {selectedTag.what_to_look_for}
-            </p>
+          {/* One line per rule picked, labelled once there is more than one —
+              otherwise three pieces of guidance run together into a paragraph
+              nobody can tell apart. */}
+          {pickedTags.length > 0 && (
+            <div className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed bg-ppp-charcoal-50 rounded-lg px-3 py-2 space-y-1">
+              {pickedTags.map((t) => (
+                <p key={t.key}>
+                  {pickedTags.length > 1 && (
+                    <span className="font-semibold text-ppp-charcoal">{t.label}: </span>
+                  )}
+                  {t.what_to_look_for}
+                </p>
+              ))}
+            </div>
           )}
           <label className="block">
             <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">
@@ -772,7 +845,7 @@ export default function Simulator({
             </div>
 
             <div className="mt-2.5 flex flex-wrap gap-2">
-              <button type="button" onClick={() => void sendToTraining()} disabled={exporting || !overall || !tagKey}
+              <button type="button" onClick={() => void sendToTraining()} disabled={exporting || !overall || tagKeys.length === 0}
                 className="min-h-[44px] px-4 rounded-xl bg-ppp-charcoal text-white text-[13px] font-semibold disabled:opacity-40 touch-manipulation">
                 {exporting ? "Working…" : "Send to training"}
               </button>
@@ -785,12 +858,14 @@ export default function Simulator({
                 CSV
               </button>
             </div>
-            {(!overall || !tagKey) && (
+            {(!overall || tagKeys.length === 0) && (
               <p className="mt-1.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
-                {!overall && "Say how it went"}{!overall && !tagKey && ", and "}
-                {!tagKey && "pick which rule it shows at the top"}{" "}
+                {!overall && "Say how it went"}{!overall && tagKeys.length === 0 && ", and "}
+                {tagKeys.length === 0 && "tick every rule it shows at the top"}{" "}
                 before sending it to training — an untagged example counts
-                towards the total and teaches none of Emily&apos;s rules.
+                towards the total and teaches none of Emily&apos;s rules, and a
+                rule you corrected but did not tick stays on the list of
+                untested ones.
               </p>
             )}
             {exportNote && <p className="mt-1.5 text-[12px] text-ppp-charcoal-600 leading-relaxed">{exportNote}</p>}

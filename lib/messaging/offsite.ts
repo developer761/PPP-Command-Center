@@ -469,32 +469,92 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
  * actually said. A reason the bot made up for departing from the normal route
  * is worse than no reason at all, which is why null is a real answer here.
  */
-const A7_TRIGGERS: { re: RegExp; reason: string }[] = [
+/**
+ * BOTH LANGUAGES, AND THE REASON IS SAID IN THE ONE THEY WROTE IN.
+ *
+ * The reason is a MANDATED slot: without it the A7 template refuses to render,
+ * which the renderer's comment calls correct — "A7 without its reason is just
+ * A6 said in the wrong situation". These patterns were English-only, so for a
+ * Spanish lead the reason was always null, offer_offsite_quote always rendered
+ * empty, and EVERY Spanish off-site offer escalated to a person instead of
+ * being made. A7 is the route for exactly the customers who cannot meet —
+ * out of state, no access, a price only — so the ones it exists for were the
+ * ones it never reached.
+ *
+ * `reasonEs` IS MINE, NOT KATE'S, and not Mac's or Jasmine's: it is an
+ * unapproved translation of an approved English clause, the same standing as
+ * CHECKING_THE_CALENDAR_ES in render.ts. Written out rather than left blank
+ * because an escalation is worse than a plain sentence, and raised for sign-off
+ * as docs/QUESTIONS_FOR_KATE.md item 28.
+ */
+const A7_TRIGGERS: { re: RegExp; reason: string; reasonEs: string }[] = [
   // "cannot meet within 2 weeks, INCLUDING no access to the property yet"
   { re: /\b(?:no|not have|don'?t have|without)\s+access\b|\bcan'?t\s+(?:be|get)\s+(?:at|to|into)\b|\bnot\s+(?:be\s+)?able\s+to\s+be\s+at\b|\bdon'?t\s+live\s+(?:there|near)\b|\bout\s+of\s+(?:state|town|the country)\b|\bit\s+is\s+a\s+rental\b/i,
-    reason: "you're not able to be at the property" },
+    reason: "you're not able to be at the property",
+    reasonEs: "no puede estar en la propiedad" },
   { re: /\bcannot\s+meet\b|\bcan'?t\s+meet\b|\bnot\s+(?:around|available)\s+for\s+(?:the\s+next\s+)?(?:\w+\s+)?(?:weeks?|months?)\b|\baway\s+for\b|\bnext\s+month\b/i,
-    reason: "you're not able to meet for a while" },
+    reason: "you're not able to meet for a while",
+    reasonEs: "no puede reunirse por ahora" },
   // "ASKS to be quoted from photos or measurements they supplied"
   { re: /\bquote\s+it\s+from\s+the\s+(?:pictures?|photos?|images?)\b|\b(?:from|off)\s+(?:the\s+)?(?:pictures?|photos?)\s+I\s+sent\b|\bcan\s+(?:you|I)\s+(?:just\s+)?(?:quote|send)\b[^.?!]{0,24}\b(?:pictures?|photos?|measurements?)\b|\bgo\s+off\s+(?:the\s+)?(?:pictures?|photos?)\b/i,
-    reason: "you've got photos we can work from" },
+    reason: "you've got photos we can work from",
+    reasonEs: "tenemos fotos con las que podemos trabajar" },
   // "explicitly wants the QUOTE by text"
   { re: /\b(?:text|email)\s+me\s+the\s+(?:quote|estimate|price)\b|\bquote\s+(?:by|over|via)\s+(?:text|email)\b|\bsend\s+(?:me\s+)?(?:the\s+)?(?:quote|estimate)\b[^.?!]{0,20}\b(?:text|email)\b/i,
-    reason: "you'd rather have the quote by text" },
+    reason: "you'd rather have the quote by text",
+    reasonEs: "prefiere recibir la cotizacion por mensaje" },
   // "ASKS TO SPEAK WITH THE ESTIMATOR BY PHONE rather than meet"
   { re: /\b(?:speak|talk)\s+(?:to|with)\s+(?:the\s+)?estimator\b[^.?!]{0,24}\b(?:phone|call)\b|\bestimator\s+call\s+me\b/i,
-    reason: "you'd rather speak with the estimator by phone" },
+    reason: "you'd rather speak with the estimator by phone",
+    reasonEs: "prefiere hablar con el estimador por telefono" },
   // "wants only a price / rough estimate / ballpark"
   { re: /\b(?:just|only)\s+(?:want|need|after|looking for)\b[^.?!]{0,20}\b(?:a\s+)?(?:price|ballpark|rough\s+(?:idea|estimate|number)|estimate)\b|\bballpark\b|\brough\s+(?:price|idea|number)\b/i,
-    reason: "you're just after a rough price for now" },
+    reason: "you're just after a rough price for now",
+    reasonEs: "por ahora solo quiere un precio aproximado" },
   // "available ONLY outside our booking windows"
   { re: /\bonly\s+(?:free|available)\b[^.?!]{0,24}\b(?:evenings?|weekends?|nights?|after\s+\d)\b|\bafter\s+hours\b/i,
-    reason: "you're only free outside our usual hours" },
+    reason: "you're only free outside our usual hours",
+    reasonEs: "solo tiene tiempo fuera de nuestro horario" },
 ];
 
-export function offsiteReasonFor(customerText: string | null | undefined): string | null {
+/**
+ * The same seven qualifiers in Spanish, in the same order, so a match lines up
+ * with the reason beside it. Separate from the English patterns rather than
+ * merged into them: the English ones are tuned against Kate's corpus and
+ * widening them with Spanish alternatives would make both harder to read and
+ * to change.
+ */
+const A7_TRIGGERS_ES: RegExp[] = [
+  // Cannot be at the property — out of state, a rental, no access.
+  /\bno\s+(?:puedo|podemos|tengo|tenemos)\s+(?:estar|acceso|entrar)\b|\bno\s+vivo\s+(?:ah[íi]|cerca)\b|\b(?:estoy|estamos)\s+fuera\s+(?:del?\s+)?(?:estado|pa[íi]s|ciudad)\b|\bes\s+(?:una\s+)?(?:renta|propiedad\s+rentada)\b|\bsoy\s+inquilin[oa]\b/i,
+  // Cannot meet for a while.
+  /\bno\s+(?:puedo|podemos)\s+(?:reunirme|reunirnos|vernos|verlos)\b|\b(?:estar[ée]|estaremos)\s+fuera\b|\bel\s+(?:pr[óo]ximo\s+)?mes\b[^.?!]{0,20}\bno\b|\bhasta\s+(?:el\s+)?(?:pr[óo]ximo\s+)?mes\b/i,
+  // Quote it from the photos they sent.
+  /\b(?:con|de|desde)\s+las?\s+(?:fotos?|im[áa]genes?)\b|\bpor\s+las?\s+fotos?\b|\ble\s+mand[ée]\s+fotos?\b/i,
+  // Wants the quote by text or email.
+  /\b(?:m[áa]nde|env[íi]e|mandar|enviar)\w*\s+(?:me\s+)?(?:la\s+)?cotizaci[óo]n\b[^.?!]{0,24}\b(?:mensaje|texto|correo|email)\b|\bcotizaci[óo]n\s+por\s+(?:mensaje|texto|correo|email)\b/i,
+  // Would rather speak to the estimator by phone.
+  /\b(?:hablar|platicar)\s+con\s+(?:el\s+)?estimador\b[^.?!]{0,24}\b(?:tel[ée]fono|llamada|llamar)\b|\bque\s+(?:me\s+)?llame\s+el\s+estimador\b/i,
+  // Only wants a price for now.
+  /\b(?:solo|s[óo]lo|nada\s+m[áa]s)\s+(?:quiero|queremos|necesito|necesitamos)\b[^.?!]{0,20}\b(?:precio|costo|cotizaci[óo]n|estimado)\b|\bprecio\s+aproximado\b|\bm[áa]s\s+o\s+menos\s+cu[áa]nto\b/i,
+  // Only free outside our hours.
+  /\bsolo\s+(?:estoy|puedo|tengo\s+tiempo)\b[^.?!]{0,24}\b(?:tardes?|noches?|fines?\s+de\s+semana)\b|\bdespu[ée]s\s+del?\s+(?:horario|trabajo)\b/i,
+];
+
+/**
+ * @param language the customer's language, so the mandated reason is said in
+ *   the language the template around it is written in. Without it a Spanish
+ *   A7 offer would read half in English, which is worse than the escalation
+ *   this replaces.
+ */
+export function offsiteReasonFor(
+  customerText: string | null | undefined,
+  language: "en" | "es" = "en",
+): string | null {
   const t = (customerText ?? "").trim();
   if (!t) return null;
-  for (const { re, reason } of A7_TRIGGERS) if (re.test(t)) return reason;
+  for (const [i, { re, reason, reasonEs }] of A7_TRIGGERS.entries()) {
+    if (re.test(t) || A7_TRIGGERS_ES[i].test(t)) return language === "es" ? reasonEs : reason;
+  }
   return null;
 }

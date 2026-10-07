@@ -1,6 +1,6 @@
 import Link from "next/link";
 import DraftReview from "@/components/messaging/draft-review";
-import { pendingDrafts, draftThread } from "@/lib/messaging/drafts-write";
+import { pendingDrafts, pendingDraftCount, draftThread } from "@/lib/messaging/drafts-write";
 import { transportChoice } from "@/lib/messaging/transport-config";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
  * decides, and nothing reaches a customer without somebody having read it.
  */
 export default async function DraftReviewPage() {
-  const drafts = await pendingDrafts();
+  // The list is capped; the COUNT is not. Rendering drafts.length as "waiting"
+  // told somebody with sixty in the queue that there were 25, and stopped
+  // moving as they worked. See pendingDraftCount.
+  const [drafts, waiting] = await Promise.all([pendingDrafts(), pendingDraftCount()]);
   const thread = drafts[0] ? await draftThread(drafts[0].conversationId) : [];
   const transport = transportChoice();
 
@@ -53,7 +56,7 @@ export default async function DraftReviewPage() {
         The repo already keys WorkspaceFaqs, SnippetsEditor and Grader for this
         exact reason; this is the sibling that never got it.
       */}
-      <DraftReview key={drafts[0]?.id ?? "empty"} drafts={drafts} thread={thread} remaining={drafts.length} />
+      <DraftReview key={drafts[0]?.id ?? "empty"} drafts={drafts} thread={thread} remaining={waiting} />
 
       <p className="text-[12px] text-ppp-charcoal-500 leading-relaxed">
         Approving does not override the send gate. Someone who has opted out,

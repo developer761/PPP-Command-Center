@@ -63,10 +63,39 @@ const ANOTHER = new RegExp(
  * Reads the whole thread: "and my rental too" often arrives a turn or two
  * after the first address, and by then the flow has moved on.
  */
+/**
+ * THE SAME TWO SHAPES IN SPANISH, which none of the above could see.
+ *
+ * askSecondPropertyAddressEs() exists and was unreachable, and so was the
+ * refusal in validateAction that stops a close while a second property is
+ * outstanding. A Spanish-speaking customer saying they have two houses had the
+ * conversation closed as booked for one of them, and the second job was lost
+ * with nothing anywhere looking wrong — which is the harm the comment at the
+ * top of this file names.
+ *
+ * Kept as tight as the English version, and for the reason stated there:
+ * asking for a second address that does not exist is worse than missing one,
+ * because the customer has to correct us. "dos cuartos" is one property;
+ * "dos casas" is two.
+ */
+const PLACE_ES =
+  "(?:propiedades?|casas?|hogares?|edificios?|unidades?|departamentos?|departamento|apartamentos?|condominios?|locales?|local|direcciones?|direcci[óo]n|lugares?|viviendas?|inmuebles?)";
+
+const COUNTED_ES = new RegExp(
+  `\\b(?:dos|tres|cuatro|ambas?|ambos|varias?|varios|m[úu]ltiples|\\d+)\\s+(?:${PLACE_ES})\\b`, "i"
+);
+
+const ANOTHER_ES = new RegExp(
+  `\\b(?:otra|otro|otras|otros|una\\s+segunda|un\\s+segundo|la\\s+otra|el\\s+otro|mi\\s+otra|mi\\s+otro)\\s+(?:\\w+\\s+){0,2}${PLACE_ES}\\b`
+  + `|\\b${PLACE_ES}\\b[^.?!]{0,30}\\b(?:tambi[ée]n|adem[áa]s)\\b`
+  + `|\\b(?:tambi[ée]n|y)\\s+(?:tengo|tenemos)\\s+(?:\\w+\\s+){0,2}${PLACE_ES}\\b`, "i"
+);
+
 export function mentionsSecondProperty(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
-  return COUNTED.test(t) || ANOTHER.test(t);
+  return COUNTED.test(t) || ANOTHER.test(t)
+    || COUNTED_ES.test(t) || ANOTHER_ES.test(t);
 }
 
 export function threadMentionsSecondProperty(customerMessages: readonly string[]): boolean {

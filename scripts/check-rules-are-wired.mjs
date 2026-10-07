@@ -81,7 +81,11 @@ const CHAINS = [
     links: [
       ["lib/messaging/availability.ts", /export function availabilityGapAcross/],
       // The validator gets the whole conversation, from the customer's own words.
-      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid\)/],
+      // `customerSaid`, not inbound.description, and Across, not per-message.
+      // Deliberately tolerant of the options argument that was added later —
+      // see "a bare yes to the availability question counts as availability"
+      // below, which pins what goes in it. This chain is about WHAT is judged.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid[,)]/],
       // The renderer stays per-message, but on ownWords rather than the narration.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
@@ -652,6 +656,75 @@ const CHAINS = [
       // The write must stay guarded. Without `.is(..., null)` it would
       // overwrite the office's version with something read out of a text.
       ["lib/messaging/scheduler-db.ts", /update\(\{ customer_email[^}]*\}\)\s*\.eq\([^)]*\)\s*;/],
+    ],
+  },
+  {
+    rule: "the graded examples are chosen from the situation, in ONE place",
+    why:
+      "scheduler-db passed selectExamples(corpus, { stage }) and the simulator passed the " +
+      "situation as well — photo, reaction, 'are you a bot', callback, service area, " +
+      "price-only — so the sandbox showed the model examples a real conversation never got. " +
+      "The sandbox being the RICHER of the two is the inverse of every previous parity bug " +
+      "here, and simulator-parity compares the option KEYS at each call site, which both " +
+      "spelled `examples:`, so it stayed green. Selection moved inside runAgentTurn, off the " +
+      "inbound message it has already normalised, so there is no second version to drift",
+    links: [
+      // One selector, reading the situation from the customer's OWN words.
+      ["lib/messaging/agent-run.ts", /selectExamples\(opts\.corpus,/],
+      ["lib/messaging/agent-run.ts", /\.\.\.situationFrom\(ownWords,/],
+      // Both callers hand over the corpus and nothing else.
+      ["lib/messaging/scheduler-db.ts", /^\s*corpus,$/m],
+      ["lib/messaging/simulator.ts", /^\s*corpus,$/m],
+    ],
+    forbidden: [
+      // A caller making its own selection is how the two came apart.
+      ["lib/messaging/scheduler-db.ts", /examples:\s*selectExamples\(/],
+      ["lib/messaging/simulator.ts", /examples:\s*selectExamples\(/],
+    ],
+  },
+  {
+    rule: "A7's mandated reason is said in the customer's own language",
+    why:
+      "the reason is a required slot — without it the off-site template refuses to render, which " +
+      "is correct, because A7 without its reason is just A6 in the wrong situation. The " +
+      "qualifiers were English-only, so for a Spanish lead the reason was always null, the " +
+      "offer always rendered empty and EVERY Spanish A7 escalated instead of being made. A7 is " +
+      "the route for the customers who cannot meet, so the people it exists for were the ones " +
+      "it never reached. Both halves are needed: Spanish patterns to detect the situation, and " +
+      "the language passed through, or the reason comes back in English inside a Spanish " +
+      "sentence — which is worse than the escalation it replaces",
+    links: [
+      ["lib/messaging/offsite.ts", /A7_TRIGGERS_ES/],
+      ["lib/messaging/offsite.ts", /A7_TRIGGERS_ES\[i\]\.test\(t\)/],
+      ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords,\s*language\)/],
+    ],
+    forbidden: [
+      // The language dropped at the call site is invisible to every unit test:
+      // offsiteReasonFor defaults to English and answers perfectly happily.
+      ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords\)/],
+    ],
+  },
+  {
+    rule: "a bare yes to the availability question counts as availability",
+    why:
+      "Kate: a non-answer counts — 'yes please' in reply to the availability question IS " +
+      "availability received. availabilityGap has taken justAskedForAvailability since it was " +
+      "written and NOTHING EVER SET IT except the tests, so in production the carve-out could " +
+      "not fire once, including the Spanish assent words added specifically to stop a 'si, " +
+      "perfecto' lead being unclosable. The close guard refused for ever and the customer was " +
+      "asked for days they had already agreed to on every turn after. A flag whose only caller " +
+      "is a test is a capability the product does not have",
+    links: [
+      // The caller passes it, gated on OUR last intent...
+      ["lib/messaging/agent-run.ts", /justAskedForAvailability:\s*opts\.lastIntent === "ask_availability"/],
+      // ...and it reaches only the message that can be answering us.
+      ["lib/messaging/availability.ts", /i === texts\.length - 1 \? opts : \{\}/],
+    ],
+    forbidden: [
+      // Applied across the whole history it is the opposite bug: a "yes"
+      // confirming an address becomes an answer about days, and closes a
+      // conversation with no availability in it anywhere.
+      ["lib/messaging/availability.ts", /for \(const text of texts\)/],
     ],
   },
   {

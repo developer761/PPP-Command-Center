@@ -110,15 +110,64 @@ export function askAvailabilityEs(week: "this" | "next"): string {
 const ASKS_OUR_AVAILABILITY =
   /\b(?:what|which|when)\b[^.?!]{0,40}\b(?:times?|slots?|openings?|availability|days?|dates?)\b[^.?!]{0,30}\b(?:do you|have you|you have|are you|you got|works? for you|on your end|available)\b|\bwhen\s+(?:are|can)\s+you\b|\bwhat(?:'s| is)\s+your\s+availability\b|\bwhat\s+(?:have|do)\s+you\s+got\b|\byou\s+tell\s+me\s+(?:what|when)\b/i;
 
+/**
+ * THE SAME QUESTION IN SPANISH, which this could not see at all.
+ *
+ * The stand-off rule, the third-ask suppression in render.ts and the refusal
+ * in validateAction all hang off asksOurAvailability, and it was English-only
+ * — so a Spanish-speaking lead who asked us twice for our times was asked a
+ * third and a fourth time for theirs. Hatch's rule, enforced in one language.
+ *
+ * The templates were translated and reviewed; the matchers that decide when to
+ * use them were left behind. That is the shape, not the instance: the same
+ * thing is true in multi-property.ts, returning-customer.ts and one-ask.ts.
+ *
+ * Shaped like the English one — it must be a QUESTION aimed at OUR times.
+ * Accent-tolerant on both spellings, because phone keyboards drop accents
+ * constantly.
+ */
+const ASKS_OUR_AVAILABILITY_ES = new RegExp(
+  [
+    // "qué días / qué horarios tienen", "qué fechas hay"
+    String.raw`\b(?:qu[ée]|cu[áa]l(?:es)?)\s+(?:d[íi]as?|horarios?|horas?|fechas?|disponibilidad)\b[^.?!]{0,30}\b(?:tienen?|tiene|hay|pueden?|est[áa]n|disponibles?)\b`,
+    // "cuándo pueden venir", "cuándo vienen", "cuándo están disponibles"
+    String.raw`\bcu[áa]ndo\s+(?:pueden?|vienen?|viene|est[áa]n|estar[íi]an|ser[íi]a|podr[íi]an)\b`,
+    // "cuál es su disponibilidad", "cuáles son sus horarios"
+    String.raw`\bcu[áa]l(?:es)?\s+(?:es|son)\s+(?:su|sus)\s+(?:disponibilidad|horarios?|d[íi]as?)\b`,
+    String.raw`\bqu[ée]\s+disponibilidad\b`,
+  ].join("|"),
+  "i"
+);
+
 /** An answer, not a question — checked first so it can never be a stand-off. */
 const GIVES_THEIR_OWN =
   /\b(?:i(?:'m| am)|we(?:'re| are))\s+(?:free|available|open|around)\b|\b(?:mornings?|afternoons?|evenings?|weekends?|weekdays?)\b|\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b[^.?!]{0,20}\b(?:works?|is good|suits|fine)\b|\banytime\b|\bwhenever\b/i;
 
+/**
+ * Their own times, in Spanish. Checked first, like the English pair, so a
+ * message that ANSWERS can never be read as the stand-off.
+ *
+ * A day name alone is not enough: "el martes" appears inside "qué días tienen,
+ * el martes quizás?" as readily as in an answer. It has to carry a word that
+ * makes it an answer, or be one of the open-ended phrases that answers on its
+ * own.
+ */
+const GIVES_THEIR_OWN_ES = new RegExp(
+  [
+    String.raw`\b(?:lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)\b[^.?!]{0,25}\b(?:me\s+(?:sirve|funciona|queda|va)|est[áa]\s+bien|perfecto|mejor)\b`,
+    String.raw`\b(?:estoy|estamos|soy|somos)\s+(?:libre|libres|disponible|disponibles|flexible|flexibles)\b`,
+    String.raw`\bcuando\s+(?:sea|guste|quieran?|puedan?)\b`,
+    String.raw`\bcualquier\s+(?:d[íi]a|hora|momento)\b`,
+    String.raw`\bme\s+(?:sirve|funciona|queda)\b`,
+  ].join("|"),
+  "i"
+);
+
 export function asksOurAvailability(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
-  if (GIVES_THEIR_OWN.test(t)) return false;
-  return ASKS_OUR_AVAILABILITY.test(t);
+  if (GIVES_THEIR_OWN.test(t) || GIVES_THEIR_OWN_ES.test(t)) return false;
+  return ASKS_OUR_AVAILABILITY.test(t) || ASKS_OUR_AVAILABILITY_ES.test(t);
 }
 
 /**

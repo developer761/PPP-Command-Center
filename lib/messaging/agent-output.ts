@@ -767,7 +767,23 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
   return { ok: true };
 }
 
-export function checkRapport(text: string, customerText?: string, templateAsks = true): RapportCheck {
+/**
+ * The intents whose template is empty, so the model's sentence IS the whole
+ * message rather than a preface to one.
+ *
+ * Listed here rather than read from render.ts because this module must not
+ * import the renderer, and pinned to it by
+ * __tests__/messaging/rapport-is-the-message.test.ts — which fails if render.ts
+ * gains or loses an empty template, so the two cannot drift apart.
+ */
+export const RAPPORT_IS_THE_MESSAGE = new Set<string>(["answer_question", "msg_liked_loved"]);
+
+export function checkRapport(
+  text: string,
+  customerText?: string,
+  templateAsks = true,
+  rapportIsTheMessage = false,
+): RapportCheck {
   const tone = checkTone(text, customerText, templateAsks);
   if (!tone.ok) return tone;
 
@@ -790,7 +806,33 @@ export function checkRapport(text: string, customerText?: string, templateAsks =
   //
   // Rapport exists for "Got it" and "Happy to help". A justification is not
   // rapport, and the template it would be bolted onto already says the thing.
-  const reason = REASON_CLAUSE.exec(text);
+  /**
+   * UNLESS THERE IS NO ASK FOR IT TO PAD.
+   *
+   * Every sentence of the rule above assumes a template underneath: "the ask
+   * stands alone", "the template it would be bolted onto already says the
+   * thing". answer_question has no template — SAYS[answer_question] is [""] —
+   * so the model's sentence is the entire message, and there is nothing it can
+   * be padding.
+   *
+   * Dropped anyway, this did not shorten a message. It deleted it:
+   *
+   *   customer  "how long will the job take?"
+   *   model     answer_question + "Most rooms take a day or two because of
+   *             drying time."
+   *   → rapport dropped → renderMessage returns "" → saysNothing → the
+   *     conversation is handed to a person with NO DRAFT WRITTEN. The customer
+   *     gets silence, and nobody sees what the bot wanted to say.
+   *
+   * An answer to "how long" or "why" is a reason — that is what those
+   * questions ask for — so the rule as written forbade answering them at all.
+   * checkTone's question rule was split out and gated for exactly this reason,
+   * three guards up; this one was left ungated.
+   *
+   * A32 still binds every ask: the gate is the intent's own template, not the
+   * wording.
+   */
+  const reason = rapportIsTheMessage ? null : REASON_CLAUSE.exec(text);
   if (reason) return { ok: false, why: `it pads the ask with a reason ("${reason[0].trim()}")` };
 
   return { ok: true };
@@ -850,8 +892,19 @@ const BARE_QUESTION =
  * Found by walking conversations through the pipeline and reading them, not
  * by a test. Every test asserted the right words were present, and they were.
  */
+/**
+ * BOTH LANGUAGES, because the bot acknowledges in both.
+ *
+ * English-only, this could not see a Spanish pleasantry — so A29 was satisfied
+ * by one ("the customer asked something and this turn only acknowledges" could
+ * not fire), and the redundancy rule in render.ts, which is built on this,
+ * could not drop a Spanish "Entendido, gracias." in front of the acknowledge
+ * template that already opens with exactly that. The customer received
+ * "Entendido, gracias. Entendido, gracias." — the "Got it. Got it." bug,
+ * untranslated.
+ */
 export const BARE_ACKNOWLEDGEMENT =
-  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies|entendido|perfecto|gracias|muchas gracias|de acuerdo|claro|por supuesto|excelente|muy bien|est[\u00e1a] bien|sin problema|listo|vale|anotado|disculpe|disculpas|lo siento)[\s,.!]*)+$/i;
 
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
@@ -1803,7 +1856,10 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   let rapport = text || undefined;
   let droppedRapport: string | undefined;
   if (rapport) {
-    const style = checkRapport(rapport, ctx.customerText, ctx.templateAsks?.(a.intent) ?? true);
+    const style = checkRapport(
+      rapport, ctx.customerText, ctx.templateAsks?.(a.intent) ?? true,
+      RAPPORT_IS_THE_MESSAGE.has(a.intent),
+    );
     if (!style.ok) { droppedRapport = style.why; rapport = undefined; }
   }
 
@@ -1905,11 +1961,40 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   const answersIt =
     ANSWERS_A_QUESTION.has(a.intent) || saysSomething || templateAnswersTheTime || affirmsAYesNo;
   if (ctx.customerText && asksSomething(ctx.customerText) && !answersIt) {
+    /**
+     * AND SAY WHAT WOULD HAVE WORKED, because the refusal is fed back to the
+     * model and one retry is all it gets.
+     *
+     * Seen live on 2026-10-06, on the single commonest opening a painting lead
+     * has — "how much to paint a 12x14 bedroom?":
+     *
+     *   attempt 1  ask_address + "Our estimator handles pricing, so I can't
+     *              give a number myself."   refused: it pads the ask with a reason
+     *   attempt 2  ask_address + "Our estimator handles pricing, so I can't
+     *              give a number here."     refused: the same
+     *   → handed to a person, every time
+     *
+     * Both refusals were right, and both described the WORDING. The model read
+     * them as "say it differently", reworded, and hit the same wall — because
+     * the remedy is not a sentence, it is a different INTENT. The answer has to
+     * be the turn's own template, which is what ANSWERS_A_QUESTION means; a
+     * reason bolted onto an ask is A32's padding however it is phrased.
+     *
+     * defer_to_estimator is named because the intent guide in this file already
+     * defines it as "they want something only the estimator decides, including
+     * any price", and on the new-lead track it renders as the answer with its
+     * trailing availability question stripped at this stage.
+     */
+    const remedy =
+      " Rewording will not fix it: an answer cannot ride along on an ask."
+      + " Choose the intent whose own template answers them — defer_to_estimator"
+      + " covers anything only the estimator decides, including any price — and"
+      + " leave the next question for the turn after.";
     return {
       ok: false, reason: "question_left_unanswered",
       detail: droppedRapport
-        ? `the customer asked something and the answer was dropped because ${droppedRapport}`
-        : "the customer asked something and this turn only asks the next question back",
+        ? `the customer asked something and the answer was dropped because ${droppedRapport}.${remedy}`
+        : `the customer asked something and this turn only asks the next question back.${remedy}`,
     };
   }
 
@@ -1959,6 +2044,38 @@ const LOW_STAKES = new Set<string>([
    * different door. Found by running it in the sandbox, 2026-09-30.
    */
   "bot_suspected",
+  /**
+   * A33's "that one is the estimator's" — the same case as bot_suspected
+   * above, found the same way, on the question customers ask most.
+   *
+   * Run in the sandbox 2026-10-06, twice, with different wording:
+   *
+   *   "how much would it cost to paint a 12x14 bedroom?"
+   *   "what would you charge to paint my kitchen cabinets?"
+   *   → defer_to_estimator, 0.85, hands to a person. Both times.
+   *
+   * The configured threshold is 0.95 — checked on /messaging/agent in
+   * production, not assumed — and the model reports about 0.85 here, so once
+   * autosend is on EVERY price question lands in the human queue. Price is
+   * the commonest thing a painting lead opens with.
+   *
+   * The test this file sets is CONSEQUENCE, not correctness: "quoting, ending
+   * a conversation, answering a question about scope and offering an off-site
+   * quote all commit PPP to something". This commits PPP to nothing. The
+   * template is a constant — "The estimator will confirm that with you
+   * directly" — the model composes only the rapport, which is post-filtered
+   * and can carry neither a price nor a time, and an estimator following up
+   * is the flow we are collecting details FOR.
+   *
+   * Being wrong costs a deferral of something we might have answered. Today
+   * that is nothing: the standing-answer list is empty on every workspace, so
+   * there is no answer being withheld. The floor is still 0.5, so a model
+   * that is genuinely unsure hands over as before.
+   *
+   * Kate's call in the end — docs/QUESTIONS_FOR_KATE.md item 27 — and this is
+   * the default shipped while she decides, the convention for this file.
+   */
+  "defer_to_estimator",
 ]);
 
 /** Below this even a routine question is not worth sending. */

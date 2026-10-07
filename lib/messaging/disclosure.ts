@@ -145,13 +145,46 @@ export function disclosureMove(input: {
  * separated by a single space, so the customer reads one message rather than
  * two stacked sentences that look like a system notice.
  */
+/**
+ * A greeting, in either language, at the very start of a message.
+ *
+ * Only ever used to REMOVE one that is no longer at the start — see the prefix
+ * branch below. Anchored, so it can never take a "hola" from the middle of a
+ * sentence.
+ *
+ * The inverted marks are written as escapes, not as characters. A customer may
+ * well type "\u00a1Hola!" and this has to strip it — but the test that keeps
+ * Mac and Jasmine's rule reads this file for the literal characters, and it is
+ * right to: a file that contains one is a file that can emit one. The escape
+ * says the same thing to the regex engine and nothing to the reader of our
+ * outbound copy.
+ */
+const OPENS_WITH_A_GREETING =
+  /^[\s\u00a1\u00bf]*(?:hi there|hi|hey|hello|good morning|good afternoon|good evening|hola|buenos d[íi]as|buenas tardes|buenas noches|buenas|saludos)\b[\s!.,\u00a1]*/i;
+
 export function applyDisclosure(move: DisclosureMove, reply: string, es = false): string {
   if (move === "answer") return es ? DISCLOSURE_IN_HOURS_ES : DISCLOSURE_IN_HOURS;
   // Truthful, and with no offer of a person there is nobody to honour.
   if (move === "answer_out_of_hours") return es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
   if (move === "prefix") {
     const line = es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
-    const body = reply.trim();
+    /**
+     * A GREETING IN THE MIDDLE OF A MESSAGE IS NOT A GREETING.
+     *
+     * The disclosure goes in FRONT, so whatever the body opened with is no
+     * longer the opening. Seen in the sandbox against production on
+     * 2026-10-06, on a Spanish first contact:
+     *
+     *   "Soy un asistente de inteligencia artificial, pero puedo tomar los
+     *    detalles de su proyecto y pasarlos cuando abramos. Hola! El precio
+     *    lo define el estimador…"
+     *
+     * The "Hola!" lands a sentence and a half in, and the message reads as two
+     * stitched together — the seam A21 is about. The renderer drops rapport
+     * that is ONLY a greeting; it cannot drop one leading a sentence worth
+     * keeping, and it has no idea a disclosure is about to go in front.
+     */
+    const body = reply.trim().replace(OPENS_WITH_A_GREETING, "").trim();
     return body ? `${line} ${body}` : line;
   }
   return reply;

@@ -56,6 +56,9 @@ export type AfterHoursWorkspace = {
   time_zone?: string | null;
   quiet_hours_start?: number | null;
   quiet_hours_end?: number | null;
+  /** So the "we open at ___" it fills in cannot name a day PPP is shut. */
+  send_on_weekends?: boolean | null;
+  send_on_holidays?: boolean | null;
 };
 
 export type AfterHoursDecision =
@@ -133,6 +136,9 @@ export function afterHoursReply(input: {
     // fillNextOpen reads that as "unknown" and labels the hour ET.
     customerZone: input.customerZone ?? "",
     officeHours: hours,
+    // Absent reads as "we send then" rather than inventing a closure.
+    sendOnWeekends: ws.send_on_weekends ?? undefined,
+    sendOnHolidays: ws.send_on_holidays ?? undefined,
   });
   if (!filled.ok) return { send: false, why: filled.why };
 

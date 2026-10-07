@@ -16,8 +16,15 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { sessionCookie } from "./session-cookie.mjs";
 
 const BASE = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+
+// Before anything else: is that server this app? Several projects on this
+// machine use port 3000, and testing the wrong one reports with complete
+// confidence about an app this repo does not contain.
+const { assertThisApp } = await import("./assert-this-app.mjs");
+await assertThisApp(BASE);
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -99,7 +106,12 @@ try {
     // app/commercial and every /dashboard page 307'd to /commercial. "All 73
     // pages returned 200" was true and covered NONE of the residential
     // Command Center, which is the side being launched.
+    // ALL THREE platforms, for the reason above: the probe user's flags decide
+    // which trees it can see, and a tree it cannot see reports 20 pages "down"
+    // (they redirect to /choose-platform) rather than being tested. This said
+    // two platforms while the paths list walked three.
     is_active: true, has_new_platform_access: true, has_command_center_access: true,
+    has_messaging_access: true,
     auth_provider: "password",
   });
 
@@ -109,14 +121,10 @@ try {
   const { data: sess, error: sErr } = await anon.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error("sign-in failed: " + sErr.message);
 
-  const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-  const s = sess.session;
-  const cookie =
-    `sb-${ref}-auth-token=base64-` +
-    Buffer.from(JSON.stringify({
-      access_token: s.access_token, token_type: "bearer", expires_in: s.expires_in,
-      expires_at: s.expires_at, refresh_token: s.refresh_token, user: s.user,
-    })).toString("base64");
+  // Built by @supabase/ssr's own functions, in scripts/session-cookie.mjs.
+  // The hand-rolled version here encoded plain base64 where the server decodes
+  // base64URL, and was one of three copies of the same few lines.
+  const cookie = sessionCookie(env.NEXT_PUBLIC_SUPABASE_URL, sess.session);
 
   // Real records, so the dynamic routes are exercised too — a page that only
   // renders with data is exactly where a runtime error hides.
@@ -156,6 +164,16 @@ try {
   const paths = [
     ...staticPages(),                              // /commercial/*
     ...staticPages("app/dashboard", "/dashboard"), // residential Command Center
+    /**
+     * AND CONNECT HUB, which was not here — the same omission the comment on
+     * the probe user above describes, a third time.
+     *
+     * Every page of the SMS console: the dashboard, the agent settings, the
+     * rules, the training hub, the review queues. That is the surface being
+     * launched to Kate and the one being changed daily, and "all pages
+     * returned 200" has never once included it.
+     */
+    ...staticPages("app/messaging", "/messaging"),
   ];
   if (build?.[0]) {
     const wo = encodeURIComponent(build[0].work_order_id);
@@ -171,6 +189,23 @@ try {
   }
   if (acc?.[0]) paths.push(`/commercial/accounts/${acc[0].id}`, `/commercial/accounts/${acc[0].id}/edit`);
   if (inv?.[0]) paths.push(`/commercial/invoices/${inv[0].id}`);
+
+  /**
+   * ONE CONVERSATION OF EACH STATE, for the reason spelled out below about
+   * opportunities: the thread page branches on state. An ai_active thread
+   * renders the agent's drafts and the approve controls; a human_active one
+   * renders the takeover banner and the reply box; an ended one renders
+   * neither. Whichever came back first would be the only path covered.
+   *
+   * This is the screen somebody at PPP will have open all day, and until now
+   * it was not loaded by anything.
+   */
+  for (const state of ["ai_active", "human_active", "ended"]) {
+    const { data: conv } = await admin
+      .from("sms_conversations").select("id").eq("state", state).limit(1);
+    if (conv?.[0]) paths.push(`/messaging/${conv[0].id}`);
+    else console.log(`  ⚠ no ${state} conversation — that thread state was NOT smoke-tested`);
+  }
   // ONE DEAL OF EVERY STATUS, not just one deal.
   //
   // This picked a single opportunity and walked its tabs. But the detail page

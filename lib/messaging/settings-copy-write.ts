@@ -24,11 +24,22 @@ import {
 
 const COLUMNS = `id, name, ${COPYABLE_SETTINGS.join(", ")}`;
 
-/** Every workspace and the settings that can be copied between them. */
+/**
+ * Every LIVE workspace and the settings that can be copied between them.
+ *
+ * The is_active filter is the point. Without it this returned all 32 while the
+ * settings page hosting the form lists only the 16 that are active — so "All
+ * 32" wrote hours, weekend policy and the out-of-hours message into sixteen
+ * workspaces the operator cannot see, open or undo from that screen, and the
+ * preview they approved named rows that appear nowhere else on the page.
+ *
+ * Used for the source as well as the targets, which is right: copying FROM a
+ * workspace nobody can open is not worth offering either.
+ */
 export async function copyableWorkspaces(): Promise<WorkspaceSettings[]> {
   await assertMessagingAccess();
   const { data } = await messagingDb()
-    .from("sms_sub_accounts").select(COLUMNS).order("name");
+    .from("sms_sub_accounts").select(COLUMNS).eq("is_active", true).order("name");
   return (data ?? []) as unknown as WorkspaceSettings[];
 }
 

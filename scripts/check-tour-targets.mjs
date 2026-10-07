@@ -19,8 +19,15 @@
  * behind "More" render from a second map that had not been tagged.
  */
 import { readFileSync } from "node:fs";
+import { sessionCookie } from "./session-cookie.mjs";
 
 const BASE = process.env.SMOKE_BASE_URL ?? "http://localhost:3000";
+
+// Before anything else: is that server this app? Several projects on this
+// machine use port 3000, and testing the wrong one reports with complete
+// confidence about an app this repo does not contain.
+const { assertThisApp } = await import("./assert-this-app.mjs");
+await assertThisApp(BASE);
 
 const env = Object.fromEntries(
   readFileSync(".env.local", "utf8")
@@ -147,23 +154,30 @@ try {
   });
   const { data: sess, error: sErr } = await anon.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error("sign-in failed: " + sErr.message);
-  const ref = new URL(env.NEXT_PUBLIC_SUPABASE_URL).hostname.split(".")[0];
-  const s = sess.session;
-  const cookie =
-    `sb-${ref}-auth-token=base64-` +
-    Buffer.from(
-      JSON.stringify({
-        access_token: s.access_token,
-        token_type: "bearer",
-        expires_in: s.expires_in,
-        expires_at: s.expires_at,
-        refresh_token: s.refresh_token,
-        user: s.user,
-      })
-    ).toString("base64");
+  const cookie = sessionCookie(env.NEXT_PUBLIC_SUPABASE_URL, sess.session);
 
+  /**
+   * A PAGE THAT NEVER LOADED IS NOT A MISSING TARGET.
+   *
+   * Both used to be counted as `missing`, and the summary read "53 of 53
+   * walkthrough targets are not rendered — those steps would spotlight
+   * nothing". Every page had in fact answered 307 and nothing at all was known
+   * about any target. Somebody running `npm run verify` was told the
+   * walkthrough was entirely broken; the truth was that port 3000 was serving
+   * a different project, which assert-this-app.mjs now refuses up front.
+   *
+   * That guard makes this one redundant for that particular cause, and it
+   * stays anyway: "could not load the page" and "the target is not on the
+   * page" are different findings whatever the reason, and this check exists
+   * because the second one is invisible to every other gate.
+   *
+   * The redirect's destination is printed, because "→ /login" and
+   * "→ /onboarding" are different problems and the Location header is the one
+   * thing that tells them apart.
+   */
   const pages = new Map();
   let missing = 0;
+  const unreachable = new Map();
   for (const { target, route } of targets) {
     if (!pages.has(route)) {
       const res = await fetch(BASE + route, {
@@ -172,23 +186,40 @@ try {
         signal: AbortSignal.timeout(120_000),
       });
       if (res.status !== 200) {
-        console.log(`  DOWN  ${route} → HTTP ${res.status}`);
-        pages.set(route, "");
+        const where = res.headers.get("location");
+        console.log(`  DOWN  ${route} → HTTP ${res.status}${where ? ` → ${where}` : ""}`);
+        pages.set(route, null);
+        unreachable.set(route, `${res.status}${where ? ` → ${where}` : ""}`);
       } else {
         pages.set(route, await res.text());
       }
     }
-    const ok = pages.get(route).includes(`data-tour="${target}"`);
+    const html = pages.get(route);
+    if (html === null) {
+      console.log(`  ????  ${target.padEnd(32)} ${route} (page did not load — not checked)`);
+      continue;
+    }
+    const ok = html.includes(`data-tour="${target}"`);
     if (!ok) missing++;
     console.log(`  ${ok ? "ok  " : "MISS"}  ${target.padEnd(32)} ${route}`);
   }
 
+  const unchecked = targets.filter((t) => unreachable.has(t.route)).length;
+  if (unreachable.size) {
+    console.log(
+      `\n⚠  ${unreachable.size} page(s) did not load as the probe user, so ${unchecked} target(s)`
+      + ` were not checked. This is the script's own sign-in or ${BASE} being the wrong server —`
+      + ` it says NOTHING about the walkthrough. First one: ${[...unreachable][0][0]} ${[...unreachable][0][1]}`
+    );
+  }
+  const checked = targets.length - unchecked;
   console.log(
     missing === 0
-      ? `\n✅ all ${targets.length} walkthrough targets are on their page`
-      : `\n❌ ${missing} of ${targets.length} walkthrough targets are not rendered — those steps would spotlight nothing`
+      ? `\n✅ all ${checked} walkthrough targets that could be checked are on their page`
+      : `\n❌ ${missing} of ${checked} checked walkthrough targets are not rendered — those steps would spotlight nothing`
   );
-  process.exitCode = missing === 0 ? 0 : 1;
+  // Either is a failure: a target that is gone, and a run that proved nothing.
+  process.exitCode = missing === 0 && unreachable.size === 0 ? 0 : 1;
 } finally {
   await admin.from("profiles").delete().eq("user_id", uid);
   await admin.auth.admin.deleteUser(uid);

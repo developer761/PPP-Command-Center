@@ -23,7 +23,6 @@ import { knownFromThread } from "./known-from-thread";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
-import { selectExamples } from "./retrieval";
 import { forPrompt } from "./class-a-rules";
 import { loadClassARules } from "./class-a-rules-db";
 import { takeoverReasonFor, latestInboundIsAnswered, type TakeoverReason } from "./handoff";
@@ -101,6 +100,47 @@ export function schedulerDeps(): SchedulerDeps {
           message: "could not record the resume-calling signal",
           context: { conversationId: a.conversation_id, error: err instanceof Error ? err.message : String(err) },
         });
+      }
+    },
+
+    /**
+     * The carrier had them suppressed and we did not. Write our own row so the
+     * gap closes: the next attempt from any workspace is stopped by our own
+     * gate instead of by a failed send.
+     *
+     * source 'carrier' rather than a keyword or a phrase, because that is what
+     * it is — Twilio told us, the customer did not. If an opt-out is ever
+     * disputed, "their carrier had them on its list" is different evidence
+     * from "they replied STOP", and the column exists to keep them apart.
+     *
+     * A duplicate key is the outcome we wanted anyway, so it is not an error.
+     */
+    async onCarrierSuppressed(_a, to) {
+      const { error } = await sb.from("sms_opt_outs").insert({
+        phone_e164: to,
+        channel: "sms",
+        inbound_body: null,
+        source: "carrier",
+        opted_out_at: new Date().toISOString(),
+      });
+      if (error && error.code !== "23505") {
+        /**
+         * A source CHECK that does not know 'carrier' must not lose the
+         * suppression — the same reasoning record-inbound uses for
+         * 'inbound_phrase'. The number matters; the label is the part that can
+         * wait for the migration.
+         */
+        const { error: retry } = await sb.from("sms_opt_outs").insert({
+          phone_e164: to, channel: "sms", inbound_body: null,
+          source: "inbound_keyword", opted_out_at: new Date().toISOString(),
+        });
+        if (retry && retry.code !== "23505") {
+          reportWarn({
+            key: "carrier_optout_not_recorded", platform: "ppp_cc",
+            message: "the carrier refused a send as unsubscribed and we could not record it",
+            context: { to, error: retry.message, code: retry.code ?? null },
+          });
+        }
       }
     },
 
@@ -233,7 +273,7 @@ export function schedulerDeps(): SchedulerDeps {
       // This guard and the claim button have to ship together: without it,
       // taking a conversation over does not actually take it off the bot.
       if (conv.state === "human_active") {
-        return { kind: "skipped" as const, reason: "a person has taken this conversation over" };
+        return { kind: "skipped" as const, reason: "a person has taken this conversation over", retryable: true };
       }
 
       const ws = conv.sms_sub_accounts as unknown as {
@@ -248,7 +288,7 @@ export function schedulerDeps(): SchedulerDeps {
       // turns a constraint violation into a clean skip.
       const { data: existing } = await sb.from("sms_drafts")
         .select("id").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
-      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review" };
+      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true };
 
       const { data: msgs } = await sb.from("sms_messages")
         .select("id, direction, body, created_at, media_count")
@@ -577,7 +617,21 @@ export function schedulerDeps(): SchedulerDeps {
           inquiryScope: resolved.inquiryScope,
         },
         services: resolveServices(svc.services, svc.exceptions),
-        examples: selectExamples(corpus, { stage }),
+        /**
+         * THE WHOLE CORPUS, and runAgentTurn picks.
+         *
+         * This was `selectExamples(corpus, { stage })` — the stage and nothing
+         * else — while the sandbox passed the situation as well. selectExamples
+         * keeps only examples scoring above zero against the context given, so
+         * in every real conversation the photo, reaction, "are you a bot",
+         * callback, service-area and off-site examples scored zero and were
+         * dropped. Kate graded those and the model has never seen one.
+         *
+         * The selection happens inside runAgentTurn now, off the inbound
+         * message it has already normalised, so there is no longer a version of
+         * this for the two callers to disagree about.
+         */
+        corpus,
         // A26: acknowledge the photo they just sent. Read from the message
         // rather than the webhook because the turn runs seconds later, in a
         // different process, from the row.
@@ -622,14 +676,14 @@ export function schedulerDeps(): SchedulerDeps {
           // "the bot was unsure and escalated itself" — which is exactly what
           // a refused turn is.
           await handToAPerson(sb, conv.id, "low_confidence");
-          return { kind: "skipped" as const, reason: `handed to a person: ${res.rejected}` };
+          return { kind: "skipped" as const, reason: `handed to a person: ${res.rejected}`, retryable: true };
         }
         throw new Error(`the agent could not produce a reply: ${res.error}`);
       }
       if (!res.rendered.trim()) {
         // Same reasoning: a turn that renders nothing is a customer waiting.
         await handToAPerson(sb, conv.id, "low_confidence");
-        return { kind: "skipped" as const, reason: "handed to a person: the agent had nothing to say" };
+        return { kind: "skipped" as const, reason: "handed to a person: the agent had nothing to say", retryable: true };
       }
 
       // AUTOSEND, and what it does and does not mean.

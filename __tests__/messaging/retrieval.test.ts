@@ -394,3 +394,56 @@ describe("a corrected example is labelled as a correction", () => {
     expect(out).not.toMatch(/Why it is good/);
   });
 });
+
+/**
+ * THE SITUATION REACHED THE SANDBOX AND NOT PRODUCTION.
+ *
+ * scheduler-db called selectExamples(corpus, { stage }); the simulator also
+ * passed the situation — photo, reaction, "are you a bot", callback, service
+ * area, price-only. Selection keeps only examples scoring above zero against
+ * the context it is handed, so in every REAL conversation those tags matched
+ * nothing and the examples Kate graded for them were filtered out before the
+ * prompt was built. The model has never seen one.
+ *
+ * It is the parity bug this codebase keeps having, with the sides swapped: the
+ * sandbox was the richer of the two, so grading looked better than production
+ * behaved. simulator-parity.test.ts compares the option KEYS at each call site
+ * and both said `examples:`, so it stayed green the whole time.
+ *
+ * Fixed structurally — runAgentTurn reads the situation off the inbound
+ * message it has already normalised, and both callers now hand it the corpus —
+ * so these assert the behaviour that made it matter.
+ */
+describe("the situation decides which examples are offered", () => {
+  /**
+   * A REALISTIC CORPUS, because the top-up is what hides this.
+   *
+   * With two examples and three slots everything is offered and the test
+   * proves nothing. The live corpus is ~1,294 examples for three good slots,
+   * so an example that scores zero reaches the model only if the stage-matched
+   * ones have not already filled the budget — which they always have. That is
+   * the real harm: not filtered out, crowded out, which looks identical from
+   * the model's side and is invisible from the training page.
+   */
+  const photo = ex({ id: "photo", tags: ["handled_photo"] });
+  const filler = Array.from({ length: 6 }, (_, i) =>
+    ex({ id: `flow${i}`, tags: ["flow_details"] }));
+  const corpus = [...filler, photo];
+
+  it("is crowded out when nothing says a photo arrived", () => {
+    const sel = selectExamples(corpus, { stage: 0 });
+    expect(sel.good.map((e) => e.id)).not.toContain("photo");
+  });
+
+  it("is chosen first when the message carries one", () => {
+    const sel = selectExamples(corpus, { stage: 0, ...situationFrom("", { mediaCount: 2 }) });
+    expect(sel.good[0].id).toBe("photo");
+  });
+
+  it("the same holds for asking whether it is a bot", () => {
+    const bot = ex({ id: "bot", tags: ["handled_bot_q"] });
+    const withBot = [...filler, bot];
+    expect(selectExamples(withBot, { stage: 0 }).good.map((e) => e.id)).not.toContain("bot");
+    expect(selectExamples(withBot, { stage: 0, ...situationFrom("wait, am I talking to a bot?") }).good[0].id).toBe("bot");
+  });
+});

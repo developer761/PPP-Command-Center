@@ -18,6 +18,19 @@ export type DraftForReview = {
   reasoning: string | null;
   body: string;
   reviewReason: DraftReviewReason;
+  /**
+   * The gate's reason for refusing this one already, when it has been refused.
+   *
+   * WRITTEN IN THREE PLACES AND READ IN NONE. scheduler-db records it when an
+   * autosend is refused, and the approve path records it when somebody's
+   * "Send it" is refused — and then the queue selected every column except
+   * this one. So a draft the gate had already turned down arrived showing
+   * "Nothing sends without you while we are testing", the benign line, and the
+   * reviewer found out by pressing Send and being refused again. For a
+   * customer who has opted out, that is a person trying repeatedly to text
+   * somebody they are not allowed to text, with the answer already on file.
+   */
+  sendError: string | null;
   createdAt: string;
   /** The inbound this replies to. */
   answersMessageId: string | null;

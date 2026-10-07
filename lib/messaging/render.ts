@@ -477,7 +477,15 @@ export function clip(v: string | null | undefined, max = MAX_QUOTED): string | n
 /** Rapport that would collide with the template's own opener. The model likes
  *  to lead with a greeting; the template often does too, and "Hi there! Happy
  *  to help — what's the project?" reads like two people talking. */
-const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]*$/i;
+/**
+ * Rapport that is only a greeting, so the template's own opener is the message.
+ *
+ * Spanish included, for the reason every matcher in this codebase has needed
+ * it: the templates were translated and the gates were not, so "Hola!" stacked
+ * in front of a Spanish template that greets perfectly well on its own.
+ */
+const BARE_GREETING =
+  /^(hi|hey|hello|hi there|good morning|good afternoon|good evening|hola|buenas|buenos d[íi]as|buenas tardes|buenas noches|saludos)[!.,]*$/i;
 
 /**
  * Rapport that acknowledges and says nothing else.
@@ -514,7 +522,7 @@ const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]
  * two words and the echo threshold is four.
  */
 const OPENS_WITH_ACKNOWLEDGEMENT =
-  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help)\b/i;
+  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help|entendido|perfecto|gracias|muchas gracias|excelente|muy bien|de acuerdo|claro|por supuesto|listo|sin problema|disculpe|lo siento)\b/i;
 
 /**
  * True when the rapport adds nothing the template is not already saying.
@@ -997,6 +1005,10 @@ export function templateAsks(intent: Intent, turn = 0): boolean {
 const NAMES_A_DAY_OR_TIME =
   /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:at|around)\s+\d{1,2}(?::\d{2})?\b/i;
 
+/** The same day and time words, for removing rather than for detecting. */
+const DAY_OR_TIME_WORDS =
+  /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight)\b|\b\d{1,2}\s*(?:am|pm)\b|\b(?:at|around)\s+\d{1,2}(?::\d{2})?\b/gi;
+
 export function scopeForReadback(scope: string | null | undefined): string {
   const t = (scope ?? "").trim();
   if (!t) return "";
@@ -1005,7 +1017,41 @@ export function scopeForReadback(scope: string | null | undefined): string {
     .filter((sentence) => sentence.trim() && !NAMES_A_DAY_OR_TIME.test(sentence))
     .join(" ")
     .trim();
-  return kept;
+  if (kept) return kept;
+
+  /**
+   * A ONE-SENTENCE SCOPE THAT NAMES A DAY LEFT NOTHING AT ALL — and nothing is
+   * the one answer that breaks the conversation.
+   *
+   * Web-form scopes are often a single sentence, and a customer who is ready
+   * to book writes the readiest one there is:
+   *
+   *   "Can someone come out Monday to look at my kitchen"
+   *
+   * Sentence-level stripping removed the whole thing, so confirm_scope
+   * rendered the empty string. That turn says nothing, the conversation is
+   * handed to a person with no draft written, and because the intent is never
+   * recorded, A3's first leg stays open for the life of the conversation. The
+   * only other intent that could satisfy it, ask_project_details, is refused
+   * for the opposite reason: the scope IS on file. No legal move at all, on
+   * turn one, for the most ready lead in the queue.
+   *
+   * So when stripping by sentence empties it, strip the WORDS instead. The day
+   * must still not survive — reading a requested day back reads as agreeing to
+   * it, which is what the rule above exists to prevent — but "come out to look
+   * at my kitchen" is a scope we can confirm, and the appointment half is
+   * collected properly at the availability leg.
+   */
+  const withoutTheTime = t
+    .replace(DAY_OR_TIME_WORDS, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/^[\s,;:-]+|[\s,;:-]+$/g, "")
+    .trim();
+  // Still carrying a time, or too little left to read back: say nothing rather
+  // than something wrong. Two words is a fragment, not a scope.
+  if (!withoutTheTime || NAMES_A_DAY_OR_TIME.test(withoutTheTime)) return "";
+  return withoutTheTime.split(/\s+/).length >= 3 ? withoutTheTime : "";
 }
 
 /** Shared with the A29 guard — see TIME_IS_ACKNOWLEDGED_BY. */
@@ -1035,13 +1081,31 @@ const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
  * message is the answer and must survive. If stripping would leave nothing,
  * the original stands, because a silent turn is worse than a third ask.
  */
+/**
+ * BOTH LANGUAGES, because the template this strips exists in both.
+ *
+ * render-es.ts's defer_to_estimator ends "Mientras tanto, qué días le
+ * funcionan mejor?" and this matcher was English-only, so the question
+ * survived — and a Spanish lead was asked for appointment days at stage 0,
+ * which is the exact breach the comment below records fixing. The same leak
+ * reopened the availability stand-off in Spanish: the third ask could not be
+ * suppressed because it could not be recognised.
+ *
+ * A rule enforced per-INTENT, walked round by another intent's TEMPLATE —
+ * and then walked round again by the translation of that template.
+ */
 const ASKS_ABOUT_TIMING =
-  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i;
+  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i
+  ;
+
+const ASKS_ABOUT_TIMING_ES =
+  /\b(?:d[íi]as?|horas?|horario|hora|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?|funcionan?|conviene|sirve|mejor)\b/i;
 
 function withoutATimingQuestion(body: string): string {
   const sentences = body.split(/(?<=[.?!])\s+/);
   const last = sentences[sentences.length - 1] ?? "";
-  if (!last.includes("?") || !ASKS_ABOUT_TIMING.test(last)) return body;
+  if (!last.includes("?")) return body;
+  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last)) return body;
   const kept = sentences.slice(0, -1).join(" ").trim();
   return kept || body;
 }
@@ -1114,6 +1178,37 @@ export function renderMessage(input: RenderInput): string {
 }
 
 function renderBody(input: RenderInput): string {
+  /**
+   * THE ANSWER HAS TO SURVIVE THE EARLY RETURNS TOO.
+   *
+   * answerIsOwed guards the rapport at the BOTTOM of this function, where the
+   * message is assembled from parts. A dozen branches above never reach it:
+   * the returning-customer reply, the requested-time reply, the week-aware
+   * availability ask, the callback branches, the discard lines. Each returns a
+   * template directly, and `input.freeText` — the model's answer, already
+   * through every tone and style check — is dropped.
+   *
+   * validateAction allows those turns BECAUSE the answer is present:
+   * `saysSomething` is one of the things that satisfies A29. So the validator
+   * believes the customer has been answered and the renderer sends only the
+   * question. It is the collision agent-output documents for the yes/no case,
+   * and worse here, because it does not escalate — it sends the half that asks
+   * and deletes the half that answers.
+   *
+   * One helper, applied at each early return, so a branch added later cannot
+   * reopen it quietly. Where nothing is owed it is the identity function.
+   */
+  const owedAnswer =
+    asksSomething(input.customerText) && !ANSWERS_A_QUESTION.has(input.intent)
+      ? (input.freeText ?? "").trim()
+      : "";
+  const keepingTheAnswer = (body: string): string => {
+    if (!owedAnswer || !body.trim()) return body;
+    // Some branches already build from freeText themselves.
+    if (body.includes(owedAnswer)) return body;
+    return `${owedAnswer} ${body}`.trim();
+  };
+
   // A partial address narrows the question before anything else happens.
   // "both" missing is the ordinary ask, which is already the right question.
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
@@ -1289,12 +1384,12 @@ function renderBody(input: RenderInput): string {
       input.botMessages ?? []
     )
   ) {
-    return es ? returningCustomerReplyEs() : returningCustomerReply();
+    return keepingTheAnswer(es ? returningCustomerReplyEs() : returningCustomerReply());
   }
 
   if (input.intent === "ask_availability" || input.intent === "checking_availability") {
     const timed = replyToRequestedTime(input.customerText);
-    if (timed) return timed.reply;
+    if (timed) return keepingTheAnswer(timed.reply);
   }
 
   /**
@@ -1312,7 +1407,7 @@ function renderBody(input: RenderInput): string {
    */
   if (input.intent === "ask_availability" && !availGap && input.now && input.customerZone) {
     const week = weekToOffer(input.now, input.customerZone);
-    if (week) return es ? askAvailabilityEs(week) : askAvailability(week);
+    if (week) return keepingTheAnswer(es ? askAvailabilityEs(week) : askAvailability(week));
   }
 
   if (input.intent === "schedule_follow_up" && ASKED_FOR_A_CALL.test(input.customerText ?? "")) {
@@ -1342,7 +1437,7 @@ function renderBody(input: RenderInput): string {
             "No problem at all. What's a good time to reach you?",
             "Of course. When's the best time to give you a call?",
           ];
-      return asks[(input.turn ?? 0) % asks.length];
+      return keepingTheAnswer(asks[(input.turn ?? 0) % asks.length]);
     }
 
     /**
@@ -1358,9 +1453,9 @@ function renderBody(input: RenderInput): string {
     if (phoneBranch(input.callback ?? {}) === "callback_outside_hours") {
       const from = clockHour(CALLBACK_WINDOW.startHour, es);
       const to = clockHour(CALLBACK_WINDOW.endHour, es);
-      return es
+      return keepingTheAnswer(es
         ? `Llamamos entre las ${from} y las ${to}. Hay alguna hora dentro de ese horario que le venga bien?`
-        : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`;
+        : `We make calls between ${from} and ${to}. Is there a time in there that works for you?`);
     }
 
     /**
@@ -1390,7 +1485,7 @@ function renderBody(input: RenderInput): string {
           "No problem at all. We'll reach out then.",
           "Of course. We'll give you a call then.",
         ];
-    return variants[(input.turn ?? 0) % variants.length];
+    return keepingTheAnswer(variants[(input.turn ?? 0) % variants.length]);
   }
 
   /**
@@ -1433,12 +1528,12 @@ function renderBody(input: RenderInput): string {
       const aperture = (input.turn ?? 0) % 2 === 0
         ? "Creo que no podemos ayudar con este proyecto."
         : "No creo que esto sea algo que hagamos.";
-      return `${aperture} S\u00ed cubrimos ${input.covers}. Lo reviso y le aviso si me equivoco. Disculpe la molestia!`;
+      return keepingTheAnswer(`${aperture} S\u00ed cubrimos ${input.covers}. Lo reviso y le aviso si me equivoco. Disculpe la molestia!`);
     }
     const opener = (input.turn ?? 0) % 2 === 0
       ? "I don't think we can help with this project."
       : "I don't believe this is something we take on.";
-    return `${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`;
+    return keepingTheAnswer(`${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`);
   }
 
   const rapport = (input.freeText ?? "").trim();

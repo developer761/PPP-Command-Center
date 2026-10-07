@@ -120,3 +120,46 @@ describe("the result, for somebody who just changed a prompt", () => {
     expect(verdictLine(summarise([]))).toMatch(/no turns/);
   });
 });
+
+/**
+ * "WHAT SHOULD IT HAVE DONE INSTEAD?" WENT NOWHERE.
+ *
+ * The sandbox asks for it on every turn marked wrong, stored it on
+ * sms_scenario_turns, and nothing ever read the column back: one writer, no
+ * reader. The one person who knew the right answer typed it into a field that
+ * led nowhere — and it is the only thing in a replay that can tell "it changed"
+ * from "it changed to the thing we asked for".
+ */
+describe("the grader's expected intent is read back", () => {
+  it("says so when the bot now does what was asked", () => {
+    const c = compareTurn(
+      saved({ verdict: "wrong", expectedIntent: "confirm_address" }),
+      { ordinal: 1, intent: "confirm_address", message: "Is 1 Test St still right?" }
+    );
+    expect(c.matchedExpectation).toBe(true);
+    expect(c.expectedIntent).toBe("confirm_address");
+  });
+
+  it("says so when it changed to something ELSE", () => {
+    // "fixed" by the old measure — it moved — but not to what was asked for.
+    const c = compareTurn(
+      saved({ verdict: "wrong", expectedIntent: "confirm_address" }),
+      { ordinal: 1, intent: "ask_contact", message: "What's the best email for the quote?" }
+    );
+    expect(c.status).toBe("fixed");
+    expect(c.matchedExpectation).toBe(false);
+  });
+
+  it("forgives how a person types an intent name", () => {
+    const c = compareTurn(
+      saved({ verdict: "wrong", expectedIntent: " Confirm Address " }),
+      { ordinal: 1, intent: "confirm_address", message: "Is 1 Test St still right?" }
+    );
+    expect(c.matchedExpectation).toBe(true);
+  });
+
+  it("stays null when nothing was expected, rather than reading as a no", () => {
+    const c = compareTurn(saved({ verdict: "wrong" }), { ordinal: 1, intent: "ask_contact", message: "x" });
+    expect(c.matchedExpectation).toBeNull();
+  });
+});

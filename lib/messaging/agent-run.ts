@@ -26,7 +26,10 @@ import { availabilityGap, availabilityGapAcross } from "./availability";
 import { statedConstraint } from "./reachability";
 import { requestedTime } from "./appointment-time";
 import { disclosureMove, applyDisclosure, alreadyDisclosed } from "./disclosure";
-import { examplesPrompt, type Selection } from "./retrieval";
+import {
+  examplesPrompt, selectExamples, situationFrom,
+  type Selection, type CorpusExample,
+} from "./retrieval";
 import { servicesPrompt, listPhrase, type ResolvedService } from "./services";
 import { renderMessage, isSilent, templateAsks } from "./render";
 import type { Intent } from "./agent-output";
@@ -521,9 +524,29 @@ export async function runAgentTurn(
     /** 1, 2 or 3 when this turn is an A44 follow-up. Absent otherwise. */
     followUpStep?: number;
     track?: Track; known?: KnownCustomer;
-    /** Graded conversations to imitate and to avoid. Selected by the caller so
-     *  this stays testable without a database. */
-    examples?: Selection;
+    /**
+     * Graded conversations to imitate and to avoid.
+     *
+     * THE CORPUS, NOT A SELECTION. It used to be the selection, made by each
+     * caller — and the two callers made it differently. The sandbox passed the
+     * situation (photo, reaction, "are you a bot", callback, service area,
+     * price-only) alongside the stage; production passed `{ stage }` and
+     * nothing else. selectExamples keeps only examples that score above zero
+     * against the context it is given, so in every real conversation the seven
+     * situational tags matched nothing, and the examples Kate graded for them
+     * — her own handled_bot_q among them — never reached a prompt.
+     *
+     * The sandbox was RICHER than production, which is the inverse of the
+     * parity bug this file has had before, and simulator-parity.test.ts
+     * compares the option KEYS at each call site: both said `examples:`, so it
+     * stayed green while the contents differed.
+     *
+     * Selecting in here removes the seam. The situation is read from the
+     * inbound message this function has already normalised, so no caller can
+     * get it wrong, and `ownWords` means a reaction is not scanned as if the
+     * customer had typed our own sentence back.
+     */
+    corpus?: CorpusExample[];
     /** What this workspace covers, already resolved. */
     services?: ResolvedService[];
     /** How much of the required flow is done. Omit and the ordering check is
@@ -639,6 +662,30 @@ export async function runAgentTurn(
    * name cannot tell "Would you like us to send that over?" from "What days
    * suit you?", and the reaction is answering the sentence, not the label.
    */
+  /**
+   * WHICH GRADED EXAMPLES THIS TURN GETS — decided here, from the message that
+   * has already been normalised, so the two callers cannot decide it
+   * differently. See opts.corpus for what they used to do.
+   *
+   * ownWords rather than the raw body: an iPhone reaction arrives as
+   * `Liked "<our message>"`, so scanning the raw string reads OUR sentence and
+   * attributes it to the customer. Somebody who liked a message containing the
+   * phrase "real person" was recorded as asking whether they were talking to a
+   * bot. For a bare reaction ownWords is empty, which is correct — they said
+   * nothing.
+   */
+  const examples: Selection | undefined = opts.corpus
+    ? selectExamples(opts.corpus, {
+        stage: track === "new_lead" ? opts.stage : undefined,
+        track,
+        ...situationFrom(ownWords, {
+          mediaCount: opts.mediaCount,
+          isReaction: inbound.kind === "reaction" || inbound.kind === "emoji_only",
+          isNegative: inbound.reaction?.sentiment === "negative",
+        }),
+      })
+    : undefined;
+
   const lastOutbound = [...history].reverse().find((m) => m.role === "assistant")?.text ?? "";
   const reaction = reactionResponse(
     inbound, opts.lastAskedForInfo ?? false, isYesNoQuestion(lastOutbound)
@@ -741,7 +788,7 @@ Choose the next action.`;
      */
     const systemBlocks = (() => {
       const { stable, variable } = buildSystemPromptParts(
-        cfg, opts.hardNos ?? [], track, opts.known, opts.examples, opts.services,
+        cfg, opts.hardNos ?? [], track, opts.known, examples, opts.services,
         opts.classARules, opts.workspaceFaqs, language,
         // A2: the verdict the caller already looked up. It reached the
         // validator and stopped there, so the model was asked to apply a
@@ -917,7 +964,27 @@ Choose the next action.`;
        * nothing, which is what this rule needs to know. The first draft of
        * this fix used the description and had exactly that bug.
        */
-      availabilityGap: availabilityGapAcross(customerSaid),
+      /**
+       * AND THE FLAG THAT MAKES "YES PLEASE" AN ANSWER WAS NEVER PASSED.
+       *
+       * availabilityGap has taken `justAskedForAvailability` since it was
+       * written, and the only places that ever set it were its own tests. In
+       * production it was always false, so the ASSENT list — including the
+       * Spanish words added specifically to stop a "sí, perfecto" lead being
+       * unclosable — could not fire once.
+       *
+       * The result was a conversation that can never end: Kate's rule is that
+       * a bare yes to the availability question IS availability, the close
+       * guard disagreed, and the customer was asked for days they had already
+       * agreed to, every turn. The lead who answered everything was the one
+       * that could not convert.
+       *
+       * Gated on OUR last intent, so the carve-out only applies to a message
+       * that is actually answering our availability question.
+       */
+      availabilityGap: availabilityGapAcross(customerSaid, {
+        justAskedForAvailability: opts.lastIntent === "ask_availability",
+      }),
       // Whether the template for the chosen intent already asks something.
       templateAsks: (intent: string) => templateAsks(intent as Intent, history.length),
       negativeReaction: inbound.reaction?.sentiment === "negative",
@@ -1087,7 +1154,7 @@ Choose the next action.`;
       // A7's MANDATED reason, matched from what the customer actually said.
       // Nothing supplied this before, so offer_offsite_quote rendered empty
       // every time and the turn escalated instead of making the offer.
-      offsiteReason: offsiteReasonFor(ownWords),
+      offsiteReason: offsiteReasonFor(ownWords, language),
       // What they actually said. Decides whether a discard is a wrong number
       // (silence) or a real customer asking about work we do not cover.
       customerText: ownWords,

@@ -104,6 +104,100 @@ describe("gatedSend — deferrals say when, so nothing is silently dropped", () 
   });
 });
 
+/**
+ * THE DEFERRAL HAS TO BE A MOMENT THAT WILL ACTUALLY BE ACCEPTED.
+ *
+ * The count was a rolling 24 hours and the retry was the next calendar day, so
+ * a message stopped on Monday evening was promised Tuesday 9am and arrived to
+ * find the same three messages still inside the rolling window. Refused again,
+ * promised Wednesday. Every message the cap caught after about 9am landed a day
+ * later than the refusal said, and nothing anywhere recorded that it had.
+ *
+ * So these do not assert the shape of retryAt. They take the gate at its word:
+ * run it again AT the moment it promised, with the same message log, and
+ * require it to send.
+ */
+describe("gatedSend — the daily cap's retryAt is a promise it keeps", () => {
+  /** A log of outbound sends, counted the way the real dep counts them. */
+  const capDeps = (sentAt: Date[], over: Partial<Parameters<typeof gatedSend>[1]> = {}) =>
+    deps({
+      sentToday: async (_to, since: Date) =>
+        sentAt.filter((d) => d.getTime() >= since.getTime()).length,
+      ...over,
+    });
+
+  const et = (d: Date) => new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", dateStyle: "short", timeStyle: "short",
+  }).format(d);
+
+  it("sends at the moment it promised, after an evening cap", async () => {
+    // Monday 5:00, 5:30 and 6:00pm ET. Inside CUSTOMER_OUTBOUND, which closes
+    // at 7pm on the customer's clock — so this is the cap refusing, not the
+    // window, which is the whole point of the fixture.
+    const log = [
+      utc("2026-07-13T21:00:00Z"), utc("2026-07-13T21:30:00Z"), utc("2026-07-13T22:00:00Z"),
+    ];
+    const now = utc("2026-07-13T22:05:00Z"); // 6:05pm ET, same Monday
+    const first = await gatedSend(req({ now }), capDeps(log));
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(first.reason).toBe("daily_cap");
+    expect(first.retryAt).toBeInstanceOf(Date);
+
+    const again = await gatedSend(req({ now: first.retryAt! }), capDeps(log));
+    expect(
+      again.ok,
+      `refused again at the moment it promised (${et(first.retryAt!)}): ${again.ok ? "" : again.reason}`
+    ).toBe(true);
+  });
+
+  it("keeps that promise whatever time of day the cap is hit", async () => {
+    // Every hour of the Tuesday that a PPP-initiated message can go out at
+    // all — CUSTOMER_OUTBOUND is 9am-7pm on the customer's clock — with three
+    // sends in the hour before each one.
+    for (let h = 10; h < 19; h++) {
+      const now = new Date(Date.UTC(2026, 6, 14, h + 4, 0, 0)); // h:00 ET
+      const log = [-60, -45, -30].map((m) => new Date(now.getTime() + m * 60_000));
+      const first = await gatedSend(req({ now }), capDeps(log));
+      if (first.ok) continue; // not capped at this hour; nothing to promise
+      expect(first.reason, `${et(now)}`).toBe("daily_cap");
+      const again = await gatedSend(req({ now: first.retryAt! }), capDeps(log));
+      expect(again.ok, `capped at ${et(now)}, promised ${et(first.retryAt!)}, refused there`).toBe(true);
+    }
+  });
+
+  it("starts the count at the recipient's midnight, not 24 hours back", async () => {
+    // Three last night, 8:00, 8:30 and 9:00pm ET on the Monday.
+    const log = [
+      utc("2026-07-14T00:00:00Z"), utc("2026-07-14T00:30:00Z"), utc("2026-07-14T01:00:00Z"),
+    ];
+    // Tuesday 10am ET — inside 24 hours of all three, but a new day.
+    const res = await gatedSend(req({ now: utc("2026-07-14T14:00:00Z") }), capDeps(log));
+    expect(res.ok, res.ok ? "" : `refused as ${res.reason}`).toBe(true);
+  });
+
+  it("still counts what has gone out earlier the same day", async () => {
+    const log = [
+      utc("2026-07-14T13:00:00Z"), utc("2026-07-14T13:30:00Z"), utc("2026-07-14T14:00:00Z"),
+    ];
+    const res = await gatedSend(req({ now: utc("2026-07-14T15:00:00Z") }), capDeps(log));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("daily_cap");
+  });
+
+  it("puts the boundary at local midnight on the day the clocks change", async () => {
+    // US DST ended 2026-11-01 at 2am. Subtracting the local clock time would
+    // put "the start of today" an hour out — on the wrong side of midnight —
+    // and last night's messages would count against this morning's.
+    const log = [
+      utc("2026-11-01T00:00:00Z"), utc("2026-11-01T00:30:00Z"), utc("2026-11-01T01:00:00Z"),
+    ]; // Saturday 8:00, 8:30, 9:00pm ET
+    // Sunday 10am ET, which is 15:00 UTC now the offset is -5.
+    const res = await gatedSend(req({ now: utc("2026-11-01T15:00:00Z") }), capDeps(log));
+    expect(res.ok, res.ok ? "" : `refused as ${res.reason}`).toBe(true);
+  });
+});
+
 describe("gatedSend — timezone is the CUSTOMER's, not the workspace's", () => {
   // THIS TEST USED TO ASSERT THE BUG.
   //
@@ -436,5 +530,77 @@ describe("gatedSend — holidays", () => {
     // Presidents' Day: federal, and a normal day for a contractor.
     const res = await gatedSend(req({ now: utc("2026-02-16T19:00:00Z") }), deps());
     expect(res.ok).toBe(true);
+  });
+});
+
+/**
+ * ANSWERING SOMEBODY IS NOT INITIATING CONTACT, and the holiday rule briefly
+ * forgot it.
+ *
+ * The holiday check shipped on 2026-10-06 unconditional, so it refused ANY
+ * outbound on a holiday — including replies to a customer who had just texted
+ * us. The worst of those is HELP: record-inbound queues the legally-required
+ * reply as a send_reply precisely so it passes this gate, the gate refused it
+ * as "holiday", and it became a draft in a review queue on a day nobody is
+ * reviewing. CTIA requires that reply.
+ *
+ * Kate's answer was about not MESSAGING customers on holidays — a chase, a
+ * nudge, a campaign step. Nobody meant "do not answer somebody who writes to
+ * you on Christmas Eve".
+ *
+ * The weekend rule had the same shape and is latent only because every
+ * workspace currently sends at weekends.
+ */
+describe("gatedSend — a reply is answered whatever day it is", () => {
+  const XMAS = utc("2026-12-25T19:00:00Z");   // Friday 2pm EST
+  const SAT2 = utc("2026-07-18T18:00:00Z");   // Saturday 2pm EDT
+
+  it("answers an inbound on Christmas Day", async () => {
+    const res = await gatedSend(req({ now: XMAS, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  it("still refuses something PPP started on Christmas Day", async () => {
+    const res = await gatedSend(req({ now: XMAS }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("holiday");
+  });
+
+  it("answers an inbound at the weekend when the workspace does not work them", async () => {
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(req({ now: SAT2, workspace: ws, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  it("still refuses something PPP started at that weekend", async () => {
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(req({ now: SAT2, workspace: ws }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("weekend");
+  });
+
+  /** Both at once: a Saturday that is also a holiday, answering an inbound. */
+  it("answers an inbound on a holiday that falls at a weekend", async () => {
+    // 4 July 2026 is a Saturday.
+    const ws = { ...NASSAU, send_on_weekends: false };
+    const res = await gatedSend(
+      req({ now: utc("2026-07-04T18:00:00Z"), workspace: ws, answersInbound: true }), deps());
+    expect(res.ok).toBe(true);
+  });
+
+  /** The legal bound is NOT relaxed by any of this. */
+  it("still refuses a reply at 2am, holiday or not", async () => {
+    const res = await gatedSend(
+      req({ now: utc("2026-12-25T07:00:00Z"), answersInbound: true }), deps());
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("quiet_hours");
+  });
+
+  /** And suppression still wins over everything. */
+  it("still refuses a reply to somebody who opted out", async () => {
+    const res = await gatedSend(
+      req({ now: XMAS, answersInbound: true }), deps({ isSuppressed: async () => true }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toBe("suppressed");
   });
 });

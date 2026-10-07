@@ -7,6 +7,7 @@ import { HandoffBar } from "@/components/messaging/handoff-bar";
 import { assertMessagingAccess } from "@/lib/messaging/auth";
 import { ThreadTeach } from "@/components/messaging/thread-teach";
 import { ThreadComposer } from "@/components/messaging/thread-composer";
+import { transportChoice } from "@/lib/messaging/transport-config";
 import type { AuthoredTurn } from "@/lib/messaging/authoring";
 
 export const dynamic = "force-dynamic";
@@ -143,10 +144,18 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
         holderName={c.owning_agent}
       />
 
+      {/* WHETHER SENDING IS ON IS A RUNTIME FACT, and this screen asserted it
+          as a constant: "Sending is off until the carrier is connected",
+          whatever the carrier was actually doing, directly beneath a composer
+          that calls gatedSend and really does reach a phone. The dashboard and
+          the review queue both read transportChoice and say the truth. This
+          screen — the one somebody has open all day — would have gone on
+          saying sending was off the moment PPP went live. */}
       <ThreadTeach
         turns={turns}
         tags={tags.map((t) => ({ key: t.key, section: t.section, label: t.label }))}
         lastWasCustomer={lastWasCustomer}
+        sendingIsLive={transportChoice().live}
       />
     </main>
   );

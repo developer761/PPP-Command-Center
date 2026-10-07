@@ -66,9 +66,26 @@ export async function saveAgentConfig(input: {
   }
 
   if (values.confidence_threshold !== undefined) {
+    /**
+     * ABOVE ZERO, which is what the column's own CHECK says — and the empty
+     * box is the case that matters.
+     *
+     * The editor sends Number(conf), and Number("") is 0. Clearing a field
+     * means "inherit from the tier above" for every other control on that
+     * form, so the obvious action produced 0, which passed `c < 0` here and
+     * was then refused by Postgres: a person who emptied a box got a raw SQL
+     * message about sms_agent_configs_confidence_threshold_check.
+     *
+     * Checked here rather than left to the database so the sentence is one
+     * somebody can act on — and because 0 would mean "never hand anything to a
+     * person", which is not a setting this screen should be able to express.
+     */
     const c = Number(values.confidence_threshold);
-    if (!Number.isFinite(c) || c < 0 || c > 1) {
-      return { ok: false, error: "Confidence threshold must be between 0 and 1." };
+    if (!Number.isFinite(c) || c <= 0 || c > 1) {
+      return {
+        ok: false,
+        error: "Confidence threshold must be a number above 0 and at most 1 — 0.95 is the default. An empty box is not inherit here: 0 would mean never handing a conversation to a person.",
+      };
     }
     patch.confidence_threshold = c;
   }

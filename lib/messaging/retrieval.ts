@@ -93,15 +93,46 @@ const SITUATIONAL: { when: (ctx: RetrievalContext) => boolean; tags: string[] }[
   { when: (c) => !!c.wantsQuoteOnly, tags: ["offsite_required", "offsite_suggested", "offsite_still_collected"] },
 ];
 
-export function relevantTags(ctx: RetrievalContext): string[] {
-  const out = new Set<string>(ALWAYS);
+/**
+ * HOW MUCH EACH TAG IS WORTH, not merely whether it is wanted.
+ *
+ * Relevance used to be a COUNT of matching tags, so every reason to want an
+ * example weighed the same. A customer sends a photo, the photo example scores
+ * 1 for `handled_photo`, and every ordinary flow example also scores 1 for
+ * `flow_details` — a tie, broken by id, with three good slots and a corpus of
+ * 1,294. The photo example never appeared. Detecting the situation changed
+ * nothing at all, which is why nobody could see it was broken.
+ *
+ * So the ranking says what is actually true of a turn:
+ *
+ *   3  the situation the customer is in RIGHT NOW — they sent a photo, asked
+ *      if we are a bot, asked to be called. Specific, rare, and the hardest
+ *      thing for the model to get right unaided.
+ *   2  the step of the flow we are on. Always true of something, so it cannot
+ *      be allowed to outrank the first.
+ *   1  the rules that bind every message. Never a reason to prefer one
+ *      example over another, only a reason not to pick something irrelevant.
+ */
+const SITUATIONAL_WEIGHT = 3;
+const STAGE_WEIGHT = 2;
+const ALWAYS_WEIGHT = 1;
+
+export function relevantTagWeights(ctx: RetrievalContext): Map<string, number> {
+  const out = new Map<string, number>();
+  // Highest claim wins: a tag wanted for two reasons is worth the better one.
+  const put = (t: string, n: number) => out.set(t, Math.max(out.get(t) ?? 0, n));
+  for (const t of ALWAYS) put(t, ALWAYS_WEIGHT);
   if (ctx.track !== "nurture") {
-    for (const t of STAGE_TAGS[Math.min(ctx.stage ?? 0, STAGE_TAGS.length - 1)]) out.add(t);
+    for (const t of STAGE_TAGS[Math.min(ctx.stage ?? 0, STAGE_TAGS.length - 1)]) put(t, STAGE_WEIGHT);
   }
   for (const rule of SITUATIONAL) {
-    if (rule.when(ctx)) for (const t of rule.tags) out.add(t);
+    if (rule.when(ctx)) for (const t of rule.tags) put(t, SITUATIONAL_WEIGHT);
   }
-  return [...out];
+  return out;
+}
+
+export function relevantTags(ctx: RetrievalContext): string[] {
+  return [...relevantTagWeights(ctx).keys()];
 }
 
 /**
@@ -146,12 +177,15 @@ export function selectExamples(
   limits: Limits = {}
 ): Selection {
   const { maxGood, maxBad, maxChars } = { ...DEFAULTS, ...limits };
-  const wanted = new Set(relevantTags(ctx));
+  const wanted = relevantTagWeights(ctx);
 
   // Never anything unscrubbed, whatever else is true of it.
   const safe = corpus.filter((e) => e.piiScrubbed && e.transcript.trim());
 
-  const score = (e: CorpusExample) => e.tags.filter((t) => wanted.has(t)).length;
+  // Weighted, not counted. See relevantTagWeights: counting made "they just
+  // sent a photo" worth exactly as much as "we are on step one", which every
+  // example in the corpus can claim.
+  const score = (e: CorpusExample) => e.tags.reduce((n, t) => n + (wanted.get(t) ?? 0), 0);
   // A REAL conversation outranks a simulated one at equal relevance.
   //
   // Migration 195's worry was that training on invented customers teaches the

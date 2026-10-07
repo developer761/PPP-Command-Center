@@ -362,11 +362,27 @@ function FaqForm({
         <span className="block text-[12px] font-medium text-ppp-charcoal-600 mb-1">
           What the customer asks
         </span>
+        {/*
+          READ-ONLY WHILE OVERRIDING, the same as the snippets editor beside
+          it and for the same reason, which that file states: the override is
+          matched on the normalised QUESTION, so the copy only helps if it then
+          stays put. Change one character here — drop a word, fix a capital —
+          and this saves as a SECOND answer rather than an override. The badge
+          never appears, nothing looks wrong, and the bot holds two answers to
+          one question with row order deciding which it gives.
+
+          The note below used to ASK the person to leave it alone. A sentence
+          is not a guard.
+        */}
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
+          readOnly={Boolean(overrideOf)}
           placeholder="Are you insured?"
-          className="w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px]"
+          className={[
+            "w-full rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-[13px]",
+            overrideOf ? "bg-ppp-charcoal-50 text-ppp-charcoal-500" : "",
+          ].join(" ")}
         />
       </label>
       <label className="block">
@@ -392,9 +408,9 @@ function FaqForm({
       */}
       {overrideOf && (
         <p className="rounded-lg border border-ppp-charcoal-200 bg-white px-3 py-2 text-[12px] text-ppp-charcoal-600 leading-relaxed">
-          Overriding a shared answer for this workspace only. The question has been
-          copied across exactly — it has to match for the override to work, so leave
-          it as it is and change the answer.
+          Overriding a shared answer for this workspace only. The question is
+          fixed because the override is matched on it — change the answer
+          underneath. To ask something different, add a new answer instead.
         </p>
       )}
 
