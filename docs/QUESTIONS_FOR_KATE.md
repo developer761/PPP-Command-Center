@@ -1571,3 +1571,48 @@ They are translated now, and **the Spanish is ours**, the same standing as the
 **→ Nothing is blocked on this.** The alternative was leaving every Spanish A7
 escalating, which is worse than an unreviewed clause. If Mac or Jasmine would
 word any of them differently, it is seven strings in one file.
+
+## 29. When a customer takes back the day they gave us
+
+**Raised 2026-10-07. Shipped with a default, and the default is the part worth
+checking.**
+
+A13 says do not ask again for something already given, and availability was
+accumulated across the whole conversation so that it could not be. That worked
+exactly as written, and it had one consequence nobody had looked at: once a day
+and a window had appeared anywhere in the thread, the bot could never ask about
+availability again for the rest of the conversation.
+
+So this happened:
+
+> **Customer:** Tuesday afternoon works for me
+> **Bot:** *(collects the rest, carries on)*
+> **Customer:** Something came up, Tuesday won't work
+> **Bot:** *cannot ask what day would* — `ask_availability` is refused as
+> "availability has already been given", and the refusal tells it to move the
+> conversation on instead.
+
+The customer has withdrawn the only slot we had, and every move still open to
+the bot is a way of not mentioning it.
+
+**What it does now.** A message that takes back a day reopens the question, and
+the bot asks what day works instead — the question a person would ask. Three
+things about how it is drawn:
+
+- **It needs a day or a time in the same message.** "No me sirve" and "that
+  won't work" are at least as often about the price or a paint shade, and a
+  customer who has just objected to a quote must not be asked for their
+  availability all over again. The cost is that a bare "that no longer works"
+  with no day in it is not read as a retraction.
+- **It asks for the day, not just the window.** "Tuesday won't work" has
+  Tuesday in it, so reading the message for a day would leave us narrowing a
+  time against the day they just withdrew.
+- **English and Spanish together**, including "surgió algo", "ya no me sirve"
+  and "tengo que cambiar".
+
+**→ Nothing is blocked on this.** The alternative was a conversation that
+cannot be rescheduled, which is worse than asking one question again. Two
+things to tell us if you disagree: whether re-asking the **day** is right or it
+should offer a specific alternative, and whether a withdrawal should instead go
+straight to a person — it is a customer with a changed plan, which may be a
+human's job rather than the bot's.
