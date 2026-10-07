@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { capabilitiesFor, isAdminProfile, roleForProfile } from "@/lib/auth/roles";
 
@@ -77,25 +77,72 @@ describe("the menu and the page agree about who is an admin", () => {
   });
 });
 
-describe("the hub reads the role, not only the legacy flag", () => {
-  it("all three surfaces call the shared derivation, not their own", () => {
+describe("every residential admin gate uses the shared derivation", () => {
+  /**
+   * SCOPE IS THE WHOLE POINT. The first version of this banned the old
+   * expression in three NAMED files — the three that had just been fixed — and
+   * passed while 51 other call sites still carried it. jason.eng@ could open
+   * the Settings hub and was then bounced from Suppliers, Customer Copy,
+   * Writeback, Integrations and the ~25 /api/admin routes behind them.
+   *
+   * A guard scoped to the files you already fixed cannot fail. This walks the
+   * tree instead.
+   */
+  const ROOTS = ["app/dashboard", "app/api/admin", "lib/auth"];
+  const BAD = /is_admin \?\? isAdminEmail/;
+
+  function walk(dir: string): string[] {
+    const out: string[] = [];
+    for (const e of readdirSync(join(root, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) out.push(...walk(rel));
+      else if (/\.(ts|tsx)$/.test(e.name)) out.push(rel);
+    }
+    return out;
+  }
+
+  it("has no file left computing it by hand", () => {
+    const offenders: string[] = [];
+    let scanned = 0;
+    for (const dir of ROOTS) {
+      for (const f of walk(dir)) {
+        scanned++;
+        // Comments are allowed to quote the old expression — roles.ts explains
+        // it. Strip them, so the ban is on CODE.
+        const src = readFileSync(join(root, f), "utf8")
+          .replace(/\/\*[\s\S]*?\*\//g, " ")
+          .replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+        if (BAD.test(src)) offenders.push(f);
+      }
+    }
+    // An audit must prove it measured: a zero-file scan is a fake pass.
+    expect(scanned).toBeGreaterThan(60);
+    expect(offenders, `${scanned} files scanned`).toEqual([]);
+  });
+
+  it("the three originally-fixed surfaces call it by name", () => {
     const strip = (s: string) =>
       s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
-    const hub = strip(read("app/dashboard/settings/page.tsx"));
-    const access = strip(read("app/dashboard/settings/access/page.tsx"));
-    const viewer = strip(read("lib/auth/viewer-server.ts"));
+    expect(strip(read("app/dashboard/settings/page.tsx"))).toMatch(/isAdminProfile\(profile, isAdminEmail\(user\.email\)\)/);
+    expect(strip(read("app/dashboard/settings/access/page.tsx"))).toMatch(/roleForProfile\(profile, isAdminEmail\(user\.email\)\)/);
+    expect(strip(read("lib/auth/viewer-server.ts"))).toMatch(/roleForProfile\(profile, isAdminEmail\(profile\.email\)\)/);
+  });
 
-    expect(hub).toMatch(/isAdminProfile\(profile, isAdminEmail\(user\.email\)\)/);
-    expect(access).toMatch(/roleForProfile\(profile, isAdminEmail\(user\.email\)\)/);
-    expect(viewer).toMatch(/roleForProfile\(profile, isAdminEmail\(profile\.email\)\)/);
-
-    // And none of them still rolls its own. `??` between the flag and the
-    // allow-list is the exact bug, twice.
-    for (const [name, src] of [["hub", hub], ["access", access], ["viewer", viewer]] as const) {
-      expect(src, name).not.toMatch(/is_admin \?\? isAdminEmail/);
-    }
+  it("a Google sign-in cannot demote an admin granted in Settings", () => {
+    // The ROOT CAUSE of the drift: /auth/callback passed the bootstrap-list
+    // result straight into upsertProfile, so every Google sign-in reset
+    // is_admin to "are they hardcoded". That is how jason.eng@ got role
+    // 'admin' with is_admin false. Raise only, never lower.
+    const prof = strip2(read("lib/auth/profile.ts"));
+    expect(prof).toMatch(/const isAdmin =\s*input\.is_admin \|\| existing\?\.is_admin === true \|\| existing\?\.role === "admin"/);
+    expect(prof).toMatch(/is_admin: isAdmin,/);
+    expect(prof).not.toMatch(/is_admin: input\.is_admin,/);
   });
 });
+
+function strip2(s: string): string {
+  return s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+}
 
 describe("the shared derivation itself", () => {
   /**

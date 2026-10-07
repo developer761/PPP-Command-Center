@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, logViewAs, invalidateProfileCache } from "@/lib/auth/profile";
-import { normalizeRole } from "@/lib/auth/roles";
+import { roleForProfile } from "@/lib/auth/roles";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { PROXY_COOKIE, PROXY_COOKIE_OPTIONS, readProxyCookie } from "@/lib/auth/proxy";
 
@@ -25,7 +25,7 @@ async function requireRealAdmin() {
   if (!data?.user) return { error: NextResponse.json({ error: "unauthorized" }, { status: 401 }) };
 
   const profile = await getProfileByUserId(data.user.id, { ignoreProxy: true });
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
+  const role = roleForProfile(profile, isAdminEmail(data.user.email));
   if (role !== "admin" || profile?.is_active === false) {
     return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }

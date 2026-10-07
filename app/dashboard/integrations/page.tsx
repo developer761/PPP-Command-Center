@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { notFound } from "next/navigation";
 import PageHeader from "@/components/page-header";
 import {
@@ -36,7 +37,7 @@ export default async function IntegrationsPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
   const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(user.email));
   if (!isAdmin) notFound();
 
   const sp = await searchParams;

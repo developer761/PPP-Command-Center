@@ -3,7 +3,7 @@ import DashboardChrome from "@/components/dashboard-chrome";
 import { isAdminEmail, isAllowedToSignIn } from "@/lib/auth/admin";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getCurrentUser } from "@/lib/auth/session";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 
 export default async function DashboardLayout({
   children,
@@ -125,7 +125,7 @@ export default async function DashboardLayout({
   // Defense-in-depth: if the profile row is missing (DB blip, first-login
   // race before /auth/callback finishes), fall back to the env admin list so
   // a real admin doesn't lose the View Switcher and re-fetch in a hot loop.
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(email));
+  const role = roleForProfile(profile, isAdminEmail(email));
   const caps = capabilitiesFor(role);
   const isAdmin = caps.isAdmin;
   const isAccountManager = caps.isAccountManager;

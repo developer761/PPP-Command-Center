@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -19,7 +20,7 @@ export default async function TestFormPage() {
   const { data } = await supabase.auth.getUser();
   if (!data?.user) redirect("/");
   const profile = await getProfileByUserId(data.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(data.user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(data.user.email));
   if (!isAdmin) redirect("/dashboard");
   return <TestFormView userEmail={data.user.email ?? ""} />;
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
   const { data } = await supabase.auth.getUser();
   if (!data?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const profile = await getProfileByUserId(data.user.id);
-  if (!(profile?.is_admin ?? isAdminEmail(data.user.email))) {
+  if (!(isAdminProfile(profile, isAdminEmail(data.user.email)))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

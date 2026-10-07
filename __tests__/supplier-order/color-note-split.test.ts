@@ -136,3 +136,64 @@ describe("the scope line", () => {
     expect(splitColorNoteOffer("HC-6 Kendall Charcoal", "   ").scope).toBeNull();
   });
 });
+
+describe("a sheen is never peeled out of the middle of a color", () => {
+  /**
+   * Every string below is REAL — taken from the production
+   * supplier_order_builds table or from Benjamin Moore's catalog. The first
+   * version of the separator made punctuation optional, so each of these lost
+   * its last word to the finish field and the vendor was sent wrong paint.
+   */
+  it("leaves the unhyphenated spellings PPP's reps actually type", () => {
+    for (const line of [
+      "Behr 56 Semigloss",
+      "Navajo White Softgloss",
+      "Hale Navy highgloss",
+      "2124-10 wrought Iron rs matte",
+      "rs semi white dove oc-17",
+    ]) {
+      expect(splitFinish(line), line).toEqual({ color: line, finish: null });
+    }
+  });
+
+  it("leaves real colors whose NAME ends in a sheen word", () => {
+    // Black Pearl and Blue Velvet are colors, not a color plus a sheen.
+    for (const line of ["Black Pearl", "Blue Velvet", "Pearl Harbor", "Satin Slipper"]) {
+      expect(splitFinish(line), line).toEqual({ color: line, finish: null });
+    }
+  });
+
+  it("still splits when the rep actually punctuated it", () => {
+    // The whole reason the feature exists — Kate's own line, and the forms
+    // that appear beside it.
+    expect(splitFinish("Super White - Flat")).toEqual({ color: "Super White", finish: "Flat" });
+    expect(splitFinish("HC-172 Revere Pewter · Eggshell")).toEqual({
+      color: "HC-172 Revere Pewter",
+      finish: "Eggshell",
+    });
+  });
+
+  it("leaves a punctuated but MISSPELLED sheen inside the color", () => {
+    // "Semigloss" is not a value in the finish vocabulary — "Semi-Gloss" is —
+    // so this does not split even though the rep punctuated it. Deliberate,
+    // and harmless: the vendor reads the whole string and gets the right
+    // information, it is just not in the finish field. Teaching the splitter
+    // unhyphenated aliases is the obvious next step and was NOT taken the night
+    // before a rollout, because every alias widens the surface that produced
+    // "Black Pearl" → "Black". Real line, from production.
+    expect(splitFinish("HC-166 Kendall Charcoal, Semigloss")).toEqual({
+      color: "HC-166 Kendall Charcoal, Semigloss",
+      finish: null,
+    });
+  });
+
+  it("under-splits rather than corrupts, on purpose", () => {
+    // A sheen left inside the color reaches the vendor as readable text and
+    // the estimator can move it. An amputated color is wrong paint. If this
+    // ever flips to splitting on whitespace, the cases above come back.
+    const out = splitColorNoteOffer("Ceiling: Super White Flat", "All rooms");
+    expect(out.color).toBe("Super White Flat");
+    expect(out.finish).toBeNull();
+    expect(out.scope).toBe("Ceiling — All rooms");
+  });
+});

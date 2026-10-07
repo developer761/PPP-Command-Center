@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { normalizeRole, roleLabel } from "@/lib/auth/roles";
+import { roleForProfile, roleLabel } from "@/lib/auth/roles";
 import PageHeader from "@/components/page-header";
 import ChangePasswordForm from "@/components/change-password-form";
 import AccountPhoneForm from "@/components/account-phone-form";
@@ -29,7 +29,7 @@ export default async function AccountPage() {
   // session — so without ignoreProxy the field would display one person's state
   // and save over another's.
   const ownProfile = await getProfileByUserId(user.id, { ignoreProxy: true });
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  const role = roleForProfile(profile, isAdminEmail(user.email));
   const name = profile?.sf_user_name ?? profile?.full_name ?? user.email?.split("@")[0] ?? "";
   const provider = profile?.auth_provider === "password" ? "Email & password" : "Google";
 

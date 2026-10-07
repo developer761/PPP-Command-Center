@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { normalizeFulfillmentState } from "@/lib/supplier-order/fulfillment-state";
 
 /**
@@ -31,7 +31,7 @@ async function authorize() {
     return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
   const canOrder = capabilitiesFor(
-    normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email))
+    roleForProfile(profile, isAdminEmail(data.user.email))
   ).canOrderMaterials;
   if (!canOrder) return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   return { userId: data.user.id };

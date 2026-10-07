@@ -222,6 +222,23 @@ export async function upsertProfile(input: {
   initial_new_platform_access?: boolean;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = adminClient();
+
+  // `input.is_admin` is the BOOTSTRAP EMAIL LIST, not a decision about this
+  // person. Writing it straight through meant every Google sign-in reset the
+  // flag to "are they hardcoded in lib/auth/admin.ts" — so anyone promoted in
+  // Settings → Access (which sets is_admin TRUE alongside role 'admin') was
+  // silently demoted the next time they clicked Sign in with Google.
+  //
+  // That is how jason.eng@ ended up with role 'admin' and is_admin FALSE: the
+  // row the whole 2026-10-05/06 admin-gate split came from. Raising only —
+  // never lowering — is the same rule `initial_new_platform_access` below
+  // already follows, and for the same reason.
+  //
+  // Demotion still works: it happens through Settings → Access, which writes
+  // role and is_admin together, and role is what every gate now reads.
+  const existing = await loadProfile(input.user_id).catch(() => null);
+  const isAdmin = input.is_admin || existing?.is_admin === true || existing?.role === "admin";
+
   const { error } = await sb
     .from("profiles")
     .upsert(
@@ -230,7 +247,7 @@ export async function upsertProfile(input: {
         email: input.email,
         sf_user_id: input.sf_user_id,
         sf_user_name: input.sf_user_name,
-        is_admin: input.is_admin,
+        is_admin: isAdmin,
         is_active: input.is_active,
         last_login_at: new Date().toISOString(),
       },

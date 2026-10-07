@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole, homeHrefFor } from "@/lib/auth/roles";
+import { capabilitiesFor, homeHrefFor, roleForProfile } from "@/lib/auth/roles";
 
 /**
  * Server guard for the analytics + finance surfaces (R4.1).
@@ -29,7 +29,7 @@ export async function requireAnalyticsAccess(): Promise<void> {
   if (profile && profile.is_active === false && !isAdminEmail(user.email)) {
     redirect("/");
   }
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  const role = roleForProfile(profile, isAdminEmail(user.email));
   if (!capabilitiesFor(role).canSeeAnalytics) {
     redirect(homeHrefFor(role));
   }

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -21,7 +22,7 @@ export default async function HealthPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(user.email));
   if (!isAdmin) redirect("/dashboard");
 
   return (
