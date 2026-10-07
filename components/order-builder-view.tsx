@@ -2389,7 +2389,12 @@ function CustomSundryItem({ onAdd }: { onAdd: (name: string, qty: number, unit: 
   const add = () => {
     const n = name.trim();
     if (!n) return;
-    onAdd(n, Math.max(1, Math.floor(Number(qty) || 1)), unit.trim() || "each");
+    // Clamped to 99 like setExtraQty and every other quantity path. Without
+    // the upper bound a typed 999 showed as "×999 each" on the builder until
+    // the page reloaded and the persistence normalize snapped it to 99 — so
+    // the screen and the saved order disagreed, which is the shape of the bug
+    // rather than the size of it. The vendor email was never affected.
+    onAdd(n, Math.max(1, Math.min(99, Math.floor(Number(qty) || 1))), unit.trim() || "each");
     setName("");
     setQty("1");
     setUnit("each");

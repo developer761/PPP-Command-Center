@@ -283,3 +283,53 @@ describe("a preview must look like the real thing", () => {
     expect(real.subject).toContain("Your color selections");
   });
 });
+
+/**
+ * A notes-only submission — the customer wrote to us instead of picking.
+ *
+ * The receipt rendered the color table anyway: three column headings,
+ * SURFACE / COLOR / FINISH, over nothing, beneath a green "Color selections
+ * received". Both halves were wrong at once, and the reader is someone who had
+ * just told us they were not ready to pick yet.
+ */
+describe("a receipt for notes with no colors", () => {
+  const notesOnly = () =>
+    build({
+      rooms: buildReceiptRooms({
+        lineItems: [{ id: "li-1", surfaces: [], notes: "" }],
+        roomLabelById: ROOM_LABELS,
+      }),
+      globalNotes: "Not ready to choose yet — I'll call you Monday.",
+    });
+
+  it("does not draw an empty table", () => {
+    const { html } = notesOnly();
+    // The headings are the giveaway: present means the table rendered.
+    expect(html).not.toMatch(/>Surface</i);
+    expect(html).not.toMatch(/>Finish</i);
+  });
+
+  it("says notes were received, not colors", () => {
+    const { html } = notesOnly();
+    expect(html).toContain("Notes received");
+    expect(html).not.toContain("Color selections received");
+  });
+
+  it("still carries the note itself and the edit button", () => {
+    // The point of sending it at all.
+    const { html, text } = notesOnly();
+    // Substring without the apostrophe — it is HTML-escaped in `html` and raw
+    // in `text`, and which one is not the point of this assertion.
+    expect(html).toContain("Not ready to choose yet");
+    expect(html).toContain("call you Monday");
+    expect(text).toContain("Not ready to choose yet");
+    expect(html).toMatch(/https:\/\/hub\.example\/select\/tok/);
+  });
+
+  it("still draws the table and says colors when there ARE colors", () => {
+    // The guard must not have turned the normal receipt off.
+    const { html } = build();
+    expect(html).toMatch(/>Surface</i);
+    expect(html).toContain("Color selections received");
+  });
+});
