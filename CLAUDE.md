@@ -135,7 +135,11 @@ docs/                   — planning docs (PHASE_2_PLAN.md, etc.)
 # Dev server (Turbopack)
 npm run dev
 
-# Type check
+# EVERY GATE, IN ORDER — run this after committing, before pushing (~2½ min)
+npm run gates          # tsc → wiring → unpassed options → lint budget → vitest → build
+npm run gates -- --fast  # the first four only; stamps nothing, so it cannot satisfy the hook
+
+# Type check on its own
 npx tsc --noEmit
 
 # Test the live URL via curl
@@ -144,6 +148,25 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" https://hub.precisionpaintingplus.
 # Git push (PAT-inline pattern documented in project_ppp_auth_setup_pending; PAT also strippable from .git/config)
 git push origin main
 ```
+
+### The push is gated
+
+`npm run gates` stamps the git **tree** that passed into `.gates/verified`
+(gitignored), and `scripts/hooks/pre-push` refuses any push whose tree is not
+that one. `npm install` wires it via `prepare`; it exits quietly on CI and
+Vercel, where there is nothing to hook.
+
+So the order is **commit, then gates, then push** — gates run before the commit
+certify a tree you are not pushing, and the hook will say so. A `git pull
+--rebase` that brings anything in changes the tree too, which is the point:
+somebody else's work merged into yours has not been tested together until you
+re-run them.
+
+This exists because a merge to `main` here **is** a production deploy, a failed
+Vercel build leaves production silently on the old code, and on 2026-10-07 a
+commit went out behind a build that had exited 1 — the code printed the exit
+code and pushed anyway. `git push --no-verify` is the escape hatch; it is the
+right move for a revert you need out now and the wrong one for everything else.
 
 ---
 
