@@ -6,7 +6,7 @@
  * indistinguishable from one the system never saw, and that is the single
  * hardest thing to debug in a system like this.
  */
-import { matchesAll, matchesAny, firstFailing, firstMatching, describeRule, type Rule, type LeadRecord } from "./rules";
+import { matchesAll, matchesAny, firstFailing, firstMatching, describeRule, readField, type Rule, type LeadRecord } from "./rules";
 
 export type Workflow = {
   id: string;
@@ -58,12 +58,49 @@ export function chooseWorkflow(
 }
 
 export type ExitDecision =
-  | { exit: true; reason: string }
+  | { exit: true; reason: string; outcome: ConversationOutcome }
   | { exit: false };
+
+/**
+ * How a conversation that stops chasing should be RECORDED.
+ *
+ * Every exit wrote `outcome: "success"`. The seeded exit set is "Stop chasing
+ * — booked, qualified or opted out", and two of its five rules are not
+ * successes by anybody's reading:
+ *
+ *   Status = Unqualified          the office looked and said no
+ *   SMS_Opt_In__c = Opt-Out       they asked us to stop
+ *
+ * Both were filed as bookings. That is the headline number Kate judges the bot
+ * by, wrong in the most flattering direction, which is the worst way for a
+ * number to be wrong — a bot that drives people to opt out would have looked
+ * like a bot that books.
+ *
+ * Read from the RECORD rather than from the rule that matched, because what
+ * happened to the lead is a fact about the lead; a workspace that rewords its
+ * rules does not change what "Unqualified" means.
+ *
+ * Anything this does not recognise stays `success`, which is the previous
+ * behaviour: the four other seeded rules — converted, an appointment booked,
+ * the opportunity assigned, qualified — all genuinely are one.
+ */
+export type ConversationOutcome = "success" | "lost";
+
+export function outcomeForExit(record: LeadRecord): ConversationOutcome {
+  const status = String(readField(record, "Status") ?? "").trim().toLowerCase();
+  if (status === "unqualified") return "lost";
+  const optIn = String(readField(record, "SMS_Opt_In__c") ?? "").trim().toLowerCase();
+  if (optIn === "opt-out") return "lost";
+  return "success";
+}
 
 /** Any exit rule matching means stop, and the reason is recorded on the row. */
 export function shouldExit(workflow: Workflow, record: LeadRecord, now: Date): ExitDecision {
   if (!matchesAny(workflow.exitRules, record, now)) return { exit: false };
   const rule = firstMatching(workflow.exitRules, record, now);
-  return { exit: true, reason: rule ? describeRule(rule) : "an exit rule matched" };
+  return {
+    exit: true,
+    reason: rule ? describeRule(rule) : "an exit rule matched",
+    outcome: outcomeForExit(record),
+  };
 }
