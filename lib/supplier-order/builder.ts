@@ -1030,7 +1030,13 @@ export function formatOrderSummaryBlock(
     // R4.24: the name usually already carries the code ("1421 Bistro Blue"),
     // and sometimes IS the code ("Super White"). Appending unconditionally
     // produced "1421 Bistro Blue 1421".
-    const label = formatColorLabel(e.colorName, e.colorCode);
+    // formatColorLabel returns "" when the name AND the code are both blank,
+    // which emailed a vendor "4 gal — Ultra Spec —  · Eggshell": a quantity, a
+    // product, a sheen, and no color. Dropping the line instead would be worse
+    // — PPP is still buying it, and a silently missing line is the one nobody
+    // notices until the crew is on site. Say it where it cannot be missed, the
+    // same way [NOT SET] marks a missing product line.
+    const label = formatColorLabel(e.colorName, e.colorCode) || "[COLOR NOT SET]";
     // Finish stays. Kate's R4.30 mock-up omits it, but the estimator buckets on
     // `colorId::finish` precisely because two sheens of one color are two
     // different SKUs — dropping it would have a vendor mix one sheen for a
