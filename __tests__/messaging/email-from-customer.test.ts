@@ -109,3 +109,42 @@ describe("the email the thread knows", () => {
     expect(r.emailFromChat).toBe(false);
   });
 });
+
+/**
+ * PPP HAS TWO DOMAINS AND THIS KNEW ONE.
+ *
+ * lib/brand.ts carries the website, which is the .net. lib/auth/admin.ts has
+ * had BOTH on its sign-in allow-list since the start, with a
+ * crossDomainEmailVariant helper whose entire job is that kate@ppp.net and
+ * kate@ppp.com are the same company. Only the .net was excluded here.
+ *
+ * Found by a detector written to answer "how do we keep missing simple
+ * things": it looks for an option a function offers that nothing ever passes.
+ * `ours` — the hook for supplying more of our own domains — was declared,
+ * covered by a test, and never supplied by production. The same shape as the
+ * availability flag that made a conversation unclosable: a capability the
+ * product did not actually have.
+ */
+describe("one of PPP's own addresses is never the customer's", () => {
+  it("does not hand back the .com when that is all they named", () => {
+    // This was returned as the customer's email, written to customer_email,
+    // and the quote would have been sent to PPP instead of to them.
+    expect(emailFromCustomer("just send it to estimates@precisionpaintingplus.com")).toBeNull();
+  });
+
+  it("finds theirs when they name ours alongside it", () => {
+    // Two addresses survived the filter, so it refused and returned nothing —
+    // and the bot asked again for what they had just given.
+    expect(emailFromCustomer("your estimates@precisionpaintingplus.com never replied, mine is tom@example.com"))
+      .toBe("tom@example.com");
+  });
+
+  it("still excludes the .net, which always worked", () => {
+    expect(emailFromCustomer("not info@precisionpaintingplus.net, use tom@example.com"))
+      .toBe("tom@example.com");
+  });
+
+  it("leaves a customer on an unrelated domain alone", () => {
+    expect(emailFromCustomer("tom@precisionpainting.com")).toBe("tom@precisionpainting.com");
+  });
+});

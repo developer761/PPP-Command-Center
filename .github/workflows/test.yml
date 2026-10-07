@@ -72,6 +72,15 @@ jobs:
       # was never a reason for it to be missing here beyond nobody adding it.
       - run: npm run check:rules
 
+      # AN OPTION NOTHING PASSES, which is a capability the product does not
+      # have. Karan, 2026-10-07: "how do we keep missing so many simple
+      # issues" — because they are not wrong code, they are correct code
+      # nobody calls, and a unit test calls the thing itself so it cannot see
+      # that. This catches the shape that cost the most today: Kate's rule
+      # that a bare "yes" counts as availability, implemented, tested, and
+      # never reachable, so the best leads could not be closed.
+      - run: npm run check:options
+
       # The lint budget, for the same reason: a number that only ever goes up
       # is not a budget.
       - run: npm run lint:budget

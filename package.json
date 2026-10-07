@@ -65,7 +65,8 @@
     "verify:surfaces": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-surfaces-e2e.mjs",
     "verify:clock": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-customer-clock-e2e.mjs",
     "verify:iteration-1": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-iteration-1.mjs",
-    "check:rules": "node scripts/check-rules-are-wired.mjs"
+    "check:rules": "node scripts/check-rules-are-wired.mjs",
+    "check:options": "node scripts/check-unpassed-options.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

@@ -56,7 +56,7 @@ type ConversationRow = {
  */
 export async function sweepStalled(
   sb: SupabaseClient,
-  opts: { now?: Date; officeZoneFor?: (workspaceId: string) => string } = {}
+  opts: { now?: Date; officeZoneFor?: (workspaceId: string) => string | undefined } = {}
 ): Promise<{ scanned: number; queued: number; failed: number; skipped: Record<string, number> }> {
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - QUIET_HOURS_BEFORE_STALL * 3600_000).toISOString();
@@ -72,6 +72,33 @@ export async function sweepStalled(
       .range(from, to),
     "sms_conversations (stall sweep)"
   );
+
+  /**
+   * EACH WORKSPACE'S OWN CLOCK, which nothing was supplying.
+   *
+   * `officeZoneFor` has been an option here since this was written and no
+   * caller ever passed it — the cron calls `sweepStalled(messagingDb())` — so
+   * followUpSchedule fell back to OFFICE_ZONE, Eastern, for every workspace.
+   *
+   * The GATE does not: it uses `ws.time_zone`, which the settings screen calls
+   * "when each workspace is allowed to text, and in which timezone". So the
+   * two halves disagreed about the same window. A follow-up for CA LA Leads
+   * was placed at 9 AM Eastern — 6 AM where that customer is — and the gate
+   * then refused it as quiet hours and pushed it to the next opening. Not a
+   * lost message; a late one, and a tick spent discovering that.
+   *
+   * The option stays, because a test wants to choose the zone, but it now has
+   * a real default rather than an absent one.
+   */
+  const { data: wsRows } = await sb.from("sms_sub_accounts").select("id, time_zone");
+  const zoneByWorkspace = new Map(
+    (wsRows ?? []).map((w) => [
+      (w as { id: string }).id,
+      (w as { time_zone?: string | null }).time_zone ?? null,
+    ])
+  );
+  const officeZoneFor = opts.officeZoneFor
+    ?? ((workspaceId: string) => zoneByWorkspace.get(workspaceId) ?? undefined);
 
   const skipped: Record<string, number> = {};
   const note = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
@@ -192,7 +219,7 @@ export async function sweepStalled(
       // immediately due, and go out together on the next tick.
       notBefore: now,
       customerZone: zone,
-      officeZone: opts.officeZoneFor?.(c.workspace_id),
+      officeZone: officeZoneFor(c.workspace_id),
       unreachable: c.unreachable_start_hour === null ? null : {
         startHour: c.unreachable_start_hour,
         endHour: c.unreachable_end_hour ?? c.unreachable_start_hour,
