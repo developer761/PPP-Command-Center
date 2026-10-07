@@ -207,22 +207,61 @@ const combinedSentence = findCombined(pText);
 ok("does not still quote a combined marketing+SMS consent sentence", !combinedSentence,
    combinedSentence ? `still reproduced here: "${combinedSentence.slice(0, 160)}"` : "");
 
-/* ── 3. Terms & Conditions ─────────────────────────────────────────────── */
-head("3. Terms & Conditions");
+/* ── 3. The SMS programme terms ────────────────────────────────────────── */
+head("3. The SMS terms, wherever they live");
+/**
+ * ON WHICHEVER PAGE WE REGISTER, NOT NECESSARILY THE TERMS PAGE.
+ *
+ * This asserted the terms section on /terms-conditions/ because that is the
+ * URL first given to Twilio. Katie's question on 2026-10-06 was the right one:
+ * that page is PPP's promotions terms — the $199 room offer, the satisfaction
+ * guarantee — and SMS terms read oddly bolted onto it.
+ *
+ * The requirement is not about a page title. It is that the URL submitted as
+ * the campaign's terms link carries the programme terms a reviewer checks for.
+ * So the check looks on both candidate pages and NAMES the one to register,
+ * rather than dictating where PPP writes it.
+ */
 const terms = await get(TERMS);
 const tText = textOf(withoutEmbeddedForm(terms.html));
-ok("loads", terms.status === 200, String(terms.status));
-ok('titled "Terms & Conditions" or "Terms of Service"',
-   /<title[^>]*>[^<]*(Terms\s*(&amp;|&|and)?\s*Conditions|Terms of Service)/i.test(terms.html));
-ok("names the brand", /Precision Painting Plus/i.test(tText));
-ok("carries a rates disclosure", /rates may apply/i.test(tText));
-/**
- * A HEADED SECTION, not the consent sentence leaking in from an embedded copy
- * of the form. That is what the page had when it was first checked, and it is
- * not what the requirement asks for.
- */
-ok("has a headed SMS Terms section",
-   /SMS\s*TERMS|Text\s*Messaging\s*Terms/i.test(tText));
+ok("the terms page loads", terms.status === 200, String(terms.status));
+
+const SMS_TERMS_HEADING = /SMS\s*TERMS|Text\s*Messaging\s*Terms|SMS\s*Program\s*Terms/i;
+/** The section, from its heading to the next one, so the checks below read IT. */
+function smsTermsSection(text) {
+  const m = SMS_TERMS_HEADING.exec(text);
+  if (!m) return null;
+  const after = text.slice(m.index);
+  // Up to the next ALL-CAPS heading, or 1,200 characters, whichever is first.
+  const next = /\.\s+[A-Z][A-Z &'/]{9,}/.exec(after.slice(m[0].length));
+  return after.slice(0, next ? m[0].length + next.index + 1 : 1200);
+}
+
+const candidates = [
+  { label: "Privacy Policy", url: PRIVACY, section: smsTermsSection(pText) },
+  { label: "Terms & Conditions", url: TERMS, section: smsTermsSection(tText) },
+];
+const carrying = candidates.filter((c) => c.section);
+ok("a headed SMS Terms section exists somewhere we can point Twilio at",
+   carrying.length > 0,
+   carrying.length ? `on the ${carrying.map((c) => c.label).join(" and the ")}` : "neither page has one");
+
+if (carrying.length) {
+  // Read the FIRST one that has it; that is the URL to submit.
+  const s = carrying[0].section;
+  console.log(`     → register this URL as the campaign's terms link: ${carrying[0].url}`);
+  ok("  the section names the brand", /Precision Painting Plus/i.test(s));
+  ok("  the section says what the messages are about",
+     /estimate|scheduling|customer service|appointment/i.test(s));
+  ok("  the section carries message frequency", /frequency\s+varies|message\s+frequency/i.test(s));
+  ok("  the section carries the rates disclosure", /rates\s+may\s+apply/i.test(s));
+  ok("  the section carries STOP", /\bSTOP\b/.test(s));
+  ok("  the section carries HELP", /\bHELP\b/.test(s));
+  // Not required by every carrier, and reviewers look for it.
+  if (!/carriers?\s+are\s+not\s+liable|not\s+liable\s+for\s+delayed/i.test(s)) {
+    note("  no carrier-liability sentence", "accepted without it, but reviewers look for one");
+  }
+}
 
 /* ── 4. The URLs we gave Twilio ────────────────────────────────────────── */
 head("4. The URLs on the registrations resolve");
