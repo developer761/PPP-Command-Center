@@ -1095,19 +1095,62 @@ const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
  * and then walked round again by the translation of that template.
  */
 const ASKS_ABOUT_TIMING =
-  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i
-  ;
+  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i;
 
+/**
+ * THE SPANISH HALF, AND IT WAS WIDER THAN THE ENGLISH ONE IT MIRRORS.
+ *
+ * Bare `mejor`, `sirve` and `conviene` came in with the translation. None has
+ * an English counterpart here — the English side matches the PHRASE "work
+ * best", never the bare word "best" — and each of them carries a second,
+ * commoner meaning that is not about timing at all:
+ *
+ *   "Le sirve?"                   does that work for you — a consent question
+ *                                 at the end of offer_estimator_call, whose
+ *                                 whole job is to ASK. Stripped, the offer
+ *                                 became an assertion with nothing asked.
+ *   "Disculpe. Qué le            an apology plus "what would suit you
+ *    funcionaría mejor?"           better". Stripped on `mejor`, the entire
+ *                                 message PPP sent was the word "Disculpe."
+ *
+ * So `mejor` is matched only where English matches it — bound to a verb of
+ * suiting or to a unit of time — and the two bare verbs are gone. The
+ * question that started all this, "Qué días le funcionan mejor?", still
+ * matches on `días`, which is the part that makes it a timing question.
+ */
 const ASKS_ABOUT_TIMING_ES =
-  /\b(?:d[íi]as?|horas?|horario|hora|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?|funcionan?|conviene|sirve|mejor)\b/i;
+  /\b(?:d[íi]as?|horas?|horario|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?)\b/i;
+/**
+ * `[a-záéíóúñ]*`, NOT `\w*`. Without the u flag `\w` is [A-Za-z0-9_] and does
+ * not match "í" — and the conditional is exactly where Spanish puts this
+ * question: "funcionaría", "convendría", "quedaría". A first cut used `\w*`,
+ * matched none of them, and so the template this rule was written for passed
+ * its test by never reaching the rule at all.
+ */
+const SUITS_BEST_ES =
+  /\b(?:funciona|queda|conviene|sirve|viene|va)[a-záéíóúñ]*\s+mejor\b|\bmejor\s+(?:d[íi]a|hora|momento|horario)\b/i;
 
 function withoutATimingQuestion(body: string): string {
   const sentences = body.split(/(?<=[.?!])\s+/);
   const last = sentences[sentences.length - 1] ?? "";
   if (!last.includes("?")) return body;
-  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last)) return body;
+  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last) && !SUITS_BEST_ES.test(last)) return body;
   const kept = sentences.slice(0, -1).join(" ").trim();
-  return kept || body;
+  /**
+   * AND WHAT IS LEFT HAS TO BE A MESSAGE.
+   *
+   * `kept || body` only caught the empty case. "Disculpe." is not empty and is
+   * not a message either — it is the apology that preceded the question, sent
+   * on its own to a customer who asked us something. A text that says nothing
+   * is worse than one asking a question slightly too early: the customer reads
+   * it as the bot breaking, and nothing in the thread invites them to reply.
+   *
+   * BARE_ACKNOWLEDGEMENT is the test the validator already applies to the
+   * model's own rapport, and it already covers both languages including
+   * "disculpe" — so this is the same standard, not a second opinion about it.
+   */
+  if (!kept || BARE_ACKNOWLEDGEMENT.test(kept)) return body;
+  return kept;
 }
 
 /** Availability is the fourth leg, so it is due only once three are done. */
