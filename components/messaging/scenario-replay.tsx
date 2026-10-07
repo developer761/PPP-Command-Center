@@ -134,6 +134,28 @@ export default function ScenarioReplay({ scenarios }: { scenarios: ScenarioSumma
                         </p>
                       )}
 
+                      {/*
+                        WHAT THE GRADER SAID IT SHOULD DO, AND WHETHER IT NOW
+                        DOES. The sandbox asks for this on every turn marked
+                        wrong and it was stored and never read again — the one
+                        person who knew the right answer typing it into a field
+                        that went nowhere. It is also the only thing that can
+                        tell "it changed" from "it changed to what we asked
+                        for".
+                      */}
+                      {t.expectedIntent && (
+                        <p className={[
+                          "mt-1 text-[11.5px] leading-snug",
+                          t.matchedExpectation ? "text-ppp-charcoal-600" : "text-ppp-orange-700",
+                        ].join(" ")}>
+                          {t.matchedExpectation ? "Does now" : "Still not"} what you asked for:{" "}
+                          <span className="font-mono text-[11px]">{t.expectedIntent}</span>
+                          {!t.matchedExpectation && t.after.intent && (
+                            <> — it chose <span className="font-mono text-[11px]">{t.after.intent}</span></>
+                          )}
+                        </p>
+                      )}
+
                       {t.status !== "unchanged" && (
                         <div className="mt-1.5 space-y-1">
                           <p className="text-[12px] text-ppp-charcoal-400 leading-snug">
