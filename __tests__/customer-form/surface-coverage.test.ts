@@ -10,7 +10,23 @@ import { STANDARD_SURFACES, ORPHAN_SURFACES, classifySurface } from "@/lib/custo
  * classifies as "unknown" — so if someone adds a picklist value in Salesforce
  * and doesn't add it here, the form will happily show the surface, the customer
  * will pick a color for it, and the submit will drop it on the floor with no
- * error on either end. This test is the tripwire for that.
+ * error on either end.
+ *
+ * ⚠ THIS FILE IS NOT THE TRIPWIRE FOR THAT, and used to say it was.
+ *
+ * SF_PICKLIST below is a SECOND HARDCODED COPY of the org's values. Comparing
+ * our list against our own copy of theirs cannot detect the org changing — add
+ * a surface in Salesforce and every assertion here stays green, which is the
+ * precise scenario the paragraph above describes. A check that cannot fail on
+ * the thing it names is worse than none.
+ *
+ * The real check lives in `npm run check:sf-picklists`, which reads
+ * Surfaces__c off the live describe and exits non-zero on any value this
+ * classifier calls unknown. Verified to fail by removing one (2026-10-06).
+ *
+ * What this file IS good for, and all it now claims: the classifier's own
+ * logic — the standard/orphan split, and the case- and plural-tolerance that
+ * matching free text requires.
  */
 const SF_PICKLIST = [
   "Walls", "Ceiling", "Trim", "Floor",
