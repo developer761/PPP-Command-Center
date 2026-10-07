@@ -47,16 +47,37 @@ export type EnrolResult =
 
 /** Workflows for one workspace, with their rule sets loaded. */
 export async function workflowsFor(sb: SupabaseClient, workspaceId: string): Promise<Workflow[]> {
-  const { data: rows } = await sb
+  /**
+   * BOTH READS THROW. They discarded their errors, and the second one turned a
+   * transient database failure into the exact bug this feature exists to fix.
+   *
+   * An empty rule list matches NOTHING, deliberately and correctly — see
+   * matchesAll, whose comment explains that an audience with no rules would
+   * otherwise enrol every lead in the system. That makes a failed rules read
+   * safe for ENTRY: nothing new enrols, which is the right way to fail.
+   *
+   * It is not safe for EXIT. matchesAny on an empty list is false too, which
+   * reads as "nobody has met an exit condition" — so a lead who has booked
+   * stays enrolled and keeps being chased. exit-sweep.ts opens by describing
+   * that very outcome as the thing it was built to stop: "a customer who books
+   * an estimate gets the full sequence anyway: the day-1 chase, the day-3
+   * chase, all of it, after somebody has already been to their house."
+   *
+   * One dropped error and the feature is silently off. A tick that throws gets
+   * retried and alerts; a tick that quietly stops exiting people does neither.
+   */
+  const { data: rows, error: wfErr } = await sb
     .from("sms_workflows")
     .select("id, name, campaign_id, workspace_id, entry_rules_id, exit_rules_id, is_active")
     .eq("workspace_id", workspaceId);
+  if (wfErr) throw new Error(`could not read this workspace's workflows: ${wfErr.message}`);
   if (!rows?.length) return [];
 
   const setIds = [...new Set(rows.flatMap((r) => [r.entry_rules_id, r.exit_rules_id]).filter(Boolean))] as string[];
-  const { data: rules } = setIds.length
+  const { data: rules, error: ruleErr } = setIds.length
     ? await sb.from("sms_rules").select("rule_set_id, field, operator, values").in("rule_set_id", setIds).order("ordinal")
-    : { data: [] as { rule_set_id: string; field: string; operator: string; values: unknown }[] };
+    : { data: [] as { rule_set_id: string; field: string; operator: string; values: unknown }[], error: null };
+  if (ruleErr) throw new Error(`could not read the entry and exit rules: ${ruleErr.message}`);
 
   const bySet = new Map<string, Rule[]>();
   for (const r of rules ?? []) {
