@@ -147,10 +147,43 @@ describe("the Twilio adapter", () => {
       .rejects.toThrow(/drifted/);
   });
 
-  it("refuses a success with no sid, because it could never be traced", async () => {
+  /**
+   * THESE TWO USED TO ASSERT THE OPPOSITE, AND THE OPPOSITE SENT THE TEXT FIVE
+   * TIMES.
+   *
+   * The old reasoning was "a send we cannot trace is a send we cannot prove
+   * happened", so both threw. But a throw does not mean "untraceable" to
+   * anybody upstream — every caller reads it as NOT SENT. The scheduler
+   * reschedules it as an error and retries up to five times; the review queue
+   * leaves the draft claimed and it returns to the queue two minutes later.
+   * Both are right for a connection that dropped before the POST and
+   * catastrophic for one that answered 201, which is exactly what these two
+   * branches are: the error message literally began "Twilio accepted the
+   * send".
+   *
+   * So past acceptance nothing throws. The row closes with an id of ours and
+   * an alert is raised. What is lost is delivery-receipt correlation for that
+   * one message; what is avoided is a customer getting the same text five
+   * times, which is a complaint and, on a marketing message, a compliance
+   * problem.
+   *
+   * The 201-that-already-failed case below still throws, and should: nobody
+   * received that one, so a retry cannot duplicate anything.
+   */
+  it("closes the row when Twilio accepts and returns no sid", async () => {
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ status: "queued" }), { status: 201 }));
-    await expect(t().send("+15167885933" as E164, "+15163448418" as E164, "x"))
-      .rejects.toThrow(/no sid/);
+    const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    expect(res.providerId).toMatch(/^twilio-nosid-/);
+  });
+
+  it("gives each untraceable send its own id, so two cannot collide", async () => {
+    // provider_id carries a UNIQUE index — a timestamp sentinel would collide
+    // for two sends in the same millisecond, which ResendEmailTransport's own
+    // comment records having been bitten by.
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ status: "queued" }), { status: 201 }));
+    const a = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    const b = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    expect(a.providerId).not.toBe(b.providerId);
   });
 
   it("refuses a 201 that already says the message failed", async () => {
@@ -161,10 +194,13 @@ describe("the Twilio adapter", () => {
       .rejects.toThrow(/unreachable carrier/);
   });
 
-  it("does not pretend unreadable JSON was a send", async () => {
+  it("closes the row when Twilio accepts with a body we cannot read", async () => {
+    // A 2xx carrying HTML is usually an intermediary, and it is genuinely
+    // ambiguous whether Twilio saw the request. Ambiguity resolves towards not
+    // sending twice: the alert says what happened and a person can check.
     vi.stubGlobal("fetch", async () => new Response("<html>502</html>", { status: 200 }));
-    await expect(t().send("+15167885933" as E164, "+15163448418" as E164, "x"))
-      .rejects.toThrow(/unreadable/);
+    const res = await t().send("+15167885933" as E164, "+15163448418" as E164, "x");
+    expect(res.providerId).toMatch(/^twilio-unparsed-/);
   });
 });
 

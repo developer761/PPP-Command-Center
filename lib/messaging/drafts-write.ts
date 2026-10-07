@@ -23,6 +23,7 @@ import { wasEdited, orderQueue, type DraftForReview } from "./drafts";
 import { toE164 } from "./phone";
 import { bumpStage } from "./stage";
 import { recordOutbound } from "./outbound";
+import { reportWarn } from "@/lib/observability";
 
 /**
  * How long somebody may hold a draft before it goes back in the queue.
@@ -251,7 +252,22 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
   });
   await bumpStage(sb, d.conversation_id, d.intent);
 
-  await sb.from("sms_drafts").update({
+  /**
+   * MARKING IT SENT IS THE OTHER HALF OF SENDING, AND IT WAS UNCHECKED.
+   *
+   * The carrier has the message by now. This update discarded its error —
+   * postgrest-js returns `{ error }` rather than throwing — so a failure left
+   * the draft `pending` with only `reviewed_at` set, and claimCutoff() is two
+   * minutes: the draft reappears in the queue and the next reviewer sends the
+   * customer the same text again. Autosend is off everywhere, so this is the
+   * path EVERY reply takes.
+   *
+   * Retried once, then marked failed rather than left pending, for the reason
+   * markSent gives: a reply that has to be re-approved by hand is a far
+   * smaller fault than a customer receiving it twice. The reviewer is told,
+   * because they are standing there and can check the thread.
+   */
+  const closeDraft = () => sb.from("sms_drafts").update({
     state: "sent",
     // Only when it actually differs. Storing an unchanged copy would bury the
     // corrections that matter under ones that say nothing.
@@ -259,10 +275,52 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     send_error: null,
     updated_at: new Date().toISOString(),
   }).eq("id", d.id);
+  let { error: closeErr } = await closeDraft();
+  if (closeErr) ({ error: closeErr } = await closeDraft());
+  if (closeErr) {
+    /**
+     * TAKEN OUT OF THE QUEUE, whichever state the schema will accept.
+     *
+     * 'failed' is the honest one and migration 20261006210000 adds it. Until
+     * that is applied the CHECK refuses it — and a refused write here would
+     * leave the draft pending, which is the bug. So it falls back to
+     * 'rejected', which is also terminal and which the CHECK has always
+     * allowed. The same shape record-inbound uses for its own source CHECK:
+     * the customer being protected matters more than the label being exact.
+     */
+    const terminal = async (state: "failed" | "rejected") =>
+      sb.from("sms_drafts").update({
+        state,
+        send_error: `sent, but the draft could not be closed: ${closeErr!.message}`,
+        ...(state === "rejected"
+          ? { reject_reason: "sent — the record of it failed, closed so it cannot go twice" }
+          : {}),
+        updated_at: new Date().toISOString(),
+      }).eq("id", d.id);
+    const { error: failErr } = await terminal("failed");
+    if (failErr) await terminal("rejected");
+    reportWarn({
+      key: "sms_draft_sent_not_closed", platform: "ppp_cc",
+      message: "a reply was sent and its draft could not be marked sent — marked failed so it cannot be sent twice",
+      context: { draftId: d.id, conversationId: d.conversation_id, error: closeErr.message },
+    });
+    return {
+      ok: false,
+      error: "It went out, but we could not record that. It is marked failed so nobody sends it twice — check the thread.",
+    };
+  }
 
-  await sb.from("sms_conversations")
+  const { error: convErr } = await sb.from("sms_conversations")
     .update({ last_message_at: new Date().toISOString() })
     .eq("id", d.conversation_id);
+  // Cannot cause a second send, so it is reported rather than surfaced.
+  if (convErr) {
+    reportWarn({
+      key: "sms_draft_last_message_at", platform: "ppp_cc",
+      message: "a reply went out and the conversation's last_message_at was not updated",
+      context: { conversationId: d.conversation_id, error: convErr.message },
+    });
+  }
 
   // Anything they said while this waited still needs answering.
   await queueTurnIfUnanswered(sb, d.conversation_id, d.answers_message_id);

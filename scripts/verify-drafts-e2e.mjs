@@ -14,6 +14,14 @@ import { gatedSend } from "../lib/messaging/gate.ts";
 import { gateDeps } from "../lib/messaging/gate-deps.ts";
 import { isStale, wasEdited } from "../lib/messaging/drafts.ts";
 import { clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
+/**
+ * A TRANSPORT THE SCRIPT OWNS. gatedSend resolves its own when the caller does
+ * not supply one, so an e2e script that "only checks the gate" would POST to
+ * the carrier the day live sending is switched on. See the header of
+ * verify-port-readiness-e2e.mjs.
+ */
+import { LoggingTransport } from "../lib/messaging/transport.ts";
+const transport = new LoggingTransport();
 
 /**
  * A fixed midday, in the workspace's own timezone.
@@ -106,7 +114,7 @@ try {
   // 5. THE GATE. Approving is not an override.
   const suppressedCheck = await gatedSend(
     { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review", now: MIDDAY },
-    gateDeps(sb)
+    { ...gateDeps(sb), transport }
   );
   const allowedBefore = suppressedCheck.ok;
   ok("a normal approval passes the gate", allowedBefore,
@@ -120,7 +128,7 @@ try {
 
   const afterOptOut = await gatedSend(
     { workspace: ws, to: CUSTOMER, body: "approved by a human", agent: "human_review", now: MIDDAY },
-    gateDeps(sb)
+    { ...gateDeps(sb), transport }
   );
   ok("a human pressing send CANNOT reach someone who opted out",
      !afterOptOut.ok && afterOptOut.reason === "suppressed",

@@ -107,7 +107,16 @@ describe("every commercial mutation is reachable", () => {
     expect(universe.length).toBeGreaterThan(500);
   });
 
-  it("has no exported mutation that nothing calls", () => {
+  /**
+   * 30s, because this one reads every file in the repo twice.
+   *
+   * It takes about a second alone and timed out at the 5s default inside a
+   * full `vitest run`, where it competes with 480 other files for the pool.
+   * A gate that fails on load rather than on code is worse than no gate: it
+   * teaches whoever is watching to re-run it and move on, which is exactly how
+   * a real failure gets waved through.
+   */
+  it("has no exported mutation that nothing calls", { timeout: 30_000 }, () => {
     const allowed = new Set(ALLOWED_UNCALLED.map((a) => a.fn));
     const orphans: string[] = [];
 

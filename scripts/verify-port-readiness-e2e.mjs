@@ -7,12 +7,26 @@
  * stop would be textable, and an empty suppression list cannot refuse anybody.
  *
  * So this checks the rail with the real gate and the real table, and then
- * prints where every live workspace stands. It sends nothing.
+ * prints where every live workspace stands.
+ *
+ * IT SENDS NOTHING, AND THAT IS NOW ENFORCED RATHER THAN ASSERTED.
+ *
+ * The header said "it sends nothing" while calling gatedSend with no transport
+ * injected — and the gate resolves its own when the caller does not supply one
+ * (`deps.transport ?? activeTransport()`). Harmless only because live sending
+ * was switched off everywhere. The day SMS_LIVE_SENDING is "true", running
+ * `npm run verify` would have POSTed to the carrier.
+ *
+ * Two guards, because one of them is a comment:
+ *   a LoggingTransport is injected, so nothing can leave even in principle;
+ *   and the script refuses to run at all while the carrier is live, because a
+ *   readiness check that touches production sending is not a readiness check.
  */
 import { createClient } from "@supabase/supabase-js";
 import { gatedSend } from "../lib/messaging/gate.ts";
 import { gateDeps, clearSuppressionListCache } from "../lib/messaging/gate-deps.ts";
 import { transportChoice } from "../lib/messaging/transport-config.ts";
+import { LoggingTransport } from "../lib/messaging/transport.ts";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, {
   auth: { persistSession: false },
@@ -29,8 +43,19 @@ const PROBE = "+19992220188";
 const MIDDAY = new Date(new Date().toISOString().slice(0, 10) + "T16:00:00.000Z");
 let added = false;
 
+const transport = new LoggingTransport();
+
 try {
   console.log(`\nPORT READINESS — real schema\n`);
+
+  // See the header. The injected transport below makes a send impossible; this
+  // makes the intent impossible to miss, and stops the script writing anything
+  // to a production table on a day when a stray row matters most.
+  if (transportChoice().live) {
+    console.log("  ✗  the carrier is LIVE on this machine. This script writes to");
+    console.log("     production and must not run while real messages can leave.");
+    process.exit(1);
+  }
 
   const { count: optOuts } = await sb.from("sms_opt_outs").select("*", { count: "exact", head: true });
   // The whole row: the gate reads quiet hours and the weekend policy off it,
@@ -45,7 +70,7 @@ try {
   const workspace = ws[0];
   const send = () => gatedSend(
     { workspace, to: "+19992220189", body: "This is Precision Painting Plus. Reply STOP to opt out.", agent: "campaign", now: MIDDAY },
-    gateDeps(sb),
+    { ...gateDeps(sb), transport },
   );
 
   clearSuppressionListCache();
@@ -71,7 +96,7 @@ try {
 
     const toTheSuppressed = await gatedSend(
       { workspace, to: PROBE, body: "This is Precision Painting Plus. Reply STOP to opt out.", agent: "campaign", now: MIDDAY },
-      gateDeps(sb),
+      { ...gateDeps(sb), transport },
     );
     ok("and the person on the list is still refused",
        !toTheSuppressed.ok && toTheSuppressed.reason === "suppressed", JSON.stringify(toTheSuppressed));
