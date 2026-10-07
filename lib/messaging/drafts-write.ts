@@ -18,6 +18,7 @@ import { messagingDb, selectAllIn } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { queueTurnIfUnanswered } from "./turn-queue";
 import { gateDeps } from "./gate-deps";
+import { latestInboundIsAnswered, latestInboundAt } from "./handoff";
 import { gatedSend } from "./gate";
 import { wasEdited, orderQueue, type DraftForReview } from "./drafts";
 import { toE164 } from "./phone";
@@ -268,9 +269,25 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
    * The comment in sendHeldReply states the rule this follows: "Every held
    * reply is by definition a reply to a message the customer sent — that is
    * what answers_message_id means."
+   *
+   * BUT A HELD REPLY IS FRESH AND A DRAFT IS NOT. sendHeldReply runs inside the
+   * turn that read the inbound. A draft waits for a person, and nothing ages
+   * one out — so the claim can be three days stale, and three days stale it
+   * waives the holiday rule and the weekend rule as well as the hours. So the
+   * time is passed and the gate judges it on the customer's own day, and the
+   * same question the human-reply path asks is asked here: an inbound somebody
+   * has already answered is not one this draft is answering either.
    */
+  const { data: msgs } = await sb.from("sms_messages")
+    .select("direction, created_at").eq("conversation_id", d.conversation_id)
+    .order("created_at", { ascending: false }).limit(50);
+  const transcript = (msgs ?? []) as { direction: string; created_at: string }[];
   const res = await gatedSend(
-    { workspace: ws, to, body, agent: "human_review", answersInbound: true },
+    {
+      workspace: ws, to, body, agent: "human_review",
+      answersInbound: !latestInboundIsAnswered(transcript),
+      answersInboundAt: latestInboundAt(transcript),
+    },
     gateDeps(sb)
   );
 

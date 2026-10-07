@@ -24,7 +24,7 @@ import { assertMessagingAccess } from "./auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { createClient } from "@/lib/supabase/server";
 import { gatedSend } from "./gate";
-import { latestInboundIsAnswered } from "./handoff";
+import { latestInboundIsAnswered, latestInboundAt } from "./handoff";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
 import { queueTurnIfUnanswered } from "./turn-queue";
@@ -87,12 +87,18 @@ export async function sendHumanReply(input: {
   const { data: msgs } = await sb.from("sms_messages")
     .select("direction, created_at").eq("conversation_id", conv.id)
     .order("created_at", { ascending: false }).limit(50);
-  const answering = !latestInboundIsAnswered(
-    (msgs ?? []) as { direction: string; created_at: string }[]
-  );
+  const transcript = (msgs ?? []) as { direction: string; created_at: string }[];
+  const answering = !latestInboundIsAnswered(transcript);
 
   const res = await gatedSend(
-    { workspace: ws, to, body, agent: "human_reply", answersInbound: answering },
+    {
+      workspace: ws, to, body, agent: "human_reply", answersInbound: answering,
+      // Unanswered is not the same as recent. Picking a four-day-old thread
+      // back up at 8:45 PM is contact PPP is starting, whoever is owed a
+      // reply — so the gate is told when they wrote and judges it on their
+      // own day.
+      answersInboundAt: latestInboundAt(transcript),
+    },
     gateDeps(sb)
   );
   if (!res.ok) return { ok: false, refused: res.reason };

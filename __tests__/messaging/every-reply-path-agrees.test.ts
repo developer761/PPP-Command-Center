@@ -24,11 +24,21 @@ import { latestInboundIsAnswered } from "@/lib/messaging/handoff";
  * wrong was the ARGUMENT, not the rule it feeds.
  */
 describe("every path that answers a customer says so", () => {
+  /**
+   * EACH SITE IS ASSERTED ON THE ARGUMENT'S PRESENCE, NOT ITS VALUE.
+   *
+   * The first version of this test matched the literal `answersInbound: true`
+   * for the draft path. That pinned the bug's opposite rather than the rule:
+   * when the draft path was corrected to ASK the question instead of assuming
+   * the answer, this test went red while the thing it exists to protect was
+   * still true. A constant is an instance. "This call site tells the gate" is
+   * the shape.
+   */
   const sites: [string, RegExp][] = [
-    ["the held reply", /agent: "agent_autosend",\s*\n?\s*answersInbound: true/],
-    ["the immediate autosend", /agent: "agent_autosend", answersInbound: true/],
-    ["approving a draft", /agent: "human_review", answersInbound: true/],
-    ["a person's own reply", /agent: "human_reply", answersInbound: answering/],
+    ["the held reply", /agent: "agent_autosend",\s*\n?\s*answersInbound:/],
+    ["the immediate autosend", /agent: "agent_autosend", answersInbound:/],
+    ["approving a draft", /agent: "human_review",\s*\n?\s*answersInbound:/],
+    ["a person's own reply", /agent: "human_reply", answersInbound:/],
   ];
 
   it.each(sites)("%s", (_label, re) => {
@@ -38,6 +48,25 @@ describe("every path that answers a customer says so", () => {
       readFileSync("lib/messaging/reply-write.ts", "utf8"),
     ].join("\n");
     expect(re.test(src)).toBe(true);
+  });
+
+  /**
+   * AND THE TWO THAT CAN BE STALE MUST SAY WHEN.
+   *
+   * answersInbound waives PPP's own hours, the weekend rule and the holiday
+   * rule, on the grounds that the customer wrote just now. A review queue and
+   * a person scrolling back through old threads both break that — nothing ages
+   * a pending draft out, so the claim can be days old by the time somebody
+   * presses Send. These two pass the inbound's time and let the gate judge it
+   * on the recipient's own day. The autosend and the held reply run inside the
+   * turn that read the message and have no queue to go stale in.
+   */
+  it.each([
+    ["approving a draft", "lib/messaging/drafts-write.ts"],
+    ["a person's own reply", "lib/messaging/reply-write.ts"],
+  ])("%s also tells the gate WHEN the customer wrote", (_label, file) => {
+    const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(src, file).toMatch(/answersInboundAt:\s*latestInboundAt\(/);
   });
 
   it("no gatedSend in a reply path is left without the flag", () => {

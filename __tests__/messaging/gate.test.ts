@@ -604,3 +604,85 @@ describe("gatedSend — a reply is answered whatever day it is", () => {
     if (!res.ok) expect(res.reason).toBe("suppressed");
   });
 });
+
+describe("answersInbound has a shelf life, and it is the customer's day", () => {
+  /**
+   * 8:45 PM Eastern — past PPP's own 8 PM, inside the federal 9 PM. So the
+   * only thing deciding whether this message is legal is whether it really is
+   * a reply, which is exactly the claim a review queue cannot keep true.
+   */
+  const LATE = utc("2026-12-24T01:45:00Z"); // 8:45 PM EST on Wed 23 Dec
+  const sameDay = "2026-12-23T19:00:00Z";   // 2 PM EST, the same local day
+  const daysAgo = "2026-12-21T19:00:00Z";   // 2 PM EST, two local days earlier
+
+  it("sends when the customer wrote earlier the same day", async () => {
+    const d = deps();
+    const r = await gatedSend(
+      req({ now: LATE, answersInbound: true, answersInboundAt: sameDay }), d
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses when the message it claims to answer is from a previous day", async () => {
+    const d = deps();
+    const r = await gatedSend(
+      req({ now: LATE, answersInbound: true, answersInboundAt: daysAgo }), d
+    );
+    // PPP's own 9-8 window applies, because this is PPP starting something.
+    expect(r).toMatchObject({ ok: false, reason: "quiet_hours" });
+    expect(d.transport.sent).toHaveLength(0);
+  });
+
+  it("still waives the holiday rule for a reply sent the same day", async () => {
+    // Christmas Day, 2 PM EST. Holidays off, and a same-day reply goes.
+    const xmas = utc("2026-12-25T19:00:00Z");
+    const d = deps();
+    const r = await gatedSend(req({
+      workspace: { ...NASSAU, send_on_holidays: false },
+      now: xmas, answersInbound: true, answersInboundAt: "2026-12-25T18:00:00Z",
+    }), d);
+    expect(r.ok).toBe(true);
+  });
+
+  it("does NOT waive the holiday rule for a claim from a previous day", async () => {
+    const xmas = utc("2026-12-25T19:00:00Z");
+    const d = deps();
+    const r = await gatedSend(req({
+      workspace: { ...NASSAU, send_on_holidays: false },
+      now: xmas, answersInbound: true, answersInboundAt: "2026-12-23T19:00:00Z",
+    }), d);
+    expect(r).toMatchObject({ ok: false, reason: "holiday" });
+  });
+
+  it("treats an absent time as fresh, because the callers without one have no queue", async () => {
+    const d = deps();
+    const r = await gatedSend(req({ now: LATE, answersInbound: true }), d);
+    expect(r.ok).toBe(true);
+  });
+
+  /**
+   * The boundary is the CUSTOMER's midnight, not the workspace's. A 213 number
+   * is Los Angeles: 8:45 PM in New York is 5:45 PM there, and 2 PM Eastern the
+   * previous calendar day is 11 AM Pacific — still the day before for both, so
+   * the interesting case is the one that straddles. 00:30 UTC on the 24th is
+   * 4:30 PM Pacific on the 23rd and 7:30 PM Eastern on the 23rd; an inbound at
+   * 07:30 UTC on the 23rd is 11:30 PM Pacific on the TWENTY-SECOND and 2:30 AM
+   * Eastern on the 23rd. Eastern would call that the same day. Pacific does
+   * not, and Pacific is where the customer is.
+   */
+  it("measures the day on the customer's clock, not the workspace's", async () => {
+    const la = "+12135550147" as E164;
+    const d = deps();
+    const r = await gatedSend(req({
+      to: la, now: utc("2026-12-24T00:30:00Z"),
+      answersInbound: true, answersInboundAt: "2026-12-23T07:30:00Z",
+    }), d);
+    // Not a reply on the customer's day, so PPP's narrower window applies —
+    // and 4:30 PM Pacific is inside it, so this still sends. What matters is
+    // that the FLAG was dropped; the holiday case above proves the effect.
+    expect(r.ok).toBe(true);
+    const dayStart = await import("@/lib/messaging/gate")
+      .then((m) => m.startOfDayIn(utc("2026-12-24T00:30:00Z"), "America/Los_Angeles"));
+    expect(new Date("2026-12-23T07:30:00Z").getTime()).toBeLessThan(dayStart.getTime());
+  });
+});
