@@ -14,7 +14,8 @@ import { ALL_FINISH_VALUES, VALID_MATERIAL_TYPE_VALUES } from "@/lib/customer-fo
 import { activePicklistValues, resolveFinishValue } from "@/lib/salesforce/picklists";
 import { formatProductLines } from "@/lib/customer-form/product-lines";
 import { alertSalesforceWriteFailure } from "@/lib/customer-form/sf-failure-alert";
-import { buildReceiptRooms, receiptIsEmpty } from "@/lib/customer-form/receipt-lines";
+import { buildReceiptRooms, receiptIsEmpty, receiptRecipient } from "@/lib/customer-form/receipt-lines";
+import { getProfileByUserId } from "@/lib/auth/profile";
 import { sendCustomerFormConfirmation } from "@/lib/email/resend";
 import {
   STANDARD_SURFACE_FIELDS,
@@ -352,6 +353,51 @@ export async function POST(
     ...(rawInterior && !interiorLine ? [rawInterior] : []),
     ...(rawExterior && !exteriorLine ? [rawExterior] : []),
   ];
+
+  // 2b. Refuse a submission that contains nothing.
+  //
+  // Before this, submitting an untouched form marked the token submitted,
+  // flipped the work order to "Ready to order", and showed the customer
+  // "Thanks — we've got your color picks!" — while sending no receipt, no
+  // notification and writing nothing to Salesforce. The job then sat in the
+  // ready queue, looking like work that had arrived, containing nothing. An
+  // empty screen must say why; so must an empty submission.
+  //
+  // Checked BEFORE markSubmitted, because once the token is stamped the
+  // customer's link reads as used and the status has already moved. Notes on
+  // their own still count — a customer who writes "I'll call you about colors"
+  // has told us something real, and that path already has its own handling
+  // all the way through.
+  const pickedSomething = body.lineItems.some((li) =>
+    (li.surfaces ?? []).some((s) => {
+      // A skipped surface is a deliberate "don't paint this" — an answer, not
+      // a blank. Anything carrying a color is obviously an answer too.
+      if (s.skipped === true) return true;
+      return Boolean(s.colorId) || Boolean((s.colorName ?? "").trim());
+    })
+  );
+  const wroteNotes = sanitizeNotesField(body.globalNotes).trim().length > 0;
+  // A RE-EDIT is exempt, and this is not a loophole — it is the one case where
+  // an empty payload is a real instruction. The re-edit payload is the current
+  // answer for every surface it carries, so a customer who presses "Change"
+  // and deliberately removes a color sends exactly this shape, and Salesforce
+  // has to be cleared to match. Refusing it would leave the crew painting a
+  // color the customer deleted — the bug the clearing path exists to fix, and
+  // the one submit-route-writes.test.ts caught me reintroducing.
+  //
+  // The failure this guard addresses cannot happen on a re-edit anyway: the
+  // token is already submitted and the work order has already moved, so there
+  // is no "looks like progress that never arrived" state to create.
+  if (!isReedit && !pickedSomething && !wroteNotes) {
+    return NextResponse.json(
+      {
+        error: "nothing_submitted",
+        message:
+          "Nothing was selected yet. Pick a color for at least one surface — or add a note telling us what you'd like — and submit again.",
+      },
+      { status: 400 }
+    );
+  }
 
   // 3. Build SF write batch
   const attempts: SfWriteAttempt[] = [];
@@ -981,6 +1027,26 @@ export async function POST(
   // Whether an AM entering colors on the phone should ALSO send the customer a
   // receipt is a real question — flagged for Kate rather than guessed at here.
   //
+  // Who sent this form — CC'd on the receipt so a customer who hits reply
+  // reaches their actual estimator rather than nobody. Resolved from the
+  // profile that created the token; null on an internal-entry token or when
+  // the row has gone, and a null simply means no CC.
+  let senderIdentity: { email: string | null; name: string | null } | null = null;
+  if (status.token.created_by_user_id) {
+    try {
+      const senderProfile = await getProfileByUserId(status.token.created_by_user_id);
+      if (senderProfile) {
+        senderIdentity = {
+          email: senderProfile.email ?? null,
+          name: senderProfile.sf_user_name ?? senderProfile.full_name ?? null,
+        };
+      }
+    } catch {
+      // Never fail a submission over a CC address.
+      senderIdentity = null;
+    }
+  }
+
   // Deliberately not gated on `runWrites` or on the Salesforce writeback: the
   // receipt reports what the CUSTOMER sent, and staying silent because our own
   // integration failed is exactly the dispute it exists to prevent.
@@ -994,22 +1060,58 @@ export async function POST(
       roomLabelById: receiptRoomLabels,
     });
     const receiptNotes = sanitizeNotesField(body.globalNotes);
-    if (!receiptIsEmpty(rooms, receiptNotes)) {
-      sendCustomerFormConfirmation({
-        to: status.token.customer_email,
-        customerName: status.token.customer_name,
+    // receiptRecipient validates the address and refuses to fall back to the
+    // staff address on an internal token. It existed and nothing called it —
+    // this passed token.customer_email raw.
+    const recipient = receiptRecipient({
+      tokenKind: status.token.kind,
+      tokenEmail: status.token.customer_email,
+      tokenCustomerName: status.token.customer_name,
+    });
+
+    if (recipient.email && !receiptIsEmpty(rooms, receiptNotes)) {
+      // Fall back to the request origin, like every sibling route. Unset on
+      // Vercel, the receipt's one button became a dead relative href — the
+      // only thing in the email the customer is asked to click.
+      const base = (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
+      void sendCustomerFormConfirmation({
+        to: recipient.email,
+        customerName: recipient.name ?? status.token.customer_name,
         workOrderNumber: fresh.workOrderNumber,
-        formUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "")}/select/${tokenFromUrl}`,
+        formUrl: `${base}/select/${tokenFromUrl}`,
         rooms,
         globalNotes: receiptNotes,
         isReedit,
         colorDeadline: status.token.color_deadline ?? null,
-      }).catch((err) => {
-        console.warn(
-          `[customer-form] customer receipt failed for token ${tokenFromUrl.slice(0, 8)}…:`,
-          err instanceof Error ? err.message : err
-        );
-      });
+        // CC the estimator who sent the form, so a customer who hits reply
+        // reaches a person. Omitted before, so replies went nowhere.
+        senderEmail: senderIdentity?.email ?? null,
+        senderName: senderIdentity?.name ?? null,
+      })
+        .then((res) => {
+          // sendEmail RETURNS {ok:false}; it does not throw. The .catch below
+          // could never see a refused send — no log, no alert, and a customer
+          // with no confirmation that anybody received their colors.
+          if (!res?.ok) {
+            console.error(
+              `[customer-form] customer receipt NOT SENT for token ${tokenFromUrl.slice(0, 8)}… → ${recipient.email}: ${
+                (res as { error?: string } | null)?.error ?? "unknown"
+              }`
+            );
+          }
+        })
+        .catch((err) => {
+          console.error(
+            `[customer-form] customer receipt threw for token ${tokenFromUrl.slice(0, 8)}…:`,
+            err instanceof Error ? err.message : err
+          );
+        });
+    } else if (!recipient.email && !receiptIsEmpty(rooms, receiptNotes)) {
+      // Worth a line: the colors landed, the customer just has nowhere to be
+      // told about it. Silence here is what made the class invisible.
+      console.warn(
+        `[customer-form] no usable receipt address for token ${tokenFromUrl.slice(0, 8)}… — colors saved, no confirmation sent`
+      );
     }
   }
 

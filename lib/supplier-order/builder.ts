@@ -1047,12 +1047,41 @@ export function formatOrderSummaryBlock(
   }
   // Kate round-3 #28: worker-typed color lines (stain, plaster, color
   // matches) are real order lines, not a note the vendor has to interpret.
+  //
+  // MERGED by what the vendor is actually being asked to sell. Since the room
+  // came off these lines (Kate 2026-10-06 — scope is screen-only, like every
+  // other line since R4.25), the same color in two rooms printed as two
+  // identical lines with nothing to tell them apart. A vendor reading
+  //
+  //     1 gal — Regal Select — Super White · Flat
+  //     1 gal — Regal Select — Super White · Flat
+  //
+  // has no way to know that is two gallons and not one line duplicated, and
+  // shipping one is the likely outcome. The regular rows have carried a guard
+  // for this since R4.24; these never did, because until the room came off
+  // they were incidentally distinguishable.
+  //
+  // Merged on color + finish + product + unit — all four, because any one of
+  // them differing is a different thing to buy. Quantities add. The ORDER
+  // SCREEN still shows both rows with their own scope, so PPP keeps the
+  // placement record; only the vendor's copy is combined.
+  const mergedCustom = new Map<string, { c: CustomColorItem; qty: number }>();
   for (const c of customColorItems) {
+    if (!c.label.trim()) continue;
+    const key = [
+      c.label.trim().toLowerCase(),
+      (c.finish ?? "").trim().toLowerCase(),
+      materialTypeForVendor(c.materialType).trim().toLowerCase(),
+      (c.unit || "gal").trim().toLowerCase(),
+    ].join("::");
+    const hit = mergedCustom.get(key);
+    // Clamp the SUM, not each part: two lines of 60 gal are 99, not 120.
+    if (hit) hit.qty = Math.min(99, hit.qty + Math.max(1, Math.floor(c.qty || 1)));
+    else mergedCustom.set(key, { c, qty: Math.max(1, Math.min(99, Math.floor(c.qty || 1))) });
+  }
+
+  for (const { c, qty } of mergedCustom.values()) {
     const label = c.label.trim();
-    if (!label) continue;
-    // Clamped here too — this is the last point before a number reaches a
-    // vendor's inbox, the same reason applyQuantityOverrides clamps.
-    const qty = Math.max(1, Math.min(99, Math.floor(c.qty || 1)));
     const raw = (c.unit || "gal").trim();
     // A vendor reads "2 x 5 gal", not "2 bucket" (Katie item 8).
     const unit = raw === "bucket" ? `x ${GALLONS_PER_BUCKET} gal` : raw;

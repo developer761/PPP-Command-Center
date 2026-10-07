@@ -379,3 +379,62 @@ describe("un-skipping a surface (Katie 2026-09-19: \"can they undo it?\")", () =
   });
 });
 
+
+/**
+ * An empty submission used to look like a successful one: the token was
+ * marked submitted, the work order flipped to "Ready to order", and the
+ * customer saw "Thanks — we've got your color picks!" while nothing was
+ * written, no receipt sent and nobody told.
+ *
+ * Asserted on the ARTIFACT — the route's actual response and whether it
+ * stored a payload — because the companion file only reads the source text,
+ * and the whole point of this file is that source assertions miss behavior.
+ */
+describe("a submission with nothing in it", () => {
+  it("is refused, and says what to do about it", async () => {
+    const res = await post({ lineItems: line([{ surface: "Walls", colorId: null, finish: null }]), globalNotes: "" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string; message?: string };
+    expect(body.error).toBe("nothing_submitted");
+    expect(body.message).toMatch(/Pick a color for at least one surface/);
+  });
+
+  it("does NOT mark the token submitted", async () => {
+    // The part that matters. Once the token is stamped, the customer's link
+    // reads as used and the job has already moved — the exact broken state.
+    await post({ lineItems: line([{ surface: "Walls", colorId: null, finish: null }]), globalNotes: "" });
+    expect(captured.payloads).toHaveLength(0);
+    expect(captured.attempts).toHaveLength(0);
+  });
+
+  it("accepts notes on their own", async () => {
+    // "I'll call you about colors" is a real answer.
+    const res = await post({
+      lineItems: line([{ surface: "Walls", colorId: null, finish: null }]),
+      globalNotes: "I'll call you Monday about the colors.",
+    });
+    expect(res.status).toBe(200);
+    expect(captured.payloads).toHaveLength(1);
+  });
+
+  it("accepts a surface the customer deliberately skipped", async () => {
+    // "Don't paint the ceiling" is a decision, not a blank.
+    const res = await post({
+      lineItems: line([{ surface: "Ceiling", colorId: null, finish: null, skipped: true }]),
+      globalNotes: "",
+    });
+    expect(res.status).toBe(200);
+    expect(captured.payloads).toHaveLength(1);
+  });
+
+  it("still lets a RE-EDIT clear a color", async () => {
+    // The one case where an empty payload is an instruction: the re-edit
+    // payload is the current answer for every surface, so a removed color has
+    // to reach Salesforce as a null. Refusing it would leave the crew painting
+    // what the customer deleted.
+    tokenStatus = { kind: "editable", token: token() };
+    const res = await post({ lineItems: line([{ surface: "Walls", colorId: null, finish: null }]), globalNotes: "" });
+    expect(res.status).toBe(200);
+    expect(woliFields()).toHaveProperty("ColorWall__c", null);
+  });
+});
