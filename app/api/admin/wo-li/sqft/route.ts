@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 
 /**
  * Persist a per-room square-footage override for Materials Ordering.
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     // canEnterColors = admin or account manager, both unscoped; closes the
     // IDOR write flagged in the re-audit (F3).
     const canEnterColors = capabilitiesFor(
-      normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email))
+      roleForProfile(profile, isAdminEmail(data.user.email))
     ).canEnterColors;
     if (!canEnterColors) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });

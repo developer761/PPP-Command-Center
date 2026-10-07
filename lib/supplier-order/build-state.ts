@@ -109,11 +109,35 @@ export function normalizeBuildPayload(raw: unknown): OrderBuildPayload {
       const x = c as Record<string, unknown>;
       const label = typeof x.label === "string" ? x.label.trim() : "";
       if (!label) continue;
+      // Every field on CustomColorItem has to be listed here. This rebuilds the
+      // object rather than spreading it, so a field added to the type and not
+      // added here is DROPPED ON THE WAY TO THE DATABASE — silently, with the
+      // screen still showing it because the in-memory payload is intact.
+      //
+      // Three had been lost that way: `finish` and `materialType` (Katie,
+      // 2026-10-01 — she could set a sheen and a product line and neither came
+      // back) and `scope` (Kate, 2026-10-06). The sheen one was a REGRESSION:
+      // before 10-06 it travelled to the vendor inside the flattened label, so
+      // splitting the label out moved it into a field this function threw away,
+      // and the paint counter got a color with no sheen at all.
+      //
+      // Found by an audit that executed the real write path, not by 448 green
+      // supplier-order tests — none of them crossed this seam.
+      const str = (v: unknown, max: number): string | null => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s ? s.slice(0, max) : null;
+      };
       out.customColorItems.push({
         id: typeof x.id === "string" && x.id ? x.id : `cc-${out.customColorItems.length}`,
         label: label.slice(0, 300),
         qty: Math.max(1, Math.min(99, Math.floor(Number(x.qty) || 1))),
         unit: typeof x.unit === "string" && x.unit.trim() ? x.unit.trim() : "gal",
+        // The sheen the vendor mixes, and the product line they pull it from.
+        finish: str(x.finish, 60),
+        materialType: str(x.materialType, 120),
+        // Screen only — never emailed. Kept so PPP's own placement record and
+        // the "already on order" match survive a reload.
+        scope: str(x.scope, 200),
       });
     }
   }

@@ -213,8 +213,20 @@ describe("normalizeBuildPayload (#18)", () => {
     const p = normalizeBuildPayload({
       customColorItems: [{ id: "c1", label: "Color Match: Behr 56, eggshell", qty: 0, unit: "qt" }],
     });
+    // finish / materialType / scope come back NULL rather than missing: the
+    // normalizer now carries every field on CustomColorItem, because rebuilding
+    // the object field-by-field had been silently dropping those three on the
+    // way to the database (see custom-item-persistence.test.ts).
     expect(p.customColorItems).toEqual([
-      { id: "c1", label: "Color Match: Behr 56, eggshell", qty: 1, unit: "qt" },
+      {
+        id: "c1",
+        label: "Color Match: Behr 56, eggshell",
+        qty: 1,
+        unit: "qt",
+        finish: null,
+        materialType: null,
+        scope: null,
+      },
     ]);
   });
 });

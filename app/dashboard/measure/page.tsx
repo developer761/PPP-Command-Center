@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole, homeHrefFor } from "@/lib/auth/roles";
+import { capabilitiesFor, homeHrefFor, roleForProfile } from "@/lib/auth/roles";
 import MeasureTool from "@/components/measure-tool";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export default async function MeasurePage() {
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
   if (profile && profile.is_active === false && !isAdminEmail(user.email)) redirect("/");
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(user.email));
+  const role = roleForProfile(profile, isAdminEmail(user.email));
   if (!capabilitiesFor(role).canEnterColors) redirect(homeHrefFor(role));
 
   return (

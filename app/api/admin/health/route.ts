@@ -1,4 +1,5 @@
 import { providerStatus } from "@/lib/measure/property-providers";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
@@ -71,7 +72,7 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const profile = await getProfileByUserId(userData.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(userData.user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(userData.user.email));
   if (!isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

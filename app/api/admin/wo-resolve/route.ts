@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const profile = await getProfileByUserId(userData.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(userData.user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(userData.user.email));
   if (!isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
@@ -41,7 +42,7 @@ async function requireAdmin() {
   const { data } = await supabase.auth.getUser();
   if (!data?.user) return { error: "unauthorized" as const, status: 401, user: null };
   const profile = await getProfileByUserId(data.user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(data.user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(data.user.email));
   if (!isAdmin) return { error: "forbidden" as const, status: 403, user: null };
   return { error: null, status: 200, user: data.user };
 }

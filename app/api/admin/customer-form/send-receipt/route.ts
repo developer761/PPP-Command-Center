@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { normalizeRole, capabilitiesFor } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { buildReceiptRooms, receiptIsEmpty, receiptRecipient } from "@/lib/customer-form/receipt-lines";
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!data?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const profile = await getProfileByUserId(data.user.id);
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
+  const role = roleForProfile(profile, isAdminEmail(data.user.email));
   // Account managers do Internal Entry, so the gate is "can enter colors",
   // not "is an admin" — an AM who just typed the colors is exactly the person
   // Katie wants clicking this.

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { nextPoNumber } from "@/lib/supplier-order/builder";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { sendEmail } from "@/lib/email/resend";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   // Role-derived capability (consistent with the UI + customer-form routes),
   // not the legacy is_admin flag.
   const isAdmin = capabilitiesFor(
-    normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email))
+    roleForProfile(profile, isAdminEmail(data.user.email))
   ).canOrderMaterials;
   if (!isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

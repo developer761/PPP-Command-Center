@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isAdminProfile } from "@/lib/auth/roles";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
@@ -53,7 +54,7 @@ async function requireAdmin(): Promise<{ userId: string; email: string | null }>
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/");
   const profile = await getProfileByUserId(user.id);
-  const isAdmin = profile?.is_admin ?? isAdminEmail(user.email);
+  const isAdmin = isAdminProfile(profile, isAdminEmail(user.email));
   if (!isAdmin) redirect("/dashboard");
   return { userId: user.id, email: user.email ?? null };
 }

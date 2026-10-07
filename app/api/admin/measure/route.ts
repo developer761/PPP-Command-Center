@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { geometryFromDimensions } from "@/lib/measure/geometry";
 import { estimateRoomFromPhoto } from "@/lib/measure/from-photo";
 import { suggestFromAddress } from "@/lib/measure/from-address";
@@ -33,7 +33,7 @@ async function authorize() {
   if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
     return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   }
-  const caps = capabilitiesFor(normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email)));
+  const caps = capabilitiesFor(roleForProfile(profile, isAdminEmail(data.user.email)));
   if (!caps.canEnterColors) return { error: NextResponse.json({ error: "forbidden" }, { status: 403 }) };
   return { userId: data.user.id, email: data.user.email ?? null };
 }

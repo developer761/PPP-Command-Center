@@ -53,8 +53,28 @@ const FINISHES_BY_LENGTH: readonly string[] = [...ALL_FINISH_VALUES].sort(
  * Pewter" and "2108-40 Stardust" both carry one INSIDE the color, and
  * Benjamin Moore codes are full of them. Matching the known sheen at the END
  * is what keeps those intact.
+ *
+ * PUNCTUATION IS REQUIRED — one or more of the marks above, never a bare
+ * space, and never nothing at all. The first version made the mark optional,
+ * which peeled a sheen out of the middle of real strings in the production
+ * table:
+ *
+ *     "Behr 56 Semigloss"      → color "Behr 56 Semi"   finish "Gloss"
+ *     "Navajo White Softgloss" → color "Navajo White Soft"
+ *     "Black Pearl"            → color "Black"          finish "Pearl"
+ *     "Blue Velvet"            → color "Blue"           finish "Velvet"
+ *
+ * "Semigloss" unhyphenated is how PPP's reps actually write it, and Black
+ * Pearl and Blue Velvet are real paint colors. Longest-first ordering only
+ * ever protected the hyphenated spelling.
+ *
+ * So the asymmetry is deliberate, and it is the same one the parser upstream
+ * uses: a sheen left sitting inside the color name reaches the vendor as
+ * readable text and the estimator can move it, which is exactly what happened
+ * before any of this existed. A color with its last word amputated is wrong
+ * paint. Under-split on purpose.
  */
-const SEPARATOR = String.raw`[\s]*[-–—·,|/]?[\s]*`;
+const SEPARATOR = String.raw`[\s]*[-–—·,|/]+[\s]*`;
 
 /** Trailing punctuation a note picks up — "Super White - Flat." */
 function tidy(s: string): string {

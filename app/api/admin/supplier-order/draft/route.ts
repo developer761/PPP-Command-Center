@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { loadMaterialsBundle } from "@/lib/salesforce/queries";
 import {
   buildSupplierOrderDraft,
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   // Role-derived capability (consistent with the UI + customer-form routes),
   // not the legacy is_admin flag.
   const isAdmin = capabilitiesFor(
-    normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email))
+    roleForProfile(profile, isAdminEmail(data.user.email))
   ).canOrderMaterials;
   if (!isAdmin) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });

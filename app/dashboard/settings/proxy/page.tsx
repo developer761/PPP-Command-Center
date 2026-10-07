@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { normalizeRole } from "@/lib/auth/roles";
+import { roleForProfile } from "@/lib/auth/roles";
 import { listManagedUsers } from "@/lib/auth/user-management";
 import PageHeader from "@/components/page-header";
 import ProxyPicker from "@/components/proxy-picker";
@@ -32,7 +32,7 @@ export default async function ProxyLoginPage() {
   if (!user) redirect("/");
 
   const realProfile = await getProfileByUserId(user.id, { ignoreProxy: true });
-  const realRole = normalizeRole(realProfile?.role, realProfile?.is_admin ?? isAdminEmail(user.email));
+  const realRole = roleForProfile(realProfile, isAdminEmail(user.email));
   if (realRole !== "admin") redirect("/dashboard");
 
   const users = await listManagedUsers();

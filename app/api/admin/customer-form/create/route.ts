@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { capabilitiesFor, normalizeRole } from "@/lib/auth/roles";
+import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { createToken, markSent } from "@/lib/customer-form/tokens";
 import { sendCustomerFormInvite } from "@/lib/email/resend";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
   if (profile && profile.is_active === false && !isAdminEmail(data.user.email)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const role = normalizeRole(profile?.role, profile?.is_admin ?? isAdminEmail(data.user.email));
+  const role = roleForProfile(profile, isAdminEmail(data.user.email));
   if (!capabilitiesFor(role).canEnterColors) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
