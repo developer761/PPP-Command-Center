@@ -144,6 +144,26 @@ const ALLOWED = new Set([
   // address, not a customer's. It is the one exception left, and it is keyed
   // to a single row and column so it cannot quietly cover anything else.
   "sms_class_a_rules.A13.rule_card",
+  /**
+   * TWO AUTHORED SCENARIO TURNS. A scenario that tests address collection has
+   * to contain an address — scrubbing it removes the thing under test, which
+   * is the same reasoning A13 above rests on.
+   *
+   * Demonstrably synthetic rather than lifted from a real thread: the
+   * scenario's own brief reads "S2 - lobby and hallways of a condo building, 3
+   * floors. Tests the commercial gate", and the contact turn is
+   * "dana@example.com" — example.com is reserved by RFC 2606 exactly so it can
+   * never be anybody's inbox.
+   *
+   * KEYED BY ROW, and that matters more here than anywhere else in this list.
+   * sms_scenario_turns is written by the simulator's "Save as a test", which
+   * takes whatever turns a person typed — so the day somebody replays a REAL
+   * conversation from Kate's corpus and saves it, that row holds a real
+   * customer's address, and it has to turn this sweep red. A column-wide
+   * exemption here would be the one that hides the leak this check exists for.
+   */
+  "sms_scenario_turns.d842f04f-4e0a-4072-979e-28ab3746bddc.customer_text",
+  "sms_scenario_turns.eef1b43f-b0b5-4d8a-84bc-9f10c1c950e5.customer_text",
 ]);
 
 /** Exactly a UUID, nothing else in the string. */

@@ -693,11 +693,24 @@ const CHAINS = [
       "March, opted back in, and filled the form again in October was never contacted",
     links: [
       ["lib/messaging/gate-deps.ts", /\.eq\("phone_e164", target\.phone\)\.is\("opted_in_at", null\)/],
-      ["lib/messaging/lead-poll.ts", /\.in\("phone_e164", phones\)\.is\("opted_in_at", null\)/],
+      /**
+       * THE FILTER, NOT THE VARIABLE IT READS.
+       *
+       * This matched `.in("phone_e164", phones).is("opted_in_at", null)`
+       * exactly, and went red the moment that read was wrapped in selectAllIn
+       * — which chunks, so the argument is `chunk` now. The property it
+       * protects, that this read filters on opted_in_at, was never broken.
+       *
+       * Pinning the variable name pins the implementation. The rule is that
+       * the lead poll's suppression read is filtered the way gate-deps filters
+       * it, so that is what gets asserted.
+       */
+      ["lib/messaging/lead-poll.ts", /\.in\("phone_e164", \w+\)\s*\.is\("opted_in_at", null\)/],
     ],
     forbidden: [
       // The unfiltered read is the bug, and it looks perfectly reasonable.
-      ["lib/messaging/lead-poll.ts", /select\("phone_e164"\)\.in\("phone_e164", phones\)\s*$/m],
+      // Any argument name, for the same reason as the link above.
+      ["lib/messaging/lead-poll.ts", /select\("phone_e164"\)\.in\("phone_e164", \w+\)\s*$/m],
     ],
   },
   {

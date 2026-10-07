@@ -21,6 +21,7 @@ import { decideIntake } from "./lead-intake";
 import { leadFromSalesforce, LEAD_FIELDS, type SalesforceLead } from "./lead-map";
 import { territoryFor as territoryOf, zipIndex, normalizeZip, type ZipRow } from "./territory";
 import { enrolLeadWith } from "./enrol-core";
+import { selectAllIn } from "./paging";
 import { toE164 } from "./phone";
 
 /** Never look further back than this, however stale sf_poll_state is. A first
@@ -208,15 +209,40 @@ export async function processPendingLeads(sb: SupabaseClient, now = new Date(), 
    * out in March, opted back in, and filled the form again in October was
    * never contacted and nothing anywhere said why.
    */
-  const { data: optOuts, error: optOutErr } = phones.length
-    ? await sb.from("sms_opt_outs").select("phone_e164")
-        .in("phone_e164", phones).is("opted_in_at", null)
-    : { data: [] as { phone_e164: string }[], error: null };
-  // Answering "nobody is suppressed" on a failed read is how an opted-out
-  // person gets enrolled in a campaign. The poll stops instead; the leads are
-  // still pending and the next tick picks them up.
-  if (optOutErr) throw new Error(`could not read the suppression list: ${optOutErr.message}`);
-  const suppressed = new Set((optOuts ?? []).map((o) => o.phone_e164));
+  /**
+   * CHUNKED AND PAGED, THOUGH IT DOES NOT STRICTLY HAVE TO BE TODAY.
+   *
+   * As written this read was safe: `pending` is capped at 50 above, so
+   * `phones` carries at most fifty numbers, and migration 176's partial unique
+   * index allows one ACTIVE opt-out per number — at most fifty rows, well
+   * inside PostgREST's silent 1,000-row cap.
+   *
+   * It was safe because of a constant in a different query, which is a poor
+   * reason for a read of the SUPPRESSION LIST to be correct. .in() bounds the
+   * filter and not the result: raise that fifty, or let a number hold a second
+   * active row, and the cap starts cutting rows — and a row that falls off
+   * reads as "not suppressed", which is how somebody who replied STOP gets
+   * enrolled in a campaign. There are 31,601 numbers on that list.
+   *
+   * selectAllIn is the helper this repo already has for the shape. It makes
+   * the read correct on its own terms rather than correct by coincidence, and
+   * it throws — which is what the rule below depends on.
+   *
+   * Answering "nobody is suppressed" on a failed read is how an opted-out
+   * person gets enrolled. The poll stops instead; the leads stay pending and
+   * the next tick picks them up.
+   */
+  const optOuts = phones.length
+    ? await selectAllIn<{ phone_e164: string }>(
+      phones,
+      (chunk, from, to) => sb.from("sms_opt_outs").select("phone_e164")
+        .in("phone_e164", chunk).is("opted_in_at", null)
+        // Unique among ACTIVE rows, so it is a stable page order.
+        .order("phone_e164").range(from, to),
+      "the suppression list"
+    )
+    : [];
+  const suppressed = new Set(optOuts.map((o) => o.phone_e164));
 
   for (const p of pending) {
     const set = (patch: Record<string, unknown>) =>
