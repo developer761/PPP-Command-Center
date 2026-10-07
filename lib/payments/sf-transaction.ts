@@ -8,6 +8,9 @@ import { formatCents } from "@/lib/payments/schedule";
  * hand today (TN-205472 on WO 00313399): record type Payment_In, Method__c
  * 'Stripe', a ReferenceId__c.
  *
+ * Description__c starts "Stripe pi_…" — Ruben's convention, which Katie's
+ * daily Stripe job uses to recognise an already-booked payment.
+ *
  * DIFFERENCES FROM THE HAND-BOOKED ROWS, ON PURPOSE
  *   - ReferenceId__c is Stripe's PaymentIntent id (pi_…) rather than a
  *     hand-typed code like "ST0923", so a Salesforce row can be found in Stripe
@@ -50,6 +53,10 @@ export function buildSfTransaction(i: SfTransactionInput): Record<string, string
         ? `${i.cardFunding} card`
         : "card";
   const parts = [
+    // Ruben's convention, and what Katie's daily Stripe job reads to know a
+    // payment is already booked: the Description starts "Stripe pi_…".
+    // Without it, her job doesn't see ours as entered.
+    i.paymentIntentId ? `Stripe ${i.paymentIntentId}` : null,
     `Online ${how} payment`,
     i.milestoneLabel,
     `WO ${i.workOrderNumber}`,

@@ -129,17 +129,25 @@ export async function getPaymentInRecordTypeId(): Promise<string> {
 /**
  * An existing Transaction__c for this Stripe payment, if anyone already booked
  * it. Two systems can write Stripe payments into Salesforce — this one, and
- * Katie's daily Stripe finance job (planned) — and both use ReferenceId__c =
- * the pi_… id. Whoever writes second finds the first and stops, so one
+ * Katie's daily Stripe finance job / Ruben by hand — with two conventions for
+ * the Stripe id. Whoever writes second finds the first and stops, so one
  * payment is never booked twice.
  */
 export async function findTransactionByReference(paymentIntentId: string): Promise<string | null> {
   if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntentId)) return null;
   const conn = await getSalesforceClient();
-  const r = await conn.query<{ Id: string }>(
+  // Two conventions for "this Stripe payment": ReferenceId__c = pi_… (ours), and
+  // Description__c containing "Stripe pi_…" (Ruben's, used by Katie's job and
+  // by hand entries). Either one means it's already booked. Two queries rather
+  // than one OR, so the exact ReferenceId__c match is tried first.
+  const byRef = await conn.query<{ Id: string }>(
     `SELECT Id FROM Transaction__c WHERE ReferenceId__c = '${paymentIntentId}' LIMIT 1`,
   );
-  return r.records[0]?.Id ?? null;
+  if (byRef.records[0]) return byRef.records[0].Id;
+  const byDesc = await conn.query<{ Id: string }>(
+    `SELECT Id FROM Transaction__c WHERE Description__c LIKE '%${paymentIntentId}%' LIMIT 1`,
+  );
+  return byDesc.records[0]?.Id ?? null;
 }
 
 export async function createSalesforceTransaction(

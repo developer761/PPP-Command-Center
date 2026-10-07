@@ -120,6 +120,11 @@ describe("buildSfTransaction", () => {
     expect(f.Description__c).not.toMatch(/fee/);
   });
 
+  it("Description starts 'Stripe pi_…' — the convention Katie's daily job dedupes on", () => {
+    const f = buildSfTransaction({ ...base, method: "ach", feeCents: 0 });
+    expect(String(f.Description__c).startsWith("Stripe pi_3Q0abcdefghijklmnopqrstu")).toBe(true);
+  });
+
   it("links the Opportunity when the Work Order has one, and leaves the field off when not", () => {
     expect(buildSfTransaction({ ...base, method: "ach", feeCents: 0, opportunityId: "006Wj000001abcDEF" }).Opportunity__c).toBe(
       "006Wj000001abcDEF",
@@ -129,13 +134,13 @@ describe("buildSfTransaction", () => {
 
   it("names the card type, so a fee (or none) explains itself", () => {
     expect(buildSfTransaction({ ...base, method: "card", cardFunding: "debit", feeCents: 0 }).Description__c).toMatch(
-      /^Online debit card payment · Deposit/,
+      /^Stripe pi_3Q0abcdefghijklmnopqrstu · Online debit card payment · Deposit/,
     );
     expect(buildSfTransaction({ ...base, method: "card", cardFunding: "credit", feeCents: 1698 }).Description__c).toMatch(
-      /^Online credit card payment .* card fee \$16\.98/,
+      /Online credit card payment .* card fee \$16\.98/,
     );
     expect(buildSfTransaction({ ...base, method: "card", cardFunding: "unknown", feeCents: 0 }).Description__c).toMatch(
-      /^Online card payment/,
+      /^Stripe pi_\w+ · Online card payment/,
     );
   });
 
