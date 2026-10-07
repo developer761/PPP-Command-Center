@@ -213,7 +213,20 @@ export async function askTheRater(
  */
 export async function sweepUnrated(
   sb: SupabaseClient,
-  opts: { limit?: number; ask?: typeof askTheRater } = {}
+  opts: {
+    limit?: number;
+    ask?: typeof askTheRater;
+    /**
+     * The Class A rules, for a caller that has no database credentials.
+     *
+     * A test seam with the real thing behind it, same shape as `ask` above.
+     * loadClassARules builds its own Supabase client from the environment, so
+     * without this the selection logic in this function cannot be exercised at
+     * all by the unit suite — which is deliberately credential-free — and the
+     * conversations-the-rater-can-never-reach bug was exactly selection logic.
+     */
+    loadRules?: typeof loadClassARules;
+  } = {}
 ): Promise<{ scanned: number; rated: number; failed: number; findings: number; skipped: Record<string, number> }> {
   const limit = opts.limit ?? RATINGS_PER_TICK;
   const ask = opts.ask ?? askTheRater;
@@ -221,11 +234,85 @@ export async function sweepUnrated(
   const note = (w: string) => { skipped[w] = (skipped[w] ?? 0) + 1; };
   let rated = 0, failed = 0, findingCount = 0;
 
-  const { data: ended } = await sb.from("sms_conversations")
-    .select("id, workspace_id, outcome")
-    .eq("state", "ended")
-    .order("ended_at", { ascending: false })
-    .limit(limit * 4);           // room to skip the already-rated
+  /**
+   * THE WINDOW HAS TO BE OF UNRATED CONVERSATIONS, NOT OF RECENT ONES.
+   *
+   * This took the newest `limit * 4` ended conversations and skipped the ones
+   * already rated. But the window is of ALL ended conversations, so the
+   * already-rated ones OCCUPY it — and once the newest twenty are rated, every
+   * older unrated conversation is permanently unreachable. Not slow to reach:
+   * unreachable, because each tick looks at the same twenty and finds them
+   * done.
+   *
+   * At 171 leads a day that window is passed within a day of going live, so
+   * the conversations that would never be rated are the ones from the first
+   * days of the rollout — exactly the ones worth learning from. Production has
+   * 4 ended and 4 rated today, which is the only reason nothing has shown.
+   *
+   * So it PAGES, oldest first, until it has found `limit` unrated ones. Oldest
+   * first because the oldest unrated conversation is the one most at risk of
+   * never being looked at, and paging rather than a fixed window is what makes
+   * this function's own first sentence — "rate every conversation that has
+   * finished and has not been rated" — actually true.
+   *
+   * ONE QUERY PER PAGE instead of one per conversation. The old loop ran a
+   * head count against sms_training_examples for every candidate; a page of
+   * fifty now costs a single .in().
+   */
+  const PAGE = 50;
+  /**
+   * A bound, because a fully-rated backlog would otherwise be paged end to end
+   * every minute for nothing. Twenty pages is a thousand conversations, past
+   * any plausible unrated backlog — and when it IS reached, that is reported
+   * rather than passed over.
+   */
+  const MAX_PAGES = 20;
+  const candidates: { id: string; workspace_id: string | null; outcome: string | null }[] = [];
+  let pagesRead = 0;
+  let windowExhausted = false;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    pagesRead = page + 1;
+    const { data: batch, error: endedErr } = await sb.from("sms_conversations")
+      .select("id, workspace_id, outcome")
+      .eq("state", "ended")
+      // ended_at is nullable, so `id` carries the stable order. Paging without
+      // a unique sort returns an arbitrary window, not the next page.
+      .order("ended_at", { ascending: true, nullsFirst: true })
+      .order("id")
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    /**
+     * Thrown rather than discarded. This read's error was dropped, and an
+     * empty result is indistinguishable from "nothing has finished" — so a
+     * timeout reported scanned 0, rated 0, failed 0, which reads exactly like
+     * a healthy quiet tick.
+     */
+    if (endedErr) throw new Error(`could not list ended conversations: ${endedErr.message}`);
+    const rows = batch ?? [];
+    if (!rows.length) { windowExhausted = true; break; }
+
+    const ids = rows.map((r) => r.id as string);
+    const { data: ratedRows, error: ratedErr } = await sb.from("sms_training_examples")
+      .select("source_ref").eq("source", "live").in("source_ref", ids);
+    // Same reasoning: an unreadable list of what is already rated must not
+    // read as "none of these are rated", which would rate them all a second
+    // time and teach the model from a duplicate.
+    if (ratedErr) throw new Error(`could not check which conversations are already rated: ${ratedErr.message}`);
+    const done = new Set((ratedRows ?? []).map((r) => r.source_ref as string));
+
+    for (const r of rows) {
+      if (done.has(r.id as string)) { note("already rated"); continue; }
+      candidates.push(r as { id: string; workspace_id: string | null; outcome: string | null });
+    }
+    if (candidates.length >= limit) break;
+    if (rows.length < PAGE) { windowExhausted = true; break; }
+  }
+  if (!windowExhausted && candidates.length < limit) {
+    // Every page came back full and we are still short: the backlog is deeper
+    // than MAX_PAGES. Said out loud, because the previous version's way of
+    // being short was to be silently wrong about it.
+    note(`stopped after ${pagesRead} pages of ended conversations`);
+  }
+  const ended = candidates;
 
   /**
    * Rule severity by code, read ONCE for the sweep rather than per
@@ -237,7 +324,7 @@ export async function sweepUnrated(
    * loadClassARules caches, so this is cheap; naming it here keeps the two
    * uses — the band and the finding row — reading the same source.
    */
-  const rules = await loadClassARules();
+  const rules = await (opts.loadRules ?? loadClassARules)();
   const severityByCode = new Map<string, string | null>(
     rules.map((r) => [r.code, (r.severity as string | null) ?? null])
   );
@@ -247,10 +334,10 @@ export async function sweepUnrated(
   for (const c of convs) {
     if (rated + failed >= limit) break;
 
-    const { count: already } = await sb.from("sms_training_examples")
-      .select("id", { count: "exact", head: true })
-      .eq("source", "live").eq("source_ref", c.id);
-    if ((already ?? 0) > 0) { note("already rated"); continue; }
+    // The already-rated check now happens once per PAGE above, not once per
+    // conversation here. Kept as a comment rather than deleted silently: the
+    // idempotency this file promises still holds, it is simply enforced a
+    // level up, where it also decides which conversations are reachable.
 
     const turns = await loadTurnsForRating(sb, c.id);
     if (!turns.some((t) => t.role === "bot")) { note("no bot turn to rate"); continue; }
