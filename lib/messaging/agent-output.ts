@@ -892,8 +892,19 @@ const BARE_QUESTION =
  * Found by walking conversations through the pipeline and reading them, not
  * by a test. Every test asserted the right words were present, and they were.
  */
+/**
+ * BOTH LANGUAGES, because the bot acknowledges in both.
+ *
+ * English-only, this could not see a Spanish pleasantry — so A29 was satisfied
+ * by one ("the customer asked something and this turn only acknowledges" could
+ * not fire), and the redundancy rule in render.ts, which is built on this,
+ * could not drop a Spanish "Entendido, gracias." in front of the acknowledge
+ * template that already opens with exactly that. The customer received
+ * "Entendido, gracias. Entendido, gracias." — the "Got it. Got it." bug,
+ * untranslated.
+ */
 export const BARE_ACKNOWLEDGEMENT =
-  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies)[\s,.!]*)+$/i;
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies|entendido|perfecto|gracias|muchas gracias|de acuerdo|claro|por supuesto|excelente|muy bien|est[\u00e1a] bien|sin problema|listo|vale|anotado|disculpe|disculpas|lo siento)[\s,.!]*)+$/i;
 
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();

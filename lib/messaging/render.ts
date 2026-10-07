@@ -514,7 +514,7 @@ const BARE_GREETING = /^(hi|hey|hello|hi there|good morning|good afternoon)[!.,]
  * two words and the echo threshold is four.
  */
 const OPENS_WITH_ACKNOWLEDGEMENT =
-  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help)\b/i;
+  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help|entendido|perfecto|gracias|muchas gracias|excelente|muy bien|de acuerdo|claro|por supuesto|listo|sin problema|disculpe|lo siento)\b/i;
 
 /**
  * True when the rapport adds nothing the template is not already saying.

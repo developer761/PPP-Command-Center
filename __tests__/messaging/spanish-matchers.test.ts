@@ -3,7 +3,8 @@ import { asksOurAvailability, isAvailabilityStandOff } from "@/lib/messaging/ava
 import { returningCustomerDeclining } from "@/lib/messaging/returning-customer";
 import { mentionsSecondProperty } from "@/lib/messaging/multi-property";
 import { tooManyAsks } from "@/lib/messaging/one-ask";
-import { renderMessage } from "@/lib/messaging/render";
+import { renderMessage, rapportIsRedundant } from "@/lib/messaging/render";
+import { validateAction, BARE_ACKNOWLEDGEMENT } from "@/lib/messaging/agent-output";
 
 /**
  * THE TEMPLATES WERE TRANSLATED. THE MATCHERS THAT GATE THEM WERE NOT.
@@ -122,5 +123,57 @@ describe("the trailing availability question is stripped in Spanish too", () => 
     });
     expect(out).not.toMatch(/qué días|que días|qué horarios|que horarios/i);
     expect(out.trim()).not.toBe("");
+  });
+});
+
+describe("the acknowledgement rules apply in Spanish", () => {
+  /**
+   * SAYS[acknowledge] opens "Entendido, gracias." and the model's rapport
+   * often opens the same way. rapportIsRedundant drops the duplicate — in
+   * English. BARE_ACKNOWLEDGEMENT and OPENS_WITH_ACKNOWLEDGEMENT were both
+   * English-only, so the customer got it twice in one message: the "Got it.
+   * Got it." bug, untranslated.
+   *
+   * And the same matcher decides `saysSomething` in validateAction, so a
+   * Spanish pleasantry counted as an ANSWER to a direct question, which is
+   * precisely what A29 exists to catch.
+   */
+  /**
+   * The outcome test below only fails when BOTH matchers lose their Spanish —
+   * the two guards overlap, so either one alone still catches it. Checked:
+   * cutting one leaves the message correct, cutting both produces
+   * "Entendido, gracias. Entendido, gracias." So each is pinned directly as
+   * well, or half this fix could be deleted with every test still green.
+   */
+  it("BARE_ACKNOWLEDGEMENT reads Spanish", () => {
+    for (const t of ["Entendido, gracias.", "Perfecto, gracias.", "Muy bien.", "Claro!"]) {
+      expect(BARE_ACKNOWLEDGEMENT.test(t), t).toBe(true);
+    }
+    // Still not a blanket pass: a sentence that says something is not bare.
+    expect(BARE_ACKNOWLEDGEMENT.test("Entendido, la direccion es 12 Hilton Ave.")).toBe(false);
+  });
+
+  it("the redundancy rule sees a Spanish opener", () => {
+    expect(rapportIsRedundant("Entendido, gracias.", "Entendido, gracias.")).toBe(true);
+    expect(rapportIsRedundant("Perfecto.", "Entendido, gracias.")).toBe(true);
+    // And leaves substantive rapport alone.
+    expect(rapportIsRedundant("El estimador revisa eso con usted.", "Entendido, gracias.")).toBe(false);
+  });
+
+  it("does not say the same acknowledgement twice", () => {
+    const out = renderMessage({
+      intent: "acknowledge", language: "es", freeText: "Entendido, gracias.", turn: 0,
+    });
+    expect(out.toLowerCase().match(/entendido/g)?.length ?? 0).toBeLessThan(2);
+    expect(out.trim()).not.toBe("");
+  });
+
+  it("a Spanish pleasantry is not an answer to a question", () => {
+    const v = validateAction(
+      { intent: "ask_address", freeText: "Perfecto, gracias.", confidence: 0.9 },
+      { customerText: "cuánto cuesta pintar una recámara?" }
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toBe("question_left_unanswered");
   });
 });
