@@ -1113,6 +1113,27 @@ function withoutATimingQuestion(body: string): string {
 /** Availability is the fourth leg, so it is due only once three are done. */
 const AVAILABILITY_STEP = 3;
 
+/**
+ * The ask the flow is actually waiting for, for a turn whose own question was
+ * stripped as too early. See the use below.
+ *
+ * Deliberately the plainest variant of each rather than the turn-rotated one:
+ * this sentence is being bolted onto another template, and the shortest form
+ * reads least like two messages stitched together.
+ */
+function nextFlowAsk(stage: number, es: boolean, turn: number): string | null {
+  const intent = ({
+    0: "ask_project_details",
+    1: "ask_address",
+    2: "ask_contact",
+  } as Record<number, Intent>)[stage];
+  if (!intent) return null;
+  const variants = (es ? SAYS_ES[intent] : SAYS[intent]) ?? [];
+  const pick = variants[turn % Math.max(variants.length, 1)] ?? variants[0] ?? "";
+  // Only a question is worth appending: the point is to leave it open.
+  return pick.includes("?") ? pick : (variants.find((v) => v.includes("?")) ?? null);
+}
+
 export function renderMessage(input: RenderInput): string {
   /**
    * Two reasons to drop a trailing question about days, and they are the same
@@ -1154,9 +1175,35 @@ export function renderMessage(input: RenderInput): string {
   const isCallbackQuestion =
     input.intent === "schedule_follow_up"
     && ASKED_FOR_A_CALL.test(input.customerText ?? "");
-  const body = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion
-    ? withoutATimingQuestion(renderBody(input))
-    : renderBody(input);
+  /**
+   * STRIPPING THE QUESTION MUST NOT LEAVE THE TURN WITH NOTHING TO ASK.
+   *
+   * Seen in the sandbox against production, turn one, on one of the commonest
+   * openings there is — "how long does it take to paint a 3 bedroom house?":
+   *
+   *   "I'm an AI assistant, but I can take your project details and pass them
+   *    along once we open. The estimator will confirm that with you directly."
+   *
+   * Correct, and a dead end. defer_to_estimator's template ends on an
+   * availability question precisely so the turn cannot read as a sign-off, and
+   * at stage 0 that question is stripped as too early — rightly, availability
+   * is the fourth leg. Nothing replaced it, so the bot answered and asked for
+   * nothing, and the next move was the customer's to make or not.
+   *
+   * A33 is explicit: "answer what can be answered, name who answers the rest,
+   * and leave the conversation open ON A QUESTION."
+   *
+   * So the question that was too early is replaced by the one that is actually
+   * due. It is still a single ask, so A22 holds, and it is the step the order
+   * says comes next, so the flow is not skipped.
+   */
+  const stripTiming = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion;
+  const rendered = renderBody(input);
+  let body = stripTiming ? withoutATimingQuestion(rendered) : rendered;
+  if (stripTiming && tooEarlyToAskAboutDays && body !== rendered && body && !body.includes("?")) {
+    const due = nextFlowAsk(input.flowStage ?? 0, input.language === "es", input.turn ?? 0);
+    if (due) body = `${body} ${due}`;
+  }
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
   const timed = replyToRequestedTime(input.customerText);
   if (!timed || timed.verdict !== "in_hours") return body;
