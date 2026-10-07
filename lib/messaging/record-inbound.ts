@@ -137,6 +137,50 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     if (error) throw asError("recording the opt-in", error);
   }
 
+  /**
+   * 1b. AND STOP MEANS STOP ON BOTH CHANNELS.
+   *
+   * The insert above records channel 'sms' and no address, because it runs
+   * before anything that can fail and the email is not in hand yet. That is
+   * the right order — the suppression must not depend on a lookup — but it
+   * left the job half done: gate-deps checks email suppression by ADDRESS, so
+   * a customer who replied STOP to the launch text still received the campaign
+   * email fifteen minutes later.
+   *
+   * Migration 186 says exactly this: "PPP campaigns send both channels in one
+   * sequence — suppressing the SMS half only would keep emailing somebody who
+   * unsubscribed." It added the column for it; nothing ever wrote 'both'.
+   *
+   * So the address is attached afterwards, as a widening of a row that already
+   * exists. If this fails, the SMS opt-out still stands and the only loss is
+   * the email half, which is the right way round for it to go wrong.
+   */
+  if (decision.keyword === "opt_out") {
+    const { data: withEmail } = await sb.from("sms_conversations")
+      .select("customer_email")
+      .eq("customer_phone", decision.from)
+      .not("customer_email", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const email = (withEmail as { customer_email?: string | null } | null)?.customer_email ?? null;
+    if (email) {
+      const { error: widenErr } = await sb.from("sms_opt_outs")
+        .update({ email, channel: "both", updated_at: new Date().toISOString() })
+        .eq("phone_e164", decision.from)
+        .is("opted_in_at", null);
+      if (widenErr) {
+        // Never throws: the text half is recorded and that is the half the
+        // customer just asked for. Reported so the gap is visible.
+        reportWarn({
+          key: "optout_email_not_recorded", platform: "ppp_cc",
+          message: "STOP was recorded for the number but the email half could not be written — they may still receive campaign email",
+          context: { phone: decision.from, error: widenErr.message },
+        });
+      }
+    }
+  }
+
   // 2. Which workspace was texted. Unknown is recorded, not discarded — a
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
