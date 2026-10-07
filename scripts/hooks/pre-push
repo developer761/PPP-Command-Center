@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# REFUSE TO PUSH CODE THE GATES HAVE NOT SEEN.
+#
+# Installed by scripts/install-hooks.mjs, which npm's `prepare` runs. The stamp
+# it reads is written by `npm run gates` and names the git tree that passed.
+#
+# WHY: on 2026-10-07 a commit went out behind a build that had exited 1. The
+# exit code was printed and not acted on, and nothing downstream noticed,
+# because a merge to main here IS a production deploy and a failed Vercel build
+# leaves production silently on the old code. A habit could not stop that. This
+# can: the tree being pushed must be the tree that passed.
+#
+# It compares TREES, not commits, so an amend or a rebase that changes nothing
+# still passes, and a "one last edit" after a green run does not.
+#
+# To push anyway: git push --no-verify. That is the right move for a revert you
+# need out now, and the wrong one for everything else.
+
+stamp=".gates/verified"
+
+if [ ! -f "$stamp" ]; then
+  echo ""
+  echo "✗  pre-push: no gate stamp at $stamp."
+  echo "   Run:  npm run gates"
+  echo "   (it runs tsc, the wiring checks, the test suite and the build, then"
+  echo "    records which commit passed. Run it after committing.)"
+  echo ""
+  exit 1
+fi
+
+verified=$(cat "$stamp")
+zero="0000000000000000000000000000000000000000"
+
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  # A delete pushes the all-zero sha. There is no code in it to verify.
+  [ "$local_sha" = "$zero" ] && continue
+  [ -z "$local_sha" ] && continue
+
+  tree=$(git rev-parse "$local_sha^{tree}" 2>/dev/null)
+  if [ "$tree" != "$verified" ]; then
+    echo ""
+    echo "✗  pre-push: the gates passed a different tree than the one you are pushing."
+    echo ""
+    echo "     pushing  $(git rev-parse --short "$local_sha")  tree ${tree}"
+    echo "     verified              tree ${verified}"
+    echo ""
+    echo "   Something changed after the last green run — a new commit, an amend,"
+    echo "   or an edit. Run:  npm run gates"
+    echo ""
+    exit 1
+  fi
+done
+
+exit 0
