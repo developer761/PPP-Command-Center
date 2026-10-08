@@ -27,7 +27,7 @@ import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import {
-  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
+  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_CONTACT_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
   PHONE_PRICING_NO_ADDRESS_ES,
 } from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
@@ -650,6 +650,19 @@ export type RenderInput = {
    *  guarantee that nothing the model wrote reaches the customer unfiltered. */
   known?: {
     address?: string | null; phone?: string | null; email?: string | null; scope?: string | null;
+    /**
+     * WHOSE NAME THE ESTIMATE IS UNDER, and it never reached here.
+     *
+     * knownFields has carried `name` since it was written and
+     * ASK_SUPERSEDED_BY reads it to refuse ask_contact — but the renderer's
+     * own `known` left it out, so the renderer could not tell whether the name
+     * was on file and asked for it alongside the email regardless. A field
+     * produced, read by the validator, and handed to the renderer by nobody.
+     *
+     * Needed by contactGap, which narrows ask_contact to the half we are
+     * actually missing. See ASK_CONTACT_GAP.
+     */
+    name?: string | null;
     /** The zip we hold and the state it resolves to, for A2's out-of-state
      *  message. Both are looked up, never inferred by the model. */
     zip?: string | null; state?: string | null;
@@ -818,6 +831,38 @@ export type RenderInput = {
  */
 export const ASK_ZIP_WITH_REASON =
   "No problem. We at least need the zip code to price it accurately. What's the zip there?";
+
+/**
+ * ASK FOR THE HALF OF THE CONTACT WE DO NOT HOLD. A13.
+ *
+ * All three ask_contact variants ask for the name AND the email, and
+ * ASK_SUPERSEDED_BY refuses the intent only when BOTH are held. So holding one
+ * and not the other let the ask go out for both, including the one already on
+ * file — which is the first half of A13: "do not ask the customer to RETYPE
+ * data already held".
+ *
+ * It is the commonest fault in Kate's grading after punctuation. Of the 206
+ * A13 breaches she annotated, 165 are an ask for something already on file,
+ * and 42 of those name the email or the name. The ADDRESS half of the same
+ * rule was narrowed when A11 was built — ASK_ADDRESS_GAP just below — and the
+ * contact half never got the same treatment. The fix landed on one twin.
+ *
+ * The phone is deliberately not here. We always hold it, because they are
+ * texting us from it, so there is no gap to ask about; A13 permits CONFIRMING
+ * held data, which is what the read-back templates do instead.
+ */
+const ASK_CONTACT_GAP: Record<"name" | "email", string[]> = {
+  name: [
+    "Thanks! And who should we put the estimate under?",
+    "Got it. What name should the estimate be under?",
+    "Perfect. Whose name should I put this under?",
+  ],
+  email: [
+    "Thanks! And what's a good email for the estimate?",
+    "Got it. What's the best email for the quote?",
+    "Perfect. Where should we email the estimate?",
+  ],
+};
 
 const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   zip: [
@@ -1373,6 +1418,27 @@ function renderBody(input: RenderInput): string {
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
     ? input.addressGap
     : null;
+  /**
+   * AND THE SAME FOR THE CONTACT, which it never had.
+   *
+   * ask_contact's templates all ask for the name AND the email, and
+   * ASK_SUPERSEDED_BY only refuses the intent when both are held — so holding
+   * one and not the other asked for both, including the one on file. That is
+   * the first half of A13 and 165 of the 206 breaches Kate annotated.
+   *
+   * Narrowed exactly as the address is: ask for the missing half. When BOTH
+   * are missing this stays null and the ordinary ask stands, which is already
+   * the right question.
+   */
+  const contactGap: "name" | "email" | null = input.intent === "ask_contact"
+    ? (() => {
+      const haveName = !!input.known?.name?.trim();
+      const haveEmail = !!input.known?.email?.trim();
+      if (haveName && !haveEmail) return "email";
+      if (haveEmail && !haveName) return "name";
+      return null;
+    })()
+    : null;
   // Same idea for availability: they named days but no window, or a time but
   // no day, so ask for the missing half rather than the whole question.
   const availGap = input.intent === "ask_availability"
@@ -1412,6 +1478,8 @@ function renderBody(input: RenderInput): string {
     ? (es ? PHONE_PRICING_NO_ADDRESS_ES : PHONE_PRICING_NO_ADDRESS)
     : refused
     ? (es ? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED)
+    : contactGap
+    ? (es ? ASK_CONTACT_GAP_ES : ASK_CONTACT_GAP)[contactGap]
     : gap
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap

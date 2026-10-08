@@ -1109,6 +1109,9 @@ Choose the next action.`;
       photos: opts.mediaCount ?? 0,
       known: {
         address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope,
+        // Needed by contactGap, which narrows ask_contact to the half we do
+        // not hold. knownFields has always produced it; nothing passed it on.
+        name: kf.name,
         zip: opts.zip ?? null, state: opts.stateName ?? null,
       },
       // Narrows ask_address to the part we are actually missing.

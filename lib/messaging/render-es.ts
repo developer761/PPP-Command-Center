@@ -184,6 +184,28 @@ export const SAYS_ES: Record<Intent, string[]> = {
 export const ASK_ZIP_WITH_REASON_ES =
   "Sin problema. Necesitamos al menos el código postal para cotizarlo bien. Cuál es el de ahí?";
 
+/**
+ * La mitad del contacto que NO tenemos. A13. Ver ASK_CONTACT_GAP.
+ *
+ * In the same commit as its English twin, deliberately. The last time a set of
+ * templates was translated and the logic around them was not, every Spanish A7
+ * offer escalated instead of being made and the Spanish availability ask could
+ * never fire. A Spanish lead holding a name and no email gets the narrowed ask
+ * too, or this is the same bug with a different accent.
+ */
+export const ASK_CONTACT_GAP_ES: Record<"name" | "email", string[]> = {
+  name: [
+    "Gracias! A nombre de quién ponemos el estimado?",
+    "Entendido. A qué nombre lo ponemos?",
+    "Perfecto. A nombre de quién lo registro?",
+  ],
+  email: [
+    "Gracias! Y cuál es un buen correo para el estimado?",
+    "Entendido. Cuál es el mejor correo para la cotización?",
+    "Perfecto. A qué correo le enviamos el estimado?",
+  ],
+};
+
 export const ASK_ADDRESS_GAP_ES: Record<"zip" | "street", string[]> = {
   zip: [
     "Gracias! Cuál es el código postal de {address}?",
