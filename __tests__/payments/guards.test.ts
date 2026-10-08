@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
 import { isForwardMove, statusFromPaymentIntent, statusFromSession } from "@/lib/payments/session-status";
-import { buildSfTransaction } from "@/lib/payments/sf-transaction";
+import { buildSfTransaction, stripeDepositReference } from "@/lib/payments/sf-transaction";
 
 describe("readPaymentsConfig — nothing real happens by default", () => {
   it("everything is off with no env", () => {
@@ -107,18 +107,29 @@ describe("buildSfTransaction", () => {
     expect(f.Description__c).toMatch(/card fee \$16\.98/);
   });
 
-  it("matches how the office books Stripe payments today", () => {
-    const f = buildSfTransaction({ ...base, method: "ach", feeCents: 0 });
+  it("follows finance's conventions: ST+MMDD deposit code, deposit date, Deposited when from a payout", () => {
+    const f = buildSfTransaction({ ...base, method: "ach", feeCents: 0, paidDateEt: "2026-10-08", fromPayout: true });
     expect(f).toMatchObject({
       RecordTypeId: "0126g000000HB7zAAG",
       WorkOrder__c: "0WOWj000007cfxNOAQ",
       Method__c: "Stripe",
-      Date__c: "2026-09-23",
-      ReferenceId__c: "pi_3Q0abcdefghijklmnopqrstu",
-      Deposited__c: false,
+      Date__c: "2026-10-08",
+      // What production's real Stripe Payment Ins on 10/8 carry.
+      ReferenceId__c: "ST1008",
+      Deposited__c: true,
     });
     expect(f.Description__c).not.toMatch(/fee/);
   });
+
+  it("booked early by an admin (no payout yet): not Deposited", () => {
+    expect(buildSfTransaction({ ...base, method: "ach", feeCents: 0 }).Deposited__c).toBe(false);
+  });
+
+  it.each([
+    ["2026-10-08", "ST1008"],
+    ["2026-01-05", "ST0105"],
+    ["2026-12-31", "ST1231"],
+  ])("stripeDepositReference(%s) = %s", (d, ref) => expect(stripeDepositReference(d)).toBe(ref));
 
   it("Description starts 'Stripe pi_…' — the convention Katie's daily job dedupes on", () => {
     const f = buildSfTransaction({ ...base, method: "ach", feeCents: 0 });
@@ -152,7 +163,7 @@ describe("buildSfTransaction", () => {
       paymentIntentId: "pi_" + "x".repeat(80),
       milestoneLabel: "L".repeat(400),
     });
-    expect(String(f.ReferenceId__c).length).toBe(50);
+    expect(String(f.ReferenceId__c).length).toBeLessThanOrEqual(50);
     expect(String(f.Description__c).length).toBe(255);
   });
 });

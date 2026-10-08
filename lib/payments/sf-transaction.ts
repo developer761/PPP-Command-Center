@@ -4,28 +4,30 @@ import { formatCents } from "@/lib/payments/schedule";
  * The Salesforce Transaction__c a successful online payment becomes.
  *
  * Pure, so the exact record is tested and shown on the admin page before
- * anything is ever sent. Modelled on how the office books Stripe payments by
- * hand today (TN-205472 on WO 00313399): record type Payment_In, Method__c
- * 'Stripe', a ReferenceId__c.
+ * anything is ever sent. It follows the finance team's conventions exactly,
+ * because their bank reconciliation runs on them (Katie, after sitting with
+ * Ruben, 2026-10-08):
  *
- * Description__c starts "Stripe pi_…" — Ruben's convention, which Katie's
- * daily Stripe job uses to recognise an already-booked payment.
- *
- * DIFFERENCES FROM THE HAND-BOOKED ROWS, ON PURPOSE
- *   - ReferenceId__c is Stripe's PaymentIntent id (pi_…) rather than a
- *     hand-typed code like "ST0923", so a Salesforce row can be found in Stripe
- *     and vice versa without guessing.
- *   - Deposited__c is false. The money reaches the bank on Stripe's payout
- *     schedule, not at checkout; whoever marks deposits today still does.
- *
- * OPEN WITH PPP — how the 3% card fee is booked.
- *   Amount__c here is the BASE amount, the part that pays down the Work Order.
- *   The fee is named in Description__c. If Amount__c carried the fee, the
- *   BalanceOwed__c formula (charges − payments in + adjustments) would go
- *   negative by the fee on every card payment. Whether the office wants the fee
- *   as its own row (and on which record type) is their call before write-back
- *   is switched on.
+ *   ReferenceId__c  "ST" + MMDD of the DEPOSIT — the day the Stripe payout
+ *                   reaches the bank. A deposit batch code: every Stripe
+ *                   payment in that day's payout shares it ("ST1008" ×6 in
+ *                   production on 10/8), which is how a Salesforce entry is
+ *                   matched to the bank statement. Not the pi_ id.
+ *   Date__c         the deposit date.
+ *   Deposited__c    true when booked from the payout (it is in the bank);
+ *                   false if an admin books one early, before its payout.
+ *   Description__c  starts "Stripe pi_…" — Ruben's convention, and what Katie's
+ *                   daily Stripe job and our own duplicate check look for.
+ *   Amount__c       the BASE amount only. The 3% credit-card fee is never in
+ *                   it (it would push BalanceOwed__c negative); it's named in
+ *                   the Description and tracked on the Payments tab.
  */
+
+/** "ST" + MMDD of a YYYY-MM-DD deposit date — Ruben's Stripe deposit code. */
+export function stripeDepositReference(dateEt: string): string {
+  const [, mm, dd] = dateEt.split("-");
+  return `ST${mm}${dd}`;
+}
 
 export type SfTransactionInput = {
   recordTypeId: string;
@@ -43,6 +45,9 @@ export type SfTransactionInput = {
   paymentIntentId: string | null;
   /** YYYY-MM-DD, Eastern — the day the money was confirmed. */
   paidDateEt: string;
+  /** Booked from a Stripe payout (the money is in the bank) rather than early
+   *  by an admin. Sets Deposited__c, and paidDateEt is then the deposit date. */
+  fromPayout?: boolean;
 };
 
 export function buildSfTransaction(i: SfTransactionInput): Record<string, string | number | boolean | null> {
@@ -70,8 +75,8 @@ export function buildSfTransaction(i: SfTransactionInput): Record<string, string
     Amount__c: i.baseCents / 100,
     Date__c: i.paidDateEt,
     Method__c: "Stripe",
-    ReferenceId__c: i.paymentIntentId ? i.paymentIntentId.slice(0, 50) : null,
-    Deposited__c: false,
+    ReferenceId__c: stripeDepositReference(i.paidDateEt),
+    Deposited__c: i.fromPayout === true,
     Description__c: parts.join(" · ").slice(0, 255),
   };
 }

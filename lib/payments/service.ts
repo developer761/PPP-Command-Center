@@ -3,7 +3,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
 import { createClient as createSupabaseAdminClient, type SupabaseClient } from "@supabase/supabase-js";
-import { etTodayIso } from "@/lib/date-et";
+import { etDateOf, etTodayIso } from "@/lib/date-et";
 import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
 import {
   buildPaymentSchedule,
@@ -625,6 +625,9 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
   let detail: string;
   let sfId: string | null = null;
 
+  // The day the money reached the bank (the payout's arrival), or today when
+  // an admin books early. Drives Date__c and the "ST"+MMDD Reference ID.
+  const depositDateEt = (payoutId && etDateOf(p.cleared_at)) || etTodayIso();
   try {
     const wo = await getWorkOrderPaymentStateById(p.work_order_id);
     const fields = buildSfTransaction({
@@ -638,7 +641,8 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
       baseCents: p.base_cents,
       feeCents: p.fee_cents,
       paymentIntentId: p.payment_intent_id,
-      paidDateEt: etTodayIso(),
+      paidDateEt: depositDateEt,
+      fromPayout: Boolean(payoutId),
     });
     // Which Payment Terms this payment completes, read live so a term already
     // marked paid (by an earlier online payment) isn't written twice.
@@ -654,7 +658,7 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
       milestoneKey: p.milestone_key,
       terms: wo?.terms ?? [],
       coveredTermIds: covers,
-      paidDateEt: etTodayIso(),
+      paidDateEt: depositDateEt,
     });
     payload = { transaction: fields, paymentTerms: termUpdates };
 
