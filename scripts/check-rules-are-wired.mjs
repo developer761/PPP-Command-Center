@@ -86,8 +86,19 @@ const CHAINS = [
       // see "a bare yes to the availability question counts as availability"
       // below, which pins what goes in it. This chain is about WHAT is judged.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid[,)]/],
-      // The renderer stays per-message, but on ownWords rather than the narration.
-      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
+      /**
+       * The renderer stays per-message, but on ownWords rather than the
+       * narration — which is the property this link is for.
+       *
+       * It used to pin `availabilityGap: availabilityGap(ownWords)` exactly,
+       * and went red when that call was wrapped in a retraction guard — see
+       * "the validator and the renderer agree about a retracted day" below.
+       * The thing it protects, that the per-message gap reads the customer's
+       * OWN words and not the narration quoting our question back, was never
+       * touched. Pinning the surrounding expression pins the implementation;
+       * the call with ownWords in it is the rule.
+       */
+      ["lib/messaging/agent-run.ts", /\bavailabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
       /**
        * AND THE MODEL IS TOLD, which is the half that was missing.
@@ -733,6 +744,31 @@ const CHAINS = [
       // The language dropped at the call site is invisible to every unit test:
       // offsiteReasonFor defaults to English and answers perfectly happily.
       ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords\)/],
+    ],
+  },
+  {
+    rule: "the validator and the renderer agree about a retracted day",
+    why:
+      "agent-run builds the availability gap TWICE on purpose: the validator asks whether there " +
+      "is bookable availability anywhere in the conversation (availabilityGapAcross) and the " +
+      "renderer words the follow-up about what the customer just wrote (availabilityGap on " +
+      "ownWords). That split is right and it had a hole — the per-message copy reads any day it " +
+      "finds as a day SUPPLIED, and a retraction names the day it is withdrawing. Seen live in " +
+      "the Spanish sandbox 2026-10-08: \"Surgio algo, el martes ya no puedo\" got \"No hay " +
+      "problema. Que horario le funciona esos dias?\", asking what TIME works on the day just " +
+      "cancelled. The validator had reopened the gap, which is why ask_availability was " +
+      "available at all; the renderer narrowed to the window. Two layers disagreeing about one " +
+      "message, and only the customer sees it",
+    links: [
+      // The renderer's per-message gap is guarded by the retraction test...
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*retractsAvailability\(ownWords\)\s*\?\s*"both"\s*:\s*availabilityGap\(ownWords\)/],
+      // ...and the validator's across-thread copy still clears on one too.
+      ["lib/messaging/availability.ts", /if \(retractsAvailability\(text\)\) \{/],
+    ],
+    forbidden: [
+      // The shape that shipped the wrong question, and it reads perfectly
+      // reasonably: the bare parser on the message that takes a day back.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\),/],
     ],
   },
   {

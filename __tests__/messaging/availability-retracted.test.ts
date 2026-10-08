@@ -87,3 +87,59 @@ describe("a customer who changes their mind can be asked again", () => {
     expect(availabilityGap("Tuesday won't work")).toBe("window");
   });
 });
+
+/**
+ * THE VALIDATOR AND THE RENDERER DISAGREED ABOUT ONE MESSAGE.
+ *
+ * agent-run builds the availability gap TWICE, on purpose, and the comment
+ * there explains why: the validator asks "is there bookable availability
+ * anywhere in this conversation" (availabilityGapAcross) while the renderer
+ * words the follow-up about what the customer just wrote (availabilityGap on
+ * ownWords).
+ *
+ * That reasoning is right and it had a hole. The per-message copy reads any
+ * day it finds as a day SUPPLIED, and a retraction names the day it is
+ * withdrawing. Seen live in the Spanish sandbox, 2026-10-08:
+ *
+ *   customer  "Surgio algo, el martes ya no puedo"
+ *   bot       "No hay problema. Qué horario le funciona esos días?"
+ *
+ * The validator had it right — the gap reopened, which is why ask_availability
+ * was allowed at all — and the renderer narrowed to the WINDOW, asking what
+ * time works on the day just cancelled.
+ *
+ * Asserted on the two functions together, because what was wrong was that
+ * they disagreed, not either one alone.
+ */
+describe("the per-message gap does not read a day out of a retraction", () => {
+  it.each([
+    ["Surgio algo, el martes ya no puedo", "es"],
+    ["Something came up, Tuesday won't work", "en"],
+    ["El martes ya no me sirve", "es"],
+    ["Actually Tuesday no longer works for us", "en"],
+  ])("treats %j as nothing supplied", (text) => {
+    // What the renderer now uses: a retraction means the DAY is missing, so
+    // the unnarrowed ask is the right question.
+    expect(retractsAvailability(text)).toBe(true);
+    // And what it used to use, which is where the wrong wording came from.
+    expect(availabilityGap(text), "the bare parser still reads a day here, which is the trap")
+      .not.toBeNull();
+  });
+
+  /**
+   * AND THE TWO AGREE AFTERWARDS. The validator reopening while the renderer
+   * narrows is the failure; both treating it as nothing supplied is the fix.
+   */
+  it("agrees with the across-thread view after a retraction", () => {
+    const thread = ["Tuesday afternoon works for me", "Something came up, Tuesday won't work"];
+    expect(availabilityGapAcross(thread)).toBe("both");
+    expect(retractsAvailability(thread[1])).toBe(true);
+  });
+
+  /** An ordinary partial answer still narrows, which is the whole point of
+   *  keeping the renderer's copy per-message. */
+  it("still narrows an ordinary day-only answer to the window", () => {
+    expect(retractsAvailability("Tuesday works for me")).toBe(false);
+    expect(availabilityGap("Tuesday works for me")).toBe("window");
+  });
+});
