@@ -126,12 +126,18 @@ const BY_DESIGN = new Set([
 const PENDING_REMOVAL = new Map([
   ["sms_sub_accounts.44ed500b-80ad-481a-ac94-0e42dca0ee73.call_forward_to",
    "Karan's mobile, set to test voice on the toll-free pilot. Karan, 2026-10-01: "
-   + "\"before we go live we will reroute it\". MUST BE CLEARED BEFORE THE TOLL-FREE "
-   + "GOES LIVE — +18888156464 is the number printed in the registered sample "
-   + "messages (\"Call us at 888-815-6464\"), so once texts carry it, customers "
-   + "ring this phone instead of MAIN_LINE. Clearing it restores the documented "
-   + "design: voice-forward.ts says call_forward_to is NULL on every workspace "
-   + "and the fallback does the rest."],
+   + "\"before we go live we will reroute it\". MUST BE CLEARED OR REPOINTED BEFORE "
+   + "THE TOLL-FREE GOES LIVE — +18888156464 is the number printed in the "
+   + "registered sample messages (\"Call us at 888-815-6464\"), so once texts carry "
+   + "it, customers ring this phone instead of MAIN_LINE. "
+   + "KATIE ANSWERED THIS, 2026-10-08: the destination is +18779598490, and it is "
+   + "NOT to be set yet — \"We don't want forwards to go through yet during "
+   + "testing though. We can forward those to my number for testing if we need "
+   + "12102877930.\" So this stays on the list until somebody decides between "
+   + "three endings: leave it on Karan's phone for testing, repoint it to "
+   + "Katie's +12102877930 for testing, or set the real +18779598490 at go-live. "
+   + "Whichever is chosen, NULL on every workspace is the documented design — "
+   + "voice-forward.ts says so and the fallback does the rest."],
 ]);
 
 const ALLOWED = new Set([

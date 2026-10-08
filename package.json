@@ -69,7 +69,8 @@
     "check:options": "node scripts/check-unpassed-options.mjs",
     "gates": "node scripts/gates.mjs",
     "prepare": "node scripts/install-hooks.mjs",
-    "check:writers": "node scripts/check-settings-have-writers.mjs"
+    "check:writers": "node scripts/check-settings-have-writers.mjs",
+    "check:consent-values": "node scripts/check-sms-consent-values.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
