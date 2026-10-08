@@ -153,6 +153,19 @@ export type SchedulerDeps = {
    */
   onCadenceSpent?(a: DueAction): Promise<void>;
   /**
+   * Is an EARLIER step of this conversation's cadence still waiting to go out?
+   *
+   * sms_claim_due_actions orders only by run_at, and each deferral pushes one
+   * row forward an hour, so two steps deferring at different moments drift out
+   * of sequence. Both live cadences in production are inverted — step 3 twenty
+   * five minutes ahead of step 2 — which would deliver escalating follow-ups
+   * backwards and, worse, fire onCadenceSpent before the remaining text,
+   * telling the phone team we were finished and then texting again.
+   *
+   * Optional so a worker without it behaves exactly as before.
+   */
+  earlierStepPending?(a: DueAction): Promise<boolean>;
+  /**
    * The carrier refused because THEY have this person suppressed and we did
    * not. Closes the gap by writing our own row, so the next workspace to try
    * is stopped by our gate rather than by a failed send. Optional, so a worker
@@ -377,6 +390,35 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       const reason = `this worker cannot run ${a.action}`;
       await deps.cancel(a, reason);
       return { kind: "cancelled", reason };
+    }
+    /**
+     * A CADENCE IS A SEQUENCE, AND run_at HAD STOPPED GUARANTEEING IT.
+     *
+     * sms_claim_due_actions orders only by run_at, and every deferral pushes
+     * ONE row forward an hour. Two steps deferring at different moments drift
+     * apart, and production has both live cadences inverted right now:
+     *
+     *   conversation 90d11ce5   step 2 at 17:32, step 3 at 17:07
+     *   conversation f55e914b   step 2 at 17:32, step 3 at 17:08
+     *
+     * Step 3 would go out twenty-five minutes before step 2. The follow-ups
+     * escalate, so the customer reads them backwards — and the worse half is
+     * the ending: onCadenceSpent fires on the LAST step, so handing the lead
+     * back to the call centre would happen first and the remaining text would
+     * arrive after we had told the phone team we were done.
+     *
+     * Deferred rather than cancelled, and retryable, so the step waits for its
+     * turn instead of being lost — the bound added for the draft case covers
+     * it, because an earlier step that never completes is the same kind of
+     * standstill.
+     */
+    if (a.action === "stall_followup" && deps.earlierStepPending && a.stall_step != null) {
+      if (await deps.earlierStepPending(a)) {
+        const reason = "an earlier follow-up in this cadence has not gone out yet";
+        const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
+        await deps.reschedule(a, at, reason, "deferral");
+        return { kind: "rescheduled", at, reason };
+      }
     }
     try {
       const out = await deps.draftReply(a);

@@ -965,3 +965,85 @@ describe("the tick budget is spent against the lambda, not against itself", () =
       .toBeLessThan(src.indexOf("await getSalesforceClient"));
   });
 });
+
+/**
+ * A CADENCE IS A SEQUENCE, AND run_at HAD STOPPED GUARANTEEING IT.
+ *
+ * sms_claim_due_actions orders only by run_at, and every deferral pushes ONE
+ * row forward an hour — so two steps deferring at different moments drift
+ * apart. Both live cadences in production were inverted when this was found:
+ *
+ *   conversation 90d11ce5   step 2 at 17:32, step 3 at 17:07
+ *   conversation f55e914b   step 2 at 17:32, step 3 at 17:08
+ *
+ * Step 3 twenty five minutes ahead of step 2. The follow-ups escalate, so the
+ * customer reads them backwards — and onCadenceSpent fires on the LAST step,
+ * so the lead would be handed back to the call centre and THEN texted again.
+ */
+describe("a follow-up waits for the earlier steps of its own cadence", () => {
+  const step = (n: number): DueAction => ({
+    id: `st${n}`, conversation_id: "c-cad", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: n,
+  });
+
+  it("defers when an earlier step is still pending", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    const out = await runDueActions(d);
+    expect(d.calls.reschedule, "step 3 went out ahead of step 2").toBe(1);
+    expect(d.calls.markSent).toBe(0);
+    expect(out.sent).toBe(0);
+  });
+
+  it("runs when nothing earlier is outstanding", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => false,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+
+  /**
+   * AND THE HAND-BACK MUST NOT FIRE EARLY. onCadenceSpent runs on the last
+   * step; firing it while an earlier text is still queued tells the phone team
+   * the cadence is finished and then sends another message.
+   */
+  it("does not hand the lead back while an earlier step is queued", async () => {
+    let handedBack = 0;
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+      onCadenceSpent: async () => { handedBack++; },
+    });
+    await runDueActions(d);
+    expect(handedBack, "told the call centre the cadence was spent too early").toBe(0);
+  });
+
+  /** A step with no number cannot be ordered, so it is left alone. */
+  it("leaves an unnumbered action alone", async () => {
+    const d = deps({
+      claimDue: async () => [{ ...step(1), stall_step: null }],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
+  });
+
+  /** A worker that cannot answer the question behaves exactly as before. */
+  it("is unchanged when the dep is absent", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
+  });
+});

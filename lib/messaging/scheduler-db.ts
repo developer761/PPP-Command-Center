@@ -87,6 +87,36 @@ export function schedulerDeps(): SchedulerDeps {
      * not fail the message that just went out. The call centre carries on as
      * it was, which is the status quo rather than a new failure.
      */
+    /**
+     * An earlier step of this cadence still waiting. See
+     * SchedulerDeps.earlierStepPending for why run_at alone stopped
+     * guaranteeing the order.
+     *
+     * A read failure answers TRUE — "something earlier may still be waiting" —
+     * because the cost of the two mistakes is not equal. Deferring a step that
+     * was actually ready loses an hour. Sending step 3 before step 2 tells the
+     * call centre the cadence is spent and then texts the customer again, and
+     * neither of those can be taken back.
+     */
+    async earlierStepPending(a) {
+      if (a.stall_step == null) return false;
+      const { count, error } = await sb.from("sms_scheduled_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", a.conversation_id)
+        .eq("action", "stall_followup")
+        .lt("stall_step", a.stall_step)
+        .in("state", ["pending", "claimed"]);
+      if (error) {
+        reportWarn({
+          key: "stall_step_order_unknown", platform: "ppp_cc",
+          message: "could not tell whether an earlier follow-up is still waiting, so this one was held back",
+          context: { conversationId: a.conversation_id, actionId: a.id, step: a.stall_step, error: error.message },
+        });
+        return true;
+      }
+      return (count ?? 0) > 0;
+    },
+
     async onCadenceSpent(a) {
       try {
         const { data } = await sb.from("sms_conversations")
