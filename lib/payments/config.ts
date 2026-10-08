@@ -48,9 +48,12 @@ export type PaymentsConfig = {
  * for jobs in its states. A Colorado or California customer paying into the
  * NY account is a reconciliation mess for three companies. Florida (58 open
  * jobs on 10/8) isn't listed by Katie: excluded until she says which account.
- * Override with PAYMENTS_LINK_STATES="NY,NJ,CT,…".
+ *
+ * Launching with NY and NJ only (Karan, 2026-10-08). CT/MA/ME are on the
+ * primary account too and their no-surcharge rule is built — add them with
+ * PAYMENTS_LINK_STATES="NY,NJ,CT,MA,ME" when PPP is ready.
  */
-const DEFAULT_LINK_STATES = ["NY", "NJ", "CT", "MA", "ME"];
+const DEFAULT_LINK_STATES = ["NY", "NJ"];
 /** Connecticut, Massachusetts, Maine prohibit credit-card surcharges; Katie's
  *  invoice templates already use a no-fee wording there. */
 const DEFAULT_NO_SURCHARGE_STATES = ["CT", "MA", "ME"];

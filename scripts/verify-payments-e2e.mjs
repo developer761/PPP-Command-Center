@@ -262,7 +262,12 @@ try {
   // ── N. State rules (Katie, 2026-10-08) ───────────────────────────────────
   {
     const ct = (await conn.query("SELECT Id, WorkOrderNumber, State FROM WorkOrder WHERE State = 'CT' AND BalanceOwed__c > 100 AND Total_Payment_Terms__c > 0 AND Status NOT IN ('Closed','Canceled','Complete Paid in Full') LIMIT 1")).records[0];
-    if (ct) {
+    if (ct && !svc.paymentsConfig().linkStates.has("CT")) {
+      // Launch is NY + NJ only: a Connecticut job is refused a link for now.
+      let refused = "";
+      try { await svc.issuePaymentLinkAndPublish({ id: ct.Id, number: ct.WorkOrderNumber, state: ct.State }, "e2e-test"); } catch (e) { refused = e.message; }
+      check("Connecticut job: no link yet (launch is NY + NJ)", /not one of this Stripe account's states/.test(refused), refused.slice(0, 60));
+    } else if (ct) {
       const l = await svc.issuePaymentLinkAndPublish({ id: ct.Id, number: ct.WorkOrderNumber, state: ct.State }, "e2e-test");
       try {
         const due = (await svc.loadPayState(l.link.token)).schedule.milestones.find((m) => m.status === "due");

@@ -216,9 +216,15 @@ describe("statusFromPaymentIntent", () => {
 describe("state rules — which Stripe account, and where a card fee is legal", () => {
   const cfg = readPaymentsConfig({});
 
-  it("links only for the primary account's states; CO / CA / FL / blank are not", () => {
-    for (const st of ["NY", "NJ", "CT", "MA", "ME", "ny", "New York"]) expect(linksAllowedIn(st, cfg)).toBe(true);
-    for (const st of ["CO", "CA", "FL", "", null, "Colorado"]) expect(linksAllowedIn(st, cfg)).toBe(false);
+  it("launch: links for NY and NJ only; everything else (incl. CT/MA/ME for now, CO/CA, FL, blank) is not", () => {
+    for (const st of ["NY", "NJ", "ny", "New York", "new jersey"]) expect(linksAllowedIn(st, cfg)).toBe(true);
+    for (const st of ["CT", "MA", "ME", "CO", "CA", "FL", "", null, "Colorado"]) expect(linksAllowedIn(st, cfg)).toBe(false);
+  });
+
+  it("CT/MA/ME switch on with one setting — and keep their no-fee rule", () => {
+    const c = readPaymentsConfig({ PAYMENTS_LINK_STATES: "NY,NJ,CT,MA,ME" });
+    expect(linksAllowedIn("CT", c)).toBe(true);
+    expect(surchargeAllowedIn("CT", c)).toBe(false);
   });
 
   it("no credit-card surcharge in CT, MA or ME — and never for an unknown state", () => {
