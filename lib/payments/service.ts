@@ -783,6 +783,15 @@ async function advance(
 }
 
 async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<PaymentRow> {
+  const r = await bookIfClaimed(p, payoutId);
+  if (r) return r;
+  const { data: now } = await db().from("stripe_payments").select("*").eq("id", p.id).single();
+  return now as PaymentRow;
+}
+
+/** Book one payment in Salesforce — or return null if another process holds
+ *  (or already finished) the booking, so callers can count exactly. */
+async function bookIfClaimed(p: PaymentRow, payoutId?: string): Promise<PaymentRow | null> {
   const cfg = paymentsConfig();
   // Claim the row before touching Salesforce: two deliveries of one payout, or
   // an admin's "Book now" during a payout, must not both create a Payment In.
@@ -795,10 +804,7 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
     .select("*")
     .maybeSingle();
   if (claimErr) throw new Error(`stripe_payments claim failed: ${claimErr.message}`);
-  if (!claimed) {
-    const { data: now } = await db().from("stripe_payments").select("*").eq("id", p.id).single();
-    return now as PaymentRow;
-  }
+  if (!claimed) return null;
   p = claimed as PaymentRow;
   let payload: Record<string, unknown> | null = null;
   let status: "dry_run" | "written" | "failed";
@@ -963,9 +969,10 @@ export async function bookClearedPayments(
   let booked = 0;
   let failed = 0;
   for (const row of (data ?? []) as PaymentRow[]) {
-    const done = await recordInSalesforce(row, payoutId);
+    const done = await bookIfClaimed(row, payoutId);
+    if (!done) continue; // another process has this one
     if (done.sf_writeback_status === "failed") failed++;
-    else if (done.sf_writeback_status !== "booking") booked++;
+    else booked++;
   }
   return { booked, failed };
 }
