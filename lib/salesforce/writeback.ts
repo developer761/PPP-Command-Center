@@ -87,6 +87,10 @@ export async function writeSf(
     connection?: Awaited<ReturnType<typeof getSalesforceClient>>;
   }
 ): Promise<SfWriteResult> {
+  // A write through another org's connection (the payments sandbox) must never
+  // drop production's shared snapshot — those records aren't in it. Treated as
+  // deferring the invalidation, with nothing to defer to.
+  if (ctx.connection) ctx = { ...ctx, deferCacheInvalidation: true };
   const t0 = Date.now();
 
   // Karan/Katie 2026-07-08: getSalesforceClient() used to live outside
@@ -166,9 +170,7 @@ export async function writeSf(
           retryCount: attempts - 1,
           durationMs: Date.now() - t0,
         });
-        // A write through another org's connection (the payments sandbox) never
-        // touches production's shared snapshot.
-        if (!ctx.deferCacheInvalidation && !ctx.connection) await clearSalesforceCache();
+        if (!ctx.deferCacheInvalidation) await clearSalesforceCache();
         return { ok: true, recordId: attempt.recordId, attempts };
       }
       // SF returned a non-success — extract error info, don't retry validation errors
