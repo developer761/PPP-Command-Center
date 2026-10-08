@@ -1143,6 +1143,34 @@ gradings stop being explicable.
 > **→ Action is ours, not hers: send the sheet.** The only thing left for her
 > after that is whether 192 stays the number to beat.
 
+> **THE SHEET IS PRODUCED, 2026-10-08** — `findings-outside-kates-pass.csv`,
+> 214 rows, each with its turn text so it reads on its own. Ready to send.
+>
+> **And we can now say what the A13 number is MADE OF, which is more use than
+> the count.** Of the 206 A13 breaches carrying your note, grouped by what the
+> note says was already held:
+>
+> | already held | findings |
+> |---|---|
+> | phone | 79 |
+> | address | 52 |
+> | email | 36 |
+> | zip | 30 |
+> | name | 6 |
+>
+> So A13 is 165 "asked for something on file" against **4** "read back what
+> they just typed" — the rule has two halves and almost all of it is the first.
+> That changed what we fixed: the echo check was the wrong instrument and the
+> narrowing was the right one.
+>
+> **The phone 79 is already right** — we always hold it, because they are
+> texting us from it, so the templates read it back rather than asking, which
+> A13 permits. The address and zip halves were narrowed when A11 was built.
+> **The contact half never was**, and that shipped 2026-10-08: holding a name
+> and no email now asks only for the email, and the reverse asks only for the
+> name, in both languages. Your 6 "held name" and 36 "held email" are the
+> findings that addresses.
+
 The spec says A13 carries **192 defects and 77 good turns**, and names that
 192 as the baseline to beat. The rated CSVs do yield 192/77 when filtered to
 the handover corpus. But the code asserts **206**, and the Rule Hub screen
@@ -1616,3 +1644,60 @@ things to tell us if you disagree: whether re-asking the **day** is right or it
 should offer a specific alternative, and whether a withdrawal should instead go
 straight to a person — it is a customer with a changed plan, which may be a
 human's job rather than the bot's.
+
+## 30. What the bot still has no CONTENT for — three stores, all empty
+
+**Raised 2026-10-08. Not a decision: a list of what is built, working, and
+sitting empty.** Every store below has an importer or an editor in the hub, and
+every one reads zero rows in production today. Audited against the live
+database rather than guessed.
+
+### Standing answers (FAQs) — 0 rows, and they reach the model
+
+The biggest of the three, because it is wired all the way to the prompt:
+`agent-run.ts` interpolates `workspaceFaqs` into the system prompt beside the
+Class A rules. With no rows, that block renders empty — so the bot has no
+standing answer to anything, and every factual question a customer asks
+("do you do cabinets", "are you insured", "how long will it take", "do you move
+furniture") can only become `defer_to_estimator` or an escalation.
+
+That is a real cost per conversation and it is invisible in testing, because a
+bot with no FAQs behaves correctly — it defers, which is the right move when it
+genuinely does not know.
+
+**What it needs:** a question-and-answer list. The importer takes a pasted
+block (`/messaging/training` → the FAQ import) and the editor is
+`workspace-faqs.tsx`. Per workspace or shared, whichever suits — the table is
+keyed by workspace and the import can target all of them.
+
+### Snippets — 0 rows, for the people answering
+
+Canned replies a rep drops into a thread from the composer, with
+`{{customer_name}}` and friends filled in before the rep sees them, so what
+they read is what the customer gets. Nothing reaches the bot: this is purely
+for the humans.
+
+**It matters more than it looks right now**, because autosend is off on all 33
+workspaces — so every single reply is typed by a person today, and snippets are
+the thing that makes that fast. Editor is `snippets-editor.tsx`.
+
+### Per-workspace service overrides — 0 rows, and probably fine
+
+Ten services are defined globally and the bot uses those. This table exists for
+a region that does something the others do not. **Nothing needed unless a
+workspace genuinely differs** — noted only so its emptiness is a decision
+rather than an oversight.
+
+### And two things that are empty for a GOOD reason, so nobody chases them
+
+- **Four active workspaces have no agent config of their own** — AM - NJ,
+  AM - NY, AM - SoFlo and ZZ TEST. Configs are tiered (workspace, then state,
+  then global), so these resolve to a broader one. The three AM workspaces are
+  account management rather than lead intake.
+- **The same four have no workflow**, which is consistent: nothing should be
+  enrolling account-management conversations into the new-lead campaign.
+
+**→ Nothing is blocked on any of this and nothing is wrong.** The question is
+only whether you want the FAQ and snippet lists written before the first real
+conversation or after, and that is a choice about how much the first week leans
+on a person.
