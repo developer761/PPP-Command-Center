@@ -39,7 +39,7 @@ export default async function CardPage({
 
   const percent = state.schedule.milestones.find((x) => x.key === m)?.percent ?? null;
   const previewNote = !cfg.publicPages
-    ? `Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Test cards: credit 4242 4242 4242 4242 · debit 4000 0566 5566 5556." : ""}`
+    ? `${cfg.sfOrg === "sandbox" ? "SALESFORCE SANDBOX · " : ""}Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Test cards: credit 4242 4242 4242 4242 · debit 4000 0566 5566 5556." : ""}`
     : null;
 
   return (

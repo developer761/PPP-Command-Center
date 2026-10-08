@@ -39,6 +39,20 @@ describe("readPaymentsConfig — nothing real happens by default", () => {
     expect(readPaymentsConfig({ PAYMENTS_PUBLIC: "yes" }).publicPages).toBe(false);
   });
 
+  it("SANDBOX: only test payments are written, real money never", () => {
+    const sb = readPaymentsConfig({ PAYMENTS_SF_WRITEBACK: "on", PAYMENTS_SF_ORG: "sandbox" });
+    expect(sb.sfOrg).toBe("sandbox");
+    expect(shouldWriteToSalesforce(sb, false)).toBe(true);
+    expect(shouldWriteToSalesforce(sb, true)).toBe(false);
+    expect(shouldWriteToSalesforce(readPaymentsConfig({ PAYMENTS_SF_ORG: "sandbox" }), false)).toBe(false);
+  });
+
+  it("anything but exactly 'sandbox' is production", () => {
+    expect(readPaymentsConfig({ PAYMENTS_SF_ORG: "Sandbox" }).sfOrg).toBe("production");
+    expect(readPaymentsConfig({ PAYMENTS_SF_ORG: "dev" }).sfOrg).toBe("production");
+    expect(readPaymentsConfig({}).sfOrg).toBe("production");
+  });
+
   it("a TEST payment is never written to Salesforce, even with write-back on", () => {
     const on = readPaymentsConfig({ PAYMENTS_SF_WRITEBACK: "on" });
     expect(shouldWriteToSalesforce(on, false)).toBe(false);

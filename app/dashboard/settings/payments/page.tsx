@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import PageHeader from "@/components/page-header";
 import { getSignedInAdminEmail } from "@/lib/payments/access";
 import {
-  issuePaymentLink,
+  createLinksForOpenWorkOrders,
+  issuePaymentLinkAndPublish,
   listRecentLinks,
   listRecentPayments,
   paymentsConfig,
@@ -46,8 +47,10 @@ async function createLinkAction(formData: FormData) {
     const wo = await getWorkOrderPaymentStateByNumber(raw);
     if (!wo) msg = `No Work Order "${raw}" in Salesforce. Use the 8-digit number on the invoice, e.g. 00313399.`;
     else {
-      const link = await issuePaymentLink({ id: wo.id, number: wo.number }, email);
-      msg = `Pay link ready for WO ${wo.number}: /pay/${link.token}`;
+      const r = await issuePaymentLinkAndPublish({ id: wo.id, number: wo.number }, email);
+      msg = `Pay link ready for WO ${wo.number}: ${r.url} — ${
+        r.salesforce.ok ? "saved to the Work Order in Salesforce" : `NOT saved to Salesforce (${r.salesforce.reason})`
+      }`;
       ok = true;
     }
   } catch (err) {
@@ -64,10 +67,37 @@ async function revokeLinkAction(formData: FormData) {
   let msg = "Link switched off. Anyone opening it is told to call the office.";
   let ok = true;
   try {
-    await revokePaymentLink(token);
+    const r = await revokePaymentLink(token);
+    msg += r.salesforce.ok
+      ? " Removed from the Work Order, so the next invoice shows the old Stripe link."
+      : ` Couldn't clear it in Salesforce (${r.salesforce.reason}).`;
   } catch (err) {
     msg = err instanceof Error ? err.message : String(err);
     ok = false;
+  }
+  revalidatePath(PATH);
+  redirect(`${PATH}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
+}
+
+async function bulkLinksAction() {
+  "use server";
+  const email = await requireAdmin();
+  let msg: string;
+  let ok = false;
+  try {
+    const r = await createLinksForOpenWorkOrders(email, 100);
+    msg =
+      r.found === 0
+        ? "Every open Work Order with money owed already has a pay link."
+        : `${r.found} open Work Order${r.found === 1 ? "" : "s"} found · ${r.published} link${r.published === 1 ? "" : "s"} saved to Salesforce` +
+          (r.failed.length ? ` · ${r.failed.length} not saved (e.g. WO ${r.failed[0].number}: ${r.failed[0].reason})` : "") +
+          (r.found === 100 ? " · run again for more." : "") +
+          (r.licenseeFilter === "unavailable"
+            ? " · NOTE: licensee jobs couldn't be excluded — the Command Center can't read the User licensee flags (ask Katie for read access)."
+            : "");
+    ok = r.failed.length === 0;
+  } catch (err) {
+    msg = err instanceof Error ? err.message : String(err);
   }
   revalidatePath(PATH);
   redirect(`${PATH}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
@@ -164,6 +194,16 @@ export default async function PaymentsSettingsPage({
             env="PAYMENTS_PUBLIC=1"
           />
           <Switch
+            label="Salesforce org"
+            state={cfg.sfOrg === "sandbox" ? "test" : "on"}
+            value={
+              cfg.sfOrg === "sandbox"
+                ? "SANDBOX — payment links, Payment Ins and Payment Terms go to the sandbox. The rest of the Command Center stays on production."
+                : "Production"
+            }
+            env="PAYMENTS_SF_ORG"
+          />
+          <Switch
             label="Salesforce write-back"
             state={cfg.sfWritebackOn ? "on" : "off"}
             value={
@@ -197,6 +237,26 @@ export default async function PaymentsSettingsPage({
             Create link
           </button>
         </form>
+        <form action={bulkLinksAction} className="mt-3">
+          <button
+            type="submit"
+            className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]"
+          >
+            Create links for open Work Orders
+          </button>
+          <span className="ml-2 text-[12px] text-ppp-charcoal-500">
+            Money owed, payment terms set, no link yet, not a licensee job. Up to 100 per click.
+          </span>
+        </form>
+        {cfg.sfOrg === "sandbox" && (
+          <p className="mt-3 text-[12px] text-ppp-charcoal-600">
+            Sandbox mode.{" "}
+            <a href="/api/auth/salesforce-sandbox/login" className="font-semibold text-ppp-navy underline underline-offset-2">
+              Connect (or reconnect) the sandbox
+            </a>{" "}
+            — sign in with your sandbox user.
+          </p>
+        )}
         {cfg.stripeMode === "test" && (
           <p className="mt-3 text-[12px] text-ppp-charcoal-500">
             Testing: credit card <span className="font-mono">4242 4242 4242 4242</span>, debit card{" "}

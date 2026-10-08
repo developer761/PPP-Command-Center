@@ -22,6 +22,7 @@ import {
   type Stage,
 } from "@/lib/payments/ledger";
 import { etTodayIso } from "@/lib/date-et";
+import { paymentsSalesforceBaseUrl } from "@/lib/salesforce/payments-org";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Payments · PPP Command Center" };
@@ -38,8 +39,9 @@ export const metadata = { title: "Payments · PPP Command Center" };
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
-const SF_BASE = (process.env.SF_LOGIN_URL ?? "https://precisionplus.my.salesforce.com").replace(/\/$/, "");
-const sfLink = (id: string) => `${SF_BASE}/${id}`;
+const SF_FALLBACK = (process.env.SF_LOGIN_URL ?? "https://precisionplus.my.salesforce.com").replace(/\/$/, "");
+/** A record link in the org the payments code is on (production, or the sandbox when testing). */
+const sfLink = (base: string, id: string) => `${base}/${id}`;
 const stripeLink = (pi: string, live: boolean) => `https://dashboard.stripe.com/${live ? "" : "test/"}payments/${pi}`;
 
 const STAGE_CLS: Record<Stage, string> = {
@@ -58,6 +60,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: SP 
   const today = etTodayIso();
   // Show the mode the Stripe key is in, so a test setup isn't an empty page.
   const q = parseLedgerQuery(sp, today, cfg.stripeMode !== "test");
+  const sfBase = await paymentsSalesforceBaseUrl().catch(() => SF_FALLBACK);
 
   let all: LedgerPayment[] = [];
   let loadError: string | null = null;
@@ -274,7 +277,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: SP 
                       <td className="px-3 py-3">
                         <div className="font-semibold text-ppp-charcoal">{p.customer_name ?? "—"}</div>
                         <div className="text-[12px] text-ppp-charcoal-600">
-                          <a href={sfLink(p.work_order_id)} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                          <a href={sfLink(sfBase, p.work_order_id)} target="_blank" rel="noreferrer" className="underline underline-offset-2">
                             WO {p.work_order_number}
                           </a>{" "}
                           · {p.milestone_label}
@@ -287,7 +290,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: SP 
                       <td className="px-3 py-3 text-right">{p.stripe_fee_cents == null ? "—" : formatCents(p.stripe_fee_cents)}</td>
                       <td className="px-5 py-3">
                         <StageChip p={p} />
-                        <RowLinks p={p} />
+                        <RowLinks p={p} sfBase={sfBase} />
                       </td>
                     </tr>
                   ))}
@@ -316,7 +319,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: SP 
                     {p.stripe_fee_cents != null && ` · Stripe ${formatCents(p.stripe_fee_cents)}`}
                   </div>
                   <StageChip p={p} />
-                  <RowLinks p={p} />
+                  <RowLinks p={p} sfBase={sfBase} />
                 </li>
               ))}
             </ul>
@@ -359,7 +362,7 @@ function StageChip({ p }: { p: LedgerPayment }) {
   );
 }
 
-function RowLinks({ p }: { p: LedgerPayment }) {
+function RowLinks({ p, sfBase }: { p: LedgerPayment; sfBase: string }) {
   return (
     <div className="mt-1 flex flex-wrap gap-x-3 text-[12px]">
       {p.payment_intent_id && (
@@ -368,7 +371,7 @@ function RowLinks({ p }: { p: LedgerPayment }) {
         </a>
       )}
       {p.sf_transaction_id && (
-        <a href={sfLink(p.sf_transaction_id)} target="_blank" rel="noreferrer" className="text-ppp-navy underline underline-offset-2">
+        <a href={sfLink(sfBase, p.sf_transaction_id)} target="_blank" rel="noreferrer" className="text-ppp-navy underline underline-offset-2">
           Payment In
         </a>
       )}

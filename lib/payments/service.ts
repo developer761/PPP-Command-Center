@@ -19,6 +19,7 @@ import {
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
 import { clearedPaymentsInPayout } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
+import { getPaymentsSalesforceClient, paymentsOrg } from "@/lib/salesforce/payments-org";
 import {
   CARD_ELEMENT_FLOW,
   isForwardMove,
@@ -33,6 +34,8 @@ import {
   getPaymentInRecordTypeId,
   getWorkOrderPaymentStateById,
   isClosedForPayment,
+  listWorkOrdersNeedingPayLinks,
+  setWorkOrderPaymentUrl,
   type WorkOrderPaymentState,
 } from "@/lib/salesforce/payments";
 
@@ -131,6 +134,66 @@ export async function getPaymentLink(token: string): Promise<PaymentLinkRow | nu
   return (data as PaymentLinkRow | null) ?? null;
 }
 
+/**
+ * The full URL a customer opens. PAYMENTS_LINK_BASE_URL wins (a sandbox test
+ * pointing invoices at a laptop), then the app's public URL.
+ */
+export function paymentLinkUrl(token: string): string {
+  const base = (
+    process.env.PAYMENTS_LINK_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    "https://hub.precisionpaintingplus.net"
+  ).replace(/\/$/, "");
+  return `${base}/pay/${token}`;
+}
+
+/**
+ * Issue (or re-issue) a Work Order's link AND put it in Salesforce's
+ * Online_Payment_URL__c, which S-Docs prints on the invoice. Says whether the
+ * Salesforce write happened — before Katie's field reaches an org, it can't.
+ */
+export async function issuePaymentLinkAndPublish(
+  wo: { id: string; number: string },
+  createdBy: string | null,
+): Promise<{ link: PaymentLinkRow; url: string; salesforce: { ok: true } | { ok: false; reason: string } }> {
+  const link = await issuePaymentLink(wo, createdBy);
+  const url = paymentLinkUrl(link.token);
+  const salesforce = await setWorkOrderPaymentUrl(wo.id, url, wo.number).catch((e: unknown) => ({
+    ok: false as const,
+    reason: e instanceof Error ? e.message : String(e),
+  }));
+  return { link, url, salesforce };
+}
+
+/**
+ * Give every open Work Order that needs one a pay link (see
+ * listWorkOrdersNeedingPayLinks for which). Bounded per run; run it again for
+ * the rest. Returns what happened, for the admin page.
+ */
+export async function createLinksForOpenWorkOrders(
+  createdBy: string | null,
+  limit = 100,
+): Promise<{
+  found: number;
+  published: number;
+  failed: { number: string; reason: string }[];
+  licenseeFilter: "applied" | "unavailable";
+}> {
+  const { workOrders: wos, licenseeFilter } = await listWorkOrdersNeedingPayLinks(limit);
+  let published = 0;
+  const failed: { number: string; reason: string }[] = [];
+  for (const wo of wos) {
+    try {
+      const r = await issuePaymentLinkAndPublish(wo, createdBy);
+      if (r.salesforce.ok) published++;
+      else failed.push({ number: wo.number, reason: r.salesforce.reason });
+    } catch (e) {
+      failed.push({ number: wo.number, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { found: wos.length, published, failed, licenseeFilter };
+}
+
 /** The live link for a Work Order, creating one if there is none. Re-issuing
  *  returns the same token so a link already printed on an invoice keeps working. */
 export async function issuePaymentLink(wo: { id: string; number: string }, createdBy: string | null): Promise<PaymentLinkRow> {
@@ -159,13 +222,24 @@ export async function issuePaymentLink(wo: { id: string; number: string }, creat
   return data as PaymentLinkRow;
 }
 
-export async function revokePaymentLink(token: string): Promise<void> {
-  const { error } = await db()
+/** Switch a link off and take it off the Work Order, so the next invoice falls
+ *  back to the old Stripe link instead of printing a dead one. */
+export async function revokePaymentLink(token: string): Promise<{ salesforce: { ok: true } | { ok: false; reason: string } }> {
+  const { data, error } = await db()
     .from("payment_links")
     .update({ revoked_at: new Date().toISOString() })
     .eq("token", token)
-    .is("revoked_at", null);
+    .is("revoked_at", null)
+    .select("*")
+    .maybeSingle();
   if (error) throw new Error(`payment_links revoke failed: ${error.message}`);
+  const link = data as PaymentLinkRow | null;
+  if (!link) return { salesforce: { ok: true } };
+  const salesforce = await setWorkOrderPaymentUrl(link.work_order_id, null, link.work_order_number).catch((e: unknown) => ({
+    ok: false as const,
+    reason: e instanceof Error ? e.message : String(e),
+  }));
+  return { salesforce };
 }
 
 // ─── What is owed ───────────────────────────────────────────────────────────
@@ -679,7 +753,11 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
       for (const u of termUpdates) {
         const res = await writeSf(
           { sObject: "Payment_Term__c", recordId: u.id, fields: u.fields },
-          { source: "online_payment", workOrderNumber: p.work_order_number },
+          {
+            source: "online_payment",
+            workOrderNumber: p.work_order_number,
+            connection: paymentsOrg() === "sandbox" ? await getPaymentsSalesforceClient() : undefined,
+          },
         );
         if (!res.ok) failed.push(`${u.id}: ${res.error}`);
       }
@@ -690,9 +768,11 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
       }
     } else {
       status = "dry_run";
-      detail = !p.livemode
-        ? "Test-mode payment — never written to Salesforce."
-        : "Salesforce write-back is off (PAYMENTS_SF_WRITEBACK). Payload stored, not sent.";
+      detail = !cfg.sfWritebackOn
+        ? "Salesforce write-back is off (PAYMENTS_SF_WRITEBACK). Payload stored, not sent."
+        : cfg.sfOrg === "sandbox"
+          ? "Real-money payment — never written to a sandbox."
+          : "Test-mode payment — never written to production Salesforce.";
     }
   } catch (err) {
     status = "failed";

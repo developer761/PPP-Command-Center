@@ -81,6 +81,10 @@ export async function writeSf(
     /** Set by writeSfBatch: skip the per-record cache invalidation and do it
      *  once for the whole batch instead. See writeSfBatch. */
     deferCacheInvalidation?: boolean;
+    /** Write through this connection instead of the app-wide one — the
+     *  payments code testing against a sandbox. Its records aren't in the
+     *  shared production snapshot, so the cache is left alone too. */
+    connection?: Awaited<ReturnType<typeof getSalesforceClient>>;
   }
 ): Promise<SfWriteResult> {
   const t0 = Date.now();
@@ -96,7 +100,7 @@ export async function writeSf(
   // always produce an audit row + surface as a clean SfWriteResult.
   let conn: Awaited<ReturnType<typeof getSalesforceClient>>;
   try {
-    conn = await getSalesforceClient();
+    conn = ctx.connection ?? (await getSalesforceClient());
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const errorCode =
@@ -162,7 +166,9 @@ export async function writeSf(
           retryCount: attempts - 1,
           durationMs: Date.now() - t0,
         });
-        if (!ctx.deferCacheInvalidation) await clearSalesforceCache();
+        // A write through another org's connection (the payments sandbox) never
+        // touches production's shared snapshot.
+        if (!ctx.deferCacheInvalidation && !ctx.connection) await clearSalesforceCache();
         return { ok: true, recordId: attempt.recordId, attempts };
       }
       // SF returned a non-success — extract error info, don't retry validation errors

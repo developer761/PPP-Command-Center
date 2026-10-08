@@ -14,6 +14,8 @@
  *                            webhook rejects everything.
  *   PAYMENTS_PUBLIC=1        /pay/<token> opens without signing in. Until then
  *                            it is admin-only — nothing is customer-facing.
+ *   PAYMENTS_SF_ORG=sandbox  The payments code talks to a Salesforce SANDBOX
+ *                            (lib/salesforce/payments-org.ts). Local testing.
  *   PAYMENTS_SF_WRITEBACK=on Create the Transaction__c in Salesforce. Off, the
  *                            payload is built and stored as a dry run. Even on,
  *                            TEST-mode payments are never written: a fake
@@ -32,6 +34,8 @@ export type PaymentsConfig = {
   webhookSecretPresent: boolean;
   publicPages: boolean;
   sfWritebackOn: boolean;
+  /** PAYMENTS_SF_ORG — which Salesforce the payments code talks to. */
+  sfOrg: "production" | "sandbox";
 };
 
 export function readPaymentsConfig(env: Record<string, string | undefined>): PaymentsConfig {
@@ -74,13 +78,18 @@ export function readPaymentsConfig(env: Record<string, string | undefined>): Pay
     // must not read as "off" (a preview 404'd on exactly that suspicion).
     publicPages: env.PAYMENTS_PUBLIC?.trim() === "1",
     sfWritebackOn: env.PAYMENTS_SF_WRITEBACK?.trim() === "on",
+    sfOrg: env.PAYMENTS_SF_ORG?.trim() === "sandbox" ? "sandbox" : "production",
   };
 }
 
 /**
- * Should THIS payment be written to Salesforce? Both switches, and the payment
- * itself must be real money.
+ * Should THIS payment be written to Salesforce? Write-back must be on, and:
+ *   - against PRODUCTION, the payment must be real money — a Stripe test
+ *     payment never reaches PPP's real books;
+ *   - against a SANDBOX, the reverse — only test payments, since that's the
+ *     whole point of testing there, and real money never belongs in a sandbox.
  */
 export function shouldWriteToSalesforce(cfg: PaymentsConfig, paymentLivemode: boolean): boolean {
-  return cfg.sfWritebackOn && paymentLivemode;
+  if (!cfg.sfWritebackOn) return false;
+  return cfg.sfOrg === "sandbox" ? !paymentLivemode : paymentLivemode;
 }

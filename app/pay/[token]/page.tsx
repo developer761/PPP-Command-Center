@@ -35,7 +35,7 @@ export default async function PayPage({
   const cfg = paymentsConfig();
   const isAdmin = (await getSignedInAdminEmail()) != null;
   const previewNote = !cfg.publicPages
-    ? `Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Stripe TEST mode: use card 4242 4242 4242 4242." : ""}`
+    ? `${cfg.sfOrg === "sandbox" ? "SALESFORCE SANDBOX · " : ""}Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Stripe TEST mode: use card 4242 4242 4242 4242." : ""}`
     : cfg.stripeMode === "test" && isAdmin
       ? "Stripe TEST mode — no real money moves."
       : null;
