@@ -248,7 +248,8 @@ export function exportRow(p: LedgerPayment): (string | number | null)[] {
   const dollars = (c: number | null) => (c == null ? null : c / 100);
   return [
     paymentDateEt(p),
-    p.cleared_at ? new Date(p.cleared_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) : null,
+    // Payout arrival is midnight UTC of the arrival day — read it in UTC.
+    p.cleared_at ? new Date(p.cleared_at).toISOString().slice(0, 10) : null,
     p.customer_name,
     p.customer_email,
     p.work_order_number,

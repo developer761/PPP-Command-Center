@@ -59,3 +59,14 @@ export function clearedPaymentsInPayout(txns: BalanceTxnLike[]): Map<string, { s
   for (const [pi, v] of out) result.set(pi, { stripeFeeCents: v.stripeFeeCents > 0 ? v.stripeFeeCents : null });
   return result;
 }
+
+/**
+ * The calendar day a payout reached the bank, from its arrival timestamp.
+ * Stripe's payout.arrival_date is MIDNIGHT UTC of the arrival day, so read it
+ * in UTC. Converting to Eastern first gives 8 PM the evening before, and every
+ * Payment In would be dated — and coded "ST"+MMDD — a day early, breaking
+ * finance's deposit matching on every payout. (Pre-launch review, 2026-10-08.)
+ */
+export function depositDateOfArrival(clearedAtIso: string): string {
+  return new Date(clearedAtIso).toISOString().slice(0, 10);
+}

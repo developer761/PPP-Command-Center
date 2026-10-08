@@ -3,7 +3,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
 import { createClient as createSupabaseAdminClient, type SupabaseClient } from "@supabase/supabase-js";
-import { etDateOf, etTodayIso } from "@/lib/date-et";
+import { etTodayIso } from "@/lib/date-et";
 import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
 import {
   buildPaymentSchedule,
@@ -17,7 +17,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
-import { clearedPaymentsInPayout } from "@/lib/payments/payout";
+import { clearedPaymentsInPayout, depositDateOfArrival } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
 import { getPaymentsSalesforceClient, paymentsOrg } from "@/lib/salesforce/payments-org";
 import {
@@ -70,7 +70,8 @@ export type PaymentRow = {
   payment_intent_id: string | null;
   checkout_url: string | null;
   customer_email: string | null;
-  sf_writeback_status: "dry_run" | "written" | "failed" | null;
+  /** 'booking' = claimed by a process writing to Salesforce right now. */
+  sf_writeback_status: "booking" | "dry_run" | "written" | "failed" | null;
   sf_transaction_id: string | null;
   sf_payload: Record<string, unknown> | null;
   sf_writeback_detail: string | null;
@@ -80,6 +81,7 @@ export type PaymentRow = {
   /** credit / debit / prepaid / unknown — card payments only. */
   card_funding: string | null;
   customer_name: string | null;
+  sf_org: "production" | "sandbox";
   payout_id: string | null;
   cleared_at: string | null;
   stripe_fee_cents: number | null;
@@ -87,6 +89,8 @@ export type PaymentRow = {
 
 export type PaymentLinkRow = {
   token: string;
+  /** Which Salesforce this link belongs to — sandbox Work Order Ids are the same as production's. */
+  sf_org: "production" | "sandbox";
   work_order_id: string;
   work_order_number: string;
   created_by: string | null;
@@ -105,6 +109,18 @@ function db(): SupabaseClient {
 
 export function paymentsConfig() {
   return readPaymentsConfig(process.env);
+}
+
+/** The Salesforce org this server's payments code is on. Every link and
+ *  payment row is scoped to it (see migration 20261008200000). */
+function currentOrg(): "production" | "sandbox" {
+  return paymentsOrg();
+}
+
+/** Real money or Stripe test money, from the key this server runs with. A
+ *  test payment must never count against a real customer's balance. */
+function currentLivemode(): boolean {
+  return paymentsConfig().stripeMode === "live";
 }
 
 let _stripe: Stripe | null = null;
@@ -201,6 +217,7 @@ export async function issuePaymentLink(wo: { id: string; number: string }, creat
     .from("payment_links")
     .select("*")
     .eq("work_order_id", wo.id)
+    .eq("sf_org", currentOrg())
     .is("revoked_at", null)
     .maybeSingle();
   if (existing.error) throw new Error(`payment_links read failed: ${existing.error.message}`);
@@ -210,7 +227,7 @@ export async function issuePaymentLink(wo: { id: string; number: string }, creat
   const token = randomBytes(16).toString("base64url");
   const { data, error } = await db()
     .from("payment_links")
-    .insert({ token, work_order_id: wo.id, work_order_number: wo.number, created_by: createdBy })
+    .insert({ token, work_order_id: wo.id, work_order_number: wo.number, created_by: createdBy, sf_org: currentOrg() })
     .select("*")
     .single();
   if (error) {
@@ -253,10 +270,15 @@ export async function revokePaymentLink(token: string): Promise<{ salesforce: { 
  * Once a row is 'written', Salesforce's own balance carries it.
  */
 async function inFlightCents(workOrderId: string): Promise<number> {
+  // Only this org's payments, in this server's money mode. Test payments made
+  // on a real Work Order before go-live are never booked into production, so
+  // without the livemode filter they'd count as "already paid" forever.
   const { data, error } = await db()
     .from("stripe_payments")
     .select("base_cents, status, sf_writeback_status")
     .eq("work_order_id", workOrderId)
+    .eq("sf_org", currentOrg())
+    .eq("livemode", currentLivemode())
     .in("status", ["processing", "succeeded"]);
   if (error) throw new Error(`stripe_payments read failed: ${error.message}`);
   return (data ?? [])
@@ -272,7 +294,9 @@ export type PayState =
 
 export async function loadPayState(token: string): Promise<PayState> {
   const link = await getPaymentLink(token);
-  if (!link) return { kind: "not_found" };
+  // A sandbox link opened on the production server (or the reverse) points at
+  // a Work Order in the other Salesforce — treat it as not found here.
+  if (!link || (link.sf_org ?? "production") !== currentOrg()) return { kind: "not_found" };
   if (link.revoked_at) return { kind: "revoked", link };
   const wo = await getWorkOrderPaymentStateById(link.work_order_id);
   if (!wo) return { kind: "not_found" };
@@ -333,6 +357,7 @@ export async function createCheckout(input: {
     .eq("method", quote.method)
     .eq("total_cents", quote.totalCents)
     .eq("status", "open")
+    .eq("livemode", currentLivemode())
     .gt("created_at", new Date(Date.now() - 50 * 60_000).toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
@@ -409,6 +434,7 @@ export async function createCheckout(input: {
     checkout_url: session.url,
     customer_email: wo.contactEmail,
     customer_name: wo.contactName,
+    sf_org: currentOrg(),
   });
   if (error) {
     // No row means no way to reconcile what Stripe later sends. Kill the
@@ -436,13 +462,23 @@ export type CardQuote = {
   totalCents: number;
 };
 
-export type CardErrorCode = "unavailable" | "inactive" | "not_due" | "bad_card" | "amount_changed" | "declined" | "failed";
+export type CardErrorCode =
+  | "unavailable"
+  | "inactive"
+  | "not_due"
+  | "bad_card"
+  | "amount_changed"
+  | "declined"
+  | "too_many"
+  | "failed";
 export type CardResult =
   | { ok: true; status: "succeeded" | "processing"; paymentIntentId: string }
   | { ok: true; status: "requires_action"; paymentIntentId: string; clientSecret: string }
   | { ok: false; code: CardErrorCode; message?: string; quote?: CardQuote };
 
 const CT_RE = /^ctoken_[A-Za-z0-9]+$/;
+/** Declined cards on one link in an hour before card payments lock for that link. */
+export const MAX_CARD_DECLINES_PER_HOUR = 5;
 
 async function readCardFunding(confirmationTokenId: string): Promise<CardFunding | null> {
   if (!CT_RE.test(confirmationTokenId)) return null;
@@ -470,6 +506,18 @@ export async function quoteCardPayment(input: {
   if (cfg.cardBlockedReason) return { ok: false, code: "unavailable", detail: cfg.cardBlockedReason };
   const state = await loadPayState(input.token);
   if (state.kind !== "ok") return { ok: false, code: "inactive" };
+  // A public card form is what fraudsters use to test stolen cards. Declines
+  // are recorded per link, so this cap holds across every server instance
+  // (the in-memory limiter in the route only sees its own).
+  const since = new Date(Date.now() - 60 * 60_000).toISOString();
+  const { count: recentDeclines } = await db()
+    .from("stripe_payments")
+    .select("id", { count: "exact", head: true })
+    .eq("token", input.token)
+    .eq("method", "card")
+    .eq("status", "failed")
+    .gt("created_at", since);
+  if ((recentDeclines ?? 0) >= MAX_CARD_DECLINES_PER_HOUR) return { ok: false, code: "too_many" };
   const funding = await readCardFunding(input.confirmationTokenId);
   if (!funding) return { ok: false, code: "bad_card" };
   const q = quoteCardCharge(state.schedule, input.milestoneKey, funding);
@@ -505,6 +553,31 @@ export async function payByCard(input: {
   const feeNote = q.feeCents > 0 ? ` incl. ${formatCents(q.feeCents)} credit card fee` : "";
 
   const stripe = getStripe();
+
+  // A bank checkout still open for this link (the customer started ACH, came
+  // back, chose card) could still be completed afterwards and pay the same
+  // milestone twice. Close it first. If it can't be closed because it was
+  // just completed, the bank payment is under way — don't take a card too.
+  const openAch = await db()
+    .from("stripe_payments")
+    .select("id, checkout_session_id")
+    .eq("token", input.token)
+    .eq("method", "ach")
+    .eq("status", "open");
+  for (const r of openAch.data ?? []) {
+    if (!r.checkout_session_id) continue;
+    try {
+      await stripe.checkout.sessions.expire(r.checkout_session_id);
+      await db().from("stripe_payments").update({ status: "expired" }).eq("id", r.id).eq("status", "open");
+    } catch {
+      const sess = await stripe.checkout.sessions.retrieve(r.checkout_session_id).catch(() => null);
+      if (sess && sess.status !== "expired") {
+        if (sess.status === "complete") await syncCheckoutSession(sess);
+        return { ok: false, code: "not_due" };
+      }
+    }
+  }
+
   const pi = await stripe.paymentIntents.create(
     {
       amount: q.totalCents,
@@ -550,8 +623,12 @@ export async function payByCard(input: {
       livemode: pi.livemode,
       customer_email: wo.contactEmail,
       customer_name: wo.contactName,
+      sf_org: currentOrg(),
     });
-    if (error) {
+    // 23505 = the same PaymentIntent's row already exists: a double-tap's
+    // other request got there first. That's fine — never cancel a payment the
+    // other request may be confirming right now.
+    if (error && error.code !== "23505") {
       await stripe.paymentIntents.cancel(pi.id).catch(() => undefined);
       throw new Error(`stripe_payments insert failed: ${error.message}`);
     }
@@ -584,6 +661,14 @@ export async function payByCard(input: {
     const latest = e.payment_intent ?? (await stripe.paymentIntents.retrieve(pi.id));
     await syncPaymentIntent(latest);
     if (e.type === "StripeCardError") return { ok: false, code: "declined", message: e.message };
+    // A double-tap's second confirm on a payment the first already moved
+    // along: report where it actually is instead of an error.
+    if (latest.status === "succeeded" || latest.status === "processing") {
+      return { ok: true, status: latest.status === "succeeded" ? "succeeded" : "processing", paymentIntentId: latest.id };
+    }
+    if (latest.status === "requires_action" && latest.client_secret) {
+      return { ok: true, status: "requires_action", paymentIntentId: latest.id, clientSecret: latest.client_secret };
+    }
     throw err;
   }
 
@@ -677,7 +762,12 @@ async function advance(
     return { kind: "unchanged", payment: current };
   }
   let payment = moved as PaymentRow;
-  if (next === "succeeded") {
+  if (next === "succeeded" && payment.payout_id) {
+    // The payout already arrived (its event beat this one — a retry, say), so
+    // this payment has cleared: book it now rather than wait for a payout that
+    // has come and gone.
+    payment = await recordInSalesforce(payment, payment.payout_id);
+  } else if (next === "succeeded") {
     // Not booked yet — see lib/payments/payout.ts. The pay page already counts
     // it (so the customer isn't asked twice); Salesforce gets it at payout.
     const { data } = await db()
@@ -694,6 +784,22 @@ async function advance(
 
 async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<PaymentRow> {
   const cfg = paymentsConfig();
+  // Claim the row before touching Salesforce: two deliveries of one payout, or
+  // an admin's "Book now" during a payout, must not both create a Payment In.
+  // Only one UPDATE … WHERE sf_writeback_status is still bookable wins.
+  const { data: claimed, error: claimErr } = await db()
+    .from("stripe_payments")
+    .update({ sf_writeback_status: "booking", updated_at: new Date().toISOString() })
+    .eq("id", p.id)
+    .or("sf_writeback_status.is.null,sf_writeback_status.eq.failed,sf_writeback_status.eq.dry_run")
+    .select("*")
+    .maybeSingle();
+  if (claimErr) throw new Error(`stripe_payments claim failed: ${claimErr.message}`);
+  if (!claimed) {
+    const { data: now } = await db().from("stripe_payments").select("*").eq("id", p.id).single();
+    return now as PaymentRow;
+  }
+  p = claimed as PaymentRow;
   let payload: Record<string, unknown> | null = null;
   let status: "dry_run" | "written" | "failed";
   let detail: string;
@@ -701,7 +807,7 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
 
   // The day the money reached the bank (the payout's arrival), or today when
   // an admin books early. Drives Date__c and the "ST"+MMDD Reference ID.
-  const depositDateEt = (payoutId && etDateOf(p.cleared_at)) || etTodayIso();
+  const depositDateEt = (payoutId && p.cleared_at && depositDateOfArrival(p.cleared_at)) || etTodayIso();
   try {
     const wo = await getWorkOrderPaymentStateById(p.work_order_id);
     const fields = buildSfTransaction({
@@ -802,17 +908,21 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
  * Safe to run twice: a payment already booked (sf_writeback_status set) is
  * skipped, and the Salesforce write itself refuses a duplicate pi_ reference.
  */
-export async function bookPaidOutPayments(payoutId: string): Promise<{ inPayout: number; booked: number }> {
+export async function bookPaidOutPayments(
+  payoutId: string,
+): Promise<{ inPayout: number; booked: number; failed: number }> {
   const stripe = getStripe();
   const txns: Parameters<typeof clearedPaymentsInPayout>[0] = [];
   for await (const t of stripe.balanceTransactions.list({ payout: payoutId, limit: 100, expand: ["data.source"] })) {
     txns.push(t as unknown as Parameters<typeof clearedPaymentsInPayout>[0][number]);
   }
   const cleared = clearedPaymentsInPayout(txns);
-  if (!cleared.size) return { inPayout: 0, booked: 0 };
+  if (!cleared.size) return { inPayout: 0, booked: 0, failed: 0 };
   const payout = await stripe.payouts.retrieve(payoutId);
+  // Midnight UTC of the arrival day — see depositDateOfArrival.
   const clearedAt = new Date(payout.arrival_date * 1000).toISOString();
-  return { inPayout: cleared.size, booked: await bookClearedPayments([...cleared.keys()], payoutId, { clearedAt, fees: cleared }) };
+  const r = await bookClearedPayments([...cleared.keys()], payoutId, { clearedAt, fees: cleared });
+  return { inPayout: cleared.size, ...r };
 }
 
 /**
@@ -824,7 +934,7 @@ export async function bookClearedPayments(
   piIds: string[],
   payoutId: string,
   cleared?: { clearedAt: string; fees: Map<string, { stripeFeeCents: number | null }> },
-): Promise<number> {
+): Promise<{ booked: number; failed: number }> {
   if (cleared) {
     for (const pi of piIds) {
       await db()
@@ -835,6 +945,7 @@ export async function bookClearedPayments(
           stripe_fee_cents: cleared.fees.get(pi)?.stripeFeeCents ?? null,
         })
         .eq("payment_intent_id", pi)
+        .eq("sf_org", currentOrg())
         .is("payout_id", null);
     }
   }
@@ -842,15 +953,21 @@ export async function bookClearedPayments(
     .from("stripe_payments")
     .select("*")
     .in("payment_intent_id", piIds)
+    .eq("sf_org", currentOrg())
     .eq("status", "succeeded")
     .is("sf_writeback_status", null);
   if (error) throw new Error(`stripe_payments read failed: ${error.message}`);
+  // A payment in this payout that isn't 'succeeded' here yet (its success event
+  // is still being retried) now has payout_id set; advance() books it the
+  // moment it succeeds.
   let booked = 0;
+  let failed = 0;
   for (const row of (data ?? []) as PaymentRow[]) {
     const done = await recordInSalesforce(row, payoutId);
-    if (done.sf_writeback_status !== "failed") booked++;
+    if (done.sf_writeback_status === "failed") failed++;
+    else if (done.sf_writeback_status !== "booking") booked++;
   }
-  return booked;
+  return { booked, failed };
 }
 
 /** charge.refunded — a refund issued in the Stripe dashboard. Marks the row;
@@ -895,6 +1012,7 @@ export async function listRecentLinks(limit = 25): Promise<PaymentLinkRow[]> {
   const { data, error } = await db()
     .from("payment_links")
     .select("*")
+    .eq("sf_org", currentOrg())
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -905,6 +1023,7 @@ export async function listRecentPayments(limit = 50): Promise<PaymentRow[]> {
   const { data, error } = await db()
     .from("stripe_payments")
     .select("*")
+    .eq("sf_org", currentOrg())
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -919,17 +1038,35 @@ export async function retrySalesforceWrite(paymentId: string): Promise<PaymentRo
   const p = data as PaymentRow;
   if (p.status !== "succeeded") throw new Error(`Payment is ${p.status}, not succeeded.`);
   if (p.sf_writeback_status === "written") throw new Error(`Already written as ${p.sf_transaction_id}.`);
-  return recordInSalesforce(p);
+  if (p.sf_writeback_status === "booking") {
+    // A booking that never finished (the process died mid-way). Only take it
+    // over once it's clearly abandoned, never while it may still be running.
+    if (Date.now() - new Date(p.updated_at).getTime() < 10 * 60_000) {
+      throw new Error("A Salesforce booking for this payment is in progress. Try again in a few minutes.");
+    }
+    await db().from("stripe_payments").update({ sf_writeback_status: "failed" }).eq("id", p.id).eq("sf_writeback_status", "booking");
+  }
+  // Keep the payout: a payment that cleared is booked with its deposit date and
+  // code, not today's, even when an admin retries it.
+  return recordInSalesforce(p, p.payout_id ?? undefined);
 }
 
 /** Every online payment that moved money, newest first — the Payments tab filters these. */
-export async function listLedgerPayments(limit = 5000): Promise<PaymentRow[]> {
-  const { data, error } = await db()
-    .from("stripe_payments")
-    .select("*")
-    .in("status", ["processing", "succeeded", "refunded"])
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as PaymentRow[];
+export async function listLedgerPayments(max = 50_000): Promise<PaymentRow[]> {
+  // Paged: Supabase returns at most 1,000 rows per request whatever .limit()
+  // says, and the totals and export must not silently stop there.
+  const out: PaymentRow[] = [];
+  for (let from = 0; from < max; from += 1000) {
+    const { data, error } = await db()
+      .from("stripe_payments")
+      .select("*")
+      .eq("sf_org", currentOrg())
+      .in("status", ["processing", "succeeded", "refunded"])
+      .order("created_at", { ascending: false })
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as PaymentRow[]));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
 }

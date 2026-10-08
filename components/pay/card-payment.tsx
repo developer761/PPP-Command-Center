@@ -31,6 +31,7 @@ const ERRORS: Record<string, string> = {
   inactive: "This payment link is no longer active.",
   bad_card: "We couldn't read that card. Please check the details and try again.",
   unavailable: "Card payments aren't available right now. Please try again later.",
+  too_many: "Too many card attempts on this invoice. Please wait an hour, pay by bank transfer, or call the office.",
   failed: "Something went wrong on our side. Nothing was charged — please try again.",
 };
 

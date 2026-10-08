@@ -79,6 +79,11 @@ export async function POST(request: Request) {
       case "payout.paid": {
         // PPP books Stripe payments once cleared (see lib/payments/payout.ts).
         const res = await bookPaidOutPayments(event.data.object.id);
+        if (res.failed > 0) {
+          // Not "ok": Stripe retries this event, and the payments that DID book
+          // are skipped on the retry (they're no longer bookable).
+          throw new Error(`payout ${event.data.object.id}: ${res.failed} payment(s) failed to book in Salesforce`);
+        }
         outcome = `ok (payout: ${res.inPayout} payment(s), ${res.booked} of ours booked)`;
         break;
       }

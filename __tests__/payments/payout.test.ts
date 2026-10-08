@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { clearedPaymentsInPayout, paymentIntentIdsInPayout } from "@/lib/payments/payout";
+import { clearedPaymentsInPayout, depositDateOfArrival, paymentIntentIdsInPayout } from "@/lib/payments/payout";
+import { stripeDepositReference } from "@/lib/payments/sf-transaction";
+import { etDateOf } from "@/lib/date-et";
 
 // Shaped like stripe.balanceTransactions.list({ payout, expand: ["data.source"] }).
 describe("paymentIntentIdsInPayout — which payments cleared in this payout", () => {
@@ -64,5 +66,24 @@ describe("a $0 Stripe cost is 'not reported', never $0", () => {
     expect(m.get("pi_free")).toEqual({ stripeFeeCents: null });
     expect(m.get("pi_missing")).toEqual({ stripeFeeCents: null });
     expect(m.get("pi_real")).toEqual({ stripeFeeCents: 4483 });
+  });
+});
+
+describe("depositDateOfArrival — Stripe's arrival_date is midnight UTC of the arrival day", () => {
+  // po_1ULY3h… in Stripe test mode: arrival_date 1790812800 = 2026-10-01T00:00:00Z (read from Stripe).
+  const arrival = new Date(1790812800 * 1000).toISOString();
+
+  it("a payout arriving 10/1 is booked 10/1, code ST1001", () => {
+    expect(arrival).toBe("2026-10-01T00:00:00.000Z");
+    expect(depositDateOfArrival(arrival)).toBe("2026-10-01");
+    expect(stripeDepositReference(depositDateOfArrival(arrival))).toBe("ST1001");
+  });
+
+  it("…which reading it in Eastern time gets wrong (the bug this guards)", () => {
+    expect(etDateOf(arrival)).toBe("2026-09-30");
+  });
+
+  it("the value as it comes back from Postgres (+00:00) reads the same", () => {
+    expect(depositDateOfArrival("2026-10-08T00:00:00+00:00")).toBe("2026-10-08");
   });
 });
