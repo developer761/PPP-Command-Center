@@ -4,6 +4,7 @@ import { loadPayState, paymentsConfig } from "@/lib/payments/service";
 import { cardFeeCents, formatCents, type Milestone } from "@/lib/payments/schedule";
 import { PayMessage, PayShell } from "@/components/pay/pay-shell";
 import { PPP_BRAND } from "@/lib/brand";
+import { surchargeAllowedIn } from "@/lib/payments/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pay your invoice · Precision Painting Plus", robots: { index: false } };
@@ -72,6 +73,8 @@ export default async function PayPage({
     .filter(Boolean)
     .join(" ");
   const nothingOwed = schedule.payableBalanceCents <= 0;
+  // No credit-card fee where the law doesn't allow one (CT / MA / ME).
+  const surcharge = surchargeAllowedIn(wo.state, cfg);
   // "30% deposit · 50% progress · 20% final" — only when every term is a
   // percentage; a mix with dollar-amount terms would read as a sum that's off.
   const terms = schedule.milestones.filter((m) => m.key !== "extra");
@@ -129,7 +132,7 @@ export default async function PayPage({
               {scheduleSummary && <p className="text-[12px] text-ppp-charcoal-600 mt-0.5">{scheduleSummary}</p>}
             </div>
             {schedule.milestones.map((m) => (
-              <MilestoneRow key={m.key} m={m} token={token} />
+              <MilestoneRow key={m.key} m={m} token={token} surcharge={surcharge} />
             ))}
           </section>
         )}
@@ -137,15 +140,16 @@ export default async function PayPage({
         {showFullBalance && (
           <section className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-6">
             <h2 className="text-sm font-bold text-ppp-navy">Or pay the full balance now</h2>
-            <PayButtons token={token} milestoneKey="balance" baseCents={schedule.payableBalanceCents} />
+            <PayButtons token={token} milestoneKey="balance" baseCents={schedule.payableBalanceCents} surcharge={surcharge} />
           </section>
         )}
 
         {/* The fee disclosure only matters while something is owed. */}
         {!nothingOwed && (
           <p className="text-[12px] leading-relaxed text-ppp-charcoal-600 px-1">
-            Credit card payments include a 3.00% service fee, which does not exceed our cost of accepting the card. Debit
-            card and bank transfer (ACH) payments have no fee.
+            {surcharge
+              ? "Credit card payments include a 3.00% service fee, which does not exceed our cost of accepting the card. Debit card and bank transfer (ACH) payments have no fee."
+              : "Card and bank transfer (ACH) payments have no service fee."}
           </p>
         )}
       </div>
@@ -168,7 +172,7 @@ const STATUS_CHIP: Record<Milestone["status"], { label: string; cls: string }> =
   upcoming: { label: "Upcoming", cls: "bg-ppp-charcoal-50 text-ppp-charcoal-700 border-ppp-charcoal-200" },
 };
 
-function MilestoneRow({ m, token }: { m: Milestone; token: string }) {
+function MilestoneRow({ m, token, surcharge }: { m: Milestone; token: string; surcharge: boolean }) {
   const chip = STATUS_CHIP[m.status];
   const shownCents = m.status === "paid" || m.status === "processing" ? m.amountCents : m.remainingCents;
   return (
@@ -190,7 +194,7 @@ function MilestoneRow({ m, token }: { m: Milestone; token: string }) {
           <span className={`text-[11px] font-semibold border rounded-full px-2 py-0.5 ${chip.cls}`}>{chip.label}</span>
         </div>
       </div>
-      {m.status === "due" && <PayButtons token={token} milestoneKey={m.key} baseCents={m.remainingCents} />}
+      {m.status === "due" && <PayButtons token={token} milestoneKey={m.key} baseCents={m.remainingCents} surcharge={surcharge} />}
     </div>
   );
 }
@@ -199,7 +203,17 @@ function MilestoneRow({ m, token }: { m: Milestone; token: string }) {
  * Two buttons, two amounts, and the method is locked by which one you press.
  * The amounts here are for reading only — the checkout route recomputes them.
  */
-function PayButtons({ token, milestoneKey, baseCents }: { token: string; milestoneKey: string; baseCents: number }) {
+function PayButtons({
+  token,
+  milestoneKey,
+  baseCents,
+  surcharge,
+}: {
+  token: string;
+  milestoneKey: string;
+  baseCents: number;
+  surcharge: boolean;
+}) {
   const cardTotal = baseCents + cardFeeCents(baseCents);
   return (
     <form method="post" action={`/pay/${token}/checkout`} className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -219,11 +233,20 @@ function PayButtons({ token, milestoneKey, baseCents }: { token: string; milesto
         value="card"
         className="rounded-xl border border-ppp-charcoal-300 bg-white text-ppp-navy px-4 py-3 text-left hover:bg-ppp-charcoal-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ppp-navy"
       >
-        <span className="block text-[12px] text-ppp-charcoal-600">Pay by card</span>
-        <span className="block text-[13px] text-ppp-navy tabular-nums">
-          Debit <span className="font-condensed font-bold text-lg">{formatCents(baseCents)}</span>
-        </span>
-        <span className="block text-[12px] text-ppp-charcoal-600 tabular-nums">Credit {formatCents(cardTotal)} (incl. 3%)</span>
+        {surcharge ? (
+          <>
+            <span className="block text-[12px] text-ppp-charcoal-600">Pay by card</span>
+            <span className="block text-[13px] text-ppp-navy tabular-nums">
+              Debit <span className="font-condensed font-bold text-lg">{formatCents(baseCents)}</span>
+            </span>
+            <span className="block text-[12px] text-ppp-charcoal-600 tabular-nums">Credit {formatCents(cardTotal)} (incl. 3%)</span>
+          </>
+        ) : (
+          <>
+            <span className="block text-[12px] text-ppp-charcoal-600">Pay by card · no fee</span>
+            <span className="block text-lg font-condensed font-bold tabular-nums">{formatCents(baseCents)}</span>
+          </>
+        )}
       </button>
     </form>
   );

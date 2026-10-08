@@ -230,8 +230,12 @@ export async function listWorkOrdersNeedingPayLinks(
     );
     exclude = licensees.records.map((u) => `'${u.Id}'`);
   }
+  const { readPaymentsConfig } = await import("@/lib/payments/config");
+  const states = [...readPaymentsConfig(process.env).linkStates].filter((x) => /^[A-Z]{2}$/.test(x));
   const where = [
     "Status NOT IN ('Closed', 'Canceled', 'Complete Paid in Full')",
+    // Only this Stripe account's states (CO / CA jobs have their own accounts).
+    states.length ? `State IN (${states.map((x) => `'${x}'`).join(",")})` : "Id = null",
     "BalanceOwed__c > 0",
     "Total_Payment_Terms__c > 0",
     hasField ? "Online_Payment_URL__c = null" : null,

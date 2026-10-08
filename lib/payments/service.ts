@@ -4,7 +4,12 @@ import { randomBytes } from "node:crypto";
 import Stripe from "stripe";
 import { createClient as createSupabaseAdminClient, type SupabaseClient } from "@supabase/supabase-js";
 import { etTodayIso } from "@/lib/date-et";
-import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
+import {
+  linksAllowedIn,
+  readPaymentsConfig,
+  shouldWriteToSalesforce,
+  surchargeAllowedIn,
+} from "@/lib/payments/config";
 import {
   buildPaymentSchedule,
   buildPaymentTermUpdates,
@@ -169,9 +174,15 @@ export function paymentLinkUrl(token: string): string {
  * Salesforce write happened — before Katie's field reaches an org, it can't.
  */
 export async function issuePaymentLinkAndPublish(
-  wo: { id: string; number: string },
+  wo: { id: string; number: string; state?: string | null },
   createdBy: string | null,
 ): Promise<{ link: PaymentLinkRow; url: string; salesforce: { ok: true } | { ok: false; reason: string } }> {
+  if (wo.state !== undefined && !linksAllowedIn(wo.state, paymentsConfig())) {
+    throw new Error(
+      `WO ${wo.number} is in ${wo.state || "no state"} — not one of this Stripe account's states ` +
+        `(${[...paymentsConfig().linkStates].join(", ")}). Colorado and California jobs pay through their own Stripe accounts.`,
+    );
+  }
   const link = await issuePaymentLink(wo, createdBy);
   const url = paymentLinkUrl(link.token);
   const salesforce = await setWorkOrderPaymentUrl(wo.id, url, wo.number).catch((e: unknown) => ({
@@ -301,6 +312,9 @@ export async function loadPayState(token: string): Promise<PayState> {
   const wo = await getWorkOrderPaymentStateById(link.work_order_id);
   if (!wo) return { kind: "not_found" };
   if (isClosedForPayment(wo.status)) return { kind: "closed", link, wo };
+  // A job outside this Stripe account's states (CO / CA have their own
+  // accounts) can't pay here, even with a link issued before the rule.
+  if (!linksAllowedIn(wo.state, paymentsConfig())) return { kind: "closed", link, wo };
   const schedule = buildPaymentSchedule({
     terms: wo.terms,
     balanceOwed: wo.balanceOwed,
@@ -370,6 +384,8 @@ export async function createCheckout(input: {
     token: input.token,
     work_order_id: wo.id,
     work_order_number: wo.number,
+    // The label Katie's daily Stripe report reads to tie a payment to its job.
+    "WO Number": wo.number,
     milestone_key: quote.milestoneKey,
     milestone_label: quote.label,
     method: quote.method,
@@ -520,7 +536,7 @@ export async function quoteCardPayment(input: {
   if ((recentDeclines ?? 0) >= MAX_CARD_DECLINES_PER_HOUR) return { ok: false, code: "too_many" };
   const funding = await readCardFunding(input.confirmationTokenId);
   if (!funding) return { ok: false, code: "bad_card" };
-  const q = quoteCardCharge(state.schedule, input.milestoneKey, funding);
+  const q = quoteCardCharge(state.schedule, input.milestoneKey, funding, surchargeAllowedIn(state.wo.state, cfg));
   if (!q) return { ok: false, code: "not_due" };
   return { ok: true, quote: { funding, label: q.label, baseCents: q.baseCents, feeCents: q.feeCents, totalCents: q.totalCents } };
 }
@@ -591,6 +607,8 @@ export async function payByCard(input: {
         token: input.token,
         work_order_id: wo.id,
         work_order_number: wo.number,
+        // The label Katie's daily Stripe report reads to tie a payment to its job.
+        "WO Number": wo.number,
         milestone_key: input.milestoneKey,
         milestone_label: q.label,
         method: "card",

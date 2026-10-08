@@ -1,5 +1,3 @@
-import { formatCents } from "@/lib/payments/schedule";
-
 /**
  * The Salesforce Transaction__c a successful online payment becomes.
  *
@@ -16,11 +14,11 @@ import { formatCents } from "@/lib/payments/schedule";
  *   Date__c         the deposit date.
  *   Deposited__c    true when booked from the payout (it is in the bank);
  *                   false if an admin books one early, before its payout.
- *   Description__c  starts "Stripe pi_…" — Ruben's convention, and what Katie's
- *                   daily Stripe job and our own duplicate check look for.
+ *   Description__c  exactly "Stripe pi_…" — Ruben's convention, and what Katie's
+ *                   daily Stripe job and our own duplicate check match on.
  *   Amount__c       the BASE amount only. The 3% credit-card fee is never in
- *                   it (it would push BalanceOwed__c negative); it's named in
- *                   the Description and tracked on the Payments tab.
+ *                   it (it would push BalanceOwed__c negative); it's tracked on
+ *                   the Command Center's Payments tab.
  */
 
 /** "ST" + MMDD of a YYYY-MM-DD deposit date — Ruben's Stripe deposit code. */
@@ -51,22 +49,13 @@ export type SfTransactionInput = {
 };
 
 export function buildSfTransaction(i: SfTransactionInput): Record<string, string | number | boolean | null> {
-  const how =
-    i.method === "ach"
-      ? "bank (ACH)"
-      : i.cardFunding && i.cardFunding !== "unknown"
-        ? `${i.cardFunding} card`
-        : "card";
-  const parts = [
-    // Ruben's convention, and what Katie's daily Stripe job reads to know a
-    // payment is already booked: the Description starts "Stripe pi_…".
-    // Without it, her job doesn't see ours as entered.
-    i.paymentIntentId ? `Stripe ${i.paymentIntentId}` : null,
-    `Online ${how} payment`,
-    i.milestoneLabel,
-    `WO ${i.workOrderNumber}`,
-    i.feeCents > 0 ? `card fee ${formatCents(i.feeCents)} charged on top, not in Amount` : null,
-  ].filter(Boolean);
+  // EXACTLY "Stripe pi_…" — Ruben's convention and the dedupe key Katie's
+  // daily Stripe job matches on (every hand-entered Stripe Payment In in
+  // production reads exactly that, nothing after it). How it was paid, the
+  // milestone and the card fee are on the Command Center's Payments tab.
+  const description = i.paymentIntentId
+    ? `Stripe ${i.paymentIntentId}`
+    : `Stripe online payment · ${i.milestoneLabel} · WO ${i.workOrderNumber}`;
 
   return {
     RecordTypeId: i.recordTypeId,
@@ -77,6 +66,6 @@ export function buildSfTransaction(i: SfTransactionInput): Record<string, string
     Method__c: "Stripe",
     ReferenceId__c: stripeDepositReference(i.paidDateEt),
     Deposited__c: i.fromPayout === true,
-    Description__c: parts.join(" · ").slice(0, 255),
+    Description__c: description.slice(0, 255),
   };
 }

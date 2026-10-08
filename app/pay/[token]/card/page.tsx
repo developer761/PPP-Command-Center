@@ -5,6 +5,7 @@ import { loadPayState, paymentsConfig } from "@/lib/payments/service";
 import { cardFeeCents, formatCents, quoteCharge } from "@/lib/payments/schedule";
 import { PayShell } from "@/components/pay/pay-shell";
 import { CardPayment } from "@/components/pay/card-payment";
+import { surchargeAllowedIn } from "@/lib/payments/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pay by card · Precision Painting Plus", robots: { index: false } };
@@ -38,6 +39,7 @@ export default async function CardPage({
   if (!quote) redirect(`${back}?err=not_due`);
 
   const percent = state.schedule.milestones.find((x) => x.key === m)?.percent ?? null;
+  const surcharge = surchargeAllowedIn(state.wo.state, cfg);
   const previewNote = !cfg.publicPages
     ? `${cfg.sfOrg === "sandbox" ? "SALESFORCE SANDBOX · " : ""}Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Test cards: credit 4242 4242 4242 4242 · debit 4000 0566 5566 5556." : ""}`
     : null;
@@ -55,13 +57,27 @@ export default async function CardPage({
           </div>
           <h1 className="mt-1 text-xl sm:text-2xl font-bold text-ppp-navy">Pay by card</h1>
           <p className="mt-1 text-[13px] text-ppp-charcoal-600">
-            Debit card: <span className="font-semibold tabular-nums">{formatCents(quote.baseCents)}</span> · Credit card:{" "}
-            <span className="font-semibold tabular-nums">{formatCents(quote.baseCents + cardFeeCents(quote.baseCents))}</span>{" "}
-            (includes 3% fee)
+            {surcharge ? (
+              <>
+                Debit card: <span className="font-semibold tabular-nums">{formatCents(quote.baseCents)}</span> · Credit card:{" "}
+                <span className="font-semibold tabular-nums">{formatCents(quote.baseCents + cardFeeCents(quote.baseCents))}</span>{" "}
+                (includes 3% fee)
+              </>
+            ) : (
+              <>
+                Any card: <span className="font-semibold tabular-nums">{formatCents(quote.baseCents)}</span> — no service fee
+              </>
+            )}
           </p>
         </section>
         <section className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-6">
-          <CardPayment token={token} milestoneKey={m} baseCents={quote.baseCents} publishableKey={cfg.publishableKey} />
+          <CardPayment
+            token={token}
+            milestoneKey={m}
+            baseCents={quote.baseCents}
+            publishableKey={cfg.publishableKey}
+            surcharge={surcharge}
+          />
         </section>
       </div>
     </PayShell>

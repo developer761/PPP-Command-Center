@@ -49,7 +49,7 @@ async function createLinkAction(formData: FormData) {
     const wo = await getWorkOrderPaymentStateByNumber(raw);
     if (!wo) msg = `No Work Order "${raw}" in Salesforce. Use the 8-digit number on the invoice, e.g. 00313399.`;
     else {
-      const r = await issuePaymentLinkAndPublish({ id: wo.id, number: wo.number }, email);
+      const r = await issuePaymentLinkAndPublish({ id: wo.id, number: wo.number, state: wo.state }, email);
       msg = `Pay link ready for WO ${wo.number}: ${r.url} — ${
         r.salesforce.ok ? "saved to the Work Order in Salesforce" : `NOT saved to Salesforce (${r.salesforce.reason})`
       }`;

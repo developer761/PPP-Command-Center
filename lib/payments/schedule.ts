@@ -267,10 +267,13 @@ export function quoteCardCharge(
   schedule: PaymentSchedule,
   milestoneKey: string,
   funding: CardFunding,
+  /** False where the law doesn't allow a credit-card surcharge (CT/MA/ME) —
+   *  then no card pays a fee. See surchargeAllowedIn (config.ts). */
+  surchargeAllowed = true,
 ): (ChargeQuote & { funding: CardFunding }) | null {
   const base = quoteCharge(schedule, milestoneKey, "ach");
   if (!base) return null;
-  const feeCents = cardCarriesFee(funding) ? cardFeeCents(base.baseCents) : 0;
+  const feeCents = surchargeAllowed && cardCarriesFee(funding) ? cardFeeCents(base.baseCents) : 0;
   return { ...base, method: "card", feeCents, totalCents: base.baseCents + feeCents, funding };
 }
 
@@ -289,7 +292,18 @@ export function quoteCardCharge(
  */
 export type PaymentTermUpdate = {
   id: string;
-  fields: { Paid_In_Full__c: true; Paid_In_Full_Date__c: string; Unpaid_Amount__c: 0 };
+  fields: {
+    Paid_In_Full__c: true;
+    Paid_In_Full_Date__c: string;
+    Unpaid_Amount__c: 0;
+    // Katie, 2026-10-08: the active flow PaymentTerm:SetAmountByPercent
+    // recomputes Amount from Percent on ANY Percent-type term that's touched,
+    // so marking a term paid could rewrite its amount. Flip it to a fixed
+    // dollar amount (a paid term's amount shouldn't move anyway) — the same
+    // thing her change-order flow does to the terms it re-spreads.
+    Value_Type__c: "Dollar Amount";
+    Percent__c: null;
+  };
 };
 
 export function buildPaymentTermUpdates(input: {
@@ -301,7 +315,13 @@ export function buildPaymentTermUpdates(input: {
   /** YYYY-MM-DD, Eastern. */
   paidDateEt: string;
 }): PaymentTermUpdate[] {
-  const fields = { Paid_In_Full__c: true, Paid_In_Full_Date__c: input.paidDateEt, Unpaid_Amount__c: 0 } as const;
+  const fields = {
+    Paid_In_Full__c: true,
+    Paid_In_Full_Date__c: input.paidDateEt,
+    Unpaid_Amount__c: 0,
+    Value_Type__c: "Dollar Amount",
+    Percent__c: null,
+  } as const;
   const open = input.terms.filter((t) => !t.paidInFull);
   const covered =
     input.milestoneKey === "balance"

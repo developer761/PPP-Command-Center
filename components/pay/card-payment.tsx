@@ -51,11 +51,14 @@ export function CardPayment({
   milestoneKey,
   baseCents,
   publishableKey,
+  surcharge = true,
 }: {
   token: string;
   milestoneKey: string;
   baseCents: number;
   publishableKey: string;
+  /** False in states where card surcharges aren't allowed (CT/MA/ME). */
+  surcharge?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stripeRef = useRef<Stripe | null>(null);
@@ -259,8 +262,10 @@ export function CardPayment({
       )}
 
       <p className="text-[12px] leading-relaxed text-ppp-charcoal-600">
-        Credit cards include a 3.00% service fee, which does not exceed our cost of accepting the card. Debit cards have
-        no fee. You&rsquo;ll see the exact total before you pay.
+        {surcharge
+          ? "Credit cards include a 3.00% service fee, which does not exceed our cost of accepting the card. Debit cards have no fee."
+          : "No service fee on card payments."}{" "}
+        You&rsquo;ll see the exact total before you pay.
       </p>
     </div>
   );

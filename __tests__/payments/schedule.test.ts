@@ -165,6 +165,11 @@ describe("quoteCardCharge — the fee follows the CARD, not the button", () => {
     expect(quoteCardCharge(s, s.milestones[1].key, "debit")).toBeNull();
   });
 
+  it("no surcharge allowed (CT / MA / ME): even a credit card pays no fee", () => {
+    expect(quoteCardCharge(s, dep, "credit", false)).toMatchObject({ feeCents: 0, totalCents: 56615 });
+    expect(quoteCardCharge(s, dep, "credit", true)).toMatchObject({ feeCents: 1698 });
+  });
+
   it("normalizeFunding only trusts the three real values", () => {
     expect(normalizeFunding("credit")).toBe("credit");
     expect(normalizeFunding("debit")).toBe("debit");
@@ -207,7 +212,17 @@ describe("buildPaymentTermUpdates — Salesforce shows the TERM as paid", () => 
 
   it("a milestone payment marks exactly that term paid", () => {
     expect(buildPaymentTermUpdates({ milestoneKey: "prog", terms, paidDateEt: date })).toEqual([
-      { id: "prog", fields: { Paid_In_Full__c: true, Paid_In_Full_Date__c: date, Unpaid_Amount__c: 0 } },
+      {
+        id: "prog",
+        fields: {
+          Paid_In_Full__c: true,
+          Paid_In_Full_Date__c: date,
+          Unpaid_Amount__c: 0,
+          // Fixed so Katie's PaymentTerm:SetAmountByPercent flow can't rewrite a paid amount.
+          Value_Type__c: "Dollar Amount",
+          Percent__c: null,
+        },
+      },
     ]);
   });
 

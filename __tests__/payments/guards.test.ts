@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { readPaymentsConfig, shouldWriteToSalesforce } from "@/lib/payments/config";
+import {
+  linksAllowedIn,
+  normalizeState,
+  readPaymentsConfig,
+  shouldWriteToSalesforce,
+  surchargeAllowedIn,
+} from "@/lib/payments/config";
 import { isForwardMove, statusFromPaymentIntent, statusFromSession } from "@/lib/payments/session-status";
 import { buildSfTransaction, stripeDepositReference } from "@/lib/payments/sf-transaction";
 
@@ -118,7 +124,6 @@ describe("buildSfTransaction", () => {
   it("books the BASE amount, never base + fee, so BalanceOwed doesn't go negative", () => {
     const f = buildSfTransaction({ ...base, method: "card", feeCents: 1698 });
     expect(f.Amount__c).toBe(566.15);
-    expect(f.Description__c).toMatch(/card fee \$16\.98/);
   });
 
   it("follows finance's conventions: ST+MMDD deposit code, deposit date, Deposited when from a payout", () => {
@@ -145,9 +150,13 @@ describe("buildSfTransaction", () => {
     ["2026-12-31", "ST1231"],
   ])("stripeDepositReference(%s) = %s", (d, ref) => expect(stripeDepositReference(d)).toBe(ref));
 
-  it("Description starts 'Stripe pi_…' — the convention Katie's daily job dedupes on", () => {
-    const f = buildSfTransaction({ ...base, method: "ach", feeCents: 0 });
-    expect(String(f.Description__c).startsWith("Stripe pi_3Q0abcdefghijklmnopqrstu")).toBe(true);
+  it("Description is EXACTLY 'Stripe pi_…' — Ruben's convention, what Katie's daily job dedupes on", () => {
+    // Every hand-entered Stripe Payment In in production reads exactly this.
+    for (const method of ["card", "ach"] as const) {
+      expect(buildSfTransaction({ ...base, method, feeCents: method === "card" ? 1698 : 0 }).Description__c).toBe(
+        "Stripe pi_3Q0abcdefghijklmnopqrstu",
+      );
+    }
   });
 
   it("links the Opportunity when the Work Order has one, and leaves the field off when not", () => {
@@ -157,26 +166,8 @@ describe("buildSfTransaction", () => {
     expect("Opportunity__c" in buildSfTransaction({ ...base, method: "ach", feeCents: 0, opportunityId: null })).toBe(false);
   });
 
-  it("names the card type, so a fee (or none) explains itself", () => {
-    expect(buildSfTransaction({ ...base, method: "card", cardFunding: "debit", feeCents: 0 }).Description__c).toMatch(
-      /^Stripe pi_3Q0abcdefghijklmnopqrstu · Online debit card payment · Deposit/,
-    );
-    expect(buildSfTransaction({ ...base, method: "card", cardFunding: "credit", feeCents: 1698 }).Description__c).toMatch(
-      /Online credit card payment .* card fee \$16\.98/,
-    );
-    expect(buildSfTransaction({ ...base, method: "card", cardFunding: "unknown", feeCents: 0 }).Description__c).toMatch(
-      /^Stripe pi_\w+ · Online card payment/,
-    );
-  });
-
   it("fits Salesforce's field lengths (ReferenceId 50, Description 255)", () => {
-    const f = buildSfTransaction({
-      ...base,
-      method: "card",
-      feeCents: 1,
-      paymentIntentId: "pi_" + "x".repeat(80),
-      milestoneLabel: "L".repeat(400),
-    });
+    const f = buildSfTransaction({ ...base, method: "card", feeCents: 1, paymentIntentId: "pi_" + "x".repeat(300) });
     expect(String(f.ReferenceId__c).length).toBeLessThanOrEqual(50);
     expect(String(f.Description__c).length).toBe(255);
   });
@@ -220,4 +211,31 @@ describe("statusFromPaymentIntent", () => {
     ["requires_payment_method", "failed"],
     ["canceled", "failed"],
   ])("%s → %s", (pi, ours) => expect(statusFromPaymentIntent(pi)).toBe(ours));
+});
+
+describe("state rules — which Stripe account, and where a card fee is legal", () => {
+  const cfg = readPaymentsConfig({});
+
+  it("links only for the primary account's states; CO / CA / FL / blank are not", () => {
+    for (const st of ["NY", "NJ", "CT", "MA", "ME", "ny", "New York"]) expect(linksAllowedIn(st, cfg)).toBe(true);
+    for (const st of ["CO", "CA", "FL", "", null, "Colorado"]) expect(linksAllowedIn(st, cfg)).toBe(false);
+  });
+
+  it("no credit-card surcharge in CT, MA or ME — and never for an unknown state", () => {
+    expect(surchargeAllowedIn("NY", cfg)).toBe(true);
+    expect(surchargeAllowedIn("NJ", cfg)).toBe(true);
+    for (const st of ["CT", "MA", "ME", "Connecticut", "ct", null, ""]) expect(surchargeAllowedIn(st, cfg)).toBe(false);
+  });
+
+  it("both lists can be changed without a code change (e.g. once Katie confirms Florida)", () => {
+    const c = readPaymentsConfig({ PAYMENTS_LINK_STATES: "NY, NJ, CT, FL", PAYMENTS_NO_SURCHARGE_STATES: "CT,MA,ME,NJ" });
+    expect(linksAllowedIn("FL", c)).toBe(true);
+    expect(linksAllowedIn("MA", c)).toBe(false);
+    expect(surchargeAllowedIn("NJ", c)).toBe(false);
+  });
+
+  it("normalizeState", () => {
+    expect(normalizeState(" new jersey ")).toBe("NJ");
+    expect(normalizeState("")).toBeNull();
+  });
 });

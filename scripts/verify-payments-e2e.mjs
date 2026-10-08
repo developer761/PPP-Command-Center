@@ -9,7 +9,7 @@
 //     node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-payments-e2e.mjs
 //
 // Reads one real Work Order with a balance (read-only); every Stripe charge is
-// test money and is refunded at the end. 49 checks as of 2026-10-08.
+// test money and is refunded at the end.
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
@@ -31,6 +31,7 @@ function check(name, ok, detail = "") {
 const $ = (c) => "$" + (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const text = (html) => html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;|&rsquo;/g, "'").replace(/\s+/g, " ");
 const ct = async (pm) => (await stripe.testHelpers.confirmationTokens.create({ payment_method: pm })).id;
+const ct2 = ct;
 const cardPost = async (token, path, body) => {
   const r = await fetch(`${B}/pay/${token}/card/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { status: r.status, body: await r.json().catch(() => ({})) };
@@ -43,7 +44,7 @@ if (process.env.PAYMENTS_SF_WRITEBACK !== "on" || process.env.PAYMENTS_SF_ORG) t
 // ── Setup: a real production Work Order with money owed (read-only) ─────────
 const conn = await getSalesforceClient();
 const wo = (await conn.query(
-  "SELECT Id, WorkOrderNumber, BalanceOwed__c FROM WorkOrder WHERE BalanceOwed__c > 500 AND TotalPaymentsIn__c > 0 AND Total_Payment_Terms__c > 0 AND Status = 'Work In Progress' ORDER BY LastModifiedDate DESC LIMIT 1",
+  "SELECT Id, WorkOrderNumber, BalanceOwed__c FROM WorkOrder WHERE BalanceOwed__c > 500 AND TotalPaymentsIn__c > 0 AND Total_Payment_Terms__c > 0 AND Status = 'Work In Progress' AND State IN ('NY','NJ') ORDER BY LastModifiedDate DESC LIMIT 1",
 )).records[0];
 const pub = await svc.issuePaymentLinkAndPublish({ id: wo.Id, number: wo.WorkOrderNumber }, "e2e-test");
 const token = pub.link.token;
@@ -205,6 +206,9 @@ try {
       const c = await ct("pm_card_visa_debit");
       const r = await cardPost(token, "confirm", { milestone: dueNow.key, confirmationToken: c, shownTotalCents: dueNow.remainingCents });
       pis.push(r.body.paymentIntentId);
+      // Let Stripe's real payment_intent.succeeded webhook land first, so the
+      // reset below is the LAST word and the late-success path is what's tested.
+      await new Promise((res) => setTimeout(res, 8000));
       await sb.from("stripe_payments").update({ status: "processing", sf_writeback_status: null }).eq("payment_intent_id", r.body.paymentIntentId);
       const res = await svc.bookClearedPayments([r.body.paymentIntentId], "po_E2E_LATE", { clearedAt: "2026-10-09T00:00:00.000Z", fees: new Map() });
       const mid = (await sb.from("stripe_payments").select("sf_writeback_status,payout_id").eq("payment_intent_id", r.body.paymentIntentId).single()).data;
@@ -253,6 +257,33 @@ try {
     const q = await cardPost(token, "quote", { milestone: "balance", confirmationToken: await ct("pm_card_visa") });
     check("M4: 5 declined cards in an hour → card payments locked on this link", q.body.error === "too_many", JSON.stringify(q.body));
     await sb.from("stripe_payments").delete().like("payment_intent_id", "pi_E2E_DECL_%");
+  }
+
+  // ── N. State rules (Katie, 2026-10-08) ───────────────────────────────────
+  {
+    const ct = (await conn.query("SELECT Id, WorkOrderNumber, State FROM WorkOrder WHERE State = 'CT' AND BalanceOwed__c > 100 AND Total_Payment_Terms__c > 0 AND Status NOT IN ('Closed','Canceled','Complete Paid in Full') LIMIT 1")).records[0];
+    if (ct) {
+      const l = await svc.issuePaymentLinkAndPublish({ id: ct.Id, number: ct.WorkOrderNumber, state: ct.State }, "e2e-test");
+      try {
+        const due = (await svc.loadPayState(l.link.token)).schedule.milestones.find((m) => m.status === "due");
+        const q = await cardPost(l.link.token, "quote", { milestone: due.key, confirmationToken: await ct2("pm_card_visa") });
+        const pg = text(await (await fetch(`${B}/pay/${l.link.token}`)).text());
+        check("Connecticut job: credit card pays NO fee, and the page says so", q.body.quote?.funding === "credit" && q.body.quote.feeCents === 0 && pg.includes("Pay by card · no fee") && !pg.includes("3.00%"), `fee ${$(q.body.quote?.feeCents ?? -1)}`);
+      } finally {
+        await sb.from("payment_links").delete().eq("token", l.link.token);
+      }
+    } else results.push("      (CT check skipped — no open Connecticut job with a balance)");
+    const co = (await conn.query("SELECT Id, WorkOrderNumber, State FROM WorkOrder WHERE State = 'CO' AND BalanceOwed__c > 0 LIMIT 1")).records[0];
+    if (co) {
+      let refused = "";
+      try { await svc.issuePaymentLinkAndPublish({ id: co.Id, number: co.WorkOrderNumber, state: co.State }, "e2e-test"); } catch (e) { refused = e.message; }
+      check("Colorado job: no link on this Stripe account", /own Stripe accounts/.test(refused), refused.slice(0, 60));
+      const coTok = "E2Eco" + Date.now();
+      await sb.from("payment_links").insert({ token: coTok, work_order_id: co.Id, work_order_number: co.WorkOrderNumber, created_by: "e2e-test", sf_org: "production" });
+      const coPage = text(await (await fetch(`${B}/pay/${coTok}`)).text());
+      await sb.from("payment_links").delete().eq("token", coTok);
+      check("…and an old Colorado link shows 'closed', no Pay buttons", coPage.includes("Online payment is closed") && !coPage.includes("Pay by bank"));
+    }
   }
 
   // ── L. Locked-down endpoints ─────────────────────────────────────────────
