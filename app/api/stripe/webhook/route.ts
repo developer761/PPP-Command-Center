@@ -11,6 +11,11 @@ import {
 } from "@/lib/payments/service";
 
 export const dynamic = "force-dynamic";
+// A payout.paid books every payment in that payout in Salesforce (a Payment In
+// and a Payment Term each, several calls apiece). A busy day must not hit the
+// default limit partway through; if it ever does, Stripe retries and the
+// already-booked ones are skipped, so it resumes rather than double-books.
+export const maxDuration = 60;
 
 /**
  * POST /api/stripe/webhook — Stripe telling us a payment moved.

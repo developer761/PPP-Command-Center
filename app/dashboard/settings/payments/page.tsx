@@ -19,6 +19,8 @@ import { getWorkOrderPaymentStateByNumber } from "@/lib/salesforce/payments";
 import { relativeAgoEt } from "@/lib/date-et";
 
 export const dynamic = "force-dynamic";
+// "Create links for open Work Orders" writes up to 100 links to Salesforce.
+export const maxDuration = 60;
 
 /**
  * Settings → Online Payments. The admin side of /pay/<token>:
