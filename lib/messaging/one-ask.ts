@@ -111,6 +111,13 @@ function asking(text: string): string {
     .join(" ");
 }
 
+/**
+ * An OPEN question asks for a value; a closed one asks for a yes or a no.
+ * The distinction is what keeps "What are you looking to have painted?" from
+ * counting as a confirmation as well as an ask. See tooManyAsks.
+ */
+const OPEN_QUESTION = /\b(?:what|which|when|where|how)\b/i;
+
 export const MAX_PRODUCED_FIELDS = 2;
 
 /**
@@ -137,6 +144,41 @@ export function tooManyAsks(text: string | null | undefined): string | null {
   YES_NO.lastIndex = 0;
   if (yesNo > 1) {
     return `asks ${yesNo} separate yes or no questions, so a bare "yes" would not say which one it answered`;
+  }
+
+  /**
+   * A CONFIRMATION PLUS AN OPEN ASK IS TWO ASKS.
+   *
+   * Measured against Kate's own grading rather than reasoned about. Of the 61
+   * A22 breaches in her corpus that carry the faulted bot message, the checks
+   * above catch 49, and ten of the twelve misses are one shape:
+   *
+   *   "Got it! I have a bedroom and hallway(s) for painting, is that correct?
+   *    What's the full address for the property, including the zip?"
+   *
+   * A scope confirmation and a new field ask in one message. Neither check
+   * above sees it — there is only ONE yes/no question, and the produced-field
+   * count is skipped whenever the message reads a held value back, which a
+   * message of this shape nearly always does.
+   *
+   * A22's statement is "One ASK per message — count asks, not question
+   * marks", so Kate is right by the rule as written. With this, recall on her
+   * corpus goes 49/61 to 52/61, and the number of messages she PRAISED that
+   * it newly flags is zero out of all 651.
+   *
+   * THE SENTENCES HAVE TO BE DIFFERENT ONES, and the first attempt did not
+   * require it: it tested "some sentence confirms" and "some sentence asks
+   * openly" independently, so one sentence could satisfy both. "What are you
+   * looking to have painted?" carries "are" and a question mark, and plain
+   * one-ask openers like it were flagged — 25 of Kate's praised messages,
+   * before requiring the two to be separate sentences.
+   */
+  const sentences = t.split(/(?<=[.?!])\s+/).filter(Boolean);
+  const confirms = (s: string) => /\?/.test(s) && !OPEN_QUESTION.test(s)
+    && /\b(?:is|are|was|were|does|do|did|can|could|would|will|have|has)\b|\bcorrect\?|\bright\?/i.test(s);
+  const asksOpenly = (s: string) => /\?/.test(s) && OPEN_QUESTION.test(s);
+  if (sentences.some(confirms) && sentences.some(asksOpenly)) {
+    return "confirms one thing and asks for another in the same message, which is two asks";
   }
 
   return null;
