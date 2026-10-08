@@ -39,7 +39,7 @@ export function paymentIntentIdsInPayout(txns: BalanceTxnLike[]): string[] {
  * Payments tab's "fee collected vs. what cards cost us". A payment split over
  * more than one balance transaction has its fees summed.
  */
-export function clearedPaymentsInPayout(txns: BalanceTxnLike[]): Map<string, { stripeFeeCents: number }> {
+export function clearedPaymentsInPayout(txns: BalanceTxnLike[]): Map<string, { stripeFeeCents: number | null }> {
   const out = new Map<string, { stripeFeeCents: number }>();
   for (const t of txns) {
     if (!PAYMENT_TYPES.has(t.type)) continue;
@@ -50,5 +50,12 @@ export function clearedPaymentsInPayout(txns: BalanceTxnLike[]): Map<string, { s
     const prev = out.get(pi)?.stripeFeeCents ?? 0;
     out.set(pi, { stripeFeeCents: prev + (t.fee ?? 0) });
   }
-  return out;
+  // Stripe always charges something to process a card or bank payment, so a
+  // total of 0 means the fee wasn't on the transaction — test mode does this,
+  // and so does pricing that bills fees monthly instead of per payment. Report
+  // "unknown", never $0: a $0 cost makes the 3% look like pure margin.
+  // (Seen 2026-10-08: every payment in a real automatic test payout had fee 0.)
+  const result = new Map<string, { stripeFeeCents: number | null }>();
+  for (const [pi, v] of out) result.set(pi, { stripeFeeCents: v.stripeFeeCents > 0 ? v.stripeFeeCents : null });
+  return result;
 }

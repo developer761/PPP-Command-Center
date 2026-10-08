@@ -53,3 +53,16 @@ describe("clearedPaymentsInPayout — what Stripe charged PPP per payment", () =
     expect(clearedPaymentsInPayout([t, t]).get("pi_x")).toEqual({ stripeFeeCents: 200 });
   });
 });
+
+describe("a $0 Stripe cost is 'not reported', never $0", () => {
+  it("fee 0 → null, so the Payments tab doesn't show the 3% as pure margin", () => {
+    const m = clearedPaymentsInPayout([
+      { type: "charge", fee: 0, source: { object: "charge", payment_intent: "pi_free" } },
+      { type: "charge", source: { object: "charge", payment_intent: "pi_missing" } },
+      { type: "charge", fee: 4483, source: { object: "charge", payment_intent: "pi_real" } },
+    ]);
+    expect(m.get("pi_free")).toEqual({ stripeFeeCents: null });
+    expect(m.get("pi_missing")).toEqual({ stripeFeeCents: null });
+    expect(m.get("pi_real")).toEqual({ stripeFeeCents: 4483 });
+  });
+});

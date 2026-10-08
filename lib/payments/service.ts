@@ -739,7 +739,7 @@ export async function bookPaidOutPayments(payoutId: string): Promise<{ inPayout:
 export async function bookClearedPayments(
   piIds: string[],
   payoutId: string,
-  cleared?: { clearedAt: string; fees: Map<string, { stripeFeeCents: number }> },
+  cleared?: { clearedAt: string; fees: Map<string, { stripeFeeCents: number | null }> },
 ): Promise<number> {
   if (cleared) {
     for (const pi of piIds) {
