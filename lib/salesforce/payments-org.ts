@@ -73,7 +73,7 @@ function sandboxOAuth() {
   return { loginUrl, clientId, clientSecret };
 }
 
-export function sandboxAuthorizationUrl(redirectUri: string): string {
+export function sandboxAuthorizationUrl(redirectUri: string, state: string): string {
   const o = sandboxOAuth();
   const p = new URLSearchParams({
     response_type: "code",
@@ -81,6 +81,7 @@ export function sandboxAuthorizationUrl(redirectUri: string): string {
     redirect_uri: redirectUri,
     scope: "api refresh_token",
     prompt: "login consent",
+    state,
   });
   return `${o.loginUrl}/services/oauth2/authorize?${p}`;
 }

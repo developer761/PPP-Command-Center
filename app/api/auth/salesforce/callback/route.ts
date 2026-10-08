@@ -5,6 +5,7 @@ import {
   storeSalesforceCredentials,
 } from "@/lib/salesforce/client";
 import { isAllowedToSignIn } from "@/lib/auth/admin";
+import { finishSandboxSignIn, SANDBOX_STATE_PREFIX } from "@/lib/salesforce/sandbox-callback";
 
 /**
  * Receive the OAuth callback from Salesforce, exchange the auth code for tokens,
@@ -15,6 +16,14 @@ import { isAllowedToSignIn } from "@/lib/auth/admin";
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+
+  // A PAYMENTS sandbox sign-in returns here too (the sandbox's copy of the
+  // Connected App only lists production's callback URLs). Hand it off before
+  // anything below can store it as the production login.
+  if (searchParams.get("state")?.startsWith(SANDBOX_STATE_PREFIX)) {
+    return finishSandboxSignIn(request, `${origin}/api/auth/salesforce/callback`);
+  }
+
   const code = searchParams.get("code");
   const errorParam = searchParams.get("error");
 
