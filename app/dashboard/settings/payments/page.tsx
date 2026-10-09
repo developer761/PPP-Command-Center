@@ -15,6 +15,7 @@ import {
   type PaymentRow,
 } from "@/lib/payments/service";
 import { formatCents } from "@/lib/payments/schedule";
+import { shouldWriteToSalesforce } from "@/lib/payments/config";
 import { getWorkOrderPaymentStateByNumber } from "@/lib/salesforce/payments";
 import { relativeAgoEt } from "@/lib/date-et";
 
@@ -319,7 +320,7 @@ export default async function PaymentsSettingsPage({
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">
             {payments.map((p) => (
-              <PaymentItem key={p.id} p={p} canRetry={cfg.sfWritebackOn && p.livemode} />
+              <PaymentItem key={p.id} p={p} canRetry={shouldWriteToSalesforce(cfg, p.livemode)} />
             ))}
           </ul>
         )}
