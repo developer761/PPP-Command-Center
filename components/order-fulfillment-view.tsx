@@ -133,6 +133,8 @@ export default function OrderFulfillmentView({
   >(null);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  /** Kate p21 — the always-available manual path. See handleCopy. */
+  const [showCopyText, setShowCopyText] = useState(false);
   const sendInFlight = useRef(false);
 
   // Kate round-3 #32: never offer a required-by date in the past. The computed
@@ -358,17 +360,59 @@ export default function OrderFulfillmentView({
     if (sendFailed) sendErrorRef.current?.focus();
   }, [sendFailed]);
 
+  /** Exactly what the Copy button puts on the clipboard, and what the manual
+   *  fallback box shows. One source so the two can never differ. */
+  const copyText = `Subject: ${draft?.subject ?? ""}\n\n${bodyToSend}`;
+
+  /**
+   * Kate p21: "When copying the materials order to my clipboard on mobile, it
+   * doesn't paste properly into Gmail." Her screenshot shows the whole thing
+   * percent-encoded — `Subject:%20PPP%20Order%2000318898%0A%0AHi%20there,`.
+   *
+   * THE ENCODING IS NOT OURS, and that was checked rather than assumed: the
+   * draft API returns clean text (verified against the live endpoint), this
+   * function hands `writeText` a plain string, there is no mailto: or
+   * encodeURI anywhere in the order flow, and the button is a plain
+   * <button type="button">. The pattern does not even match a JS encoder —
+   * `,` and `(` survive while `:` and `[` are escaped, which is neither
+   * encodeURI nor encodeURIComponent.
+   *
+   * So the cause sits in iOS or the Gmail app, where we cannot reach it, and
+   * guessing at it would just produce a confident fix for the wrong thing.
+   * What IS ours is leaving her no way out: the manual fallback only appeared
+   * after a thrown error, and here nothing throws — the copy "succeeds" and
+   * pastes wrong. Two changes, in order of how much they are actually known
+   * to help:
+   *
+   *  1. A plain-text box she can always open, select and copy by hand. This
+   *     cannot be re-encoded by anything, so it works whatever the cause is.
+   *     The real fix until the cause is known.
+   *  2. An explicit text/plain ClipboardItem instead of a bare writeText.
+   *     SPECULATIVE — the most plausible remaining mechanism is a clipboard
+   *     flavour the receiving app re-interprets, and declaring the type
+   *     removes that ambiguity. It may change nothing. It cannot hurt, and
+   *     it falls back to writeText wherever ClipboardItem is missing.
+   */
   const handleCopy = async () => {
     setCopyError(null);
     try {
-      await navigator.clipboard.writeText(`Subject: ${draft?.subject ?? ""}\n\n${bodyToSend}`);
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/plain": new Blob([copyText], { type: "text/plain" }) }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(copyText);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (err) {
+      // Open the manual box for them rather than only naming a shortcut that
+      // does not exist on a phone.
+      setShowCopyText(true);
       setCopyError(
-        `Couldn't copy automatically — select the email body and Cmd/Ctrl+C. (${err instanceof Error ? err.message : String(err)})`
+        `Couldn't copy automatically — use the box below. (${err instanceof Error ? err.message : String(err)})`
       );
-      setTimeout(() => setCopyError(null), 5000);
+      setTimeout(() => setCopyError(null), 8000);
     }
   };
 
@@ -848,6 +892,35 @@ export default function OrderFulfillmentView({
               </button>
               {copyError && (
                 <span className="text-[11px] text-ppp-orange-700 max-w-xs" role="alert">{copyError}</span>
+              )}
+              {/* Kate p21 — a path that cannot be re-encoded by anything.
+                  Always offered, not only after an error: the reported
+                  failure is a copy that SUCCEEDS and pastes wrong, so an
+                  error-only fallback never appears for it. */}
+              <button
+                type="button"
+                onClick={() => setShowCopyText((v) => !v)}
+                aria-expanded={showCopyText}
+                aria-controls="order-copy-text"
+                className="text-[11px] text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+              >
+                {showCopyText ? "Hide the text" : "Paste came out wrong? Show the text"}
+              </button>
+              {showCopyText && (
+                <div className="w-full">
+                  <p className="text-[11px] text-ppp-charcoal-500 mb-1">
+                    Tap the box, select all, then copy. This is the same text the
+                    button copies.
+                  </p>
+                  <textarea
+                    id="order-copy-text"
+                    readOnly
+                    value={copyText}
+                    onFocus={(e) => e.currentTarget.select()}
+                    rows={10}
+                    className="w-full px-3 py-2 text-base sm:text-[12px] font-mono border border-ppp-charcoal-100 rounded-lg bg-white resize-y"
+                  />
+                </div>
               )}
             </div>
           </div>
