@@ -1211,7 +1211,13 @@ export default function OrderBuilderView({
                     {/* Katie item 23 — the colors themselves, labelled apart from the
                         scope above so a reader can tell which is which. */}
                     <LineItemNotes notes={l.colorNotes} label="Colors" />
+                    {/* Kate 2026-10-07, p18: arrow at the adder that used to
+                        sit here, captioned "Remove this". Only the customer's
+                        own words stay on the line they were written about; the
+                        actionable list moved to the custom color area (p4.2),
+                        which is where a quantity is entered. */}
                     <ColorNoteOffers
+                      only="remarks"
                       room={l.room}
                       offers={l.colorNoteOffers ?? []}
                       remarks={l.colorNoteRemarks ?? []}
@@ -1865,6 +1871,50 @@ export default function OrderBuilderView({
           </div>
 
           {/* ── Custom color item (#28) ──────────────────────────────────── */}
+          {/* Kate 2026-10-07, p4.2: "Modify the 'Eggshell for the bathroom
+              ceiling' indicator to instead add that to the custom color area
+              for the guys to add a quantity instead of having a flag that
+              doesn't inform them that they'll need to add Super White in
+              eggshell for the bathroom ceiling as a custom color."
+
+              Same control, moved. It belongs here because this is where a
+              quantity is entered and where the line it creates will appear,
+              and because the panel it used to live in is collapsed by default
+              on a phone now (her own p18 request) — an adder inside a closed
+              drawer is not an adder.
+
+              Each row carries the room it came from, which the custom items
+              already store as `scope` (Kate 2026-10-06) and the order screen
+              already prints. The vendor's copy merges on color, finish,
+              product and unit — room deliberately not in that key — so two
+              rooms needing the same paint still reach the store as one line
+              with the quantities summed. */}
+          {sourceLines.some((l) => (l.colorNoteOffers ?? []).length > 0) && (
+            <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+              <h2 className="text-sm font-semibold text-ppp-charcoal">
+                Colors from the notes
+              </h2>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                Written on the line items by the rep or the customer. Set a
+                quantity to put one on the order as a custom color.
+              </p>
+              {sourceLines
+                .filter((l) => (l.colorNoteOffers ?? []).length > 0)
+                .map((l) => (
+                  <ColorNoteOffers
+                    key={l.id}
+                    only="offers"
+                    room={l.room}
+                    offers={l.colorNoteOffers ?? []}
+                    remarks={[]}
+                    items={payload.customColorItems}
+                    estimates={estimates}
+                    onAdd={addCustomColorItem}
+                  />
+                ))}
+            </section>
+          )}
+
           <CustomColorItems
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
@@ -2197,6 +2247,7 @@ function ColorNoteOffers({
   items,
   estimates,
   onAdd,
+  only,
 }: {
   room: string;
   offers: ColorNoteOffer[];
@@ -2209,10 +2260,26 @@ function ColorNoteOffers({
     unit: string,
     extra?: { finish?: string | null; scope?: string | null }
   ) => void;
+  /**
+   * Which half to render. Kate 2026-10-07 drew an arrow at the adder on the
+   * line-item card and wrote "Remove this", and separately asked (p4.2) for
+   * the color to "add that to the custom color area for the guys to add a
+   * quantity". Those are one change: the ADDER moves, the customer's own
+   * words stay on the line they were written about.
+   *
+   *   "offers"  — the actionable list, rendered in the custom color area
+   *   "remarks" — what the customer SAID, rendered on the line item
+   *
+   * Undefined renders both, which nothing does now but keeps the component
+   * honest if it is reused.
+   */
+  only?: "offers" | "remarks";
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, PaintUnit>>({});
-  if (offers.length === 0 && remarks.length === 0) return null;
+  const showOffers = only !== "remarks";
+  const showRemarks = only !== "offers";
+  if ((!showOffers || offers.length === 0) && (!showRemarks || remarks.length === 0)) return null;
   // The room the NOTE named beats the line item's own — when a rep puts seven
   // rooms on one line, the line's name identifies none of them (Katie
   // 2026-10-01). Falls back to the line item for notes with no headings.
@@ -2222,13 +2289,14 @@ function ColorNoteOffers({
   const pending = offers.filter((o) => !isOfferOnOrder(items, identityFor(o))).length;
   return (
     <div className="mt-2 rounded-lg border border-ppp-charcoal-100 px-3 py-2">
-      {offers.length > 0 && (
+      {showOffers && offers.length > 0 && (
       <p className="text-[11px] text-ppp-charcoal-600">
         {pending === 0
           ? "Every color in these notes is on the order."
           : "Color notes don't go to the vendor. Add anything that needs buying:"}
       </p>
       )}
+      {showOffers && (
       <ul className="mt-1 divide-y divide-ppp-charcoal-100">
         {offers.map((offer) => {
           const line = offer.line;
@@ -2333,11 +2401,12 @@ function ColorNoteOffers({
           );
         })}
       </ul>
+      )}
       {/* What the customer SAID. Not offerable — these used to arrive as
           buy-list rows with a quantity box beside them — but not discarded
           either: "I'd like an accent wall in a plum" is the estimator's cue to
           call them (Katie 2026-10-01). */}
-      {remarks.length > 0 && (
+      {showRemarks && remarks.length > 0 && (
         <div className="mt-2 pt-2 border-t border-ppp-charcoal-100">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
             Also in the notes — not something to buy
