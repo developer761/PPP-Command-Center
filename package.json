@@ -27,6 +27,7 @@
     "check:approvals": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-approval-flows.mjs",
     "check:delivery": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-delivery-flows.mjs",
     "check:form-seams": "node scripts/check-form-seams.mjs",
+    "check:field-copy": "node scripts/check-field-copy-is-true.mjs",
     "check:consent": "node scripts/check-consent-compliance.mjs",
     "check:deployed": "node scripts/check-deployed.mjs",
     "export:findings-outside-kates-pass": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/export-findings-outside-kates-pass.mjs",
@@ -75,6 +76,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
     "@react-pdf/renderer": "^4.5.1",
+    "@stripe/stripe-js": "^9.17.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
     "exceljs": "^4.4.0",
