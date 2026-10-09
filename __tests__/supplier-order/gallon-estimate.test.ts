@@ -349,6 +349,66 @@ describe("doors and accent walls", () => {
     expect(byColor([r]).wall.accentWallReview).toBe(false);
   });
 
+  /* Kate 2026-10-07: only warn about an accent wall when a wall is painted.
+     The warning says the WALLS quantity is wrong. With no walls line there is
+     no quantity to be wrong, so it is noise on an order it cannot affect. */
+
+  it("a trim-only room is NOT flagged, even with an accent in the notes", () => {
+    const r = room(15, 20, 8, {
+      roomLabel: "Hallway",
+      notes: "prep and paint - accent wall in the stairwell",
+      surfaces: [surf("trim", "Trim", "trim", "Trim white")],
+    });
+    expect(byColor([r]).trim.accentWallReview).toBe(false);
+  });
+
+  it("a ceiling-only room is NOT flagged", () => {
+    const r = room(15, 20, 8, {
+      roomLabel: "Dining Room",
+      notes: "accent wall",
+      surfaces: [surf("ceiling", "Ceiling", "ceil", "Ceiling white")],
+    });
+    expect(byColor([r]).ceil.accentWallReview).toBe(false);
+  });
+
+  it("an accent surface alone does not count as painting a wall", () => {
+    // classifySurface catches "accent" before "wall", so this room has no
+    // ordinary walls line — nothing is mis-sized, so nothing is flagged.
+    const r = room(15, 20, 8, {
+      roomLabel: "Living Room",
+      surfaces: [surf("unsized", "Accent Wall", "accent", "Accent")],
+    });
+    expect(byColor([r]).accent.accentWallReview).toBe(false);
+  });
+
+  it("still flags every line in a room that DOES paint walls", () => {
+    // The suppression must not reach the case the per-room detection exists
+    // for: walls + accent, where the walls line is the mis-sized one.
+    const r = room(15, 20, 8, {
+      roomLabel: "Bedroom 2",
+      surfaces: [
+        surf("walls", "Walls", "wall", "Walls"),
+        surf("unsized", "Accent Wall", "accent", "Accent"),
+        surf("trim", "Trim", "trim", "Trim white"),
+      ],
+    });
+    const e = byColor([r]);
+    expect(e.wall.accentWallReview).toBe(true);
+    expect(e.accent.accentWallReview).toBe(true);
+    expect(e.trim.accentWallReview).toBe(true);
+  });
+
+  it("an uncolored walls surface does not switch the warning back on", () => {
+    // A surface with no color is not being painted. Counting it would undo
+    // the whole point for a room where walls were left out of the job.
+    const r = room(15, 20, 8, {
+      roomLabel: "Office",
+      notes: "accent wall",
+      surfaces: [surf("walls", "Walls", "", "unset"), surf("trim", "Trim", "trim", "Trim white")],
+    });
+    expect(byColor([r]).trim.accentWallReview).toBe(false);
+  });
+
   it("both flags actually render on the order screen", () => {
     // They were computed and shown nowhere — the kitchen "please review" note
     // existed only in the data for four days.

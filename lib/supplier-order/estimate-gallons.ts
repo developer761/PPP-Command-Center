@@ -571,6 +571,26 @@ export function estimateOrderGallons(
     const roomHasAccent =
       mentionsAccentWall(room.notes) ||
       room.surfaces.some((x) => mentionsAccentWall(x.surfaceLabel));
+    /**
+     * Kate 2026-10-07: only warn about an accent wall when a wall is being
+     * painted.
+     *
+     * The warning exists because an accent wall takes part of the WALLS area
+     * at a different color, so the walls quantity is wrong. If this room has
+     * no walls line — trim only, ceiling only, doors only — there is no
+     * quantity for the accent to throw off, and the alert is noise on an
+     * order it cannot affect.
+     *
+     * `classifySurface` catches "accent" BEFORE "wall", so an accent surface
+     * is "unsized" and never satisfies this on its own. That is the intended
+     * reading: a room whose only wall work IS the accent has no ordinary
+     * walls line to be wrong. What this must NOT become is "flag the accent
+     * line only" — that is the bug the per-room detection above was added to
+     * fix, and it leaves the one line that is actually mis-sized unflagged.
+     */
+    const roomPaintsWalls = room.surfaces.some(
+      (x) => x.colorId && classifySurface(x.surfaceLabel) === "walls"
+    );
     for (const s of room.surfaces) {
       if (!s.colorId) continue;
       const b = bucketFor(s, room.roomTypeText || room.roomLabel);
@@ -586,7 +606,7 @@ export function estimateOrderGallons(
       // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
       // part of that wall is now a different color — unflagged.
-      if (roomHasAccent) {
+      if (roomHasAccent && roomPaintsWalls) {
         b.accentWall = true;
         if (room.roomLabel) b.accentRooms.add(room.roomLabel);
       }
