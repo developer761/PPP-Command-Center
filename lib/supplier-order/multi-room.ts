@@ -259,7 +259,23 @@ export function roomSurfaceTemplate(
   const named = rooms.map(titleCase).filter(Boolean);
   if (named.length < 2) return "";
   const lines = surfaces.map((s) => s.trim()).filter(Boolean);
+  // The room heading ENDS IN A COLON, and that colon is load-bearing.
+  //
+  // Kate reported this as a bug on 2026-10-09, hours after the template
+  // shipped, from a real submission on WO 00318898: a customer inserted the
+  // template, filled in nothing, and the order screen offered "Living Room",
+  // "Dining Room" and "Kitchen" as colors to buy, product "Other".
+  //
+  // parseColorNotes only treats a line as a ROOM HEADING when it ends in ":"
+  // (and the label is not a surface word). Without the colon a bare room name
+  // falls through every branch and lands in `offers` — the room name becomes
+  // a paint to order. Her own screenshot proves the mechanism: the four rooms
+  // she had typed WITH colons were skipped correctly, and only the three the
+  // template emitted without them turned into offers.
+  //
+  // So an empty template must now parse to nothing at all, which is asserted
+  // against the real parser rather than trusted.
   return named
-    .map((room) => [room, ...(lines.length ? lines.map((s) => `${s}:`) : ["Color:"])].join("\n"))
+    .map((room) => [`${room}:`, ...(lines.length ? lines.map((s) => `${s}:`) : ["Color:"])].join("\n"))
     .join("\n\n");
 }

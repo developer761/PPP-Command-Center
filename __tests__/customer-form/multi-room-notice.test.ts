@@ -33,7 +33,10 @@ describe("the template Kate specified", () => {
   it("matches the shape in her PDF", () => {
     expect(roomSurfaceTemplate(["primary bedroom", "bedroom 2"], ["Walls", "Ceiling", "Trim"]))
       .toBe(
-        "Primary Bedroom\nWalls:\nCeiling:\nTrim:\n\nBedroom 2\nWalls:\nCeiling:\nTrim:"
+        // Room headings end in ":" — parseColorNotes only recognizes a room
+        // that way, and without it the room name became a paint to buy
+        // (Kate's bug report on WO 00318898, same day the template shipped).
+        "Primary Bedroom:\nWalls:\nCeiling:\nTrim:\n\nBedroom 2:\nWalls:\nCeiling:\nTrim:"
       );
   });
 
@@ -43,7 +46,7 @@ describe("the template Kate specified", () => {
   });
 
   it("falls back to a plain Color line when the WOLI lists no surfaces", () => {
-    expect(roomSurfaceTemplate(["kitchen", "pantry"], [])).toBe("Kitchen\nColor:\n\nPantry\nColor:");
+    expect(roomSurfaceTemplate(["kitchen", "pantry"], [])).toBe("Kitchen:\nColor:\n\nPantry:\nColor:");
   });
 
   it("produces nothing for a single room — there is no list to give", () => {
@@ -95,5 +98,62 @@ describe("the notice on the customer's form", () => {
     expect(hookAt).toBeGreaterThan(-1);
     expect(guardAt).toBeGreaterThan(-1);
     expect(hookAt).toBeLessThan(guardAt);
+  });
+});
+
+/**
+ * Kate, 2026-10-09, hours after the template shipped, from a real submission
+ * on WO 00318898:
+ *
+ *   "BUG: On multi-room line items, when the text template for customers is
+ *    inserted and the customer doesn't add any colors, the system is trying
+ *    to parse out colors and only shows rooms."
+ *
+ * The order screen was offering "Living Room", "Dining Room" and "Kitchen" as
+ * paints to buy. These run the template through the REAL parser, because the
+ * defect lived in the seam between the two and neither side was wrong alone.
+ */
+describe("an untouched template orders nothing", () => {
+  it("produces no offers at all", async () => {
+    const { parseColorNotes } = await import("@/lib/supplier-order/color-note-parse");
+    const template = roomSurfaceTemplate(
+      ["living room", "dining room", "kitchen"],
+      ["Walls", "Ceiling", "Trim"]
+    );
+    const parsed = parseColorNotes(template);
+    expect(parsed.offers, `template parsed as ${JSON.stringify(parsed.offers)}`).toEqual([]);
+  });
+
+  it("does not offer the room names as colors", async () => {
+    const { parseColorNotes } = await import("@/lib/supplier-order/color-note-parse");
+    const parsed = parseColorNotes(roomSurfaceTemplate(["living room", "kitchen"], ["Walls"]));
+    const lines = parsed.offers.map((o) => o.line.toLowerCase());
+    expect(lines).not.toContain("living room");
+    expect(lines).not.toContain("kitchen");
+  });
+
+  it("ends every room heading with a colon, which is what the parser reads", () => {
+    // The whole defect was one missing character.
+    const t = roomSurfaceTemplate(["living room", "kitchen"], ["Walls"]);
+    expect(t).toContain("Living Room:");
+    expect(t).toContain("Kitchen:");
+    expect(t).not.toMatch(/^Living Room$/m);
+  });
+
+  it("STILL reads a color once the customer fills one in", () => {
+    // The fix must not make the template inert — a filled-in line is the
+    // entire point of giving them one.
+    return import("@/lib/supplier-order/color-note-parse").then(({ parseColorNotes }) => {
+      // TWO rooms: the template is empty by design for one, because there is
+      // no list to hand somebody who only has a single room.
+      const filled = roomSurfaceTemplate(["living room", "kitchen"], ["Walls"]).replace(
+        "Walls:",
+        "Walls: OC-117 Simply White"
+      );
+      const parsed = parseColorNotes(filled);
+      expect(parsed.offers).toHaveLength(1);
+      expect(parsed.offers[0].line).toMatch(/Simply White/);
+      expect(parsed.offers[0].room).toBe("Living Room");
+    });
   });
 });
