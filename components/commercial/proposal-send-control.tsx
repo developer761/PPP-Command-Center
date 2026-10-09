@@ -322,11 +322,20 @@ export function ProposalSendControl({
                           type="text"
                           value={cc}
                           onChange={(e) => setCc(e.target.value)}
-                          placeholder="CC — separate several with commas"
+                          placeholder="CC — one or several, separated by a comma or semicolon"
                           className={`${FIELD} mt-2`}
                         />
+                        {/* NAME THE SEMICOLON.
+                            Stephanie 2026-10-09, the day after this shipped:
+                            "can I just add multiple email addresses on the
+                            email line separated by a semicolon?" She could —
+                            the parser takes commas, semicolons and spaces —
+                            but this hint listed only commas and spaces, so the
+                            one separator Outlook teaches people to use was the
+                            one we did not mention. A capability nobody can
+                            tell is there is one they have to ask about. */}
                         <p className="mt-1 text-[11px] text-ppp-charcoal-500">
-                          More than one is fine — commas or spaces between them.
+                          Add as many as you like — separate them with a comma, a semicolon or a space.
                         </p>
                       </>
                     )}
