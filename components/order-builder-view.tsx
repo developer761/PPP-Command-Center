@@ -208,6 +208,17 @@ export default function OrderBuilderView({
   const [extrasSearch, setExtrasSearch] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /**
+   * Kate 2026-10-07, mobile round: "Line items on this WO" collapsed by default.
+   *
+   * PHONE ONLY. Katie asked for the opposite on 2026-09-08 — all the way at the
+   * top and not a dropdown — because the office checks the buy-list AGAINST the
+   * source data. Both are right about their own screen: on a laptop the two sit
+   * side by side in the eye, on a phone the source data is a wall you scroll
+   * past to reach the numbers. So this state drives the phone only, and every
+   * `lg:` below holds the desktop layout Katie asked for exactly as it was.
+   */
+  const [sourceLinesOpen, setSourceLinesOpen] = useState(false);
   // The server accepted the write but isn't keeping it (saved-order table
   // missing). Distinct from an error — nothing failed, it just won't survive,
   // and the next step will read an empty order.
@@ -1005,10 +1016,24 @@ export default function OrderBuilderView({
   );
 
 
+  /*
+   * Kate 2026-10-07: vendor first on a phone.
+   *
+   * Desktop keeps `space-y-5` on a block container — the layout Katie signed
+   * off, untouched. The phone gets a flex column with the same 20px gap, which
+   * is what makes `order-*` mean anything; `gap-5` and `space-y-5` render
+   * identically for block-level children, so this is a no-op above lg.
+   *
+   * Reordering is two `max-lg:order-first` marks rather than an order on every
+   * child: flex items with equal order keep DOM order, so the header and the
+   * vendor section tie at -9999 and resolve header-then-vendor, and everything
+   * else stays at 0 in the order it is written. Add a section anywhere below
+   * and it lands after the vendor on both screens, with nothing to remember.
+   */
   return (
-    <div className="space-y-5 pb-4">
+    <div className="pb-4 lg:space-y-5 max-lg:flex max-lg:flex-col max-lg:gap-5">
       {/* Header */}
-      <div>
+      <div className="max-lg:order-first">
         <Link
           href={`/dashboard/materials/${encodeURIComponent(workOrderId)}`}
           className="inline-flex items-center gap-1.5 min-h-[44px] py-2 -my-2 text-xs font-medium text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline touch-manipulation"
@@ -1062,9 +1087,22 @@ export default function OrderBuilderView({
                 the grounds that an expanded copy of the source data pushed the
                 buy-list off the first screen. The office's answer is that the
                 source data is what they check the buy-list AGAINST, so it has to
-                be visible before the numbers rather than after them. */}
+                be visible before the numbers rather than after them.
+
+                KATE 2026-10-07 ASKED FOR IT COLLAPSED AGAIN — and on a phone she
+                is describing R4.18's problem exactly. The panel has now been
+                flipped once already, so it is NOT flipped a third time: desktop
+                below keeps Katie's always-open panel with no control at all, and
+                only the phone collapses. Karan 2026-10-08: "for the phone follow
+                kates rules the laptop should stay exactly as is."
+
+                That is why there are two headers. The `hidden lg:block` one is
+                the original markup, unchanged to the character, so the laptop
+                cannot drift. The `lg:hidden` one is a real button, because a
+                thing that opens has to be reachable by keyboard and announce
+                whether it is open — which a styled div does not. */}
             <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+              <div className="hidden lg:block px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
                 <span>
                   <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
                     Source data (Salesforce)
@@ -1075,7 +1113,46 @@ export default function OrderBuilderView({
                   </span>
                 </span>
               </div>
-              <ul className="divide-y divide-ppp-charcoal-100">
+              <button
+                type="button"
+                onClick={() => setSourceLinesOpen((v) => !v)}
+                aria-expanded={sourceLinesOpen}
+                aria-controls="source-lines-list"
+                className="lg:hidden w-full text-left px-4 py-2.5 min-h-[44px] border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-3 touch-manipulation"
+              >
+                <span>
+                  <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
+                    Source data (Salesforce)
+                  </span>
+                  <span className="block text-sm font-semibold text-ppp-charcoal">
+                    Line items on this WO
+                    <span className="ml-1.5 font-normal text-ppp-charcoal-500">({sourceLines.length})</span>
+                  </span>
+                </span>
+                {/* The word, not only the chevron — a chevron alone leaves people
+                    guessing which way means open. */}
+                <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-blue-700">
+                  {sourceLinesOpen ? "Hide" : "Show"}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={sourceLinesOpen ? "rotate-180 transition-transform" : "transition-transform"}
+                    aria-hidden
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </span>
+              </button>
+              <ul
+                id="source-lines-list"
+                className={`divide-y divide-ppp-charcoal-100 ${sourceLinesOpen ? "" : "hidden lg:block"}`}
+              >
                 {sourceLines.map((l) => (
                   <li key={l.id} className="px-4 py-2.5 text-xs">
                     {/* Kate round-3 #14: room AND surface identify the line. */}
@@ -1125,7 +1202,9 @@ export default function OrderBuilderView({
           </section>
 
       {/* ── Step 1: vendor. Inline pick list, not a pop-up (#18/#21). ─────── */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      {/* max-lg:order-first — Kate's "vendor at the top" on phones only. See the
+          comment on the container above for why it is an order and not a move. */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden max-lg:order-first">
         <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-sm font-semibold text-ppp-charcoal">Vendor</h2>
