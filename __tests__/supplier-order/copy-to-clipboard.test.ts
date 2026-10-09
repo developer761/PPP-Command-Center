@@ -45,11 +45,38 @@ describe("copying the order to the clipboard", () => {
     expect(s).not.toContain("mailto:");
   });
 
+  it("NEVER starts with something a URL parser reads as a scheme", () => {
+    /**
+     * The actual cause of Kate's bug, and the one line that must never
+     * regress. "Subject:" is a valid URI scheme — [A-Za-z][A-Za-z0-9+.-]*:
+     * — so iOS read the whole clipboard as a URL, percent-encoded the rest,
+     * and Notes rendered it as a hyperlink.
+     *
+     * Asserted on the TEMPLATE, which is the artifact: a rendering test
+     * cannot run iOS's clipboard, but the first token is the whole defect.
+     */
+    const s = src();
+    const m = s.match(/const copyText = `([^`]*)`/);
+    expect(m, "copyText template not found").toBeTruthy();
+    const template = m![1];
+    const firstToken = template.split(/\$\{|\\n/)[0];
+    expect(
+      firstToken,
+      `the copied text begins "${firstToken}", which a URL parser reads as a scheme`
+    ).not.toMatch(/^[A-Za-z][A-Za-z0-9+.\-]*:/);
+  });
+
+  it("still labels the subject, just not with a colon", () => {
+    // The fix must not quietly drop the label — somebody pastes this into a
+    // compose window and needs to know which line is the subject.
+    expect(src()).toMatch(/const copyText = `Subject [—-] /);
+  });
+
   it("copies one string that the manual box also shows", () => {
     // Two sources would drift, and the fallback would quietly hand her
     // something different from what the button copies.
     const s = src();
-    expect(s).toMatch(/const copyText = `Subject: \$\{draft\?\.subject \?\? ""\}\\n\\n\$\{bodyToSend\}`/);
+    expect(s).toMatch(/const copyText = `Subject [—-] \$\{draft\?\.subject \?\? ""\}\\n\\n\$\{bodyToSend\}`/);
     expect(s).toMatch(/value=\{copyText\}/);
     expect(s).toMatch(/new Blob\(\[copyText\]/);
   });

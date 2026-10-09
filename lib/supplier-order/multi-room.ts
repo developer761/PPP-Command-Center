@@ -98,9 +98,22 @@ const ROOM_WORDS: readonly string[] = [
 const NEGATION_LEAD =
   /\b(?:do not|don't|does not|dont|excluding|excludes|exclude|not including|except|other than|no)\s+(?:paint|include|touch|do)?\s*(?:the\s+|a\s+)?$/;
 
+/**
+ * A room word that is naming a FIXTURE, not a room being painted:
+ * "pantry door a separate color" is the kitchen's job with one odd door in
+ * it, not a kitchen and a pantry.
+ *
+ * Kate, 2026-10-09, asked which of two borderline hits should alert and
+ * answered with the definition: "Multi-room to me is walls in the kitchen,
+ * bedroom, etc." A surface at ROOM scale — walls, ceiling, floor, trim —
+ * means that room is being painted and still counts. A fixture does not.
+ */
+const FIXTURE_FOLLOW =
+  /^\s*(?:doors?|cabinets?|closets?|shelves|shelf|drawers?|islands?|vanity|vanities|countertops?|sinks?|railings?|banisters?)\b/i;
+
 /** "off of the office", "from the kitchen" — says where, not what. */
 const LANDMARK_LEAD =
-  /\b(?:off of|off|from|next to|adjacent to|near|beside|by|toward|towards|facing|overlooking|leading to|to)\s+(?:the\s+|a\s+)?$/;
+  /\b(?:off of|off|from|next to|adjacent to|near|beside|by|toward|towards|facing|overlooking|leading to|to)\s+(?:the\s+|a\s+)?(?:[A-Za-z0-9]+\s+){0,3}$/;
 
 /**
  * Pairs that name ONE space, seen written this way in live Descriptions. A
@@ -149,9 +162,10 @@ export function roomsNamedIn(text: string | null | undefined): string[] {
     const re = new RegExp(`\\b${word}\\b`, "g");
     let m: RegExpExecArray | null;
     while ((m = re.exec(t))) {
-      const before = t.slice(Math.max(0, m.index - 22), m.index);
+      const before = t.slice(Math.max(0, m.index - 40), m.index);
       if (LANDMARK_LEAD.test(before)) continue;
       if (NEGATION_LEAD.test(before)) continue;
+      if (FIXTURE_FOLLOW.test(t.slice(m.index + word.length))) continue;
       found.push({ word, at: m.index });
     }
     // Blank it out but keep the offsets, so adjacency still reads correctly.

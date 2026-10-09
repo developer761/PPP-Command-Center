@@ -227,3 +227,48 @@ describe("a room named so it is NOT painted", () => {
     expect(rooms).toContain("office");
   });
 });
+
+/**
+ * Kate, 2026-10-09, shown the two borderline hits and asked whether either
+ * should alert: "Those aren't multi-room scopes to me. Multi-room to me is
+ * walls in the kitchen, bedroom, etc. Open concept will flag as multi-room
+ * and I think that's fine for now."
+ *
+ * So the bar is a surface at ROOM scale in more than one room. A room word
+ * naming a fixture, or naming where another room is, does not count.
+ */
+describe("Kate's definition of multi-room", () => {
+  it("is walls in the kitchen, bedroom, etc.", () => {
+    const rooms = roomsNamedIn("Paint walls in the kitchen, bedroom and hallway");
+    expect(rooms).toEqual(expect.arrayContaining(["kitchen", "bedroom", "hallway"]));
+  });
+
+  it("is NOT a pantry door inside a kitchen job", () => {
+    // Her example, verbatim from the live order she was looking at.
+    const rooms = roomsNamedIn("prep and paint kitchen walls and ceiling. pantry door a separate color.");
+    expect(rooms).toEqual(["kitchen"]);
+  });
+
+  it("is NOT a stairwell described by the room it is off", () => {
+    // Her other example. "3rd floor" sits between the preposition and the
+    // room, which the first version of the landmark rule could not see past.
+    const rooms = roomsNamedIn("- Area Description: Small stairwell off of 3rd floor office Includes Stair risers");
+    expect(rooms).toEqual(["stairwell"]);
+  });
+
+  it("still counts a room whose WALLS or CEILING are named", () => {
+    // The fixture rule must not swallow the ordinary case: a room-scale
+    // surface means that room is being painted.
+    expect(roomsNamedIn("kitchen walls and bedroom ceiling")).toEqual(
+      expect.arrayContaining(["kitchen", "bedroom"])
+    );
+    expect(roomsNamedIn("kitchen trim and hallway trim")).toEqual(
+      expect.arrayContaining(["kitchen", "hallway"])
+    );
+  });
+
+  it("accepts that open concept flags, which she signed off", () => {
+    const rooms = roomsNamedIn("Open concept: paint walls in the living room and dining room");
+    expect(rooms.length).toBeGreaterThanOrEqual(2);
+  });
+});

@@ -360,38 +360,50 @@ export default function OrderFulfillmentView({
     if (sendFailed) sendErrorRef.current?.focus();
   }, [sendFailed]);
 
-  /** Exactly what the Copy button puts on the clipboard, and what the manual
-   *  fallback box shows. One source so the two can never differ. */
-  const copyText = `Subject: ${draft?.subject ?? ""}\n\n${bodyToSend}`;
+  /**
+   * Exactly what the Copy button puts on the clipboard, and what the manual
+   * fallback box shows. One source so the two can never differ.
+   *
+   * THE FIRST LINE MUST NOT LOOK LIKE A URI SCHEME. It used to read
+   * "Subject: …", and `Subject:` is a perfectly valid scheme —
+   * `[A-Za-z][A-Za-z0-9+.-]*:`. iOS therefore read the whole clipboard as a
+   * URL and percent-encoded everything after it, which is why Kate's order
+   * pasted as `Subject:%20PPP%20Order%2000318898%0A%0AHi%20there,` and why
+   * the same text arrived in Notes as a hyperlink.
+   *
+   * Her report that Notes hyperlinked it is what identified this; a plain
+   * encoding bug does not produce a link. Reconstructing the string through
+   * a URL encoder reproduces her screenshot character for character,
+   * including the commas and parentheses that survive (sub-delims are legal
+   * unencoded in a URI opaque part) while ":" and "[" do not.
+   *
+   * An em dash carries the same meaning and cannot start a scheme.
+   */
+  const copyText = `Subject — ${draft?.subject ?? ""}\n\n${bodyToSend}`;
 
   /**
    * Kate p21: "When copying the materials order to my clipboard on mobile, it
    * doesn't paste properly into Gmail." Her screenshot shows the whole thing
    * percent-encoded — `Subject:%20PPP%20Order%2000318898%0A%0AHi%20there,`.
    *
-   * THE ENCODING IS NOT OURS, and that was checked rather than assumed: the
-   * draft API returns clean text (verified against the live endpoint), this
-   * function hands `writeText` a plain string, there is no mailto: or
-   * encodeURI anywhere in the order flow, and the button is a plain
-   * <button type="button">. The pattern does not even match a JS encoder —
-   * `,` and `(` survive while `:` and `[` are escaped, which is neither
-   * encodeURI nor encodeURIComponent.
+   * THE CAUSE WAS OURS, and I said otherwise first. Nothing in this file
+   * encodes anything, the draft API returns clean text, and there is no
+   * mailto: in the order flow — all true, and all beside the point. The
+   * trigger was the first eight characters of the copied string: see
+   * `copyText` above. Kate's follow-up that Notes HYPERLINKED the paste is
+   * what gave it away; an encoding bug does not produce a link.
    *
-   * So the cause sits in iOS or the Gmail app, where we cannot reach it, and
-   * guessing at it would just produce a confident fix for the wrong thing.
-   * What IS ours is leaving her no way out: the manual fallback only appeared
-   * after a thrown error, and here nothing throws — the copy "succeeds" and
-   * pastes wrong. Two changes, in order of how much they are actually known
-   * to help:
+   * Fixed at the source. The two changes below stay anyway, because a copy
+   * that silently pastes wrong should never again leave somebody with no way
+   * out:
    *
    *  1. A plain-text box she can always open, select and copy by hand. This
    *     cannot be re-encoded by anything, so it works whatever the cause is.
    *     The real fix until the cause is known.
    *  2. An explicit text/plain ClipboardItem instead of a bare writeText.
-   *     SPECULATIVE — the most plausible remaining mechanism is a clipboard
-   *     flavour the receiving app re-interprets, and declaring the type
-   *     removes that ambiguity. It may change nothing. It cannot hurt, and
-   *     it falls back to writeText wherever ClipboardItem is missing.
+   *     Belt and braces now that the real cause is known: declaring the
+   *     flavour removes any remaining doubt about how a receiver reads it.
+   *     Falls back to writeText wherever ClipboardItem is missing.
    */
   const handleCopy = async () => {
     setCopyError(null);
