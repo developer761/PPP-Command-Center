@@ -107,3 +107,53 @@ describe("the materials list", () => {
     expect(src).toMatch(/flex flex-col items-stretch gap-2 sm:flex-row/);
   });
 });
+
+/**
+ * Kate p15: "random order materials button at bottom of page."
+ *
+ * There were two Order Materials buttons to the same route on a phone — the
+ * Materials card one and the sticky bottom bar. Neither could simply be
+ * deleted: the card button carries every refusal reason and sits above the
+ * per-room list, and the sticky bar is what saves scrolling back up after you
+ * finish entering colors. They are now mutually exclusive instead.
+ */
+describe("the two Order Materials buttons are never both on screen", () => {
+  const src = () => strip(read("components/materials-view.tsx"));
+
+  it("gates the sticky bar on the card button being out of view", () => {
+    // The bar's own preconditions must survive — without line items, picking a
+    // supplier produces a blank paint order (audit 2026-07-01).
+    expect(src()).toMatch(
+      /job\.lineItems\.length > 0 && canOrderMaterials && orderCtaOffScreen &&/
+    );
+  });
+
+  it("watches the card button, not something else", () => {
+    const s = src();
+    // The ref has to be ON the block holding the card CTA, or the bar hides and
+    // shows against an unrelated element.
+    expect(s).toMatch(/<div ref=\{orderCtaRef\} className="flex flex-col gap-1\.5">/);
+    expect(s).toMatch(/io\.observe\(el\)/);
+    expect(s).toMatch(/setOrderCtaOffScreen\(!entry\.isIntersecting\)/);
+  });
+
+  it("starts hidden, because the card button is on screen at the top", () => {
+    expect(src()).toMatch(/useState\(false\)[^\n]*\n?/);
+    expect(src()).toMatch(/const \[orderCtaOffScreen, setOrderCtaOffScreen\] = useState\(false\)/);
+  });
+
+  it("degrades to the card button alone when IntersectionObserver is missing", () => {
+    // SSR and old browsers. Failing closed here means one working button, not
+    // a bar that never hides or a crash on render.
+    expect(src()).toMatch(/typeof IntersectionObserver === "undefined"\) return/);
+    expect(src()).toMatch(/io\.disconnect\(\)/);
+  });
+
+  it("keeps the bottom padding unconditional so the page does not jump", () => {
+    // pb-24 reserves room for the bar. Tying it to the same flag would change
+    // the document height mid-scroll, which is worse than a little dead space.
+    expect(src()).toMatch(
+      /canOrderMaterials && activeJob\.lineItems\.length > 0 \? "pb-24 lg:pb-0" : ""/
+    );
+  });
+});
