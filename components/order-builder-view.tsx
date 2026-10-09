@@ -2171,6 +2171,15 @@ function ColorNoteOffers({
                 </span>
                 {added ? (
                   <span className="shrink-0 text-[11px] font-medium text-ppp-green-700">✓ On order</span>
+                ) : covered ? (
+                  /* Kate 2026-10-07, p4.1: "remove ability to add quantity in
+                     the custom color adder" when the color is already on the
+                     order. The quantity box was the thing that produced the
+                     duplicate line she is trying to stop — leaving it here and
+                     only warning in text meant the warning had to be read and
+                     obeyed. The flag below says where to change the number
+                     instead. */
+                  null
                 ) : (
                   <span className="shrink-0 flex items-center gap-1.5">
                     <input
@@ -2223,12 +2232,19 @@ function ColorNoteOffers({
                 </p>
               )}
               {!added && covered && (
-                /* Kate, 2026-10-07: "Rename Buy-list to Order — what to buy so
-                   they know which section is being referred to." The HEADING
-                   already said that; this stray line still said "buy-list", so
-                   the page used two names for one section. */
-                <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">
-                  Already in &ldquo;Order &mdash; what to buy&rdquo; above.
+                /* Kate, 2026-10-07, p4.1 — her words, verbatim: "add a flag
+                   stating 'This color already exists on the order. Increase
+                   quantity above.'"
+                   It replaces "Already in the buy-list above", which named a
+                   section that no longer exists under that name (her p4.1a
+                   rename) and, worse, told you a fact without telling you what
+                   to do about it. Amber because her p18 note is explicit:
+                   "Make alerts yellow and errors red." */
+                <p
+                  role="note"
+                  className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1"
+                >
+                  This color already exists on the order. Increase quantity above.
                 </p>
               )}
             </li>

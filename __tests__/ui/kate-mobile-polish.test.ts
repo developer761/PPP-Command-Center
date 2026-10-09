@@ -64,11 +64,27 @@ describe("the order page alerts", () => {
     expect(src).toMatch(/ring-2 ring-ppp-orange-700 bg-ppp-orange-500\/10/);
   });
 
-  it("calls the section by the name the heading uses", () => {
-    // "Rename Buy-list to Order — what to buy so they know which section is
-    // being referred to." The heading already did; this stray line did not.
-    expect(src).toContain("Already in &ldquo;Order &mdash; what to buy&rdquo; above.");
+  it("uses Kate's exact flag wording for a color already on the order", () => {
+    // p4.1, verbatim: add a flag stating "This color already exists on the
+    // order. Increase quantity above." The old line named the section by a
+    // name she had just asked us to retire, and stated a fact without saying
+    // what to do about it.
+    expect(src).toContain("This color already exists on the order. Increase quantity above.");
     expect(strip(src)).not.toContain("Already in the buy-list above");
+    expect(strip(src)).not.toContain("Already in &ldquo;Order &mdash; what to buy&rdquo; above.");
+  });
+
+  it("removes the quantity box once the color is already on the order", () => {
+    // Same item: "remove ability to add quantity in the custom color adder."
+    // The box is what produced the duplicate line; warning beside a working
+    // box leaves the duplicate one keystroke away.
+    const m = strip(src).match(/\{added \? \([\s\S]{0,400}?\) : covered \? \(([\s\S]{0,200}?)\) : \(/);
+    expect(m, "the added/covered/else branch shape changed").toBeTruthy();
+    expect(m![1].trim()).toBe("null");
+  });
+
+  it("makes that flag yellow, per 'alerts yellow and errors red'", () => {
+    expect(src).toMatch(/text-amber-800 bg-amber-50 border border-amber-200[^"]*"\s*>\s*\n?\s*This color already exists/);
   });
 });
 
