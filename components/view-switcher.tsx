@@ -215,7 +215,21 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-72 max-w-[90vw] bg-white border border-ppp-charcoal-100 rounded-xl shadow-xl shadow-ppp-charcoal/10 z-50 overflow-hidden animate-fade-in">
+        <div
+          /* MOBILE: pinned to the viewport, not to the trigger.
+             Kate, 2026-10-07, with a photo: "When I click 'All reps' or the
+             notification bell, the pop-up is outside of my screen" — the
+             search box inside read "eps…". These were `absolute right-0`
+             against a control sitting in the MIDDLE of the top bar, so the
+             panel's left edge went negative. `max-w-[90vw]` capped the width
+             and could not move it; the element was still anchored to the
+             trigger, and the trigger was not where the room was.
+             Below `sm` it becomes fixed with its own left/right/bottom
+             insets, so it cannot leave the screen whatever the trigger does.
+             The top offset clears the sticky header plus the iOS safe area.
+             At `sm` and up nothing changes. */
+          className="absolute right-0 top-full mt-2 w-72 max-w-[90vw] max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:w-auto max-sm:max-w-none max-sm:top-[calc(env(safe-area-inset-top)+4.5rem)] max-sm:bottom-3 max-sm:flex max-sm:flex-col bg-white border border-ppp-charcoal-100 rounded-xl shadow-xl shadow-ppp-charcoal/10 z-50 overflow-hidden animate-fade-in"
+        >
           <div className="p-2 border-b border-ppp-charcoal-100">
             <input
               type="search"
@@ -230,7 +244,7 @@ export default function ViewSwitcher({ reps: propReps = [] }: Props) {
               autoFocus
             />
           </div>
-          <ul role="listbox" className="max-h-72 overflow-y-auto py-1">
+          <ul role="listbox" className="max-h-72 max-sm:max-h-none max-sm:flex-1 max-sm:min-h-0 overflow-y-auto py-1">
             {impersonating && (
               <li>
                 <button

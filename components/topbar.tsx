@@ -60,7 +60,13 @@ export default function Topbar({
     return () => clearInterval(id);
   }, []);
 
-  if (!now) return <header className="h-[73px] bg-white border-b border-ppp-charcoal-100" />;
+  if (!now)
+    return (
+      <header
+        className="h-[73px] bg-white border-b border-ppp-charcoal-100"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      />
+    );
 
   const hour = now.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -81,7 +87,19 @@ export default function Topbar({
   const greetingLine = user.firstName ? `${greeting}, ${user.firstName}` : greeting;
 
   return (
-    <header className="bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3">
+    <header
+      /* STICKY + a background behind the iOS status bar.
+         Kate, 2026-10-07: "The top bar should scroll with me (the time and
+         battery have nothing behind them so it's overlapping with the text on
+         the screen)". The app sets viewportFit:"cover", so the page extends
+         under the clock and battery — and while a dozen places pad for
+         safe-area-inset-BOTTOM, nothing had ever padded the top. Page content
+         therefore ran underneath the status bar with nothing behind it.
+         The padding puts the bar's own white under the clock; sticky keeps it
+         there while the page moves. */
+      className="sticky top-0 z-30 bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3"
+      style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+    >
       <div className="flex items-center gap-3 min-w-0 shrink-0">
         {onOpenMenu && (
           <button
