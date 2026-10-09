@@ -1,21 +1,45 @@
 import type { Metadata, Viewport } from "next";
-import { Roboto, Roboto_Condensed } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/service-worker-register";
 import InstallAppPrompt from "@/components/install-app-prompt";
 
-// Roboto + Roboto Condensed = PPP's official primary fonts (Brand Guidelines).
-const roboto = Roboto({
+/**
+ * Roboto + Roboto Condensed = PPP's official primary fonts (Brand Guidelines).
+ *
+ * SELF-HOSTED, and that is the point. `next/font/google` downloads the font
+ * at BUILD time, so every production build needed Vercel's builder to reach
+ * fonts.gstatic.com. When it could not — a transient network failure on their
+ * machine, nothing to do with this repo — Turbopack failed every generated
+ * `roboto_*.module.css` import and the build died in about 20 seconds. That
+ * happened at least four times, most recently 2026-10-07 on 13f2830.
+ *
+ * It mattered more than a flake: a merge to main here IS the release, and a
+ * failed build leaves production silently on the old code while GitHub stays
+ * green. A change that did not ship, with every signal saying it did.
+ *
+ * Reading from disk cannot fail that way. The files are the exact ones Google
+ * served for the `latin` subset — variable fonts, one file per family across
+ * the whole 100-900 axis, which is why there is no longer a weight list here:
+ * `weight: "100 900"` declares the axis range and any weight in it renders.
+ * Together they are ~84KB, and they are now also served from our own origin
+ * instead of a third party.
+ *
+ * To refresh: fetch https://fonts.googleapis.com/css2?family=... with a modern
+ * browser UA (Google serves woff2 only to browsers it recognizes), take the
+ * url() from the `/* latin *\/` block, and replace the file.
+ */
+const roboto = localFont({
+  src: "./fonts/roboto-latin-var.woff2",
   variable: "--font-roboto",
-  weight: ["400", "500", "700", "900"],
-  subsets: ["latin"],
+  weight: "100 900",
   display: "swap",
 });
 
-const robotoCondensed = Roboto_Condensed({
+const robotoCondensed = localFont({
+  src: "./fonts/roboto-condensed-latin-var.woff2",
   variable: "--font-roboto-condensed",
-  weight: ["400", "500", "700"],
-  subsets: ["latin"],
+  weight: "100 900",
   display: "swap",
 });
 

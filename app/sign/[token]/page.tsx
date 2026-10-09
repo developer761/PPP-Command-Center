@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Dancing_Script } from "next/font/google";
+import localFont from "next/font/local";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { formatSignedAt } from "@/lib/commercial/esign/constants";
 import { lookupSignatureLink, type LinkLookup } from "@/lib/commercial/esign/db";
@@ -22,7 +22,14 @@ export const metadata: Metadata = {
 
 // Typed signatures render in this face — on screen AND in the PNG the signature
 // page embeds, so what the signer sees is what gets filed.
-const script = Dancing_Script({ subsets: ["latin"], weight: ["600"], display: "swap" });
+/* Self-hosted for the same reason as the two in app/layout.tsx: next/font/google
+   fetches at BUILD time, and a failed fetch on Vercel's builder kills the whole
+   production build. Variable file, 400-700 axis; 600 is what this page uses. */
+const script = localFont({
+  src: "../../fonts/dancing-script-latin-var.woff2",
+  weight: "400 700",
+  display: "swap",
+});
 
 export default async function SignPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
