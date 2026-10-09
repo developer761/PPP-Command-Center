@@ -926,9 +926,17 @@ function ItemLine({
   // gate a cell in the itemized TABLE, which the default customer proposal
   // never renders — so it did nothing here. Now a ticked line prints its own
   // total inline, and ONLY the money: no unit price, no unit, no quantity.
+  /*
+   * ASCII hyphen, not U+2212 MINUS SIGN.
+   *
+   * The document is set in Times, which has no U+2212 — the first version of
+   * this printed "$3,200.00" with the minus silently dropped, so a deduct read
+   * as an add on the page. Exactly the trap the ● bullets fell into last week,
+   * and exactly as invisible in the source. Found by rendering it.
+   */
   const priceText =
     item.show_price === true
-      ? (negatePrice ? "−" : "") + formatDollars(lineTotalCents(item))
+      ? (negatePrice ? "-" : "") + formatDollars(lineTotalCents(item))
       : null;
   if (productName) {
     const raw = normalizeWs(item.description ?? "");
@@ -1562,7 +1570,21 @@ function alternateTaxNote(
   if (!Number.isFinite(base) || base <= 0) return null;
   const cents = Math.round((base * tax.rateThou) / 100_000);
   if (cents <= 0) return null;
-  return `+ ${formatDollars(cents)} ${tax.label} = ${formatDollars(base + cents)}`;
+  /*
+   * A DEDUCT'S TAX COMES OFF TOO, and has to read that way.
+   *
+   * This printed "+ $276.00 NYS Sales Tax = $3,476.00" under a deduct — a line
+   * that says the tax is being ADDED and the number is going UP, directly
+   * beneath a heading that says the opposite. A GC reading only this line
+   * would price the job wrong in our favour, which is the worst direction for
+   * it to be wrong in.
+   *
+   * ASCII hyphen, not U+2212: Times has no minus-sign glyph and drops it.
+   */
+  const deduct = item.is_deduct === true;
+  const sign = deduct ? "-" : "+";
+  const totalText = (deduct ? "-" : "") + formatDollars(base + cents);
+  return `${sign} ${formatDollars(cents)} ${tax.label} = ${totalText}`;
 }
 
 function AlternateSectionCustomer({

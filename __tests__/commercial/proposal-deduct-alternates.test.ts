@@ -78,7 +78,7 @@ describe("the proposal prints adds and deducts apart", () => {
   });
 
   it("prints a deduct's money with a minus", () => {
-    expect(pdfSrc).toMatch(/negatePrice \? "−" : ""/);
+    expect(pdfSrc).toMatch(/negatePrice \? "-" : ""/);
   });
 
   it("reads correctly before the migration is applied", () => {
@@ -87,3 +87,38 @@ describe("the proposal prints adds and deducts apart", () => {
     expect(pdfSrc).not.toMatch(/i\.is_deduct \?/);
   });
 });
+
+/**
+ * THE GLYPH, AND THE WORDING. Both of these looked right in the source and
+ * were wrong on the page; both were found by rendering a proposal with a
+ * deduct on it and reading the PDF.
+ */
+describe("a deduct reads as a deduct on the page", () => {
+  const pdfSrc = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+
+  it("uses an ASCII hyphen, because Times has no minus-sign glyph", () => {
+    // U+2212 printed as nothing at all: "$3,200.00" under "Deduct Alternate:",
+    // which reads as an add. Same trap as the bullets that came out as "Ï".
+    expect(pdfSrc).not.toMatch(/negatePrice \? "−"/);
+    expect(pdfSrc).toMatch(/negatePrice \? "-"/);
+  });
+
+  it("leaves alone the sanitiser that already strips U+2212 out of HER text", () => {
+    /*
+     * The codebase knew this before I did: everything typed into a proposal
+     * runs through `transliterateToWinAnsi`, which maps the minus sign to an
+     * ASCII hyphen among a dozen other characters Times cannot draw. A minus
+     * we GENERATE is built after that has run, which is how this one reached
+     * the page. Pinned so the sanitiser is not removed as redundant.
+     */
+    expect(pdfSrc).toMatch(/transliterateToWinAnsi|minus sign/);
+  });
+
+  it("says the tax comes OFF a deduct, not on", () => {
+    // "+ $276.00 NYS Sales Tax = $3,476.00" under a deduct tells a GC the
+    // number is going up, directly under a heading saying it goes down.
+    expect(pdfSrc).toMatch(/const sign = deduct \? "-" : "\+"/);
+    expect(pdfSrc).toMatch(/const totalText = \(deduct \? "-" : ""\)/);
+  });
+});
+
