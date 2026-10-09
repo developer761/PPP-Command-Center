@@ -59,18 +59,30 @@ because custom lines merge on the vendor's copy by color, finish, product and
 unit — room is not in that key, so if the room travels with it, that merge has
 to stop or one room's name silently wins.
 
-### B. "Multiple rooms detected on one line item" (p18)
+### B. "Multiple rooms detected on one line item" (p18) — BUILT AND LIVE
 
-She gave the exact copy: **"Multiple rooms detected on one line item. Confirm
-with customer before ordering"**, and the trigger: one line item whose notes
-clearly mention several rooms.
+Her wording, verbatim. Built 2026-10-09 against 711 live interior line items
+rather than invented examples, which is the only reason it works: a plain
+"two room words" pass called 24.6% of line items multi-room and was wrong
+most of the time.
 
-**Nothing to ask — we need examples, not a decision.** We have no detector,
-and the text is genuinely ambiguous: "Bedrooms 2 & 3" is two rooms, "Jack &
-Jill Bathroom" is one. Two or three real line items from live data and this
-is buildable.
+It now flags **95 of 711 interior lines (13.4%)** — this really is a common
+data-entry pattern, which is why she noticed it.
 
-### C. Customer form, multi-room line item (p19)
+**One thing for Kate to rule on, with real examples rather than a question
+in the abstract.** Precision is not uniform. Lines naming 3+ rooms are close
+to clean. The 2-room band is 44 of the 95 and roughly 70% right. The two
+patterns we chose to leave IN, because the alert is advisory and "confirm
+with the customer" costs little:
+
+- `Small stairwell off of 3rd floor office` — the office says where the
+  stairwell is. One room, flagged as two.
+- `prep and paint kitchen walls and ceiling. pantry door a separate color` —
+  the pantry qualifies a door. Arguably worth confirming anyway.
+
+Ask her: should either of those alert? If not, we tighten the 2-room band.
+
+### C. Customer form, multi-room line item (p19) — detector now exists
 
 Her ask: drop the surface fields and leave only the notes area.
 
@@ -96,7 +108,8 @@ Ceiling:
 ```
 
 So the fallback is pre-authorized and needs no further decision. It depends on
-the same detector as B.
+the same detector as B, which now exists (`lib/supplier-order/multi-room.ts`),
+so this is buildable without asking anyone.
 
 ### D. Clipboard paste into Gmail (p21)
 
