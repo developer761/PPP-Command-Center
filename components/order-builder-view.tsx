@@ -163,6 +163,7 @@ export default function OrderBuilderView({
   initialSupplierId,
   persistenceAvailable,
   priorOrders = [],
+  quotedProductLine = null,
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
@@ -174,6 +175,21 @@ export default function OrderBuilderView({
   /** False while migration 144 is pending — the builder still works, it just
    *  can't survive a reload. Said out loud rather than failing quietly. */
   persistenceAvailable: boolean;
+  /**
+   * `WorkOrder.MaterialType__c` — the product line the ESTIMATOR put on the
+   * quote. Shown as a reminder, never as a default.
+   *
+   * Kate 2026-10-09, after deciding against a default selector: "the guys will
+   * have to select a line on each color no matter what so I actually don't
+   * think a default selector will save them time … If we want to display the
+   * chosen line from the Quote to remind them, that may be a good idea!"
+   *
+   * READ ONLY on purpose. MaterialType__c stays the estimator's answer from
+   * the quote so what was SOLD can be read next to what was ORDERED; the hub
+   * writes Product_Lines__c instead and never this (Kate R6.2). Pre-filling a
+   * picker from it is exactly the "Use Default" behavior Katie had removed.
+   */
+  quotedProductLine?: string | null;
   /** Orders already sent to a vendor for this work order. */
   priorOrders?: Array<{ poNumber: string | null; supplierAccountId: string; supplierName: string | null; sentAt: string | null }>;
 }) {
@@ -1381,6 +1397,26 @@ export default function OrderBuilderView({
                 </span>
               )}
             </div>
+
+            {/* Kate 2026-10-09 — the line the ESTIMATOR quoted, as a reminder
+                while the guys pick one per color.
+
+                A REMINDER, NOT A DEFAULT, and the distinction is the whole
+                point. Katie had the "Use Default" selector removed because one
+                control cannot speak for a job mixing Ultra Spec and Regal, and
+                Kate agreed a default would not save anyone time since a line
+                has to be chosen per color regardless. So this states what was
+                sold and sets nothing: nothing is pre-filled, no picker is
+                touched, and the per-color "Product line required" error still
+                fires exactly as before. */}
+            {quotedProductLine && (
+              <p className="px-4 py-2 border-b border-ppp-charcoal-100 bg-ppp-blue-50/40 text-[11px] text-ppp-blue-800">
+                Quoted product line: <strong className="font-semibold">{quotedProductLine}</strong>
+                <span className="text-ppp-charcoal-500">
+                  {" "}&mdash; what the estimator sold. Pick the line for each color below.
+                </span>
+              </p>
+            )}
 
             {loadingDraft && !currentDraft && (
               <div className="px-4 py-6 text-sm text-ppp-charcoal-500 italic">Working out what to buy…</div>
