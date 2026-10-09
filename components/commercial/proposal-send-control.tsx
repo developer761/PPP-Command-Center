@@ -311,7 +311,24 @@ export function ProposalSendControl({
                     {!showCc ? (
                       <button type="button" onClick={() => setShowCc(true)} className="mt-1.5 text-[12px] font-semibold text-cc-brand-700 hover:underline">+ Add CC</button>
                     ) : (
-                      <input type="email" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="CC (optional)" className={`${FIELD} mt-2`} />
+                      /* SEVERAL PEOPLE. Stephanie 2026-10-08: "I need to be
+                         able to cc multiple people on proposals." type="email"
+                         refuses a list outright — the browser blocks the send
+                         with "please enter an email address" and no way past
+                         it — so this is a plain text box and the server
+                         validates each address, naming any one that is wrong. */
+                      <>
+                        <input
+                          type="text"
+                          value={cc}
+                          onChange={(e) => setCc(e.target.value)}
+                          placeholder="CC — separate several with commas"
+                          className={`${FIELD} mt-2`}
+                        />
+                        <p className="mt-1 text-[11px] text-ppp-charcoal-500">
+                          More than one is fine — commas or spaces between them.
+                        </p>
+                      </>
                     )}
                   </div>
 

@@ -784,6 +784,11 @@ function LogoBlock({
 
 function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
   const hasAttentionBlock = Boolean(h.attention || h.title || h.phone || h.email);
+  /** Several contacts, however she typed them — "A, B" or one per line. */
+  const attentionNames = String(h.attention ?? "")
+    .split(/[,\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   return (
     <View>
       <Text style={styles.sectionUnderlineHeader}>PROPOSAL SUBMITTED TO:</Text>
@@ -802,8 +807,24 @@ function SubmittedToBlock({ h }: { h: ProposalHeaderJson }) {
           Brendan's actual sample to lock it. Email = blue underlined link. */}
       {hasAttentionBlock && (
         <View style={[styles.addrBlock, { marginTop: 10 }]}>
-          {h.attention && (
-            <Text style={styles.addrLine}>Attention: {h.attention}</Text>
+          {/* MORE THAN ONE NAME.
+              Stephanie 2026-10-08: "Can we add the ability to add more than
+              one attention in the header section?" The box already took free
+              text, so two names fitted — on one run-on line, which is not how
+              a proposal addresses two people. Several names now stack, each on
+              its own line, with the label printed once.
+
+              Split on commas and newlines, which is how she will type them.
+              A single name is unchanged, so no existing proposal moves. */}
+          {attentionNames.length > 0 && (
+            <>
+              <Text style={styles.addrLine}>Attention: {attentionNames[0]}</Text>
+              {attentionNames.slice(1).map((n, i) => (
+                <Text key={i} style={[styles.addrLine, { marginLeft: 44 }]}>
+                  {n}
+                </Text>
+              ))}
+            </>
           )}
           {h.title && <Text style={styles.addrLine}>{h.title}</Text>}
           {h.phone && <Text style={styles.addrLine}>P: {h.phone}</Text>}
@@ -890,14 +911,25 @@ export function withFullStop(text: string): string {
   return /[.!?:;]$/.test(t) ? t : `${t}.`;
 }
 
-function ItemLine({ item }: { item: CommercialProposalLineItem }) {
+function ItemLine({
+  item,
+  negatePrice = false,
+}: {
+  item: CommercialProposalLineItem;
+  /** A deduct alternate: print the money with a minus, so it cannot be read as
+   *  an add even on its own line. */
+  negatePrice?: boolean;
+}) {
   const productName = item.product_name?.trim();
   // Brendan 2026-08-17: "when you click show line item price on the product it
   // doesn't show up… Just the price is good." The per-line checkbox used to
   // gate a cell in the itemized TABLE, which the default customer proposal
   // never renders — so it did nothing here. Now a ticked line prints its own
   // total inline, and ONLY the money: no unit price, no unit, no quantity.
-  const priceText = item.show_price === true ? formatDollars(lineTotalCents(item)) : null;
+  const priceText =
+    item.show_price === true
+      ? (negatePrice ? "−" : "") + formatDollars(lineTotalCents(item))
+      : null;
   if (productName) {
     const raw = normalizeWs(item.description ?? "");
     const bodyLines = raw.includes("\n")
@@ -1549,21 +1581,53 @@ function AlternateSectionCustomer({
      to just remove the ADD ALTERNATE total and keep it broken out by item."
      The repeated number WAS the ADD ALTERNATE line restating the sum of the
      items directly above it. Gone; each alternate carries its own price. */
+  /*
+   * ADDS AND DEDUCTS ARE TWO LISTS, under two headings.
+   *
+   * Stephanie 2026-10-08: "I need a option for deduct alternates that subtract
+   * from the total, not add."
+   *
+   * Printing a deduct under "Add Alternate:" would tell the GC the opposite of
+   * what is meant — the same mistake the Qualifications split was made to fix,
+   * where a condition of the price printed under "Exclusions:" and read as
+   * work being refused. A deduct's price carries a minus so it cannot be
+   * mistaken for an add even read out of context.
+   */
+  const adds = items.filter((i) => i.is_deduct !== true);
+  const deducts = items.filter((i) => i.is_deduct === true);
   return (
-    <View style={styles.altSection}>
-      <Text style={styles.altHeader}>Add Alternate:</Text>
-      {/* The qualifications paragraph moved to its own section after
-          Exclusions — see QualificationsBlock. */}
-      {items.map((it) => {
-        const note = alternateTaxNote(it, tax);
-        return (
-          <View key={it.id}>
-            <ItemLine item={it} />
-            {note && <Text style={styles.altTaxNote}>{note}</Text>}
-          </View>
-        );
-      })}
-    </View>
+    <>
+      {adds.length > 0 && (
+        <View style={styles.altSection}>
+          <Text style={styles.altHeader}>Add Alternate:</Text>
+          {/* The qualifications paragraph moved to its own section after
+              Exclusions — see QualificationsBlock. */}
+          {adds.map((it) => {
+            const note = alternateTaxNote(it, tax);
+            return (
+              <View key={it.id}>
+                <ItemLine item={it} />
+                {note && <Text style={styles.altTaxNote}>{note}</Text>}
+              </View>
+            );
+          })}
+        </View>
+      )}
+      {deducts.length > 0 && (
+        <View style={styles.altSection}>
+          <Text style={styles.altHeader}>Deduct Alternate:</Text>
+          {deducts.map((it) => {
+            const note = alternateTaxNote(it, tax);
+            return (
+              <View key={it.id}>
+                <ItemLine item={it} negatePrice />
+                {note && <Text style={styles.altTaxNote}>{note}</Text>}
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </>
   );
 }
 

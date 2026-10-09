@@ -542,8 +542,23 @@ async function acceptAlternateAction(formData: FormData) {
   if (!line) {
     redirect(`${proposalHref(accountId, dealId, proposalId)}?error=${encodeURIComponent("That alternate is no longer on this proposal.")}`);
   }
-  const amount =
+  /*
+   * A DEDUCT ALTERNATE BOOKS A NEGATIVE CHANGE ORDER.
+   *
+   * Stephanie 2026-10-08 asked for alternates that "subtract from the total,
+   * not add". This is where an accepted alternate becomes money on the job, so
+   * this is where the direction has to be applied — the amount is stored
+   * positive and `is_deduct` carries the sign.
+   *
+   * Change orders already handle a negative: `netApprovedChangeOrderCents`
+   * sums them signed, and the G702's change-order summary splits additions
+   * from deductions into its own two columns. So a deduct flows through the
+   * contract sum, the certificate and the invoice without anything else
+   * needing to know about it.
+   */
+  const magnitude =
     line.line_total_override_cents ?? Math.round(Number(line.quantity) * line.unit_price_cents);
+  const amount = line.is_deduct === true ? -Math.abs(magnitude) : magnitude;
   const { createChangeOrder } = await import("@/lib/commercial/change-orders/db");
   const res = await createChangeOrder({
     opportunity_id: dealId,
@@ -829,6 +844,8 @@ async function addLineItemAction(formData: FormData) {
    * working around, just moved.
    */
   const is_scope_block = formData.get("is_scope_block") === "on";
+  // Direction of an alternate. Only meaningful on one — see is_deduct.
+  const is_deduct = formData.get("is_deduct") === "on";
   const block_title = String(formData.get("block_title") ?? "").trim() || null;
   const result = await createLineItem(
     {
@@ -849,6 +866,7 @@ async function addLineItemAction(formData: FormData) {
       is_labor: is_labor && !is_alternate,
       is_scope_block,
       block_title,
+      is_deduct,
       // R1a: checkbox defaults checked; unchecked → absent → false (hide price).
       show_price: is_scope_block ? true : formData.get("show_price") === "on",
       line_total_override_cents,
@@ -2392,7 +2410,20 @@ export default async function ProposalEditorPage({
                 </label>
                 <label className="block">
                   <span className={LABEL_CLS}>Attention</span>
-                  <input type="text" name="attention" defaultValue={proposal.header_json.attention ?? ""} className={INPUT_CLS} placeholder="e.g. Bryon" />
+                  {/* Several contacts. Stephanie 2026-10-08: "Can we add the
+                      ability to add more than one attention in the header
+                      section?" A textarea so more than one actually fits —
+                      an <input> would take them but show one at a time. */}
+                  <textarea
+                    name="attention"
+                    rows={2}
+                    defaultValue={proposal.header_json.attention ?? ""}
+                    className={`${INPUT_CLS} resize-y`}
+                    placeholder={"e.g. Bryon\nor: Bryon, Kevin Greenwood"}
+                  />
+                  <span className="block text-[10.5px] text-ppp-charcoal-400 mt-1">
+                    More than one? Separate with a comma or a new line — each prints on its own line.
+                  </span>
                 </label>
                 <label className="block">
                   <span className={LABEL_CLS}>Title</span>
@@ -3785,6 +3816,25 @@ function AddLineItemForm({
             Internal line — not shown to the customer
             <span className="block text-[11px] text-ppp-charcoal-500">
               Still priced into the TOTAL. Appears on the Plan report only, marked INTERNAL.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {/* DEDUCT, on alternates only.
+          Stephanie 2026-10-08: "I need a option for deduct alternates that
+          subtract from the total, not add. Do I just put in a negative
+          number?" She could not — both write paths refuse a negative price —
+          so the amount stays positive and this says which way it runs. An
+          inclusion that subtracts is just a lower price, so this is not
+          offered there. */}
+      {isAlternate && (
+        <label className="inline-flex items-start gap-2 text-[12.5px] text-ppp-charcoal-600 cursor-pointer min-h-[44px] select-none rounded-lg border border-ppp-charcoal-200 px-3 py-2">
+          <input type="checkbox" name="is_deduct" className="w-4 h-4 mt-0.5 accent-ppp-navy-600" />
+          <span>
+            Deduct — comes off the price instead of adding to it
+            <span className="block text-[11px] text-ppp-charcoal-500">
+              Enter the amount as a positive number. Prints under &ldquo;Deduct Alternate&rdquo;, and subtracts from the contract if the GC takes it.
             </span>
           </span>
         </label>
