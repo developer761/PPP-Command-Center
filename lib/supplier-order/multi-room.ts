@@ -220,3 +220,46 @@ export function multiRoomLines(
 /** Kate's wording, verbatim. Kept here so one place owns it. */
 export const MULTI_ROOM_ALERT =
   "Multiple rooms detected on one line item. Confirm with customer before ordering";
+
+/** Title Case for display: "primary bedroom" → "Primary Bedroom". */
+function titleCase(s: string): string {
+  return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Kate p19, her fallback, written out by her with a worked example:
+ *
+ *   "as a fallback … list the rooms + their surfaces in the color notes field
+ *    as a template for the customer to fill in."
+ *
+ *      Primary Bedroom
+ *      Walls:
+ *      Ceiling:
+ *      Trim:
+ *
+ *      Bedroom 2
+ *      Accent Wall:
+ *
+ * Her primary ask was to drop the surface pickers for a multi-room line and
+ * leave only notes, marked "an ask/not required". The fallback is built
+ * instead, deliberately: it solves the same problem — the customer does not
+ * otherwise know that one "room" on their form covers four — while keeping
+ * the structured per-surface picks. Dropping those moves the work to whoever
+ * reads the note, and there is no queue for that.
+ *
+ * Her example shows different surfaces per room. We cannot know that: the
+ * line item carries ONE surface list for the whole scope, so it is repeated
+ * under each room and the customer deletes what does not apply. Inventing a
+ * per-room split would be guessing at the job.
+ */
+export function roomSurfaceTemplate(
+  rooms: readonly string[],
+  surfaces: readonly string[]
+): string {
+  const named = rooms.map(titleCase).filter(Boolean);
+  if (named.length < 2) return "";
+  const lines = surfaces.map((s) => s.trim()).filter(Boolean);
+  return named
+    .map((room) => [room, ...(lines.length ? lines.map((s) => `${s}:`) : ["Color:"])].join("\n"))
+    .join("\n\n");
+}

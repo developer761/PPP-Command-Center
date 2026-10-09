@@ -9,13 +9,24 @@
  * recreates the "Use Default" control Katie had removed on 2026-09-08 — one
  * value speaking for a job that mixes Ultra Spec and Regal.
  */
+/**
+ * NOTE ON stripComments: it removes block comments FIRST and never tries to
+ * match the `{ ... }` of a JSX comment.
+ *
+ * The obvious pattern — /\{\s*\/\*[\s\S]*?\*\/\s*\}/ — is a trap. It
+ * requires the closing `*\/` to be followed by `}`, so when the nearest one
+ * is not, it keeps scanning for a later `*\/` that is and swallows every line
+ * in between. Measured on components/order-builder-view.tsx: 118 characters
+ * of real code gone, silently, which is how a source assertion passes for a
+ * reason that has nothing to do with the code under test.
+ */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
 
 describe("the quoted product line is shown, not applied", () => {
   const view = () => strip(read("components/order-builder-view.tsx"));

@@ -198,6 +198,7 @@ import { finishSeedPolicy } from "@/lib/customer-form/finish-seed-policy";
 import SendReceiptButton from "@/components/send-receipt-button";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
+import { isInteriorLine, roomsNamedIn, roomSurfaceTemplate } from "@/lib/supplier-order/multi-room";
 
 /**
  * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
@@ -1662,6 +1663,32 @@ function LineItemSection({
   // populated for every rendered line today, but nothing enforces that, and
   // the guard exists precisely because someone thought it might not be.
   const surfaces = lineItem.surfaces;
+
+  /**
+   * Kate p19 — one line item whose scope actually covers several rooms.
+   *
+   * The customer sees a card titled with ONE room and has no way to know the
+   * line covers four, so they give one set of colors for all of them. This
+   * says so, and offers her room/surface template.
+   *
+   * NOT auto-filled into the textarea. Seeding this box from Salesforce was
+   * tried and reverted on 2026-06-09 — the Description turned out to be PPP's
+   * quote boilerplate and pre-filling it confused customers. A skeleton the
+   * customer never touched would also submit as if they had written it. So it
+   * goes in only when they ask for it.
+   *
+   * A hook, and placed up here with the others on purpose: everything below
+   * the `state` guard is conditional, and this file has a docblock about
+   * exactly that crash.
+   */
+  const multiRooms = useMemo(
+    () =>
+      isInteriorLine(lineItem.productFamily) || !lineItem.productFamily
+        ? roomsNamedIn(lineItem.lineItemNotes)
+        : [],
+    [lineItem.productFamily, lineItem.lineItemNotes]
+  );
+  const isMultiRoom = multiRooms.length >= 2;
   // Default: an already-complete room (re-edit / preview with data) starts
   // collapsed to keep long lists manageable; a fresh room starts expanded.
   // Kate 2026-07-22 (#7): the auto-collapse that used to snap a room shut the
@@ -1820,6 +1847,34 @@ function LineItemSection({
               scope={scope}
             />
           ))}
+          {/* Kate p19 — say that this one line covers several rooms, because
+              the card's title names only one and the colors above are a
+              single set for all of them. */}
+          {isMultiRoom && (
+            <div
+              role="note"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 leading-relaxed"
+            >
+              <strong>This line covers {multiRooms.length} rooms</strong> &mdash;{" "}
+              {multiRooms
+                .map((r) => r.replace(/\b[a-z]/g, (c) => c.toUpperCase()))
+                .join(", ")}
+              .
+              <span className="block mt-0.5 text-amber-800">
+                The colors above apply to all of them. If you want different
+                colors room by room, say so in the notes.
+              </span>
+              {!state.notes.trim() && (
+                <button
+                  type="button"
+                  onClick={() => onNotesChange(roomSurfaceTemplate(multiRooms, surfaces))}
+                  className="mt-2 inline-flex items-center min-h-[44px] sm:min-h-0 sm:py-1 px-2.5 rounded-md border border-amber-300 bg-white text-[11px] font-semibold text-amber-900 hover:bg-amber-100 touch-manipulation"
+                >
+                  Add a list I can fill in
+                </button>
+              )}
+            </div>
+          )}
           <div>
             <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
               Notes for this room
@@ -1828,7 +1883,7 @@ function LineItemSection({
               aria-label={`Notes for ${title}`}
               value={state.notes}
               onChange={(e) => onNotesChange(e.target.value)}
-              rows={2}
+              rows={isMultiRoom ? 8 : 2}
               placeholder="Optional — e.g. 'keep accent wall the same' or 'use leftover paint if possible'"
               className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             />

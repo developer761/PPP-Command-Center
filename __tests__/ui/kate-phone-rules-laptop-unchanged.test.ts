@@ -19,6 +19,17 @@
  * stripped first; one of these anchors matched inside my own docblock on
  * 2026-10-08 before that was added.
  */
+/**
+ * NOTE ON stripComments: it removes block comments FIRST and never tries to
+ * match the `{ ... }` of a JSX comment.
+ *
+ * The obvious pattern — /\{\s*\/\*[\s\S]*?\*\/\s*\}/ — is a trap. It
+ * requires the closing `*\/` to be followed by `}`, so when the nearest one
+ * is not, it keeps scanning for a later `*\/` that is and swallows every line
+ * in between. Measured on components/order-builder-view.tsx: 118 characters
+ * of real code gone, silently, which is how a source assertion passes for a
+ * reason that has nothing to do with the code under test.
+ */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -27,7 +38,6 @@ const SRC = "components/order-builder-view.tsx";
 /** Comments quote the very class names these tests search for. */
 function stripComments(s: string): string {
   return s
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
 }
@@ -80,9 +90,12 @@ function rootContainer(): string {
 }
 
 function headerContainer(): string {
+  // First <div className> after the root container. Not ">\s*<div", because
+  // stripping a JSX comment leaves "{ }" between them.
   const root = src.indexOf(rootContainer());
-  const m = src.slice(root).match(/>\s*<div className="([^"]*)"/);
-  expect(m, "no <div> immediately inside the root container").toBeTruthy();
+  expect(root, "root container not found").toBeGreaterThan(-1);
+  const m = src.slice(root + 40).match(/<div className="([^"]*)"/);
+  expect(m, "no <div> inside the root container").toBeTruthy();
   return m![1];
 }
 
