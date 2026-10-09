@@ -21,6 +21,7 @@
  */
 import { assertMessagingAccess } from "./auth";
 import { messagingDb } from "./db";
+import { selectAll } from "./paging";
 import { buildFaqImportPreview, toFaqRecords } from "./faq-import";
 import { clearWorkspaceFaqCache } from "./workspace-faq-db";
 
@@ -31,14 +32,32 @@ export async function faqImportContext(): Promise<{
 }> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const [{ data: ws }, { data: faqs }] = await Promise.all([
-    sb.from("sms_sub_accounts").select("id, name").order("name"),
-    sb.from("sms_workspace_faqs").select("workspace_id, question"),
+  /**
+   * PAGED, AND ERRORS THROWN. Both of these reads were unbounded and both
+   * discarded their error.
+   *
+   * PostgREST caps an unbounded select at 1,000 rows silently, so past a
+   * thousand FAQs this would report that the ones beyond the cap do not exist
+   * — and "does not exist" is exactly what the importer acts on. See
+   * selectAll, whose own comment requires a unique order: without one a range
+   * returns an arbitrary window rather than the rows the last page missed.
+   *
+   * Zero FAQs in production today, so this has never bitten. Kate's store is
+   * the whole point of the feature, so it would have.
+   */
+  const [workspaces, faqs] = await Promise.all([
+    selectAll<{ id: string; name: string }>(
+      (from, to) => sb.from("sms_sub_accounts").select("id, name").order("name").order("id").range(from, to),
+      "the workspaces for the FAQ import"
+    ),
+    selectAll<{ workspace_id: string | null; question: string }>(
+      (from, to) => sb.from("sms_workspace_faqs").select("workspace_id, question").order("id").range(from, to),
+      "the FAQs already stored"
+    ),
   ]);
   return {
-    workspaces: (ws ?? []) as { id: string; name: string }[],
-    existing: ((faqs ?? []) as { workspace_id: string | null; question: string }[])
-      .map((f) => ({ workspaceId: f.workspace_id, question: f.question })),
+    workspaces,
+    existing: faqs.map((f) => ({ workspaceId: f.workspace_id, question: f.question })),
   };
 }
 
@@ -49,12 +68,29 @@ export async function applyFaqImport(text: string): Promise<
   await assertMessagingAccess();
   const sb = messagingDb();
 
-  const [{ data: ws }, { data: faqs }] = await Promise.all([
-    sb.from("sms_sub_accounts").select("id, name"),
-    sb.from("sms_workspace_faqs").select("id, workspace_id, question"),
+  /**
+   * THE SAME TWO READS, AND HERE THEY DECIDE WHAT TO WRITE.
+   *
+   * `existingRows` is what the importer compares against to skip a duplicate
+   * or replace an answer. A read capped at 1,000 means every FAQ past the cap
+   * reads as absent, so the import writes it again — a second copy of a
+   * question Kate already answered, with no error anywhere. A read that
+   * FAILED was worse still: `faqs ?? []` turned it into "nothing is stored",
+   * and the whole file would have been imported fresh on top of itself.
+   *
+   * selectAll throws, which app/messaging/error.tsx turns into a screen that
+   * says it could not load — the truth, and better than a silent duplicate.
+   */
+  const [workspaces, existingRows] = await Promise.all([
+    selectAll<{ id: string; name: string }>(
+      (from, to) => sb.from("sms_sub_accounts").select("id, name").order("id").range(from, to),
+      "the workspaces for the FAQ import"
+    ),
+    selectAll<{ id: string; workspace_id: string | null; question: string }>(
+      (from, to) => sb.from("sms_workspace_faqs").select("id, workspace_id, question").order("id").range(from, to),
+      "the FAQs already stored"
+    ),
   ]);
-  const workspaces = (ws ?? []) as { id: string; name: string }[];
-  const existingRows = (faqs ?? []) as { id: string; workspace_id: string | null; question: string }[];
 
   // Re-parsed and re-checked here. See the note above.
   const preview = buildFaqImportPreview(text, {

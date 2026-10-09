@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   runAction, runDueActions, classifyRefusal, backoffMs, MAX_ATTEMPTS,
   type DueAction, type SchedulerDeps,
@@ -801,5 +802,248 @@ describe("the carrier says they are unsubscribed", () => {
     const out = await runDueActions(d);
     expect(out.rescheduled).toBe(1);
     expect(d.calls.cancel).toBe(0);
+  });
+});
+
+/**
+ * "TRUE NOW AND NOT FOREVER" WAS TAKEN ON TRUST, AND FOR ONE REASON IT WAS
+ * FOREVER.
+ *
+ * The deferral above is right, and the comment beside it claimed the
+ * human_active horizon still ends anything a person keeps. It does not end
+ * this one: that horizon is measured from ctx.takeoverAt, and a draft nobody
+ * ever opened has no takeover. Nothing ages a pending draft out either —
+ * `superseded` is a state no code in lib/ or app/ writes — and a "deferral"
+ * reschedule refunds the attempt, so MAX_ATTEMPTS is never reached.
+ *
+ * So a stall follow-up behind an abandoned draft deferred hourly with no
+ * bound at all: the same production rows that branch was written to rescue,
+ * stuck in a different state.
+ */
+describe("a deferral that would never end is ended", () => {
+  const stuck = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "s9", conversation_id: "c9", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 3, ...over,
+  });
+  const blocked = (blockedSince: string | null) => ({
+    kind: "skipped" as const,
+    reason: "a reply is already waiting for review",
+    retryable: true,
+    blockedSince,
+  });
+  const daysBefore = (n: number) =>
+    new Date(NOW.getTime() - n * 24 * 3600_000).toISOString();
+
+  it("still defers while the wait is recent", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(3)) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("stops deferring once the draft has sat for over two weeks", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(15)) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(0);
+    expect(d.calls.fail).toBe(1);
+  });
+
+  /**
+   * FAILED, NOT CANCELLED, and that is the whole point of the choice.
+   * Cancelling is what produced the original dead end — stalled-db will not
+   * re-queue a cadence whose steps are cancelled, and a cancelled step does
+   * not count towards a spent one either, so the lead was neither chased nor
+   * called. A failed step DOES count, so the cadence completes and
+   * resumeCallingIfSpent hands the lead back to the call centre, which is the
+   * right answer for a thread the bot cannot advance and nobody is reviewing.
+   */
+  it("fails rather than cancelling, so the lead reaches the call centre", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(daysBefore(30)) });
+    await runDueActions(d);
+    expect(d.calls.cancel).toBe(0);
+    expect(d.calls.fail).toBe(1);
+    expect(d.last.reason).toMatch(/over two weeks/);
+  });
+
+  /**
+   * A missing timestamp must not be read as "infinitely old" — that would
+   * fail every deferral the moment a caller forgot the field. Unknown means
+   * keep waiting, which is what the behaviour was before this existed.
+   */
+  it("keeps deferring when nothing says when the wait began", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked(null) });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+
+  it("is not thrown off by an unparseable timestamp", async () => {
+    const d = deps({ claimDue: async () => [stuck()], draftReply: async () => blocked("not a date") });
+    await runDueActions(d);
+    expect(d.calls.reschedule).toBe(1);
+    expect(d.calls.fail).toBe(0);
+  });
+});
+
+/**
+ * THE BUDGET WAS SPENT BEFORE IT STARTED COUNTING.
+ *
+ * runDueActions exists to stop claiming work the lambda has no time to
+ * finish, because `sms_claim_due_actions` increments attempts on the CLAIM and
+ * `sms_reclaim_stale_actions` never gives them back — six abandoned ticks
+ * produce "gave up after 6 attempts" about a send nobody tried.
+ *
+ * It measured from its own first line. By then the tick route has made four
+ * Salesforce round trips: the lead poll, the exit sweep, the service-zip
+ * refresh and the opt-out writeback. None counted. So a slow Salesforce day
+ * could spend 90 seconds, hand over, and this would budget a further 240
+ * against a maxDuration of 300 — killed mid-tick, every claimed row abandoned,
+ * and the three sweeps after it never run. The failure the budget was written
+ * to prevent, produced by the budget.
+ */
+describe("the tick budget is spent against the lambda, not against itself", () => {
+  const tiny = (over: Partial<DueAction> = {}): DueAction => ({
+    id: "b1", conversation_id: "c1", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: 1, ...over,
+  });
+
+  it("works through the queue when there is budget left", async () => {
+    let claimCalls = 0;
+    const d = deps({
+      claimDue: async () => { claimCalls++; return [tiny()]; },
+      draftReply: async () => ({ kind: "skipped" as const, reason: "conversation has ended" }),
+    });
+    const out = await runDueActions(d, 50, 240_000, Date.now());
+    expect(claimCalls).toBe(1);
+    expect(out.outOfTimeBeforeClaiming).toBeFalsy();
+  });
+
+  /**
+   * THE HALF THAT COST ATTEMPTS. The per-row check only runs after claimDue
+   * has already taken up to fifty rows, and the claim is what increments
+   * attempts — so a tick arriving with no budget burned an attempt on fifty
+   * messages it never looked at, every minute, until they failed.
+   */
+  it("claims NOTHING when the lambda has already spent the budget", async () => {
+    let claimCalls = 0;
+    const d = deps({ claimDue: async () => { claimCalls++; return [tiny()]; } });
+    // The lambda started four minutes and one second ago.
+    const out = await runDueActions(d, 50, 240_000, Date.now() - 240_001);
+    expect(claimCalls, "rows were claimed with no time to run them").toBe(0);
+    expect(out.claimed).toBe(0);
+    expect(out.outOfTimeBeforeClaiming).toBe(true);
+  });
+
+  /**
+   * And it is reported as its own thing. A tick with nothing due is healthy; a
+   * tick that never reached the queue means the work in front of it is eating
+   * the lambda, and the two need opposite responses.
+   */
+  it("distinguishes out-of-time from a quiet queue", async () => {
+    const quiet = await runDueActions(deps({ claimDue: async () => [] }), 50, 240_000, Date.now());
+    expect(quiet.claimed).toBe(0);
+    expect(quiet.outOfTimeBeforeClaiming).toBeFalsy();
+  });
+
+  it("the tick route measures from the start of the request", () => {
+    const src = readFileSync("app/api/cron/messaging-tick/route.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    // Taken before any Salesforce work, and handed to runDueActions.
+    expect(src).toMatch(/const lambdaStartedAt = Date\.now\(\)/);
+    expect(src, "runDueActions is not told when the lambda started")
+      .toMatch(/runDueActions\([\s\S]{0,120}lambdaStartedAt/);
+    /**
+     * And taken before the Salesforce work, not after it — otherwise the
+     * prelude still costs nothing and the change is decoration.
+     *
+     * Against the first CALL, `await getSalesforceClient`, rather than the
+     * bare name: the first occurrence of that is the import at the top of the
+     * file, which is before everything, so the first version of this
+     * assertion passed on a fact about import order.
+     */
+    expect(src.indexOf("lambdaStartedAt = Date.now()"))
+      .toBeLessThan(src.indexOf("await getSalesforceClient"));
+  });
+});
+
+/**
+ * A CADENCE IS A SEQUENCE, AND run_at HAD STOPPED GUARANTEEING IT.
+ *
+ * sms_claim_due_actions orders only by run_at, and every deferral pushes ONE
+ * row forward an hour — so two steps deferring at different moments drift
+ * apart. Both live cadences in production were inverted when this was found:
+ *
+ *   conversation 90d11ce5   step 2 at 17:32, step 3 at 17:07
+ *   conversation f55e914b   step 2 at 17:32, step 3 at 17:08
+ *
+ * Step 3 twenty five minutes ahead of step 2. The follow-ups escalate, so the
+ * customer reads them backwards — and onCadenceSpent fires on the LAST step,
+ * so the lead would be handed back to the call centre and THEN texted again.
+ */
+describe("a follow-up waits for the earlier steps of its own cadence", () => {
+  const step = (n: number): DueAction => ({
+    id: `st${n}`, conversation_id: "c-cad", campaign_step_id: null,
+    action: "stall_followup", attempts: 0, stall_step: n,
+  });
+
+  it("defers when an earlier step is still pending", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    const out = await runDueActions(d);
+    expect(d.calls.reschedule, "step 3 went out ahead of step 2").toBe(1);
+    expect(d.calls.markSent).toBe(0);
+    expect(out.sent).toBe(0);
+  });
+
+  it("runs when nothing earlier is outstanding", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => false,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
+    expect(d.calls.reschedule).toBe(0);
+  });
+
+  /**
+   * AND THE HAND-BACK MUST NOT FIRE EARLY. onCadenceSpent runs on the last
+   * step; firing it while an earlier text is still queued tells the phone team
+   * the cadence is finished and then sends another message.
+   */
+  it("does not hand the lead back while an earlier step is queued", async () => {
+    let handedBack = 0;
+    const d = deps({
+      claimDue: async () => [step(3)],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+      onCadenceSpent: async () => { handedBack++; },
+    });
+    await runDueActions(d);
+    expect(handedBack, "told the call centre the cadence was spent too early").toBe(0);
+  });
+
+  /** A step with no number cannot be ordered, so it is left alone. */
+  it("leaves an unnumbered action alone", async () => {
+    const d = deps({
+      claimDue: async () => [{ ...step(1), stall_step: null }],
+      earlierStepPending: async () => true,
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
+  });
+
+  /** A worker that cannot answer the question behaves exactly as before. */
+  it("is unchanged when the dep is absent", async () => {
+    const d = deps({
+      claimDue: async () => [step(3)],
+      draftReply: async () => ({ kind: "sent" as const, providerId: "p9", body: "x" }),
+    });
+    await runDueActions(d);
+    expect(d.calls.markSent).toBe(1);
   });
 });

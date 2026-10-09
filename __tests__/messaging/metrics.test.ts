@@ -3,7 +3,7 @@ import {
   qualificationFunnel, workspaceHealth, speedSummary, agingConversations,
   takeoverBreakdown, median, percentile, humanSeconds, secondsBetween,
   wasContained, wasBookableByPhone, wasBookableInPerson, wasBooked, HANDED_TO_A_PERSON,
-  HATCH_POLL_SECONDS, MIN_MEASURED, type ConversationRow,
+  HATCH_POLL_SECONDS, MIN_MEASURED, agentPerformance, type ConversationRow,
 } from "@/lib/messaging/metrics";
 
 const conv = (over: Partial<ConversationRow> = {}): ConversationRow => ({
@@ -381,5 +381,46 @@ describe("bookable to booked — conversion where booking was possible", () => {
     const [h] = workspaceHealth([conv({ qualification_stage: 1, outcome: "lost" })]);
     expect(h.bookableToBookedPct).toBeNull();
     expect(h.bookableOf).toBe(0);
+  });
+});
+
+/**
+ * TWO SCREENS, TWO ANSWERS, ONE WORD.
+ *
+ * "Success" on /messaging/dashboard counted `success` or `phone_pricing`;
+ * "Success" on /messaging/reporting counted `success` alone. The same
+ * conversations, two numbers, neither screen saying which it meant — and
+ * db.ts carries the note recording that this exact disagreement was found and
+ * fixed once already: "success excluded phone_pricing, which PPP's own end
+ * states define as a success." That fix replaced the dashboard's copy and
+ * left the other one.
+ *
+ * Asserted through the two functions the screens actually call, rather than
+ * on the constants, because a shared constant that one of them stops using is
+ * the same bug again.
+ */
+describe("both screens answer 'success' the same way", () => {
+  const ended = (outcome: string, agent = "lead_nurture") => ({
+    id: `c-${outcome}-${Math.random()}`, state: "ended", outcome, agent,
+    workspace: "NY LI Nassau Leads", takeover_reason: null,
+    created_at: "2026-10-01T12:00:00Z", first_outbound_at: "2026-10-01T12:01:00Z",
+    last_message_at: "2026-10-01T12:30:00Z", stage: 4,
+  });
+
+  it("counts a phone-pricing exit as a success on both", () => {
+    const rows = [ended("success"), ended("phone_pricing"), ended("lost")] as never[];
+    const health = workspaceHealth(rows)[0];
+    const agents = agentPerformance(rows)[0];
+    expect(health.successPct).toBe(agents.successPct);
+    // Two of three ended well. pct() keeps one decimal.
+    expect(health.successPct).toBe(66.7);
+  });
+
+  it("counts a drop-off the same way on both", () => {
+    const rows = [ended("success"), ended("bailout"), ended("area_not_serviced")] as never[];
+    const health = workspaceHealth(rows)[0];
+    const agents = agentPerformance(rows)[0];
+    expect(health.dropOffPct).toBe(agents.dropOffPct);
+    expect(health.dropOffPct).toBe(66.7);
   });
 });

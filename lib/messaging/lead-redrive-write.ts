@@ -23,30 +23,71 @@ import {
 /** Rows to consider in one pass. Generous: this counts, it does not send. */
 const SCAN_LIMIT = 2000;
 
-async function loadHeld(): Promise<HeldLead[]> {
+/** The statuses that mean a lead is held. One list, so the count and the scan
+ *  cannot describe different sets of rows. */
+const HELD_STATUSES = ["triage", "ignored", "failed"] as const;
+
+async function loadHeld(): Promise<{ leads: HeldLead[]; total: number }> {
   const sb = messagingDb();
+  /**
+   * THE COUNT COMES FROM THE DATABASE, NOT FROM THE ROWS WE FETCHED.
+   *
+   * `total` was `leads.length` against a query capped at SCAN_LIMIT, and the
+   * screen renders it as "N leads waiting on something" — a definite claim
+   * about the whole backlog. Past 2000 held leads it would have said 2000,
+   * for ever, and stopped moving as the backlog grew: work fifty off and it
+   * still says 2000, which reads as making no progress at all.
+   *
+   * The same mistake the board and the review queue each had, and db.ts
+   * already explains at length why a capped list must never be shown as a
+   * total. Both of those were fixed and this one was missed — the fix landing
+   * on one twin.
+   *
+   * head+count, so the database counts and no rows are read. The filters must
+   * stay identical to the scan below, which is why the status list is one
+   * constant: a count describing a different set of rows from the list under
+   * it is the same lie wearing a more convincing number.
+   */
+  const { count, error: countErr } = await sb
+    .from("sf_lead_inbound")
+    .select("id", { count: "exact", head: true })
+    .in("status", HELD_STATUSES as unknown as string[]);
+  if (countErr) throw new Error(`could not count held leads: ${countErr.message}`);
+
   const { data, error } = await sb
     .from("sf_lead_inbound")
     .select("id, status, triage_reason, sf_created_at, received_at")
-    .in("status", ["triage", "ignored", "failed"])
+    .in("status", HELD_STATUSES as unknown as string[])
     .order("received_at", { ascending: false })
     .limit(SCAN_LIMIT);
   // Throws rather than returning none: "nothing is held" is a claim, and a
   // failed query must not be able to make it.
   if (error) throw new Error(`could not read held leads: ${error.message}`);
 
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    status: r.status as string,
-    triageReason: (r.triage_reason as string | null) ?? null,
-    sfCreatedAt: (r.sf_created_at as string | null) ?? null,
-    receivedAt: (r.received_at as string | null) ?? null,
-  }));
+  return {
+    total: count ?? 0,
+    leads: (data ?? []).map((r) => ({
+      id: r.id as string,
+      status: r.status as string,
+      triageReason: (r.triage_reason as string | null) ?? null,
+      sfCreatedAt: (r.sf_created_at as string | null) ?? null,
+      receivedAt: (r.received_at as string | null) ?? null,
+    })),
+  };
 }
 
 export type HeldSummary = {
-  /** Every held lead, however old. */
+  /** Every held lead, however old — counted by the database, not by the scan. */
   total: number;
+  /**
+   * How many of them this pass actually looked at, capped at SCAN_LIMIT.
+   *
+   * Equal to `total` in every normal case. When it is LOWER, `releasable` and
+   * `holding` describe only this many rows and the screen has to say so —
+   * otherwise it offers to release a number computed from a subset while
+   * naming a bigger backlog, which is the worst of both.
+   */
+  scanned: number;
   /** How many a release would actually move, at this window. */
   releasable: number;
   maxAgeHours: number;
@@ -57,10 +98,11 @@ export type HeldSummary = {
 /** What is held, and what a release would do. Reads only. */
 export async function heldLeads(maxAgeHours = DEFAULT_MAX_AGE_HOURS): Promise<HeldSummary> {
   await assertMessagingAccess();
-  const leads = await loadHeld();
+  const { leads, total } = await loadHeld();
   const plan = planRedrive(leads, { now: new Date(), maxAgeHours });
   return {
-    total: leads.length,
+    total,
+    scanned: leads.length,
     releasable: plan.release.length,
     maxAgeHours,
     holding: Object.entries(plan.holdReasons)
@@ -94,7 +136,10 @@ export async function releaseHeldLeads(input: { maxAgeHours?: number } = {}): Pr
   }
 
   const sb = messagingDb();
-  const leads = await loadHeld();
+  // Only the scanned rows are released, which is the same bound the summary
+  // now reports: a release moves what this pass could see, and the rest come
+  // into range on the next one.
+  const { leads } = await loadHeld();
   const { release } = planRedrive(leads, { now: new Date(), maxAgeHours });
   if (!release.length) return { ok: true, released: 0 };
 
@@ -111,7 +156,12 @@ export async function releaseHeldLeads(input: { maxAgeHours?: number } = {}): Pr
     // Belt and braces against a concurrent tick: only move rows that are still
     // held. A row that became 'routed' between the read and the write must not
     // be dragged back to pending and enrolled twice.
-    .in("status", ["triage", "ignored", "failed"]);
+    //
+    // THE SAME CONSTANT THE COUNT AND THE SCAN USE. This was a third copy of
+    // the list, spelled out. Change what "held" means and the summary would
+    // count one set of rows while the release moved another — the read saying
+    // 1514 and the write touching a different 1514.
+    .in("status", HELD_STATUSES as unknown as string[]);
 
   if (error) return { ok: false, error: `Could not release them: ${error.message}` };
   return { ok: true, released: release.length };

@@ -223,3 +223,91 @@ describe("the off-site offer can be made in Spanish", () => {
     expect(offsiteReasonFor("I just want a ballpark price")).toMatch(/rough price/i);
   });
 });
+
+/**
+ * STRIPPING A QUESTION MUST NOT LEAVE AN APOLOGY ON ITS OWN.
+ *
+ * The Spanish timing matcher arrived with bare `mejor`, `sirve` and
+ * `conviene`. None has an English counterpart — the English side matches the
+ * phrase "work best", never the bare word "best" — and each carries a
+ * commoner meaning that is not about timing. Two real templates paid for it:
+ *
+ *   acknowledge_negative[0]  "Disculpe. ¿Qué le funcionaría mejor?"  matched
+ *                            on `mejor`, and the whole message PPP sent was
+ *                            the single word "Disculpe."
+ *   offer_estimator_call[0]  "…coordinar los detalles. ¿Le sirve?"   matched
+ *                            on `sirve`, turning a consent question into an
+ *                            assertion with nothing asked.
+ *
+ * Both reachable on ANY track, because availabilityStandOff strips regardless
+ * of flowStage, and nurture intents never get the backfill ask.
+ */
+describe("the Spanish timing strip does not eat questions that are not about timing", () => {
+  it("never sends a bare apology as the whole message", () => {
+    const out = renderMessage({
+      intent: "acknowledge_negative", language: "es", turn: 0,
+      availabilityStandOff: true,
+    });
+    expect(out.trim()).not.toBe("Disculpe.");
+    expect(BARE_ACKNOWLEDGEMENT.test(out.trim()), `the whole message was a pleasantry: ${out}`).toBe(false);
+  });
+
+  it("leaves a consent question asking something", () => {
+    const out = renderMessage({
+      intent: "offer_estimator_call", language: "es", turn: 0,
+      availabilityStandOff: true,
+    });
+    expect(out, `nothing was asked: ${out}`).toMatch(/\?/);
+  });
+
+  /**
+   * And the question that started all of this still goes. "¿Qué días le
+   * funcionan mejor?" is a timing question because of `días`, which is the
+   * word that makes it one — so narrowing `mejor` costs nothing here.
+   */
+  it("still suppresses a real Spanish availability ask at stage 0", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", language: "es", flowStage: 0, track: "new_lead", turn: 0,
+    });
+    expect(out).not.toMatch(/qué días|que días|qué horarios|que horarios/i);
+    expect(out.trim()).not.toBe("");
+  });
+
+  it.each([
+    // Timing, and still stripped. `días`, `hora`, `horario` and
+    // `disponibilidad` are the words that make these questions about WHEN, and
+    // none of them moved.
+    ["Qué días le funcionan mejor?", true],
+    ["A qué hora le conviene?", true],
+    ["Cuál horario le queda mejor?", true],
+    ["Tiene disponibilidad esta semana?", true],
+    // Not timing, and no longer stripped. Every one of these used to be, each
+    // on a single bare word that also means something else.
+    ["Le sirve?", false],
+    ["Le parece bien el precio?", false],
+    ["Le conviene el presupuesto?", false],
+    ["Prefiere que pintemos mejor el exterior?", false],
+  ])("reads %j as a timing question: %s", (text, isTiming) => {
+    /**
+     * Driven through the renderer rather than the private matcher, so what is
+     * asserted is the behaviour and not an implementation detail.
+     *
+     * AND THE PREFIX HAS TO SAY SOMETHING. The first version of this used
+     * "Claro." — which `acknowledge` drops as redundant rapport, so every case
+     * rendered the plain template, the question was never in the output at
+     * all, and the four timing rows "passed" without exercising anything. A
+     * test whose subject never reaches the code under test agrees with
+     * whatever it is told.
+     */
+    const out = renderMessage({
+      intent: "acknowledge", language: "es",
+      freeText: `El equipo puede ayudarle con eso. ${text}`, turn: 0,
+      availabilityStandOff: true,
+    });
+    expect(out, "the prefix did not survive, so this case proves nothing")
+      .toContain("El equipo puede ayudarle con eso.");
+    const survived = out.includes(text);
+    expect(survived, `${text} — expected ${isTiming ? "stripped" : "kept"}, got ${JSON.stringify(out)}`)
+      .toBe(!isTiming);
+  });
+});

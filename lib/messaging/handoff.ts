@@ -121,6 +121,30 @@ export function latestInboundIsAnswered(
   return last.direction === "outbound";
 }
 
+/**
+ * WHEN THE CUSTOMER LAST WROTE, so the gate can judge how old the claim is.
+ *
+ * latestInboundIsAnswered says whether a reply is OWED. It cannot say whether
+ * replying now still counts as replying — a draft sitting unanswered for three
+ * days is owed a reply and is no longer answering a message anybody just sent.
+ * The gate decides that, on the recipient's own clock, from this timestamp.
+ * See SendRequest.answersInboundAt.
+ *
+ * Returns null when they have never written, which is not a reply at all.
+ */
+export function latestInboundAt(
+  msgs: { direction: string; created_at: string }[]
+): string | null {
+  let latest: string | null = null;
+  for (const m of msgs) {
+    if (m.direction !== "inbound") continue;
+    if (latest === null || new Date(m.created_at).getTime() > new Date(latest).getTime()) {
+      latest = m.created_at;
+    }
+  }
+  return latest;
+}
+
 /** How long somebody has been sitting on a conversation, in plain words. */
 export function heldFor(since: string, now: Date): string {
   const mins = Math.max(0, Math.floor((now.getTime() - new Date(since).getTime()) / 60000));

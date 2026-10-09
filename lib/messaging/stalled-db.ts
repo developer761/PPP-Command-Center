@@ -56,7 +56,7 @@ type ConversationRow = {
  */
 export async function sweepStalled(
   sb: SupabaseClient,
-  opts: { now?: Date; officeZoneFor?: (workspaceId: string) => string } = {}
+  opts: { now?: Date; officeZoneFor?: (workspaceId: string) => string | undefined } = {}
 ): Promise<{ scanned: number; queued: number; failed: number; skipped: Record<string, number> }> {
   const now = opts.now ?? new Date();
   const cutoff = new Date(now.getTime() - QUIET_HOURS_BEFORE_STALL * 3600_000).toISOString();
@@ -72,6 +72,33 @@ export async function sweepStalled(
       .range(from, to),
     "sms_conversations (stall sweep)"
   );
+
+  /**
+   * EACH WORKSPACE'S OWN CLOCK, which nothing was supplying.
+   *
+   * `officeZoneFor` has been an option here since this was written and no
+   * caller ever passed it — the cron calls `sweepStalled(messagingDb())` — so
+   * followUpSchedule fell back to OFFICE_ZONE, Eastern, for every workspace.
+   *
+   * The GATE does not: it uses `ws.time_zone`, which the settings screen calls
+   * "when each workspace is allowed to text, and in which timezone". So the
+   * two halves disagreed about the same window. A follow-up for CA LA Leads
+   * was placed at 9 AM Eastern — 6 AM where that customer is — and the gate
+   * then refused it as quiet hours and pushed it to the next opening. Not a
+   * lost message; a late one, and a tick spent discovering that.
+   *
+   * The option stays, because a test wants to choose the zone, but it now has
+   * a real default rather than an absent one.
+   */
+  const { data: wsRows } = await sb.from("sms_sub_accounts").select("id, time_zone");
+  const zoneByWorkspace = new Map(
+    (wsRows ?? []).map((w) => [
+      (w as { id: string }).id,
+      (w as { time_zone?: string | null }).time_zone ?? null,
+    ])
+  );
+  const officeZoneFor = opts.officeZoneFor
+    ?? ((workspaceId: string) => zoneByWorkspace.get(workspaceId) ?? undefined);
 
   const skipped: Record<string, number> = {};
   const note = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
@@ -192,7 +219,7 @@ export async function sweepStalled(
       // immediately due, and go out together on the next tick.
       notBefore: now,
       customerZone: zone,
-      officeZone: opts.officeZoneFor?.(c.workspace_id),
+      officeZone: officeZoneFor(c.workspace_id),
       unreachable: c.unreachable_start_hour === null ? null : {
         startHour: c.unreachable_start_hour,
         endHour: c.unreachable_end_hour ?? c.unreachable_start_hour,
@@ -296,11 +323,35 @@ export async function resumeCallingIfSpent(
   sb: SupabaseClient,
   input: { conversationId: string; leadId: string | null }
 ): Promise<boolean> {
+  /**
+   * SPENT MEANS "WE WILL NOT TRY THIS STEP AGAIN", NOT "IT WENT OUT".
+   *
+   * This counted `done` alone, and `failed` is terminal — nothing re-sends it.
+   * So one failed step left the cadence permanently short of FOLLOW_UP_COUNT,
+   * resumeAfterCadence returned null, and the lead was neither texted again
+   * nor handed back to the call centre. It fell out of both systems in
+   * silence, which is the dead end A45 exists to close.
+   *
+   * And the commonest route to `failed` is not a failure to send. markSent
+   * marks the row failed when the carrier ACCEPTED the message and the close
+   * write would not go through — deliberately, because a row left `claimed`
+   * is reclaimed and sent up to five times. On that path the customer did get
+   * the follow-up and the count was still short.
+   *
+   * Either way the answer is the same. The resume fires only where the
+   * customer never replied, so handing back to the phone team is right whether
+   * the last text reached them or not, and a step nothing will retry is spent
+   * however it ended.
+   *
+   * `cancelled` is deliberately NOT counted: something superseded that step —
+   * the customer wrote, or a person took the thread over — which is the
+   * opposite of never having been reached.
+   */
   const { count: done } = await sb.from("sms_scheduled_actions")
     .select("id", { count: "exact", head: true })
     .eq("conversation_id", input.conversationId)
     .eq("action", "stall_followup")
-    .eq("state", "done");
+    .in("state", ["done", "failed"]);
 
   // Did they answer any of them? An inbound after the cadence started is a
   // reply, and a reply means we reached them.

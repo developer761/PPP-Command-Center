@@ -8,6 +8,7 @@
  * endpoint of its own.
  */
 import type { messagingDb } from "./db";
+import { reportWarn } from "@/lib/observability";
 
 /**
  * Queue another turn when the customer has said something we have not answered.
@@ -36,9 +37,29 @@ export async function queueTurnIfUnanswered(
     .in("state", ["pending", "claimed"]).maybeSingle();
   if (queued) return;
 
-  await sb.from("sms_scheduled_actions").insert({
+  const { error } = await sb.from("sms_scheduled_actions").insert({
     conversation_id: conversationId,
     action: "agent_turn",
     run_at: new Date().toISOString(),
   });
+  /**
+   * REPORTED, because this is the write that stops a customer being forgotten.
+   *
+   * The header of this file says the job: a message that arrived while a
+   * reply was being written must still be answered. All four callers return
+   * ok after calling this, so a discarded error here is exactly the outcome
+   * it exists to prevent — the second message answered by nobody, ever, with
+   * every screen showing the conversation as dealt with.
+   *
+   * Not thrown: the reply that just went out DID go out, and failing the
+   * caller would tell a reviewer their send failed when it did not. The
+   * alert is the right size for it.
+   */
+  if (error) {
+    reportWarn({
+      key: "agent_turn_not_queued", platform: "ppp_cc",
+      message: "a customer wrote again while we were replying and the follow-up turn could not be queued",
+      context: { conversationId, error: error.message },
+    });
+  }
 }

@@ -1,4 +1,4 @@
-import { optOutSource } from "./compliance";
+import { optOutSource, HELP_INTENT } from "./compliance";
 /**
  * Writing down a message a customer sent us.
  *
@@ -137,12 +137,77 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     if (error) throw asError("recording the opt-in", error);
   }
 
+  /**
+   * 1b. AND STOP MEANS STOP ON BOTH CHANNELS.
+   *
+   * The insert above records channel 'sms' and no address, because it runs
+   * before anything that can fail and the email is not in hand yet. That is
+   * the right order — the suppression must not depend on a lookup — but it
+   * left the job half done: gate-deps checks email suppression by ADDRESS, so
+   * a customer who replied STOP to the launch text still received the campaign
+   * email fifteen minutes later.
+   *
+   * Migration 186 says exactly this: "PPP campaigns send both channels in one
+   * sequence — suppressing the SMS half only would keep emailing somebody who
+   * unsubscribed." It added the column for it; nothing ever wrote 'both'.
+   *
+   * So the address is attached afterwards, as a widening of a row that already
+   * exists. If this fails, the SMS opt-out still stands and the only loss is
+   * the email half, which is the right way round for it to go wrong.
+   */
+  if (decision.keyword === "opt_out") {
+    const { data: withEmail } = await sb.from("sms_conversations")
+      .select("customer_email")
+      .eq("customer_phone", decision.from)
+      .not("customer_email", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const email = (withEmail as { customer_email?: string | null } | null)?.customer_email ?? null;
+    if (email) {
+      const { error: widenErr } = await sb.from("sms_opt_outs")
+        .update({ email, channel: "both", updated_at: new Date().toISOString() })
+        .eq("phone_e164", decision.from)
+        .is("opted_in_at", null);
+      if (widenErr) {
+        // Never throws: the text half is recorded and that is the half the
+        // customer just asked for. Reported so the gap is visible.
+        reportWarn({
+          key: "optout_email_not_recorded", platform: "ppp_cc",
+          message: "STOP was recorded for the number but the email half could not be written — they may still receive campaign email",
+          context: { phone: decision.from, error: widenErr.message },
+        });
+      }
+    }
+  }
+
   // 2. Which workspace was texted. Unknown is recorded, not discarded — a
   //    reply to a number we have forgotten about is a real customer and a real
   //    configuration problem.
-  const { data: ws } = await sb.from("sms_sub_accounts")
+  const { data: ws, error: wsErr } = await sb.from("sms_sub_accounts")
     .select("id, name, phone_e164, autosend_enabled, after_hours_autoreply, after_hours_message, time_zone, quiet_hours_start, quiet_hours_end, send_on_weekends, send_on_holidays, reply_delay_min_seconds, reply_delay_max_seconds")
     .eq("phone_e164", decision.to).maybeSingle();
+  /**
+   * A FAILED LOOKUP IS NOT "NOBODY OWNS THIS NUMBER".
+   *
+   * This discarded its error, and the two outcomes are indistinguishable
+   * afterwards: `ws` is null either way. Everything below is gated on
+   * `ws?.id` — no conversation is created, so the message is never recorded in
+   * sms_messages at all, no turn is queued, and no HELP reply goes out. The
+   * webhook then answers 204, so the carrier does not retry and the text is
+   * gone for good.
+   *
+   * One timeout therefore drops every inbound message for as long as it lasts,
+   * and the only trace is a warning saying a customer texted a number no
+   * workspace owns — a configuration message, which would send whoever read it
+   * looking in entirely the wrong place.
+   *
+   * Throwing gets the route's own retry and then a non-2xx, which is what
+   * makes the CARRIER retry. The opt-out insert above has already run, so a
+   * STOP is still honoured even when this throws; that ordering is deliberate
+   * and is unchanged.
+   */
+  if (wsErr) throw asError("looking up the workspace for this number", wsErr);
 
   // 3. The open conversation on this pair, if there is one.
   let conversationId: string | null = null;
@@ -284,11 +349,45 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
     // A fixed body rather than a generated one: what a HELP reply must contain
     // is a rule, not a judgement, and a model that improvises it could drop
     // half the obligations on a bad day. It goes out as a send_reply so it
-    // passes through the same gate as everything else — the suppression check,
-    // the cap and the hours all still apply.
+    // passes through the same gate as everything else — the suppression check
+    // and the hours still apply. The daily CAP does not, because this reply is
+    // required: see SendRequest.required.
+    //
+    // ── AND THAT IS WHY IT NEEDS ITS OWN BRAKE ──────────────────────────────
+    //
+    // The cap was the only thing bounding how many of these could go out, and
+    // exempting the reply from it left nothing at all. isNew dedupes a carrier
+    // REDELIVERY of one text, not a person sending twenty: twenty HELPs in ten
+    // minutes queued twenty replies, every one of them exempt, all from one
+    // 10DLC number. That is the pattern a carrier spam filter flags — during
+    // the A2P vetting this block exists to pass — and PPP pays for each.
+    //
+    // CTIA requires answering a HELP request. It does not require answering
+    // the twentieth one in ten minutes. So: once per conversation per day, the
+    // same brake and the same window the after-hours reply below uses.
+    //
+    // Two things are counted, because they fail differently. A reply already
+    // SENT is the ordinary case. A reply already QUEUED is the burst case —
+    // five texts in five seconds all see zero sent replies, so without this
+    // they all queue, and the gate would then send five.
     if (isNew && decision.keyword === "help" && ws?.id) {
-      const { data: inbound } = await sb.from("sms_messages")
-        .select("id").eq("provider_id", decision.providerId).maybeSingle();
+      const helpDayAgo = new Date(receivedAt.getTime() - 24 * 3600_000).toISOString();
+      const { count: helpSent } = await sb.from("sms_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("agent_intent", HELP_INTENT)
+        .gte("created_at", helpDayAgo);
+      const { count: helpQueued } = await sb.from("sms_scheduled_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("reply_intent", HELP_INTENT)
+        .in("state", ["pending", "claimed"]);
+      const alreadyHelped = (helpSent ?? 0) > 0 || (helpQueued ?? 0) > 0;
+
+      const { data: inbound } = alreadyHelped
+        ? { data: null }
+        : await sb.from("sms_messages")
+          .select("id").eq("provider_id", decision.providerId).maybeSingle();
       // Needs the message it answers: sms_scheduled_actions_send_reply_chk
       // requires body, moment and answers_message_id together.
       if (inbound?.id) {
@@ -301,7 +400,7 @@ export async function recordInbound(sb: SupabaseClient, decision: Accepted): Pro
           run_at: receivedAt.toISOString(),
           reply_due_at: receivedAt.toISOString(),
           reply_body: helpReply(ws.phone_e164 ?? null),
-          reply_intent: "help_response",
+          reply_intent: HELP_INTENT,
           answers_message_id: inbound.id,
         });
         if (hErr) {

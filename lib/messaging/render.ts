@@ -27,7 +27,7 @@ import { tooManyAsks } from "./one-ask";
 import type { AddressGap } from "./address";
 import type { AvailabilityGap } from "./availability";
 import {
-  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
+  SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_CONTACT_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
   PHONE_PRICING_NO_ADDRESS_ES,
 } from "./render-es";
 import { ASKED_FOR_A_CALL } from "./customer-asks";
@@ -650,6 +650,19 @@ export type RenderInput = {
    *  guarantee that nothing the model wrote reaches the customer unfiltered. */
   known?: {
     address?: string | null; phone?: string | null; email?: string | null; scope?: string | null;
+    /**
+     * WHOSE NAME THE ESTIMATE IS UNDER, and it never reached here.
+     *
+     * knownFields has carried `name` since it was written and
+     * ASK_SUPERSEDED_BY reads it to refuse ask_contact — but the renderer's
+     * own `known` left it out, so the renderer could not tell whether the name
+     * was on file and asked for it alongside the email regardless. A field
+     * produced, read by the validator, and handed to the renderer by nobody.
+     *
+     * Needed by contactGap, which narrows ask_contact to the half we are
+     * actually missing. See ASK_CONTACT_GAP.
+     */
+    name?: string | null;
     /** The zip we hold and the state it resolves to, for A2's out-of-state
      *  message. Both are looked up, never inferred by the model. */
     zip?: string | null; state?: string | null;
@@ -818,6 +831,38 @@ export type RenderInput = {
  */
 export const ASK_ZIP_WITH_REASON =
   "No problem. We at least need the zip code to price it accurately. What's the zip there?";
+
+/**
+ * ASK FOR THE HALF OF THE CONTACT WE DO NOT HOLD. A13.
+ *
+ * All three ask_contact variants ask for the name AND the email, and
+ * ASK_SUPERSEDED_BY refuses the intent only when BOTH are held. So holding one
+ * and not the other let the ask go out for both, including the one already on
+ * file — which is the first half of A13: "do not ask the customer to RETYPE
+ * data already held".
+ *
+ * It is the commonest fault in Kate's grading after punctuation. Of the 206
+ * A13 breaches she annotated, 165 are an ask for something already on file,
+ * and 42 of those name the email or the name. The ADDRESS half of the same
+ * rule was narrowed when A11 was built — ASK_ADDRESS_GAP just below — and the
+ * contact half never got the same treatment. The fix landed on one twin.
+ *
+ * The phone is deliberately not here. We always hold it, because they are
+ * texting us from it, so there is no gap to ask about; A13 permits CONFIRMING
+ * held data, which is what the read-back templates do instead.
+ */
+const ASK_CONTACT_GAP: Record<"name" | "email", string[]> = {
+  name: [
+    "Thanks! And who should we put the estimate under?",
+    "Got it. What name should the estimate be under?",
+    "Perfect. Whose name should I put this under?",
+  ],
+  email: [
+    "Thanks! And what's a good email for the estimate?",
+    "Got it. What's the best email for the quote?",
+    "Perfect. Where should we email the estimate?",
+  ],
+};
 
 const ASK_ADDRESS_GAP: Record<"zip" | "street", string[]> = {
   zip: [
@@ -1095,23 +1140,146 @@ const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
  * and then walked round again by the translation of that template.
  */
 const ASKS_ABOUT_TIMING =
-  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i
-  ;
+  /\b(?:days?|times?|window|weekday|weekend|availability|available|suits?|easiest|work best|works best)\b/i;
 
+/**
+ * THE SPANISH HALF, AND IT WAS WIDER THAN THE ENGLISH ONE IT MIRRORS.
+ *
+ * Bare `mejor`, `sirve` and `conviene` came in with the translation. None has
+ * an English counterpart here — the English side matches the PHRASE "work
+ * best", never the bare word "best" — and each of them carries a second,
+ * commoner meaning that is not about timing at all:
+ *
+ *   "Le sirve?"                   does that work for you — a consent question
+ *                                 at the end of offer_estimator_call, whose
+ *                                 whole job is to ASK. Stripped, the offer
+ *                                 became an assertion with nothing asked.
+ *   "Disculpe. Qué le            an apology plus "what would suit you
+ *    funcionaría mejor?"           better". Stripped on `mejor`, the entire
+ *                                 message PPP sent was the word "Disculpe."
+ *
+ * So `mejor` is matched only where English matches it — bound to a verb of
+ * suiting or to a unit of time — and the two bare verbs are gone. The
+ * question that started all this, "Qué días le funcionan mejor?", still
+ * matches on `días`, which is the part that makes it a timing question.
+ */
 const ASKS_ABOUT_TIMING_ES =
-  /\b(?:d[íi]as?|horas?|horario|hora|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?|funcionan?|conviene|sirve|mejor)\b/i;
+  /\b(?:d[íi]as?|horas?|horario|ventana|semana|fin\s+de\s+semana|disponibilidad|disponibles?)\b/i;
+/**
+ * `[a-záéíóúñ]*`, NOT `\w*`. Without the u flag `\w` is [A-Za-z0-9_] and does
+ * not match "í" — and the conditional is exactly where Spanish puts this
+ * question: "funcionaría", "convendría", "quedaría". A first cut used `\w*`,
+ * matched none of them, and so the template this rule was written for passed
+ * its test by never reaching the rule at all.
+ */
+const SUITS_BEST_ES =
+  /\b(?:funciona|queda|conviene|sirve|viene|va)[a-záéíóúñ]*\s+mejor\b|\bmejor\s+(?:d[íi]a|hora|momento|horario)\b/i;
 
 function withoutATimingQuestion(body: string): string {
   const sentences = body.split(/(?<=[.?!])\s+/);
   const last = sentences[sentences.length - 1] ?? "";
   if (!last.includes("?")) return body;
-  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last)) return body;
+  if (!ASKS_ABOUT_TIMING.test(last) && !ASKS_ABOUT_TIMING_ES.test(last) && !SUITS_BEST_ES.test(last)) return body;
   const kept = sentences.slice(0, -1).join(" ").trim();
-  return kept || body;
+  /**
+   * AND WHAT IS LEFT HAS TO BE A MESSAGE.
+   *
+   * `kept || body` only caught the empty case. "Disculpe." is not empty and is
+   * not a message either — it is the apology that preceded the question, sent
+   * on its own to a customer who asked us something. A text that says nothing
+   * is worse than one asking a question slightly too early: the customer reads
+   * it as the bot breaking, and nothing in the thread invites them to reply.
+   *
+   * BARE_ACKNOWLEDGEMENT is the test the validator already applies to the
+   * model's own rapport, and it already covers both languages including
+   * "disculpe" — so this is the same standard, not a second opinion about it.
+   */
+  if (!kept || BARE_ACKNOWLEDGEMENT.test(kept)) return body;
+  return kept;
 }
 
 /** Availability is the fourth leg, so it is due only once three are done. */
 const AVAILABILITY_STEP = 3;
+
+/**
+ * The ask the flow is actually waiting for, for a turn whose own question was
+ * stripped as too early. See the use below.
+ *
+ * ── WHAT IT ASKS IS DECIDED BY WHAT IS MISSING, NOT BY flowStage ────────────
+ *
+ * The first version took flowStage and mapped 0/1/2 to project details,
+ * address and contact. flowStage is stageFromIntents(priorIntents) — the
+ * highest leg the BOT has asked about, which is not the same as what we hold.
+ * The ordinary PPP web-form lead arrives with Inquiry Notes, an address and an
+ * email already on the record and flowStage 0, so:
+ *
+ *   stage 0   "What are you looking to have painted?" to a lead whose Inquiry
+ *             Notes say what they want painted — A13, on message one.
+ *   stage 1   "What's the address for the project?" with the address on file.
+ *
+ * Both are asks the validator refuses outright when the agent chooses them:
+ * ASK_SUPERSEDED_BY refuses ask_address when an address is held and
+ * ask_contact when name and email are held. Appending the template directly
+ * walked around that, so a refused intent went out as part of another one.
+ *
+ * So the legs are checked in order and the first UNMET one is asked. A second
+ * property reopens the address leg — the customer has told us about a place we
+ * have no address for — which is the same exception renderBody makes.
+ *
+ * Returns null when we hold everything. The caller then keeps the original
+ * availability question rather than appending nothing: if scope, address and
+ * contact are all in hand, availability genuinely is the next leg, and the
+ * only reason it was stripped is that flowStage disagreed.
+ */
+function nextFlowAsk(input: RenderInput): string | null {
+  const es = input.language === "es";
+  const known = input.known ?? {};
+  const haveAddress = !!known.address?.trim() && !input.secondProperty;
+  const legs: [boolean, Intent][] = [
+    [!known.scope?.trim(), "ask_project_details"],
+    [!haveAddress && !input.addressAskedBefore, "ask_address"],
+    [!known.email?.trim() && !known.phone?.trim(), "ask_contact"],
+  ];
+  /**
+   * UNMET, AND PREFERABLY NOT ONE ALREADY PUT TO THEM.
+   *
+   * flowStage is the wrong thing to pick the ask FROM — that was the bug — but
+   * it is still the only record of what the bot has already asked this
+   * customer. A leg behind flowStage was asked and went unanswered, and asking
+   * it again in the same breath as another intent's answer is how a thread
+   * starts repeating itself.
+   *
+   * So: the first unmet leg at or after where the flow has reached, and
+   * failing that the first unmet leg at all — something we still do not have
+   * is worth asking twice rather than never.
+   */
+  const stage = input.flowStage ?? 0;
+  const intent = legs.find(([unmet], i) => unmet && i >= stage)?.[1]
+    ?? legs.find(([unmet]) => unmet)?.[1];
+  if (!intent) return null;
+
+  const variants = (es ? SAYS_ES[intent] : SAYS[intent]) ?? [];
+  const pick = variants.find((v) => v.includes("?")) ?? "";
+  if (!pick) return null;
+  /**
+   * THE QUESTION ONLY, NOT THE WHOLE TEMPLATE.
+   *
+   * The comment here used to promise "the plainest variant rather than the
+   * turn-rotated one" and the code then indexed by turn, so what got bolted on
+   * was a complete message including its own opener:
+   *
+   *   "That's one for the estimator, and they'll go through it with you.
+   *    Happy to help. What's the project you're looking to get done?"
+   *
+   * Two openers in one SMS, with the rapport arriving in the middle — the
+   * stacked-acknowledgement shape OPENS_WITH_ACKNOWLEDGEMENT exists to stop,
+   * and invisible to it because this concatenation happens after renderBody
+   * has finished. Taking the last interrogative sentence leaves the ask and
+   * drops the greeting in front of it.
+   */
+  const sentences = pick.split(/(?<=[.?!])\s+/).filter((s) => s.trim());
+  return sentences.reverse().find((s) => s.includes("?"))?.trim() ?? null;
+}
 
 export function renderMessage(input: RenderInput): string {
   /**
@@ -1154,9 +1322,45 @@ export function renderMessage(input: RenderInput): string {
   const isCallbackQuestion =
     input.intent === "schedule_follow_up"
     && ASKED_FOR_A_CALL.test(input.customerText ?? "");
-  const body = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion
-    ? withoutATimingQuestion(renderBody(input))
-    : renderBody(input);
+  /**
+   * STRIPPING THE QUESTION MUST NOT LEAVE THE TURN WITH NOTHING TO ASK.
+   *
+   * Seen in the sandbox against production, turn one, on one of the commonest
+   * openings there is — "how long does it take to paint a 3 bedroom house?":
+   *
+   *   "I'm an AI assistant, but I can take your project details and pass them
+   *    along once we open. The estimator will confirm that with you directly."
+   *
+   * Correct, and a dead end. defer_to_estimator's template ends on an
+   * availability question precisely so the turn cannot read as a sign-off, and
+   * at stage 0 that question is stripped as too early — rightly, availability
+   * is the fourth leg. Nothing replaced it, so the bot answered and asked for
+   * nothing, and the next move was the customer's to make or not.
+   *
+   * A33 is explicit: "answer what can be answered, name who answers the rest,
+   * and leave the conversation open ON A QUESTION."
+   *
+   * So the question that was too early is replaced by the one that is actually
+   * due. It is still a single ask, so A22 holds, and it is the step the order
+   * says comes next, so the flow is not skipped.
+   */
+  const stripTiming = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion;
+  const rendered = renderBody(input);
+  let body = stripTiming ? withoutATimingQuestion(rendered) : rendered;
+  if (stripTiming && tooEarlyToAskAboutDays && body !== rendered && body && !body.includes("?")) {
+    const due = nextFlowAsk(input);
+    /**
+     * NO DUE ASK MEANS THE STRIP WAS WRONG, SO IT IS UNDONE.
+     *
+     * nextFlowAsk returns null only when scope, address and contact are all on
+     * file — in which case availability really is the next leg and the only
+     * thing that said otherwise was flowStage, which counts what the bot has
+     * ASKED rather than what we hold. Appending nothing would leave the dead
+     * end this whole branch exists to close: an answer with no question, and
+     * the next move the customer's to make or not.
+     */
+    body = due ? `${body} ${due}` : rendered;
+  }
   if (!body || !ACKNOWLEDGES_A_TIME.has(input.intent)) return body;
   const timed = replyToRequestedTime(input.customerText);
   if (!timed || timed.verdict !== "in_hours") return body;
@@ -1214,6 +1418,27 @@ function renderBody(input: RenderInput): string {
   const gap = input.intent === "ask_address" && (input.addressGap === "zip" || input.addressGap === "street")
     ? input.addressGap
     : null;
+  /**
+   * AND THE SAME FOR THE CONTACT, which it never had.
+   *
+   * ask_contact's templates all ask for the name AND the email, and
+   * ASK_SUPERSEDED_BY only refuses the intent when both are held — so holding
+   * one and not the other asked for both, including the one on file. That is
+   * the first half of A13 and 165 of the 206 breaches Kate annotated.
+   *
+   * Narrowed exactly as the address is: ask for the missing half. When BOTH
+   * are missing this stays null and the ordinary ask stands, which is already
+   * the right question.
+   */
+  const contactGap: "name" | "email" | null = input.intent === "ask_contact"
+    ? (() => {
+      const haveName = !!input.known?.name?.trim();
+      const haveEmail = !!input.known?.email?.trim();
+      if (haveName && !haveEmail) return "email";
+      if (haveEmail && !haveName) return "name";
+      return null;
+    })()
+    : null;
   // Same idea for availability: they named days but no window, or a time but
   // no day, so ask for the missing half rather than the whole question.
   const availGap = input.intent === "ask_availability"
@@ -1253,6 +1478,8 @@ function renderBody(input: RenderInput): string {
     ? (es ? PHONE_PRICING_NO_ADDRESS_ES : PHONE_PRICING_NO_ADDRESS)
     : refused
     ? (es ? ASK_ADDRESS_REFUSED_ES : ASK_ADDRESS_REFUSED)
+    : contactGap
+    ? (es ? ASK_CONTACT_GAP_ES : ASK_CONTACT_GAP)[contactGap]
     : gap
     ? (es ? ASK_ADDRESS_GAP_ES : ASK_ADDRESS_GAP)[gap]
     : availGap

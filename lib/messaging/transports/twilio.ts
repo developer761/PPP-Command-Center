@@ -28,7 +28,15 @@ import type { E164 } from "../phone";
 import type { MessageTransport, SendResult } from "../transport";
 import type { TwilioChoice } from "../transport-config";
 import { randomUUID } from "crypto";
-import { reportWarn } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+
+/**
+ * The last four digits, for an alert that needs to name a thread without
+ * carrying a contact detail into Slack. See observability.ts.
+ */
+function last4(phone: string): string {
+  return phone.slice(-4);
+}
 
 /**
  * Twilio keeps its own opt-out list and enforces it before we do. A send
@@ -145,14 +153,58 @@ export class TwilioTransport implements MessageTransport {
      *
      * What is lost is delivery-receipt correlation for that one message, which
      * is a reporting gap. What is avoided is texting somebody five times.
+     *
+     * ── BUT ONLY WHEN IT WAS TWILIO THAT ANSWERED ───────────────────────────
+     *
+     * The first version of this keyed on res.ok, which is any 2xx from
+     * anything. A proxy, a captive portal or an egress appliance answering 200
+     * with an HTML page landed in the unparsed branch, and the message that
+     * never reached Twilio was recorded as sent — permanently, because the
+     * only thing that updates delivery_status is a status callback carrying
+     * the sid, and there is no sid. It would sit in the thread marked sent and
+     * nobody would ever ask again. That is a worse failure than the duplicate
+     * it was written to avoid: a duplicate is visible and embarrassing, a drop
+     * is invisible and the customer simply never hears back.
+     *
+     * THE DISCRIMINATOR IS THE SID, AND FAILING THAT, THE 201.
+     *
+     * A sid is proof Twilio answered — nothing else mints one — so a body
+     * carrying one is accepted whatever the 2xx was. With no sid there is no
+     * proof, and the only thing left to go on is Twilio's documented success
+     * status. So: 201 and no sid is still accepted, because that is Twilio
+     * being odd; any OTHER 2xx with no sid is treated as never sent and
+     * throws, which retries, which is right for a message that did not go.
+     *
+     * Deliberately NOT keyed on content-type. `new Response(body)` sets
+     * text/plain, so that check would fail against every stub in the suite
+     * while passing in production for a reason unrelated to what it tests.
+     * The status and the sid are what Twilio's API actually documents.
      */
+    const contentType = res.headers.get("content-type") ?? "";
+    const notSent = (why: string) => new Error(
+      `${why} — treated as NOT SENT. Twilio answers 201 and mints a sid; a ${res.status} `
+      + `with content-type "${contentType || "none"}" and neither is likelier a proxy or `
+      + `captive portal than the carrier: ${text.slice(0, 300)}`
+    );
+
     let parsed: { sid?: string; status?: string; error_message?: string | null };
-    try { parsed = JSON.parse(text) as typeof parsed; }
-    catch {
-      reportWarn({
+    try {
+      const raw: unknown = JSON.parse(text);
+      // JSON.parse("null") and JSON.parse("5") both succeed and are not
+      // objects; reading .status off either throws a TypeError, past the line
+      // above saying nothing here may throw.
+      if (raw === null || typeof raw !== "object") throw new Error("not an object");
+      parsed = raw as typeof parsed;
+    } catch {
+      if (res.status !== 201) throw notSent(`A ${res.status} with a body that is not JSON`);
+      reportError({
         key: "twilio_unreadable_accept", platform: "ppp_cc",
-        message: "Twilio accepted a send and returned a body we could not parse — recorded as sent with an id of ours",
-        context: { to, body: text.slice(0, 200) },
+        message: "Twilio answered 201 with a body we could not parse — recorded as sent with an id of ours, so it will NOT be retried and has no delivery receipt",
+        // LAST FOUR, not the number. observability.ts states the rule —
+        // customer phone numbers do not go into Slack messages or Vercel logs
+        // — and the transport has no conversation id to use instead. Four
+        // digits are enough to find the thread and are not a contact detail.
+        context: { toLast4: last4(to), status: res.status, body: text.slice(0, 200) },
       });
       return { providerId: `twilio-unparsed-${randomUUID()}` };
     }
@@ -169,10 +221,26 @@ export class TwilioTransport implements MessageTransport {
     }
 
     if (!parsed.sid) {
-      reportWarn({
+      /**
+       * JSON ALONE DOES NOT PROVE IT WAS TWILIO. An intermediary answering 200
+       * with `{"ok":true}` parses perfectly and has no sid, and accepting that
+       * is the same silent drop as the unparsed branch, through a different
+       * door. Only Twilio's documented 201 earns the benefit of the doubt.
+       */
+      if (res.status !== 201) throw notSent(`A ${res.status} whose JSON carries no sid`);
+      /**
+       * At 201 this really is Twilio. A created message with no sid is not
+       * something to retry — retrying is what sends it twice — but it is also
+       * the one message whose delivery nobody can ever confirm, so it is
+       * raised as an error rather than a warning. See the unparsed branch
+       * above for why the severity matters: a warning inside the first 30
+       * seconds of a cold start never reaches Slack, and this transport is
+       * driven by a one-minute cron.
+       */
+      reportError({
         key: "twilio_accept_without_sid", platform: "ppp_cc",
-        message: "Twilio accepted a send and returned no sid — recorded as sent with an id of ours",
-        context: { to, status: parsed.status ?? null },
+        message: "Twilio accepted a send and returned no sid — recorded as sent with an id of ours, so it has no delivery receipt and will not be retried",
+        context: { toLast4: last4(to), status: parsed.status ?? null },
       });
       return { providerId: `twilio-nosid-${randomUUID()}` };
     }

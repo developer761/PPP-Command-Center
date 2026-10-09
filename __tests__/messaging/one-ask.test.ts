@@ -145,3 +145,74 @@ describe("a sentence that does not ask cannot be an ask", () => {
     expect(tooManyAsks("And what's the best name and email for the estimate?")).toBeNull();
   });
 });
+
+/**
+ * A CONFIRMATION PLUS AN OPEN ASK IS TWO ASKS.
+ *
+ * These are not invented: every "breach" case below is a bot message from
+ * Kate's own corpus that she graded as an A22 breach and that the earlier
+ * checks missed. Of her 61 A22 breaches carrying the faulted text, they caught
+ * 49; ten of the twelve misses are this one shape — a scope or zip
+ * confirmation followed by an ask for a new field.
+ *
+ * Neither earlier check can see it. There is only ONE yes/no question, and the
+ * produced-field count is skipped whenever the message reads a held value
+ * back, which a message of this shape nearly always does.
+ *
+ * The "allowed" cases are messages Kate PRAISED. The rule newly flags zero of
+ * all 651 she praised, which is the half worth protecting: a one-ask opener
+ * must stay legal.
+ */
+describe("a confirmation and a new ask are two asks (from Kate's corpus)", () => {
+  it.each([
+    "Got it! I have a bedroom and hallway(s) for painting, is that correct? What's the full address for the property, including the zip?",
+    "Got it! I have interior painting for a new home, is that correct? Also, what's the full address for the new home, including the zip?",
+    "Got it. I have a 2-bedroom apartment with a couple minor wall patches, is that right? What's the full address for the quote, including the zip?",
+  ])("flags: %j", (text) => {
+    expect(tooManyAsks(text), "this is two asks and went out as one").toBeTruthy();
+  });
+
+  /**
+   * WHAT IS STILL MISSED, named rather than left to be rediscovered.
+   *
+   * 52 of Kate's 61 A22 breaches are caught. The remaining nine are two other
+   * shapes, both left alone deliberately: widening the rule to reach them is
+   * what produced the 25 false positives described below, and a rail that
+   * drops good messages costs more than one that misses some bad ones.
+   *
+   *   ONE SENTENCE, BOTH ASKS
+   *     "Okay! Is {zip} the correct zip code for the house, and what's the
+   *      full street address?"
+   *     The confirmation and the open ask share a sentence, so the
+   *     separate-sentence requirement cannot see it.
+   *
+   *   TWO BARE CONFIRMATIONS
+   *     "Got it! Painting the living room, dining room, and hallway ceilings,
+   *      correct? Is {address} the correct address?"
+   *     Two closed questions, but "correct?" alone carries no yes/no verb, so
+   *     YES_NO counts one instead of two.
+   *
+   * Worth raising with Kate before chasing either: she grades A22 as "a
+   * judgement call, so expect looser blind-rater agreement than a mechanical
+   * rule", and this is where that judgement sits.
+   */
+
+  /**
+   * AND THE ONE-ASK MESSAGES STAY LEGAL. The first version of this rule tested
+   * "some sentence confirms" and "some sentence asks openly" independently, so
+   * ONE sentence could satisfy both — "What are you looking to have painted?"
+   * carries "are" and a question mark. It flagged 25 of Kate's praised
+   * messages before the two were required to be separate sentences.
+   */
+  it.each([
+    "Hi! What kind of project are you looking to get a quote for?",
+    "Got it. What painting project are we quoting for?",
+    "Yes, we do. Our estimates are free. What are you looking to have painted or worked on?",
+    "Hey! Just circling back so we can get your free estimate lined up. What day and time window next week is easiest for you?",
+    "Got it. What's the address for the project?",
+    "Is {address} the correct address?",
+    "What days work best for you this week?",
+  ])("allows: %j", (text) => {
+    expect(tooManyAsks(text), "a single ask was flagged as two").toBeNull();
+  });
+});

@@ -194,8 +194,32 @@ export type SendRequest = {
    * replying at any hour, 2026-09-22.
    *
    * It does NOT make the message unconditional. It makes it answerable.
+   *
+   * It also does not last. A caller whose send can sit in a queue must say
+   * WHEN the message it answers arrived — see answersInboundAt.
    */
   answersInbound?: boolean;
+  /**
+   * WHEN THE MESSAGE BEING ANSWERED ARRIVED, for a caller that can be stale.
+   *
+   * answersInbound is a claim about the present: this customer just wrote, so
+   * finishing the conversation is theirs and not ours. A review queue breaks
+   * that. A draft is written the moment a customer texts and nothing ages one
+   * out — the only non-terminal state is `pending` — so the claim can be three
+   * days old by the time somebody presses Send, and it would still waive the
+   * weekend rule, the holiday rule and PPP's own hours.
+   *
+   * Given a time, the gate checks it against the start of the RECIPIENT's day,
+   * the same boundary the daily cap uses. Same day, still a reply; yesterday,
+   * and this is PPP initiating contact under the narrower window, which is
+   * what a reviewer at 8:45 PM should be told.
+   *
+   * Absent means fresh by construction, which is true of every other caller:
+   * the autosend and the held reply run inside the turn that read the inbound,
+   * and the after-hours reply answers the text that triggered it. None of them
+   * has a queue in front of it for a day to pass in.
+   */
+  answersInboundAt?: string | Date | null;
   /**
    * A REPLY THE CARRIER OR THE LAW REQUIRES, which PPP's own rails may not
    * silently swallow.
@@ -349,11 +373,54 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     return { ok: false, reason: "suppressed" };
   }
 
+  // The caller's own answer wins when it has one; otherwise ask the database.
+  // A dep that throws must not take the send with it — an unknown state is
+  // handled (the restrictive zone), an exception is not.
+  //
+  // Resolved HERE, above the window rules, because answersInbound below is
+  // decided on the customer's own day and must use the same zone the window
+  // does. Two places resolving it separately is how they come to disagree.
+  let toState = req.toState ?? null;
+  if (!toState && deps.customerState && to) {
+    try { toState = await deps.customerState(to); } catch { toState = null; }
+  }
+  const zone = customerZone({ zipState: toState, phone: to ?? null });
+
+  /**
+   * ANSWERING SOMEBODY IS NOT THE SAME AS ANSWERING THEM FOUR DAYS LATER.
+   *
+   * answersInbound buys the FEDERAL window (8am-9pm) instead of the
+   * workspace's narrower one, and waives the weekend and holiday rules. The
+   * justification is that somebody who texted at 8:30pm started the
+   * conversation themselves, so finishing it is not PPP picking odd hours.
+   *
+   * That justification has a shelf life, and it is the customer's day. A
+   * draft sits in a review queue with nothing ageing it out, so the claim
+   * "this answers a message they sent" was true when the draft was written
+   * and may be three days stale when somebody presses Send. Approving a
+   * Monday-afternoon text at 8:45 PM on Christmas Eve is not answering
+   * anybody; it is initiating contact, under the wider window, on a closed
+   * day, which is the one thing these three rules exist to stop.
+   *
+   * So a caller that CAN be stale passes answersInboundAt and the claim is
+   * checked against the recipient's own midnight — the same boundary the
+   * daily cap uses, for the same reason. Same day, still a reply.
+   *
+   * Absent means "fresh because of where this call is": the autosend and the
+   * held reply both run inside the turn that read the inbound, and the
+   * after-hours reply answers the text that woke it. There is no queue in
+   * front of any of them for a day to pass in.
+   */
+  const answering = req.answersInbound === true && (
+    req.answersInboundAt == null
+    || new Date(req.answersInboundAt).getTime() >= startOfDayIn(now, zone.timeZone).getTime()
+  );
+
   // A reply to a message the customer just sent answers within the FEDERAL
   // window rather than the workspace's own narrower one. See answersInbound:
   // the workspace hours exist so PPP does not start conversations at odd
   // times, and somebody who texted at 8:30pm has already started one.
-  const hours: QuietHours = req.answersInbound
+  const hours: QuietHours = answering
     ? { ...FEDERAL_BOUND }
     : { startHour: ws.quiet_hours_start, endHour: ws.quiet_hours_end };
 
@@ -369,14 +436,6 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
   //    emails already sit inside the window (09:00, and 15 minutes after a
   //    launch text), so enforcing it cannot delay anything they scheduled, and
   //    it removes any path to an email leaving at 3am.
-  // The caller's own answer wins when it has one; otherwise ask the database.
-  // A dep that throws must not take the send with it — an unknown state is
-  // handled (the restrictive zone), an exception is not.
-  let toState = req.toState ?? null;
-  if (!toState && deps.customerState && to) {
-    try { toState = await deps.customerState(to); } catch { toState = null; }
-  }
-  const zone = customerZone({ zipState: toState, phone: to ?? null });
   const window = sendingWindow({
     now,
     customerZone: zone.timeZone,
@@ -388,14 +447,14 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
     customerZoneUnknown: zone.source === "fallback",
     officeZone: ws.time_zone,
     officeHours: hours,
-    answersInbound: req.answersInbound,
+    answersInbound: answering,
   });
   if (!window.open) {
     const retryAt = nextWindowOpen({
       now, customerZone: zone.timeZone,
       customerZoneUnknown: zone.source === "fallback",
       officeZone: ws.time_zone,
-      officeHours: hours, answersInbound: req.answersInbound,
+      officeHours: hours, answersInbound: answering,
     });
     // office_closed is PPP's own policy and quiet_hours is the legal bound.
     // Kept as separate refusals because they mean different things to whoever
@@ -420,7 +479,7 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
    * Not working Saturdays is a reason not to start a conversation on one; it
    * is not a reason to leave somebody who wrote to us unanswered.
    */
-  if (!req.answersInbound && !ws.send_on_weekends && isWeekendIn(now, ws.time_zone)) {
+  if (!answering && !ws.send_on_weekends && isWeekendIn(now, ws.time_zone)) {
     return { ok: false, reason: "weekend", retryAt: nextWeekdayOpen(now, ws.time_zone, hours) };
   }
 
@@ -460,7 +519,7 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
    * nudge, a campaign step. Nobody meant "do not answer somebody who writes to
    * you on Christmas Eve".
    */
-  if (!req.answersInbound && !ws.send_on_holidays && isHolidayIn(now, ws.time_zone)) {
+  if (!answering && !ws.send_on_holidays && isHolidayIn(now, ws.time_zone)) {
     return { ok: false, reason: "holiday", retryAt: nextOpenDay(now, ws.time_zone, hours, ws.send_on_weekends) };
   }
 
@@ -508,7 +567,7 @@ export async function gatedSend(req: SendRequest, deps: GateDeps): Promise<GateR
       now: tomorrow, customerZone: zone.timeZone,
       customerZoneUnknown: zone.source === "fallback",
       officeZone: ws.time_zone,
-      officeHours: hours, answersInbound: req.answersInbound,
+      officeHours: hours, answersInbound: answering,
     }) ?? nextSendableTime(tomorrow, ws.time_zone, hours);
     return { ok: false, reason: "daily_cap", retryAt };
   }

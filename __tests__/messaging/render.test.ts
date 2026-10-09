@@ -565,10 +565,56 @@ describe("the callback question survives the timing-question guards", () => {
   it("still strips a genuine availability ask that is too early", () => {
     // The guard must keep biting where it was meant to, or this carve-out
     // has quietly disabled it.
+    //
+    // ASSERTED ON THE SUBJECT, NOT ON THE PUNCTUATION. This used to require
+    // the message not to end in "?" at all, which was a proxy for "the days
+    // question is gone" — and it stopped being a good one once a stripped
+    // question is replaced by the ask the flow is actually waiting for.
+    // Checking the subject is the stricter version of the same rule.
     const out = renderMessage({
       intent: "defer_to_estimator", turn: 0, customerText: "how much will it cost?",
       flowStage: 0,
     } as never);
-    expect(out).not.toMatch(/\?$/);
+    expect(out).not.toMatch(/what days|what sort of days|days (?:generally )?work|suit you/i);
+  });
+
+  /**
+   * AND IT MUST NOT LEAVE THE TURN WITH NOTHING TO ASK.
+   *
+   * Found in the sandbox against production on turn one, answering "how long
+   * does it take to paint a 3 bedroom house?":
+   *
+   *   "I'm an AI assistant, but I can take your project details and pass them
+   *    along once we open. The estimator will confirm that with you directly."
+   *
+   * Correct, and a dead end. A33 is explicit that the turn leaves the
+   * conversation open ON A QUESTION, and the one the template carries is
+   * stripped at this stage for being the fourth leg.
+   */
+  it("replaces the too-early question with the one that is due", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 0, customerText: "how long does it take?",
+      flowStage: 0,
+    } as never);
+    expect(out).toMatch(/\?/);
+    // Stage 0 is project details — not the address, not availability.
+    expect(out).toMatch(/painted|project/i);
+    expect(out).not.toMatch(/what days|address/i);
+  });
+
+  it("asks for the address when that is the step that is due", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 0, customerText: "how long does it take?",
+      flowStage: 1,
+    } as never);
+    expect(out).toMatch(/address/i);
+  });
+
+  it("leaves the template alone once availability really is due", () => {
+    const out = renderMessage({
+      intent: "defer_to_estimator", turn: 0, customerText: "how long does it take?",
+      flowStage: 3,
+    } as never);
+    expect(out).toMatch(/days/i);
   });
 });

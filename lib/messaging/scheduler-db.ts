@@ -7,6 +7,7 @@
 import { messagingDb } from "./db";
 import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
+import { HELP_INTENT } from "./compliance";
 import { fillMergeFields } from "./merge-fields";
 import { agentConfigFor } from "./agent-config-for";
 import { loadRetrievalCorpus, loadWorkspaceServices } from "./db";
@@ -86,6 +87,36 @@ export function schedulerDeps(): SchedulerDeps {
      * not fail the message that just went out. The call centre carries on as
      * it was, which is the status quo rather than a new failure.
      */
+    /**
+     * An earlier step of this cadence still waiting. See
+     * SchedulerDeps.earlierStepPending for why run_at alone stopped
+     * guaranteeing the order.
+     *
+     * A read failure answers TRUE — "something earlier may still be waiting" —
+     * because the cost of the two mistakes is not equal. Deferring a step that
+     * was actually ready loses an hour. Sending step 3 before step 2 tells the
+     * call centre the cadence is spent and then texts the customer again, and
+     * neither of those can be taken back.
+     */
+    async earlierStepPending(a) {
+      if (a.stall_step == null) return false;
+      const { count, error } = await sb.from("sms_scheduled_actions")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", a.conversation_id)
+        .eq("action", "stall_followup")
+        .lt("stall_step", a.stall_step)
+        .in("state", ["pending", "claimed"]);
+      if (error) {
+        reportWarn({
+          key: "stall_step_order_unknown", platform: "ppp_cc",
+          message: "could not tell whether an earlier follow-up is still waiting, so this one was held back",
+          context: { conversationId: a.conversation_id, actionId: a.id, step: a.stall_step, error: error.message },
+        });
+        return true;
+      }
+      return (count ?? 0) > 0;
+    },
+
     async onCadenceSpent(a) {
       try {
         const { data } = await sb.from("sms_conversations")
@@ -287,8 +318,18 @@ export function schedulerDeps(): SchedulerDeps {
       // One pending draft per conversation is a database rule; checking here
       // turns a constraint violation into a clean skip.
       const { data: existing } = await sb.from("sms_drafts")
-        .select("id").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
-      if (existing) return { kind: "skipped" as const, reason: "a reply is already waiting for review", retryable: true };
+        .select("id, created_at").eq("conversation_id", conv.id).eq("state", "pending").maybeSingle();
+      if (existing) {
+        return {
+          kind: "skipped" as const,
+          reason: "a reply is already waiting for review",
+          retryable: true,
+          // WHEN the wait began, so the scheduler can tell a wait from a
+          // standstill. Nothing ages a pending draft out, so without this the
+          // step defers hourly for ever. See SchedulerDeps.draftReply.
+          blockedSince: (existing as { created_at?: string | null }).created_at ?? null,
+        };
+      }
 
       const { data: msgs } = await sb.from("sms_messages")
         .select("id, direction, body, created_at, media_count")
@@ -341,7 +382,7 @@ export function schedulerDeps(): SchedulerDeps {
         return { kind: "skipped" as const, reason: "a reply to the latest message is already on its way" };
       }
       const stale = (held ?? [])
-        .filter((h) => (h as { reply_intent?: string | null }).reply_intent !== "help_response")
+        .filter((h) => (h as { reply_intent?: string | null }).reply_intent !== HELP_INTENT)
         .map((h) => h.id);
       if (stale.length) {
         await sb.from("sms_scheduled_actions").update({
@@ -725,8 +766,12 @@ export function schedulerDeps(): SchedulerDeps {
           return { kind: "held" as const, at: dueAt };
         }
 
+        // ANSWERS THE INBOUND IT WAS WRITTEN FOR, like the held reply below.
+        // Without this the immediate autosend obeyed the window for contact
+        // PPP STARTS, so the same reply to the same message was legal or not
+        // depending only on whether that workspace has a reply delay set.
         const sent = await gatedSend(
-          { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend" },
+          { workspace: wsFull, to, body: res.rendered, agent: "agent_autosend", answersInbound: true },
           gateDeps(sb)
         );
         if (sent.ok) {
@@ -796,7 +841,7 @@ export function schedulerDeps(): SchedulerDeps {
       const { data: latest } = await sb.from("sms_messages")
         .select("id").eq("conversation_id", conv.id).eq("direction", "inbound")
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (latest && latest.id !== a.answers_message_id && a.reply_intent !== "help_response") {
+      if (latest && latest.id !== a.answers_message_id && a.reply_intent !== HELP_INTENT) {
         return { kind: "skipped" as const, reason: "the customer texted again before it was due" };
       }
 
@@ -823,7 +868,7 @@ export function schedulerDeps(): SchedulerDeps {
         {
           workspace: ws, to, body: a.reply_body, agent: "agent_autosend",
           answersInbound: true,
-          required: a.reply_intent === "help_response",
+          required: a.reply_intent === HELP_INTENT,
         },
         gateDeps(sb)
       );

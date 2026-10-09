@@ -22,7 +22,7 @@ import { knownCustomerPrompt, knownFields, type KnownCustomer } from "./known-cu
 import { quoteCustomer, UNTRUSTED_NOTE } from "./untrusted";
 import { addressGap } from "./address";
 import { jobRoute, offsiteReasonFor } from "./offsite";
-import { availabilityGap, availabilityGapAcross } from "./availability";
+import { availabilityGap, availabilityGapAcross, retractsAvailability } from "./availability";
 import { statedConstraint } from "./reachability";
 import { requestedTime } from "./appointment-time";
 import { disclosureMove, applyDisclosure, alreadyDisclosed } from "./disclosure";
@@ -314,6 +314,13 @@ part of that day suits them — morning or afternoon is enough — and only then
 is availability collected. The same the other way round: a time with no day is
 also half. Do NOT treat either half as done and do NOT close on it; the system
 refuses that close and the conversation goes to a person instead of forward.
+
+AND A BARE YES IS A WHOLE ANSWER. If you have just asked when suits them and
+they reply only "yes please", "sure", "that works" — anything that agrees and
+names nothing — that IS availability. Kate's rule: a non-answer counts. Treat
+it as "any day is fine", move the conversation ON, and do NOT ask the same
+question again. Asking twice for something they have already agreed to is the
+loop that makes a customer stop replying, and the system now refuses it.
 
 MORE THAN ONE PROPERTY. If they mention a second place, take them ONE AT A
 TIME: finish the whole flow for the first property, then start again for the
@@ -1102,6 +1109,9 @@ Choose the next action.`;
       photos: opts.mediaCount ?? 0,
       known: {
         address: kf.address, phone: kf.phone, email: kf.email, scope: kf.inquiryScope,
+        // Needed by contactGap, which narrows ask_contact to the half we do
+        // not hold. knownFields has always produced it; nothing passed it on.
+        name: kf.name,
         zip: opts.zip ?? null, state: opts.stateName ?? null,
       },
       // Narrows ask_address to the part we are actually missing.
@@ -1146,7 +1156,29 @@ Choose the next action.`;
        * suits you then?" — asking a customer who had said nothing at all to
        * fill in the half we had invented for them.
        */
-      availabilityGap: availabilityGap(ownWords),
+      /**
+       * EXCEPT WHEN THE MESSAGE IS TAKING A DAY BACK.
+       *
+       * Per-message is right for the ordinary case, and the comment above says
+       * why: this wording is about what the customer just wrote. But it reads
+       * any day it finds as a day SUPPLIED, and a retraction names the day it
+       * is withdrawing.
+       *
+       * Seen live in the Spanish sandbox, 2026-10-08:
+       *
+       *   customer  "Surgio algo, el martes ya no puedo"
+       *   bot       "No hay problema. Qué horario le funciona esos días?"
+       *
+       * It asked what TIME works on "those days" when the day was the thing
+       * being cancelled. The validator had it right — availabilityGapAcross
+       * clears on a retraction, which is why ask_availability was available at
+       * all — and this copy did not, so the two disagreed about one message
+       * and the customer got a question about a day they had just withdrawn.
+       *
+       * "both" rather than re-running the parser: after a retraction the DAY
+       * is the thing missing, and the unnarrowed ask is the right question.
+       */
+      availabilityGap: retractsAvailability(ownWords) ? "both" : availabilityGap(ownWords),
       // What we DO cover, for the one case that needs it: turning work down.
       // Capped, because this goes out as a text message and the full list is
       // fifteen rows long.

@@ -86,8 +86,19 @@ const CHAINS = [
       // see "a bare yes to the availability question counts as availability"
       // below, which pins what goes in it. This chain is about WHAT is judged.
       ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGapAcross\(customerSaid[,)]/],
-      // The renderer stays per-message, but on ownWords rather than the narration.
-      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\)/],
+      /**
+       * The renderer stays per-message, but on ownWords rather than the
+       * narration — which is the property this link is for.
+       *
+       * It used to pin `availabilityGap: availabilityGap(ownWords)` exactly,
+       * and went red when that call was wrapped in a retraction guard — see
+       * "the validator and the renderer agree about a retracted day" below.
+       * The thing it protects, that the per-message gap reads the customer's
+       * OWN words and not the narration quoting our question back, was never
+       * touched. Pinning the surrounding expression pins the implementation;
+       * the call with ownWords in it is the rule.
+       */
+      ["lib/messaging/agent-run.ts", /\bavailabilityGap\(ownWords\)/],
       ["lib/messaging/agent-output.ts", /ctx\.availabilityGap/],
       /**
        * AND THE MODEL IS TOLD, which is the half that was missing.
@@ -693,11 +704,24 @@ const CHAINS = [
       "March, opted back in, and filled the form again in October was never contacted",
     links: [
       ["lib/messaging/gate-deps.ts", /\.eq\("phone_e164", target\.phone\)\.is\("opted_in_at", null\)/],
-      ["lib/messaging/lead-poll.ts", /\.in\("phone_e164", phones\)\.is\("opted_in_at", null\)/],
+      /**
+       * THE FILTER, NOT THE VARIABLE IT READS.
+       *
+       * This matched `.in("phone_e164", phones).is("opted_in_at", null)`
+       * exactly, and went red the moment that read was wrapped in selectAllIn
+       * — which chunks, so the argument is `chunk` now. The property it
+       * protects, that this read filters on opted_in_at, was never broken.
+       *
+       * Pinning the variable name pins the implementation. The rule is that
+       * the lead poll's suppression read is filtered the way gate-deps filters
+       * it, so that is what gets asserted.
+       */
+      ["lib/messaging/lead-poll.ts", /\.in\("phone_e164", \w+\)\s*\.is\("opted_in_at", null\)/],
     ],
     forbidden: [
       // The unfiltered read is the bug, and it looks perfectly reasonable.
-      ["lib/messaging/lead-poll.ts", /select\("phone_e164"\)\.in\("phone_e164", phones\)\s*$/m],
+      // Any argument name, for the same reason as the link above.
+      ["lib/messaging/lead-poll.ts", /select\("phone_e164"\)\.in\("phone_e164", \w+\)\s*$/m],
     ],
   },
   {
@@ -720,6 +744,31 @@ const CHAINS = [
       // The language dropped at the call site is invisible to every unit test:
       // offsiteReasonFor defaults to English and answers perfectly happily.
       ["lib/messaging/agent-run.ts", /offsiteReasonFor\(ownWords\)/],
+    ],
+  },
+  {
+    rule: "the validator and the renderer agree about a retracted day",
+    why:
+      "agent-run builds the availability gap TWICE on purpose: the validator asks whether there " +
+      "is bookable availability anywhere in the conversation (availabilityGapAcross) and the " +
+      "renderer words the follow-up about what the customer just wrote (availabilityGap on " +
+      "ownWords). That split is right and it had a hole — the per-message copy reads any day it " +
+      "finds as a day SUPPLIED, and a retraction names the day it is withdrawing. Seen live in " +
+      "the Spanish sandbox 2026-10-08: \"Surgio algo, el martes ya no puedo\" got \"No hay " +
+      "problema. Que horario le funciona esos dias?\", asking what TIME works on the day just " +
+      "cancelled. The validator had reopened the gap, which is why ask_availability was " +
+      "available at all; the renderer narrowed to the window. Two layers disagreeing about one " +
+      "message, and only the customer sees it",
+    links: [
+      // The renderer's per-message gap is guarded by the retraction test...
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*retractsAvailability\(ownWords\)\s*\?\s*"both"\s*:\s*availabilityGap\(ownWords\)/],
+      // ...and the validator's across-thread copy still clears on one too.
+      ["lib/messaging/availability.ts", /if \(retractsAvailability\(text\)\) \{/],
+    ],
+    forbidden: [
+      // The shape that shipped the wrong question, and it reads perfectly
+      // reasonably: the bare parser on the message that takes a day back.
+      ["lib/messaging/agent-run.ts", /availabilityGap:\s*availabilityGap\(ownWords\),/],
     ],
   },
   {

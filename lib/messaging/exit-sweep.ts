@@ -64,6 +64,13 @@ export type SweepSummary = {
   ended: number;
   reasons: Record<string, string>;
   why?: string;
+  /**
+   * True when the live-conversation read hit SWEEP_LIMIT, so this pass looked
+   * at a WINDOW rather than at everything live. The conversations past the
+   * limit were not swept, and nothing else sweeps them until the count drops.
+   * See the read for why that is now deterministic rather than solved.
+   */
+  truncated?: boolean;
 };
 
 export function batches<T>(items: T[], size = ID_BATCH): T[][] {
@@ -147,11 +154,46 @@ export async function sweepExitsFor(
     }).eq("id", true);
   };
 
-  // Live conversations only. An ended one has nothing left to cancel.
+  /**
+   * Live conversations only. An ended one has nothing left to cancel.
+   *
+   * ORDERED, BECAUSE A LIMIT WITHOUT ONE IS AN ARBITRARY WINDOW.
+   *
+   * This was `.limit(SWEEP_LIMIT)` with no sort, so WHICH 400 conversations
+   * got swept was whatever Postgres happened to hand back — different between
+   * runs, with no guarantee a given conversation is ever included. The file
+   * already knows this about its inner query and says so ten lines down: "a
+   * capped read looks exactly like a complete one."
+   *
+   * `created_at` ascending sweeps the oldest conversations first, which is
+   * the right end to start from — a lead that exited months ago is likelier
+   * to still have scripted steps queued than one opened today — and `id`
+   * breaks ties so the order is total rather than merely mostly stable.
+   *
+   * created_at and NOT last_message_at, which was the first choice and is a
+   * trap: that column is nullable, Postgres sorts NULLs LAST in an ascending
+   * order, and a conversation with no messages yet would therefore sort into
+   * the starved end of the window — while being exactly the kind most likely
+   * to have unsent steps queued behind it. created_at is NOT NULL.
+   *
+   * WHAT THIS DOES NOT FIX, named rather than left to be rediscovered: past
+   * SWEEP_LIMIT live conversations, the newest are never reached at all.
+   * Ordering makes that starvation deterministic instead of random, which is
+   * better and is not a solution. Rotating properly needs somewhere to record
+   * how far the last sweep got, which is a schema decision rather than a
+   * patch. Production has 6 live conversations against a limit of 400, so
+   * there is room to decide it against real numbers — and `truncated` makes
+   * the day it starts to matter visible instead of silent.
+   */
   const { data: live, error: liveErr } = await sb.from("sms_conversations")
-    .select("id").neq("state", "ended").limit(SWEEP_LIMIT);
+    .select("id")
+    .neq("state", "ended")
+    .order("created_at", { ascending: true })
+    .order("id")
+    .limit(SWEEP_LIMIT);
   if (liveErr) throw new Error(`could not list live conversations: ${liveErr.message}`);
   const liveIds = (live ?? []).map((c) => c.id as string);
+  const truncated = liveIds.length >= SWEEP_LIMIT;
   if (!liveIds.length) {
     await mark();
     return { ...empty, swept: true, why: "no live conversations" };
@@ -206,5 +248,5 @@ export async function sweepExitsFor(
 
   await mark();
 
-  return { swept: true, considered: Object.keys(records).length, ended, reasons };
+  return { swept: true, considered: Object.keys(records).length, ended, reasons, truncated };
 }

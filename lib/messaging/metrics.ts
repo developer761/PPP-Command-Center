@@ -114,6 +114,37 @@ export function qualificationFunnel(rows: ConversationRow[]): FunnelStep[] {
  */
 export const HANDED_TO_A_PERSON = new Set(["transferred", "bailout", "phone_pricing"]);
 
+/**
+ * WHAT "SUCCESS" MEANS, IN ONE PLACE.
+ *
+ * This existed twice. The agent and human tables counted success as
+ * `success` or `phone_pricing`; workspaceHealth counted `success` alone — and
+ * both are rendered under the word "Success", on /messaging/dashboard and
+ * /messaging/reporting respectively. The same conversations, two numbers,
+ * neither screen saying which it meant.
+ *
+ * db.ts records the decision and the fix: "success excluded phone_pricing,
+ * which PPP's own end states define as a success". That fix replaced the
+ * dashboard's copy and left this one, which is this codebase's most reliable
+ * bug shape — the fix landing on one twin.
+ *
+ * phone_pricing is the arguable member and is named rather than assumed, for
+ * the reason given above HANDED_TO_A_PERSON: the customer asked for a price,
+ * A1 says only the estimator gives one, so the bot ended it correctly and a
+ * person rang them. If Kate decides that is not a success, it changes here
+ * and both screens move together.
+ */
+export const SUCCESS_OUTCOMES = new Set(["success", "phone_pricing"]);
+
+/**
+ * Ended without getting what we needed and without a person stepping in.
+ *
+ * Also was two sets: workspaceHealth used `lost` or `discard`, the tables used
+ * these four. A conversation that bailed out or fell outside the service area
+ * counted as a drop on one screen and as nothing at all on the other.
+ */
+export const DROP_OFF_OUTCOMES = new Set(["lost", "discard", "bailout", "area_not_serviced"]);
+
 /** Finished, with no person needed at any point. */
 export function wasContained(r: ConversationRow): boolean {
   if (r.state !== "ended") return false;
@@ -248,8 +279,9 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
         workspace,
         active: rs.filter((r) => r.state !== "ended").length,
         completed: completed.length,
-        successPct: pct(completed.filter((r) => r.outcome === "success").length, completed.length),
-        dropOffPct: pct(completed.filter((r) => r.outcome === "lost" || r.outcome === "discard").length, completed.length),
+        // The same two sets the agent and human tables use. See SUCCESS_OUTCOMES.
+        successPct: pct(completed.filter((r) => SUCCESS_OUTCOMES.has(r.outcome ?? "")).length, completed.length),
+        dropOffPct: pct(completed.filter((r) => DROP_OFF_OUTCOMES.has(r.outcome ?? "")).length, completed.length),
         takeOverPct: pct(rs.filter((r) => r.takeover_reason !== null).length, rs.length),
         medianFirstReplySeconds: median(
           rs.map((r) => secondsBetween(r.created_at, r.first_outbound_at)).filter((n): n is number => n !== null)
@@ -416,9 +448,6 @@ export type AgentRow = {
 };
 
 const ACTIVE_STATES = new Set(["ai_active", "awaiting_customer", "human_active"]);
-/** Ended without getting what we needed and without a person stepping in. */
-const DROP_OFF_OUTCOMES = new Set(["lost", "discard", "bailout", "area_not_serviced"]);
-const SUCCESS_OUTCOMES = new Set(["success", "phone_pricing"]);
 
 export function agentPerformance(
   rows: (ConversationRow & { agent?: string | null; trigger?: string | null; tookOver?: boolean })[]

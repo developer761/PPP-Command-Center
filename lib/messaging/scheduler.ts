@@ -12,6 +12,7 @@
 import type { E164 } from "./phone";
 import type { GateResult, GateWorkspace, SendRequest, GateDeps } from "./gate";
 import { FOLLOW_UP_COUNT } from "./stalled";
+import { HELP_INTENT } from "./compliance";
 import { CarrierUnsubscribedError } from "./transports/twilio";
 
 /** After this many tries a row stops retrying and asks for a human. Five
@@ -125,8 +126,16 @@ export type SchedulerDeps = {
      * waiting on a reviewer, a person holding the thread. Without it every
      * skip was cancelled, and the cadence died on states that clear by
      * themselves. See the stall_followup branch below.
+     *
+     * `blockedSince` is when the thing being waited ON started, so "not for
+     * ever" can be CHECKED rather than taken on trust. Two of the three
+     * retryable reasons do clear by themselves. The draft one does not:
+     * nothing ages a pending draft out — `superseded` exists as a state and
+     * nothing in lib/ or app/ writes it — and a "deferral" reschedule refunds
+     * the attempt, so the step never reaches MAX_ATTEMPTS either. It defers
+     * hourly for ever.
      */
-    | { kind: "skipped"; reason: string; retryable?: boolean }
+    | { kind: "skipped"; reason: string; retryable?: boolean; blockedSince?: string | null }
   >;
   /**
    * Deliver a held reply at its moment: drop it if the customer has texted
@@ -143,6 +152,19 @@ export type SchedulerDeps = {
    * steps keeps working without supplying one.
    */
   onCadenceSpent?(a: DueAction): Promise<void>;
+  /**
+   * Is an EARLIER step of this conversation's cadence still waiting to go out?
+   *
+   * sms_claim_due_actions orders only by run_at, and each deferral pushes one
+   * row forward an hour, so two steps deferring at different moments drift out
+   * of sequence. Both live cadences in production are inverted — step 3 twenty
+   * five minutes ahead of step 2 — which would deliver escalating follow-ups
+   * backwards and, worse, fire onCadenceSpent before the remaining text,
+   * telling the phone team we were finished and then texting again.
+   *
+   * Optional so a worker without it behaves exactly as before.
+   */
+  earlierStepPending?(a: DueAction): Promise<boolean>;
   /**
    * The carrier refused because THEY have this person suppressed and we did
    * not. Closes the gap by writing our own row, so the next workspace to try
@@ -251,7 +273,7 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
      *
      * Carriers test HELP during A2P vetting, and these two cancels are silent.
      */
-    const required = a.reply_intent === "help_response";
+    const required = a.reply_intent === HELP_INTENT;
     if (!required && ctx.conversationState === "human_active") {
       const reason = "a person took the conversation over before the reply was due";
       await deps.cancel(a, reason);
@@ -369,6 +391,35 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
       await deps.cancel(a, reason);
       return { kind: "cancelled", reason };
     }
+    /**
+     * A CADENCE IS A SEQUENCE, AND run_at HAD STOPPED GUARANTEEING IT.
+     *
+     * sms_claim_due_actions orders only by run_at, and every deferral pushes
+     * ONE row forward an hour. Two steps deferring at different moments drift
+     * apart, and production has both live cadences inverted right now:
+     *
+     *   conversation 90d11ce5   step 2 at 17:32, step 3 at 17:07
+     *   conversation f55e914b   step 2 at 17:32, step 3 at 17:08
+     *
+     * Step 3 would go out twenty-five minutes before step 2. The follow-ups
+     * escalate, so the customer reads them backwards — and the worse half is
+     * the ending: onCadenceSpent fires on the LAST step, so handing the lead
+     * back to the call centre would happen first and the remaining text would
+     * arrive after we had told the phone team we were done.
+     *
+     * Deferred rather than cancelled, and retryable, so the step waits for its
+     * turn instead of being lost — the bound added for the draft case covers
+     * it, because an earlier step that never completes is the same kind of
+     * standstill.
+     */
+    if (a.action === "stall_followup" && deps.earlierStepPending && a.stall_step != null) {
+      if (await deps.earlierStepPending(a)) {
+        const reason = "an earlier follow-up in this cadence has not gone out yet";
+        const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
+        await deps.reschedule(a, at, reason, "deferral");
+        return { kind: "rescheduled", at, reason };
+      }
+    }
     try {
       const out = await deps.draftReply(a);
       if (out.kind === "sent") {
@@ -409,6 +460,40 @@ export async function runAction(a: DueAction, deps: SchedulerDeps): Promise<Acti
        * human_active horizon above still ends anything a person keeps.
        */
       if (out.retryable) {
+        /**
+         * AND "NOT FOR EVER" HAS TO BE CHECKED, OR IT IS FOR EVER.
+         *
+         * The comment above says the human_active horizon still ends anything
+         * a person keeps. It does not end THIS: that horizon is measured from
+         * ctx.takeoverAt, and a draft nobody ever opened has no takeover. So a
+         * stall_followup behind an abandoned draft deferred hourly with no
+         * bound at all — nothing ages a pending draft out, and a "deferral"
+         * reschedule refunds the attempt so MAX_ATTEMPTS is never reached
+         * either. The same four production rows this branch was written to
+         * rescue, in a different state.
+         *
+         * FAILED, NOT CANCELLED, and that distinction is the whole point.
+         * Cancelling is what produced the dead end above: stalled-db will not
+         * re-queue a cadence whose steps are cancelled, and a cancelled step
+         * does not count towards a spent one either, so the lead was neither
+         * chased nor called. A failed step DOES count (see
+         * resumeCallingIfSpent), so once the cadence is spent the lead goes
+         * back to the call centre — which is the right answer for a
+         * conversation the bot cannot advance and nobody is reviewing.
+         *
+         * The same fourteen days as the human hold, deliberately rather than a
+         * second number: the reasoning is identical — somebody has had this
+         * long enough that the scripted step is no longer the right thing to
+         * send — and a second horizon is one more thing to drift.
+         */
+        const since = out.blockedSince ? Date.parse(out.blockedSince) : NaN;
+        const stuck = Number.isNaN(since) ? 0 : (deps.now ?? new Date()).getTime() - since;
+        if (stuck > HUMAN_HOLD_HORIZON_MS) {
+          const reason = `${out.reason}, and has been for over two weeks — `
+            + "handing the lead back rather than deferring it again";
+          await deps.fail(a, reason);
+          return { kind: "failed", reason };
+        }
         const at = new Date((deps.now ?? new Date()).getTime() + 3600_000);
         await deps.reschedule(a, at, out.reason, "deferral");
         return { kind: "rescheduled", at, reason: out.reason };
@@ -548,6 +633,14 @@ export type TickSummary = {
   cancelled: number;
   failed: number;
   skipped: number;
+  /**
+   * The budget was already spent before a single row was claimed, so none was.
+   *
+   * Distinguished from a quiet tick because the two need opposite responses: a
+   * tick with nothing due is healthy, and a tick that never got to the queue
+   * means the work in front of it is eating the lambda.
+   */
+  outOfTimeBeforeClaiming?: boolean;
 };
 
 /** One tick. Returns counts so the caller can alert on them — a tick that
@@ -585,6 +678,29 @@ export async function runDueActions(
   /** Overridable so the budget can be tested in milliseconds rather than by
    *  waiting four minutes. Production uses the default. */
   budgetMs = TICK_BUDGET_MS,
+  /**
+   * WHEN THE LAMBDA STARTED, not when this function did.
+   *
+   * The budget exists to stop claiming work the lambda has no time to finish,
+   * because an abandoned claim costs an attempt that is never refunded — "gave
+   * up after 6 attempts" about a send nobody tried. It was measured from the
+   * first line of this function, and by then the tick route has already made
+   * FOUR Salesforce round trips: the lead poll, the exit sweep, the
+   * service-zip refresh and the opt-out writeback. None of that counted.
+   *
+   * So on a slow Salesforce day the route could spend 90 seconds, hand over
+   * here, and this would happily budget a further 240 — 330 against a
+   * maxDuration of 300. The lambda is killed mid-tick, every row still claimed
+   * is abandoned, and the three sweeps AFTER this never run at all. The exact
+   * failure the budget was written to prevent, caused by the budget.
+   *
+   * Measured from the request instead, so the prelude spends the same money as
+   * the queue does and the budget adapts: a 90-second Salesforce leg leaves
+   * 150 seconds of rows rather than pretending it leaves 240.
+   *
+   * Defaults to now so every existing caller and test is unchanged.
+   */
+  startedAt = Date.now(),
 ): Promise<TickSummary> {
   /**
    * REAL elapsed time, never deps.now. That clock is injected for business
@@ -593,7 +709,24 @@ export async function runDueActions(
    * every tick instantly over budget, which is how the first version of this
    * skipped every row in the suite.
    */
-  const startedAt = Date.now();
+  /**
+   * CHECKED BEFORE CLAIMING, which is the half that cost attempts.
+   *
+   * The per-row check below only runs after claimDue has already taken up to
+   * fifty rows, and `sms_claim_due_actions` increments attempts on the CLAIM.
+   * So a tick that arrived here with no budget left still burned an attempt on
+   * fifty messages it never looked at, every minute, until they failed.
+   *
+   * Claiming nothing leaves them pending with their attempts intact for the
+   * next tick, which is the whole point.
+   */
+  if (Date.now() - startedAt > budgetMs) {
+    return {
+      claimed: 0, sent: 0, drafted: 0, held: 0,
+      rescheduled: 0, cancelled: 0, failed: 0, skipped: 0,
+      outOfTimeBeforeClaiming: true,
+    };
+  }
   const claimed = await deps.claimDue(limit);
   const s: TickSummary = { claimed: claimed.length, sent: 0, drafted: 0, held: 0, rescheduled: 0, cancelled: 0, failed: 0, skipped: 0 };
   for (const a of claimed) {

@@ -150,7 +150,13 @@ describe("the grader's expected intent is read back", () => {
     expect(c.matchedExpectation).toBe(false);
   });
 
-  it("forgives how a person types an intent name", () => {
+  /**
+   * The field is a select now, so what arrives is already one of the intent
+   * names — but the forgiving comparison stays. Scenarios graded before the
+   * select existed carry whatever was typed into the free-text box it
+   * replaced, and those should still match where they plainly meant to.
+   */
+  it("forgives how a person typed an intent name before the field was a list", () => {
     const c = compareTurn(
       saved({ verdict: "wrong", expectedIntent: " Confirm Address " }),
       { ordinal: 1, intent: "confirm_address", message: "Is 1 Test St still right?" }

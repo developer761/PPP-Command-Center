@@ -50,3 +50,7 @@ next-env.d.ts
 scripts/.uninvoiced-backup.json
 scripts/.sf-deletions-backup.json
 findings-outside-kates-pass.csv
+
+# Gate stamp written by npm run gates and read by scripts/hooks/pre-push.
+# It names the git tree that passed, so it is true only of this machine.
+/.gates/

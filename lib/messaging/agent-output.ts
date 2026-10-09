@@ -327,7 +327,8 @@ export type RejectReason =
   | "address_question_walked_past" // A11: advanced on a question, which is not a refusal
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
-  | "second_property_uncollected";// closing a two-property job having collected one
+  | "second_property_uncollected" // closing a two-property job having collected one
+  | "availability_already_given";  // asking a fourth time for what Kate says we have
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -688,8 +689,35 @@ export const ECHO_WORDS = 5;
  * explanation. Excluding the second person keeps both and loses nothing that
  * she marked.
  */
+/**
+ * ── AND THE PURPOSE PREFACE, WHICH IS HALF OF HER A32 FINDINGS ──────────
+ *
+ * Scored against Kate's grading rather than guessed at. The clauses above
+ * catch 88 of the 198 A32 breaches in her corpus that carry the faulted bot
+ * message, and nearly all of the 110 missed are one family: the reason put in
+ * FRONT of the ask instead of behind it.
+ *
+ *   "To get you on the schedule, what day and time window works best?"
+ *   "Before I get this set up, can you send your first and last name?"
+ *   "Before we get your text quote moving, is {address} correct?"
+ *   "To get this moving, what's the full property address?"
+ *
+ * Same padding, same rule, different word order. With these added, recall on
+ * her corpus goes from 88/198 to 160/198, and the count of messages she
+ * praised FOR A32 that get wrongly flagged stays at zero.
+ *
+ * It does newly flag fifteen messages she praised for OTHER rules, which is
+ * expected rather than a cost: a message can answer the question well (A8)
+ * and still bolt a reason onto the ask (A32), and she grades those
+ * separately. The failure mode here is the cheap one too — a reason clause
+ * drops the RAPPORT and keeps the action, so a false positive costs one
+ * sentence and never the turn.
+ *
+ * FIRST PERSON ONLY, for the same reason as above: "before YOU" and "to get
+ * YOU a free quote" are the customer's benefit, not our process.
+ */
 const REASON_CLAUSE =
-  /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*/i;
+  /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*|\bbefore (?:we|i)\b[^.!?]*|\bto get (?:you|this|that|your)\b[^.!?]*|\bto set (?:this|you|that)\b[^.!?]*/i;
 
 export type RapportCheck = { ok: true } | { ok: false; why: string };
 
@@ -1748,6 +1776,39 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
           : "the job routes on-site, so the quick quote is OFFERED as an option with the reason the customer qualifies (A7), not presented as the plan",
       };
     }
+  }
+
+  /**
+   * ASKING FOR AVAILABILITY WE ALREADY HAVE.
+   *
+   * ASK_SUPERSEDED_BY covers the three legs that live in knownFields. The
+   * fourth does not: availability is derived from the conversation, so it has
+   * no field to be superseded by, and nothing stopped the bot asking again.
+   *
+   * Seen in the sandbox against production, after the whole flow had been
+   * collected:
+   *
+   *   Emily     "What days work best for you this week?"
+   *   customer  "yes please"
+   *   Emily     "What days work best for you this week?"
+   *
+   * Kate's rule is that a bare yes to that question IS availability — "a
+   * non-answer counts" — and the close guard was taught it this morning, so
+   * the gap is null and a close WOULD be allowed. The model asked again
+   * anyway, because nothing told it the answer had landed. One rule fixed and
+   * the loop still running: the validator permitted the way out and the model
+   * could not see it.
+   *
+   * So the redundant ask is refused, the same as asking for an address we
+   * hold. `null` means collected; `undefined` means the caller did not say,
+   * and then this does not fire — the usual shape for every guard here.
+   */
+  if (a.intent === "ask_availability" && ctx.availabilityGap === null) {
+    return {
+      ok: false,
+      reason: "availability_already_given",
+      detail: "availability has already been given — a bare yes to the availability question counts as open availability (A4), so move the conversation on rather than asking again",
+    };
   }
 
   const supersededBy = ASK_SUPERSEDED_BY[a.intent];

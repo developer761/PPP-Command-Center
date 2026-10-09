@@ -126,12 +126,18 @@ const BY_DESIGN = new Set([
 const PENDING_REMOVAL = new Map([
   ["sms_sub_accounts.44ed500b-80ad-481a-ac94-0e42dca0ee73.call_forward_to",
    "Karan's mobile, set to test voice on the toll-free pilot. Karan, 2026-10-01: "
-   + "\"before we go live we will reroute it\". MUST BE CLEARED BEFORE THE TOLL-FREE "
-   + "GOES LIVE — +18888156464 is the number printed in the registered sample "
-   + "messages (\"Call us at 888-815-6464\"), so once texts carry it, customers "
-   + "ring this phone instead of MAIN_LINE. Clearing it restores the documented "
-   + "design: voice-forward.ts says call_forward_to is NULL on every workspace "
-   + "and the fallback does the rest."],
+   + "\"before we go live we will reroute it\". MUST BE CLEARED OR REPOINTED BEFORE "
+   + "THE TOLL-FREE GOES LIVE — +18888156464 is the number printed in the "
+   + "registered sample messages (\"Call us at 888-815-6464\"), so once texts carry "
+   + "it, customers ring this phone instead of MAIN_LINE. "
+   + "KATIE ANSWERED THIS, 2026-10-08: the destination is +18779598490, and it is "
+   + "NOT to be set yet — \"We don't want forwards to go through yet during "
+   + "testing though. We can forward those to my number for testing if we need "
+   + "12102877930.\" So this stays on the list until somebody decides between "
+   + "three endings: leave it on Karan's phone for testing, repoint it to "
+   + "Katie's +12102877930 for testing, or set the real +18779598490 at go-live. "
+   + "Whichever is chosen, NULL on every workspace is the documented design — "
+   + "voice-forward.ts says so and the fallback does the rest."],
 ]);
 
 const ALLOWED = new Set([
@@ -144,6 +150,26 @@ const ALLOWED = new Set([
   // address, not a customer's. It is the one exception left, and it is keyed
   // to a single row and column so it cannot quietly cover anything else.
   "sms_class_a_rules.A13.rule_card",
+  /**
+   * TWO AUTHORED SCENARIO TURNS. A scenario that tests address collection has
+   * to contain an address — scrubbing it removes the thing under test, which
+   * is the same reasoning A13 above rests on.
+   *
+   * Demonstrably synthetic rather than lifted from a real thread: the
+   * scenario's own brief reads "S2 - lobby and hallways of a condo building, 3
+   * floors. Tests the commercial gate", and the contact turn is
+   * "dana@example.com" — example.com is reserved by RFC 2606 exactly so it can
+   * never be anybody's inbox.
+   *
+   * KEYED BY ROW, and that matters more here than anywhere else in this list.
+   * sms_scenario_turns is written by the simulator's "Save as a test", which
+   * takes whatever turns a person typed — so the day somebody replays a REAL
+   * conversation from Kate's corpus and saves it, that row holds a real
+   * customer's address, and it has to turn this sweep red. A column-wide
+   * exemption here would be the one that hides the leak this check exists for.
+   */
+  "sms_scenario_turns.d842f04f-4e0a-4072-979e-28ab3746bddc.customer_text",
+  "sms_scenario_turns.eef1b43f-b0b5-4d8a-84bc-9f10c1c950e5.customer_text",
 ]);
 
 /** Exactly a UUID, nothing else in the string. */

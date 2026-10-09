@@ -152,6 +152,36 @@ try {
   ok("…and the number is suppressed", (sup ?? []).length === 1);
   ok("…with the exact words kept as evidence", sup?.[0]?.inbound_body === "STOP", sup?.[0]?.inbound_body ?? "");
 
+  /**
+   * AND THE EMAIL HALF, which is the part that was missing.
+   *
+   * Migration 186: "PPP campaigns send both channels in one sequence —
+   * suppressing the SMS half only would keep emailing somebody who
+   * unsubscribed." It added the channel column for exactly this and nothing
+   * ever wrote 'both', so a customer who replied STOP to the launch text still
+   * got the campaign email fifteen minutes later.
+   *
+   * The widening reads the conversation for an address, so this asserts the
+   * two cases it can be in rather than demanding one: with an email on the
+   * record it must say 'both' and carry the address; without one, 'sms' is
+   * correct and there is nothing to suppress.
+   */
+  const { data: row } = await sb.from("sms_opt_outs")
+    .select("channel, email").eq("phone_e164", CUSTOMER).is("opted_in_at", null).limit(1);
+  const { data: convEmail } = await sb.from("sms_conversations")
+    .select("customer_email").eq("customer_phone", CUSTOMER)
+    .not("customer_email", "is", null).limit(1);
+  const hadEmail = !!convEmail?.[0]?.customer_email;
+  ok(
+    hadEmail
+      ? "…and STOP covers the email channel too"
+      : "…and the channel is sms, there being no address on the record",
+    hadEmail
+      ? row?.[0]?.channel === "both" && !!row?.[0]?.email
+      : row?.[0]?.channel === "sms",
+    `channel=${row?.[0]?.channel ?? "?"} email=${row?.[0]?.email ?? "none"} onRecord=${hadEmail}`
+  );
+
   // 5. A second STOP must not explode — on the partial unique index, nor on
   //    sms_conversations_ended_shape.
   //

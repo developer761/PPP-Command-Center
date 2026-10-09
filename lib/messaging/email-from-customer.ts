@@ -46,17 +46,42 @@ import { PPP_BRAND } from "../brand";
  */
 const AN_EMAIL = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/g;
 
-/** Our own domains, which a customer naming is not a customer giving. */
+/**
+ * Our own domains, which a customer NAMING is not a customer GIVING.
+ *
+ * PPP HAS TWO, AND THE BRAND KNOWS ONE. lib/brand.ts carries the website,
+ * which is the .net — and lib/auth/admin.ts has had both on its sign-in
+ * allow-list from the start, with a crossDomainEmailVariant helper whose whole
+ * job is that "kate@ppp.net" and "kate@ppp.com" are the same company.
+ *
+ * Only the .net was excluded here, so one of PPP's own addresses read as the
+ * customer's:
+ *
+ *   "just send it to estimates@precisionpaintingplus.com"
+ *      → returned as the customer's email, written to customer_email, and
+ *        the quote goes to PPP rather than to them
+ *   "your estimates@…com never replied, mine is tom@example.com"
+ *      → two addresses survive, so it refuses and returns nothing, and the
+ *        bot asks again for something they just gave
+ *
+ * The sibling is derived rather than listed, so a rebrand changes one string.
+ */
 function ourDomains(extra?: readonly (string | null | undefined)[]): string[] {
   const fromBrand = PPP_BRAND.contact.website
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .replace(/\/.*$/, "")
     .toLowerCase();
+  // The .net/.com pair, the same one lib/auth/admin.ts treats as one company.
+  const sibling = fromBrand.endsWith(".net")
+    ? fromBrand.replace(/\.net$/, ".com")
+    : fromBrand.endsWith(".com")
+      ? fromBrand.replace(/\.com$/, ".net")
+      : null;
   const fromCallers = (extra ?? [])
     .map((e) => (e ?? "").split("@")[1]?.trim().toLowerCase())
     .filter((d): d is string => !!d);
-  return [fromBrand, ...fromCallers];
+  return [fromBrand, ...(sibling ? [sibling] : []), ...fromCallers];
 }
 
 export function emailFromCustomer(

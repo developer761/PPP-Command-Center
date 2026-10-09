@@ -45,13 +45,29 @@ const headShort = head.slice(0, 7);
 const subject = run("git", ["log", "-1", "--format=%s"]);
 
 /**
- * Vercel's CLI prints a table whose columns have moved between versions, so
- * this reads the JSON rather than the human output. `--prod` scopes it to
- * production, which is the only target this repo deploys to.
+ * WHICH PROJECT. The scope has more than one, and this script read row 0.
+ *
+ * `vercel ls` without a linked project lists every production deployment in
+ * the SCOPE, newest first — and ppp-s-projects also holds `rycos`, which
+ * deploys every few minutes from an unrelated repo. There is no
+ * .vercel/project.json here, so on 2026-10-07 this printed
+ *
+ *   Newest prod 57b00e6  BUILDING
+ *
+ * where 57b00e6 is a Ryco commit that does not exist in this repository. The
+ * verdict was about another application. It can fail falsely, which wastes
+ * time, and it can PASS falsely, which is the whole thing this gate exists to
+ * prevent — the same mistake as answering "is it live" from the wrong
+ * localhost.
+ *
+ * So the project is named, the rows are filtered to it, and an empty filter is
+ * a hard stop rather than a fallback to whatever was newest.
  */
+const PROJECT = "ppp-command-center";
+
 let rows;
 try {
-  const raw = run("npx", ["vercel", "ls", "--prod", "--json"]);
+  const raw = run("npx", ["vercel", "ls", PROJECT, "--prod", "--json"]);
   const parsed = JSON.parse(raw);
   rows = Array.isArray(parsed) ? parsed : (parsed.deployments ?? []);
 } catch (e) {
@@ -68,7 +84,22 @@ if (!rows.length) {
   process.exit(2);
 }
 
-const newest = rows[0];
+/**
+ * Belt and braces: naming the project on the command line should be enough,
+ * but a row carries its own `name` and the cost of checking it is nothing
+ * against the cost of reading another app's deploy as this one's. A row with
+ * no name is kept — older CLI output omitted it — and one with the WRONG name
+ * is not.
+ */
+const mine = rows.filter((r) => !r.name || r.name === PROJECT);
+if (!mine.length) {
+  console.error(`COULD NOT CHECK: no production deployment belongs to "${PROJECT}".`);
+  console.error(`   vercel returned ${rows.length} row(s), for: ${[...new Set(rows.map((r) => r.name))].join(", ")}`);
+  console.error(`\nThis is NOT a pass — the deployments listed are other projects in this scope.`);
+  process.exit(2);
+}
+
+const newest = mine[0];
 const state = String(newest.state ?? newest.readyState ?? "").toUpperCase();
 const sha = String(
   newest.meta?.githubCommitSha ?? newest.gitSource?.sha ?? ""

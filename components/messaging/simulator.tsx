@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { stageFromIntents } from "@/lib/messaging/agent-output";
+import { stageFromIntents, intentsForTrack, INTENT_GUIDE } from "@/lib/messaging/agent-output";
 import { runSimTurn, saveScenario, type SimTurn } from "@/lib/messaging/simulator";
 import { exportScenarioToTraining, scenarioAsSheet } from "@/lib/messaging/scenario-export";
 import type { AuditSheet } from "@/lib/messaging/audit-sheet";
@@ -723,10 +723,44 @@ export default function Simulator({
                   </div>
                 )}
 
+                {/*
+                  A LIST, NOT A SENTENCE — AND NOT A SECOND "SHOULD HAVE".
+                  
+                  Kate, 2026-10-07: "I am adding exact verbiage in the 'what it
+                  should have done instead?' field. Is that how you intended for
+                  it to be used?" She was typing prose, which is exactly what
+                  the placeholder invited — and three boxes up there is already
+                  a "Should have" that WANTS prose and is the one that teaches.
+                  Two fields a few pixels apart asking what reads as the same
+                  question, one wanting sentences and one wanting an
+                  identifier, is a question nobody should have to ask.
+                  
+                  This one is matched against the intent the bot chooses when
+                  the scenario is replayed, so it can only ever be one of the
+                  names in that list. A select says so without a word of
+                  explanation, and makes a wrong answer impossible rather than
+                  silently unmatchable.
+                */}
                 {t.verdict === "wrong" && (
-                  <input value={t.expectedIntent ?? ""} onChange={(e) => grade(i, { expectedIntent: e.target.value })}
-                    placeholder="What should it have done instead?"
-                    className="w-full rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 px-2.5 min-h-[36px] text-base sm:text-[12px] placeholder:text-ppp-orange-700/50 focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30" />
+                  <label className="block">
+                    <span className="block text-[10.5px] font-bold uppercase tracking-wider text-ppp-orange-700/70">
+                      Which move should it have made?
+                      <span className="ml-1 font-normal normal-case tracking-normal text-ppp-charcoal-400">
+                        optional — checked on replay, so we can tell whether it changed to what you asked for
+                      </span>
+                    </span>
+                    <select
+                      value={t.expectedIntent ?? ""}
+                      onChange={(e) => grade(i, { expectedIntent: e.target.value })}
+                      className="mt-0.5 w-full rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 px-2.5 min-h-[44px] text-base sm:text-[12px] touch-manipulation focus:outline-none focus:ring-2 focus:ring-ppp-orange-500/30">
+                      <option value="">Not saying</option>
+                      {intentsForTrack(track).map((name) => (
+                        <option key={name} value={name}>
+                          {name}{INTENT_GUIDE[name] ? ` — ${INTENT_GUIDE[name]}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
               </div>
             ))}

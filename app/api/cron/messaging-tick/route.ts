@@ -39,6 +39,18 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
+  /**
+   * WHEN THIS LAMBDA STARTED, passed to runDueActions so its budget is spent
+   * against maxDuration (300s above) and not against its own first line.
+   *
+   * Nearly everything between here and that call is Salesforce — the lead
+   * poll, the exit sweep, the service-zip refresh, the opt-out writeback, four
+   * round trips. None of it counted towards the tick budget, so a slow
+   * Salesforce day could spend ninety seconds and the queue would still budget
+   * a further 240: killed mid-tick, every claimed row abandoned at the cost of
+   * an attempt nothing refunds, and the three sweeps after it never run.
+   */
+  const lambdaStartedAt = Date.now();
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     reportWarn({ key: "messaging_tick_no_secret", platform: "ppp_cc", message: "CRON_SECRET unset — messaging tick refused to run" });
@@ -193,7 +205,11 @@ export async function GET(request: Request) {
     // Rows abandoned by a dead worker come back first, or the queue silently
     // gets shorter and nothing says why.
     const reclaimed = await reclaimStale();
-    const summary = await runDueActions(schedulerDeps());
+    // The budget runs from when the LAMBDA started, not from here — see
+    // lambdaStartedAt and runDueActions' own note on the parameter.
+    const summary = await runDueActions(
+      schedulerDeps(), undefined, undefined, lambdaStartedAt
+    );
 
     /**
      * A44 — QUEUE THE CADENCE FOR CONVERSATIONS THAT HAVE GONE QUIET.

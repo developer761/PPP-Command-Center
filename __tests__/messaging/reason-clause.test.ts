@@ -91,3 +91,46 @@ describe("the check is doing something", () => {
     expect(checkRapport("Just checking in.").ok).toBe(true);
   });
 });
+
+/**
+ * THE REASON PUT IN FRONT OF THE ASK, WHICH IS HALF HER A32 FINDINGS.
+ *
+ * Every breach line below is a bot message from Kate's own corpus that she
+ * graded as an A32 breach and the clause list missed. The patterns she already
+ * had caught 88 of her 198; nearly all 110 misses were this one family — the
+ * same padding, the same rule, the reason simply ahead of the ask rather than
+ * behind it. With the prefaces added it is 160 of 198, and the number of
+ * messages she praised FOR A32 that get flagged stays at zero.
+ */
+describe("a purpose preface is a reason (from Kate's corpus)", () => {
+  it.each([
+    "Got it, Dana. To get you on the schedule, what day and time window usually works best for you to meet the estimator at the property?",
+    "Got it. Before I get this set up, can you please send your first and last name, plus the best phone number and email to reach you for the quote?",
+    "Got it. To get this moving, what's the full property address in Hollywood, including the zip code?",
+    "Got it. Before we get you set up, can you share your first and last name, best phone number, and email for the quote details?",
+    "Yes, you can send pictures here. Before I get this set up for the estimator, could you confirm the full address for the project, including the zip?",
+  ])("flags the padding in: %j", (text) => {
+    const r = checkRapport(text, undefined, false);
+    expect(r.ok, "a reason was bolted onto the ask and went out").toBe(false);
+  });
+
+  /**
+   * SECOND PERSON SURVIVES, which is the carve-out the original patterns were
+   * written around: "so you can" and "before you" describe the CUSTOMER's
+   * benefit and read as a courtesy, not as our process explained at them.
+   * Kate marked both of these acceptable.
+   */
+  it.each([
+    "We'll give you a heads up before anyone arrives so you can get the dog settled.",
+    "We can keep everything clear by going over it in person so you can ask questions.",
+    /**
+     * CONSTRUCTED, not from the corpus, and it is here because the comment on
+     * REASON_CLAUSE claims second person is left alone and nothing tested
+     * that claim for "before". Widening the pattern to "before (we|i|you)"
+     * passed every other test in this file, so the claim was decorative.
+     */
+    "Before you decide anything, the estimator will walk you through the options.",
+  ])("leaves the customer's own benefit alone: %j", (text) => {
+    expect(checkRapport(text, undefined, false).ok, "a courtesy to the customer was dropped as padding").toBe(true);
+  });
+});
