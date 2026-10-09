@@ -89,6 +89,9 @@ const email = `smoke-${Date.now()}@example.invalid`;
 const password = "Smoke-" + Math.random().toString(36).slice(2) + "Aa1!";
 const { data: created, error: cErr } = await admin.auth.admin.createUser({
   email, password, email_confirm: true,
+  // Admin-made, like every Settings → Access account: the session-refresh
+  // proxy's domain guard lets provisioned accounts in on any email.
+  app_metadata: { provisioned: true },
 });
 if (cErr) { console.error("could not create the probe user:", cErr.message); process.exit(1); }
 const uid = created.user.id;

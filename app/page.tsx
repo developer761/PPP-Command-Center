@@ -1,9 +1,10 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import { PPP_BRAND } from "@/lib/brand";
 import SignInButton from "@/components/sign-in-button";
 import EmailPasswordSignIn from "@/components/email-password-sign-in";
 
-type SearchParams = Promise<{ error?: string; redirectTo?: string }>;
+type SearchParams = Promise<{ error?: string; redirectTo?: string; code?: string }>;
 
 /**
  * Every message names the WAY IN, not just the way it failed.
@@ -46,6 +47,14 @@ export default async function LoginLanding({
   searchParams: SearchParams;
 }) {
   const sp = await searchParams;
+  // A Google sign-in that came back HERE instead of /auth/callback: Supabase
+  // falls back to the bare Site URL when the requested return address isn't on
+  // its Redirect URLs list (e.g. the `?next=` query not matching). The sign-in
+  // is half done — finish it rather than show the login form again, which is
+  // what made people click "Sign in with Google" two or three times.
+  if (sp.code && /^[\w-]{8,200}$/.test(sp.code)) {
+    redirect(`/auth/callback?code=${encodeURIComponent(sp.code)}`);
+  }
   const errorMessage = sp.error ? ERROR_COPY[sp.error] ?? null : null;
   // Only honor same-origin relative paths to defeat open-redirect attempts.
   // Default destination is /choose-platform so multi-platform users see the
