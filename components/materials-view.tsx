@@ -866,7 +866,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           }[tone];
           return (
             <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}
+              /* Kate, 2026-10-07: "the colorful bars should extend the whole
+                 way over no matter the length of the text." Each chip was
+                 sized to its own text, so a stacked column of them on a phone
+                 came out ragged — six different widths down the left edge,
+                 reading as six different kinds of thing rather than one list.
+                 Full width when they stack; unchanged once they sit in a row. */
+              className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[11px] font-medium sm:inline-flex sm:w-auto sm:py-1 ${cls}`}
               title={hint}
             >
               {tone === "critical" && (
@@ -882,8 +888,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         };
         return (
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mr-1">Needs attention</span>
+            {/* Stacked on a phone so each chip can take the full width;
+                a wrapping row from `sm` up, exactly as before. */}
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+              <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 sm:mr-1">Needs attention</span>
               {chip(n.jobCriticalNotOrdered > 0, "start in ≤2 days — not ordered", n.jobCriticalNotOrdered, "critical",
                 "Jobs whose scheduled start date is within the next 2 days where no paint has been ordered yet. These need an order today or tomorrow.")}
               {chip(n.jobSoonNotOrdered > 0, "start this week — not ordered", n.jobSoonNotOrdered, "orange",

@@ -195,6 +195,15 @@ export type GallonEstimate = {
    *  it is a second color over part of one wall — so the quantity is a guess
    *  and a person is asked to look (Katie item 7). */
   accentWallReview: boolean;
+  /** WHICH rooms asked for the accent wall. Kate, 2026-10-07: "Add specific
+   *  room names and 'requested' to verbiage — e.g. 'Accent wall requested in
+   *  Dining Room, check quantity'". The bucket already knew an accent wall
+   *  existed somewhere on the color; it did not know where, so the alert could
+   *  only say "on this line" on a line covering six rooms.
+   *
+   *  Optional at the type level, like every other field added after the
+   *  fact here: a draft saved before today has no such key. */
+  accentWallRooms?: string[];
   /** Set when a ROOM-TYPE default replaced the computed figure — a kitchen
    *  capped to one gallon, a bathroom expressed in quarts. Reads as a sentence
    *  for the worker, and is deliberately never silent: these are rules of
@@ -473,6 +482,8 @@ type Bucket = {
   roomTypes: Set<"kitchen" | "bathroom" | "other">;
   /** Any contributing room mentions an accent wall, or paints one. */
   accentWall: boolean;
+  /** The rooms that did — so the alert can name them. */
+  accentRooms: Set<string>;
   /** Every surface on this color is a door — Katie item 6, priced in quarts. */
   doorsOnly: boolean;
   /** Wall area to REMOVE if this color turns out to be shared with a normal
@@ -542,6 +553,7 @@ export function estimateOrderGallons(
         kinds: new Set(),
         kitchenSharedSqft: 0,
         accentWall: false,
+        accentRooms: new Set(),
         doorsOnly: true, // until a non-door surface joins
         isBathroom,
       };
@@ -574,7 +586,10 @@ export function estimateOrderGallons(
       // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
       // part of that wall is now a different color — unflagged.
-      if (roomHasAccent) b.accentWall = true;
+      if (roomHasAccent) {
+        b.accentWall = true;
+        if (room.roomLabel) b.accentRooms.add(room.roomLabel);
+      }
       if (room.roomLabel) b.rooms.add(room.roomLabel);
       let placed = b.placements.get(s.surfaceLabel);
       if (!placed) {
@@ -823,6 +838,7 @@ export function estimateOrderGallons(
       buckets: bucketsCount,
       cans,
       accentWallReview: b.accentWall,
+      accentWallRooms: [...b.accentRooms],
       unit,
       // The cap wins: it says a number is wrong, and every other note here
       // only explains a number that is right.

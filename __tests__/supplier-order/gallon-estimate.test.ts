@@ -436,9 +436,19 @@ describe("buckets are chosen, not computed", () => {
 
   it("and only from gallons — five QUARTS is not a pail", () => {
     // 5 qt is 1.25 gal. Offering Bucket there converts to nothing.
+    //
+    // The window used to end at "as PaintUnit[]", which assumed the gate sat
+    // between the comment and the cast. On 2026-10-07 the toggle began
+    // rendering all three units always — Bucket DISABLED rather than missing
+    // below five gallons, so the row stops changing width (Kate: "make these
+    // consistent") — and the gate moved a few lines down into `bucketAllowed`.
+    // The rule is unchanged; only its position was. The window now spans the
+    // whole toggle so it checks the RULE rather than where it is written.
     const v = view();
-    const gate = v.slice(v.indexOf("Bucket appears once a line"), v.indexOf("as PaintUnit[]"));
-    expect(gate).toMatch(/unit === "gal"/);
+    const gate = v.slice(v.indexOf("Bucket appears once a line"), v.indexOf('{u === "gal" ? "Gallon"'));
+    expect(gate).toMatch(/unit === "gal" && total >= 5/);
+    // And it is still what decides, not merely present somewhere nearby.
+    expect(gate).toMatch(/disabled = u === "bucket" && !bucketAllowed/);
   });
 
   it("a line already on Bucket keeps the option even if it drops below five", () => {

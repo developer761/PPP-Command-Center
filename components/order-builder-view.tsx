@@ -1221,11 +1221,17 @@ export default function OrderBuilderView({
                 that has to change, because the button that refused is at the
                 bottom of a long page. */}
             {productLineError && totalNeedProductLine > 0 && (
-              <p role="alert" className="px-4 py-2.5 text-[12px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
+              /* Kate, 2026-10-07: "Invert the colors so the alert is the darker
+                 red and the text is the lighter red so it stands out more."
+                 Checked rather than swapped on sight — orange-50 on orange-700
+                 is 5.51:1 in light and 8.02:1 in dark, both past AA. A straight
+                 swap of the two tints would not have been: this codebase has
+                 shipped a -600-on--50 pairing that failed. */
+              <p role="alert" className="px-4 py-3 text-[12px] font-semibold text-ppp-orange-50 bg-ppp-orange-700 border-b border-ppp-orange-700">
                 Product line required — {totalNeedProductLine === 1
                   ? "1 color has no product line."
                   : `${totalNeedProductLine} colors have no product line.`}{" "}
-                <span className="font-normal">
+                <span className="font-normal opacity-95">
                   Pick one on each row marked in red; the vendor is sent &ldquo;[NOT SET]&rdquo; without it.
                   {customNeedProductLine.length > 0 && (
                     <>
@@ -1555,23 +1561,41 @@ export default function OrderBuilderView({
                             Offering it below that would let someone order a pail for two
                             gallons of paint; hiding it entirely is what forced the silent
                             auto-conversion this replaces. */}
-                        {(((unit === "gal" && total >= 5) || unit === "bucket"
-                           ? ["gal", "qt", "bucket"]
-                           : ["gal", "qt"]) as PaintUnit[]).map((u) => (
-                          <button
-                            key={u}
-                            type="button"
-                            onClick={() => setUnit(e, u)}
-                            aria-pressed={unit === u}
-                            className={`flex-1 px-2 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
-                              unit === u
-                                ? "bg-ppp-blue text-ppp-navy"
-                                : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-                            }`}
-                          >
-                            {u === "gal" ? "Gallon" : u === "qt" ? "Quart" : "Bucket"}
-                          </button>
-                        ))}
+                        {(["gal", "qt", "bucket"] as PaintUnit[]).map((u) => {
+                          // Kate, 2026-10-07: "Make these consistent." Rows
+                          // rendered TWO buttons under five gallons and THREE
+                          // at or above it, so every row was a different shape
+                          // and the same control sat in a different place on
+                          // each. All three always render now; Bucket is
+                          // DISABLED rather than missing below five gallons,
+                          // which keeps Karan's 2026-09-09 rule — nobody
+                          // orders a pail for two gallons of paint — while the
+                          // row stops changing width under the reader.
+                          const bucketAllowed = (unit === "gal" && total >= 5) || unit === "bucket";
+                          const disabled = u === "bucket" && !bucketAllowed;
+                          return (
+                            <button
+                              key={u}
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => setUnit(e, u)}
+                              aria-pressed={unit === u}
+                              title={disabled ? "A bucket is five gallons — this line is under that." : undefined}
+                              /* Kate: "Enlarge text on the gallon, quart,
+                                 bucket selector." 11px was below what the rest
+                                 of this row uses. */
+                              className={`flex-1 px-2 py-1 text-[13px] sm:text-[12px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
+                                disabled
+                                  ? "bg-ppp-charcoal-50 text-ppp-charcoal-300 cursor-not-allowed"
+                                  : unit === u
+                                    ? "bg-ppp-blue text-ppp-navy"
+                                    : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                              }`}
+                            >
+                              {u === "gal" ? "Gallon" : u === "qt" ? "Quart" : "Bucket"}
+                            </button>
+                          );
+                        })}
                       </div>
                       {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
                         <span className={`text-[11px] text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
@@ -1582,7 +1606,7 @@ export default function OrderBuilderView({
                         <label className={`text-[10px] shrink-0 ${lineNeedsProduct ? "text-ppp-orange-700 font-semibold" : "text-ppp-charcoal-500"}`} htmlFor={`mt-${key}`}>
                           Product line:
                         </label>
-                        <div className={`flex-1 min-w-0 ${lineNeedsProduct ? "rounded-lg ring-2 ring-ppp-orange-700" : ""}`}>
+                        <div className={`flex-1 min-w-0 rounded-lg ${lineNeedsProduct ? "ring-2 ring-ppp-orange-700 bg-ppp-orange-500/10" : ""}`}>
                           <MaterialTypePicker
                             id={`mt-${key}`}
                             value={readProductOverride(payload.materialTypeOverrides, e) ?? ""}
@@ -1644,8 +1668,24 @@ export default function OrderBuilderView({
                         the quantity beside it is a guess. RED, and above the
                         defaulted note: this is the one that needs a person. */}
                     {e.accentWallReview && (
-                      <p className="text-[10px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded px-1.5 py-1 mt-1 text-right">
-                        ⚠ accent wall on this line — check the quantity
+                      /* Kate, 2026-10-07, two asks on one line:
+                         · "Add specific room names and 'requested' to verbiage
+                           — e.g. 'Accent wall requested in Dining Room, check
+                           quantity'". It said "on this line", which on a color
+                           spanning six rooms pointed at all of them.
+                         · "Make alerts yellow and errors red. This should be
+                           yellow." It is a prompt to look, not a refusal —
+                           the red is reserved for the product-line error that
+                           actually blocks sending.
+                         Amber-700 on amber-50, not amber-600: a -600 on a -50
+                         tint fails AA, which this codebase has been caught by
+                         before. */
+                      <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 mt-1 text-right">
+                        ⚠ Accent wall requested
+                        {e.accentWallRooms && e.accentWallRooms.length > 0
+                          ? ` in ${e.accentWallRooms.join(", ")}`
+                          : ""}
+                        {" "}— check the quantity
                       </p>
                     )}
                     {/* The kitchen / bathroom / shared-kitchen rules of thumb.
@@ -2104,7 +2144,13 @@ function ColorNoteOffers({
                 </p>
               )}
               {!added && covered && (
-                <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">Already in the buy-list above.</p>
+                /* Kate, 2026-10-07: "Rename Buy-list to Order — what to buy so
+                   they know which section is being referred to." The HEADING
+                   already said that; this stray line still said "buy-list", so
+                   the page used two names for one section. */
+                <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">
+                  Already in &ldquo;Order &mdash; what to buy&rdquo; above.
+                </p>
               )}
             </li>
           );
