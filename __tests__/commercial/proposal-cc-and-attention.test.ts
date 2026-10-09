@@ -70,6 +70,16 @@ describe("the send path", () => {
 describe("the CC box lets her type a list at all", () => {
   const src = strip(readFileSync("components/commercial/proposal-send-control.tsx", "utf8"));
 
+  it("tells her the semicolon works, because that is what Outlook teaches", () => {
+    /*
+     * Stephanie asked the day after this shipped whether she could use a
+     * semicolon. She could — the parser takes it — but the hint named only
+     * commas and spaces. A capability nobody can tell is there is one they
+     * have to ask about, which is the same cost as not having it.
+     */
+    expect(src).toMatch(/semicolon/i);
+  });
+
   it("is not type=email, which the browser refuses a list in", () => {
     // This is the half that actually blocked her: validation happened in the
     // browser, before anything of ours ran.
