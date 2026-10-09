@@ -30,6 +30,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES, materialTypeForVendor } from "@/lib/customer-form/material-types";
 import { emptyBuildPayload, mergeBuildPayloads, pruneToLiveKeys, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { MULTI_ROOM_ALERT, multiRoomLines } from "@/lib/supplier-order/multi-room";
 import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
 /**
@@ -76,6 +77,10 @@ export type SourceLine = {
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
   notes?: string | null;
+  /** SF `Product_Family__c` — "Interior Painting" / "Exterior Painting".
+   *  Carried so the multi-room check can skip exterior work, where "garage"
+   *  and "entry" are parts of a building rather than rooms being painted. */
+  productFamily?: string | null;
   /** SF `ColorNotes__c`, free text only. The per-surface COLORS — on a
    *  work order where a rep puts the whole house on one line, Description
    *  says "see notes for colors" and this is those notes (Katie item 23). */
@@ -219,6 +224,13 @@ export default function OrderBuilderView({
    * `lg:` below holds the desktop layout Katie asked for exactly as it was.
    */
   const [sourceLinesOpen, setSourceLinesOpen] = useState(false);
+
+  /**
+   * Kate p18 — line items whose scope note names more than one room.
+   * Derived, not stored: it is a property of the Salesforce text, so it must
+   * never drift from what the panel above is showing.
+   */
+  const multiRoomHits = useMemo(() => multiRoomLines(sourceLines), [sourceLines]);
   // The server accepted the write but isn't keeping it (saved-order table
   // missing). Distinct from an error — nothing failed, it just won't survive,
   // and the next step will read an empty order.
@@ -1289,6 +1301,40 @@ export default function OrderBuilderView({
                 <strong>Manual quantity required</strong> —{" "}
                 {needQty.length === 1 ? "1 color has" : `${needQty.length} colors have`} no
                 measurements in Salesforce. Update the gallons using the +/- buttons below.
+              </span>
+            </div>
+          )}
+
+          {/* Kate 2026-10-07, p18: "When there is one line item and multiple
+              rooms in the notes, add an alert here stating 'Multiple rooms
+              detected on one line item. Confirm with customer before
+              ordering'." Her wording, verbatim, from MULTI_ROOM_ALERT.
+
+              It sits above the buy list rather than on the source line,
+              because the source panel is collapsed by default on a phone now
+              (her own request) and an alert inside a closed drawer is not an
+              alert. Amber: "make alerts yellow and errors red".
+
+              WHY IT MATTERS: the estimator sizes paint per line item, so a
+              line whose scope quietly covers four rooms produces quantities
+              sized for one, and every number below it is wrong before anyone
+              touches it. 13.5% of interior lines in the live org. */}
+          {multiRoomHits.length > 0 && (
+            <div
+              role="alert"
+              className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-900 flex items-start gap-2"
+            >
+              <span aria-hidden>⚠</span>
+              <span>
+                <strong>{MULTI_ROOM_ALERT}</strong>
+                <span className="block mt-1 text-amber-800">
+                  {multiRoomHits.map((h) => (
+                    <span key={h.id} className="block">
+                      {h.room ? `${h.room}: ` : ""}
+                      names {h.rooms.length} rooms &mdash; {h.rooms.join(", ")}
+                    </span>
+                  ))}
+                </span>
               </span>
             </div>
           )}
