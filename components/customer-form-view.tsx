@@ -490,6 +490,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }, [formData, priorSubmission, finishSeeds.fromSalesforce, finishSeeds.fromPriorSubmission]);
 
   const [state, setState] = useState(initialState);
+  /**
+   * Kate 2026-10-09: "For customers, when they click 'Submit my colors' we
+   * want them to see a confirmation screen that shows them their selections
+   * and states something like, 'By clicking Confirm my selections I affirm
+   * that I've reviewed these selections and approve of the use of these for
+   * my project.'"
+   *
+   * CUSTOMERS ONLY — her words. Staff entry already belongs to somebody who
+   * can see the work order, and an AM part-way through a job should not be
+   * made to affirm on a homeowner's behalf.
+   *
+   * A step, not a dialog: the point is that they READ their selections back,
+   * which a modal over the form does not achieve.
+   */
+  const [confirming, setConfirming] = useState(false);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
   /** How many rooms came back from a local draft, once, on mount. */
   const [restoredRooms, setRestoredRooms] = useState(0);
   const [draftDismissed, setDraftDismissed] = useState(false);
@@ -769,6 +785,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }
 
   const updateSurfacePick = (lineId: string, surface: string, patch: Partial<SurfacePick>) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     setState((prev) => ({
       ...prev,
       [lineId]: {
@@ -800,6 +820,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     pick: SurfacePick,
     opts: { overwrite?: boolean } = {}
   ) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     if (!pick.colorId) return;
     // The rule itself is in lib/customer-form/apply-to-all.ts, so it can be
     // tested — and so the counts in the message below are the same numbers the
@@ -905,6 +929,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   };
 
   const updateLineNotes = (lineId: string, notes: string) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     setState((prev) => ({
       ...prev,
       [lineId]: { ...prev[lineId], notes },
@@ -950,6 +978,16 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         }
       }
     });
+    // Everything above has decided the submission is well-formed. Show it
+    // back before sending it. `confirming` is set by this pass and cleared on
+    // any edit, so the affirmation always describes what is on screen now.
+    if (!isStaffEntry && !confirming) {
+      setConfirming(true);
+      setSubmitError(null);
+      requestAnimationFrame(() => confirmRef.current?.scrollIntoView({ block: "start" }));
+      return;
+    }
+
     submitInFlight.current = true;
     setSubmitError(null);
     setSubmitting(true);
@@ -1473,7 +1511,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           </p>
           <textarea
             value={globalNotes}
-            onChange={(e) => setGlobalNotes(e.target.value)}
+            onChange={(e) => { setConfirming(false); setGlobalNotes(e.target.value); }}
             rows={8}
             placeholder={
               workContext.hasExterior && !workContext.hasInterior
@@ -1535,7 +1573,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           </p>
           <textarea
             value={globalNotes}
-            onChange={(e) => setGlobalNotes(e.target.value)}
+            onChange={(e) => { setConfirming(false); setGlobalNotes(e.target.value); }}
             rows={4}
             className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             placeholder="e.g. We have a Friday move-in date, please plan around that. Don't paint the inside of the closets."
@@ -1601,6 +1639,59 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             )}
           </div>
           )}
+          {/* Kate 2026-10-09 — read it back before it is sent. */}
+          {confirming && (
+            <div
+              ref={confirmRef}
+              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4"
+            >
+              <h3 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy">
+                Please check your selections
+              </h3>
+              <ul className="mt-3 space-y-3">
+                {formData.lineItems.map((li, i) => {
+                  const st = state[li.id];
+                  if (!st) return null;
+                  const chosen = li.surfaces
+                    .map((surface) => ({ surface, pick: st.picks[surface] }))
+                    .filter((x) => x.pick && !x.pick.skipped && (x.pick.colorName || x.pick.colorId));
+                  if (chosen.length === 0 && !st.notes.trim()) return null;
+                  return (
+                    <li key={li.id} className="text-sm">
+                      <div className="font-semibold text-ppp-charcoal">{roomTitle(li, i + 1)}</div>
+                      {chosen.map(({ surface, pick }) => (
+                        <div key={surface} className="text-ppp-charcoal-600 pl-3">
+                          {surface}: <strong className="text-ppp-charcoal">{pick!.colorName || pick!.colorId}</strong>
+                          {pick!.colorCode ? ` (${pick!.colorCode})` : ""}
+                          {pick!.finish ? ` · ${pick!.finish}` : ""}
+                        </div>
+                      ))}
+                      {st.notes.trim() && (
+                        <div className="text-ppp-charcoal-500 pl-3 italic whitespace-pre-wrap">{st.notes.trim()}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {globalNotes.trim() && (
+                <p className="mt-3 text-sm text-ppp-charcoal-600 whitespace-pre-wrap">
+                  <span className="font-semibold text-ppp-charcoal">Notes: </span>
+                  {globalNotes.trim()}
+                </p>
+              )}
+              <p className="mt-4 text-xs sm:text-sm text-ppp-charcoal leading-relaxed">
+                By clicking &ldquo;Confirm my selections&rdquo; I affirm that I&rsquo;ve reviewed
+                these selections and approve of the use of these for my project.
+              </p>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="mt-2 text-xs text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+              >
+                Go back and change something
+              </button>
+            </div>
+          )}
           <button
             type="submit"
             disabled={submitting}
@@ -1617,6 +1708,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               ? "Submit (preview only)"
               : isInternal
               ? "Submit colors"
+              : confirming
+              /* Kate's wording — the affirmation names this button, so the
+                 button has to carry that exact name or the sentence above it
+                 refers to something that is not there. */
+              ? "Confirm my selections"
               : isEditing
               ? "Save changes"
               : "Submit my colors"}
