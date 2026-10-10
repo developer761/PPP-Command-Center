@@ -376,7 +376,25 @@ export async function POST(
       return Boolean(s.colorId) || Boolean((s.colorName ?? "").trim());
     })
   );
-  const wroteNotes = sanitizeNotesField(body.globalNotes).trim().length > 0;
+  /**
+   * NOTES ANYWHERE, not just the project box.
+   *
+   * This counted `globalNotes` alone, so a customer who answered entirely in
+   * the PER-ROOM notes was told "Nothing was selected yet. Pick a color for
+   * at least one surface — or add a note telling us what you'd like" — after
+   * adding exactly the note the sentence asks for. Their work was refused and
+   * the message blamed them for not doing the thing they had done.
+   *
+   * Kate hit it on 2026-10-09 on a multi-room line item, which is where it
+   * bites hardest: that is precisely the case where the room template invites
+   * somebody to write their colors as text under each room heading rather
+   * than pick them surface by surface.
+   */
+  const wroteNotes =
+    sanitizeNotesField(body.globalNotes).trim().length > 0 ||
+    body.lineItems.some(
+      (li) => sanitizeNotesField((li as { notes?: unknown }).notes).trim().length > 0
+    );
   // A RE-EDIT is exempt, and this is not a loophole — it is the one case where
   // an empty payload is a real instruction. The re-edit payload is the current
   // answer for every surface it carries, so a customer who presses "Change"

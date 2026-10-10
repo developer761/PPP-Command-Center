@@ -399,6 +399,40 @@ describe("a submission with nothing in it", () => {
     expect(body.message).toMatch(/Pick a color for at least one surface/);
   });
 
+  it("ACCEPTS a note written in the per-room box, not just the project box", async () => {
+    /**
+     * The guard counted `globalNotes` alone. A customer who answered entirely
+     * in the per-room notes was refused with "add a note telling us what
+     * you'd like" — after adding exactly that note. Their work was thrown
+     * away and the message blamed them for not doing the thing they had done.
+     *
+     * Kate hit it on 2026-10-09 on a multi-room line item, which is where it
+     * bites hardest: the room template invites writing colors as text under
+     * each room heading instead of picking them surface by surface.
+     */
+    const res = await post({
+      lineItems: [{
+        id: "wl-1",
+        surfaces: [{ surface: "Walls", colorId: null, finish: null }],
+        notes: "Living Room:\nWalls: Simply White\n\nKitchen:\nWalls: Revere Pewter",
+      }],
+      globalNotes: "",
+    });
+    expect(res.status).not.toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBeUndefined();
+  });
+
+  it("still refuses when every notes box is blank", async () => {
+    // The widened check must not become "always true".
+    const res = await post({
+      lineItems: [{ id: "wl-1", surfaces: [{ surface: "Walls", colorId: null, finish: null }], notes: "   " }],
+      globalNotes: "   ",
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error?: string }).error).toBe("nothing_submitted");
+  });
+
   it("does NOT mark the token submitted", async () => {
     // The part that matters. Once the token is stamped, the customer's link
     // reads as used and the job has already moved — the exact broken state.
