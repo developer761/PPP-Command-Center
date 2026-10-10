@@ -108,7 +108,10 @@ export function receiptIsEmpty(rooms: ReadonlyArray<ReceiptRoom>, globalNotes: s
 }
 
 /** Looks like a deliverable address. Same shape every admin send route uses. */
-const EMAIL_RE = /^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i;
+/** Exported so a caller supplying its own recipient validates it the same
+ *  way receiptRecipient does — two different notions of "a valid address"
+ *  is how one path sends and the other silently refuses. */
+export const EMAIL_RE = /^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i;
 
 /**
  * Who the receipt is actually addressed to.

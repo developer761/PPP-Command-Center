@@ -17,6 +17,21 @@ export default function SendReceiptButton({ token }: { token: string }) {
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  /**
+   * Kate 2026-10-09: "allow the AM to enter the customer's name and email in
+   * the same way they do to send the color form to the customer."
+   *
+   * Hidden until it is wanted. The work order carries the address on most
+   * jobs and Katie's one-click flow is the right default; these are for the
+   * ones where it does not, where the route used to answer "Add one in
+   * Salesforce, then send the receipt" and leave the AM stuck mid-job.
+   *
+   * Opens by itself when the send comes back with no_customer_email, so the
+   * dead end becomes the fix rather than a message about one.
+   */
+  const [showTo, setShowTo] = useState(false);
+  const [toEmail, setToEmail] = useState("");
+  const [toName, setToName] = useState("");
 
   async function send() {
     setState("sending");
@@ -25,12 +40,17 @@ export default function SendReceiptButton({ token }: { token: string }) {
       const res = await fetch("/api/admin/customer-form/send-receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          ...(toEmail.trim() ? { toEmail: toEmail.trim(), toName: toName.trim() } : {}),
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.ok) {
         setState("idle");
         setMessage(body.message ?? body.error ?? `Couldn't send (HTTP ${res.status}).`);
+        // The one failure the AM can fix from here.
+        if (body.error === "no_customer_email" || body.error === "invalid_email") setShowTo(true);
         return;
       }
       setSentTo(body.to ?? null);
@@ -72,6 +92,45 @@ export default function SendReceiptButton({ token }: { token: string }) {
       </p>
       {message && (
         <p className="mt-2 text-xs text-ppp-orange-700 leading-relaxed">{message}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => setShowTo((v) => !v)}
+        aria-expanded={showTo}
+        aria-controls="receipt-recipient"
+        className="mt-2 text-xs text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+      >
+        {showTo ? "Use the address on the work order" : "Send to a different address"}
+      </button>
+      {showTo && (
+        <div id="receipt-recipient" className="mt-2 flex flex-col gap-2 max-w-sm">
+          <label className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">
+            Customer name
+            <input
+              type="text"
+              value={toName}
+              onChange={(e) => setToName(e.target.value)}
+              placeholder="Optional"
+              className="mt-1 w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+            />
+          </label>
+          <label className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500">
+            Customer email
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={toEmail}
+              onChange={(e) => setToEmail(e.target.value)}
+              placeholder="name@example.com"
+              className="mt-1 w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+            />
+          </label>
+          <p className="text-[11px] text-ppp-charcoal-500 leading-relaxed">
+            Used instead of the address on the work order. It is not saved back
+            to Salesforce — correct it there too if it is wrong.
+          </p>
+        </div>
       )}
     </div>
   );
