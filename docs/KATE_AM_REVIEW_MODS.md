@@ -54,7 +54,65 @@ is seen landing the field. Minutes of work after that.
 
 ---
 
-## To build — nothing blocking
+## Built 2026-10-09 — all six, live
+
+| Item | Commit |
+|---|---|
+| Vinyl Siding Colors button | `82ca1b98` |
+| Submit verbiage | `82ca1b98` |
+| Show the customer's address | `82ca1b98` |
+| "Save and email customer" — AM can type the recipient | `5947ab5c` |
+| Confirmation screen + affirmation | `b9db44e4` |
+| **Bonus: delivery address on the vendor order** | `815c9270` |
+
+Two turned out not to be what they looked like.
+
+**The address was a blank, not a missing feature.** The form already showed
+the address whenever it had one. It read the Opportunity's Account BILLING
+address; the work order carries the SERVICE address. 372 of 500 work orders
+have the second and not the first.
+
+**The same wrong source was costing far more on the vendor order** — its
+delivery-address candidates were the customer's form and the account's
+billing address, with the work order not among them. That is why orders
+printed "DELIVERY — address TBD (admin will confirm before send)" and
+somebody typed it by hand. Same 74%. Fixed.
+
+**"Save and email customer" already existed** — Katie asked for it on
+2026-10-01. What it lacked was an answer for a work order with no email,
+where it said "Add one in Salesforce, then send the receipt" and stopped. The
+AM can now type a name and address.
+
+### Not seen rendered
+
+The confirmation screen is customer-only by design and every one of the 222
+tokens in the table is expired or submitted. Minting one means writing to a
+real job and risking an email to a real homeowner. Mutation-tested instead.
+
+---
+
+## Still open
+
+### Exterior finishes — Kate vs Jason
+
+"Ensure the exterior finishes list shows: flat, soft gloss, semi-gloss."
+Today it is **Flat, Satin, Low Lustre, Soft Gloss**.
+
+Hers reverses **Jason's §1 of 2026-09-17** on three points: he said REMOVE
+semi-gloss from exterior and ADD low lustre, and she drops satin. Not
+changed — it needs the two of them.
+
+### The vinyl link
+
+A Google Drive share URL. It resolves today; the day that file's sharing is
+tightened a customer gets a request-access screen with nowhere to go. Every
+other link in that card is benjaminmoore.com. Shipped as given, flagged.
+
+---
+
+## Superseded — the original list below
+
+
 
 ### 1. "Vinyl Siding Colors" button (page 1)
 
