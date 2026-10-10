@@ -23,7 +23,7 @@ type DeliveryAddress = {
   city: string;
   state: string;
   postalCode: string;
-  source: "customer_form" | "sf_account" | "manual";
+  source: "customer_form" | "work_order" | "sf_account" | "manual";
 };
 
 type Draft = {
@@ -637,6 +637,7 @@ export default function OrderFulfillmentView({
             }
             sourceLabel={
               draft?.deliveryAddress?.source === "customer_form" ? "From customer form"
+                : draft?.deliveryAddress?.source === "work_order" ? "From the work order"
                 : draft?.deliveryAddress?.source === "sf_account" ? "From SF Account"
                 : undefined
             }

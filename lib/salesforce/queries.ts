@@ -596,6 +596,13 @@ export type SnapshotWorkOrder = {
   // Geographic fields — populated on 20k+ WOs in production
   latitude: number | null;
   longitude: number | null;
+  /** The SERVICE address — where the work happens, so where the paint is
+   *  delivered. Populated on 99% of work orders; the Account's BILLING
+   *  address, which the order used to fall back to alone, on 25%. */
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
   /** PPP canonical GM% formula field — `Gross_Profit__c / Quoted_Subtotal_with_Change_Order__c`.
    *  Decimal (e.g. 0.42 = 42%). DO NOT confuse with GrossProfitPercent__c
    *  (which uses NetValue__c denominator and inflates margins). KPI 2. */
@@ -1980,6 +1987,24 @@ export async function loadSalesforceSnapshot(
         // Standard SF geocoding fields — 20k+ WOs have these populated
         "Latitude",
         "Longitude",
+        /**
+         * The SERVICE address — where the work happens, and therefore where
+         * the paint goes.
+         *
+         * Added 2026-10-09. The supplier order resolved a delivery address
+         * from two candidates only, what the customer typed on their form
+         * and the Account's BILLING address, so a job with neither printed
+         * "DELIVERY — address TBD (admin will confirm before send)" on the
+         * vendor email. Over 500 work orders from the last year, 372 had
+         * their own address and no account billing address: three quarters
+         * of jobs, every one of them hand-typed by whoever sent the order.
+         *
+         * Standard FSL fields, like Latitude/Longitude above, so no probe.
+         */
+        "Street",
+        "City",
+        "State",
+        "PostalCode",
         // Standard FSL WorkType relationship — Materials Ordering uses this to
         // filter out pre-quote stages (Estimate / Appointment) where there's
         // nothing to order yet.
@@ -2109,6 +2134,10 @@ export async function loadSalesforceSnapshot(
         finalBalanceAging: numOrNull("Final_Balance_Aging__c"),
         latitude: numOrNull("Latitude"),
         longitude: numOrNull("Longitude"),
+        street: typeof w.Street === "string" ? (w.Street as string) : null,
+        city: typeof w.City === "string" ? (w.City as string) : null,
+        state: typeof w.State === "string" ? (w.State as string) : null,
+        postalCode: typeof w.PostalCode === "string" ? (w.PostalCode as string) : null,
         // Rep performance fields. Gross_Margin_Percent__c is a percent-formula
         // field; SF returns it as the percent value (e.g. 42.5 for 42.5%) not
         // the decimal — keep that representation through the snapshot.
