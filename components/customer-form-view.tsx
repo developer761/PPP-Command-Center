@@ -1355,6 +1355,30 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                     <path d="M7 17L17 7 M7 7h10v10" />
                   </svg>
                 </a>
+                {/* Kate 2026-10-09: 'Add a button labeled "Vinyl Siding
+                    Colors" and link to this pdf … in the "Need help picking
+                    colors?" section of the customer form.'
+
+                    HER LINK IS A GOOGLE DRIVE SHARE URL, and that is a
+                    standing risk rather than a defect today: it resolves for
+                    anyone with the address right now, but it is a file in
+                    PPP's Drive, and the day its sharing is tightened a
+                    customer gets a request-access screen with nowhere to go
+                    and no way to tell us. Every other link in this card
+                    points at benjaminmoore.com, which cannot do that. Raised
+                    with Karan — serving a copy from our own domain removes
+                    the failure mode entirely. */}
+                <a
+                  href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Vinyl Siding Colors
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 17L17 7 M7 7h10v10" />
+                  </svg>
+                </a>
               </div>
             </div>
           </div>
@@ -1554,13 +1578,26 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 ? `Save your changes — ${editDeadline.label}.`
                 : "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
             ) : (
+              /* Kate 2026-10-09: "Once you submit, you'll get an email with
+                 your color choices. You can still come back and update your
+                 colors until [date]."
+
+                 Her sentence replaces the first half everywhere. The second
+                 half still has to tell the truth per state: "you can still
+                 come back" is false once the edit window has closed, so the
+                 urgency the other three branches carried is kept rather than
+                 flattened into her example.
+
+                 The email is real — the submit route sends a receipt listing
+                 the rooms, gated on a valid recipient and a non-empty
+                 submission, and an empty one cannot get this far. */
               editDeadline.kind === "deadline"
-                ? `Once you submit, we'll order the materials. You can still come back and update your colors until ${editDeadline.label}.`
+                ? `Once you submit, you'll get an email with your color choices. You can still come back and update your colors until ${editDeadline.label}.`
                 : editDeadline.kind === "approaching"
-                ? `Once you submit, we'll order the materials right away — ${editDeadline.label}.`
+                ? `Once you submit, you'll get an email with your color choices. We'll order the materials right away — ${editDeadline.label}.`
                 : editDeadline.kind === "past_start"
-                ? "Once you submit, we'll order the materials right away. Reach out to PPP if anything else needs to change."
-                : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."
+                ? "Once you submit, you'll get an email with your color choices. We'll order the materials right away — reach out to PPP if anything else needs to change."
+                : "Once you submit, you'll get an email with your color choices. You can still come back and update your colors up to 24 hours prior to your start date."
             )}
           </div>
           )}

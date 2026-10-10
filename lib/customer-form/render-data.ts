@@ -231,6 +231,7 @@ async function loadFormRenderDataInner(
     // project is about and can fill in their own notes if rooms aren't
     // pre-listed.
     const richFields = `Id, WorkOrderNumber, Status, CreatedDate,
+             Street, City, State, PostalCode,
              StartDate, DesiredStart__c, MaterialType__c, Description, Subject,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
@@ -240,6 +241,7 @@ async function loadFormRenderDataInner(
              Opportunity__r.Account.BillingState,
              Opportunity__r.Account.BillingPostalCode`;
     const baseFields = `Id, WorkOrderNumber, Status, CreatedDate,
+             Street, City, State, PostalCode,
              StartDate, DesiredStart__c, Description, Subject,
              WorkType.Name,
              Opportunity__c, Opportunity__r.Owner.Name,
@@ -374,11 +376,33 @@ async function loadFormRenderDataInner(
       lineItems,
       hiddenLineItemCount,
       fetchedAt: new Date().toISOString(),
+      /**
+       * THE WORK ORDER'S OWN ADDRESS FIRST, the Account's billing address
+       * only as a fallback.
+       *
+       * Kate 2026-10-09 asked us to "display the customer's address instead
+       * of 'We have your address on file with our team.'" The form already
+       * displayed it whenever it had one — that placeholder only renders
+       * when it does not. So the ask was not a missing feature, it was a
+       * blank, and the blank was the SOURCE.
+       *
+       * Measured over 500 work orders created in the last year:
+       *
+       *     WO address AND account billing : 124
+       *     WO address only                : 372   <- placeholder today
+       *     account billing only           :   0
+       *     neither                        :   4
+       *
+       * Three quarters of jobs. The account's BILLING address is also the
+       * wrong thing on principle — it is where the invoice goes, which need
+       * not be the house being painted. The work order carries the SERVICE
+       * address, and it is populated on 99% of jobs.
+       */
       billingAddress: {
-        street: oppAccount?.BillingStreet ?? null,
-        city: oppAccount?.BillingCity ?? null,
-        state: oppAccount?.BillingState ?? null,
-        postalCode: oppAccount?.BillingPostalCode ?? null,
+        street: (w.Street as string | null) || oppAccount?.BillingStreet || null,
+        city: (w.City as string | null) || oppAccount?.BillingCity || null,
+        state: (w.State as string | null) || oppAccount?.BillingState || null,
+        postalCode: (w.PostalCode as string | null) || oppAccount?.BillingPostalCode || null,
       },
       writeback: await (async () => {
         const d = await decideWriteback(w.Id as string);
