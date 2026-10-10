@@ -29,6 +29,7 @@
     "check:form-seams": "node scripts/check-form-seams.mjs",
     "check:field-copy": "node scripts/check-field-copy-is-true.mjs",
     "check:consent": "node scripts/check-consent-compliance.mjs",
+    "check:product-lines": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-product-lines.mjs",
     "check:deployed": "node scripts/check-deployed.mjs",
     "export:findings-outside-kates-pass": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/export-findings-outside-kates-pass.mjs",
     "check:money": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-money-reconciles.mjs",
