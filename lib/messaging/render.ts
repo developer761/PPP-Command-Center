@@ -20,7 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import {
-  BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
   ANSWERS_A_QUESTION,
 } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
@@ -1838,7 +1838,26 @@ function renderBody(input: RenderInput): string {
      * why this needs no answerIsOwed carve-out, unlike the guard below: a
      * string that is entirely pleasantries was never anybody's answer.
      */
-    && !(parts.length && BARE_ACKNOWLEDGEMENT.test(rapport.trim()))
+    /**
+     * …OR DOES NOTHING BUT SAY THE PHOTO ARRIVED.
+     *
+     * BARE_ACKNOWLEDGEMENT alone was not enough, and the gap shipped. Seen in
+     * the simulator on 2026-10-11, after the guard above was believed
+     * complete:
+     *
+     *   "Thanks for the photo! Thanks, got the photo! What are you looking
+     *    to have painted?"
+     *
+     * "Thanks, got the photo!" NAMES the photo, so it is not a bare
+     * acknowledgement and survived a guard written only for pleasantries.
+     * onlyAcknowledgesThePhoto subtracts the filler and keeps anything
+     * substantive, so "Thanks, I can see the water damage along the skirting"
+     * still goes out.
+     */
+    && !(parts.length && (
+      BARE_ACKNOWLEDGEMENT.test(rapport.trim())
+      || onlyAcknowledgesThePhoto(rapport)
+    ))
     // Two acknowledgements in a row is how "Got it. Got it." reaches a
     // customer. The template's own opener wins, because it is the one that
     // goes on to say something.
