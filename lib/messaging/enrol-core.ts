@@ -22,6 +22,7 @@ import type { LeadRecord, Rule } from "./rules";
 import { toE164 } from "./phone";
 import { trackForWorkspace } from "./track";
 import { selectAllIn } from "./paging";
+import { readSmsConsent, mayEnrol, requireExpressConsent } from "./consent";
 
 export type EnrolResult =
   | {
@@ -154,6 +155,30 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
   if (!ws) return { ok: false, reason: "that workspace does not exist" };
   if (!ws.is_active) return { ok: false, reason: `${ws.name} is not live` };
 
+  /**
+   * CONSENT, BEFORE ANYTHING ELSE COSTS A QUERY.
+   *
+   * Above the workflow lookup deliberately: a lead we are not allowed to text
+   * should not cause reads of workflows, rules and published steps, and
+   * putting it here means the cheapest refusal is also the most important one.
+   *
+   * This is the gap Twilio found on 2026-10-10. SMS_Opt_In__c was read in two
+   * places and both of them read it to STOP a conversation — the exit rule and
+   * outcomeForExit. Nothing read it to decide whether to START one, so an
+   * explicit "Opt-Out" on the lead did not prevent enrolment; it only ended
+   * the conversation afterwards, on a later tick, possibly after the opener
+   * had already gone out.
+   *
+   * The suppression list is NOT this check and does not make it redundant.
+   * That list is keyed by phone number and catches people who texted STOP to
+   * us. This is keyed by the Salesforce record and catches people who told
+   * PPP to stop by some other route — the web form, a phone call, the office.
+   * The two sets overlap and neither contains the other.
+   */
+  const consent = readSmsConsent(input.record);
+  const allowed = mayEnrol(consent, { requireExpress: requireExpressConsent() });
+  if (!allowed.ok) return { ok: false, reason: allowed.reason };
+
   const decision = chooseWorkflow(await workflowsFor(sb, ws.id), input.record, now);
   if (!decision.enrol) return { ok: false, reason: decision.reason };
 
@@ -193,6 +218,22 @@ export async function enrolLeadWith(sb: SupabaseClient, input: {
     // which it does not, so every enrolment ever attempted would have failed
     // at this insert. Nothing called this until the lead poll.
     consent_basis: "inquiry",
+    /**
+     * AND WHAT SALESFORCE ACTUALLY SAID, recorded at the moment we acted on it.
+     *
+     * consent_basis above stays 'inquiry' and is still honest — it answers why
+     * we may text this person at all, and for somebody who asked us for an
+     * estimate the answer really is the inquiry. These two columns answer a
+     * different question: what evidence did we hold, and when did we see it.
+     *
+     * Consent not recorded at the time is consent that cannot be proved later,
+     * which is exactly the position the Meta half of the Twilio rejection left
+     * us in. Null here means we recorded nothing, which is the truth about
+     * every conversation opened before 2026-10-11 and is why the column has no
+     * default to paper over it.
+     */
+    sms_consent_value: consent.value,
+    sms_consent_seen_at: consent.value === null ? null : now.toISOString(),
     // WHICH CONVERSATION THIS IS. Migration 196 named the rule — AM
     // workspaces carry nurture, Leads and Meta carry new leads — and nothing
     // ever applied it, so every AM conversation ran the NEW LEAD prompt and
