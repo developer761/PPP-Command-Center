@@ -1,33 +1,33 @@
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
 /**
  * Proxy (Next 16's rename of Middleware — same thing).
  *
- * Sole job: stamp the request path onto a header so server layouts can read
- * it. A layout has no access to the URL, and the Crew-role gate in
- * app/commercial/layout.tsx needs to know which route is being rendered so it
- * can deny anything outside the crew allowlist.
+ * 1. Keeps people signed in. Supabase access tokens last an hour; this
+ *    refreshes them and writes the new cookies back on every request
+ *    (lib/supabase/middleware.ts → updateSession). Server Components can't
+ *    write cookies, so without this an expired token is refreshed in memory on
+ *    every render and never saved — the same one-time refresh token gets
+ *    reused until Supabase revokes the session, and the person is bounced to
+ *    the login page, where the stale cookies also make the next sign-in fail
+ *    once or twice. That is exactly what happened from 2026-08-11 (57278b1f
+ *    replaced this file's updateSession call with the path stamp below and
+ *    scoped it to /commercial) until this was put back.
  *
- * The AUTH decision deliberately stays in the layout, not here. Next's own
- * guidance is that proxy is for optimistic checks, not authorization — it
- * can't safely do session lookups, and putting the real gate here would mean
- * the layout trusts a header it can't verify. This only reports where the
- * request is going; whether that's allowed is decided server-side with the
- * session in hand.
- *
- * Header hygiene: `x-pathname` is stripped from the INCOMING request before
- * being re-set, so a client can't forge it to slip past the crew allowlist.
+ * 2. Stamps x-pathname for the Commercial crew gate (app/commercial/layout.tsx
+ *    — a layout can't see the URL). The AUTH decision for crew stays in that
+ *    layout; this only reports the path, and replaces any client-sent value.
  */
-export function proxy(request: NextRequest) {
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.delete("x-pathname");
-  requestHeaders.set("x-pathname", request.nextUrl.pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+export async function proxy(request: NextRequest) {
+  return updateSession(request);
 }
 
 export const config = {
-  // Only the Commercial platform needs this today; keeping the matcher narrow
-  // means no per-request work anywhere else.
-  matcher: "/commercial/:path*",
+  matcher: [
+    // Everything except: Next's static files and images, icons/brand assets,
+    // and machine endpoints that never carry a user session (payment and
+    // messaging webhooks, scheduled jobs).
+    "/((?!_next/static|_next/image|favicon\\.ico|manifest\\.webmanifest|brand/|api/webhooks/|api/stripe/|api/cron/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|txt|xml)$).*)",
+  ],
 };

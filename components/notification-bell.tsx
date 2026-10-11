@@ -230,7 +230,19 @@ export default function NotificationBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-32px)] bg-surface border border-ppp-charcoal-100 rounded-xl shadow-lg overflow-hidden z-50"
+          /* MOBILE: pinned to the viewport, not to the trigger.
+             Kate, 2026-10-07, with a photo: "When I click 'All reps' or the
+             notification bell, the pop-up is outside of my screen" — the
+             search box inside read "eps…". These were `absolute right-0`
+             against a control sitting in the MIDDLE of the top bar, so the
+             panel's left edge went negative. `max-w-[90vw]` capped the width
+             and could not move it; the element was still anchored to the
+             trigger, and the trigger was not where the room was.
+             Below `sm` it becomes fixed with its own left/right/bottom
+             insets, so it cannot leave the screen whatever the trigger does.
+             The top offset clears the sticky header plus the iOS safe area.
+             At `sm` and up nothing changes. */
+          className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-32px)] max-sm:fixed max-sm:left-3 max-sm:right-3 max-sm:w-auto max-sm:max-w-none max-sm:top-[calc(env(safe-area-inset-top)+4.5rem)] max-sm:bottom-3 max-sm:flex max-sm:flex-col bg-surface border border-ppp-charcoal-100 rounded-xl shadow-lg overflow-hidden z-50"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-ppp-charcoal-100">
             <h3 className="text-sm font-semibold text-ppp-charcoal">Notifications</h3>
@@ -245,7 +257,7 @@ export default function NotificationBell() {
             )}
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto overscroll-contain">
+          <div className="max-h-[60vh] max-sm:max-h-none max-sm:flex-1 max-sm:min-h-0 overflow-y-auto overscroll-contain">
             {loading && items.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-ppp-charcoal-500">Loading…</div>
             ) : items.length === 0 ? (

@@ -243,6 +243,23 @@ export type CommercialProposalLineItem = {
    *  `description` so it prints bold instead of becoming the first bullet —
    *  which is exactly what looks wrong on the proposals she sent. */
   block_title?: string | null;
+  /**
+   * An alternate that comes OFF the price rather than onto it.
+   *
+   * Stephanie 2026-10-08: "I need a option for deduct alternates that subtract
+   * from the total, not add. Do I just put in a negative number?" She could
+   * not — both write paths refuse a negative unit price — so the amount stays
+   * positive and this carries the direction.
+   *
+   * Kept as meaning rather than as a negative number on purpose: a negative
+   * `unit_price_cents` would push a sign through the proposal total, the G702
+   * contract sum, the invoice and the change-order columns, and every one of
+   * those would need auditing for it.
+   *
+   * Optional on the type, like the flags before it: the column arrives in
+   * 20261008150000 and there is no migration runner here.
+   */
+  is_deduct?: boolean;
   /** Brendan 2026-08-17: overrides qty x unit_price for this line only, so a
    *  line can be discounted or uplifted while the quantity stays honest on the
    *  page. NULL = computed normally. */
@@ -2163,6 +2180,8 @@ export type CreateLineItemInput = {
   is_scope_block?: boolean;
   /** Heading above a scope block. Trimmed on write; empty → NULL. */
   block_title?: string | null;
+  /** Alternate that subtracts rather than adds. See `is_deduct`. */
+  is_deduct?: boolean;
   line_total_override_cents?: number | null;
 };
 
@@ -2345,6 +2364,9 @@ export async function createLineItem(
           // 20261005150000: free-text scope block + its heading.
           is_scope_block: input.is_scope_block ?? false,
           block_title: cleanBlockTitle(input.block_title),
+          // 20261008150000: a deduct alternate. Only meaningful with
+          // is_alternate; an inclusion that subtracts is just a lower price.
+          is_deduct: (input.is_deduct ?? false) && (input.is_alternate ?? false),
           line_total_override_cents: input.line_total_override_cents ?? null,
         },
         input.product_name,
@@ -2359,7 +2381,7 @@ export async function createLineItem(
    * that cannot take a line item at all is a worse failure than one whose new
    * block renders as an ordinary inclusion for a few minutes.
    */
-  if (error && /is_scope_block|block_title/i.test(error.message)) {
+  if (error && /is_scope_block|block_title|is_deduct/i.test(error.message)) {
     const retry = await sb
       .from("commercial_proposal_line_items")
       .insert(
@@ -2476,6 +2498,8 @@ export type UpdateLineItemInput = {
   is_scope_block?: boolean;
   /** Heading above a scope block. Pass empty string or null to clear. */
   block_title?: string | null;
+  /** Alternate that subtracts rather than adds. See `is_deduct`. */
+  is_deduct?: boolean;
   line_total_override_cents?: number | null;
 };
 
@@ -2550,6 +2574,7 @@ export async function updateLineItem(
     patch.is_scope_block = input.is_scope_block;
   if (input.block_title !== undefined)
     patch.block_title = cleanBlockTitle(input.block_title);
+  if (input.is_deduct !== undefined) patch.is_deduct = input.is_deduct;
   if (input.line_total_override_cents !== undefined)
     patch.line_total_override_cents = input.line_total_override_cents;
   if (input.position !== undefined) patch.position = input.position;

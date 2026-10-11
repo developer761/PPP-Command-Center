@@ -103,6 +103,9 @@ export async function loadOrderPageDataOrReason(
       // Kate 2026-09-04 — the rep's own scope notes, so this list shows what
       // the job covers rather than just how many lines it has.
       notes: li.raw.description ?? null,
+      // Kate p18 — the multi-room check reads `notes`, and needs this to
+      // leave exterior work alone.
+      productFamily: li.raw.productFamily ?? null,
       // Katie item 23 — the per-surface COLORS. On a work order where a rep
       // puts the whole house on one line, Description says "see notes for
       // colors" and this is the notes. Free text, not our machine format:

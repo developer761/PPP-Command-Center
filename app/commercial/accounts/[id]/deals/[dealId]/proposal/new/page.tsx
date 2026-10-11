@@ -224,6 +224,9 @@ export default async function CreateProposalRoute({
           is_internal: item.is_internal,
           is_scope_block: item.is_scope_block,
           block_title: item.block_title,
+          // A deduct that revised into an ADD would quietly flip the sign of
+          // real money on the next revision.
+          is_deduct: item.is_deduct,
         },
         user.id
       );

@@ -3,12 +3,26 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAllowedToSignIn } from "@/lib/auth/admin";
 
 /**
- * Runs on every request. Refreshes the user's auth session (rotates expiring
- * tokens), gates protected routes, and enforces the PPP domain allow-list:
- * .net + .com workspaces, plus any email in PPP_ADMIN_EMAILS (Karan's gmail).
+ * Runs on every request (see proxy.ts). Refreshes the user's auth session
+ * (rotates expiring tokens), gates protected routes, and enforces the PPP
+ * domain allow-list: .net + .com workspaces, plus any email in
+ * PPP_ADMIN_EMAILS (Karan's gmail), plus admin-provisioned accounts.
+ *
+ * Also stamps `x-pathname` on the forwarded request — the Commercial crew gate
+ * (app/commercial/layout.tsx) reads it, since a layout can't see the URL. Any
+ * client-sent x-pathname is replaced, so it can't be forged.
  */
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // Forward the request with the CURRENT cookies (request.cookies.set below
+  // rewrites the cookie header, so a refreshed token reaches this render) and
+  // the path stamp.
+  const forward = () => {
+    const headers = new Headers(request.headers);
+    headers.delete("x-pathname");
+    headers.set("x-pathname", request.nextUrl.pathname);
+    return NextResponse.next({ request: { headers } });
+  };
+  let response = forward();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,7 +36,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          response = NextResponse.next({ request });
+          response = forward();
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );

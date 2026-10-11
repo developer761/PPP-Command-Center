@@ -8,7 +8,10 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { sendEmail } from "@/lib/email/resend";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
-import { isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
+import { isExteriorProduct, isValidMaterialTypeValue } from "@/lib/customer-form/material-types";
+import { formatProductLines, productLinesFromOrder } from "@/lib/customer-form/product-lines";
+import { decideWriteback } from "@/lib/customer-form/writeback-mode";
+import { writeSfBatch } from "@/lib/salesforce/writeback";
 
 /**
  * Sends a supplier order via Resend + persists a `supplier_orders` row.
@@ -89,6 +92,15 @@ export async function POST(request: Request) {
     // with regenerated layout) doesn't silently drop the overrides.
     // Audit 2026-06-05 — regression scan flagged the type contract gap.
     materialTypeOverrides?: Record<string, string>;
+    /** Legacy single line, posted by the client as `materialType`. Nothing
+     *  SETS it now; kept as a fallback for orders saved before the per-color
+     *  pickers existed.
+     *
+     *  Named for the wire, not for the payload field it comes from. Declaring
+     *  it `mainMaterialType` here — the name it has in the build payload —
+     *  made it permanently undefined, because the client posts `materialType`.
+     *  The route had never read it before, so nothing caught the mismatch. */
+    materialType?: string;
   };
   try {
     body = await request.json();
@@ -455,10 +467,63 @@ export async function POST(request: Request) {
     console.warn("[supplier-order/send] vendor_email_sent_at stamp skipped:", err);
   }
 
+  // Step 5: record on the WORK ORDER which paint lines were actually ordered.
+  //
+  // Kate R6.2 put `Product_Lines__c` on the work order so what was SOLD
+  // (MaterialType__c, the estimator's answer, never touched) can be read next
+  // to what was ORDERED. Until now the only writer was the product-line
+  // selector on the AMs' Internal Entry form — a single value chosen before
+  // any ordering happened. Kate 2026-10-09 asked for that selector to come
+  // off, which would have stopped the writeback dead, so the answer is taken
+  // from the real per-color picks at the moment the order goes out.
+  //
+  // SOFT. The email has already been sent and the order row already exists;
+  // nothing here may fail the request. writeSf RETURNS {ok:false} rather than
+  // throwing, so the result is inspected, and the whole block is wrapped
+  // besides — an expired OAuth token throws from getSalesforceClient.
+  let productLinesWritten: string | null = null;
+  let productLinesError: string | null = null;
+  try {
+    const sides = productLinesFromOrder(
+      { materialTypeOverrides: body.materialTypeOverrides, mainMaterialType: body.materialType },
+      isExteriorProduct
+    );
+    const productLines = formatProductLines(sides);
+    if (productLines) {
+      const decision = await decideWriteback(body.workOrderId!);
+      if (!decision.shouldWrite) {
+        productLinesError = `writeback skipped: ${decision.reason}`;
+      } else {
+        const [res] = await writeSfBatch(
+          [{
+            sObject: "WorkOrder",
+            recordId: body.workOrderId!,
+            fields: { Product_Lines__c: productLines },
+          }],
+          { source: "vendor_email_sent", triggeredByUserId: data.user.id, workOrderNumber: body.workOrderNumber ?? null }
+        );
+        if (res?.ok) productLinesWritten = productLines;
+        else {
+          productLinesError = res?.error ?? "unknown Salesforce error";
+          console.error(
+            `[supplier-order/send] Product_Lines__c write failed for WO ${body.workOrderId}: ${productLinesError}`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    productLinesError = err instanceof Error ? err.message : String(err);
+    console.error("[supplier-order/send] Product_Lines__c write threw:", productLinesError);
+  }
+
   return NextResponse.json({
     ok: true,
     supplierOrderId,
     poNumber: body.poNumber,
+    /** What landed in WorkOrder.Product_Lines__c, or null with a reason. The
+     *  email went either way; this is a soft warning like replyThreading. */
+    productLinesWritten,
+    productLinesError,
     sentToEmail: body.sentToEmail!.trim().toLowerCase(),
     resendMessageId: send.id,
     // Soft warning surface — when this is false, future replies from the

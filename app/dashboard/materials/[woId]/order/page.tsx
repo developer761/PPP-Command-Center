@@ -77,6 +77,8 @@ export default async function OrderBuilderPage({
     loadSentOrdersForWorkOrder(data.workOrderId),
   ]);
 
+  const quotedLine = paintLineFromValue(data.job.wo.materialType);
+
   return (
     <OrderBuilderView
       workOrderId={data.workOrderId}
@@ -97,6 +99,16 @@ export default async function OrderBuilderPage({
       initialSupplierId={latest.supplierAccountId}
       persistenceAvailable={latest.available}
       priorOrders={priorOrders}
+      // Kate 2026-10-09 — show the quote's line as a REMINDER beside the
+      // pickers. Same source as the legacy mainMaterialType fallback below,
+      // but displayed rather than selected.
+      //
+      // "Other" is filtered out: it is 29 of the 109 work orders that have
+      // this field at all, and "Quoted product line: Other" reminds nobody of
+      // anything. Only 13.6% of WOs carry MaterialType__c in the first place,
+      // so this appears on roughly one order in eight — by design, since the
+      // alternative is inventing a line the estimator never recorded.
+      quotedProductLine={quotedLine && quotedLine !== "Other" ? quotedLine : null}
     />
   );
 }

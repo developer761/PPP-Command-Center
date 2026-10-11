@@ -198,6 +198,7 @@ import { finishSeedPolicy } from "@/lib/customer-form/finish-seed-policy";
 import SendReceiptButton from "@/components/send-receipt-button";
 import { roomTypeTextFrom } from "@/lib/rooms/room-type";
 import MaterialTypePicker from "@/components/material-type-picker";
+import { isInteriorLine, roomsNamedIn, roomSurfaceTemplate } from "@/lib/supplier-order/multi-room";
 
 /**
  * Sensible default finish per surface (Katie 2026-05-29) — auto-filled the
@@ -489,6 +490,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }, [formData, priorSubmission, finishSeeds.fromSalesforce, finishSeeds.fromPriorSubmission]);
 
   const [state, setState] = useState(initialState);
+  /**
+   * Kate 2026-10-09: "For customers, when they click 'Submit my colors' we
+   * want them to see a confirmation screen that shows them their selections
+   * and states something like, 'By clicking Confirm my selections I affirm
+   * that I've reviewed these selections and approve of the use of these for
+   * my project.'"
+   *
+   * CUSTOMERS ONLY — her words. Staff entry already belongs to somebody who
+   * can see the work order, and an AM part-way through a job should not be
+   * made to affirm on a homeowner's behalf.
+   *
+   * A step, not a dialog: the point is that they READ their selections back,
+   * which a modal over the form does not achieve.
+   */
+  const [confirming, setConfirming] = useState(false);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
   /** How many rooms came back from a local draft, once, on mount. */
   const [restoredRooms, setRestoredRooms] = useState(0);
   const [draftDismissed, setDraftDismissed] = useState(false);
@@ -768,6 +785,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   }
 
   const updateSurfacePick = (lineId: string, surface: string, patch: Partial<SurfacePick>) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     setState((prev) => ({
       ...prev,
       [lineId]: {
@@ -799,6 +820,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     pick: SurfacePick,
     opts: { overwrite?: boolean } = {}
   ) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     if (!pick.colorId) return;
     // The rule itself is in lib/customer-form/apply-to-all.ts, so it can be
     // tested — and so the counts in the message below are the same numbers the
@@ -904,6 +929,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   };
 
   const updateLineNotes = (lineId: string, notes: string) => {
+    // Kate 2026-10-09 — any edit retracts the affirmation. The customer
+    // agreed to the list they were shown; changing one after agreeing and
+    // before sending would submit an approval of something they never read.
+    setConfirming(false);
     setState((prev) => ({
       ...prev,
       [lineId]: { ...prev[lineId], notes },
@@ -949,6 +978,16 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         }
       }
     });
+    // Everything above has decided the submission is well-formed. Show it
+    // back before sending it. `confirming` is set by this pass and cleared on
+    // any edit, so the affirmation always describes what is on screen now.
+    if (!isStaffEntry && !confirming) {
+      setConfirming(true);
+      setSubmitError(null);
+      requestAnimationFrame(() => confirmRef.current?.scrollIntoView({ block: "start" }));
+      return;
+    }
+
     submitInFlight.current = true;
     setSubmitError(null);
     setSubmitting(true);
@@ -1354,6 +1393,30 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                     <path d="M7 17L17 7 M7 7h10v10" />
                   </svg>
                 </a>
+                {/* Kate 2026-10-09: 'Add a button labeled "Vinyl Siding
+                    Colors" and link to this pdf … in the "Need help picking
+                    colors?" section of the customer form.'
+
+                    HER LINK IS A GOOGLE DRIVE SHARE URL, and that is a
+                    standing risk rather than a defect today: it resolves for
+                    anyone with the address right now, but it is a file in
+                    PPP's Drive, and the day its sharing is tightened a
+                    customer gets a request-access screen with nowhere to go
+                    and no way to tell us. Every other link in this card
+                    points at benjaminmoore.com, which cannot do that. Raised
+                    with Karan — serving a copy from our own domain removes
+                    the failure mode entirely. */}
+                <a
+                  href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                >
+                  Vinyl Siding Colors
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M7 17L17 7 M7 7h10v10" />
+                  </svg>
+                </a>
               </div>
             </div>
           </div>
@@ -1448,7 +1511,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           </p>
           <textarea
             value={globalNotes}
-            onChange={(e) => setGlobalNotes(e.target.value)}
+            onChange={(e) => { setConfirming(false); setGlobalNotes(e.target.value); }}
             rows={8}
             placeholder={
               workContext.hasExterior && !workContext.hasInterior
@@ -1510,7 +1573,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           </p>
           <textarea
             value={globalNotes}
-            onChange={(e) => setGlobalNotes(e.target.value)}
+            onChange={(e) => { setConfirming(false); setGlobalNotes(e.target.value); }}
             rows={4}
             className="w-full px-3 py-2.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             placeholder="e.g. We have a Friday move-in date, please plan around that. Don't paint the inside of the closets."
@@ -1553,15 +1616,81 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 ? `Save your changes — ${editDeadline.label}.`
                 : "Save your changes — you can keep updating your colors up to 24 hours prior to your start date."
             ) : (
+              /* Kate 2026-10-09: "Once you submit, you'll get an email with
+                 your color choices. You can still come back and update your
+                 colors until [date]."
+
+                 Her sentence replaces the first half everywhere. The second
+                 half still has to tell the truth per state: "you can still
+                 come back" is false once the edit window has closed, so the
+                 urgency the other three branches carried is kept rather than
+                 flattened into her example.
+
+                 The email is real — the submit route sends a receipt listing
+                 the rooms, gated on a valid recipient and a non-empty
+                 submission, and an empty one cannot get this far. */
               editDeadline.kind === "deadline"
-                ? `Once you submit, we'll order the materials. You can still come back and update your colors until ${editDeadline.label}.`
+                ? `Once you submit, you'll get an email with your color choices. You can still come back and update your colors until ${editDeadline.label}.`
                 : editDeadline.kind === "approaching"
-                ? `Once you submit, we'll order the materials right away — ${editDeadline.label}.`
+                ? `Once you submit, you'll get an email with your color choices. We'll order the materials right away — ${editDeadline.label}.`
                 : editDeadline.kind === "past_start"
-                ? "Once you submit, we'll order the materials right away. Reach out to PPP if anything else needs to change."
-                : "Once you submit, we'll order the materials. You can still come back and update your colors up to 24 hours prior to your start date."
+                ? "Once you submit, you'll get an email with your color choices. We'll order the materials right away — reach out to PPP if anything else needs to change."
+                : "Once you submit, you'll get an email with your color choices. You can still come back and update your colors up to 24 hours prior to your start date."
             )}
           </div>
+          )}
+          {/* Kate 2026-10-09 — read it back before it is sent. */}
+          {confirming && (
+            <div
+              ref={confirmRef}
+              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4"
+            >
+              <h3 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy">
+                Please check your selections
+              </h3>
+              <ul className="mt-3 space-y-3">
+                {formData.lineItems.map((li, i) => {
+                  const st = state[li.id];
+                  if (!st) return null;
+                  const chosen = li.surfaces
+                    .map((surface) => ({ surface, pick: st.picks[surface] }))
+                    .filter((x) => x.pick && !x.pick.skipped && (x.pick.colorName || x.pick.colorId));
+                  if (chosen.length === 0 && !st.notes.trim()) return null;
+                  return (
+                    <li key={li.id} className="text-sm">
+                      <div className="font-semibold text-ppp-charcoal">{roomTitle(li, i + 1)}</div>
+                      {chosen.map(({ surface, pick }) => (
+                        <div key={surface} className="text-ppp-charcoal-600 pl-3">
+                          {surface}: <strong className="text-ppp-charcoal">{pick!.colorName || pick!.colorId}</strong>
+                          {pick!.colorCode ? ` (${pick!.colorCode})` : ""}
+                          {pick!.finish ? ` · ${pick!.finish}` : ""}
+                        </div>
+                      ))}
+                      {st.notes.trim() && (
+                        <div className="text-ppp-charcoal-500 pl-3 italic whitespace-pre-wrap">{st.notes.trim()}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {globalNotes.trim() && (
+                <p className="mt-3 text-sm text-ppp-charcoal-600 whitespace-pre-wrap">
+                  <span className="font-semibold text-ppp-charcoal">Notes: </span>
+                  {globalNotes.trim()}
+                </p>
+              )}
+              <p className="mt-4 text-xs sm:text-sm text-ppp-charcoal leading-relaxed">
+                By clicking &ldquo;Confirm my selections&rdquo; I affirm that I&rsquo;ve reviewed
+                these selections and approve of the use of these for my project.
+              </p>
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                className="mt-2 text-xs text-ppp-blue-700 hover:underline min-h-[44px] sm:min-h-0 inline-flex items-center touch-manipulation"
+              >
+                Go back and change something
+              </button>
+            </div>
           )}
           <button
             type="submit"
@@ -1579,6 +1708,11 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               ? "Submit (preview only)"
               : isInternal
               ? "Submit colors"
+              : confirming
+              /* Kate's wording — the affirmation names this button, so the
+                 button has to carry that exact name or the sentence above it
+                 refers to something that is not there. */
+              ? "Confirm my selections"
               : isEditing
               ? "Save changes"
               : "Submit my colors"}
@@ -1662,6 +1796,32 @@ function LineItemSection({
   // populated for every rendered line today, but nothing enforces that, and
   // the guard exists precisely because someone thought it might not be.
   const surfaces = lineItem.surfaces;
+
+  /**
+   * Kate p19 — one line item whose scope actually covers several rooms.
+   *
+   * The customer sees a card titled with ONE room and has no way to know the
+   * line covers four, so they give one set of colors for all of them. This
+   * says so, and offers her room/surface template.
+   *
+   * NOT auto-filled into the textarea. Seeding this box from Salesforce was
+   * tried and reverted on 2026-06-09 — the Description turned out to be PPP's
+   * quote boilerplate and pre-filling it confused customers. A skeleton the
+   * customer never touched would also submit as if they had written it. So it
+   * goes in only when they ask for it.
+   *
+   * A hook, and placed up here with the others on purpose: everything below
+   * the `state` guard is conditional, and this file has a docblock about
+   * exactly that crash.
+   */
+  const multiRooms = useMemo(
+    () =>
+      isInteriorLine(lineItem.productFamily) || !lineItem.productFamily
+        ? roomsNamedIn(lineItem.lineItemNotes)
+        : [],
+    [lineItem.productFamily, lineItem.lineItemNotes]
+  );
+  const isMultiRoom = multiRooms.length >= 2;
   // Default: an already-complete room (re-edit / preview with data) starts
   // collapsed to keep long lists manageable; a fresh room starts expanded.
   // Kate 2026-07-22 (#7): the auto-collapse that used to snap a room shut the
@@ -1820,6 +1980,34 @@ function LineItemSection({
               scope={scope}
             />
           ))}
+          {/* Kate p19 — say that this one line covers several rooms, because
+              the card's title names only one and the colors above are a
+              single set for all of them. */}
+          {isMultiRoom && (
+            <div
+              role="note"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 leading-relaxed"
+            >
+              <strong>This line covers {multiRooms.length} rooms</strong> &mdash;{" "}
+              {multiRooms
+                .map((r) => r.replace(/\b[a-z]/g, (c) => c.toUpperCase()))
+                .join(", ")}
+              .
+              <span className="block mt-0.5 text-amber-800">
+                The colors above apply to all of them. If you want different
+                colors room by room, say so in the notes.
+              </span>
+              {!state.notes.trim() && (
+                <button
+                  type="button"
+                  onClick={() => onNotesChange(roomSurfaceTemplate(multiRooms, surfaces))}
+                  className="mt-2 inline-flex items-center min-h-[44px] sm:min-h-0 sm:py-1 px-2.5 rounded-md border border-amber-300 bg-white text-[11px] font-semibold text-amber-900 hover:bg-amber-100 touch-manipulation"
+                >
+                  Add a list I can fill in
+                </button>
+              )}
+            </div>
+          )}
           <div>
             <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
               Notes for this room
@@ -1828,7 +2016,7 @@ function LineItemSection({
               aria-label={`Notes for ${title}`}
               value={state.notes}
               onChange={(e) => onNotesChange(e.target.value)}
-              rows={2}
+              rows={isMultiRoom ? 8 : 2}
               placeholder="Optional — e.g. 'keep accent wall the same' or 'use leftover paint if possible'"
               className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
             />

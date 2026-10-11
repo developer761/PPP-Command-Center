@@ -311,7 +311,33 @@ export function ProposalSendControl({
                     {!showCc ? (
                       <button type="button" onClick={() => setShowCc(true)} className="mt-1.5 text-[12px] font-semibold text-cc-brand-700 hover:underline">+ Add CC</button>
                     ) : (
-                      <input type="email" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="CC (optional)" className={`${FIELD} mt-2`} />
+                      /* SEVERAL PEOPLE. Stephanie 2026-10-08: "I need to be
+                         able to cc multiple people on proposals." type="email"
+                         refuses a list outright — the browser blocks the send
+                         with "please enter an email address" and no way past
+                         it — so this is a plain text box and the server
+                         validates each address, naming any one that is wrong. */
+                      <>
+                        <input
+                          type="text"
+                          value={cc}
+                          onChange={(e) => setCc(e.target.value)}
+                          placeholder="CC — one or several, separated by a comma or semicolon"
+                          className={`${FIELD} mt-2`}
+                        />
+                        {/* NAME THE SEMICOLON.
+                            Stephanie 2026-10-09, the day after this shipped:
+                            "can I just add multiple email addresses on the
+                            email line separated by a semicolon?" She could —
+                            the parser takes commas, semicolons and spaces —
+                            but this hint listed only commas and spaces, so the
+                            one separator Outlook teaches people to use was the
+                            one we did not mention. A capability nobody can
+                            tell is there is one they have to ask about. */}
+                        <p className="mt-1 text-[11px] text-ppp-charcoal-500">
+                          Add as many as you like — separate them with a comma, a semicolon or a space.
+                        </p>
+                      </>
                     )}
                   </div>
 

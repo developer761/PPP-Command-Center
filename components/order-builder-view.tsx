@@ -30,6 +30,7 @@ import {
 } from "@/lib/supplier-order/estimate-gallons";
 import { PRIMER_MATERIAL_TYPES, PRIMER_MATERIAL_VALUES, PAINT_LINE_VALUES, materialTypeForVendor } from "@/lib/customer-form/material-types";
 import { emptyBuildPayload, mergeBuildPayloads, pruneToLiveKeys, type OrderBuildPayload } from "@/lib/supplier-order/build-state";
+import { MULTI_ROOM_ALERT, multiRoomLines } from "@/lib/supplier-order/multi-room";
 import { draftDelayMs } from "@/lib/supplier-order/draft-timing";
 
 /**
@@ -76,6 +77,10 @@ export type SourceLine = {
    *  team adds ONE line item and lists the real rooms here, so without it this
    *  panel can read "1 line item" for a six-room job (Kate 2026-09-04). */
   notes?: string | null;
+  /** SF `Product_Family__c` — "Interior Painting" / "Exterior Painting".
+   *  Carried so the multi-room check can skip exterior work, where "garage"
+   *  and "entry" are parts of a building rather than rooms being painted. */
+  productFamily?: string | null;
   /** SF `ColorNotes__c`, free text only. The per-surface COLORS — on a
    *  work order where a rep puts the whole house on one line, Description
    *  says "see notes for colors" and this is those notes (Katie item 23). */
@@ -158,6 +163,7 @@ export default function OrderBuilderView({
   initialSupplierId,
   persistenceAvailable,
   priorOrders = [],
+  quotedProductLine = null,
 }: {
   workOrderId: string;
   workOrderNumber: string | null;
@@ -169,6 +175,21 @@ export default function OrderBuilderView({
   /** False while migration 144 is pending — the builder still works, it just
    *  can't survive a reload. Said out loud rather than failing quietly. */
   persistenceAvailable: boolean;
+  /**
+   * `WorkOrder.MaterialType__c` — the product line the ESTIMATOR put on the
+   * quote. Shown as a reminder, never as a default.
+   *
+   * Kate 2026-10-09, after deciding against a default selector: "the guys will
+   * have to select a line on each color no matter what so I actually don't
+   * think a default selector will save them time … If we want to display the
+   * chosen line from the Quote to remind them, that may be a good idea!"
+   *
+   * READ ONLY on purpose. MaterialType__c stays the estimator's answer from
+   * the quote so what was SOLD can be read next to what was ORDERED; the hub
+   * writes Product_Lines__c instead and never this (Kate R6.2). Pre-filling a
+   * picker from it is exactly the "Use Default" behavior Katie had removed.
+   */
+  quotedProductLine?: string | null;
   /** Orders already sent to a vendor for this work order. */
   priorOrders?: Array<{ poNumber: string | null; supplierAccountId: string; supplierName: string | null; sentAt: string | null }>;
 }) {
@@ -208,6 +229,24 @@ export default function OrderBuilderView({
   const [extrasSearch, setExtrasSearch] = useState("");
   const [advancing, setAdvancing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /**
+   * Kate 2026-10-07, mobile round: "Line items on this WO" collapsed by default.
+   *
+   * PHONE ONLY. Katie asked for the opposite on 2026-09-08 — all the way at the
+   * top and not a dropdown — because the office checks the buy-list AGAINST the
+   * source data. Both are right about their own screen: on a laptop the two sit
+   * side by side in the eye, on a phone the source data is a wall you scroll
+   * past to reach the numbers. So this state drives the phone only, and every
+   * `lg:` below holds the desktop layout Katie asked for exactly as it was.
+   */
+  const [sourceLinesOpen, setSourceLinesOpen] = useState(false);
+
+  /**
+   * Kate p18 — line items whose scope note names more than one room.
+   * Derived, not stored: it is a property of the Salesforce text, so it must
+   * never drift from what the panel above is showing.
+   */
+  const multiRoomHits = useMemo(() => multiRoomLines(sourceLines), [sourceLines]);
   // The server accepted the write but isn't keeping it (saved-order table
   // missing). Distinct from an error — nothing failed, it just won't survive,
   // and the next step will read an empty order.
@@ -1005,10 +1044,24 @@ export default function OrderBuilderView({
   );
 
 
+  /*
+   * Kate 2026-10-07: vendor first on a phone.
+   *
+   * Desktop keeps `space-y-5` on a block container — the layout Katie signed
+   * off, untouched. The phone gets a flex column with the same 20px gap, which
+   * is what makes `order-*` mean anything; `gap-5` and `space-y-5` render
+   * identically for block-level children, so this is a no-op above lg.
+   *
+   * Reordering is two `max-lg:order-first` marks rather than an order on every
+   * child: flex items with equal order keep DOM order, so the header and the
+   * vendor section tie at -9999 and resolve header-then-vendor, and everything
+   * else stays at 0 in the order it is written. Add a section anywhere below
+   * and it lands after the vendor on both screens, with nothing to remember.
+   */
   return (
-    <div className="space-y-5 pb-4">
+    <div className="pb-4 lg:space-y-5 max-lg:flex max-lg:flex-col max-lg:gap-5">
       {/* Header */}
-      <div>
+      <div className="max-lg:order-first">
         <Link
           href={`/dashboard/materials/${encodeURIComponent(workOrderId)}`}
           className="inline-flex items-center gap-1.5 min-h-[44px] py-2 -my-2 text-xs font-medium text-ppp-blue-700 hover:text-ppp-blue-800 hover:underline touch-manipulation"
@@ -1062,9 +1115,22 @@ export default function OrderBuilderView({
                 the grounds that an expanded copy of the source data pushed the
                 buy-list off the first screen. The office's answer is that the
                 source data is what they check the buy-list AGAINST, so it has to
-                be visible before the numbers rather than after them. */}
+                be visible before the numbers rather than after them.
+
+                KATE 2026-10-07 ASKED FOR IT COLLAPSED AGAIN — and on a phone she
+                is describing R4.18's problem exactly. The panel has now been
+                flipped once already, so it is NOT flipped a third time: desktop
+                below keeps Katie's always-open panel with no control at all, and
+                only the phone collapses. Karan 2026-10-08: "for the phone follow
+                kates rules the laptop should stay exactly as is."
+
+                That is why there are two headers. The `hidden lg:block` one is
+                the original markup, unchanged to the character, so the laptop
+                cannot drift. The `lg:hidden` one is a real button, because a
+                thing that opens has to be reachable by keyboard and announce
+                whether it is open — which a styled div does not. */}
             <div className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
+              <div className="hidden lg:block px-4 py-2.5 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)]">
                 <span>
                   <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
                     Source data (Salesforce)
@@ -1075,7 +1141,46 @@ export default function OrderBuilderView({
                   </span>
                 </span>
               </div>
-              <ul className="divide-y divide-ppp-charcoal-100">
+              <button
+                type="button"
+                onClick={() => setSourceLinesOpen((v) => !v)}
+                aria-expanded={sourceLinesOpen}
+                aria-controls="source-lines-list"
+                className="lg:hidden w-full text-left px-4 py-2.5 min-h-[44px] border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-3 touch-manipulation"
+              >
+                <span>
+                  <span className="block text-[10px] uppercase font-condensed font-bold tracking-wider text-ppp-charcoal-500">
+                    Source data (Salesforce)
+                  </span>
+                  <span className="block text-sm font-semibold text-ppp-charcoal">
+                    Line items on this WO
+                    <span className="ml-1.5 font-normal text-ppp-charcoal-500">({sourceLines.length})</span>
+                  </span>
+                </span>
+                {/* The word, not only the chevron — a chevron alone leaves people
+                    guessing which way means open. */}
+                <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-ppp-blue-700">
+                  {sourceLinesOpen ? "Hide" : "Show"}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={sourceLinesOpen ? "rotate-180 transition-transform" : "transition-transform"}
+                    aria-hidden
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </span>
+              </button>
+              <ul
+                id="source-lines-list"
+                className={`divide-y divide-ppp-charcoal-100 ${sourceLinesOpen ? "" : "hidden lg:block"}`}
+              >
                 {sourceLines.map((l) => (
                   <li key={l.id} className="px-4 py-2.5 text-xs">
                     {/* Kate round-3 #14: room AND surface identify the line. */}
@@ -1106,7 +1211,13 @@ export default function OrderBuilderView({
                     {/* Katie item 23 — the colors themselves, labelled apart from the
                         scope above so a reader can tell which is which. */}
                     <LineItemNotes notes={l.colorNotes} label="Colors" />
+                    {/* Kate 2026-10-07, p18: arrow at the adder that used to
+                        sit here, captioned "Remove this". Only the customer's
+                        own words stay on the line they were written about; the
+                        actionable list moved to the custom color area (p4.2),
+                        which is where a quantity is entered. */}
                     <ColorNoteOffers
+                      only="remarks"
                       room={l.room}
                       offers={l.colorNoteOffers ?? []}
                       remarks={l.colorNoteRemarks ?? []}
@@ -1125,7 +1236,9 @@ export default function OrderBuilderView({
           </section>
 
       {/* ── Step 1: vendor. Inline pick list, not a pop-up (#18/#21). ─────── */}
-      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
+      {/* max-lg:order-first — Kate's "vendor at the top" on phones only. See the
+          comment on the container above for why it is an order and not a move. */}
+      <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden max-lg:order-first">
         <div className="px-4 py-3 border-b border-ppp-charcoal-100 bg-[var(--color-surface-muted)] flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-sm font-semibold text-ppp-charcoal">Vendor</h2>
@@ -1214,6 +1327,40 @@ export default function OrderBuilderView({
             </div>
           )}
 
+          {/* Kate 2026-10-07, p18: "When there is one line item and multiple
+              rooms in the notes, add an alert here stating 'Multiple rooms
+              detected on one line item. Confirm with customer before
+              ordering'." Her wording, verbatim, from MULTI_ROOM_ALERT.
+
+              It sits above the buy list rather than on the source line,
+              because the source panel is collapsed by default on a phone now
+              (her own request) and an alert inside a closed drawer is not an
+              alert. Amber: "make alerts yellow and errors red".
+
+              WHY IT MATTERS: the estimator sizes paint per line item, so a
+              line whose scope quietly covers four rooms produces quantities
+              sized for one, and every number below it is wrong before anyone
+              touches it. 13.5% of interior lines in the live org. */}
+          {multiRoomHits.length > 0 && (
+            <div
+              role="alert"
+              className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-900 flex items-start gap-2"
+            >
+              <span aria-hidden>⚠</span>
+              <span>
+                <strong>{MULTI_ROOM_ALERT}</strong>
+                <span className="block mt-1 text-amber-800">
+                  {multiRoomHits.map((h) => (
+                    <span key={h.id} className="block">
+                      {h.room ? `${h.room}: ` : ""}
+                      names {h.rooms.length} rooms &mdash; {h.rooms.join(", ")}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            </div>
+          )}
+
           {/* ── Order — what to buy ───────────────────────────────────────── */}
           <div ref={buyListRef} className="scroll-mt-4">
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -1221,11 +1368,17 @@ export default function OrderBuilderView({
                 that has to change, because the button that refused is at the
                 bottom of a long page. */}
             {productLineError && totalNeedProductLine > 0 && (
-              <p role="alert" className="px-4 py-2.5 text-[12px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border-b border-ppp-orange-100">
+              /* Kate, 2026-10-07: "Invert the colors so the alert is the darker
+                 red and the text is the lighter red so it stands out more."
+                 Checked rather than swapped on sight — orange-50 on orange-700
+                 is 5.51:1 in light and 8.02:1 in dark, both past AA. A straight
+                 swap of the two tints would not have been: this codebase has
+                 shipped a -600-on--50 pairing that failed. */
+              <p role="alert" className="px-4 py-3 text-[12px] font-semibold text-ppp-orange-50 bg-ppp-orange-700 border-b border-ppp-orange-700">
                 Product line required — {totalNeedProductLine === 1
                   ? "1 color has no product line."
                   : `${totalNeedProductLine} colors have no product line.`}{" "}
-                <span className="font-normal">
+                <span className="font-normal opacity-95">
                   Pick one on each row marked in red; the vendor is sent &ldquo;[NOT SET]&rdquo; without it.
                   {customNeedProductLine.length > 0 && (
                     <>
@@ -1250,6 +1403,26 @@ export default function OrderBuilderView({
                 </span>
               )}
             </div>
+
+            {/* Kate 2026-10-09 — the line the ESTIMATOR quoted, as a reminder
+                while the guys pick one per color.
+
+                A REMINDER, NOT A DEFAULT, and the distinction is the whole
+                point. Katie had the "Use Default" selector removed because one
+                control cannot speak for a job mixing Ultra Spec and Regal, and
+                Kate agreed a default would not save anyone time since a line
+                has to be chosen per color regardless. So this states what was
+                sold and sets nothing: nothing is pre-filled, no picker is
+                touched, and the per-color "Product line required" error still
+                fires exactly as before. */}
+            {quotedProductLine && (
+              <p className="px-4 py-2 border-b border-ppp-charcoal-100 bg-ppp-blue-50/40 text-[11px] text-ppp-blue-800">
+                Quoted product line: <strong className="font-semibold">{quotedProductLine}</strong>
+                <span className="text-ppp-charcoal-500">
+                  {" "}&mdash; what the estimator sold. Pick the line for each color below.
+                </span>
+              </p>
+            )}
 
             {loadingDraft && !currentDraft && (
               <div className="px-4 py-6 text-sm text-ppp-charcoal-500 italic">Working out what to buy…</div>
@@ -1555,23 +1728,41 @@ export default function OrderBuilderView({
                             Offering it below that would let someone order a pail for two
                             gallons of paint; hiding it entirely is what forced the silent
                             auto-conversion this replaces. */}
-                        {(((unit === "gal" && total >= 5) || unit === "bucket"
-                           ? ["gal", "qt", "bucket"]
-                           : ["gal", "qt"]) as PaintUnit[]).map((u) => (
-                          <button
-                            key={u}
-                            type="button"
-                            onClick={() => setUnit(e, u)}
-                            aria-pressed={unit === u}
-                            className={`flex-1 px-2 py-1 text-[11px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
-                              unit === u
-                                ? "bg-ppp-blue text-ppp-navy"
-                                : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
-                            }`}
-                          >
-                            {u === "gal" ? "Gallon" : u === "qt" ? "Quart" : "Bucket"}
-                          </button>
-                        ))}
+                        {(["gal", "qt", "bucket"] as PaintUnit[]).map((u) => {
+                          // Kate, 2026-10-07: "Make these consistent." Rows
+                          // rendered TWO buttons under five gallons and THREE
+                          // at or above it, so every row was a different shape
+                          // and the same control sat in a different place on
+                          // each. All three always render now; Bucket is
+                          // DISABLED rather than missing below five gallons,
+                          // which keeps Karan's 2026-09-09 rule — nobody
+                          // orders a pail for two gallons of paint — while the
+                          // row stops changing width under the reader.
+                          const bucketAllowed = (unit === "gal" && total >= 5) || unit === "bucket";
+                          const disabled = u === "bucket" && !bucketAllowed;
+                          return (
+                            <button
+                              key={u}
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => setUnit(e, u)}
+                              aria-pressed={unit === u}
+                              title={disabled ? "A bucket is five gallons — this line is under that." : undefined}
+                              /* Kate: "Enlarge text on the gallon, quart,
+                                 bucket selector." 11px was below what the rest
+                                 of this row uses. */
+                              className={`flex-1 px-2 py-1 text-[13px] sm:text-[12px] font-medium min-h-[44px] sm:min-h-[32px] touch-manipulation transition-colors ${
+                                disabled
+                                  ? "bg-ppp-charcoal-50 text-ppp-charcoal-300 cursor-not-allowed"
+                                  : unit === u
+                                    ? "bg-ppp-blue text-ppp-navy"
+                                    : "bg-white text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"
+                              }`}
+                            >
+                              {u === "gal" ? "Gallon" : u === "qt" ? "Quart" : "Bucket"}
+                            </button>
+                          );
+                        })}
                       </div>
                       {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
                         <span className={`text-[11px] text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
@@ -1582,7 +1773,7 @@ export default function OrderBuilderView({
                         <label className={`text-[10px] shrink-0 ${lineNeedsProduct ? "text-ppp-orange-700 font-semibold" : "text-ppp-charcoal-500"}`} htmlFor={`mt-${key}`}>
                           Product line:
                         </label>
-                        <div className={`flex-1 min-w-0 ${lineNeedsProduct ? "rounded-lg ring-2 ring-ppp-orange-700" : ""}`}>
+                        <div className={`flex-1 min-w-0 rounded-lg ${lineNeedsProduct ? "ring-2 ring-ppp-orange-700 bg-ppp-orange-500/10" : ""}`}>
                           <MaterialTypePicker
                             id={`mt-${key}`}
                             value={readProductOverride(payload.materialTypeOverrides, e) ?? ""}
@@ -1644,8 +1835,24 @@ export default function OrderBuilderView({
                         the quantity beside it is a guess. RED, and above the
                         defaulted note: this is the one that needs a person. */}
                     {e.accentWallReview && (
-                      <p className="text-[10px] font-semibold text-ppp-orange-700 bg-ppp-orange-50 border border-ppp-orange-100 rounded px-1.5 py-1 mt-1 text-right">
-                        ⚠ accent wall on this line — check the quantity
+                      /* Kate, 2026-10-07, two asks on one line:
+                         · "Add specific room names and 'requested' to verbiage
+                           — e.g. 'Accent wall requested in Dining Room, check
+                           quantity'". It said "on this line", which on a color
+                           spanning six rooms pointed at all of them.
+                         · "Make alerts yellow and errors red. This should be
+                           yellow." It is a prompt to look, not a refusal —
+                           the red is reserved for the product-line error that
+                           actually blocks sending.
+                         Amber-700 on amber-50, not amber-600: a -600 on a -50
+                         tint fails AA, which this codebase has been caught by
+                         before. */
+                      <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 mt-1 text-right">
+                        ⚠ Accent wall requested
+                        {e.accentWallRooms && e.accentWallRooms.length > 0
+                          ? ` in ${e.accentWallRooms.join(", ")}`
+                          : ""}
+                        {" "}— check the quantity
                       </p>
                     )}
                     {/* The kitchen / bathroom / shared-kitchen rules of thumb.
@@ -1664,6 +1871,50 @@ export default function OrderBuilderView({
           </div>
 
           {/* ── Custom color item (#28) ──────────────────────────────────── */}
+          {/* Kate 2026-10-07, p4.2: "Modify the 'Eggshell for the bathroom
+              ceiling' indicator to instead add that to the custom color area
+              for the guys to add a quantity instead of having a flag that
+              doesn't inform them that they'll need to add Super White in
+              eggshell for the bathroom ceiling as a custom color."
+
+              Same control, moved. It belongs here because this is where a
+              quantity is entered and where the line it creates will appear,
+              and because the panel it used to live in is collapsed by default
+              on a phone now (her own p18 request) — an adder inside a closed
+              drawer is not an adder.
+
+              Each row carries the room it came from, which the custom items
+              already store as `scope` (Kate 2026-10-06) and the order screen
+              already prints. The vendor's copy merges on color, finish,
+              product and unit — room deliberately not in that key — so two
+              rooms needing the same paint still reach the store as one line
+              with the quantities summed. */}
+          {sourceLines.some((l) => (l.colorNoteOffers ?? []).length > 0) && (
+            <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
+              <h2 className="text-sm font-semibold text-ppp-charcoal">
+                Colors from the notes
+              </h2>
+              <p className="text-[11px] text-ppp-charcoal-500 mt-0.5">
+                Written on the line items by the rep or the customer. Set a
+                quantity to put one on the order as a custom color.
+              </p>
+              {sourceLines
+                .filter((l) => (l.colorNoteOffers ?? []).length > 0)
+                .map((l) => (
+                  <ColorNoteOffers
+                    key={l.id}
+                    only="offers"
+                    room={l.room}
+                    offers={l.colorNoteOffers ?? []}
+                    remarks={[]}
+                    items={payload.customColorItems}
+                    estimates={estimates}
+                    onAdd={addCustomColorItem}
+                  />
+                ))}
+            </section>
+          )}
+
           <CustomColorItems
             items={payload.customColorItems}
             onChange={(customColorItems) => patch({ customColorItems })}
@@ -1996,6 +2247,7 @@ function ColorNoteOffers({
   items,
   estimates,
   onAdd,
+  only,
 }: {
   room: string;
   offers: ColorNoteOffer[];
@@ -2008,10 +2260,26 @@ function ColorNoteOffers({
     unit: string,
     extra?: { finish?: string | null; scope?: string | null }
   ) => void;
+  /**
+   * Which half to render. Kate 2026-10-07 drew an arrow at the adder on the
+   * line-item card and wrote "Remove this", and separately asked (p4.2) for
+   * the color to "add that to the custom color area for the guys to add a
+   * quantity". Those are one change: the ADDER moves, the customer's own
+   * words stay on the line they were written about.
+   *
+   *   "offers"  — the actionable list, rendered in the custom color area
+   *   "remarks" — what the customer SAID, rendered on the line item
+   *
+   * Undefined renders both, which nothing does now but keeps the component
+   * honest if it is reused.
+   */
+  only?: "offers" | "remarks";
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, PaintUnit>>({});
-  if (offers.length === 0 && remarks.length === 0) return null;
+  const showOffers = only !== "remarks";
+  const showRemarks = only !== "offers";
+  if ((!showOffers || offers.length === 0) && (!showRemarks || remarks.length === 0)) return null;
   // The room the NOTE named beats the line item's own — when a rep puts seven
   // rooms on one line, the line's name identifies none of them (Katie
   // 2026-10-01). Falls back to the line item for notes with no headings.
@@ -2021,13 +2289,14 @@ function ColorNoteOffers({
   const pending = offers.filter((o) => !isOfferOnOrder(items, identityFor(o))).length;
   return (
     <div className="mt-2 rounded-lg border border-ppp-charcoal-100 px-3 py-2">
-      {offers.length > 0 && (
+      {showOffers && offers.length > 0 && (
       <p className="text-[11px] text-ppp-charcoal-600">
         {pending === 0
           ? "Every color in these notes is on the order."
           : "Color notes don't go to the vendor. Add anything that needs buying:"}
       </p>
       )}
+      {showOffers && (
       <ul className="mt-1 divide-y divide-ppp-charcoal-100">
         {offers.map((offer) => {
           const line = offer.line;
@@ -2052,6 +2321,15 @@ function ColorNoteOffers({
                 </span>
                 {added ? (
                   <span className="shrink-0 text-[11px] font-medium text-ppp-green-700">✓ On order</span>
+                ) : covered ? (
+                  /* Kate 2026-10-07, p4.1: "remove ability to add quantity in
+                     the custom color adder" when the color is already on the
+                     order. The quantity box was the thing that produced the
+                     duplicate line she is trying to stop — leaving it here and
+                     only warning in text meant the warning had to be read and
+                     obeyed. The flag below says where to change the number
+                     instead. */
+                  null
                 ) : (
                   <span className="shrink-0 flex items-center gap-1.5">
                     <input
@@ -2104,17 +2382,31 @@ function ColorNoteOffers({
                 </p>
               )}
               {!added && covered && (
-                <p className="text-[10px] text-ppp-charcoal-500 mt-0.5">Already in the buy-list above.</p>
+                /* Kate, 2026-10-07, p4.1 — her words, verbatim: "add a flag
+                   stating 'This color already exists on the order. Increase
+                   quantity above.'"
+                   It replaces "Already in the buy-list above", which named a
+                   section that no longer exists under that name (her p4.1a
+                   rename) and, worse, told you a fact without telling you what
+                   to do about it. Amber because her p18 note is explicit:
+                   "Make alerts yellow and errors red." */
+                <p
+                  role="note"
+                  className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1"
+                >
+                  This color already exists on the order. Increase quantity above.
+                </p>
               )}
             </li>
           );
         })}
       </ul>
+      )}
       {/* What the customer SAID. Not offerable — these used to arrive as
           buy-list rows with a quantity box beside them — but not discarded
           either: "I'd like an accent wall in a plum" is the estimator's cue to
           call them (Katie 2026-10-01). */}
-      {remarks.length > 0 && (
+      {showRemarks && remarks.length > 0 && (
         <div className="mt-2 pt-2 border-t border-ppp-charcoal-100">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
             Also in the notes — not something to buy

@@ -62,11 +62,13 @@ type StageDef = {
 };
 
 const STAGES: StageDef[] = [
-  { key: "formSentAt",             label: "Form Sent",          shortLabel: "Sent",        stuckAfterDays: 3 },
+  { key: "formSentAt",             label: "Form Sent",          shortLabel: "Form sent",   stuckAfterDays: 3 },
   { key: "formOpenedAt",           label: "Customer Opened",    shortLabel: "Opened",      stuckAfterDays: 5 },
   { key: "formSubmittedAt",        label: "Customer Submitted", shortLabel: "Submitted",   stuckAfterDays: null },
   { key: "supplierDraftedAt",      label: "Order Drafted",      shortLabel: "Drafted",     stuckAfterDays: 2 },
-  { key: "supplierSentAt",         label: "Sent to Supplier",   shortLabel: "Sent",        stuckAfterDays: 1 },
+  // Steps 1 and 5 both read "Sent" on the mobile timeline — the form going
+// out and the order going out, side by side in one list, indistinguishable.
+  { key: "supplierSentAt",         label: "Sent to Supplier",   shortLabel: "Order sent",  stuckAfterDays: 1 },
 ];
 
 /** Resolve each stage's visual state from the timestamps. */
@@ -219,7 +221,14 @@ export default function WorkOrderProgressBar({
   return (
     <div className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-4 sm:px-5 sm:py-5">
       <div className="font-condensed text-[12px] uppercase tracking-wider text-ppp-charcoal-500 mb-3.5">
-        Progress · Work Order {progress.workOrderNumber ?? progress.workOrderId.slice(-6)}
+        {/* Kate, 2026-10-07: "random letters at end of title: DZFOAW".
+            Not garbled text — the fallback printed the last six characters of
+            the SALESFORCE RECORD ID when the work order number was missing,
+            presented as though it were the number. An ID fragment identifies
+            nothing to anybody reading it. Say there is no number instead. */}
+        {progress.workOrderNumber
+          ? `Progress · Work Order ${progress.workOrderNumber}`
+          : "Progress · Work order number not set"}
       </div>
 
       {/* Desktop / tablet: horizontal stepper */}
@@ -277,7 +286,7 @@ export default function WorkOrderProgressBar({
       </ol>
 
       {/* Mobile: vertical timeline */}
-      <ol className="sm:hidden space-y-2" role="list" aria-label="Work order progress">
+      <ol className="sm:hidden space-y-0.5" role="list" aria-label="Work order progress">
         {STAGES.map((stage, i) => {
           const state = states[i];
           const cls = STATE_CLASSES[state];
@@ -294,7 +303,7 @@ export default function WorkOrderProgressBar({
                 </span>
                 {!isLast && (
                   <span
-                    className={`w-[2px] h-5 mt-0.5 ${state === "done" ? STATE_CLASSES.done.line : STATE_CLASSES.pending.line}`}
+                    className={`w-[2px] h-3 mt-0.5 ${state === "done" ? STATE_CLASSES.done.line : STATE_CLASSES.pending.line}`}
                     aria-hidden
                   />
                 )}

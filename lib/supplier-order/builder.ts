@@ -73,7 +73,7 @@ export type DeliveryAddress = {
   postalCode: string;
   country?: string;
   /** Where did this address come from? Helps admin trust the data. */
-  source: "customer_form" | "sf_account" | "manual";
+  source: "customer_form" | "work_order" | "sf_account" | "manual";
 };
 
 export type SupplierOrderLineItem = {
@@ -859,6 +859,40 @@ function resolveDeliveryAddress(input: BuildSupplierOrderInput): DeliveryAddress
       state: submitted.state?.trim() || "",
       postalCode: submitted.postalCode?.trim() || "",
       source: "customer_form",
+    });
+  }
+
+  /**
+   * The WORK ORDER's own address — the service address, i.e. the house being
+   * painted. Ranked above the Account's billing address and below anything a
+   * person confirmed.
+   *
+   * It was missing entirely until 2026-10-09, and that is why so many vendor
+   * emails read "DELIVERY — address TBD (admin will confirm before send)".
+   * Over 500 work orders from the last year:
+   *
+   *     WO address AND account billing : 124
+   *     WO address only                : 372   <- no candidate at all before
+   *     account billing only           :   0
+   *     neither                        :   4
+   *
+   * Three quarters of jobs, each one hand-typed by whoever sent the order.
+   *
+   * Billing is the weaker answer even when both exist: it is where the
+   * invoice goes, which need not be the property. So the work order is
+   * tried first and the account stays as the fallback rather than being
+   * removed — the 124 that have both are unaffected either way, and the 0
+   * that have only billing would otherwise regress.
+   */
+  const wo = input.workOrder;
+  if (wo?.street?.trim()) {
+    candidates.push({
+      name: customerName,
+      street: wo.street.trim(),
+      city: wo.city?.trim() || "",
+      state: wo.state?.trim() || "",
+      postalCode: wo.postalCode?.trim() || "",
+      source: "work_order",
     });
   }
 

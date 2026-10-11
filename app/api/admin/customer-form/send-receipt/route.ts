@@ -6,7 +6,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { capabilitiesFor, roleForProfile } from "@/lib/auth/roles";
 import { loadFormRenderData } from "@/lib/customer-form/render-data";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
-import { buildReceiptRooms, receiptIsEmpty, receiptRecipient } from "@/lib/customer-form/receipt-lines";
+import { buildReceiptRooms, EMAIL_RE, receiptIsEmpty, receiptRecipient } from "@/lib/customer-form/receipt-lines";
 import { sendCustomerFormConfirmation } from "@/lib/email/resend";
 
 /**
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  let body: { token?: string };
+  let body: { token?: string; toEmail?: string; toName?: string };
   try {
     body = await request.json();
   } catch {
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const { email: to, name: customerName } = receiptRecipient({
+  const resolved = receiptRecipient({
     tokenKind: row.kind,
     tokenEmail: row.customer_email,
     tokenCustomerName: row.customer_name,
@@ -129,12 +129,49 @@ export async function POST(request: Request) {
     workOrderCustomerName,
   });
 
+  /**
+   * An address the AM typed, which wins over the resolved one.
+   *
+   * Kate 2026-10-09: "add a new button called 'Save and email customer'.
+   * Once clicked, allow the AM to enter the customer's name and email in the
+   * same way they do to send the color form to the customer."
+   *
+   * The button itself already existed — Katie asked for it on 2026-10-01 and
+   * it resolves the address from the work order. What it had no answer for
+   * was a work order with no email on it: the route said "Add one in
+   * Salesforce, then send the receipt", which is a dead end at the moment
+   * somebody is trying to finish a job. Now they can type it.
+   *
+   * Validated with the SAME regex receiptRecipient uses, because two
+   * different ideas of a valid address is how one path sends and the other
+   * refuses the identical string.
+   */
+  const typedEmail = (body.toEmail ?? "").trim();
+  const typedName = (body.toName ?? "").trim();
+  if (typedEmail && !EMAIL_RE.test(typedEmail)) {
+    return NextResponse.json({
+      error: "invalid_email",
+      message: `"${typedEmail}" doesn't look like an email address.`,
+    }, { status: 400 });
+  }
+
+  const to = typedEmail || resolved.email;
+  const customerName = typedEmail ? (typedName || resolved.name) : resolved.name;
+
   if (!to) {
     return NextResponse.json({
       error: "no_customer_email",
       message:
-        "No customer email found on this work order. Add one in Salesforce, then send the receipt.",
+        "No customer email on this work order. Add one in Salesforce, or type an address below and send it now.",
     }, { status: 400 });
+  }
+
+  // An address a person typed reached a customer. Say so in the log next to
+  // the one the work order would have produced.
+  if (typedEmail) {
+    console.log(
+      `[send-receipt] typed recipient ${typedEmail} used instead of ${resolved.email ?? "(none resolved)"} on WO ${row.work_order_id} by ${data.user.email ?? data.user.id}`
+    );
   }
 
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "") || new URL(request.url).origin;

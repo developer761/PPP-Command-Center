@@ -55,12 +55,36 @@ export type EmailProposalResult =
 
 export async function emailProposalToGc(input: EmailProposalInput): Promise<EmailProposalResult> {
   const toEmail = (input.to_email ?? "").trim().toLowerCase();
-  const ccEmail = (input.cc_email ?? "").trim().toLowerCase() || null;
+  /*
+   * CC TAKES SEVERAL PEOPLE.
+   *
+   * Stephanie 2026-10-08: "I need to be able to cc multiple people on
+   * proposals." A GC side almost always has more than one — the PM, the
+   * estimator, an assistant who files it — and one box meant she sent the
+   * proposal twice to copy the second person.
+   *
+   * Split on commas, semicolons and whitespace, because that is how addresses
+   * arrive when they are pasted out of Outlook. Deduplicated, and the TO
+   * address is dropped if it appears again here — sending somebody the same
+   * mail twice is how a proposal looks like a mistake. Each one is validated:
+   * one bad address refuses the send and names itself, rather than silently
+   * going to everyone else.
+   */
+  const ccList = [
+    ...new Set(
+      String(input.cc_email ?? "")
+        .split(/[,;\s]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const ccEmail = ccList.length > 0 ? ccList.join(", ") : null;
   const subject = (input.subject ?? "").trim();
   const message = (input.message ?? "").trim();
 
   if (!EMAIL_RE.test(toEmail)) return { ok: false, error: "Enter a valid recipient email." };
-  if (ccEmail && !EMAIL_RE.test(ccEmail)) return { ok: false, error: "The CC email isn't valid." };
+  const badCc = ccList.find((e) => !EMAIL_RE.test(e));
+  if (badCc) return { ok: false, error: `This CC address isn't valid: ${badCc}` };
   if (!subject) return { ok: false, error: "Add a subject." };
   if (!message) return { ok: false, error: "Add a message." };
 
@@ -196,7 +220,11 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
   const r = await sendEmail({
     channel: "commercial",
     to: toEmail,
-    ...(ccEmail ? { cc: ccEmail } : {}),
+    // The TO address is dropped from CC — nobody should get it twice.
+    ...(() => {
+      const cc = ccList.filter((e) => e !== toEmail);
+      return cc.length > 0 ? { cc } : {};
+    })(),
     subject,
     text,
     ...(html ? { html } : {}),

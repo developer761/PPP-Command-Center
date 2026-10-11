@@ -30,9 +30,34 @@
 export const PRODUCT_LINES_MAX = 255;
 
 export type ProductLineSelection = {
-  interior?: string | null;
-  exterior?: string | null;
+  interior?: string | string[] | null;
+  exterior?: string | string[] | null;
 };
+
+/**
+ * Trim, drop blanks, de-duplicate, keep first-seen order.
+ *
+ * Several lines per SIDE is a real case and always was — Katie's reason for
+ * deleting the single "Use Default" selector on 2026-09-08 was precisely that
+ * one control cannot speak for a job mixing Ultra Spec and Regal. The old
+ * single-string shape could not record that job either; it recorded whichever
+ * line the AM happened to pick. The docblock above already anticipated this:
+ * a text field has "no cap on how many lines a job carries".
+ */
+function normalizeSide(v: string | string[] | null | undefined): string[] {
+  const list = Array.isArray(v) ? v : [v];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of list) {
+    const s = (raw ?? "").trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
 
 /**
  * Kate's format: `Interior: Regal Select | Exterior: Woodluxe`.
@@ -47,10 +72,14 @@ export type ProductLineSelection = {
  */
 export function formatProductLines(sel: ProductLineSelection): string {
   const parts: string[] = [];
-  const interior = (sel.interior ?? "").trim();
-  const exterior = (sel.exterior ?? "").trim();
-  if (interior) parts.push(`Interior: ${interior}`);
-  if (exterior) parts.push(`Exterior: ${exterior}`);
+  const interior = normalizeSide(sel.interior);
+  const exterior = normalizeSide(sel.exterior);
+  // Several on a side are comma-joined inside their label, so the shape Kate
+  // specified still reads the same for the ordinary one-line-per-side job:
+  //   Interior: Regal Select | Exterior: Woodluxe
+  //   Interior: Regal Select, Ultra Spec Interior
+  if (interior.length) parts.push(`Interior: ${interior.join(", ")}`);
+  if (exterior.length) parts.push(`Exterior: ${exterior.join(", ")}`);
   const out = parts.join(" | ");
   // A line name long enough to overflow means something is wrong upstream, but
   // truncating beats STRING_TOO_LONG rejecting the whole write — which would
@@ -73,4 +102,47 @@ export function parseProductLines(value: string | null | undefined): ProductLine
     else out.exterior = m[2];
   }
   return out;
+}
+
+/**
+ * The product lines an ORDER actually contains, split by side.
+ *
+ * WHY THIS EXISTS. Until 2026-10-09 `Product_Lines__c` — the field that
+ * records what was ORDERED — was written from exactly one place: the product
+ * line an Account Manager picked on Internal Entry, before any ordering had
+ * happened. Kate, 2026-10-09: "I still think removing the selector from the
+ * AMs' Internal Entry form would be good because it takes their involvement
+ * out of the equation."
+ *
+ * She is right, and the selector cannot simply be deleted: it was the ONLY
+ * writer of her own R6.2 field, so removing it would have silently stopped
+ * the writeback. This derives the same answer from the real per-color
+ * selections at send time instead, which is both what the field claims to
+ * mean and strictly better evidence — an AM's single up-front guess versus
+ * what the vendor was actually asked to supply.
+ *
+ * `mainMaterialType` is included only as a fallback for orders saved before
+ * the per-color pickers existed; nothing sets it now.
+ */
+export function productLinesFromOrder(
+  order: {
+    materialTypeOverrides?: Record<string, string> | null;
+    mainMaterialType?: string | null;
+  },
+  isExterior: (value: string) => boolean
+): { interior: string[]; exterior: string[] } {
+  const values = [
+    ...Object.values(order.materialTypeOverrides ?? {}),
+    order.mainMaterialType ?? "",
+  ];
+  const interior: string[] = [];
+  const exterior: string[] = [];
+  for (const raw of values) {
+    const v = (raw ?? "").trim();
+    if (!v) continue;
+    (isExterior(v) ? exterior : interior).push(v);
+  }
+  // normalizeSide in formatProductLines de-duplicates; returning the raw
+  // order here keeps this function honest about what it saw.
+  return { interior, exterior };
 }

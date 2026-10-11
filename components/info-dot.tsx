@@ -88,9 +88,23 @@ export default function InfoDot({ text }: { text: string }) {
         title={text}
         aria-label={`What this means: ${text}`}
         aria-expanded={open}
-        className="inline-flex items-center justify-center h-11 w-11 sm:h-4 sm:w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 hover:text-ppp-charcoal transition-colors touch-manipulation"
+        /* Kate, 2026-10-07: "make the help circles smaller, which will
+           hopefully expand the text." On a phone this was h-11 w-11 — a 44px
+           disc sitting beside every KPI label and squeezing it onto two lines.
+           The 44px was deliberate (Apple's tap minimum, enforced by
+           mobile-touch-and-zoom.test.ts) and is kept: the BUTTON still stands
+           44px tall, and `after:` stretches its hit area sideways past the
+           visible mark. What shrank is the part you can see — a 16px ring in
+           an 18px-wide slot — so the label gets the width back without the
+           target getting harder to hit. */
+        className="relative inline-flex items-center justify-center min-h-[44px] w-[18px] sm:min-h-0 sm:h-4 sm:w-4 text-ppp-charcoal-500 hover:text-ppp-charcoal transition-colors touch-manipulation after:absolute after:-inset-x-3 after:inset-y-0 after:content-['']"
       >
-        ?
+        <span
+          aria-hidden
+          className="flex items-center justify-center h-4 w-4 rounded-full border border-ppp-charcoal-200 text-[9px] font-bold leading-none"
+        >
+          ?
+        </span>
       </button>
       {open && coords && typeof document !== "undefined" &&
         createPortal(

@@ -866,7 +866,13 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
           }[tone];
           return (
             <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}
+              /* Kate, 2026-10-07: "the colorful bars should extend the whole
+                 way over no matter the length of the text." Each chip was
+                 sized to its own text, so a stacked column of them on a phone
+                 came out ragged — six different widths down the left edge,
+                 reading as six different kinds of thing rather than one list.
+                 Full width when they stack; unchanged once they sit in a row. */
+              className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-[11px] font-medium sm:inline-flex sm:w-auto sm:py-1 ${cls}`}
               title={hint}
             >
               {tone === "critical" && (
@@ -882,8 +888,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
         };
         return (
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 sm:px-5 py-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mr-1">Needs attention</span>
+            {/* Stacked on a phone so each chip can take the full width;
+                a wrapping row from `sm` up, exactly as before. */}
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+              <span className="text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 sm:mr-1">Needs attention</span>
               {chip(n.jobCriticalNotOrdered > 0, "start in ≤2 days — not ordered", n.jobCriticalNotOrdered, "critical",
                 "Jobs whose scheduled start date is within the next 2 days where no paint has been ordered yet. These need an order today or tomorrow.")}
               {chip(n.jobSoonNotOrdered > 0, "start this week — not ordered", n.jobSoonNotOrdered, "orange",
@@ -1597,6 +1605,42 @@ function JobDetailImpl({
    *  color form was just sent) so the parent bumps the stream's refresh key. */
   onActivityChange?: () => void;
 }) {
+  /**
+   * Kate 2026-10-07, p15: "random order materials button at bottom of page."
+   *
+   * She is right that it reads as random, and the cause is that it is a SECOND
+   * copy. On a phone this page shows two Order Materials buttons to the same
+   * route: the one in the Materials card, and the sticky bar pinned to the
+   * bottom of the viewport (Karan 2026-06-13, so nobody has to scroll back up
+   * past a long list of rooms to order).
+   *
+   * Deleting either one loses something real. The card button is the one that
+   * explains itself and handles every refusal — Account Managers can't order,
+   * no rooms on the WO yet — and it sits ABOVE the per-room list, so it is
+   * gone from the screen by the time you finish entering colors, which is
+   * exactly when you want to order. That is the scroll the sticky bar exists
+   * to save.
+   *
+   * So the fix is not to pick one. A duplicate is only a duplicate while both
+   * are on screen: the sticky bar now appears only once the card button has
+   * scrolled out of view. Nobody ever sees two, and nobody loses the shortcut.
+   *
+   * Starts hidden, because the card button is on screen when the page opens.
+   * No IntersectionObserver (old browser, SSR) means it simply never shows —
+   * the card button still works, which is the right way to fail.
+   */
+  const orderCtaRef = useRef<HTMLDivElement | null>(null);
+  const [orderCtaOffScreen, setOrderCtaOffScreen] = useState(false);
+  useEffect(() => {
+    const el = orderCtaRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      ([entry]) => setOrderCtaOffScreen(!entry.isIntersecting),
+      { rootMargin: "0px 0px -72px 0px" } // don't count it as visible behind the bar itself
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   // Pre-fill data for the Send Color Form modal — pull the customer Account
   // from parent-built indexes. Empty when not in snapshot (vendor WO or
@@ -2051,7 +2095,10 @@ function JobDetailImpl({
           {/* ── Materials: turn colors into a real supplier order. */}
           <div className="rounded-lg border border-ppp-green-100 bg-ppp-green-50/30 p-3">
             <div className="text-[10px] uppercase tracking-wider font-bold text-ppp-green-700 mb-2">Materials</div>
-            <div className="flex flex-col gap-1.5">
+            {/* orderCtaRef — the sticky bar watches this block and only shows
+                itself once this has scrolled away. See the note at the top of
+                JobDetailImpl. */}
+            <div ref={orderCtaRef} className="flex flex-col gap-1.5">
               {/* Enable only when the viewer can order AND the WO has line items
                   — ordering with 0 rooms produces a blank paint order (matches
                   the mobile sticky bar + pb-24 gate). */}
@@ -2214,8 +2261,12 @@ function JobDetailImpl({
           toolbar to reach it. Safe-area-inset-bottom for iPhone notch.
           Only renders when the WO actually has line items — otherwise
           picking a supplier produces a blank paint order (audit
-          2026-07-01). */}
-      {job.lineItems.length > 0 && canOrderMaterials && (
+          2026-07-01).
+
+          `orderCtaOffScreen` added 2026-10-09 for Kate's p15: it stays hidden
+          while the Materials card button is still on screen, so the two are
+          never visible at the same time. */}
+      {job.lineItems.length > 0 && canOrderMaterials && orderCtaOffScreen && (
         <div
           className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-ppp-charcoal-100 px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
