@@ -137,7 +137,15 @@ const PENDING_REMOVAL = new Map([
    + "three endings: leave it on Karan's phone for testing, repoint it to "
    + "Katie's +12102877930 for testing, or set the real +18779598490 at go-live. "
    + "Whichever is chosen, NULL on every workspace is the documented design — "
-   + "voice-forward.ts says so and the fallback does the rest."],
+   + "voice-forward.ts says so and the fallback does the rest. "
+   + "BUT THE FALLBACK ITSELF IS NOW IN QUESTION, 2026-10-10: MAIN_LINE is "
+   + "+18776453563, read from Hatch on 09-26 and confirmed on three workspaces, "
+   + "and that is NOT the +18779598490 Katie named as the destination. Nor is "
+   + "either of them the +18667694388 that is the only number on "
+   + "precisionpaintingplus.net. So 32 workspaces forward to a number nobody has "
+   + "re-confirmed, and if Katie's is the call centre the fix is one constant in "
+   + "voice-forward.ts rather than anything in this table. Question 31 in "
+   + "QUESTIONS_FOR_KATE.md. Settling THIS row does not settle that one."],
 ]);
 
 const ALLOWED = new Set([
