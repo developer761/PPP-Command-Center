@@ -55,6 +55,27 @@ export function paidWith(p: Pick<LedgerPayment, "method" | "card_funding">): Pai
 
 // ─── Where it is ────────────────────────────────────────────────────────────
 
+/**
+ * Paid online, but not in Salesforce's BalanceOwed__c yet: a bank transfer
+ * still clearing, or a payment that succeeded and hasn't been written as a
+ * Payment In (bookings wait for the payout). Counted as "already paid" so the
+ * same money isn't shown — or charged — as owed twice.
+ */
+export function isInFlight(p: Pick<LedgerPayment, "status" | "sf_writeback_status">): boolean {
+  return p.status === "processing" || (p.status === "succeeded" && p.sf_writeback_status !== "written");
+}
+
+/** In-flight cents on one Work Order, in one money mode (test money never reaches a real balance). */
+export function inFlightCentsFor(
+  rows: Pick<LedgerPayment, "work_order_id" | "livemode" | "status" | "sf_writeback_status" | "base_cents">[],
+  workOrderId: string,
+  livemode: boolean,
+): number {
+  return rows
+    .filter((p) => p.work_order_id === workOrderId && p.livemode === livemode && isInFlight(p))
+    .reduce((s, p) => s + p.base_cents, 0);
+}
+
 export type Stage = "processing" | "awaiting_payout" | "cleared" | "booked" | "booking_failed" | "refunded";
 export const STAGE_LABEL: Record<Stage, string> = {
   processing: "Bank transfer clearing",

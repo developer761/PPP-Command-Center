@@ -17,7 +17,9 @@ import {
 import { formatCents } from "@/lib/payments/schedule";
 import { shouldWriteToSalesforce } from "@/lib/payments/config";
 import { getWorkOrderPaymentStateByNumber } from "@/lib/salesforce/payments";
-import { relativeAgoEt } from "@/lib/date-et";
+import { etTodayIso, relativeAgoEt } from "@/lib/date-et";
+import { previousDayIso } from "@/lib/payments/daily-report-email";
+import { reportRecipients, sendDailyPaymentsReport } from "@/lib/payments/daily-report";
 
 export const dynamic = "force-dynamic";
 // "Create links for open Work Orders" writes up to 100 links to Salesforce.
@@ -107,6 +109,24 @@ async function bulkLinksAction() {
   redirect(`${PATH}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
 }
 
+async function sendReportToMeAction(formData: FormData) {
+  "use server";
+  const email = await requireAdmin();
+  const day = String(formData.get("day") ?? "").trim();
+  let msg: string;
+  let ok = false;
+  try {
+    const r = await sendDailyPaymentsReport([email], day || undefined);
+    ok = r.ok;
+    msg = r.ok
+      ? `Sent to ${email}: ${r.payments} payment${r.payments === 1 ? "" : "s"} on ${r.day}${r.payments ? ", Excel file attached" : " (no file on an empty day)"}.`
+      : `The email didn't send: ${r.error}`;
+  } catch (err) {
+    msg = err instanceof Error ? err.message : String(err);
+  }
+  redirect(`${PATH}?${ok ? "ok" : "err"}=${encodeURIComponent(msg)}`);
+}
+
 async function retryWriteAction(formData: FormData) {
   "use server";
   await requireAdmin();
@@ -132,6 +152,7 @@ export default async function PaymentsSettingsPage({
   await requireAdmin();
   const { ok, err } = await searchParams;
   const cfg = paymentsConfig();
+  const recipients = reportRecipients();
 
   let links: PaymentLinkRow[] = [];
   let payments: PaymentRow[] = [];
@@ -220,6 +241,41 @@ export default async function PaymentsSettingsPage({
             env="PAYMENTS_SF_WRITEBACK=on"
           />
         </dl>
+      </section>
+
+      <section className="rounded-xl bg-white border border-ppp-charcoal-100 p-5">
+        <h2 className="text-base font-semibold text-ppp-charcoal">Daily email</h2>
+        <p className="text-sm text-ppp-charcoal-500 mt-1">
+          Every morning at about 8am ET: yesterday&rsquo;s online payments, month to date, anything that didn&rsquo;t book
+          in Salesforce, and the Excel file.
+        </p>
+        <p className="mt-2 text-[13px] text-ppp-charcoal-700">
+          {recipients.length ? (
+            <>
+              Goes to <span className="font-semibold">{recipients.join(", ")}</span>
+            </>
+          ) : (
+            <>Off — set PAYMENTS_REPORT_EMAILS (comma-separated) in Vercel to turn it on.</>
+          )}
+        </p>
+        <form action={sendReportToMeAction} className="mt-3 flex flex-col sm:flex-row sm:items-end gap-2">
+          <label className="text-[12px] text-ppp-charcoal-600">
+            Day
+            <input
+              type="date"
+              name="day"
+              defaultValue={previousDayIso(etTodayIso())}
+              max={etTodayIso()}
+              className="block mt-0.5 rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]"
+          >
+            Email this day&rsquo;s report to me
+          </button>
+        </form>
       </section>
 
       <section className="rounded-xl bg-white border border-ppp-charcoal-100 p-5">

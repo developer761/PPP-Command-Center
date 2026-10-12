@@ -22,6 +22,7 @@ import {
   type PaymentSchedule,
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
+import { inFlightCentsFor, isInFlight, type LedgerPayment } from "@/lib/payments/ledger";
 import { clearedPaymentsInPayout, depositDateOfArrival } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
 import { getPaymentsSalesforceClient, paymentsOrg } from "@/lib/salesforce/payments-org";
@@ -38,6 +39,7 @@ import {
   findTransactionByReference,
   getPaymentInRecordTypeId,
   getWorkOrderPaymentStateById,
+  getWorkOrderTermsSummaries,
   isClosedForPayment,
   listWorkOrdersNeedingPayLinks,
   setWorkOrderPaymentUrl,
@@ -294,8 +296,40 @@ async function inFlightCents(workOrderId: string): Promise<number> {
     .in("status", ["processing", "succeeded"]);
   if (error) throw new Error(`stripe_payments read failed: ${error.message}`);
   return (data ?? [])
-    .filter((r) => r.status === "processing" || r.sf_writeback_status !== "written")
+    .filter((r) => isInFlight(r as Pick<LedgerPayment, "status" | "sf_writeback_status">))
     .reduce((s, r) => s + (r.base_cents as number), 0);
+}
+
+export type JobSchedule = {
+  schedule: PaymentSchedule;
+  /** Work Order is Closed/Cancelled — nothing more is collected online. */
+  closed: boolean;
+};
+
+/**
+ * What's paid and still owed on each listed Work Order, for the Payments tab.
+ * Same schedule the customer's pay page builds (terms in order, payments
+ * applied first-term-first, in-flight online money counted as paid), from one
+ * batched Salesforce read instead of one per job.
+ *
+ * `ledger` must be the UNFILTERED ledger for this org: a payment outside the
+ * tab's date filter still pays down the job.
+ */
+export async function loadJobSchedules(ledger: LedgerPayment[], workOrderIds: string[]): Promise<Map<string, JobSchedule>> {
+  const summaries = await getWorkOrderTermsSummaries(workOrderIds);
+  const live = currentLivemode();
+  const out = new Map<string, JobSchedule>();
+  for (const [id, wo] of summaries) {
+    out.set(id, {
+      closed: isClosedForPayment(wo.status),
+      schedule: buildPaymentSchedule({
+        terms: wo.terms,
+        balanceOwed: wo.balanceOwed,
+        inFlightCents: inFlightCentsFor(ledger, id, live),
+      }),
+    });
+  }
+  return out;
 }
 
 export type PayState =

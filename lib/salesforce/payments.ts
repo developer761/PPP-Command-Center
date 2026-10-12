@@ -119,6 +119,68 @@ export async function getWorkOrderPaymentStateByNumber(raw: string): Promise<Wor
   return loadWorkOrder(`WorkOrderNumber = '${digits.padStart(8, "0")}'`);
 }
 
+export type WorkOrderTermsSummary = {
+  status: string | null;
+  balanceOwed: number | null;
+  terms: PaymentTermInput[];
+};
+
+/**
+ * Balance + payment terms for MANY Work Orders in two queries per 200 — the
+ * Payments tab shows what's still owed on every job it lists, and one call per
+ * job would be a query storm on a fiscal-year view. Same fields as
+ * loadWorkOrder, so the tab and the customer's pay page agree on what's due.
+ */
+export async function getWorkOrderTermsSummaries(ids: string[]): Promise<Map<string, WorkOrderTermsSummary>> {
+  const valid = [...new Set(ids)].filter((id) => SF_ID_RE.test(id));
+  // Keyed by the 15-char Id: a stored Id and a lookup field can differ only in
+  // the 3-char checksum suffix.
+  const by15 = new Map<string, WorkOrderTermsSummary>();
+  if (valid.length) {
+    const conn = await getSalesforceClient();
+    const all = async <T extends Record<string, unknown>>(soql: string): Promise<T[]> => {
+      let r = await conn.query<T>(soql);
+      const rows = [...r.records];
+      while (!r.done && r.nextRecordsUrl) {
+        r = await conn.queryMore<T>(r.nextRecordsUrl);
+        rows.push(...r.records);
+      }
+      return rows;
+    };
+    for (let i = 0; i < valid.length; i += 200) {
+      const inList = valid
+        .slice(i, i + 200)
+        .map((id) => `'${id}'`)
+        .join(",");
+      const [wos, terms] = await Promise.all([
+        all<Pick<WoRow, "Id" | "Status" | "BalanceOwed__c">>(
+          `SELECT Id, Status, BalanceOwed__c FROM WorkOrder WHERE Id IN (${inList})`,
+        ),
+        all<TermRow & { WorkOrder__c: string }>(
+          `SELECT Id, WorkOrder__c, Payment_Type__c, Order__c, Amount__c, Percent__c, Value_Type__c, Paid_In_Full__c FROM Payment_Term__c WHERE WorkOrder__c IN (${inList})`,
+        ),
+      ]);
+      for (const w of wos) by15.set(w.Id.slice(0, 15), { status: w.Status, balanceOwed: w.BalanceOwed__c, terms: [] });
+      for (const t of terms) {
+        by15.get(t.WorkOrder__c.slice(0, 15))?.terms.push({
+          id: t.Id,
+          type: t.Payment_Type__c,
+          order: t.Order__c,
+          amount: t.Amount__c,
+          percent: t.Value_Type__c === "Percent" ? t.Percent__c : null,
+          paidInFull: t.Paid_In_Full__c === true,
+        });
+      }
+    }
+  }
+  const out = new Map<string, WorkOrderTermsSummary>();
+  for (const id of valid) {
+    const hit = by15.get(id.slice(0, 15));
+    if (hit) out.set(id, hit);
+  }
+  return out;
+}
+
 /** Transaction__c record type for money coming in. Resolved by name, not a hardcoded Id. */
 export async function getPaymentInRecordTypeId(): Promise<string> {
   const conn = await getSalesforceClient();
