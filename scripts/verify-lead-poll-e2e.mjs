@@ -67,7 +67,16 @@ try {
     // was not in `npm run verify`.
     if (/FROM Lead\b/.test(soql)) asked = soql;
     return { records: [
-      lead(ids[0]),                                            // a Meta lead with a phone
+      /**
+       * Consent, so this lead reaches the WORKFLOW check below.
+       *
+       * Without it the gate added on 2026-10-11 refuses first and the triage
+       * reason comes back about consent, so "with every workflow off, it says
+       * why" was asserting against a reason from an entirely different rule.
+       * The refusal itself has its own coverage in verify-enrol-e2e; this
+       * script is about the poll, and its lead has to get past the door.
+       */
+      lead(ids[0], { SMS_Opt_In__c: "Opt-In (Verified)" }),     // a Meta lead with a phone and consent
       lead(ids[1], { LeadSource: "Angi Quote Request" }),      // Angi: excluded by the entry rule
       lead(ids[2], { MobilePhone: null, Phone: null }),        // nothing to text
     ] };
