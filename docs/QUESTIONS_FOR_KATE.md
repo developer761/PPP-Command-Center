@@ -1755,3 +1755,54 @@ Two smaller things ride along with the answer:
 off, and Katie has already said forwards should not go through during testing.
 This only has to be settled before the first campaign message carries a number
 a customer might ring.
+
+---
+
+## 32. Meta leads arrive with no State, and ~13 a week reach nobody
+
+**Raised 2026-10-12. Measured over 454 real leads from the last 7 days, not a
+sample or a guess. Nothing is broken in the code — this is a gap in what the
+Meta form collects.**
+
+Intake routes a lead to a workspace by territory before anything else happens.
+When it cannot place one it records `no_matching_workspace` and the lead stops
+there — no conversation, no cadence, no call-centre signal.
+
+Over 7 days that was 15 leads, and **13 of them came from Meta with an empty
+`State`**. Every single one of the 15 carries a phone number whose area code
+maps to a workspace PPP already runs:
+
+| area code | where | workspace that exists today |
+|---|---|---|
+| 516 ×4 | Nassau | NY LI Nassau Leads |
+| 646, 917, 347 | NYC | NY NYC Leads / NY Queens Leads |
+| 973, 551, 201 | New Jersey | NJ Leads |
+| 305, 786 | Miami | FL Miami Leads |
+| 818 | Los Angeles | CA LA Leads *(not switched on)* |
+
+So the information needed to route them is sitting in the record. Only the
+field intake reads is empty.
+
+**Two ways to close it, and the choice is yours rather than ours:**
+
+1. **Add State to the Meta instant form**, so the field intake already reads
+   gets filled. Cleanest, and it fixes the data at the source — the same form
+   that also needs the SMS consent checkbox (see the A2P rejection), so it may
+   be one trip rather than two.
+2. **Fall back to the phone's area code** when State is missing. We can build
+   this, and it would have routed 14 of those 15. But it means the SYSTEM
+   decides which region owns a lead when the lead does not say, and a mobile
+   number follows a person rather than a property — somebody with a 516 number
+   who moved to Denver would be routed to Nassau. That is a territory policy
+   question, so it is not something to decide in code without you.
+
+**→ Not blocking, and not urgent at ~13 a week — but it is 13 real customers a
+week who asked for an estimate and heard nothing from this system.** Worth
+settling before volume goes up rather than after.
+
+**Separately, and NOT a bug:** 3 leads of 1,824 carry a four-digit postal code
+("1554", "2313", "1120"). That looked like leading zeros being stripped
+somewhere, which would silently misroute every New England lead — it is not.
+They are stored as strings and the other 1,771 are fine, so these are three
+people who mistyped. Recorded here only so nobody else spends an afternoon
+chasing it.

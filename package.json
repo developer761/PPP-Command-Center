@@ -34,7 +34,7 @@
     "export:findings-outside-kates-pass": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/export-findings-outside-kates-pass.mjs",
     "check:money": "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-money-reconciles.mjs",
     "verify:messaging": "node --experimental-strip-types --import ./scripts/ts-resolve-register.mjs scripts/verify-messaging-e2e.mjs",
-    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit && npm run verify:pii && npm run verify:truncation && npm run verify:enrol && npm run verify:lead-poll && npm run verify:handoff && npm run verify:held-reply && npm run verify:reply-delay && npm run verify:reply-to && npm run verify:repair && npm run verify:optout-rate && npm run verify:port-readiness && npm run verify:messaging && npm run verify:scenarios && npm run verify:surfaces && npm run verify:clock",
+    "verify": "node scripts/verify.mjs && npm run verify:inbound && npm run verify:twilio-inbound && npm run verify:workspace && npm run verify:drafts && npm run verify:workflow && npm run verify:campaign-edit && npm run verify:pii && npm run verify:truncation && npm run verify:enrol && npm run verify:lead-poll && npm run verify:handoff && npm run verify:held-reply && npm run verify:reply-delay && npm run verify:reply-to && npm run verify:repair && npm run verify:optout-rate && npm run verify:port-readiness && npm run verify:messaging && npm run verify:scenarios && npm run verify:surfaces && npm run verify:clock && npm run verify:snippets && npm run verify:shared-faqs",
     "build:aia-template": "node scripts/build-aia-template.mjs",
     "verify:inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-inbound-e2e.mjs",
     "verify:twilio-inbound": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-twilio-inbound-e2e.mjs",
@@ -74,6 +74,7 @@
     "check:writers": "node scripts/check-settings-have-writers.mjs",
     "verify:snippets": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-snippets-e2e.mjs",
     "verify:shared-faqs": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-shared-faqs-e2e.mjs",
+    "check:intake-readiness": "node --env-file=.env.local scripts/check-intake-readiness.mjs",
     "check:consent-values": "node scripts/check-sms-consent-values.mjs",
     "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs"
   },
