@@ -99,7 +99,21 @@ const unknown = [...seen.keys()].filter((v) => v !== "(none recorded)" && !KNOWN
 const optOuts = [...seen].filter(([v]) => v.toLowerCase() === "opt-out").reduce((n, [, c]) => n + c, 0);
 console.log(`\n  the exit rule matches "Opt-Out" exactly, and ${optOuts} lead(s) carry it`);
 const none = seen.get("(none recorded)") ?? 0;
-console.log(`  ${none} lead(s) have NO consent value, and the entry rules do not require one`);
+/**
+ * This used to end "...and the entry rules do not require one", which was true
+ * when it was written and stopped being true on 2026-10-11. The entry RULES
+ * still carry no consent condition — that part is unchanged — but enrolment
+ * now refuses before it ever reads them, in enrolLeadWith via consent.ts.
+ *
+ * Corrected rather than deleted: a check that confidently prints a stale fact
+ * is worse than one that prints nothing, because somebody will act on it.
+ */
+console.log(
+  `  ${none} lead(s) have NO consent value. The entry RULES still carry no`
+  + `\n  consent condition, but enrolment refuses them anyway while`
+  + `\n  SMS_REQUIRE_EXPRESS_CONSENT is on, which is the default.`
+  + `\n  npm run check:consent-eligibility shows what each policy admits.`
+);
 
 if (unknown.length) {
   console.log(
