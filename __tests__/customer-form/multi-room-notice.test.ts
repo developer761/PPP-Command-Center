@@ -157,3 +157,68 @@ describe("an untouched template orders nothing", () => {
     });
   });
 });
+
+/**
+ * Kate 2026-10-12, asked directly whether she still wanted this now that the
+ * room template works: "For customers, yes -- remove the color + surface
+ * picker when a line item is a multi-room line item."
+ *
+ * CUSTOMERS ONLY, her word. And her page-2 rule follows from it: the error
+ * telling somebody to "pick a color for at least one surface" cannot be shown
+ * to a customer who has no surface to pick.
+ */
+describe("a multi-room line has no pickers for a customer", () => {
+  const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const strip = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const src = () => strip(read("components/customer-form-view.tsx"));
+
+  it("hides the surface rows", () => {
+    const s = src();
+    expect(s).toMatch(/const hideSurfaces = isMultiRoom && !isStaffEntry/);
+    expect(s).toMatch(/\{!hideSurfaces && surfaces\.map\(\(surface\) => \(/);
+  });
+
+  it("keeps them for staff", () => {
+    // An AM can see the work order and knows which room is which; taking
+    // their structured fields away moves work onto them for nothing.
+    const s = src();
+    expect(s).toMatch(/isStaffEntry=\{isStaffEntry\}/);
+    expect(s).toMatch(/isStaffEntry \?: boolean|isStaffEntry\?: boolean/);
+  });
+
+  it("renames the notes box to what it now is", () => {
+    // It stopped being "notes" the moment it became the only input.
+    expect(src()).toMatch(/hideSurfaces \? "Colors for these rooms" : "Notes for this room"/);
+  });
+
+  it("tells the customer why the pickers are missing", () => {
+    expect(src()).toMatch(/One set of color pickers can't describe several rooms/);
+  });
+
+  /* ── Her page-2 rule ──────────────────────────────────────────────── */
+
+  it("never tells a customer to pick a surface they do not have", () => {
+    const s = src();
+    expect(s).toMatch(/everyLineIsMultiRoom/);
+    expect(s).toMatch(/Tell us the colors for each room in the box on the room card/);
+  });
+
+  it("still refuses an empty submission the ordinary way", () => {
+    expect(src()).toMatch(/Nothing is filled in yet\. Pick a color for at least one surface/);
+  });
+
+  it("does NOT count an untouched template as an answer", () => {
+    // The guard counts notes anywhere now, and "Add a list I can fill in"
+    // writes into that same box — so inserting the skeleton and submitting
+    // would otherwise send nothing while looking like an answer.
+    const s = src();
+    expect(s).toMatch(/const lineAnswered = useCallback\(/);
+    expect(s).toMatch(/return skeleton \? notes !== skeleton : true/);
+  });
+
+  it("leaves staff and re-edits alone", () => {
+    // A re-edit legitimately sends an empty payload to clear a color.
+    expect(src()).toMatch(/if \(!isStaffEntry && !isEditing\) \{/);
+  });
+});

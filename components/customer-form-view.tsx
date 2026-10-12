@@ -47,7 +47,7 @@
  * `docs/ARCHITECTURE.md` → "Customer color form deep-dive".
  */
 
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import LineItemNotes from "@/components/line-item-notes";
 import { colorDeadlineNotice } from "@/lib/customer-form/deadline-notice";
 import type { FormRenderData, FormLineItem } from "@/lib/customer-form/render-data";
@@ -504,6 +504,37 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
    * A step, not a dialog: the point is that they READ their selections back,
    * which a modal over the form does not achieve.
    */
+  /**
+   * The untouched room template is NOT an answer.
+   *
+   * The empty-submission guard counts notes anywhere now (it had to — a
+   * customer answering only in the per-room boxes was being refused). But
+   * "Add a list I can fill in" writes a skeleton into that same box, so a
+   * customer who inserts it and submits without typing a color would sail
+   * through a check that only asks whether the box is empty.
+   *
+   * It is not a theoretical gap: on a multi-room line the pickers are gone
+   * (Kate 2026-10-12), so the template IS the form, and pressing the button
+   * is the obvious first move.
+   */
+  const lineAnswered = useCallback(
+    (li: FormLineItem, st: { picks: Record<string, SurfacePick>; notes: string } | undefined) => {
+      if (!st) return false;
+      const picked = Object.values(st.picks).some(
+        (p) => p && (p.skipped || p.colorId || (p.colorName ?? "").trim())
+      );
+      if (picked) return true;
+      const notes = st.notes.trim();
+      if (!notes) return false;
+      const skeleton = roomSurfaceTemplate(
+        isInteriorLine(li.productFamily) || !li.productFamily ? roomsNamedIn(li.lineItemNotes) : [],
+        li.surfaces
+      ).trim();
+      return skeleton ? notes !== skeleton : true;
+    },
+    []
+  );
+
   const [confirming, setConfirming] = useState(false);
   const confirmRef = useRef<HTMLDivElement | null>(null);
   /** How many rooms came back from a local draft, once, on mount. */
@@ -978,6 +1009,41 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         }
       }
     });
+    /**
+     * Kate's page-2 rule, which only makes sense now that the pickers are
+     * gone on a multi-room line: "this error should not show for them on
+     * that line item. So if that is the only line item, it shouldn't show at
+     * all."
+     *
+     * The error she means is the server's "Pick a color for at least one
+     * surface", and on a customer's multi-room line there IS no surface to
+     * pick — so that sentence is an instruction they cannot follow. Caught
+     * here, where we know which lines still have pickers, and worded for
+     * what they can actually do.
+     *
+     * An untouched template does not count, or pressing "Add a list I can
+     * fill in" and submitting would send nothing while looking like an
+     * answer.
+     */
+    if (!isStaffEntry && !isEditing) {
+      const anyAnswered = formData.lineItems.some((li) => lineAnswered(li, state[li.id]));
+      if (!anyAnswered && !globalNotes.trim()) {
+        const everyLineIsMultiRoom =
+          formData.lineItems.length > 0 &&
+          formData.lineItems.every(
+            (li) =>
+              (isInteriorLine(li.productFamily) || !li.productFamily) &&
+              roomsNamedIn(li.lineItemNotes).length >= 2
+          );
+        setSubmitError(
+          everyLineIsMultiRoom
+            ? "Tell us the colors for each room in the box on the room card, then submit again."
+            : "Nothing is filled in yet. Pick a color for at least one surface — or write what you'd like in the notes — and submit again."
+        );
+        return;
+      }
+    }
+
     // Everything above has decided the submission is well-formed. Show it
     // back before sending it. `confirming` is set by this pass and cleared on
     // any edit, so the affirmation always describes what is on screen now.
@@ -1467,6 +1533,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             onDismissApplyNote={() => setApplyNote(null)}
             onNotesChange={(notes) => updateLineNotes(li.id, notes)}
             isInternal={isInternal}
+            isStaffEntry={isStaffEntry}
             suggestFinish={finishSeeds.onColorPick}
             materialType={
               /^exterior/i.test(li.productFamily ?? "")
@@ -1757,6 +1824,7 @@ function LineItemSection({
   onDismissApplyNote,
   onNotesChange,
   isInternal = false,
+  isStaffEntry = false,
   suggestFinish = false,
   materialType,
   scope,
@@ -1780,6 +1848,9 @@ function LineItemSection({
   applyNote?: { surface: string; text: string; canOverwrite: number } | null;
   /** Staff view — the notes block takes the quieter neutral tone. */
   isInternal?: boolean;
+  /** Preview or internal entry. Staff keep the surface pickers on a
+   *  multi-room line; only the customer's view loses them. */
+  isStaffEntry?: boolean;
   onSurfaceChange: (surface: string, patch: Partial<SurfacePick>) => void;
   onApplyToAll: (surface: string, pick: SurfacePick) => void;
   onOverwriteAll: (surface: string, pick: SurfacePick) => void;
@@ -1822,6 +1893,21 @@ function LineItemSection({
     [lineItem.productFamily, lineItem.lineItemNotes]
   );
   const isMultiRoom = multiRooms.length >= 2;
+  /**
+   * Kate 2026-10-12, asked directly whether she still wanted this with the
+   * room template in place: "For customers, yes -- remove the color + surface
+   * picker when a line item is a multi-room line item."
+   *
+   * CUSTOMERS ONLY, her word. Staff keep the pickers: an AM entering colors
+   * can see the work order and knows which room is which, and taking their
+   * structured fields away would move work onto them for no gain.
+   *
+   * The trade she accepted: every color on this line now arrives as free
+   * text that somebody reads. That is why the notes box below is no longer
+   * optional here — it is the only way to answer — and why the template
+   * button is offered rather than buried.
+   */
+  const hideSurfaces = isMultiRoom && !isStaffEntry;
   // Default: an already-complete room (re-edit / preview with data) starts
   // collapsed to keep long lists manageable; a fresh room starts expanded.
   // Kate 2026-07-22 (#7): the auto-collapse that used to snap a room shut the
@@ -1955,7 +2041,7 @@ function LineItemSection({
               what you&rsquo;d like.
             </div>
           )}
-          {surfaces.map((surface) => (
+          {!hideSurfaces && surfaces.map((surface) => (
             <SurfaceRow
               key={surface}
               surface={surface}
@@ -1994,8 +2080,9 @@ function LineItemSection({
                 .join(", ")}
               .
               <span className="block mt-0.5 text-amber-800">
-                The colors above apply to all of them. If you want different
-                colors room by room, say so in the notes.
+                {hideSurfaces
+                  ? "One set of color pickers can't describe several rooms, so tell us the colors for each room in the box below."
+                  : "The colors above apply to all of them. If you want different colors room by room, say so in the notes."}
               </span>
               {!state.notes.trim() && (
                 <button
@@ -2010,7 +2097,7 @@ function LineItemSection({
           )}
           <div>
             <label className="block text-[11px] font-condensed uppercase tracking-wider text-ppp-charcoal-500 mb-1">
-              Notes for this room
+              {hideSurfaces ? "Colors for these rooms" : "Notes for this room"}
             </label>
             <textarea
               aria-label={`Notes for ${title}`}
