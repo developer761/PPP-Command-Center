@@ -89,9 +89,10 @@ async function bulkLinksAction() {
   let ok = false;
   try {
     const r = await createLinksForOpenWorkOrders(email, 100);
-    msg =
-      r.found === 0
-        ? "Every open Work Order with money owed already has a pay link."
+    msg = !r.linksFrom
+      ? "Automatic links are off: set PAYMENTS_LINKS_FROM to the go-live date. Only Work Orders created from that day get links automatically — jobs already in progress keep the old Stripe link."
+      : r.found === 0
+        ? `Every Work Order created since ${r.linksFrom} with money owed already has a pay link.`
         : `${r.found} open Work Order${r.found === 1 ? "" : "s"} found · ${r.published} link${r.published === 1 ? "" : "s"} saved to Salesforce` +
           (r.failed.length ? ` · ${r.failed.length} not saved (e.g. WO ${r.failed[0].number}: ${r.failed[0].reason})` : "") +
           (r.found === 100 ? " · run again for more." : "") +
@@ -211,7 +212,9 @@ export default async function PaymentsSettingsPage({
             state={cfg.sfWritebackOn ? "on" : "off"}
             value={
               cfg.sfWritebackOn
-                ? "On for LIVE payments, once each clears in a Stripe payout (test payments are never written)"
+                ? cfg.sfOrg === "sandbox"
+                  ? "On for TEST payments, into the sandbox (real money is never written to a sandbox). Booked when each clears in a Stripe payout, or now with 'Book in Salesforce now'."
+                  : "On for LIVE payments, once each clears in a Stripe payout (test payments are never written)"
                 : "Dry run — the Transaction__c is built and shown below, not sent"
             }
             env="PAYMENTS_SF_WRITEBACK=on"
@@ -248,17 +251,24 @@ export default async function PaymentsSettingsPage({
             Create links for open Work Orders
           </button>
           <span className="ml-2 text-[12px] text-ppp-charcoal-500">
-            Money owed, payment terms set, no link yet, not a licensee job. Up to 100 per click.
+            {cfg.linksFrom
+              ? `Work Orders created since ${cfg.linksFrom}: money owed, payment terms set, no link yet. Up to 100 per click.`
+              : "Off until PAYMENTS_LINKS_FROM (the go-live date) is set — new jobs only."}
           </span>
         </form>
         {cfg.sfOrg === "sandbox" && (
-          <p className="mt-3 text-[12px] text-ppp-charcoal-600">
-            Sandbox mode.{" "}
-            <a href="/api/auth/salesforce-sandbox/login" className="font-semibold text-ppp-navy underline underline-offset-2">
-              Connect (or reconnect) the sandbox
-            </a>{" "}
-            — sign in with your sandbox user.
-          </p>
+          <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <p className="text-[13px] text-sky-900 flex-1">
+              <span className="font-semibold">Sandbox mode.</span> Connect once with your sandbox Salesforce user (your
+              username + <code>.dev</code>).
+            </p>
+            <a
+              href="/api/auth/salesforce-sandbox/login"
+              className="inline-flex items-center justify-center rounded-lg bg-ppp-navy text-white px-4 min-h-[44px] text-sm font-semibold hover:bg-ppp-navy-900"
+            >
+              Connect the sandbox
+            </a>
+          </div>
         )}
         {cfg.stripeMode === "test" && (
           <p className="mt-3 text-[12px] text-ppp-charcoal-500">

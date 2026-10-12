@@ -214,7 +214,12 @@ export async function setWorkOrderPaymentUrl(
  */
 export async function listWorkOrdersNeedingPayLinks(
   limit = 200,
-): Promise<{ workOrders: { id: string; number: string }[]; licenseeFilter: "applied" | "unavailable" }> {
+): Promise<{
+  workOrders: { id: string; number: string }[];
+  licenseeFilter: "applied" | "unavailable";
+  /** The go-live cutoff applied, or null when none is set (then nothing is returned). */
+  linksFrom: string | null;
+}> {
   const conn = await getSalesforceClient();
   const hasField = await workOrderHasPaymentUrlField();
   // The licensee flags are User custom fields, but field-level security can
@@ -230,14 +235,19 @@ export async function listWorkOrdersNeedingPayLinks(
     );
     exclude = licensees.records.map((u) => `'${u.Id}'`);
   }
-  const { readPaymentsConfig } = await import("@/lib/payments/config");
-  const states = [...readPaymentsConfig(process.env).linkStates].filter((x) => /^[A-Z]{2}$/.test(x));
+  const { readPaymentsConfig, etMidnightSoql } = await import("@/lib/payments/config");
+  const cfg = readPaymentsConfig(process.env);
+  // Moving forward only: no go-live date, no automatic links — never the
+  // backlog of jobs already in progress.
+  if (!cfg.linksFrom) return { workOrders: [], licenseeFilter: flags.length === 2 ? "applied" : "unavailable", linksFrom: null };
+  const states = [...cfg.linkStates].filter((x) => /^[A-Z]{2}$/.test(x));
   const where = [
     "Status NOT IN ('Closed', 'Canceled', 'Complete Paid in Full')",
     // Only this Stripe account's states (CO / CA jobs have their own accounts).
     states.length ? `State IN (${states.map((x) => `'${x}'`).join(",")})` : "Id = null",
     "BalanceOwed__c > 0",
     "Total_Payment_Terms__c > 0",
+    `CreatedDate >= ${etMidnightSoql(cfg.linksFrom)}`,
     hasField ? "Online_Payment_URL__c = null" : null,
     exclude.length ? `OwnerId NOT IN (${exclude.join(",")})` : null,
   ].filter(Boolean);
@@ -247,5 +257,6 @@ export async function listWorkOrdersNeedingPayLinks(
   return {
     workOrders: r.records.map((w) => ({ id: w.Id, number: w.WorkOrderNumber })),
     licenseeFilter: flags.length === 2 ? "applied" : "unavailable",
+    linksFrom: cfg.linksFrom,
   };
 }

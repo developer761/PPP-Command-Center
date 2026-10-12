@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  etMidnightSoql,
   linksAllowedIn,
   normalizeState,
   readPaymentsConfig,
@@ -243,5 +244,18 @@ describe("state rules — which Stripe account, and where a card fee is legal", 
   it("normalizeState", () => {
     expect(normalizeState(" new jersey ")).toBe("NJ");
     expect(normalizeState("")).toBeNull();
+  });
+});
+
+describe("moving forward only — automatic links need a go-live date", () => {
+  it("no PAYMENTS_LINKS_FROM → no automatic links", () => {
+    expect(readPaymentsConfig({}).linksFrom).toBeNull();
+    expect(readPaymentsConfig({ PAYMENTS_LINKS_FROM: "next week" }).linksFrom).toBeNull();
+    expect(readPaymentsConfig({ PAYMENTS_LINKS_FROM: " 2026-10-20 " }).linksFrom).toBe("2026-10-20");
+  });
+
+  it("the cutoff is midnight in New York, with the right offset either side of DST", () => {
+    expect(etMidnightSoql("2026-10-20")).toBe("2026-10-20T00:00:00-04:00");
+    expect(etMidnightSoql("2026-12-01")).toBe("2026-12-01T00:00:00-05:00");
   });
 });

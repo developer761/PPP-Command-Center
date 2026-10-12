@@ -38,6 +38,14 @@ export type PaymentsConfig = {
   sfOrg: "production" | "sandbox";
   /** Work Order states whose jobs pay into THIS Stripe account. */
   linkStates: Set<string>;
+  /**
+   * PAYMENTS_LINKS_FROM (YYYY-MM-DD, Eastern). Automatic links — the daily job
+   * and the "Create links for open Work Orders" button — only for Work Orders
+   * CREATED on or after this day. Go-live is "moving forward only" (Karan,
+   * 2026-10-12): jobs already in progress keep the old Stripe link. Unset =
+   * no automatic links at all. A link for one Work Order by hand still works.
+   */
+  linksFrom: string | null;
   /** States where a credit-card surcharge isn't allowed — no card fee there. */
   noSurchargeStates: Set<string>;
 };
@@ -129,6 +137,7 @@ export function readPaymentsConfig(env: Record<string, string | undefined>): Pay
     sfWritebackOn: env.PAYMENTS_SF_WRITEBACK?.trim() === "on",
     sfOrg: env.PAYMENTS_SF_ORG?.trim() === "sandbox" ? "sandbox" : "production",
     linkStates: stateSet(env.PAYMENTS_LINK_STATES, DEFAULT_LINK_STATES),
+    linksFrom: /^\d{4}-\d{2}-\d{2}$/.test(env.PAYMENTS_LINKS_FROM?.trim() ?? "") ? env.PAYMENTS_LINKS_FROM!.trim() : null,
     noSurchargeStates: stateSet(env.PAYMENTS_NO_SURCHARGE_STATES, DEFAULT_NO_SURCHARGE_STATES),
   };
 }
@@ -143,4 +152,18 @@ export function readPaymentsConfig(env: Record<string, string | undefined>): Pay
 export function shouldWriteToSalesforce(cfg: PaymentsConfig, paymentLivemode: boolean): boolean {
   if (!cfg.sfWritebackOn) return false;
   return cfg.sfOrg === "sandbox" ? !paymentLivemode : paymentLivemode;
+}
+
+/**
+ * Midnight Eastern on a YYYY-MM-DD, as a SOQL datetime literal with the right
+ * offset for that day (−04:00 in daylight time, −05:00 otherwise), so "created
+ * on or after Oct 20" means the start of Oct 20 in New York, not in UTC.
+ */
+export function etMidnightSoql(dateEt: string): string {
+  const noonUtc = new Date(`${dateEt}T12:00:00Z`);
+  const etHour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(noonUtc),
+  );
+  const offset = etHour - 12; // −4 (EDT) or −5 (EST)
+  return `${dateEt}T00:00:00${offset < 0 ? "-" : "+"}${String(Math.abs(offset)).padStart(2, "0")}:00`;
 }

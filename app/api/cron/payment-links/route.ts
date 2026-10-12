@@ -26,6 +26,9 @@ export async function GET(request: Request) {
   if (process.env.PAYMENTS_AUTO_LINKS?.trim() !== "on") {
     return NextResponse.json({ ok: true, skipped: "PAYMENTS_AUTO_LINKS is not on" });
   }
+  if (!paymentsConfig().linksFrom) {
+    return NextResponse.json({ ok: true, skipped: "PAYMENTS_LINKS_FROM (go-live date) is not set — new jobs only, none yet" });
+  }
   if (paymentsConfig().stripeBlockedReason) {
     // No point publishing links that can't take a payment.
     return NextResponse.json({ ok: true, skipped: "Stripe is not configured for payments" });

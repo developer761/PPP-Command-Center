@@ -205,8 +205,9 @@ export async function createLinksForOpenWorkOrders(
   published: number;
   failed: { number: string; reason: string }[];
   licenseeFilter: "applied" | "unavailable";
+  linksFrom: string | null;
 }> {
-  const { workOrders: wos, licenseeFilter } = await listWorkOrdersNeedingPayLinks(limit);
+  const { workOrders: wos, licenseeFilter, linksFrom } = await listWorkOrdersNeedingPayLinks(limit);
   let published = 0;
   const failed: { number: string; reason: string }[] = [];
   for (const wo of wos) {
@@ -218,7 +219,7 @@ export async function createLinksForOpenWorkOrders(
       failed.push({ number: wo.number, reason: e instanceof Error ? e.message : String(e) });
     }
   }
-  return { found: wos.length, published, failed, licenseeFilter };
+  return { found: wos.length, published, failed, licenseeFilter, linksFrom };
 }
 
 /** The live link for a Work Order, creating one if there is none. Re-issuing
