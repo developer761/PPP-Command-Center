@@ -52,6 +52,7 @@ export function CardPayment({
   baseCents,
   publishableKey,
   surcharge = true,
+  demo = false,
 }: {
   token: string;
   milestoneKey: string;
@@ -59,6 +60,8 @@ export function CardPayment({
   publishableKey: string;
   /** False in states where card surcharges aren't allowed (CT/MA/ME). */
   surcharge?: boolean;
+  /** Sales demo: offer "use a test card" buttons instead of typing one. */
+  demo?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const stripeRef = useRef<Stripe | null>(null);
@@ -124,10 +127,15 @@ export function CardPayment({
       setPhase({ kind: "enter" });
       return;
     }
+    await quoteWith(confirmationToken.id);
+  }
+
+  /** Card entered (or picked, in the demo): ask the server what it costs. */
+  async function quoteWith(ctId: string) {
     const res = await fetch(`/pay/${token}/card/quote`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ milestone: milestoneKey, confirmationToken: confirmationToken.id }),
+      body: JSON.stringify({ milestone: milestoneKey, confirmationToken: ctId }),
     });
     const body = (await res.json().catch(() => ({}))) as { quote?: Quote; error?: string };
     if (!res.ok || !body.quote) {
@@ -135,7 +143,25 @@ export function CardPayment({
       setPhase({ kind: "enter" });
       return;
     }
-    setPhase({ kind: "review", ct: confirmationToken.id, quote: body.quote });
+    setPhase({ kind: "review", ct: ctId, quote: body.quote });
+  }
+
+  /** Demo only: one of Stripe's test cards, made on the server — nothing to type. */
+  async function onDemoCard(card: "credit" | "debit") {
+    setError(null);
+    setPhase({ kind: "checking" });
+    const res = await fetch(`/pay/${token}/card/demo-card`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ card }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { confirmationToken?: string; error?: string };
+    if (!res.ok || !body.confirmationToken) {
+      setError(ERRORS[body.error ?? "failed"] ?? ERRORS.failed);
+      setPhase({ kind: "enter" });
+      return;
+    }
+    await quoteWith(body.confirmationToken);
   }
 
   async function onPay() {
@@ -194,6 +220,34 @@ export function CardPayment({
 
   return (
     <div className="space-y-4">
+      {demo && !reviewing && (
+        <div className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 p-4">
+          <div className="text-[13px] font-semibold text-ppp-orange-700">Demo shortcut — no typing</div>
+          <p className="mt-0.5 text-[12px] text-ppp-orange-700">
+            Pick a Stripe test card. A credit card shows the 3% fee; a debit card shows none.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onDemoCard("credit")}
+              disabled={busy}
+              className="rounded-xl bg-ppp-navy text-white px-3 min-h-[48px] text-sm font-semibold disabled:opacity-60 hover:bg-ppp-navy-900"
+            >
+              Test credit card
+            </button>
+            <button
+              type="button"
+              onClick={() => onDemoCard("debit")}
+              disabled={busy}
+              className="rounded-xl bg-ppp-navy text-white px-3 min-h-[48px] text-sm font-semibold disabled:opacity-60 hover:bg-ppp-navy-900"
+            >
+              Test debit card
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-ppp-orange-700">Or type a card below, the way a customer would.</p>
+        </div>
+      )}
+
       {/* Stays mounted through review so "Use a different card" is instant. */}
       <div className={reviewing ? "hidden" : ""}>
         <div ref={mountRef} className="min-h-[140px]" />

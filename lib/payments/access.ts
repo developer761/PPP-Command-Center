@@ -3,7 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { paymentsConfig } from "@/lib/payments/service";
+import { isLiveDemoToken, paymentsConfig } from "@/lib/payments/service";
 
 /**
  * Who may open /pay/<token> right now.
@@ -21,7 +21,13 @@ export async function getSignedInAdminEmail(): Promise<string | null> {
   return isAdmin ? (data.user.email ?? "admin") : null;
 }
 
-export async function canOpenPayPages(): Promise<boolean> {
+/**
+ * `token` lets a sales-demo link open for anyone (it's a made-up job paid with
+ * test cards — see lib/payments/demo.ts). Every other link still needs
+ * PAYMENTS_PUBLIC=1 or an admin.
+ */
+export async function canOpenPayPages(token?: string): Promise<boolean> {
   if (paymentsConfig().publicPages) return true;
+  if (token && (await isLiveDemoToken(token))) return true;
   return (await getSignedInAdminEmail()) != null;
 }

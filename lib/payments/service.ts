@@ -23,6 +23,14 @@ import {
 } from "@/lib/payments/schedule";
 import { buildSfTransaction } from "@/lib/payments/sf-transaction";
 import { inFlightCentsFor, isInFlight, type LedgerPayment } from "@/lib/payments/ledger";
+import {
+  DEMO_TEST_CARDS,
+  demoEnabled,
+  demoWorkOrderNumber,
+  isDemoWorkOrderId,
+  newDemoWorkOrderId,
+  type DemoCard,
+} from "@/lib/payments/demo";
 import { clearedPaymentsInPayout, depositDateOfArrival } from "@/lib/payments/payout";
 import { writeSf } from "@/lib/salesforce/writeback";
 import { getPaymentsSalesforceClient, paymentsOrg } from "@/lib/salesforce/payments-org";
@@ -845,6 +853,17 @@ async function recordInSalesforce(p: PaymentRow, payoutId?: string): Promise<Pay
 /** Book one payment in Salesforce — or return null if another process holds
  *  (or already finished) the booking, so callers can count exactly. */
 async function bookIfClaimed(p: PaymentRow, payoutId?: string): Promise<PaymentRow | null> {
+  // A sales-demo payment is never booked anywhere — not even as a dry run
+  // that reads Salesforce. Say so on the row and stop.
+  if (isDemoWorkOrderId(p.work_order_id)) {
+    const { data } = await db()
+      .from("stripe_payments")
+      .update({ sf_writeback_status: "dry_run", sf_writeback_detail: "Demo job — never written to Salesforce." })
+      .eq("id", p.id)
+      .select("*")
+      .maybeSingle();
+    return (data as PaymentRow | null) ?? p;
+  }
   const cfg = paymentsConfig();
   // Claim the row before touching Salesforce: two deliveries of one payout, or
   // an admin's "Book now" during a payout, must not both create a Payment In.
@@ -1130,3 +1149,41 @@ export async function listLedgerPayments(max = 50_000): Promise<PaymentRow[]> {
   }
   return out;
 }
+
+// ─── Sales demo (see lib/payments/demo.ts) ──────────────────────────────────
+
+/** Is this link a demo link, and is the demo switched on? */
+export async function isLiveDemoToken(token: string): Promise<boolean> {
+  if (!demoEnabled()) return false;
+  const link = await getPaymentLink(token);
+  return !!link && !link.revoked_at && isDemoWorkOrderId(link.work_order_id);
+}
+
+/** A brand-new demo job with nothing paid. Bounded so a public button can't
+ *  fill the table: at most 60 new demos an hour, across everyone. */
+export async function startDemo(): Promise<{ ok: true; token: string } | { ok: false; reason: "off" | "busy" }> {
+  if (!demoEnabled()) return { ok: false, reason: "off" };
+  const since = new Date(Date.now() - 60 * 60_000).toISOString();
+  const { count } = await db()
+    .from("payment_links")
+    .select("token", { count: "exact", head: true })
+    .like("work_order_id", "0WODEMO%")
+    .gt("created_at", since);
+  if ((count ?? 0) >= 60) return { ok: false, reason: "busy" };
+  const id = newDemoWorkOrderId();
+  const link = await issuePaymentLink({ id, number: demoWorkOrderNumber(id) }, "demo");
+  return { ok: true, token: link.token };
+}
+
+/**
+ * The demo's "use a test card" shortcut: a ConfirmationToken for one of
+ * Stripe's built-in test cards, made on the server, so nobody has to type
+ * 4242… on a phone. TEST KEY ONLY — Stripe's test helpers do not exist on a
+ * live key, and isLiveDemoToken already refuses unless the key is test.
+ */
+export async function demoConfirmationToken(token: string, card: DemoCard): Promise<string | null> {
+  if (!(await isLiveDemoToken(token))) return null;
+  const ct = await getStripe().testHelpers.confirmationTokens.create({ payment_method: DEMO_TEST_CARDS[card] });
+  return ct.id;
+}
+

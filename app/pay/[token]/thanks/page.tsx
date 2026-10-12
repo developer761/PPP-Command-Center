@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canOpenPayPages } from "@/lib/payments/access";
-import { getStripe, paymentsConfig, syncCheckoutSession, syncPaymentIntent, type PaymentRow } from "@/lib/payments/service";
+import {
+  getStripe,
+  isLiveDemoToken,
+  paymentsConfig,
+  syncCheckoutSession,
+  syncPaymentIntent,
+  type PaymentRow,
+} from "@/lib/payments/service";
+import { DEMO_NOTE } from "@/lib/payments/demo";
 import { formatCents } from "@/lib/payments/schedule";
 import { PayMessage, PayShell } from "@/components/pay/pay-shell";
 
@@ -25,9 +33,13 @@ export default async function ThanksPage({
 }) {
   const { token } = await params;
   const { session_id, payment_intent } = await searchParams;
-  if (!(await canOpenPayPages())) notFound();
+  if (!(await canOpenPayPages(token))) notFound();
   const cfg = paymentsConfig();
-  const previewNote = cfg.publicPages ? null : "Admin preview — customers can't open this page yet.";
+  const previewNote = (await isLiveDemoToken(token))
+    ? DEMO_NOTE
+    : cfg.publicPages
+      ? null
+      : "Admin preview — customers can't open this page yet.";
 
   let payment: PaymentRow | null = null;
   if (session_id && /^cs_(test|live)_[A-Za-z0-9]+$/.test(session_id)) {

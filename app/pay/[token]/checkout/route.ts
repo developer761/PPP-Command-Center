@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!(await canOpenPayPages())) return new NextResponse("Not found", { status: 404 });
+  if (!(await canOpenPayPages(token))) return new NextResponse("Not found", { status: 404 });
 
   const origin = new URL(request.url).origin;
   const back = (code: CheckoutErrorCode) => NextResponse.redirect(`${origin}/pay/${token}?err=${code}`, 303);

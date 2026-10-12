@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!(await canOpenPayPages())) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!(await canOpenPayPages(token))) return NextResponse.json({ error: "not_found" }, { status: 404 });
   // Per link and per IP. A real customer needs a handful of tries; a card
   // tester needs hundreds. (Durable per-link decline cap: quoteCardPayment.)
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

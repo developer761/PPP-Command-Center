@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { canOpenPayPages, getSignedInAdminEmail } from "@/lib/payments/access";
-import { loadPayState, paymentsConfig } from "@/lib/payments/service";
+import { isLiveDemoToken, loadPayState, paymentsConfig } from "@/lib/payments/service";
+import { DEMO_NOTE } from "@/lib/payments/demo";
 import { cardFeeCents, formatCents, type Milestone } from "@/lib/payments/schedule";
 import { PayMessage, PayShell } from "@/components/pay/pay-shell";
 import { PPP_BRAND } from "@/lib/brand";
@@ -31,11 +32,14 @@ export default async function PayPage({
   const errText = err ? (ERROR_COPY[err] ?? ERROR_COPY.failed) : null;
   // Not "sign in to continue": until go-live the page does not exist for
   // anyone but an admin, and should look that way.
-  if (!(await canOpenPayPages())) notFound();
+  if (!(await canOpenPayPages(token))) notFound();
 
   const cfg = paymentsConfig();
   const isAdmin = (await getSignedInAdminEmail()) != null;
-  const previewNote = !cfg.publicPages
+  const isDemo = await isLiveDemoToken(token);
+  const previewNote = isDemo
+    ? DEMO_NOTE
+    : !cfg.publicPages
     ? `${cfg.sfOrg === "sandbox" ? "SALESFORCE SANDBOX · " : ""}Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Stripe TEST mode: use card 4242 4242 4242 4242." : ""}`
     : cfg.stripeMode === "test" && isAdmin
       ? "Stripe TEST mode — no real money moves."

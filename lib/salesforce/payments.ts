@@ -2,6 +2,7 @@ import "server-only";
 
 import { getPaymentsSalesforceClient as getSalesforceClient } from "@/lib/salesforce/payments-org";
 import type { PaymentTermInput } from "@/lib/payments/schedule";
+import { demoEnabled, demoWorkOrder, isDemoWorkOrderId } from "@/lib/payments/demo";
 
 /**
  * Salesforce reads for online invoice payments.
@@ -108,6 +109,8 @@ async function loadWorkOrder(where: string): Promise<WorkOrderPaymentState | nul
 }
 
 export async function getWorkOrderPaymentStateById(id: string): Promise<WorkOrderPaymentState | null> {
+  // The sales demo's made-up job: answered here, never asked of Salesforce.
+  if (isDemoWorkOrderId(id)) return demoEnabled() ? demoWorkOrder(id) : null;
   if (!SF_ID_RE.test(id)) return null;
   return loadWorkOrder(`Id = '${id}'`);
 }
@@ -132,7 +135,8 @@ export type WorkOrderTermsSummary = {
  * loadWorkOrder, so the tab and the customer's pay page agree on what's due.
  */
 export async function getWorkOrderTermsSummaries(ids: string[]): Promise<Map<string, WorkOrderTermsSummary>> {
-  const valid = [...new Set(ids)].filter((id) => SF_ID_RE.test(id));
+  const demo = ids.filter(isDemoWorkOrderId);
+  const valid = [...new Set(ids)].filter((id) => SF_ID_RE.test(id) && !isDemoWorkOrderId(id));
   // Keyed by the 15-char Id: a stored Id and a lookup field can differ only in
   // the 3-char checksum suffix.
   const by15 = new Map<string, WorkOrderTermsSummary>();
@@ -174,6 +178,10 @@ export async function getWorkOrderTermsSummaries(ids: string[]): Promise<Map<str
     }
   }
   const out = new Map<string, WorkOrderTermsSummary>();
+  for (const id of demo) {
+    const d = demoWorkOrder(id);
+    out.set(id, { status: d.status, balanceOwed: d.balanceOwed, terms: d.terms });
+  }
   for (const id of valid) {
     const hit = by15.get(id.slice(0, 15));
     if (hit) out.set(id, hit);
@@ -252,6 +260,7 @@ export async function setWorkOrderPaymentUrl(
   url: string | null,
   workOrderNumber: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (isDemoWorkOrderId(workOrderId)) return { ok: false, reason: "demo job — not in Salesforce" };
   if (!SF_ID_RE.test(workOrderId)) return { ok: false, reason: "bad Work Order id" };
   if (!(await workOrderHasPaymentUrlField())) {
     return { ok: false, reason: "Online_Payment_URL__c isn't on Work Order in this Salesforce org yet" };

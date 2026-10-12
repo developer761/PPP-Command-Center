@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canOpenPayPages } from "@/lib/payments/access";
-import { loadPayState, paymentsConfig } from "@/lib/payments/service";
+import { isLiveDemoToken, loadPayState, paymentsConfig } from "@/lib/payments/service";
+import { DEMO_NOTE } from "@/lib/payments/demo";
 import { cardFeeCents, formatCents, quoteCharge } from "@/lib/payments/schedule";
 import { PayShell } from "@/components/pay/pay-shell";
 import { CardPayment } from "@/components/pay/card-payment";
@@ -26,7 +27,7 @@ export default async function CardPage({
 }) {
   const { token } = await params;
   const { m } = await searchParams;
-  if (!(await canOpenPayPages())) notFound();
+  if (!(await canOpenPayPages(token))) notFound();
 
   const cfg = paymentsConfig();
   const back = `/pay/${token}`;
@@ -40,7 +41,10 @@ export default async function CardPage({
 
   const percent = state.schedule.milestones.find((x) => x.key === m)?.percent ?? null;
   const surcharge = surchargeAllowedIn(state.wo.state, cfg);
-  const previewNote = !cfg.publicPages
+  const isDemo = await isLiveDemoToken(token);
+  const previewNote = isDemo
+    ? DEMO_NOTE
+    : !cfg.publicPages
     ? `${cfg.sfOrg === "sandbox" ? "SALESFORCE SANDBOX · " : ""}Admin preview — customers can't open this page yet.${cfg.stripeMode === "test" ? " Test cards: credit 4242 4242 4242 4242 · debit 4000 0566 5566 5556." : ""}`
     : null;
 
@@ -77,6 +81,7 @@ export default async function CardPage({
             baseCents={quote.baseCents}
             publishableKey={cfg.publishableKey}
             surcharge={surcharge}
+            demo={isDemo}
           />
         </section>
       </div>

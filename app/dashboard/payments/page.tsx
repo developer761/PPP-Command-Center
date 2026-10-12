@@ -22,6 +22,7 @@ import {
   type Stage,
 } from "@/lib/payments/ledger";
 import { etTodayIso } from "@/lib/date-et";
+import { isDemoWorkOrderId } from "@/lib/payments/demo";
 import { paymentsSalesforceBaseUrl } from "@/lib/salesforce/payments-org";
 
 export const dynamic = "force-dynamic";
@@ -343,14 +344,18 @@ export default async function PaymentsPage({ searchParams }: { searchParams: SP 
                       <div className="sm:hidden">
                         <StagePill stage={g.stage} />
                       </div>
-                      <a
-                        href={sfLink(sfBase, g.workOrderId)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-ppp-navy hover:underline underline-offset-2 min-h-[44px] sm:min-h-0 sm:ml-auto"
-                      >
-                        Open Work Order in Salesforce <ArrowOut />
-                      </a>
+                      {isDemoWorkOrderId(g.workOrderId) ? (
+                        <span className="text-[12px] text-ppp-charcoal-500 sm:ml-auto">Demo job — not in Salesforce</span>
+                      ) : (
+                        <a
+                          href={sfLink(sfBase, g.workOrderId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[12px] font-semibold text-ppp-navy hover:underline underline-offset-2 min-h-[44px] sm:min-h-0 sm:ml-auto"
+                        >
+                          Open Work Order in Salesforce <ArrowOut />
+                        </a>
+                      )}
                     </div>
                     <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ppp-charcoal-500">Payment terms</h3>
                     <TermsList job={schedules.get(g.workOrderId)} failed={scheduleError} />
