@@ -71,15 +71,33 @@ try {
   const created = new Date(Date.now() - 60_000); // Salesforce created it a minute ago
   const res = await enrolLeadWith(sb, {
     workspaceId: wsId, customerPhone: "(999) 222-0191", customerName: "Test Lead",
-    sfLeadId: `E2E-${stamp}`, record: { RecordType: "Web Inquiry" }, leadCreatedAt: created,
+    sfLeadId: `E2E-${stamp}`,
+    // CONSENT, because since 2026-10-11 a lead without it does not enrol at
+    // all. This record carried no SMS_Opt_In__c, so every case below failed on
+    // the consent gate rather than on the thing it was written to check — the
+    // gate working, but it turned this script into one rule tested four times.
+    // The refusals get their own cases at the end, where they belong.
+    record: { RecordType: "Web Inquiry", SMS_Opt_In__c: "Opt-In (Verified)" },
+    leadCreatedAt: created,
   });
   ok("a lead enrols through the real code", res.ok, res.ok ? "" : res.reason);
 
   if (res.ok) {
     const { data: conv } = await sb.from("sms_conversations")
-      .select("consent_basis, state, campaign_version_id").eq("id", res.conversationId).single();
+      .select("consent_basis, state, campaign_version_id, sms_consent_value, sms_consent_seen_at")
+      .eq("id", res.conversationId).single();
     ok("the conversation is stored with a consent basis the database accepts",
        conv?.consent_basis === "inquiry" && conv?.state === "ai_active");
+
+    /**
+     * The evidence, against the real columns. Migration 20261011160000 added
+     * these and the insert names them, so this also proves schema and code
+     * agree — the exact failure that would otherwise wait for the first real
+     * lead, which is what this whole script exists to prevent.
+     */
+    ok("what Salesforce said about consent is recorded verbatim",
+       conv?.sms_consent_value === "Opt-In (Verified)", `got ${JSON.stringify(conv?.sms_consent_value)}`);
+    ok("and stamped with when we read it", !!conv?.sms_consent_seen_at);
 
     const { data: acts } = await sb.from("sms_scheduled_actions")
       .select("run_at, campaign_step_id, action").eq("conversation_id", res.conversationId).order("run_at");
@@ -93,7 +111,8 @@ try {
     /* ── The same person again ────────────────────────────────── */
     const again = await enrolLeadWith(sb, {
       workspaceId: wsId, customerPhone: "999-222-0191", sfLeadId: `E2E-${stamp}-dup`,
-      record: { RecordType: "Web Inquiry" }, leadCreatedAt: new Date(),
+      record: { RecordType: "Web Inquiry", SMS_Opt_In__c: "Opt-In (Verified)" },
+      leadCreatedAt: new Date(),
     });
     const { count } = await sb.from("sms_scheduled_actions").select("*", { count: "exact", head: true })
       .eq("conversation_id", res.conversationId);
@@ -103,9 +122,48 @@ try {
   /* ── A workspace with nothing switched on ───────────────────── */
   await sb.from("sms_workflows").update({ is_active: false }).eq("id", wf.id);
   const off = await enrolLeadWith(sb, {
-    workspaceId: wsId, customerPhone: "999-222-0192", record: {}, leadCreatedAt: new Date(),
+    // Consent supplied so this reaches the workflow check. Without it the
+    // refusal came back about consent and this case silently stopped testing
+    // workflows at all — a green-looking assertion about the wrong rule.
+    workspaceId: wsId, customerPhone: "999-222-0192",
+    record: { SMS_Opt_In__c: "Opt-In (Verified)" }, leadCreatedAt: new Date(),
   });
   ok("with no active workflow it refuses, and says why", !off.ok && /no active workflow/.test(off.reason ?? ""), off.ok ? "" : off.reason);
+
+  /* ── Consent, against the real database ─────────────────────── */
+  /**
+   * The gap Twilio rejected the A2P campaign over on 2026-10-10: SMS_Opt_In__c
+   * was read only to STOP a conversation, never to decide whether to start
+   * one. These two cases are the whole reason enrolment now refuses first.
+   *
+   * The workflow is switched OFF at this point, which makes them sharper than
+   * they look: if the consent gate ever stopped running, these would come back
+   * refused for "no active workflow" instead and the reason check would catch
+   * it. A refusal alone would not — both outcomes are `!ok`.
+   */
+  await sb.from("sms_workflows").update({ is_active: true }).eq("id", wf.id);
+
+  const noConsent = await enrolLeadWith(sb, {
+    workspaceId: wsId, customerPhone: "999-222-0193",
+    record: { RecordType: "Web Inquiry" }, leadCreatedAt: new Date(),
+  });
+  ok("a lead with NO recorded consent does not enrol",
+     !noConsent.ok && /no SMS consent is recorded/.test(noConsent.reason ?? ""),
+     noConsent.ok ? "IT ENROLLED" : noConsent.reason);
+
+  const optedOut = await enrolLeadWith(sb, {
+    workspaceId: wsId, customerPhone: "999-222-0194",
+    record: { RecordType: "Web Inquiry", SMS_Opt_In__c: "Opt-Out" }, leadCreatedAt: new Date(),
+  });
+  ok("a lead who opted out does not enrol",
+     !optedOut.ok && /opted out/i.test(optedOut.reason ?? ""),
+     optedOut.ok ? "IT ENROLLED" : optedOut.reason);
+
+  /** Neither refusal may leave anything behind. */
+  const { count: leftovers } = await sb.from("sms_conversations")
+    .select("*", { count: "exact", head: true })
+    .eq("workspace_id", wsId).in("customer_phone", ["+19992220193", "+19992220194"]);
+  ok("a refused lead leaves no conversation behind", leftovers === 0, `${leftovers} found`);
 
   /* ── Intake records a lead it cannot text, with the reason ──── */
   const { count: otherPending } = await sb.from("sf_lead_inbound")
