@@ -72,7 +72,8 @@
     "gates": "node scripts/gates.mjs",
     "prepare": "node scripts/install-hooks.mjs",
     "check:writers": "node scripts/check-settings-have-writers.mjs",
-    "check:consent-values": "node scripts/check-sms-consent-values.mjs"
+    "check:consent-values": "node scripts/check-sms-consent-values.mjs",
+    "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

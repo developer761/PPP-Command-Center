@@ -1701,3 +1701,57 @@ rather than an oversight.
 only whether you want the FAQ and snippet lists written before the first real
 conversation or after, and that is a choice about how much the first week leans
 on a person.
+
+---
+
+## 31. Three different "main numbers", and 32 workspaces forward to one nobody has confirmed
+
+**Raised 2026-10-10. Found while repointing the toll-free pilot's forwarding.
+Nothing is live, so nothing is broken yet — but the answer changes one
+constant, not thirty-three rows, so it is cheap to get right and expensive to
+discover later.**
+
+Call forwarding works like this today, and the design is deliberate: a
+workspace's `call_forward_to` is left NULL, and `forwardPlan` falls back to a
+single constant, `MAIN_LINE`. One place to change, no drift across 33 rows.
+
+So in production, right now:
+
+| workspaces | forwards to |
+|---|---|
+| 32 of 33 (every active lead line) | `MAIN_LINE` = **+1 877 645 3563** |
+| 1 — ZZ TEST, the toll-free pilot | **+1 347 476 6555**, a personal mobile, for testing |
+
+`MAIN_LINE` was read out of Hatch's own Call Forwarding setting on 2026-09-26,
+checked against three workspaces in different regions, all three agreeing.
+That was good evidence at the time. Since then two other numbers have turned
+up, and no two of the three match:
+
+| number | where it comes from |
+|---|---|
+| **+1 877 645 3563** | `MAIN_LINE` — what every workspace actually forwards to today |
+| **+1 877 959 8490** | Katie, 2026-10-08: *"+18779598490 is the number to forward to"* |
+| **+1 866 769 4388** | the only phone number anywhere on precisionpaintingplus.net |
+
+**The question: which of these is the call centre?**
+
+If it is Katie's +1 877 959 8490, then every workspace is currently pointed at
+the wrong place and the fix is one line in `voice-forward.ts` — not a database
+change, because the fallback is doing exactly what it was designed to do.
+
+Two smaller things ride along with the answer:
+
+1. **The spoken fallback reads a number aloud.** When a call arrives on a
+   number matching no active workspace, the caller hears *"Thanks for calling
+   Precision Painting Plus. Please call us on 8 7 7, 6 4 5, 3 5 6 3."* That is
+   `MAIN_LINE` again, and it matches neither the website nor Katie's number. If
+   `MAIN_LINE` changes, this changes with it — it is the same constant.
+2. **866 769 4388 is what a customer sees.** If the website number is the one
+   people are meant to ring, it is odd that the system never mentions it. Not
+   necessarily wrong — a call centre line and a marketing line are often
+   different on purpose — but worth confirming rather than assuming.
+
+**→ Nothing is blocked.** Forwarding is off in practice because sending is
+off, and Katie has already said forwards should not go through during testing.
+This only has to be settled before the first campaign message carries a number
+a customer might ring.

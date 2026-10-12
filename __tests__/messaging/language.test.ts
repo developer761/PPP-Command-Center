@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import ts from "typescript";
 import { languageOf, conversationLanguage } from "@/lib/messaging/language";
 import { renderMessage, SILENT_INTENTS } from "@/lib/messaging/render";
 import { SAYS_ES } from "@/lib/messaging/render-es";
@@ -190,21 +191,132 @@ describe("A30 — the Spanish templates", () => {
  * test asserts they are still there.
  */
 describe("Spanish goes out without inverted punctuation", () => {
-  const OUTBOUND = [
-    "lib/messaging/render-es.ts",
-    "lib/messaging/render.ts",
-    "lib/messaging/disclosure.ts",
-    "lib/messaging/availability-ask.ts",
-    "lib/messaging/multi-property.ts",
-    "lib/messaging/returning-customer.ts",
-  ];
+  /**
+   * ── EVERY MESSAGING FILE, NOT A LIST OF SIX ─────────────────────────────
+   *
+   * This was a hand-written list of the files known to hold Spanish copy,
+   * which means a new template file was unguarded until somebody remembered
+   * to add it — and the whole point of a guard is to cover the case nobody
+   * remembered. So the directory is the subject now, and a file that needs
+   * the characters has to say why here.
+   *
+   * Same polarity as check:writers: covered by default, exempt only with a
+   * reason, and the reason is checked against reality below.
+   */
+  const MESSAGING = readdirSync("lib/messaging", { recursive: true })
+    .filter((f): f is string => typeof f === "string" && /\.tsx?$/.test(f))
+    .map((f) => `lib/messaging/${f}`)
+    .sort();
 
-  it.each(OUTBOUND)("has none left in %s", (path) => {
+  /**
+   * A file may contain the characters only to MATCH or to NAME them — never to
+   * send them. Both exemptions below are that, and both are narrow.
+   */
+  const ALLOWED = new Map([
+    [
+      "lib/messaging/agent-run.ts",
+      "the prompt states the rule TO the model, and a prohibition cannot be "
+      + "written without naming the character it forbids. Sent to the model, "
+      + "never to a customer.",
+    ],
+  ]);
+
+  const OUTBOUND = MESSAGING.filter((f) => !ALLOWED.has(f));
+
+  it("guards every messaging file, and the list is not empty", () => {
+    // A glob that silently matches nothing is a green suite over no checking.
+    expect(OUTBOUND.length).toBeGreaterThan(20);
+    expect(OUTBOUND).toContain("lib/messaging/render-es.ts");
+    expect(OUTBOUND).toContain("lib/messaging/render.ts");
+    expect(OUTBOUND).toContain("lib/messaging/disclosure.ts");
+  });
+
+  it.each([...ALLOWED.keys()])("exemption for %s is still a real file", (path) => {
+    // An exemption outliving its file is an exemption nobody is reading.
+    expect(MESSAGING).toContain(path);
+  });
+
+  /**
+   * ── WHY THIS READS THE SYNTAX TREE AND NOT THE LINES ────────────────────
+   *
+   * This check used to be `/[¿¡]/.test(line)` over the raw source, and a real
+   * ¡ reached customers through it. render.ts had:
+   *
+   *     "¡Gracias por la foto!"
+   *
+   * Six ASCII characters on the line, one inverted mark in the message. The
+   * grep saw the spelling; the customer saw the character.
+   *
+   * The escape was not sneaked in — disclosure.ts introduced it deliberately
+   * and explained itself: there the marks sit inside a regex that STRIPS what
+   * a customer typed, and "the escape says the same thing to the regex engine
+   * and nothing to the reader of our outbound copy." That is true and still
+   * allowed. What happened next is the ordinary way a workaround spreads: the
+   * same spelling got reused in a place that emits rather than matches, where
+   * the reasoning does not hold.
+   *
+   * So the question is not how the character is spelled, it is whether it can
+   * be SENT. Strings can be sent; regexes only ever inspect. TypeScript's own
+   * parser decodes escapes and gives those two different node kinds, so
+   * asking it is both exact about the former and free of a hand-maintained
+   * exemption list for the latter — and \xa1, \u{a1}, a literal ¡ and a
+   * concatenated fragment all answer the same way, because by the time the
+   * value is on the node, the spelling is gone.
+   */
+  it.each(OUTBOUND)("has none in any string that can be sent from %s", (path) => {
     const src = readFileSync(path, "utf8");
-    const hits = src.split("\n")
-      .map((line, i) => ({ line, n: i + 1 }))
-      .filter((l) => /[¿¡]/.test(l.line));
-    expect(hits.map((h) => `${path}:${h.n} ${h.line.trim()}`)).toEqual([]);
+    const sf = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, true);
+    const hits: string[] = [];
+
+    const visit = (node: ts.Node): void => {
+      // The decoded value — "¡Gracias" and "¡Gracias" are both "¡Gracias" here.
+      if (
+        ts.isStringLiteral(node)
+        || ts.isNoSubstitutionTemplateLiteral(node)
+        || ts.isTemplateHead(node)
+        || ts.isTemplateMiddle(node)
+        || ts.isTemplateTail(node)
+      ) {
+        if (/[¿¡]/.test(node.text)) {
+          const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+          hits.push(`${path}:${line + 1} ${JSON.stringify(node.text).slice(0, 72)}`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+
+    expect(hits).toEqual([]);
+  });
+
+  /**
+   * The guard above is the one that matters, so it gets a test of its own:
+   * a check nobody has watched fail is a check nobody knows the polarity of.
+   * Both spellings must be caught, and the regex in disclosure.ts must not be.
+   */
+  it("catches an escaped mark in outbound copy and spares one in a matcher", () => {
+    const find = (src: string) => {
+      const sf = ts.createSourceFile("t.ts", src, ts.ScriptTarget.Latest, true);
+      const found: string[] = [];
+      const visit = (n: ts.Node): void => {
+        if (ts.isStringLiteral(n) && /[¿¡]/.test(n.text)) found.push(n.text);
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+      return found;
+    };
+
+    // The character itself, and the three ways to spell it that a grep misses.
+    expect(find('const a = "¡Gracias!";')).toEqual(["¡Gracias!"]);
+    expect(find('const a = "\\u00a1Gracias!";')).toEqual(["¡Gracias!"]);
+    expect(find('const a = "\\xa1Gracias!";')).toEqual(["¡Gracias!"]);
+    expect(find('const a = "\\u{a1}Gracias!";')).toEqual(["¡Gracias!"]);
+
+    // disclosure.ts's actual line: a matcher, not copy. Must stay legal.
+    expect(find("const g = /^[\\s\\u00a1\\u00bf]*(?:hola|hi)\\b/i;")).toEqual([]);
+
+    // And a comment explaining the rule is not a breach of it.
+    expect(find('// never write ¡ or ¿ in outbound copy\nconst a = "Gracias!";')).toEqual([]);
   });
 
   it("still detects Spanish written WITH inverted punctuation", () => {

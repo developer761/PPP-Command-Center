@@ -934,6 +934,87 @@ const BARE_QUESTION =
 export const BARE_ACKNOWLEDGEMENT =
   /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies|entendido|perfecto|gracias|muchas gracias|de acuerdo|claro|por supuesto|excelente|muy bien|est[\u00e1a] bien|sin problema|listo|vale|anotado|disculpe|disculpas|lo siento)[\s,.!]*)+$/i;
 
+/**
+ * RAPPORT THAT DOES NOTHING BUT SAY THE PHOTO ARRIVED.
+ *
+ * Found live in the simulator on 2026-10-11, after the first photo fix had
+ * shipped and was believed complete:
+ *
+ *   "Thanks for the photo! Thanks, got the photo! What are you looking to
+ *    have painted?"
+ *
+ * The renderer pushes its own "Thanks for the photo!" when photos are
+ * attached, and the model independently wrote its own thank-you. The existing
+ * guard drops rapport matching BARE_ACKNOWLEDGEMENT, which catches "Perfect,
+ * thanks." — but "Thanks, got the photo!" NAMES the photo, so it is not bare,
+ * and it went out to the customer.
+ *
+ * It was missed because the probe that verified the first fix supplied a stub
+ * rapport. The model writes this shape and the stub never did.
+ *
+ * ── WHY SUBTRACTION RATHER THAN A PATTERN ───────────────────────────────
+ *
+ * The line this must not cross is rapport that mentions a photo AND says
+ * something. "I can see from the photo that the ceiling is water damaged" is
+ * the most useful sentence the model can write here, and a pattern like
+ * /thanks.*photo/ would eat it.
+ *
+ * So rather than describing what to delete, this removes every word that
+ * carries no information in this context — the pleasantries, the verbs of
+ * receipt, the photo nouns and the glue — and asks whether anything is left.
+ * Nothing left means nothing was said.
+ *
+ *   "Thanks, got the photo!"              -> nothing left     dropped
+ *   "Got them both, thank you"            -> nothing left     dropped
+ *   "Thanks, I can see the water damage"  -> "waterdamage"    kept
+ *
+ * Only ever consulted when a photo thanks has ALREADY been pushed, so a
+ * message whose only content was this is not left empty — it still opens with
+ * the renderer's own thanks and goes on to the template's question.
+ */
+/**
+ * UNICODE-AWARE BOUNDARIES, not \b.
+ *
+ * \b is defined on ASCII word characters, so in "recibí" there is a boundary
+ * between "b" and "í": `\brecib[a-záéíóúñ]*\b` matches just "recib", the
+ * trailing \b succeeds, and the "í" survives as leftover content — which
+ * reads as "they said something" and keeps the duplicate. The accent class
+ * alone does not fix it; the BOUNDARY has to stop being ASCII too.
+ */
+const PHOTO_ACK_FILLER = new RegExp(
+  "(?<!\\p{L})(?:"
+  // the photo itself
+  + "photos?|pics?|pictures?|images?|shots?|snaps?"
+  // receiving it
+  + "|thanks?|thank\\s*you|thx|got|get|getting|receiv\\w*|see|seen|seeing|have|has|had"
+  + "|appreciate\\w*|great|perfect|awesome|nice|cool|lovely|helpful|clear|can|could"
+  + "|ok|okay|sure|yes|yep|yeah|good|excellent|brilliant"
+  /**
+   * Spanish, because the twin is always the half that gets forgotten — and
+   * with ACCENT-SAFE classes, not \w.
+   *
+   * \w is ASCII, so "recib\w*" matches "recib" in "recibí" and leaves the "í"
+   * behind as leftover content, which reads as "they said something" and
+   * keeps the duplicate. Exactly the bug SUITS_BEST_ES already had once.
+   */
+  + "|gracias|recib[a-záéíóúñü]*"
+  + "|fotos?|im[aá]gen[a-záéíóúñü]*"
+  + "|perfecto|excelente|listo|bien|claro|ve|veo|queda|qued[aó]"
+  // glue, English then Spanish
+  + "|i|we|ve|im|thats|its|it|the|that|these|those|this|them|they|your|you|my|me|us"
+  + "|for|from|of|and|both|all|over|now|just|send\\w*|sent|here|there|to|a|an|is|are"
+  + "|por|las|los|la|el|un|una|unos|unas|de|del|y|que|se|ya|muy|con|en|su|sus|lo"
+  + ")(?!\\p{L})",
+  "giu",
+);
+
+export function onlyAcknowledgesThePhoto(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t) return false;
+  const left = t.replace(PHOTO_ACK_FILLER, " ").replace(/[^\p{L}\p{N}]+/gu, "");
+  return left.length === 0;
+}
+
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;

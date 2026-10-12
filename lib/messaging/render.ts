@@ -20,7 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import {
-  BARE_ACKNOWLEDGEMENT, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
   ANSWERS_A_QUESTION,
 } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
@@ -1784,7 +1784,26 @@ function renderBody(input: RenderInput): string {
   if (input.photos && input.photos > 0) {
     // A26 in the customer's language, same as everything else.
     parts.push(es
-      ? (input.photos === 1 ? "\u00a1Gracias por la foto!" : "\u00a1Gracias por las fotos!")
+      /**
+       * NO OPENING \u00a1, and it was written as \u00a1 so nothing caught it.
+       *
+       * Kate relaying Mac and Jasmine, 2026-09-28: "the bot should not use the
+       * proper \u00bf punctuation... using that would be a flag that they're not
+       * talking to a spanish speaking individual." Every other Spanish
+       * template obeys it and language.test.ts reads these files for the
+       * literal characters to keep them honest.
+       *
+       * This line held the escape instead, so the guard saw the six ASCII
+       * characters of "\u00a1" and passed, while the customer received "\u00a1".
+       * Found by rendering it in the sandbox rather than by reading the file \u2014
+       * which is the only way it could have been found.
+       *
+       * disclosure.ts uses the same escapes legitimately and says why: there
+       * it is a regex STRIPPING an inverted mark a customer typed. The escape
+       * is fine in a matcher and never in outbound copy, and the guard now
+       * tells those two apart.
+       */
+      ? (input.photos === 1 ? "Gracias por la foto!" : "Gracias por las fotos!")
       : (input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!"));
   }
 
@@ -1794,7 +1813,51 @@ function renderBody(input: RenderInput): string {
   if (
     rapport
     && !BARE_GREETING.test(rapport)
-    && !(parts.length && /^thanks/i.test(rapport))
+    /**
+     * WE HAVE ALREADY THANKED THEM FOR THE PHOTO, SO A PLEASANTRY IS A SECOND
+     * ONE.
+     *
+     * `parts` is non-empty at this point only when the photo thanks above was
+     * pushed, so this is specifically "the message already opens with thanks".
+     *
+     * It used to test /^thanks/i — rapport that BEGINS with the word. Seen
+     * live in the sandbox on 2026-10-08, sending a photo on the nurture track:
+     *
+     *   "Thanks for the photo! Perfect, thanks."
+     *
+     * "Perfect, thanks." does not begin with thanks, so it survived and the
+     * customer was thanked twice in one message. The general guard below
+     * cannot catch it either: rapportIsRedundant compares the rapport with
+     * `pick`, the TEMPLATE, and the photo thanks is not in the template — it
+     * is pushed into `parts` separately a few lines above.
+     *
+     * BARE_ACKNOWLEDGEMENT is the test the validator already applies to
+     * rapport, anchored end to end, so it drops a string that is NOTHING but
+     * pleasantries and keeps anything substantive — "Thanks, I can see the
+     * water damage along the skirting" still goes out. That anchoring is also
+     * why this needs no answerIsOwed carve-out, unlike the guard below: a
+     * string that is entirely pleasantries was never anybody's answer.
+     */
+    /**
+     * …OR DOES NOTHING BUT SAY THE PHOTO ARRIVED.
+     *
+     * BARE_ACKNOWLEDGEMENT alone was not enough, and the gap shipped. Seen in
+     * the simulator on 2026-10-11, after the guard above was believed
+     * complete:
+     *
+     *   "Thanks for the photo! Thanks, got the photo! What are you looking
+     *    to have painted?"
+     *
+     * "Thanks, got the photo!" NAMES the photo, so it is not a bare
+     * acknowledgement and survived a guard written only for pleasantries.
+     * onlyAcknowledgesThePhoto subtracts the filler and keeps anything
+     * substantive, so "Thanks, I can see the water damage along the skirting"
+     * still goes out.
+     */
+    && !(parts.length && (
+      BARE_ACKNOWLEDGEMENT.test(rapport.trim())
+      || onlyAcknowledgesThePhoto(rapport)
+    ))
     // Two acknowledgements in a row is how "Got it. Got it." reaches a
     // customer. The template's own opener wins, because it is the one that
     // goes on to say something.
@@ -1848,7 +1911,29 @@ function renderBody(input: RenderInput): string {
    * post-filtered for prices, times and commitments, and it only reaches this
    * branch when it is NOT itself a bare acknowledgement.
    */
-  const templateAddsNothing = rapportAt >= 0 && BARE_ACKNOWLEDGEMENT.test(pick.trim());
+  /**
+   * AND THE PHOTO THANKS ACKNOWLEDGES THEM JUST AS MUCH AS RAPPORT DOES.
+   *
+   * This read `rapportAt >= 0` alone, so a bare-acknowledgement template was
+   * dropped only when the model's rapport had survived to say it instead. With
+   * a photo and no surviving rapport the template went in anyway:
+   *
+   *   "Thanks for the photo! Got it, thank you."
+   *
+   * Two acknowledgements, which is the tell this whole block exists to remove,
+   * reached by the one route it did not cover. Found in the sandbox on
+   * 2026-10-08 — the live version had the model's own "Perfect, thanks." in
+   * the second half, and fixing that only moved the duplication into the
+   * template.
+   *
+   * `acknowledge` with a photo now renders "Thanks for the photo!" and stops,
+   * which is the whole job of that intent. BARE_ACKNOWLEDGEMENT is anchored,
+   * so only a template that is NOTHING but pleasantries is ever dropped —
+   * anything that goes on to ask or say something survives.
+   */
+  const thankedForPhoto = !!(input.photos && input.photos > 0);
+  const templateAddsNothing =
+    (rapportAt >= 0 || thankedForPhoto) && BARE_ACKNOWLEDGEMENT.test(pick.trim());
   if (pick && !templateAddsNothing) parts.push(pick);
 
   let body = parts.join(" ").replace(/\s+/g, " ").trim();
