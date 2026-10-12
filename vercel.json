@@ -12,6 +12,14 @@
     {
       "path": "/api/cron/messaging-tick",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/payment-links",
+      "schedule": "30 11 * * *"
+    },
+    {
+      "path": "/api/cron/payments-report",
+      "schedule": "15 12 * * *"
     }
   ]
 }
