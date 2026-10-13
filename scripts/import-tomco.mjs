@@ -1041,7 +1041,18 @@ async function stagePayments() {
       from += data.length;
     }
   }
+  /*
+   * ROWS THIS IMPORTER ALREADY OWNS ARE NOT AVAILABLE TO ADOPT.
+   *
+   * `mapped("payment", t.Id)` asks whether THIS Salesforce payment is mapped.
+   * It never asked whether the CANDIDATE is. So a second Salesforce payment
+   * could adopt a row the importer already owns, leaving two sf_ids pointing at
+   * one row — and `commercial_import_map`'s key is (sf_id, entity), so nothing
+   * in the database refuses it. Both then write the same row and one payment's
+   * money is simply gone.
+   */
   const claimed = new Set();
+  for (const [key, rowId] of MAP) if (key.startsWith("payment:")) claimed.add(rowId);
   for (const t of SF.txInScope) {
     if ((t.RecordType?.DeveloperName ?? "") !== "Payment_In") continue;
     const invoiceId = mapped("invoice", t.WorkOrder__c);
@@ -1053,13 +1064,30 @@ async function stagePayments() {
       const incoming = {
         amount_cents: cents(t.Amount__c),
         paid_at: at(ymd(t.Date__c) ?? ymd(t.CreatedDate)),
-        reference: t.ReferenceId__c || t.Name || null,
+        /*
+         * ONLY THE REAL CHEQUE NUMBER, not the `|| t.Name` fallback the stored
+         * row uses. `Name` is the Transaction autonumber and is always set, so
+         * including it here means a Salesforce payment with a blank
+         * ReferenceId__c is compared as "TN-206116" against Mary's "530812" —
+         * a permanent conflict, asked every night, never resolvable.
+         */
+        reference: t.ReferenceId__c || null,
       };
       const pool = (existingByDeal.get(dealOfInvoice.get(invoiceId)) ?? []).filter((p) => !claimed.has(p.id));
       // The decision itself lives in lib/commercial/import/mapping.ts, with the
       // rest of the ones that have to be RIGHT, where the tests hold it.
       const hit = matchExistingPayment(pool, incoming, invoiceId);
       if (hit.kind === "ask") {
+        /*
+         * AN `ask` CLAIMS THE ROW TOO.
+         *
+         * It used to leave the candidate in the pool, and `SF.txInScope` has no
+         * ORDER BY — so with two identical Salesforce payments and one row
+         * here, one ordering adopted-then-inserted (two rows, correct) and the
+         * other asked-then-adopted (one row, and a real payment's money gone).
+         * The same night's data could land either way.
+         */
+        if (hit.row) claimed.add(hit.row.id);
         r.skipped.push(
           `payment ${t.Name}: ${money(incoming.amount_cents)} on ${String(incoming.paid_at).slice(0, 10)} — ${hit.why}; left for a human rather than banked again`,
         );

@@ -99,17 +99,67 @@ describe("it asks rather than guessing, in all three ways money can be lost", ()
 });
 
 describe("matching is by the day, not the timestamp", () => {
-  it("reads a Salesforce bare date against our anchored timestamp", () => {
-    // We store 16:00Z (noon ET); Salesforce hands back "2026-10-06". Comparing
-    // the raw strings would never match and every payment would double.
+  it("reads two anchored timestamps as the same day", () => {
+    // Both sides arrive anchored — `stagePayments` builds `at(ymd(Date__c))`,
+    // so a bare date is a shape the caller never produces. Pinned against the
+    // real one, because an earlier version of this test asserted a hazard the
+    // caller cannot create while the real hazard below went untested.
     const mine = p({ id: "mary", paid_at: "2026-10-06T16:00:00.000Z" });
-    expect(matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06", reference: "530812" }, "inv-sf").kind)
+    expect(matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06T16:00:00.000Z", reference: "530812" }, "inv-sf").kind)
       .toBe("adopt");
   });
 
-  it("a different day is a different payment", () => {
-    const mine = p({ id: "mary", paid_at: "2026-10-05T16:00:00.000Z" });
-    expect(matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06", reference: "530812" }, "inv-sf").kind)
+  it("a different day with no shared cheque number is a different payment", () => {
+    const mine = p({ id: "mary", paid_at: "2026-10-05T16:00:00.000Z", reference: null });
+    expect(matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06T16:00:00.000Z", reference: null }, "inv-sf").kind)
       .toBe("insert");
+  });
+
+  it("compares EASTERN days, so a late-evening entry is not tomorrow", () => {
+    /*
+     * THE REAL HAZARD. `paid_at` is TIMESTAMPTZ and most writers anchor it to
+     * noon ET — but `lib/commercial/invoices/db.ts` falls back to `new Date()`
+     * when the date field is left blank, so some rows hold a true instant.
+     * Mary saving at 9:30pm ET on the 6th stores 2026-10-07T01:30Z. Slicing
+     * the first ten characters calls that the 7th, finds no match, and banks
+     * the cheque a second time.
+     */
+    const lateEvening = p({ id: "mary", paid_at: "2026-10-07T01:30:00.000Z", reference: null });
+    expect(matchExistingPayment([lateEvening], { amount_cents: 100_000, paid_at: "2026-10-06T16:00:00.000Z", reference: null }, "inv-sf").kind)
+      .toBe("adopt");
+  });
+});
+
+describe("the cheque number is the strong signal, not the date", () => {
+  it("adopts a cheque recorded a couple of days after it was dated", () => {
+    /*
+     * The single most likely form of the duplicate, and the first version of
+     * this matcher missed it completely: it selected candidates on (amount,
+     * day) and used the reference only as a veto. Ten of the twelve real
+     * duplicates carried the same cheque number; the dates are typed and
+     * drift. North Shore Dental, cheque 530812, dated the 6th, recorded the
+     * 8th — keyed on the day it finds nothing and doubles $3,920.
+     */
+    const mine = p({ id: "mary", amount_cents: 392_000, reference: "530812", paid_at: "2026-10-08T16:00:00.000Z" });
+    const got = matchExistingPayment([mine], { amount_cents: 392_000, paid_at: "2026-10-06T16:00:00.000Z", reference: "530812" }, "inv-sf");
+    expect(got.kind).toBe("adopt");
+  });
+
+  it("will not adopt on the amount alone", () => {
+    // Different day, no shared reference — two equal draws on one invoice
+    // (progress plus a retainage release) are ordinary, and merging them
+    // deletes real money.
+    const mine = p({ id: "mary", reference: "   ", paid_at: "2026-09-01T16:00:00.000Z" });
+    expect(matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06T16:00:00.000Z", reference: null }, "inv-sf").kind)
+      .toBe("insert");
+  });
+
+  it("treats a whitespace-only reference as absent, not as agreement", () => {
+    // `ref()` trims, so "   " must not launder into "the cheque numbers match".
+    const mine = p({ id: "mary", reference: "   " });
+    const got = matchExistingPayment([mine], { amount_cents: 100_000, paid_at: "2026-10-06T16:00:00.000Z", reference: "530812" }, "inv-sf");
+    // Same day and same invoice still carry it, but on the day — not on a
+    // pretend reference match.
+    expect(got.kind).toBe("adopt");
   });
 });

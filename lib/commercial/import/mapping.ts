@@ -350,12 +350,42 @@ export function matchExistingPayment(
   incoming: IncomingPayment,
   invoiceId: string,
 ): PaymentMatch {
-  const day = (v: string | null | undefined) => String(v ?? "").slice(0, 10);
+  /*
+   * THE DAY IS THE WEAK SIGNAL. THE CHEQUE NUMBER IS THE STRONG ONE.
+   *
+   * The first version had this backwards: it selected candidates on (amount,
+   * day) and used the reference only as a veto. Ten of the twelve duplicates
+   * this function was written from carried the SAME cheque number on both
+   * copies — while the dates are typed by hand and drift routinely, because a
+   * bookkeeper records a cheque dated the 6th on the 8th. Keyed on the day, a
+   * cheque recorded two days late finds nothing and is banked a second time:
+   * the exact failure, in its most likely form.
+   *
+   * So a candidate is the same money that agrees on EITHER the day or the
+   * cheque number, and the decision below needs real corroboration before it
+   * will adopt.
+   *
+   * And the day is an EASTERN day. `paid_at` is TIMESTAMPTZ; most writers
+   * anchor it to noon ET, but `lib/commercial/invoices/db.ts` falls back to
+   * `new Date()` when the date field is left blank, so some rows hold a true
+   * instant. `.slice(0, 10)` on one of those is a UTC day — anything recorded
+   * after 8pm ET reads as tomorrow and misses. `ymd` does the ET conversion
+   * that the rest of this file already relies on.
+   */
   const ref = (v: string | null | undefined) => String(v ?? "").trim().toLowerCase();
+  const sameDay = (a: string | null | undefined, b: string | null | undefined) => {
+    const x = ymd(a), y = ymd(b);
+    return x !== null && y !== null && x === y;
+  };
 
-  const candidates = existing.filter(
-    (p) => p.amount_cents === incoming.amount_cents && day(p.paid_at) === day(incoming.paid_at),
-  );
+  const incomingRef = ref(incoming.reference);
+  const candidates = existing.filter((p) => {
+    if (p.amount_cents !== incoming.amount_cents) return false;
+    const mineRef = ref(p.reference);
+    const refsAgree = mineRef !== "" && incomingRef !== "" && mineRef === incomingRef;
+    return sameDay(p.paid_at, incoming.paid_at) || refsAgree;
+  });
+
   if (candidates.length === 0) return { kind: "insert" };
   // SEVERAL IS NOT NONE. Returning "insert" here — which an early version did,
   // by collapsing both into a single null — adds a THIRD copy of the money, the
@@ -365,10 +395,13 @@ export function matchExistingPayment(
   }
 
   const mine = candidates[0];
-  const a = ref(mine.reference), b = ref(incoming.reference);
+  const mineRef = ref(mine.reference);
+  const refsAgree = mineRef !== "" && incomingRef !== "" && mineRef === incomingRef;
+  const refsConflict = mineRef !== "" && incomingRef !== "" && mineRef !== incomingRef;
+
   // Both name a cheque and they disagree: two cheques for one amount on one day
   // is unusual, not impossible. Only the bookkeeper can say.
-  if (a && b && a !== b) {
+  if (refsConflict) {
     return { kind: "ask", row: mine, why: `the references differ (${mine.reference} vs ${incoming.reference})` };
   }
   // Same money on a DIFFERENT invoice means the JOB is billed twice, and the
@@ -377,6 +410,18 @@ export function matchExistingPayment(
   // duplicate, and the same shape as deleting a payment to fix a deposit total.
   if (mine.invoice_id !== invoiceId) {
     return { kind: "ask", row: mine, why: "already recorded here against a DIFFERENT invoice — the job looks billed twice" };
+  }
+  /*
+   * NEITHER SIDE NAMES A CHEQUE, AND THE DAYS DISAGREE.
+   *
+   * Reachable only through the reference arm of the filter, so this is
+   * defensive — but the rule it states is the one that matters: adopting needs
+   * evidence beyond the amount. Two equal draws landing on one invoice
+   * (progress plus a retainage release) are ordinary, so amount alone merges
+   * real money.
+   */
+  if (!refsAgree && !sameDay(mine.paid_at, incoming.paid_at)) {
+    return { kind: "ask", row: mine, why: "same amount but a different day and no shared reference — not enough to call it the same payment" };
   }
   return { kind: "adopt", row: mine };
 }
