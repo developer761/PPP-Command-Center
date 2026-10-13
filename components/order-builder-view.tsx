@@ -2344,6 +2344,29 @@ function ColorNoteOffers({
                 ) : (
                   <span className="shrink-0 flex items-center gap-1.5">
                     <input
+                      type="text"
+                      value={finish[line] ?? id.finish ?? ""}
+                      onChange={(e) => setFinish((cur) => ({ ...cur, [line]: e.target.value }))}
+                      placeholder="Finish"
+                      aria-label={`Finish for ${line}`}
+                      className="w-24 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                    />
+                    <span className="w-[170px]">
+                      <MaterialTypePicker
+                        id={`cn-mt-${line}`}
+                        value={material[line] ?? ""}
+                        onChange={(v) => setMaterial((cur) => ({ ...cur, [line]: v }))}
+                        placeholder="— product —"
+                        compact
+                        availableValues={materialValues}
+                      />
+                    </span>
+                    {/* Kate 2026-10-13: "The quantity field should be next
+                        to the gallon selector." The number and its unit are
+                        one value — "2 gal" — and reading them with a finish
+                        and a product line wedged between made the row say
+                        nothing at a glance. */}
+                    <input
                       type="number"
                       inputMode="numeric"
                       min={1}
@@ -2363,24 +2386,6 @@ function ColorNoteOffers({
                       aria-label={`Quantity for ${line}`}
                       className="w-14 px-2 py-1.5 text-base sm:text-[12px] text-right border border-ppp-charcoal-100 rounded-lg font-mono min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
                     />
-                    <input
-                      type="text"
-                      value={finish[line] ?? id.finish ?? ""}
-                      onChange={(e) => setFinish((cur) => ({ ...cur, [line]: e.target.value }))}
-                      placeholder="Finish"
-                      aria-label={`Finish for ${line}`}
-                      className="w-24 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
-                    />
-                    <span className="w-[170px]">
-                      <MaterialTypePicker
-                        id={`cn-mt-${line}`}
-                        value={material[line] ?? ""}
-                        onChange={(v) => setMaterial((cur) => ({ ...cur, [line]: v }))}
-                        placeholder="— product —"
-                        compact
-                        availableValues={materialValues}
-                      />
-                    </span>
                     <select
                       value={unit[line] ?? "gal"}
                       onChange={(e) => setUnit((cur) => ({ ...cur, [line]: e.target.value as PaintUnit }))}

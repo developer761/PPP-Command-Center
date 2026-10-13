@@ -48,6 +48,23 @@ describe("RED 2 — a color from the notes can carry its product line and finish
     }
   });
 
+  it("puts the quantity next to its unit", () => {
+    // Kate 2026-10-13: "The quantity field should be next to the gallon
+    // selector." The number and the unit are one value — "2 gal" — and a
+    // finish and a product line wedged between them made the row unreadable
+    // at a glance. Asserted as an ORDER, since the controls all exist either
+    // way and only their sequence was wrong.
+    const s = builder();
+    const row = s.slice(s.indexOf("flex flex-wrap items-center gap-x-2"));
+    const seq = (row.match(/aria-label=\{`Finish for|id=\{`cn-mt-|aria-label=\{`Quantity for|value=\{unit\[line\]/g) ?? []).slice(0, 4);
+    expect(seq).toEqual([
+      "aria-label={`Finish for",
+      "id={`cn-mt-",
+      "aria-label={`Quantity for",
+      "value={unit[line]",
+    ]);
+  });
+
   it("stores them only when answered", () => {
     // An empty string reads as "the estimator cleared it" rather than
     // "unknown", and unknown is what makes the buy row mark itself.
