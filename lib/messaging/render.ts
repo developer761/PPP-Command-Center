@@ -1958,7 +1958,26 @@ function renderBody(input: RenderInput): string {
    */
   const PHOTO_THANKS = /^(?:thanks for the photos?|gracias por las? fotos?)!$/i;
   const templateThanks = /\b(?:thanks|thank you|gracias)\b/i.test(pick);
-  if (thankedForPhoto && templateThanks && parts.length && PHOTO_THANKS.test(parts[0].trim())) {
+  if (
+    thankedForPhoto && templateThanks && parts.length
+    && PHOTO_THANKS.test(parts[0].trim())
+    /**
+     * ONLY WHEN THE TEMPLATE IS ACTUALLY GOING TO BE SENT.
+     *
+     * Without this the two guards eat the message between them. `acknowledge`
+     * with a photo has pick = "Got it, thank you.", which contains "thank
+     * you", so this dropped the photo thanks — and it is also a
+     * BARE_ACKNOWLEDGEMENT, so templateAddsNothing dropped the template.
+     * Both halves gone, nothing sent.
+     *
+     * Caught by verify-iteration-1's A26 check — "the bot knows an image
+     * arrived and how many, names it in one short line" — and NOT by the
+     * scenario sweep, which asks what a reply says and had nothing to read.
+     * A rule that deletes the whole message is invisible to a check that only
+     * inspects messages.
+     */
+    && !templateAddsNothing
+  ) {
     parts.shift();
   }
 
