@@ -45,11 +45,35 @@ export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
  * half is QUESTIONS_FOR_KATE item 25 and needs Spanish words from Mac and
  * Jasmine, not a code change.
  */
+/**
+ * THE REAL CATALOGUE, read off sms_services on 2026-10-13.
+ *
+ * This was four invented services -- "Cabinets" is not even a label PPP has;
+ * the row is "Cabinet refinishing". Four services fit under coveredPhrase's
+ * cap, so the harness exercised the un-truncated branch, which production
+ * NEVER takes: there are ten rows, all covered by default and zero workspace
+ * exceptions, so every real discard truncates to four and appends "and more".
+ *
+ * The harness was therefore asserting a sentence no customer can receive:
+ *
+ *   harness      "...cabinets and drywall"
+ *   production   "...lime washing, skim coating and more"
+ *
+ * Keep this in step with sms_services. If a service is added there and the
+ * list below still has ten, the only cost is that the cap hides it -- but the
+ * four that show are the four customers actually see, so they must be right.
+ */
 export const COVER_SERVICES = [
   { label: "Interior painting", covered: true },
   { label: "Exterior painting", covered: true },
-  { label: "Cabinets", covered: true },
+  { label: "Lime washing", covered: true },
+  { label: "Skim coating", covered: true },
+  { label: "Flooring", covered: true },
   { label: "Drywall", covered: true },
+  { label: "Power washing", covered: true },
+  { label: "Wallpaper", covered: true },
+  { label: "Cabinet refinishing", covered: true },
+  { label: "Minor repairs", covered: true },
 ];
 
 export const COVERS = coveredPhrase(COVER_SERVICES);

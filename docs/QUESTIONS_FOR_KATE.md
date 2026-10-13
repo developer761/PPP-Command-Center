@@ -1491,13 +1491,37 @@ matters because "interior" is a service PPP sells. It now reads:
 
 > "Sí cubrimos interior painting, exterior painting, cabinets **y** drywall."
 
-The **service names** are not ours. They are workspace data
-(`sms_workspace_services`, stored in English, one row per service), and
-translating them is a content decision — which is exactly what question 28
-already asks Mac and Jasmine for.
+The **service names** are not ours — they are data in `sms_services`, stored
+in English — so that half is still a question. But it is a far smaller one
+than it looked, and the correction is worth stating plainly: an earlier draft
+of this note said it would close along with question 28. That was wrong. 28 is
+about A7's seven off-site REASON strings and has nothing to do with service
+names.
 
-**→ So this is no longer a separate question. When 28 comes back with Spanish
-service names, this closes with it.** Nothing further is needed from you here.
+**The real ask is four words, and only four.** The catalogue has ten services,
+but `coveredPhrase` caps the list at four and appends "y más", so a Spanish
+customer only ever sees the first four by sort order:
+
+| shown to a Spanish customer | needs |
+|---|---|
+| interior painting | Spanish |
+| exterior painting | Spanish |
+| lime washing | Spanish |
+| skim coating | Spanish |
+
+The other six — flooring, drywall, power washing, wallpaper, cabinet
+refinishing, minor repairs — are never reached by this sentence, so they can
+wait. "y más" is already Spanish.
+
+The full sentence a Spanish customer receives today, verbatim:
+
+> "Creo que no podemos ayudar con este proyecto. Sí cubrimos interior
+> painting, exterior painting, lime washing, skim coating y más. Lo reviso y
+> le aviso si me equivoco. Disculpe la molestia!"
+
+**→ Four service names from Mac or Jasmine closes this.** Two of them —
+lime washing and skim coating — are trade terms rather than everyday words,
+which is exactly why we are not guessing at them.
 
 <details><summary>the original question</summary>
 
