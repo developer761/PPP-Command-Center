@@ -81,7 +81,7 @@ export default async function CardPage({
             baseCents={quote.baseCents}
             publishableKey={cfg.publishableKey}
             surcharge={surcharge}
-            demo={isDemo}
+            demo={cfg.stripeMode === "test"}
           />
         </section>
       </div>

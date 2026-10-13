@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { canOpenPayPages } from "@/lib/payments/access";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { demoConfirmationToken } from "@/lib/payments/service";
 
@@ -7,13 +8,15 @@ export const dynamic = "force-dynamic";
 /**
  * POST /pay/<token>/card/demo-card — { card: "credit" | "debit" }.
  *
- * Sales demo only: hands back a ConfirmationToken for one of Stripe's test
- * cards, so the demo can be paid on a phone without typing a card number.
- * 404 for every link that isn't a demo link while the demo is on with a TEST
- * Stripe key (demoConfirmationToken checks both).
+ * Test mode only: hands back a ConfirmationToken for one of Stripe's test
+ * cards, so a demo or a sandbox Work Order can be paid on a phone without
+ * typing a card number. 404 unless the Stripe key is a TEST key and the link
+ * is live (demoConfirmationToken checks both). It never opens a page: the
+ * card page's own access rules still decide who gets this far.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  if (!(await canOpenPayPages(token))) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (!checkRateLimit(`paydemo:ip:${ip}`, { max: 30, windowMs: 10 * 60_000 }).ok) {
     return NextResponse.json({ error: "too_many" }, { status: 429 });

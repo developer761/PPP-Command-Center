@@ -381,21 +381,31 @@ describe("doors and accent walls", () => {
     expect(byColor([r]).accent.accentWallReview).toBe(false);
   });
 
-  it("still flags every line in a room that DOES paint walls", () => {
-    // The suppression must not reach the case the per-room detection exists
-    // for: walls + accent, where the walls line is the mis-sized one.
+  it("flags the WALL lines in that room and not the others", () => {
+    /**
+     * Katie, 2026-10-13, confirming Kate's screenshot of an order carrying
+     * this on a Ceiling row and a Trim row: "do not show Accent wall alert
+     * for non-wall surfaces (ceilings, trim)."
+     *
+     * The room still decides WHETHER — that is the per-room detection, and
+     * removing it leaves the walls line unflagged, which was the original
+     * bug. The surface decides WHERE: a ceiling's gallons do not change
+     * because one wall below it is a different color.
+     */
     const r = room(15, 20, 8, {
       roomLabel: "Bedroom 2",
       surfaces: [
         surf("walls", "Walls", "wall", "Walls"),
         surf("unsized", "Accent Wall", "accent", "Accent"),
         surf("trim", "Trim", "trim", "Trim white"),
+        surf("ceiling", "Ceiling", "ceil", "Ceiling white"),
       ],
     });
     const e = byColor([r]);
-    expect(e.wall.accentWallReview).toBe(true);
-    expect(e.accent.accentWallReview).toBe(true);
-    expect(e.trim.accentWallReview).toBe(true);
+    expect(e.wall.accentWallReview, "the walls line is the mis-sized one").toBe(true);
+    expect(e.accent.accentWallReview, "the accent is a wall").toBe(true);
+    expect(e.trim.accentWallReview, "trim").toBe(false);
+    expect(e.ceil.accentWallReview, "ceiling").toBe(false);
   });
 
   it("an uncolored walls surface does not switch the warning back on", () => {

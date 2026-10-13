@@ -725,7 +725,7 @@ export default function OrderBuilderView({
     label: string,
     qty: number,
     unit: string,
-    extra?: { finish?: string | null; scope?: string | null }
+    extra?: { finish?: string | null; scope?: string | null; materialType?: string | null }
   ) =>
     setPayload((cur) => ({
       ...cur,
@@ -740,6 +740,10 @@ export default function OrderBuilderView({
           // would read as "the estimator cleared it" rather than "unknown".
           ...(extra?.finish ? { finish: extra.finish } : {}),
           ...(extra?.scope ? { scope: extra.scope } : {}),
+          // Kate 2026-10-13 — the product line picked on the row. Same rule:
+          // only when answered, so an unanswered one still reads as unknown
+          // and the buy row marks it rather than sending "[NOT SET]" quietly.
+          ...(extra?.materialType ? { materialType: extra.materialType } : {}),
         },
       ],
     }));
@@ -1904,6 +1908,7 @@ export default function OrderBuilderView({
                   <ColorNoteOffers
                     key={l.id}
                     only="offers"
+                    materialValues={lineMaterialValues}
                     room={l.room}
                     offers={l.colorNoteOffers ?? []}
                     remarks={[]}
@@ -1922,26 +1927,16 @@ export default function OrderBuilderView({
             showMissingProduct={productLineError}
           />
 
-          {/* ── Color Notes (#16) ─────────────────────────────────────────── */}
-          <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
-            <label className="text-sm font-semibold text-ppp-charcoal block mb-1" htmlFor="order-color-notes">
-              Color Notes
-            </label>
-            <p className="text-[11px] text-ppp-charcoal-500 mb-2">
-              Colors and finishes for surfaces that don&apos;t map to a standard field, non-BM/SW
-              colors, and anything the customer said. For the estimator — this
-              does NOT go to the vendor. If something in here needs buying, add
-              it as a custom color item above.
-            </p>
-            <textarea
-              id="order-color-notes"
-              value={payload.colorNotes ?? currentDraft?.colorNotesDefault ?? ""}
-              onChange={(ev) => patch({ colorNotes: ev.target.value })}
-              rows={4}
-              placeholder="e.g. Deck: Gray Minwax · Not painting: Living Room · Trim"
-              className="w-full px-3 py-2 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue resize-y"
-            />
-          </section>
+          {/* Kate 2026-10-13: "remove this section since all notes are being
+              parsed into the 'Colors from the notes' section, so nothing is
+              being lost by removing this from the page."
+
+              The editor is gone, not the data. `payload.colorNotes` still
+              reaches the draft and still falls back to the work order's own
+              notes, so the estimator's record is unchanged — this box was a
+              second place to read the same text, next to one that can now
+              turn each line into something to buy. It never went to the
+              vendor either way. */}
 
           {/* ── Extras + primers + custom sundry ──────────────────────────── */}
           <section className="bg-white border border-ppp-charcoal-100 rounded-xl px-4 py-3">
@@ -2247,6 +2242,7 @@ function ColorNoteOffers({
   items,
   estimates,
   onAdd,
+  materialValues,
   only,
 }: {
   room: string;
@@ -2258,8 +2254,10 @@ function ColorNoteOffers({
     label: string,
     qty: number,
     unit: string,
-    extra?: { finish?: string | null; scope?: string | null }
+    extra?: { finish?: string | null; scope?: string | null; materialType?: string | null }
   ) => void;
+  /** Same product list the buy rows offer, filtered to this job. */
+  materialValues?: ReadonlySet<string>;
   /**
    * Which half to render. Kate 2026-10-07 drew an arrow at the adder on the
    * line-item card and wrote "Remove this", and separately asked (p4.2) for
@@ -2277,6 +2275,19 @@ function ColorNoteOffers({
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [unit, setUnit] = useState<Record<string, PaintUnit>>({});
+  /**
+   * Kate 2026-10-13, flagged red before the AM meeting: "need to be able to
+   * pick a product line and the finish."
+   *
+   * These rows add a real line to the vendor order, and until now they could
+   * only carry a quantity and a unit — so a color lifted out of the notes
+   * reached the store with no sheen and "[NOT SET]" where the product should
+   * be. The finish seeds from whatever the note itself said ("Summer Plum
+   * (2074-20) eggshell" parses one; "Carter Plum (CW-355)" does not), so the
+   * common case is already answered and the blank ones are visibly blank.
+   */
+  const [finish, setFinish] = useState<Record<string, string>>({});
+  const [material, setMaterial] = useState<Record<string, string>>({});
   const showOffers = only !== "remarks";
   const showRemarks = only !== "offers";
   if ((!showOffers || offers.length === 0) && (!showRemarks || remarks.length === 0)) return null;
@@ -2333,6 +2344,29 @@ function ColorNoteOffers({
                 ) : (
                   <span className="shrink-0 flex items-center gap-1.5">
                     <input
+                      type="text"
+                      value={finish[line] ?? id.finish ?? ""}
+                      onChange={(e) => setFinish((cur) => ({ ...cur, [line]: e.target.value }))}
+                      placeholder="Finish"
+                      aria-label={`Finish for ${line}`}
+                      className="w-24 px-2 py-1.5 text-base sm:text-[12px] border border-ppp-charcoal-100 rounded-lg min-h-[44px] sm:min-h-0 focus:outline-none focus:ring-2 focus:ring-ppp-blue/30"
+                    />
+                    <span className="w-[170px]">
+                      <MaterialTypePicker
+                        id={`cn-mt-${line}`}
+                        value={material[line] ?? ""}
+                        onChange={(v) => setMaterial((cur) => ({ ...cur, [line]: v }))}
+                        placeholder="— product —"
+                        compact
+                        availableValues={materialValues}
+                      />
+                    </span>
+                    {/* Kate 2026-10-13: "The quantity field should be next
+                        to the gallon selector." The number and its unit are
+                        one value — "2 gal" — and reading them with a finish
+                        and a product line wedged between made the row say
+                        nothing at a glance. */}
+                    <input
                       type="number"
                       inputMode="numeric"
                       min={1}
@@ -2341,7 +2375,11 @@ function ColorNoteOffers({
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && q.trim()) {
                           e.preventDefault();
-                          onAdd(id.label, orderableQty(q), unit[line] ?? "gal", { finish: id.finish, scope: id.scope });
+                          onAdd(id.label, orderableQty(q), unit[line] ?? "gal", {
+                            finish: (finish[line] ?? id.finish ?? "").trim() || null,
+                            scope: id.scope,
+                            materialType: (material[line] ?? "").trim() || null,
+                          });
                         }
                       }}
                       placeholder="Qty"
@@ -2361,7 +2399,11 @@ function ColorNoteOffers({
                     <button
                       type="button"
                       disabled={!q.trim()}
-                      onClick={() => onAdd(id.label, orderableQty(q), unit[line] ?? "gal", { finish: id.finish, scope: id.scope })}
+                      onClick={() => onAdd(id.label, orderableQty(q), unit[line] ?? "gal", {
+                        finish: (finish[line] ?? id.finish ?? "").trim() || null,
+                        scope: id.scope,
+                        materialType: (material[line] ?? "").trim() || null,
+                      })}
                       className="text-[11px] font-semibold text-ppp-blue-700 hover:underline disabled:text-ppp-charcoal-400 disabled:no-underline disabled:cursor-not-allowed px-2 min-h-[44px] sm:min-h-[28px] inline-flex items-center touch-manipulation"
                     >
                       Add

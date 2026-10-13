@@ -606,7 +606,27 @@ export function estimateOrderGallons(
       // color, so checking only this bucket's own surfaces flagged the accent
       // line and left the WALLS line — the quantity actually thrown off, since
       // part of that wall is now a different color — unflagged.
-      if (roomHasAccent && roomPaintsWalls) {
+      /**
+       * ON THE WALL LINES ONLY.
+       *
+       * Katie, 2026-10-13, asked to confirm: "do not show Accent wall alert
+       * for non-wall surfaces (ceilings, trim)." Kate had sent a screenshot
+       * of one order carrying it on a Ceiling row and a Trim row.
+       *
+       * The per-ROOM detection above is still right and still needed — an
+       * accent wall is its own color, so looking only at the accent's own
+       * bucket left the WALLS line, the one whose quantity is actually
+       * thrown off, unflagged. But "the room has an accent" is the trigger,
+       * not the audience: a ceiling's gallons do not change because one wall
+       * in that room is a different color, so saying "check the quantity"
+       * there is noise on a number that is correct.
+       *
+       * So the room decides WHETHER, and the surface decides WHERE. The
+       * accent surface itself still counts as a wall — it is one.
+       */
+      const surfaceIsWall =
+        classifySurface(s.surfaceLabel) === "walls" || mentionsAccentWall(s.surfaceLabel);
+      if (roomHasAccent && roomPaintsWalls && surfaceIsWall) {
         b.accentWall = true;
         if (room.roomLabel) b.accentRooms.add(room.roomLabel);
       }
