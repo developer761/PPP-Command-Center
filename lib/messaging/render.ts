@@ -1934,6 +1934,34 @@ function renderBody(input: RenderInput): string {
   const thankedForPhoto = !!(input.photos && input.photos > 0);
   const templateAddsNothing =
     (rapportAt >= 0 || thankedForPhoto) && BARE_ACKNOWLEDGEMENT.test(pick.trim());
+
+  /**
+   * …AND THE OTHER WAY ROUND: THE TEMPLATE THANKS THEM TOO.
+   *
+   * Found by the scenario sweep on 2026-10-13, in both languages, once it
+   * began reading what EVERY rapport rendered rather than only the first:
+   *
+   *   "Thanks for the photo! Understood, and thanks for the update."
+   *   "Gracias por las fotos! Entendido, gracias por avisarme."
+   *
+   * The guard above drops a template that is NOTHING but pleasantries. These
+   * are not — `lost` goes on to say "We'll be here if things change" — so
+   * they survived it and the customer was thanked twice anyway.
+   *
+   * The PHOTO thanks is the half that goes, not the template's. The template
+   * is Kate's approved copy and carries the substance, and "thanks for the
+   * update" already acknowledges they sent something; dropping the template
+   * instead would lose the sign-off.
+   *
+   * Matched exactly against the renderer's OWN photo line, so a customer's
+   * words or the model's rapport can never be eaten by this.
+   */
+  const PHOTO_THANKS = /^(?:thanks for the photos?|gracias por las? fotos?)!$/i;
+  const templateThanks = /\b(?:thanks|thank you|gracias)\b/i.test(pick);
+  if (thankedForPhoto && templateThanks && parts.length && PHOTO_THANKS.test(parts[0].trim())) {
+    parts.shift();
+  }
+
   if (pick && !templateAddsNothing) parts.push(pick);
 
   let body = parts.join(" ").replace(/\s+/g, " ").trim();

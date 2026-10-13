@@ -28,7 +28,37 @@ import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
 import { coveredPhrase } from "../lib/messaging/agent-run.ts";
 
 /** Rapport the model plausibly writes, including the shapes that broke things. */
-export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
+export const RAPPORTS = [
+  "",
+  "Got it, thank you.",
+  "Happy to help.",
+  /**
+   * The two that shipped bugs, added 2026-10-13.
+   *
+   * "Thanks, got the photo!" is the rapport that produced "Thanks for the
+   * photo! Thanks, got the photo!" in production. It is not a BARE
+   * acknowledgement -- it names the photo -- which is exactly why the guard
+   * written for pleasantries did not catch it. The list above claimed to
+   * include "the shapes that broke things" and did not include this one.
+   */
+  "Thanks, got the photo!",
+];
+
+/**
+ * The same shapes in Spanish, kept SEPARATE on purpose.
+ *
+ * These were briefly in the list above, which put a Spanish rapport in front
+ * of an English template -- "Gracias, recibi la foto! I'm an AI assistant..."
+ * -- and the sweep duly reported a dozen bugs that were nothing but the
+ * harness feeding itself a sentence the model cannot produce. The model
+ * replies in the customer's language; the rapport has to follow it.
+ */
+export const RAPPORTS_ES = [
+  "",
+  "Entendido, gracias.",
+  "Con gusto.",
+  "Gracias, recibi la foto!",
+];
 
 /**
  * The covered-services phrase, BUILT THE WAY PRODUCTION BUILDS IT.
@@ -243,9 +273,26 @@ export function waysThrough(scenario) {
     flowStage: track === "new_lead" ? derived.stage : undefined,
   });
 
+  /**
+   * The rapport the model could ACTUALLY have written here.
+   *
+   * Language, and whether a photo exists. A rapport naming a photo is only
+   * reachable when one was sent — the model is told the media count, and it
+   * cannot thank somebody for an attachment they did not send. Feeding it to
+   * a photoless scenario produced "Thanks, got the photo! Understood, and
+   * thanks for the update." and a bug report about a sentence no customer
+   * can receive.
+   *
+   * The harness is allowed to be adversarial. It is not allowed to be
+   * impossible: a finding from an input production cannot generate costs the
+   * same time to chase as a real one and teaches nothing.
+   */
+  const base = language === "es" ? RAPPORTS_ES : RAPPORTS;
+  const rapports = mediaCount > 0 ? base : base.filter((r) => !/\b(?:photo|foto)/i.test(r));
+
   const open = [];
   for (const intent of intentsForTrack(track)) {
-    for (const freeText of RAPPORTS) {
+    for (const freeText of rapports) {
       const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
       if (!v.ok) continue;
       const rendered = renderFor(intent, v.action.freeText);
@@ -263,7 +310,7 @@ export function waysThrough(scenario) {
      *  failure: it validated and then rendered nothing. */
     probe(intent) {
       let lastReason = null;
-      for (const freeText of RAPPORTS) {
+      for (const freeText of rapports) {
         const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
         if (!v.ok) { lastReason = `${v.reason}: ${v.detail}`; continue; }
         if (!renderFor(intent, v.action.freeText)) return "validates but renders nothing";
@@ -272,13 +319,36 @@ export function waysThrough(scenario) {
     },
     /** What it would actually say. */
     say(intent) {
-      for (const freeText of RAPPORTS) {
+      for (const freeText of rapports) {
         const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
         if (!v.ok) continue;
         const out = renderFor(intent, v.action.freeText);
         if (out) return out;
       }
       return "";
+    },
+    /**
+     * EVERY rendering, not just the first one that works.
+     *
+     * say() returns the first rapport that renders, and RAPPORTS[0] is the
+     * empty string -- so say() almost always describes a message the model
+     * contributed NOTHING to. Three output invariants were added on top of it
+     * and all three were inert: the bugs they were written for live in the
+     * interaction between the model's rapport and the template, which say()
+     * by construction never shows.
+     *
+     * Verified by reintroducing all three bugs and watching the sweep stay
+     * green before this existed.
+     */
+    sayAll(intent) {
+      const out = [];
+      for (const freeText of rapports) {
+        const v = validateAction({ intent, confidence: 0.97, freeText }, ctx);
+        if (!v.ok) continue;
+        const r = renderFor(intent, v.action.freeText);
+        if (r) out.push(r);
+      }
+      return out;
     },
   };
 }

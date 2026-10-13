@@ -556,6 +556,21 @@ const SCENARIOS = [
       phone: "999-784-6046", name: "Ana" },
     wants: "success" },
 
+  /**
+   * THE SPANISH PHOTO PATH, which had no scenario at all until 2026-10-13.
+   *
+   * Every photo scenario was English, so the Spanish photo thanks was never
+   * rendered by this harness -- and that is the exact template that shipped
+   * "\u00a1Gracias por la foto!" with an inverted mark Mac and Jasmine said
+   * never to use. A whole template nobody could see.
+   */
+  { name: "es: sends a photo, nothing on file yet", text: "hola, le mando una foto",
+    mediaCount: 1, speaks: "es", wants: "ask_project_details" },
+
+  { name: "es: sends two photos once the scope is known", text: "aqui estan",
+    mediaCount: 2, speaks: "es", history: ["necesito pintar mi sala"],
+    known: { inquiryScope: "la sala" }, wants: "confirm_scope" },
+
   { name: "es: declines the work", text: "No gracias, ya contratamos a alguien más",
     speaks: "es", wants: "lost" },
 
@@ -620,10 +635,9 @@ console.log("");
 let unsafe = 0;
 for (const s of SCENARIOS) {
   if (classifyInbound(s.text) === "opt_out") continue;
-  const { open, say } = waysThrough(s);
+  const { open, sayAll } = waysThrough(s);
   for (const intent of open) {
-    const said = say(intent);
-    if (!said) continue;
+    for (const said of sayAll(intent)) {
     if (/\$|\b\d+\s*(?:dollars|usd|dolares)\b/i.test(said)) { unsafe++; console.log(`     price in ${s.name}/${intent}: ${said}`); }
     if (/\b\d{1,2}\s*(?:am|pm)\b|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|jueves|viernes)\b/i.test(said)) {
       unsafe++; console.log(`     time in ${s.name}/${intent}: ${said}`);
@@ -640,9 +654,47 @@ for (const s of SCENARIOS) {
     if (/\b(?:we|i)\s+(?:have|have got|ve got|do have)\b[^.?!]{0,40}\b(?:opening|openings|availability|slots?|spaces?|times?)\b|\bwe\s+(?:are|re)\s+(?:free|available)\b|\btenemos\b[^.?!]{0,40}\b(?:espacios|disponibilidad|citas)\b/i.test(said)) {
       unsafe++; console.log(`     claims our availability in ${s.name}/${intent}: ${said}`);
     }
+
+    /**
+     * ── THREE INVARIANTS ADDED 2026-10-13, EACH FOR A BUG THAT SHIPPED ──
+     *
+     * All three were live in production inside a week, with the whole suite
+     * green over them, because every existing check asked whether a reply
+     * RENDERED rather than what it said. These ask what it said.
+     *
+     * Written as properties rather than as the strings that broke, so the
+     * next instance is caught too and not just the one already fixed.
+     */
+
+    /**
+     * THANKED TWICE. "Thanks for the photo! Thanks, got the photo!" reached
+     * customers: the renderer pushes its own photo thanks and the model wrote
+     * one as well. One gratitude per message; two reads as a machine.
+     */
+    const thanks = (said.match(/\b(?:thanks|thank you|gracias)\b/gi) ?? []).length;
+    if (thanks > 1) { unsafe++; console.log(`     thanks ${thanks}x in ${s.name}/${intent}: ${said}`); }
+
+    /**
+     * INVERTED PUNCTUATION IN WHAT IS ACTUALLY SENT. language.test.ts reads
+     * the SOURCE for these, and a "\u00a1" escape walked past it into a
+     * customer's message. This reads the OUTPUT, where the spelling is gone.
+     */
+    if (/[\u00bf\u00a1]/.test(said)) { unsafe++; console.log(`     inverted punctuation in ${s.name}/${intent}: ${said}`); }
+
+    /**
+     * AN ENGLISH JOINER INSIDE A SPANISH SENTENCE. "Si cubrimos interior
+     * painting, exterior painting, cabinets and drywall." The service NAMES
+     * are English on purpose for now (question 25); the word joining them was
+     * not, and no test could see it because nothing inspected the sentence.
+     */
+    const looksSpanish = /\b(?:cubrimos|gracias|disculpe|necesitamos|podemos|le aviso|cotizar|qu\u00e9|c\u00f3digo)\b/i.test(said);
+    if (looksSpanish && /\b and \b/i.test(said)) {
+      unsafe++; console.log(`     English "and" inside Spanish in ${s.name}/${intent}: ${said}`);
+    }
+    }
   }
 }
-ok("no reply reachable from any scenario quotes a price, names a day, or claims an opening", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
+ok("no reachable reply quotes a price, names a day, claims an opening, thanks twice, carries inverted punctuation, or joins Spanish with \"and\"", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
 
 // The opt-out path, checked from the other side.
 console.log("");
