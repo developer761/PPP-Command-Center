@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vitest";
+import { clearedPaymentsInPayout, depositDateOfArrival, paymentIntentIdsInPayout } from "@/lib/payments/payout";
+import { stripeDepositReference } from "@/lib/payments/sf-transaction";
+import { etDateOf } from "@/lib/date-et";
+
+// Shaped like stripe.balanceTransactions.list({ payout, expand: ["data.source"] }).
+describe("paymentIntentIdsInPayout — which payments cleared in this payout", () => {
+  it("card charges and bank (ACH) payments both count", () => {
+    expect(
+      paymentIntentIdsInPayout([
+        { type: "charge", source: { object: "charge", payment_intent: "pi_card" } },
+        { type: "payment", source: { object: "charge", payment_intent: { id: "pi_ach" } } },
+      ]),
+    ).toEqual(["pi_card", "pi_ach"]);
+  });
+
+  it("refunds, Stripe fees and the payout line itself are not payments to book", () => {
+    expect(
+      paymentIntentIdsInPayout([
+        { type: "refund", source: { object: "refund", payment_intent: "pi_refunded" } },
+        { type: "stripe_fee", source: null },
+        { type: "payout", source: "po_123" },
+        { type: "adjustment", source: { object: "dispute" } },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("a charge with no PaymentIntent (e.g. the old API) is skipped, not crashed on", () => {
+    expect(paymentIntentIdsInPayout([{ type: "charge", source: { object: "charge", payment_intent: null } }])).toEqual([]);
+  });
+
+  it("the same payment twice in a listing is booked once", () => {
+    const t = { type: "charge", source: { object: "charge", payment_intent: "pi_x" } };
+    expect(paymentIntentIdsInPayout([t, t])).toEqual(["pi_x"]);
+  });
+
+  it("an unexpanded source (just an id) can't be matched — skipped", () => {
+    expect(paymentIntentIdsInPayout([{ type: "charge", source: "ch_123" }])).toEqual([]);
+  });
+});
+
+describe("clearedPaymentsInPayout — what Stripe charged PPP per payment", () => {
+  it("keeps each payment's processing fee; refunds and fees aren't payments", () => {
+    const m = clearedPaymentsInPayout([
+      { type: "charge", fee: 4483, source: { object: "charge", payment_intent: "pi_card" } },
+      { type: "payment", fee: 500, source: { object: "charge", payment_intent: { id: "pi_ach" } } },
+      { type: "refund", fee: 0, source: { object: "refund", payment_intent: "pi_card" } },
+      { type: "stripe_fee", fee: 0, source: null },
+    ]);
+    expect(Object.fromEntries(m)).toEqual({ pi_card: { stripeFeeCents: 4483 }, pi_ach: { stripeFeeCents: 500 } });
+  });
+
+  it("a payment over two balance transactions has its fees summed", () => {
+    const t = { type: "charge", fee: 100, source: { object: "charge", payment_intent: "pi_x" } };
+    expect(clearedPaymentsInPayout([t, t]).get("pi_x")).toEqual({ stripeFeeCents: 200 });
+  });
+});
+
+describe("a $0 Stripe cost is 'not reported', never $0", () => {
+  it("fee 0 → null, so the Payments tab doesn't show the 3% as pure margin", () => {
+    const m = clearedPaymentsInPayout([
+      { type: "charge", fee: 0, source: { object: "charge", payment_intent: "pi_free" } },
+      { type: "charge", source: { object: "charge", payment_intent: "pi_missing" } },
+      { type: "charge", fee: 4483, source: { object: "charge", payment_intent: "pi_real" } },
+    ]);
+    expect(m.get("pi_free")).toEqual({ stripeFeeCents: null });
+    expect(m.get("pi_missing")).toEqual({ stripeFeeCents: null });
+    expect(m.get("pi_real")).toEqual({ stripeFeeCents: 4483 });
+  });
+});
+
+describe("depositDateOfArrival — Stripe's arrival_date is midnight UTC of the arrival day", () => {
+  // po_1ULY3h… in Stripe test mode: arrival_date 1790812800 = 2026-10-01T00:00:00Z (read from Stripe).
+  const arrival = new Date(1790812800 * 1000).toISOString();
+
+  it("a payout arriving 10/1 is booked 10/1, code ST1001", () => {
+    expect(arrival).toBe("2026-10-01T00:00:00.000Z");
+    expect(depositDateOfArrival(arrival)).toBe("2026-10-01");
+    expect(stripeDepositReference(depositDateOfArrival(arrival))).toBe("ST1001");
+  });
+
+  it("…which reading it in Eastern time gets wrong (the bug this guards)", () => {
+    expect(etDateOf(arrival)).toBe("2026-09-30");
+  });
+
+  it("the value as it comes back from Postgres (+00:00) reads the same", () => {
+    expect(depositDateOfArrival("2026-10-08T00:00:00+00:00")).toBe("2026-10-08");
+  });
+});

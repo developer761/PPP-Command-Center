@@ -22,7 +22,9 @@ export type SfWriteSource =
   | "customer_form_submit"
   | "admin_manual"
   | "system_resync"
-  | "vendor_email_sent";
+  | "vendor_email_sent"
+  /** A Stripe payment from /pay/<token> marking its Payment_Term__c paid. */
+  | "online_payment";
 
 export type SfWriteAttempt = {
   /** SF object name, e.g. "WorkOrderLineItem". */
@@ -79,8 +81,16 @@ export async function writeSf(
     /** Set by writeSfBatch: skip the per-record cache invalidation and do it
      *  once for the whole batch instead. See writeSfBatch. */
     deferCacheInvalidation?: boolean;
+    /** Write through this connection instead of the app-wide one — the
+     *  payments code testing against a sandbox. Its records aren't in the
+     *  shared production snapshot, so the cache is left alone too. */
+    connection?: Awaited<ReturnType<typeof getSalesforceClient>>;
   }
 ): Promise<SfWriteResult> {
+  // A write through another org's connection (the payments sandbox) must never
+  // drop production's shared snapshot — those records aren't in it. Treated as
+  // deferring the invalidation, with nothing to defer to.
+  if (ctx.connection) ctx = { ...ctx, deferCacheInvalidation: true };
   const t0 = Date.now();
 
   // Karan/Katie 2026-07-08: getSalesforceClient() used to live outside
@@ -94,7 +104,7 @@ export async function writeSf(
   // always produce an audit row + surface as a clean SfWriteResult.
   let conn: Awaited<ReturnType<typeof getSalesforceClient>>;
   try {
-    conn = await getSalesforceClient();
+    conn = ctx.connection ?? (await getSalesforceClient());
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const errorCode =
