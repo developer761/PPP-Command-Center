@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import PageHeader from "@/components/page-header";
+import { PendingButton } from "@/components/pay/pending-button";
 import { getSignedInAdminEmail } from "@/lib/payments/access";
 import {
   createLinksForOpenWorkOrders,
@@ -269,12 +270,9 @@ export default async function PaymentsSettingsPage({
               className="block mt-0.5 rounded-lg border border-ppp-charcoal-200 px-3 min-h-[44px] text-base sm:text-sm"
             />
           </label>
-          <button
-            type="submit"
-            className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]"
-          >
+          <PendingButton className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]" pendingLabel="Sending…">
             Email this day&rsquo;s report to me
-          </button>
+          </PendingButton>
         </form>
       </section>
 
@@ -295,17 +293,14 @@ export default async function PaymentsSettingsPage({
             placeholder="00313399"
             className="flex-1 min-w-0 rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-base sm:text-sm min-h-[44px]"
           />
-          <button type="submit" className="rounded-lg bg-ppp-navy text-white px-4 py-2 text-sm font-semibold min-h-[44px]">
+          <PendingButton className="rounded-lg bg-ppp-navy text-white px-4 py-2 text-sm font-semibold min-h-[44px]" pendingLabel="Creating link…">
             Create link
-          </button>
+          </PendingButton>
         </form>
         <form action={bulkLinksAction} className="mt-3">
-          <button
-            type="submit"
-            className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]"
-          >
+          <PendingButton className="rounded-lg border border-ppp-charcoal-200 px-4 py-2 text-sm font-semibold text-ppp-navy min-h-[44px]" pendingLabel="Creating links…">
             Create links for open Work Orders
-          </button>
+          </PendingButton>
           <span className="ml-2 text-[12px] text-ppp-charcoal-500">
             {cfg.linksFrom
               ? `Work Orders created since ${cfg.linksFrom}: money owed, payment terms set, no link yet. Up to 100 per click.`
@@ -364,12 +359,9 @@ export default async function PaymentsSettingsPage({
                     </Link>
                     <form action={revokeLinkAction}>
                       <input type="hidden" name="token" value={l.token} />
-                      <button
-                        type="submit"
-                        className="rounded-lg border border-red-200 px-3 py-2 text-[13px] font-semibold text-red-700 min-h-[44px]"
-                      >
-                        Switch off
-                      </button>
+                      <PendingButton className="rounded-lg border border-red-200 px-3 py-2 text-[13px] font-semibold text-red-700 min-h-[44px]" pendingLabel="Switching off…">
+            Switch off
+          </PendingButton>
                     </form>
                   </div>
                 )}
@@ -447,9 +439,9 @@ function PaymentItem({ p, canRetry }: { p: PaymentRow; canRetry: boolean }) {
           {canRetry && (
             <form action={retryWriteAction} className="mt-2">
               <input type="hidden" name="id" value={p.id} />
-              <button type="submit" className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-[12px] font-semibold min-h-[44px]">
-                Book in Salesforce now
-              </button>
+              <PendingButton className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-[12px] font-semibold min-h-[44px]" pendingLabel="Booking…">
+            Book in Salesforce now
+          </PendingButton>
             </form>
           )}
         </div>
@@ -469,9 +461,9 @@ function PaymentItem({ p, canRetry }: { p: PaymentRow; canRetry: boolean }) {
           {canRetry && p.status === "succeeded" && p.sf_writeback_status !== "written" && (
             <form action={retryWriteAction} className="mt-2">
               <input type="hidden" name="id" value={p.id} />
-              <button type="submit" className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-[12px] font-semibold min-h-[44px]">
-                Write to Salesforce now
-              </button>
+              <PendingButton className="rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-[12px] font-semibold min-h-[44px]" pendingLabel="Writing…">
+            Write to Salesforce now
+          </PendingButton>
             </form>
           )}
         </details>
