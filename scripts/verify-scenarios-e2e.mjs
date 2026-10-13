@@ -24,6 +24,9 @@
  * all four of those failures actually happened.
  */
 import { classifyInbound } from "../lib/messaging/compliance.ts";
+import {
+  END_INTENTS, CONTINUE_INTENTS, NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS,
+} from "../lib/messaging/agent-output.ts";
 import { waysThrough } from "./scenario-engine.mjs";
 
 /**
@@ -42,7 +45,7 @@ const ok = (label, cond, extra = "") => {
  * `wants` is the intent that SHOULD be available — not the one the model must
  * pick, which is its judgement, but one it must not be prevented from picking.
  */
-const SCENARIOS = [
+export const SCENARIOS = [
   { name: "opens with the whole job", text: "Hi I need my living room and hallway painted, about 600 sq ft, walls and ceilings", wants: "ask_address", speaks: "en" },
   { name: "job AND address in one message", text: "I need my whole house exterior painted, I am at 4821 Oak Lane, Dallas TX 75201", // They VOLUNTEERED the address, so asking for it is refused — A13 says read
   // it back instead, and confirm_address is what satisfies step 2 here.
@@ -695,6 +698,42 @@ for (const s of SCENARIOS) {
   }
 }
 ok("no reachable reply quotes a price, names a day, claims an opening, thanks twice, carries inverted punctuation, or joins Spanish with \"and\"", unsafe === 0, `${SCENARIOS.length} scenarios swept`);
+
+/**
+ * WHICH INTENTS NO SCENARIO CAN REACH.
+ *
+ * The sweep above is only as good as the ground it covers. An intent that no
+ * scenario ever opens is an intent whose template, wording and guards are
+ * tested by nothing here — and this file is the main defence for exactly
+ * those, because the unit tests check pieces while this checks sentences.
+ *
+ * Reported rather than enforced: some intents genuinely need context no
+ * scenario sets up, and a check that fails for a legitimate reason gets
+ * muted. A GROWING number is the signal to watch.
+ */
+console.log("");
+const reachable = new Set();
+for (const s of SCENARIOS) {
+  for (const intent of waysThrough(s).open) reachable.add(intent);
+}
+/**
+ * BOTH TRACKS. The first version of this used END_INTENTS + CONTINUE_INTENTS
+ * and reported "30 of 25" — more reachable than existed — because those two
+ * lists are the NEW LEAD track only. accepted, nurture_check_in,
+ * ask_for_decision, ask_check_back and offer_estimator_call live in the
+ * nurture lists. A denominator that excludes half the product makes any
+ * coverage figure meaningless in the flattering direction.
+ */
+const allIntents = [...new Set([
+  ...END_INTENTS, ...CONTINUE_INTENTS,
+  ...NURTURE_END_INTENTS, ...NURTURE_CONTINUE_INTENTS,
+])];
+const unreachable = allIntents.filter((i) => !reachable.has(i));
+console.log(`  intents reachable from at least one scenario: ${reachable.size} of ${allIntents.length}`);
+if (unreachable.length) {
+  console.log(`  NOT reachable from any scenario — untested by this file:`);
+  for (const i of unreachable) console.log(`     ${i}`);
+}
 
 // The opt-out path, checked from the other side.
 console.log("");
