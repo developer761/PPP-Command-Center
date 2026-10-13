@@ -60,7 +60,7 @@ export function CardPayment({
   publishableKey: string;
   /** False in states where card surcharges aren't allowed (CT/MA/ME). */
   surcharge?: boolean;
-  /** Sales demo: offer "use a test card" buttons instead of typing one. */
+  /** Stripe TEST mode: offer "use a test card" buttons instead of typing one. */
   demo?: boolean;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -222,7 +222,7 @@ export function CardPayment({
     <div className="space-y-4">
       {demo && !reviewing && (
         <div className="rounded-xl border border-ppp-orange-100 bg-ppp-orange-50 p-4">
-          <div className="text-[13px] font-semibold text-ppp-orange-700">Demo shortcut — no typing</div>
+          <div className="text-[13px] font-semibold text-ppp-orange-700">Test mode — no typing</div>
           <p className="mt-0.5 text-[12px] text-ppp-orange-700">
             Pick a Stripe test card. A credit card shows the 3% fee; a debit card shows none.
           </p>
