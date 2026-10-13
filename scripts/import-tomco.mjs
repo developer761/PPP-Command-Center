@@ -766,6 +766,52 @@ async function stageJobs() {
     const dealId = mapped("deal", w.Opportunity__c);
     if (!dealId) { r.skipped.push(`${w.WorkOrderNumber}: its deal is not imported`); continue; }
     const accountId = mapped("account", w.AccountId) ?? mapped("account", SF.opps.find((o) => o.Id === w.Opportunity__c)?.AccountId);
+
+    /*
+     * ADOPT A WORK ORDER THE PLATFORM ALREADY MADE — the same fix `job` got on
+     * 2026-09-22 and `project` got in c7b5f3f2, and the only one of the three
+     * that never received it.
+     *
+     * `commercial_work_orders` is UNIQUE on opportunity_id where not voided
+     * (migration 106). The platform creates these itself: the one-off flow
+     * always did, and since 5a88e357 `ensureWorkOrderForWonOpportunity` does it
+     * on EVERY win. So a deal won here owns a work order this importer never
+     * mapped, and `put()` would do a plain INSERT straight into that index.
+     *
+     * That does not fail politely. `put()` throws, and `jobs` is stage 4 of 14
+     * — so invoices, change orders, payments, costs, attendance, projects,
+     * files and dates would all never run that night. The file already records
+     * this exact outcome for `commercial_jobs`: North Shore Dental, which
+     * "took the WHOLE nightly sync down with it".
+     *
+     * Six live rows are in that state right now (MotorMindz, Flagstar, PCCI
+     * Eastport, Cummins-Interior, North Shore Dental, 1 Rodeo Drive) and it
+     * fires the first time Tomco raises a Salesforce work order on any of them.
+     */
+    if (!mapped("work_order", w.Id)) {
+      const { data: liveWo, error: woErr } = await sb
+        .from("commercial_work_orders")
+        .select("id")
+        .eq("opportunity_id", dealId)
+        .is("voided_at", null)
+        .limit(1)
+        .maybeSingle();
+      if (woErr) throw new Error(`work order lookup ${dealId}: ${woErr.message}`);
+      if (liveWo?.id) {
+        if (COMMIT) {
+          const { error } = await sb.from("commercial_import_map").upsert(
+            { entity: "work_order", sf_id: w.Id, row_id: liveWo.id, source: "salesforce",
+              notes: "Work order already existed on the platform — the deal was won here. Adopted rather than duplicated." },
+            { onConflict: "entity,sf_id" }
+          );
+          if (error) throw new Error(`adopt work order ${w.Id}: ${error.message}`);
+        }
+        MAP.set(`work_order:${w.Id}`, liveWo.id);
+        r.adopted = (r.adopted ?? 0) + 1;
+        r.notes.push(`${w.WorkOrderNumber}: adopted the work order Command Center already created for this deal`);
+      }
+    }
+
     // commercial_work_orders is the CREW's work order — scope and schedule, no
     // address of its own (the deal carries that) and `work_notes`, not `notes`.
     await put("work_order", w.Id, "commercial_work_orders", {
@@ -1896,8 +1942,26 @@ async function stageDates() {
     work_order: ["commercial_work_orders", (sfId) => woById.get(sfId)?.CreatedDate],
     job: ["commercial_jobs", (sfId) => woById.get(sfId)?.CreatedDate],
     change_order: ["commercial_change_orders", (sfId) => woById.get(sfId)?.StartDate ?? woById.get(sfId)?.CreatedDate],
-    invoice: ["commercial_invoices", (sfId) => woById.get(sfId)?.StartDate ?? woById.get(sfId)?.CreatedDate],
+    /*
+     * PAYMENT BEFORE INVOICE, and the order is load-bearing.
+     *
+     * Writing `created_at` on a payment fires migration 042's
+     * `trg_recompute_paid_cents`, which sets `commercial_invoices.updated_at =
+     * now()` on the parent. With `invoice` first, its restamp ran and then the
+     * payment pass moved all those rows again four seconds later — so this
+     * stage re-locked 80 of the 93 invoices it had just freed, and
+     * `--stage=invoices --commit` would have reported "80 kept (yours)" and
+     * refused to write a single one.
+     *
+     * Nothing caught it on the way back, either: `restampEntity("payment", …)`
+     * returns 0 immediately because `payment` is absent from `ENTITY_TABLE`
+     * (that table has no `updated_at`), so there was no second pass to fix it.
+     *
+     * Running payment first means the trigger fires BEFORE the invoice restamp,
+     * and the restamp then records the stamp the trigger left.
+     */
     payment: ["commercial_invoice_payments", (sfId) => txById.get(sfId)?.Date__c],
+    invoice: ["commercial_invoices", (sfId) => woById.get(sfId)?.StartDate ?? woById.get(sfId)?.CreatedDate],
     purchase: ["commercial_project_purchases", (sfId) => txById.get(sfId)?.Date__c],
     file: ["commercial_documents", (sfId) => docById.get(sfId)?.CreatedDate],
   };

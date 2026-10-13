@@ -106,10 +106,19 @@ describe("winning a deal never fails because of this", () => {
     expect(status).toMatch(/work order ensure failed/);
   });
 
-  it("fires only on the transition INTO won, not on every edit", () => {
-    // `isProjectBearing && !wasProjectBearing` — a sub-status tweak on a deal
-    // that is already in delivery must not re-enter this at all.
-    expect(status).toMatch(/if \(isProjectBearing && !wasProjectBearing\)/);
+  it("re-attempts on any status change, so a deal cannot be lost", () => {
+    /*
+     * NOT `isProjectBearing && !wasProjectBearing`. That fires once, on the way
+     * in — and since every failure here is swallowed, a deal whose work order
+     * failed to be created would never get another attempt.
+     *
+     * It had already lost one: Thermo Fisher Inspection Room became
+     * project-bearing before this shipped, so the transition never happened,
+     * and no later status change would have helped. The project ensure above
+     * uses the same shape for the same reason.
+     */
+    expect(status).toMatch(/if \(isProjectBearing\) \{/);
+    expect(status).not.toMatch(/isProjectBearing && !wasProjectBearing/);
   });
 
   it("does not schedule the job", () => {

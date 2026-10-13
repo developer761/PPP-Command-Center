@@ -897,7 +897,25 @@ export async function changeOpportunityStatus(
      * work order that could not be made must never block the sale from being
      * recorded.
      */
-    if (isProjectBearing && !wasProjectBearing) {
+    /*
+     * `isProjectBearing`, NOT the transition into it.
+     *
+     * This was gated on `isProjectBearing && !wasProjectBearing` — fire once,
+     * on the way in. That reads as careful and is not: the ensure is already
+     * idempotent (one indexed read when a job exists), so the narrower gate
+     * bought nothing and gave up the ability to heal.
+     *
+     * It had already lost a deal. Thermo Fisher Inspection Room, P.O. 718210,
+     * sits at pre_construction with an account and no work order — it became
+     * project-bearing before this shipped, so the transition never happened and
+     * no later status change would have given it one. Mary's bug, still live on
+     * that job, with the fix for it in the file.
+     *
+     * The project ensure directly above uses `||` for the same reason, and
+     * every failure here is swallowed (see below), so without a re-attempt a
+     * deal whose work order failed to be created once would never get another.
+     */
+    if (isProjectBearing) {
       try {
         const { ensureWorkOrderForWonOpportunity } =
           await import("@/lib/commercial/field-ops/ensure-work-order");
