@@ -1621,7 +1621,51 @@ simply answers in the morning. Say the word and it is one toggle.
 **If you do want it on, the other question is the wording** — the sentence
 above is ours and would want to be yours.
 
-## 27. Should a price question be answered by Emily, or handed to a person?
+## 27. ~~Should a price question be answered by Emily, or handed to a person?~~ — **ANSWERED FROM YOUR OWN GRADING 2026-10-13, DO NOT ASK**
+
+**You already answered this five times, in the corpus.**
+
+Twenty findings sit on a turn where the customer asks what something costs.
+Five of them are `did_well`, and every one praises the SAME behaviour — the
+bot naming no number and offering the quick quote instead:
+
+> "Customer asked 'What's the general price for that' twice over and the bot
+> named **no number at all**"
+>
+> "Customer asked directly for 'a ballpark cost or rate (per room or per sq
+> ft)' and the bot **gave no figure, routing it to a quick quote** instead"
+>
+> "Customer asked for a ballpark figure and the bot named no number,
+> **explaining pricing swings with ceilings, wall condition and prep**, and
+> offered a quick quote"
+>
+> "Made the off-site offer as an option and **named the qualifying reason**:
+> 'Since you're looking for a ballpark, we can provide a quick quote'"
+
+**Not one praised turn hands the question to a person.** The fifteen
+`fell_short` ones point the same way: the most common "should have" is A7's
+"offered the off-site quote as an option, explaining why a project like this
+is usually seen in person".
+
+So the answer is Emily, and specifically: no figure, say why price varies,
+offer the quick quote. That is A1 and A7 working together, which is what you
+graded well five times out of five.
+
+**And it is already what the code does**, in both languages:
+
+> "We can provide a quick quote for this project. Do you prefer text or email?"
+>
+> "Podemos darle una cotización rápida para este proyecto. Prefiere por
+> mensaje de texto o por correo electrónico?"
+
+**→ Nothing to decide and nothing to build.** One small thing to flag rather
+than ask: `escalate` and `transferred` remain OPEN on a price turn, so the
+model *may* still hand one to a person if it judges that best. Your corpus
+never praises that, but it never calls it a fault either, so it is left as a
+safety valve rather than closed off. Say the word if you would rather a price
+question could never be handed over.
+
+<details><summary>the original question</summary>
 
 **Raised 2026-10-06, from playing it rather than from the spec.** Typed two
 price questions into the sandbox against the live configuration:
@@ -1658,6 +1702,8 @@ line.
 **Worth knowing either way:** this only bites when autosend is on. Today
 Emily is not sending on her own in any workspace, so every reply already
 reaches a person before it goes out.
+
+</details>
 
 ## 28. Seven Spanish sentences that are ours, not Mac's or Jasmine's
 
