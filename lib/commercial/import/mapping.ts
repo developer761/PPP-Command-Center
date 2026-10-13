@@ -299,6 +299,89 @@ export function addressParts(value: SfAddress): {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The same cheque, banked twice
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ExistingPayment = {
+  id: string;
+  invoice_id: string;
+  amount_cents: number;
+  paid_at: string | null;
+  reference: string | null;
+};
+
+export type IncomingPayment = {
+  amount_cents: number;
+  paid_at: string | null;
+  reference: string | null;
+};
+
+export type PaymentMatch =
+  /** Nothing here looks like it — a normal insert. */
+  | { kind: "insert" }
+  /** This row IS it. Adopt rather than banking the money a second time. */
+  | { kind: "adopt"; row: ExistingPayment }
+  /** Looks like it, but something is off. Report; never guess with money. */
+  | { kind: "ask"; row: ExistingPayment | null; why: string };
+
+/**
+ * Has this Salesforce payment already been recorded here by a person?
+ *
+ * During the dual run Mary enters a payment in BOTH systems. The importer then
+ * inserts Salesforce's copy, because the row she typed carries no Salesforce id
+ * and nothing looked for one — so the invoice shows the money twice. Found
+ * 2026-10-13: 12 payments, $42,874.63 counted double, ten of them carrying the
+ * same cheque number on both copies.
+ *
+ * It fails the dangerous way. Paid twice drives the balance negative, the job
+ * reads as settled, it drops off AR, and nobody chases it.
+ *
+ * `existing` is every payment on the JOB, not just the one invoice — because
+ * the worst case in the book hid across two. J. Carleton Environmental Center
+ * is invoiced $23,235.70 by Salesforce and another $11,617.85 by an invoice
+ * raised here, with the same $11,617.85 payment recorded against each.
+ *
+ * Deliberately conservative: this says "ask" far more readily than "adopt",
+ * because a wrong adopt MERGES two real payments and loses cash, which is worse
+ * than the duplicate it was trying to prevent.
+ */
+export function matchExistingPayment(
+  existing: ExistingPayment[],
+  incoming: IncomingPayment,
+  invoiceId: string,
+): PaymentMatch {
+  const day = (v: string | null | undefined) => String(v ?? "").slice(0, 10);
+  const ref = (v: string | null | undefined) => String(v ?? "").trim().toLowerCase();
+
+  const candidates = existing.filter(
+    (p) => p.amount_cents === incoming.amount_cents && day(p.paid_at) === day(incoming.paid_at),
+  );
+  if (candidates.length === 0) return { kind: "insert" };
+  // SEVERAL IS NOT NONE. Returning "insert" here — which an early version did,
+  // by collapsing both into a single null — adds a THIRD copy of the money, the
+  // one outcome this function exists to prevent.
+  if (candidates.length > 1) {
+    return { kind: "ask", row: null, why: `matches ${candidates.length} payments already on this job — too alike to tell apart` };
+  }
+
+  const mine = candidates[0];
+  const a = ref(mine.reference), b = ref(incoming.reference);
+  // Both name a cheque and they disagree: two cheques for one amount on one day
+  // is unusual, not impossible. Only the bookkeeper can say.
+  if (a && b && a !== b) {
+    return { kind: "ask", row: mine, why: `the references differ (${mine.reference} vs ${incoming.reference})` };
+  }
+  // Same money on a DIFFERENT invoice means the JOB is billed twice, and the
+  // payment is only the symptom. Adopting would move the person's payment onto
+  // Salesforce's invoice and leave theirs unpaid — a worse lie than the
+  // duplicate, and the same shape as deleting a payment to fix a deposit total.
+  if (mine.invoice_id !== invoiceId) {
+    return { kind: "ask", row: mine, why: "already recorded here against a DIFFERENT invoice — the job looks billed twice" };
+  }
+  return { kind: "adopt", row: mine };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Costs
 // ─────────────────────────────────────────────────────────────────────────────
 

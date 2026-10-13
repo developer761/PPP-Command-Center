@@ -38,6 +38,7 @@ import {
   purchaseCategory,
   isReimbursement,
   employeeFromCrewWorker,
+  matchExistingPayment,
   ymd,
 } from "../lib/commercial/import/mapping.ts";
 
@@ -309,9 +310,31 @@ async function put(entity, sfId, table, row, report) {
     }
     const hasStamp = COLUMNS.get(table)?.has("updated_at");
     const { data: upd, error } = hasStamp
-      ? await sb.from(table).update(row).eq("id", existing).select("updated_at").single()
+      ? await sb.from(table).update(row).eq("id", existing).select("updated_at").maybeSingle()
       : await sb.from(table).update(row).eq("id", existing);
     if (error) throw new Error(`${table} update ${sfId}: ${error.message}`);
+    /*
+     * THE ROW IS GONE — somebody deleted it here.
+     *
+     * The map still points at it, so this was an update, and the update matched
+     * nothing. `.single()` turned that into "Cannot coerce the result to a
+     * single JSON object" and killed the whole run on 2026-10-13, halfway
+     * through attendance: three time entries dated 2026-09-14 had been removed
+     * on the platform after the September import mapped them.
+     *
+     * Re-inserting would undo a deletion a person made on purpose, which is the
+     * opposite of the rule every other branch here follows. So the deletion
+     * stands, the map keeps pointing at a row that no longer exists (harmless —
+     * this same branch runs next time), and it is REPORTED rather than fixed
+     * silently, because a row vanishing is worth a human's attention even when
+     * respecting it is correct.
+     */
+    if (hasStamp && !upd) {
+      report.gone = (report.gone ?? 0) + 1;
+      if (!report.goneRows) report.goneRows = [];
+      if (report.goneRows.length < 40) report.goneRows.push(`${table} ${existing} (Salesforce ${sfId})`);
+      return existing;
+    }
     report.updated += 1;
     await remember(entity, sfId, existing, undefined, upd?.updated_at);
     return existing;
@@ -373,6 +396,14 @@ function printReport(r) {
     console.log(`   🛡  ${r.kept} row(s) KEPT as they are — edited on the platform since the last sync, so Salesforce did not overwrite them:`);
     for (const c of (r.conflicts ?? []).slice(0, 8)) console.log(`     - ${c}`);
     if ((r.conflicts ?? []).length > 8) console.log(`     …and ${r.conflicts.length - 8} more`);
+  }
+  if (r.adopted) {
+    console.log(`   🤝 ${r.adopted} row(s) ADOPTED — already created on the platform, claimed into the import map instead of duplicated`);
+  }
+  if (r.gone) {
+    console.log(`   🗑  ${r.gone} row(s) DELETED on the platform since the import mapped them — the deletion stands, Salesforce did not re-create them:`);
+    for (const g of (r.goneRows ?? []).slice(0, 8)) console.log(`     - ${g}`);
+    if ((r.goneRows ?? []).length > 8) console.log(`     …and ${r.goneRows.length - 8} more`);
   }
   if (r.skipped.length) {
     console.log(`   ${r.skipped.length} skipped:`);
@@ -757,8 +788,65 @@ async function stageJobs() {
   return r;
 }
 
+/**
+ * Which deals already have a change order somebody raised BY HAND here?
+ *
+ * Salesforce does not track individual change orders — it keeps one number per
+ * job, `TotalChangeOrder__c` — so this stage synthesises a single CO-001
+ * holding that total. That was right during the migration, when the platform
+ * was empty. It stopped being right the moment Stephanie started raising real
+ * change orders, and on 2026-10-13 it crashed the sync:
+ *
+ *   duplicate key value violates unique constraint
+ *   commercial_change_orders_live_number_uidx
+ *
+ * McDonald's Coram is the case, and the arithmetic is the whole argument.
+ * Salesforce's total for that job is $1,150.00. Stephanie's hand-typed CO-001
+ * is $1,150.00. They are THE SAME CHANGE ORDER, entered in both systems — so
+ * inserting the rollup would have added $1,150 of money that does not exist to
+ * a live job's contract. The unique index refused it, which is the constraint
+ * doing its job.
+ *
+ * The other six jobs with hand-typed change orders are genuinely additive:
+ * Salesforce's total equals the CO-001 already imported, to the cent, on every
+ * one of them (Water Lillies $21,775, Creative Biolabs $8,383, 1 Rodeo Drive
+ * $10,300, Green Leaf $18,250 — and $0 on 5150 Vet Mem Hwy and DuCon, which
+ * never reach this code because `amount === 0` returns first). Those keep
+ * updating exactly as before, because they already have a map row.
+ *
+ * So the rule is narrow: only ever skip an INSERT, and only onto a job where a
+ * person is already keeping the change orders themselves. Never skip an update.
+ */
+async function liveHandMadeChangeOrderDeals() {
+  // Row ids this importer owns. MAP is keyed the other way round, so invert it
+  // once rather than asking the database a second time.
+  const ours = new Set();
+  for (const [key, rowId] of MAP) if (key.startsWith("change_order:")) ours.add(rowId);
+
+  const deals = new Set();
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .from("commercial_change_orders")
+      .select("id, opportunity_id")
+      .is("deleted_at", null)
+      .order("id")
+      .range(from, from + 999);
+    if (error) throw new Error(`change orders: ${error.message}`);
+    for (const c of data ?? []) {
+      // `mapped` is keyed by Salesforce id, so ask the other way: a row with no
+      // import-map entry was typed by a person.
+      if (!ours.has(c.id)) deals.add(c.opportunity_id);
+    }
+    if (!data || data.length < 1000) break;
+    from += data.length;
+  }
+  return deals;
+}
+
 async function stageChangeOrders() {
   const r = newReport("change-orders");
+  const handMade = await liveHandMadeChangeOrderDeals();
   for (const w of SF.wos) {
     const plan = planInvoice({
       quotedSubtotalWithCo: w.Quoted_Subtotal_with_Change_Order__c,
@@ -779,6 +867,14 @@ async function stageChangeOrders() {
     const dealId = mapped("deal", w.Opportunity__c);
     const accountId = mapped("account", w.AccountId) ?? mapped("account", SF.opps.find((o) => o.Id === w.Opportunity__c)?.AccountId);
     if (!dealId || !accountId) { r.skipped.push(`${w.WorkOrderNumber}: deal or account missing`); continue; }
+    // INSERT ONLY. An existing rollup keeps updating — that is the six jobs
+    // whose Salesforce total still matches their imported CO-001 exactly.
+    if (!mapped("change_order", w.Id) && handMade.has(dealId)) {
+      r.skipped.push(
+        `${w.WorkOrderNumber}: ${money(amount)} of change orders already raised by hand on this job — not adding Salesforce's total on top`,
+      );
+      continue;
+    }
     await put("change_order", w.Id, "commercial_change_orders", {
       opportunity_id: dealId,
       account_id: accountId,
@@ -872,14 +968,114 @@ async function stageInvoices() {
   return r;
 }
 
+/**
+ * The same cheque, banked twice.
+ *
+ * Mary records a payment here, as she has been asked to. Salesforce has the
+ * same payment, because she entered it there too during the dual run. This
+ * stage then INSERTS it, because the row she typed carries no Salesforce id and
+ * nothing looked for one — so the invoice shows the money twice.
+ *
+ * On 2026-10-13 that was 12 payments and $42,874.63 of cash counted double, and
+ * ten of the twelve carried THE SAME CHEQUE NUMBER on both copies. The damage
+ * runs the dangerous way: paid twice makes the balance go negative, so a job
+ * reads as settled, drops off AR, and nobody chases it.
+ *
+ * Matching is deliberately strict — same invoice, same amount, same day, and
+ * the same reference — because this is money and a wrong match MERGES two real
+ * payments into one, which loses cash rather than duplicating it. Where both
+ * sides name a reference and the references DIFFER, they are left alone and
+ * reported: two cheques for one amount on one day is unusual, not impossible,
+ * and only Mary can say.
+ */
 async function stagePayments() {
   const r = newReport("payments");
   const touchedInvoices = new Set();
+  /*
+   * GROUPED BY JOB, NOT BY INVOICE — and that distinction is the whole point.
+   *
+   * The first version of this matched within one invoice and missed the worst
+   * case in the book. J. Carleton Environmental Center: Salesforce's invoice
+   * SF-00312838 covers the whole $23,235.70 job, and Mary ALSO raised INV-0027
+   * here for the second half and recorded the payment against that. Same
+   * $11,617.85, same day, same reference "Inv#312838" — on two different
+   * invoices, so an invoice-keyed match cannot see it.
+   *
+   * Matching across the job catches it. The reference check below is what keeps
+   * that safe: progress payments on one job are regularly the same amount, so
+   * amount-and-date alone would be far too eager once the invoice no longer
+   * pins it down.
+   */
+  const existingByDeal = new Map();
+  const dealOfInvoice = new Map();
+  {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from("commercial_invoices")
+        .select("id, opportunity_id, deleted_at")
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw new Error(`invoices: ${error.message}`);
+      // A payment on a DELETED invoice is not money any more — the platform
+      // stops counting it with its parent — so it must not block an adoption.
+      for (const i of data ?? []) if (!i.deleted_at) dealOfInvoice.set(i.id, i.opportunity_id);
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+    from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from("commercial_invoice_payments")
+        .select("id, invoice_id, amount_cents, paid_at, reference")
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw new Error(`payments: ${error.message}`);
+      for (const p of data ?? []) {
+        const deal = dealOfInvoice.get(p.invoice_id);
+        if (!deal) continue;
+        if (!existingByDeal.has(deal)) existingByDeal.set(deal, []);
+        existingByDeal.get(deal).push(p);
+      }
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+  }
+  const claimed = new Set();
   for (const t of SF.txInScope) {
     if ((t.RecordType?.DeveloperName ?? "") !== "Payment_In") continue;
     const invoiceId = mapped("invoice", t.WorkOrder__c);
     if (!invoiceId) { r.skipped.push(`payment ${t.Name}: no invoice for its work order`); continue; }
     touchedInvoices.add(invoiceId);
+    // ADOPT BEFORE INSERTING. Only when this Salesforce payment is not already
+    // mapped — a mapped one is an update and must not be re-pointed.
+    if (!mapped("payment", t.Id)) {
+      const incoming = {
+        amount_cents: cents(t.Amount__c),
+        paid_at: at(ymd(t.Date__c) ?? ymd(t.CreatedDate)),
+        reference: t.ReferenceId__c || t.Name || null,
+      };
+      const pool = (existingByDeal.get(dealOfInvoice.get(invoiceId)) ?? []).filter((p) => !claimed.has(p.id));
+      // The decision itself lives in lib/commercial/import/mapping.ts, with the
+      // rest of the ones that have to be RIGHT, where the tests hold it.
+      const hit = matchExistingPayment(pool, incoming, invoiceId);
+      if (hit.kind === "ask") {
+        r.skipped.push(
+          `payment ${t.Name}: ${money(incoming.amount_cents)} on ${String(incoming.paid_at).slice(0, 10)} — ${hit.why}; left for a human rather than banked again`,
+        );
+        continue;
+      }
+      if (hit.kind === "adopt") {
+        claimed.add(hit.row.id);
+        if (COMMIT) {
+          await remember("payment", t.Id, hit.row.id,
+            "Already recorded on the platform by hand — adopted rather than banked a second time.");
+        } else {
+          MAP.set(`payment:${t.Id}`, hit.row.id);
+        }
+        r.adopted = (r.adopted ?? 0) + 1;
+      }
+    }
     await put("payment", t.Id, "commercial_invoice_payments", {
       invoice_id: invoiceId,
       amount_cents: cents(t.Amount__c),
@@ -1548,6 +1744,43 @@ async function stageProjects() {
     const { data: deal } = COMMIT
       ? await sb.from("commercial_opportunities").select("project_number, title").eq("id", dealId).maybeSingle()
       : { data: null };
+    /*
+     * ADOPT A PROJECT THE PLATFORM ALREADY MADE.
+     *
+     * `commercial_projects` is UNIQUE on opportunity_id — one project per deal —
+     * and the platform creates them itself now: `ensureProjectForOpportunity`
+     * runs whenever a deal reaches won-or-beyond. So on any deal sold HERE
+     * rather than in Salesforce, a project exists that this importer never
+     * mapped, and the insert collided:
+     *
+     *   duplicate key value violates unique constraint
+     *   commercial_projects_opportunity_id_key
+     *
+     * Skipping would be wrong — unlike a change order, a project is genuinely
+     * one-per-deal, so the existing row IS the row this stage wants. Claim it
+     * into the map and let the normal update path fill it in, which also stops
+     * the next run from colliding all over again.
+     */
+    if (!mapped("project", w.Id)) {
+      // The lookup is a read, so a dry run rehearses it too — this file's own
+      // rule, from the dry run that used to skip past `editedHere` and so could
+      // not show you the one check that mattered.
+      const { data: already, error } = await sb
+        .from("commercial_projects")
+        .select("id")
+        .eq("opportunity_id", dealId)
+        .maybeSingle();
+      if (error) throw new Error(`projects lookup ${dealId}: ${error.message}`);
+      if (already) {
+        if (COMMIT) {
+          await remember("project", w.Id, already.id,
+            "Project already existed on the platform — the deal was sold here, not in Salesforce. Adopted rather than duplicated.");
+        } else {
+          MAP.set(`project:${w.Id}`, already.id);
+        }
+        r.adopted = (r.adopted ?? 0) + 1;
+      }
+    }
     const projectId = await put("project", w.Id, "commercial_projects", {
       opportunity_id: dealId,
       project_number: deal?.project_number ?? null,
