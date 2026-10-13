@@ -1176,13 +1176,17 @@ export async function startDemo(): Promise<{ ok: true; token: string } | { ok: f
 }
 
 /**
- * The demo's "use a test card" shortcut: a ConfirmationToken for one of
- * Stripe's built-in test cards, made on the server, so nobody has to type
- * 4242… on a phone. TEST KEY ONLY — Stripe's test helpers do not exist on a
- * live key, and isLiveDemoToken already refuses unless the key is test.
+ * The "use a test card" shortcut: a ConfirmationToken for one of Stripe's
+ * built-in test cards, made on the server, so nobody has to type 4242… on a
+ * phone. Offered on ANY live link while the Stripe key is a TEST key — the
+ * demo job, and real sandbox Work Orders being shown to PPP. A test key can
+ * only ever take test cards, so this can't move money; and on a live key it
+ * refuses here (and Stripe's test helpers don't exist there either).
  */
 export async function demoConfirmationToken(token: string, card: DemoCard): Promise<string | null> {
-  if (!(await isLiveDemoToken(token))) return null;
+  if (paymentsConfig().stripeMode !== "test") return null;
+  const link = await getPaymentLink(token);
+  if (!link || link.revoked_at || (link.sf_org ?? "production") !== currentOrg()) return null;
   const ct = await getStripe().testHelpers.confirmationTokens.create({ payment_method: DEMO_TEST_CARDS[card] });
   return ct.id;
 }
