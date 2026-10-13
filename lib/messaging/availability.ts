@@ -120,6 +120,82 @@ const OPEN_ENDED = new RegExp(
  */
 const ASSENT = /^\s*(?:yes|yep|yeah|yup|sure|ok(?:ay)?|sounds good|please|yes please|that works|works for me|perfect|great|s[íi]|claro|perfecto|de acuerdo|est[áa] bien|esta bien|me sirve|s[íi] por favor|excelente|vale)\b[\s.!]*$/i;
 
+/**
+ * A39 — A TIME THEY CAN TALK IS NOT A TIME THEY CAN MEET.
+ *
+ * Kate's A39, live and critical: "Neither a project TIMELINE nor a time the
+ * customer can TALK is appointment AVAILABILITY. Either way they still owe
+ * availability for the appointment itself."
+ *
+ * This file had never heard of that rule. Found 2026-10-13 by listing the
+ * live rules mentioned nowhere in the codebase — A39 was one of four, three
+ * of them critical — and then running the parser against what it says:
+ *
+ *   "you can call me at 3pm"             -> "day"   window already received
+ *   "I can talk Tuesday afternoon"       -> null    AVAILABILITY COMPLETE
+ *   "best time to reach me is mornings"  -> "day"   window already received
+ *
+ * The middle one is the damaging case. A13 forbids asking again for
+ * something already given, so once a talk-time is banked as availability the
+ * bot can never ask for the appointment slot again, and the close guard
+ * believes it holds one. An estimator is booked against a time the customer
+ * offered for a PHONE CALL, and nothing later in the conversation can
+ * correct it.
+ *
+ * Timelines were already safe — "done by June" gives "both" — because no DAY
+ * or WINDOW pattern matches them. Only the talk-time half was wrong.
+ *
+ * ── WHY A CLAUSE TEST AND NOT A MESSAGE TEST ────────────────────────────
+ *
+ * "I can talk Tuesday afternoon" is a talk-time. "You can call me Monday,
+ * and Tuesday afternoon works for the estimate" contains both, and the
+ * second half is real availability that must survive. So the message is
+ * split and each clause judged alone.
+ *
+ * Deliberately NOT applied when the clause also names the visit —
+ * "estimate", "come out", "visit" — because "call me Tuesday to confirm the
+ * estimate Thursday morning" is availability.
+ */
+/**
+ * Spanish written ACCENT-AWARE, and with unicode boundaries.
+ *
+ * "h[aá]bl\w*" is still wrong twice over: \w is ASCII so it stops at the
+ * next accent, and \b is ASCII so it would succeed in the middle of a word.
+ * "hábleme" needs both halves right. This is the third accent bug in a week
+ * from the same two assumptions — SUITS_BEST_ES, then the photo filler, now
+ * this — so the letter class is spelled out and the boundaries are lookarounds.
+ */
+const ES_LETTER = "a-záéíóúüñ";
+const TALKING = new RegExp(
+  String.raw`\b(?:call|calling|phone|reach|ring|text|talk|speak|contact)\b`
+  + "|" + `(?<![${ES_LETTER}])(?:ll[${ES_LETTER}]*m[${ES_LETTER}]*`
+  + `|h[aá]bl[${ES_LETTER}]*|marc[${ES_LETTER}]*|contact[${ES_LETTER}]*)`
+  + `(?![${ES_LETTER}])`,
+  "iu",
+);
+
+/** The visit itself. A clause naming it is about meeting, not talking. */
+const THE_APPOINTMENT = new RegExp(
+  String.raw`\b(?:estimate|quote|appointment|come\s+out|come\s+by|visit|stop\s+by|meet|walk\s*through|look\s+at)\b`
+  + "|" + String.raw`\b(?:estimaci[oó]n|cotizaci[oó]n|cita|visita|pasar|venir|reuni\w*)\b`,
+  "i",
+);
+
+/**
+ * Drop the clauses that are about talking rather than meeting.
+ *
+ * May return empty, and that is the correct answer for "you can call me at
+ * 3pm": once the talk-time is removed the customer has given no appointment
+ * availability at all.
+ */
+export function withoutTalkTimes(text: string): string {
+  return text
+    .split(/(?<=[.!?,;])\s+|\s+(?:and|y|pero|but)\s+/i)
+    .filter((clause) => !(TALKING.test(clause) && !THE_APPOINTMENT.test(clause)))
+    .join(" ")
+    .trim();
+}
+
 export type AvailabilityGap =
   /** Nothing usable at all. */
   | "both"
@@ -134,7 +210,17 @@ export function availabilityGap(
   text: string | null | undefined,
   opts: { justAskedForAvailability?: boolean } = {}
 ): AvailabilityGap {
-  const t = (text ?? "").trim();
+  const raw = (text ?? "").trim();
+  if (!raw) return "both";
+
+  /**
+   * A39: strip the talk-times BEFORE looking for a day or a window, so a
+   * phone slot can never be banked as an appointment slot. See withoutTalkTimes.
+   *
+   * Applied before OPEN_ENDED too: "call me whenever" is an open offer to
+   * TALK, not an open appointment.
+   */
+  const t = withoutTalkTimes(raw);
   if (!t) return "both";
 
   // "Anytime" answers both halves at once.
