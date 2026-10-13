@@ -512,14 +512,26 @@ function actionTool(track: Track): Anthropic.Tool {
  * ask a question, and a fifteen-item list reads as a brochure. Sorted the way
  * the workspace sorted them, so the first four are the ones PPP leads with.
  */
-export function coveredPhrase(services?: ResolvedService[]): string | null {
+export function coveredPhrase(
+  services?: ResolvedService[],
+  /**
+   * This one goes to a CUSTOMER, so unlike the prompt-line callers of
+   * listPhrase it has to be in their language. Without it a Spanish
+   * conversation ended "...cabinets and drywall".
+   *
+   * The service labels themselves are still whatever the workspace stored,
+   * which today is English. That half needs Spanish words from Mac and
+   * Jasmine and is open with Kate; this half never did.
+   */
+  lang: "en" | "es" = "en",
+): string | null {
   const covered = (services ?? []).filter((s) => s.covered).map((s) => s.label.toLowerCase());
   if (!covered.length) return null;
   // NOT listPhrase when it is truncated: that joins the last two with "and",
   // so appending "and more" produced "lime washing and skim coating and more".
   return covered.length > 4
-    ? `${covered.slice(0, 4).join(", ")} and more`
-    : listPhrase(covered);
+    ? `${covered.slice(0, 4).join(", ")} ${lang === "es" ? "y más" : "and more"}`
+    : listPhrase(covered, lang);
 }
 
 export async function runAgentTurn(
@@ -1182,7 +1194,7 @@ Choose the next action.`;
       // What we DO cover, for the one case that needs it: turning work down.
       // Capped, because this goes out as a text message and the full list is
       // fifteen rows long.
-      covers: coveredPhrase(opts.services),
+      covers: coveredPhrase(opts.services, language === "es" ? "es" : "en"),
       // A7's MANDATED reason, matched from what the customer actually said.
       // Nothing supplied this before, so offer_offsite_quote rendered empty
       // every time and the turn escalated instead of making the offer.

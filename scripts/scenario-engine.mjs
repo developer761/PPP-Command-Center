@@ -25,11 +25,34 @@ import { availabilityGap, availabilityGapAcross } from "../lib/messaging/availab
 import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/multi-property.ts";
 import { jobRoute } from "../lib/messaging/offsite.ts";
 import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
+import { coveredPhrase } from "../lib/messaging/agent-run.ts";
 
 /** Rapport the model plausibly writes, including the shapes that broke things. */
 export const RAPPORTS = ["", "Got it, thank you.", "Happy to help."];
 
-export const COVERS = "interior painting, exterior painting, cabinets and drywall";
+/**
+ * The covered-services phrase, BUILT THE WAY PRODUCTION BUILDS IT.
+ *
+ * This was a hardcoded English string, which made it invisible to the bug it
+ * was sitting on: in a Spanish conversation production joined the list with
+ * "and", and so did this constant, so the harness agreed with the defect
+ * instead of catching it. A harness that hardcodes what production computes
+ * can only ever confirm what somebody already believed.
+ *
+ * Now it goes through coveredPhrase with the conversation's language, so the
+ * joiner is whatever production would really produce. The service LABELS are
+ * still English because that is what the workspace actually stores -- that
+ * half is QUESTIONS_FOR_KATE item 25 and needs Spanish words from Mac and
+ * Jasmine, not a code change.
+ */
+export const COVER_SERVICES = [
+  { label: "Interior painting", covered: true },
+  { label: "Exterior painting", covered: true },
+  { label: "Cabinets", covered: true },
+  { label: "Drywall", covered: true },
+];
+
+export const COVERS = coveredPhrase(COVER_SERVICES);
 
 /**
  * A FIXED CLOCK AND ZONE, so the week-aware ask actually renders here.
@@ -185,7 +208,7 @@ export function waysThrough(scenario) {
      */
     availabilityGap: availabilityGap(ownWords),
     offsiteReason: offsiteReasonFor(ownWords),
-    covers: COVERS,
+    covers: coveredPhrase(COVER_SERVICES, language === "es" ? "es" : "en"),
     language,
     now: HARNESS_NOW,
     customerZone: HARNESS_ZONE,

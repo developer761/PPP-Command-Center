@@ -47,11 +47,49 @@ export function resolveServices(
     });
 }
 
-/** Joined the way a person would say it: "a, b and c". */
-export function listPhrase(items: string[]): string {
+/**
+ * Joined the way a person would say it: "a, b and c".
+ *
+ * ── THE JOINER IS A WORD, AND IT WAS ALWAYS ENGLISH ─────────────────────
+ *
+ * Seen in the scenario harness on 2026-10-12, in a Spanish conversation:
+ *
+ *   "Sí cubrimos interior painting, exterior painting, cabinets and drywall."
+ *
+ * Two English leaks in one sentence, with different owners. The service NAMES
+ * come from the workspace's own configuration and need Spanish words from Mac
+ * and Jasmine — that is a question for them. The "and" is not: no wording
+ * decision is involved, it is simply the wrong language, and it would still
+ * be wrong the day the names are translated.
+ *
+ * Only the CUSTOMER-FACING caller passes "es". The two callers below that
+ * build prompt lines stay English on purpose — the prompt is English whatever
+ * language the conversation is in.
+ *
+ * ── "y" BECOMES "e" BEFORE AN i- SOUND ──────────────────────────────────
+ *
+ * "exterior painting y interior painting" is wrong; it is "e interior". Not a
+ * formality — Mac and Jasmine asked for casual, relaxed Spanish, and a native
+ * speaker writing casually still writes "e". Getting it wrong is visible to
+ * exactly the people this is meant to sound natural to, and "interior" is a
+ * service PPP sells, so this fires in practice rather than in theory.
+ *
+ * Accent-aware, and not applied before "hie-" ("hierro"), where it does not
+ * hold.
+ */
+export function listPhrase(items: string[], lang: "en" | "es" = "en"): string {
   if (items.length === 0) return "";
   if (items.length === 1) return items[0];
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+  const last = items[items.length - 1];
+  const joiner = lang === "es" ? spanishAnd(last) : "and";
+  return `${items.slice(0, -1).join(", ")} ${joiner} ${last}`;
+}
+
+/** "y", or "e" when the next word opens with an i- sound. */
+export function spanishAnd(next: string): string {
+  const w = next.trim().toLowerCase();
+  if (/^hie/.test(w)) return "y";
+  return /^(?:i|í|hi)/.test(w) ? "e" : "y";
 }
 
 /**

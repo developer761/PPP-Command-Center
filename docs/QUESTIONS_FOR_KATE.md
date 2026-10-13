@@ -1313,7 +1313,44 @@ the panel will say the address is owed while the stage has moved on. The
 BEHAVIOUR is now correct either way; it is the display that can look odd.
 Worth knowing before you grade against that panel.
 
-## 22. A6's shared-space list says "corridor" but not "hallway"
+## 22. ~~A6's shared-space list says "corridor" but not "hallway"~~ — **ANSWERED OURSELVES 2026-10-13, DO NOT ASK**
+
+**The premise was backwards, and the corpus settles it without you.**
+
+Measured across all 1,299 of your graded conversations:
+
+| word | times it appears |
+|---|---|
+| hallway / hallways | **72** |
+| corridor / corridors | **0** |
+
+So the list names a word no customer has ever used and omits one they use
+constantly. The obvious conclusion — add "hallway" — is wrong, and that is
+why this is worth writing down rather than just changing.
+
+Of the 65 passages containing "hallway", **43 are plainly residential and 4
+are commercial**. They read like this:
+
+> "3 bedrooms average size, short hallway about 12-15 ft long, living and
+> dinning rooms"
+> "Interior rooms 2 bedrooms, living room, bathroom and 2 hallways"
+> "Hallway 2.5 ft x 2ft"
+
+A hallway inside somebody's house is a room they want painted. "Corridor" is
+the word the SPEC used when describing a multi-unit building, not a word
+customers say. Adding "hallway" to the commercial/shared-space detector would
+route ordinary residential jobs as commercial — a real bug, introduced to fix
+an imaginary one.
+
+**The code is already right**, and in a way the question did not notice:
+`offsite.ts:59` `NOT_A_ROOM` ALREADY contains `hall\s?ways?|halls?`, so a
+hallway is correctly excluded from the ROOM COUNT. It is only absent from the
+commercial lists at `offsite.ts:201` and `scope.ts:207`, which is correct.
+
+**→ Nothing to change and nothing to ask. Flagging only in case you disagree
+that a hallway in a house is residential.**
+
+<details><summary>the original question</summary>
 
 **OPEN — your call, because the fix defeats one of your nevers.** Found in the
 sandbox 2026-10-01, running your reissued A3/A6 against the live build.
@@ -1356,6 +1393,8 @@ as shared spaces when the message also names a building with others in it, and
 stay residential otherwise. One line, and it wants a wiring chain pinning the
 conjunction so a later edit cannot drop the second half and route every
 hallway commercial.
+
+</details>
 
 ## 23. One of the three "ask the estimator" lines stops making sense when its question is removed
 
@@ -1435,7 +1474,32 @@ that is a small change and a better place for the failure than a text message.
 
 ---
 
-## 25. A Spanish conversation ends with an English list of what we do cover
+## 25. A Spanish conversation ends with an English list — **HALF FIXED 2026-10-13; the rest is the same ask as 28**
+
+**Update: there were TWO English leaks in that sentence, with different
+owners. We have fixed the one that was ours.**
+
+It rendered like this:
+
+> "Sí cubrimos interior painting, exterior painting, cabinets **and** drywall."
+
+The **joiner** was ours. `listPhrase` hardcoded " and " for every language, so
+the word would still have been English the day the service names were
+translated. It now follows the conversation's language, including the rule
+that "y" becomes "e" before an i- sound — "exterior **e** interior", which
+matters because "interior" is a service PPP sells. It now reads:
+
+> "Sí cubrimos interior painting, exterior painting, cabinets **y** drywall."
+
+The **service names** are not ours. They are workspace data
+(`sms_workspace_services`, stored in English, one row per service), and
+translating them is a content decision — which is exactly what question 28
+already asks Mac and Jasmine for.
+
+**→ So this is no longer a separate question. When 28 comes back with Spanish
+service names, this closes with it.** Nothing further is needed from you here.
+
+<details><summary>the original question</summary>
 
 **Found by testing, 2026-10-05. Low stakes, but it reaches a customer.**
 
@@ -1485,6 +1549,8 @@ customer gets an answer — was deciding it on an English word list, so
 because a discard is an ending, nobody would have seen those threads.
 
 ---
+
+</details>
 
 ## 26. Do you want an after-hours auto-reply at all?
 
