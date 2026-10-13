@@ -91,20 +91,72 @@ CO-inclusive figure** — the same ladder every Command Center screen displays
 `Amount` is left alone: it is hardcoded $500 on essentially every Tomco won deal and
 no PPP report reads it.
 
-### 2b. A change order approved here, on a deal Salesforce already has
+### 2b. A change order approved here — CONFIRMED IN SCOPE (Karan, 2026-10-13)
 
-Four of these exist today and they are exactly the contract differences the
-reconciliation cannot close:
+Without this, Katie's total is short by every change order Tomco raises from now on.
+
+**Salesforce holds change orders as real records, not a number.** `ChangeOrder__c`
+is createable and updateable, hangs off the WorkOrder, and
+`WorkOrder.TotalChangeOrder__c` is a **rollup over it** (formula, not writable) which
+in turn feeds `Quoted_Subtotal_with_Change_Order__c` and then the Opportunity via
+`WorkOrder_SetOpportunityFinancialFields`.
+
+**That is the whole mechanism, and it means we never write a money field at all.**
+Create the change order; Salesforce's own arithmetic carries it up to the sales
+figure Katie reads. This works *with* the org instead of fighting the
+last-writer-wins flow that would otherwise overwrite anything we set on the
+Opportunity.
+
+#### `ChangeOrder__c` field map (from `describe`, verified)
+
+| Field | Type | Notes |
+|---|---|---|
+| `WorkOrder__c` | reference | **★ REQUIRED**, create-only — the job |
+| `CostChange__c` | currency | the amount (positive; a deduct is negative) |
+| `Status__c` | picklist | `New` · `Approved` · `Denied` · `Pending Approval` · `Approved-Auto` · `Legacy Import (Approved)` · `Pending` |
+| `ReasonForChange__c` | picklist | `Scope change` · `Scope increase` · `Scope reduction` · `Client changed mind` · `Material not available` · `Crew not available` · `Other` |
+| `ReasonForChangeOther__c` | string | free text when reason is Other |
+| `Notes__c` | textarea | our CO title + description |
+| `LegacyId__c` | string(18) | **externalId + unique — but IN USE on 13,915 of 19,086 records.** Do not reuse. |
+
+**Only `Approved` (and `Approved-Auto`) count toward the rollup**, so status is the
+load-bearing field, not just a label.
+
+#### What actually needs to move — measured 2026-10-13
+
+Salesforce already holds **43** Tomco change orders; Command Center holds **30** live.
+**21 match by amount.** The rest:
+
+**Two are status disagreements, and they ARE two of the four contract gaps** —
+Salesforce has the change order but has not approved it, so it is outside the rollup:
 
 ```
-5150 Vet Mem Hwy   +$5,200.00
-DuCon TENANT         +$865.70
-Green Leaf           +$550.00
-McDonald's Coram     +$450.00
+5150 Vet Mem Hwy  $5,200.00   ours approved · SF "Pending Approval" (CO-32564)
+DuCon TENANT        $865.70   ours approved · SF "Pending Approval" (CO-32246)
 ```
 
-Without this, Katie's "total sales picture" is short by every change order Tomco
-raises from now on. **This is a real decision, not an omission** — see §6 Q2.
+These need **updating, not creating** — set `Status__c = 'Approved'`.
+
+**Two approved change orders genuinely do not exist in Salesforce:**
+
+```
+Green Leaf "Drip Caps"          $550.00
+McDonald's "Bathroom Ceiling"   $450.00
+```
+
+Three more raised here are still `pending` (Creative Biolabs ×3) and must not sync
+until approved.
+
+#### 🔴 The rollup rows must never be written back
+
+The importer synthesises **one** CO per job titled "Approved change orders" holding
+Salesforce's `TotalChangeOrder__c` — LMJ Cipla has a single $31,127.09 row here
+against **seven** separate records there. Those rows are a local representation of
+Salesforce's own data, not new work. Pushing one would re-add money Salesforce
+already counts, seven times over.
+
+**They are identifiable:** a rollup carries an import-map row (`entity='change_order'`);
+anything raised here does not. The sync writes only unmapped, approved change orders.
 
 ---
 

@@ -1053,11 +1053,73 @@ async function stagePayments() {
    */
   const claimed = new Set();
   for (const [key, rowId] of MAP) if (key.startsWith("payment:")) claimed.add(rowId);
+
+  /*
+   * Payments a PERSON recorded, by provenance rather than by guesswork.
+   *
+   * `recorded_by_user_id` is non-null exactly when somebody entered the payment
+   * on the platform (migration 042) and null on every row this importer wrote.
+   * It is the only durable way to tell them apart, because this table has no
+   * `updated_at` for `editedHere` to read.
+   */
+  const PERSON_RECORDED_PAYMENTS = new Set();
+  {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from("commercial_invoice_payments")
+        .select("id, recorded_by_user_id")
+        .not("recorded_by_user_id", "is", null)
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw new Error(`payments (provenance): ${error.message}`);
+      for (const p of data ?? []) PERSON_RECORDED_PAYMENTS.add(p.id);
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+  }
   for (const t of SF.txInScope) {
     if ((t.RecordType?.DeveloperName ?? "") !== "Payment_In") continue;
     const invoiceId = mapped("invoice", t.WorkOrder__c);
     if (!invoiceId) { r.skipped.push(`payment ${t.Name}: no invoice for its work order`); continue; }
-    touchedInvoices.add(invoiceId);
+
+    /*
+     * A ROW A PERSON RECORDED IS NEVER WRITTEN TO. Checked by PROVENANCE, every
+     * run, not by whether this run happened to adopt it.
+     *
+     * The first version of this skipped the write inside the adopt branch —
+     * which only runs when the Salesforce payment is NOT yet mapped. So it
+     * protected the row on the night it was adopted and never again: the next
+     * run found it mapped, skipped the branch, and fell through to `put()`.
+     *
+     * That was armed on ten live rows. `fix-duplicate-payments.mjs` pointed ten
+     * Salesforce ids at the payments Mary typed, so the next
+     * `--stage=payments --commit` would have written `notes`, `reference`,
+     * `method` and — the expensive one — `deposited_at` onto all ten.
+     * $37,954.63 stamped as cleared at the bank on rows nobody had reconciled,
+     * which is verbatim what migration 159 exists to prevent:
+     *
+     *   "Deliberately NOT backfilled to paid_at: claiming historic payments
+     *    cleared on the day they arrived would put a number in front of a
+     *    bookkeeper that nobody verified."
+     *
+     * `editedHere` cannot help — `commercial_invoice_payments` has no
+     * `updated_at`, so it returns false before reading anything (migration
+     * 20260916140000 left the column out and said to add it "if Tomco starts
+     * editing by hand during the dual-run"; adoption is exactly that).
+     *
+     * `recorded_by_user_id` is the honest discriminator and it is permanent: it
+     * is non-null on every row a person entered and null on all 120 the
+     * importer wrote. Checked on 2026-10-13 against all ten adopted rows.
+     */
+    const mine = mapped("payment", t.Id);
+    if (mine && PERSON_RECORDED_PAYMENTS.has(mine)) {
+      r.kept = (r.kept ?? 0) + 1;
+      r.conflicts = r.conflicts ?? [];
+      if (r.conflicts.length < 40) r.conflicts.push(`commercial_invoice_payments ${mine} (Salesforce ${t.Id}) — recorded here by a person`);
+      continue;
+    }
+
     // ADOPT BEFORE INSERTING. Only when this Salesforce payment is not already
     // mapped — a mapped one is an update and must not be re-pointed.
     if (!mapped("payment", t.Id)) {
@@ -1102,14 +1164,52 @@ async function stagePayments() {
           MAP.set(`payment:${t.Id}`, hit.row.id);
         }
         r.adopted = (r.adopted ?? 0) + 1;
+        /*
+         * ADOPT AND STOP. Do not write to the row.
+         *
+         * `commercial_invoice_payments` has NO `updated_at` — migration
+         * 20260916140000 left it out deliberately, reasoning that "a payment is
+         * recorded rather than edited", and said in terms: *if Tomco starts
+         * editing by hand during the dual-run, add the column before trusting
+         * the guard there*. Adoption is exactly that change: this importer now
+         * claims rows a PERSON created, and `editedHere` is structurally blind
+         * to them, so every nightly run would overwrite her values with
+         * Salesforce's.
+         *
+         * What that cost, measured on the ten rows the cleanup kept: `notes`
+         * replaced with "Imported from Salesforce", `reference` replaced with
+         * the Transaction autonumber where ReferenceId__c is blank, and —
+         * worst — `deposited_at` stamped to the payment date. Migration 159
+         * exists to prevent precisely that: *"Deliberately NOT backfilled to
+         * paid_at: claiming historic payments cleared on the day they arrived
+         * would put a number in front of a bookkeeper that nobody verified."*
+         * The reverse is as bad: an undeposited Salesforce payment resets a
+         * tick Mary made against the bank statement, silently, every night.
+         *
+         * There is nothing to write anyway. The match required the same
+         * invoice, the same amount and the same day — the row already agrees
+         * with Salesforce on everything this stage would set. The only fields
+         * that differ are hers, and they are the ones worth keeping.
+         */
+        continue;
       }
     }
+    /*
+     * ONLY NOW is this invoice touched. The add used to sit above the matcher,
+     * so an `ask` — the one path that writes nothing — still advanced the
+     * invoice's map stamp, claiming a person's edit as the importer's own.
+     * That is the harm `restampEntity`'s own comment documents: 35 invoice
+     * edits would have been silently overwritten, reported as a clean sync.
+     */
+    touchedInvoices.add(invoiceId);
     await put("payment", t.Id, "commercial_invoice_payments", {
       invoice_id: invoiceId,
       amount_cents: cents(t.Amount__c),
       paid_at: at(ymd(t.Date__c) ?? ymd(t.CreatedDate)),
       method: (t.Method__c || "other").toLowerCase().includes("check") ? "check" : (t.Method__c || "other").toLowerCase().includes("ach") || (t.Method__c || "").toLowerCase().includes("wire") ? "ach" : "other",
-      reference: t.ReferenceId__c || t.Name || null,
+      // Same expression the matcher uses, so a blank ReferenceId__c cannot
+      // stamp the Transaction autonumber over a real cheque number.
+      reference: t.ReferenceId__c || null,
       notes: "Imported from Salesforce",
       deposited_at: t.Deposited__c ? at(ymd(t.Date__c)) : null,
     }, r);
@@ -1123,21 +1223,103 @@ async function stagePayments() {
   return r;
 }
 
+/**
+ * Cost categories the PLATFORM knows and Salesforce does not.
+ *
+ * `purchaseCategory()` can only ever emit `materials | labor | other` — that is
+ * everything Salesforce's RecordType and PayeeType can tell us. The platform's
+ * own picker is finer: `equipment` for plant hire, `employee_labor` for a named
+ * crew member as against a labor company.
+ *
+ * So recomputing `category` on every sync FLATTENS any finer value, and does it
+ * silently: the reconcile's `LABOR_CATS` treats `labor` and `employee_labor` as
+ * the same money, so the totals stay green while the headings quietly revert.
+ *
+ * Measured 2026-10-13: 789 rows, $512,740.12 — 786 `employee_labor` and 3
+ * `equipment`, including 20 a person had corrected by hand that same afternoon.
+ * Only the (broken) guard was preventing it, so fixing the guard would have
+ * caused the regression.
+ *
+ * Salesforce cannot be the authority on a distinction it cannot express.
+ */
+const COARSE_CATEGORIES = new Set(["materials", "labor", "other"]);
+
 async function stageCosts() {
   const r = newReport("costs");
+  /** Rows already carrying a category finer than Salesforce can describe. */
+  const finerCategory = new Map();
+  {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from("commercial_project_purchases")
+        .select("id, category")
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw new Error(`purchases (categories): ${error.message}`);
+      for (const p of data ?? []) {
+        if (p.category && !COARSE_CATEGORIES.has(p.category)) finerCategory.set(p.id, p.category);
+      }
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+  }
   for (const t of SF.txInScope) {
     const kind = { recordType: t.RecordType?.DeveloperName ?? null, payeeType: t.PayeeType__c ?? null };
     const category = purchaseCategory(kind);
     if (!category) continue; // payments in are money, not cost
-    const dealId = mapped("deal", t.Opportunity__c) ?? (t.WorkOrder__c ? mapped("deal", SF.wos.find((w) => w.Id === t.WorkOrder__c)?.Opportunity__c) : null);
+    /*
+     * THE WORK ORDER DECIDES WHICH JOB A RECEIPT BELONGS TO, not the
+     * transaction's own Opportunity__c.
+     *
+     * This read `Opportunity__c` first and fell back to the work order. Every
+     * consumer does the opposite — including this file's own `--reconcile`,
+     * which indexes costs by `t.WorkOrder__c ?? oppToWorkOrder.get(...)`. On 21
+     * materials transactions ($6,564.99) the two fields name DIFFERENT deals,
+     * so the importer filed the receipt on one job and the check then validated
+     * it against another.
+     *
+     * The totals never caught it because the pairs offset exactly: VCA West
+     * Islip carried +$2,905.11 and VCA Commack −$2,905.11, Switching Power
+     * Phase 5 +$621.06 and Phase 6 −$621.06. Mapped cost tied to the cent at
+     * the book level while 13 jobs' profitability was wrong, and every sync
+     * re-asserted it.
+     *
+     * The old first branch earned nothing: ZERO cost transactions have an
+     * `Opportunity__c` and no `WorkOrder__c`. It was purely a way to disagree
+     * with everything downstream.
+     */
+    const dealId =
+      (t.WorkOrder__c ? mapped("deal", SF.wos.find((w) => w.Id === t.WorkOrder__c)?.Opportunity__c) : null)
+      ?? mapped("deal", t.Opportunity__c);
     if (!dealId) { r.skipped.push(`${category} ${t.Name}: no imported deal`); continue; }
     const vendorSfId = t.RetailVendor__c || t.Payee__c;
     const vendor = await vendorBySfId(vendorSfId);
     const accountId = mapped("account", SF.wos.find((w) => w.Id === t.WorkOrder__c)?.AccountId);
+    /*
+     * MOVING A RECEIPT TO ANOTHER JOB MUST MOVE ITS PROJECT TOO.
+     *
+     * `project_id` is filled at insert by a trigger from the deal, and the
+     * backfill that repairs it only touches rows where it is NULL. So a row
+     * whose `opportunity_id` changes keeps pointing at the OLD deal's project —
+     * for ever, because the column is no longer null and nothing revisits it.
+     *
+     * That lands on the 21 receipts the WorkOrder-first fix above re-files
+     * ($6,564.99): every job-cost and profitability surface that reads
+     * `project_id` would still bill them to the job they just moved off, while
+     * the ones reading `opportunity_id` show the corrected job. Two answers,
+     * both live.
+     *
+     * Nulling it hands the row back to the backfill, which sets it from the
+     * deal it now belongs to.
+     */
+    const projectForDeal = mapped("project", SF.wos.find((w) => w.Id === t.WorkOrder__c)?.Id);
     await put("purchase", t.Id, "commercial_project_purchases", {
       opportunity_id: dealId,
       account_id: accountId,
-      category,
+      project_id: projectForDeal ?? null,
+      // Keep a finer category than Salesforce can express — see COARSE_CATEGORIES.
+      category: finerCategory.get(mapped("purchase", t.Id)) ?? category,
       vendor: vendor?.name ?? t.RetailVendor__r?.Name ?? t.Payee__r?.Name ?? null,
       vendor_id: vendor?.id ?? null,
       amount_cents: cents(t.Amount__c),
@@ -1721,6 +1903,26 @@ async function stageDates() {
   };
 
   for (const [entity, [table, dateFor]] of Object.entries(SOURCES)) {
+    /*
+     * THIS STAGE USED TO DISARM THE GUARD FOR THE WHOLE PLATFORM.
+     *
+     * Every write here fires the table's `updated_at` trigger, and nothing
+     * restamped the import map afterwards — so the moment this stage ran, every
+     * mapped row in all ten tables had a row stamp NEWER than its map stamp,
+     * which is exactly how `editedHere` recognises a person's edit.
+     *
+     * Measured 2026-10-13: this stage touched 3,515 rows at 16:13 while the
+     * costs stage had last stamped the map at 15:32. The next
+     * `--stage=costs --commit` then reported **1,803 kept (yours), 0 updated**
+     * and refused to write a single cost row — including the 21 receipts a
+     * separate fix had just re-filed onto the right jobs. A sync that cannot
+     * update anything, reporting itself as having protected the user's work.
+     *
+     * So: collect what this stage actually wrote, and restamp it. This is the
+     * honest use of `restampEntity` — we DID write these rows, so the new
+     * timestamp is ours and claiming it is true.
+     */
+    const touched = new Set();
     for (const [key, rowId] of MAP) {
       if (!key.startsWith(`${entity}:`)) continue;
       const sfId = key.slice(entity.length + 1);
@@ -1734,7 +1936,10 @@ async function stageDates() {
       const { error } = await sb.from(table).update(patch).eq("id", rowId);
       if (error) { r.skipped.push(`${table} ${rowId}: ${error.message}`); continue; }
       r.updated += 1;
+      touched.add(rowId);
     }
+    const restamped = await restampEntity(entity, touched);
+    if (restamped) r.notes.push(`re-stamped ${restamped} ${entity} row(s) this stage's own writes touched`);
   }
   return r;
 }

@@ -870,6 +870,53 @@ export async function changeOpportunityStatus(
         );
       }
     }
+
+    /*
+     * A WON DEAL NEEDS A WORK ORDER, or the crew's hours have nowhere to go.
+     *
+     * Mary, 2026-10-13: *"I am not seeing some Opportunities in the Attendance
+     * drop-down box. Cummins and Motormindz are examples. I see them in the
+     * opportunity but not in the dropdown."*
+     *
+     * The Attendance picker lists WORK ORDERS, not deals — hours are logged
+     * against a job. Every one of the 92 migrated jobs has one because it came
+     * from a Salesforce work order. A deal won HERE got a project and no job,
+     * so it was invisible to Field Ops: won, with money on it, and no way to
+     * record the crew that is standing on it. Three deals were in that state
+     * when she wrote — MotorMindz ($30,000, with a proposal and costs on it),
+     * Flagstar Bank Trash Enclosures, and Thermo Fisher.
+     *
+     * That population only grows as Tomco moves off Salesforce, so it is fixed
+     * at the win rather than left to be noticed job by job.
+     *
+     * SAFE TO RUN ON EVERY WIN. `createJob` refuses when the deal already owns
+     * a live job — the guard that stops one deal spawning two job codes and
+     * splitting payroll — so re-winning, a sub-status edit, or the reconciler
+     * passing through all hit that guard and change nothing. The failure is
+     * swallowed for the same reason the project ensure swallows its own: a
+     * work order that could not be made must never block the sale from being
+     * recorded.
+     */
+    if (isProjectBearing && !wasProjectBearing) {
+      try {
+        const { ensureWorkOrderForWonOpportunity } =
+          await import("@/lib/commercial/field-ops/ensure-work-order");
+        const res = await ensureWorkOrderForWonOpportunity(input.opp_id, {
+          actingUserId: input.acting_user_id,
+        });
+        if (!res.ok) {
+          console.warn(
+            "[changeOpportunityStatus] work order ensure failed:",
+            res.error,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "[changeOpportunityStatus] work order ensure threw:",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
   }
 
   // Fan out a bell + email to every active team member on the opp

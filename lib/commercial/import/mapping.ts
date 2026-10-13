@@ -377,13 +377,50 @@ export function matchExistingPayment(
     const x = ymd(a), y = ymd(b);
     return x !== null && y !== null && x === y;
   };
+  /** Whole days between two payments, or null if either has no usable date. */
+  const daysApart = (a: string | null | undefined, b: string | null | undefined) => {
+    const x = ymd(a), y = ymd(b);
+    if (x === null || y === null) return null;
+    return Math.abs(Date.parse(`${x}T12:00:00Z`) - Date.parse(`${y}T12:00:00Z`)) / 86_400_000;
+  };
+  /*
+   * `reference` IS A MEMO BOX, NOT AN IDENTIFIER.
+   *
+   * The recording form writes the "other method" free text into this same
+   * column (`joinOtherDetail(method_other, reference)`), so it holds "ACH",
+   * "Labr Reimbursement", "PPP reimbursed Tomco for Labor", "Inv#312838" —
+   * 20 of 133 live values are not cheque-like at all. Worse, 32 distinct values
+   * are shared by more than one payment: 530812 is a batch cheque covering five
+   * payments across four jobs.
+   *
+   * An earlier version of this matched on the reference alone, unbounded in
+   * time, on the grounds that ten of the twelve known duplicates shared a
+   * cheque number. That is a statement about RECALL and says nothing about
+   * PRECISION — and the precision is what this data refuses. VCA Commack has
+   * two genuine $15,000 draws, 2026-01-15 and 2026-03-19, on one invoice, both
+   * carrying the GC's PO number "00268853". Matching on the reference merges
+   * them, which deletes a real payment.
+   *
+   * So the reference may only RESCUE a near-miss on the date — the bookkeeper
+   * recording a cheque a few days after it was dated, which is the case worth
+   * catching — and only when it looks like a cheque number rather than prose.
+   */
+  const CHEQUE_LIKE = /^#?\d{3,10}$/;
+  const REFERENCE_RESCUE_DAYS = 5;
 
   const incomingRef = ref(incoming.reference);
+  const refsLookLikeTheSameCheque = (mineRef: string) =>
+    mineRef !== "" &&
+    incomingRef !== "" &&
+    mineRef === incomingRef &&
+    CHEQUE_LIKE.test(mineRef);
+
   const candidates = existing.filter((p) => {
     if (p.amount_cents !== incoming.amount_cents) return false;
-    const mineRef = ref(p.reference);
-    const refsAgree = mineRef !== "" && incomingRef !== "" && mineRef === incomingRef;
-    return sameDay(p.paid_at, incoming.paid_at) || refsAgree;
+    if (sameDay(p.paid_at, incoming.paid_at)) return true;
+    if (!refsLookLikeTheSameCheque(ref(p.reference))) return false;
+    const gap = daysApart(p.paid_at, incoming.paid_at);
+    return gap !== null && gap <= REFERENCE_RESCUE_DAYS;
   });
 
   if (candidates.length === 0) return { kind: "insert" };
@@ -420,9 +457,10 @@ export function matchExistingPayment(
    * (progress plus a retainage release) are ordinary, so amount alone merges
    * real money.
    */
-  if (!refsAgree && !sameDay(mine.paid_at, incoming.paid_at)) {
-    return { kind: "ask", row: mine, why: "same amount but a different day and no shared reference — not enough to call it the same payment" };
+  if (!refsLookLikeTheSameCheque(mineRef) && !sameDay(mine.paid_at, incoming.paid_at)) {
+    return { kind: "ask", row: mine, why: "same amount but a different day and no shared cheque number — not enough to call it the same payment" };
   }
+  void refsAgree;
   return { kind: "adopt", row: mine };
 }
 
