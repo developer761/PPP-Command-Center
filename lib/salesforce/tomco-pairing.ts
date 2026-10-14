@@ -3,6 +3,7 @@ import "server-only";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { writeSf } from "@/lib/salesforce/writeback";
+import { derivedOppName } from "@/lib/commercial/opportunities/db";
 
 /**
  * Stage 1 of the Tomco write-back: linking a sale that exists in BOTH systems.
@@ -172,9 +173,22 @@ function sameCompany(a: string, b: string): boolean {
 /** Sold Command Center deals with no Salesforce link yet. */
 export async function listUnpairedSoldDeals(): Promise<SoldDeal[]> {
   const sb = adminClient();
+  /*
+   * The deal's NAME comes from `derivedOppName`, the same function every other
+   * surface uses — not a local `title_override || title`.
+   *
+   * `check:columns` caught the first version doing exactly that: reading
+   * `title_override` without `title_override_mode` means the nickname REPLACES
+   * the GC and the address instead of appending, which is the defect that hit
+   * ~50 surfaces before migration 170. A pairing screen showing a different
+   * name from the rest of the app would be worse here than elsewhere, because
+   * the name is what a person matches on.
+   */
   const { data: deals, error } = await sb
     .from("commercial_opportunities")
-    .select("id, title, title_override, status, sub_status, accepted_contract_cents, decided_at, account_id, deleted_at")
+    .select(
+      "id, title, title_override, title_override_mode, client_name, property_street, status, sub_status, accepted_contract_cents, decided_at, account_id, deleted_at",
+    )
     .in("status", SOLD_STATUSES as unknown as string[])
     .is("deleted_at", null);
   if (error) throw new Error(`sold deals: ${error.message}`);
@@ -213,7 +227,10 @@ export async function listUnpairedSoldDeals(): Promise<SoldDeal[]> {
     .filter((d) => !mapped.has(d.id as string))
     .map((d) => ({
       id: d.id as string,
-      title: (d.title_override as string) || (d.title as string),
+      title: derivedOppName(
+        d as unknown as Parameters<typeof derivedOppName>[0],
+        d.account_id ? names.get(d.account_id as string) ?? null : null,
+      ),
       accountName: d.account_id ? names.get(d.account_id as string) ?? null : null,
       contractCents: d.accepted_contract_cents as number | null,
       decidedAt: d.decided_at as string | null,
@@ -342,4 +359,149 @@ export async function pairDealToSalesforce(input: {
     };
   }
   return { ok: true, sfId: input.sfOpportunityId };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Resolving a hold.
+ *
+ * Two answers, and only one of them has somewhere natural to live. "Same job"
+ * writes `commercial_import_map`, which is already the link the importer reads.
+ * "It's new" had nowhere, so a cleared deal came back in the queue every run —
+ * and a queue that re-asks answered questions stops being read, which is how
+ * the one genuinely risky item gets skimmed past.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+const DECISIONS = "commercial_tomco_writeback_decisions";
+
+export type HeldDecision = {
+  opportunityId: string;
+  decision: "new" | "paired";
+  sfOpportunityId: string | null;
+  decidedAt: string;
+};
+
+/** Deals a person has already cleared, so the queue stops asking. */
+export async function listResolvedDeals(): Promise<Map<string, HeldDecision>> {
+  const sb = adminClient();
+  const { data, error } = await sb
+    .from(DECISIONS)
+    .select("opportunity_id, decision, sf_opportunity_id, decided_at, undone_at")
+    .is("undone_at", null);
+  if (error) {
+    /*
+     * A missing or unreadable decisions table must not make the queue claim
+     * everything is unresolved — that would re-ask every answered question and
+     * invite somebody to pair a deal twice. Fail loud instead of fail open.
+     */
+    throw new Error(
+      `Could not read the write-back decisions (${error.message}). ` +
+        `If this is a fresh environment, apply migration 20261014200000_tomco_writeback_decisions.sql.`,
+    );
+  }
+  return new Map(
+    (data ?? []).map((r) => [
+      r.opportunity_id as string,
+      {
+        opportunityId: r.opportunity_id as string,
+        decision: r.decision as "new" | "paired",
+        sfOpportunityId: (r.sf_opportunity_id as string | null) ?? null,
+        decidedAt: r.decided_at as string,
+      },
+    ]),
+  );
+}
+
+/**
+ * "None of these — it's a new sale." Records the judgement and what it was
+ * made against, so the decision stays reviewable after the candidate list has
+ * moved on. Writes nothing to Salesforce: the write-back inserts on its next
+ * run, through the normal path.
+ */
+export async function markDealAsNew(input: {
+  dealId: string;
+  actorUserId: string | null;
+  candidatesSeen: Array<{ sfId: string; name: string; score: number }>;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = adminClient();
+  const { error } = await sb.from(DECISIONS).upsert(
+    {
+      opportunity_id: input.dealId,
+      decision: "new",
+      sf_opportunity_id: null,
+      candidates_seen: input.candidatesSeen,
+      decided_by_user_id: input.actorUserId,
+      decided_at: new Date().toISOString(),
+      undone_at: null,
+      undone_by_user_id: null,
+    },
+    { onConflict: "opportunity_id" },
+  );
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** Note a pairing for the audit trail. The LINK is the import-map row. */
+export async function recordPairingDecision(input: {
+  dealId: string;
+  sfOpportunityId: string;
+  actorUserId: string | null;
+  candidatesSeen: Array<{ sfId: string; name: string; score: number }>;
+}): Promise<void> {
+  const sb = adminClient();
+  // Best-effort: the pairing itself already succeeded in both systems, so a
+  // failure to write the audit note must not report the pairing as failed.
+  const { error } = await sb.from(DECISIONS).upsert(
+    {
+      opportunity_id: input.dealId,
+      decision: "paired",
+      sf_opportunity_id: input.sfOpportunityId,
+      candidates_seen: input.candidatesSeen,
+      decided_by_user_id: input.actorUserId,
+      decided_at: new Date().toISOString(),
+      undone_at: null,
+      undone_by_user_id: null,
+    },
+    { onConflict: "opportunity_id" },
+  );
+  if (error) console.warn(`[tomco-pairing] audit note failed for ${input.dealId}: ${error.message}`);
+}
+
+/**
+ * Undo a decision.
+ *
+ * Somebody who clears a deal as new and then finds the twin needs to put it
+ * back in the queue without a DBA. For a PAIRED deal this also has to remove
+ * the import-map row, or the deal stays linked while the queue thinks it is
+ * unresolved — the two would disagree, which is worse than either state.
+ *
+ * It does NOT clear `UniqueExternalId__c` in Salesforce. That is a deliberate
+ * asymmetry: the field is harmless where it sits, re-pairing overwrites it, and
+ * a mistaken undo should not reach into the other system.
+ */
+export async function undoDecision(input: {
+  dealId: string;
+  actorUserId: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = adminClient();
+  const { data: row } = await sb
+    .from(DECISIONS)
+    .select("decision, sf_opportunity_id")
+    .eq("opportunity_id", input.dealId)
+    .is("undone_at", null)
+    .maybeSingle();
+
+  if (row?.decision === "paired" && row.sf_opportunity_id) {
+    const { error: mapErr } = await sb
+      .from("commercial_import_map")
+      .delete()
+      .eq("sf_id", row.sf_opportunity_id as string)
+      .eq("entity", "deal");
+    if (mapErr) return { ok: false, error: `Could not unlink it: ${mapErr.message}` };
+  }
+
+  const { error } = await sb
+    .from(DECISIONS)
+    .update({ undone_at: new Date().toISOString(), undone_by_user_id: input.actorUserId })
+    .eq("opportunity_id", input.dealId)
+    .is("undone_at", null);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
