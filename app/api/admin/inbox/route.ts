@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchReceivedEmail } from "@/lib/email/resend-receiving";
 import { createClient } from "@/lib/supabase/server";
 import { resolveViewer } from "@/lib/auth/viewer-server";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
       // body_html is selected only to derive has_html below — it is never
       // returned. A reply's HTML can be tens of kilobytes and the screen
       // needs one boolean from it, not the markup.
-      "id, kind, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, body_html, resend_message_id, received_at, read_at, archived_at"
+      "id, kind, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, body_html, raw_payload, resend_message_id, received_at, read_at, archived_at"
     )
     .order("received_at", { ascending: false })
     .limit(limit);
@@ -170,11 +171,53 @@ export async function GET(request: Request) {
       if (m) woNumberByOrderId.set(o.id as string, m[1]);
     }
   }
+  /**
+   * SELF-HEAL A MISSING BODY, HERE, WHEN SOMEBODY LOOKS AT IT.
+   *
+   * Resend's inbound webhook carries metadata only, so the body is fetched
+   * separately. When that call fails — as it did for six weeks, because the
+   * API key could send mail but not read received mail — the reply is stored
+   * correctly and arrives with no text.
+   *
+   * There was an admin endpoint to repair those in bulk, and Karan quite
+   * fairly asked why he had to run it. He shouldn't: a message that is
+   * missing its text knows exactly how to go and get it, and the moment
+   * somebody opens the Mail Hub is precisely when it is wanted. So the
+   * repair happens here and the bulk endpoint goes back to being what it is
+   * actually for — diagnosing, in one request, whether the key can read.
+   *
+   * Costs nothing in the normal case: no message is missing a body, so no
+   * fetch is made. Capped because a genuinely broken key would otherwise
+   * turn every page load into a row of doomed round trips.
+   */
+  const MAX_HEAL_PER_REQUEST = 5;
+  const needBody = (messages ?? [])
+    .filter((m) => !m.body_text && !m.body_html)
+    .slice(0, MAX_HEAL_PER_REQUEST);
+  if (needBody.length > 0) {
+    await Promise.all(
+      needBody.map(async (m) => {
+        const payload = (m.raw_payload ?? {}) as { data?: { email_id?: string } };
+        const emailId = payload.data?.email_id;
+        if (!emailId) return;
+        const fetched = await fetchReceivedEmail(emailId);
+        if (!fetched || (!fetched.text && !fetched.html)) return;
+        // Write it back so the next reader costs nothing, and show it now.
+        await sb
+          .from("inbox_messages")
+          .update({ body_text: fetched.text, body_html: fetched.html })
+          .eq("id", m.id);
+        (m as { body_text: string | null }).body_text = fetched.text;
+        (m as { body_html: string | null }).body_html = fetched.html;
+      })
+    );
+  }
+
   const withWoNumber = (messages ?? []).map((m) => {
     // Drop the markup, keep the fact. The screen says "HTML only" when a
     // reply has HTML and no text, and something honest when it has neither —
     // those are different states and it used to claim the first for both.
-    const { body_html, ...rest } = m as typeof m & { body_html?: string | null };
+    const { body_html, raw_payload, ...rest } = m as typeof m & { body_html?: string | null; raw_payload?: unknown };
     return {
       ...rest,
       has_html: Boolean(body_html),

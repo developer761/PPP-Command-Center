@@ -175,6 +175,6 @@ describe("an unreadable body is not an empty one", () => {
     // boolean from it.
     const s = strip2(read2("app/api/admin/inbox/route.ts"));
     expect(s).toMatch(/has_html: Boolean\(body_html\)/);
-    expect(s).toMatch(/const \{ body_html, \.\.\.rest \}/);
+    expect(s).toMatch(/const \{ body_html, raw_payload, \.\.\.rest \}/);
   });
 });

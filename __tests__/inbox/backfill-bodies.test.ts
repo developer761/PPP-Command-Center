@@ -68,3 +68,47 @@ describe("the backfill", () => {
     expect(r).toMatch(/fetch_failed/);
   });
 });
+
+/**
+ * Karan, shown the repair endpoint: "why do i have to do this".
+ *
+ * He shouldn't. A message missing its text knows how to go and get it, and
+ * the moment somebody opens Mail is exactly when it is wanted. So the Mail
+ * Hub heals itself and the bulk endpoint goes back to being a diagnostic.
+ */
+describe("the Mail Hub repairs a missing body by itself", () => {
+  const read2 = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const strip2 = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const api = () => strip2(read2("app/api/admin/inbox/route.ts"));
+
+  it("fetches the body when a message has none", () => {
+    const s = api();
+    expect(s).toMatch(/from "@\/lib\/email\/resend-receiving"/);
+    expect(s).toMatch(/!m\.body_text && !m\.body_html/);
+  });
+
+  it("writes it back, so the next reader costs nothing", () => {
+    expect(api()).toMatch(/\.update\(\{ body_text: fetched\.text, body_html: fetched\.html \}\)/);
+  });
+
+  it("does nothing at all when every message has a body", () => {
+    // The normal case must not pay for the broken one.
+    expect(api()).toMatch(/if \(needBody\.length > 0\)/);
+  });
+
+  it("caps the attempts per request", () => {
+    // A genuinely broken key would otherwise turn every page load into a
+    // row of doomed round trips.
+    const s = api();
+    expect(s).toMatch(/MAX_HEAL_PER_REQUEST = 5/);
+    expect(s).toMatch(/\.slice\(0, MAX_HEAL_PER_REQUEST\)/);
+  });
+
+  it("never ships raw_payload or body_html to the browser", () => {
+    // raw_payload is only selected to read the email_id out of it, and it
+    // holds the entire original webhook body.
+    const s = api();
+    expect(s).toMatch(/const \{ body_html, raw_payload, \.\.\.rest \}/);
+  });
+});
