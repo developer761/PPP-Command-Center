@@ -38,7 +38,12 @@ export type FinishSeedPolicy = {
 };
 
 export function finishSeedPolicy(input: {
-  /** Preview or internal entry — a PPP person, not the customer. */
+  /**
+   * Internal entry — a PPP person typing the colors in, not the customer.
+   *
+   * NOT preview. A preview is a PPP person looking at the customer's form,
+   * and autofilling finishes there would show them a form no customer gets.
+   */
   isStaffEntry: boolean;
   /** The prior payload belongs to THIS token, i.e. the customer's own answer. */
   hasOwnSubmission: boolean;

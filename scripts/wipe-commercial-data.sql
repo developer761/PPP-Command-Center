@@ -155,6 +155,14 @@ DELETE FROM public.commercial_competitors;
 --     exist, and UPDATEs ids that are gone instead of inserting the data.
 DELETE FROM public.commercial_import_map;
 
+-- 16. The Tomco write-back decisions. Each row says "a person checked this deal
+--     against Salesforce and decided". Every deal they refer to has just been
+--     deleted, so keeping them would let the review queue treat a FRESH deal
+--     that happens to reuse an id as already cleared — the one state that queue
+--     must never be wrong about, since being cleared is what lets a sale be
+--     written to Salesforce unattended.
+DELETE FROM public.commercial_tomco_writeback_decisions;
+
 COMMIT;
 
 -- ─── Proof, not a promise: every line below must read 0. ─────────────────────
@@ -177,6 +185,7 @@ UNION ALL SELECT 'signature requests', count(*) FROM public.commercial_signature
 UNION ALL SELECT 'signature events',   count(*) FROM public.commercial_signature_events
 UNION ALL SELECT 'commercial bells',   count(*) FROM public.notifications WHERE kind LIKE 'commercial\_%'
 UNION ALL SELECT 'SF import map',       count(*) FROM public.commercial_import_map
+UNION ALL SELECT 'writeback decisions', count(*) FROM public.commercial_tomco_writeback_decisions
 
 -- ─── And every line below must be NON-zero: the setup that had to survive. ──
 UNION ALL SELECT '— vendors KEPT',        count(*) FROM public.commercial_vendors
