@@ -180,21 +180,78 @@ describe("parseList takes addresses the way people paste them", () => {
   });
 });
 
-describe("both send paths use the combined list", () => {
-  it("the proposal email and the signature email both await proposalBccList", async () => {
-    // The signed contract matters as much as the proposal: an office copied on
-    // the offer but not on the executed version is worse off than one copied on
-    // neither. Asserted on the SEAM, with comments stripped so a docblock
-    // mentioning the helper cannot pass for a call to it.
+describe("nobody is both CC'd and BCC'd", () => {
+  /*
+   * THE BUG THIS REPLACES A WORSE TEST FOR.
+   *
+   * The first version of this block grepped the source for
+   * "await proposalBccList()" and passed — while the RESULT was being filtered
+   * against `ccEmail`, the comma-joined display string. With two CCs,
+   * `e !== "kim@x.com, mary@x.com"` is always true, so anyone both CC'd and on
+   * the copy list stayed in cc AND bcc. A source-text assertion cannot see a
+   * correctly-called function whose answer is then misused — exactly what
+   * AGENTS.md means by testing the artifact rather than the file.
+   *
+   * These assert on the COMPUTED recipient sets instead.
+   */
+  it("drops a CC'd address from the BCC when there are TWO CCs", async () => {
+    settingsRow = { value: ["stephanie@tomcopainting.com", "mary@tomcopainting.com"] };
+    const m = await load({ [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net" });
+    const cc = ["kim@tomcopainting.com", "mary@tomcopainting.com"];
+    const bcc = m.dropVisible(await m.proposalBccList(), "pm@acmegc.com", cc);
+    expect(bcc).not.toContain("mary@tomcopainting.com");
+    expect(bcc).toEqual(["brendan@tomcopainting.com", "developer@precisionpaintingplus.net", "stephanie@tomcopainting.com"]);
+    // The real defect, stated as an invariant: no overlap between cc and bcc.
+    expect(bcc.filter((e) => cc.includes(e))).toEqual([]);
+  });
+
+  it("drops Brendan when he is CC'd, even with no watchers configured", async () => {
+    // The live case on the day this was found: Brendan is CC'd on proposals by
+    // convention AND is on the standing copy list, so he was duplicated before
+    // the watcher feature was ever switched on.
+    const m = await load({ [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net" });
+    const bcc = m.dropVisible(await m.proposalBccList(), "pm@acmegc.com", [
+      "brendan@tomcopainting.com",
+      "pm2@acmegc.com",
+    ]);
+    expect(bcc).toEqual(["developer@precisionpaintingplus.net"]);
+  });
+
+  it("still works for one CC, and for none", async () => {
+    const m = await load({ [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net" });
+    const list = await m.proposalBccList();
+    expect(m.dropVisible(list, "pm@acmegc.com", ["brendan@tomcopainting.com"])).toEqual([
+      "developer@precisionpaintingplus.net",
+    ]);
+    expect(m.dropVisible(list, "pm@acmegc.com", [])).toEqual(list);
+  });
+
+  it("drops the TO address, and matches regardless of case or padding", async () => {
+    const m = await load({ [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net" });
+    const bcc = m.dropVisible(await m.proposalBccList(), " Brendan@TomcoPainting.com ", [
+      "  DEVELOPER@precisionpaintingplus.net  ",
+    ]);
+    expect(bcc).toEqual([]);
+  });
+
+  it("both send paths route their BCC through dropVisible", async () => {
+    // Kept as a seam check, but on the CALL rather than on a mention: the
+    // signature takes string[], so a mis-call no longer compiles, and this only
+    // has to prove the helper is on the path at all. Comments stripped so a
+    // docblock naming it cannot pass for using it.
     const { readFileSync } = await import("node:fs");
-    for (const f of [
-      "lib/commercial/proposals/email.ts",
-      "lib/commercial/esign/workflow.ts",
-    ]) {
+    for (const f of ["lib/commercial/proposals/email.ts", "lib/commercial/esign/workflow.ts"]) {
       const src = readFileSync(f, "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/^\s*\/\/.*$/gm, "");
       expect(src, `${f} should await the combined list`).toContain("await proposalBccList()");
     }
+    const proposalSrc = readFileSync("lib/commercial/proposals/email.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(proposalSrc).toContain("dropVisible(");
+    // And the thing that actually broke: the joined display string must not be
+    // what the BCC is filtered against.
+    expect(proposalSrc).not.toMatch(/filter\([^)]*!==\s*ccEmail/);
   });
 });

@@ -6,7 +6,7 @@ import { getProposal, sendProposal, type CommercialProposal } from "./db";
 import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
-import { PROPOSAL_COPY_EMAILS, proposalBccList } from "./copy-emails";
+import { PROPOSAL_COPY_EMAILS, dropVisible, proposalBccList } from "./copy-emails";
 import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
@@ -171,13 +171,28 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
     PROPOSAL_COPY_EMAILS.length > 0
       ? PROPOSAL_COPY_EMAILS
       : oc.email || input.actor_email || undefined;
-  // Don't BCC an address that's already the visible recipient/CC.
-  // proposalBccList() = the reply-to list PLUS the office watchers Stephanie
-  // asked for (2026-10-14) — see copy-emails.ts for why they are separate.
+  /*
+   * Don't BCC an address that is already the visible recipient or a CC.
+   *
+   * 🔴 COMPARE AGAINST `ccList`, NEVER `ccEmail`. `ccEmail` is the joined
+   * DISPLAY string ("kim@x.com, mary@x.com") kept for the audit note and the
+   * cc_email column. `e !== ccEmail` compares one address against the whole
+   * joined string, so it is always true the moment there are two CCs — and the
+   * person stays in `cc` AND `bcc`, which is how a provider decides to send
+   * two copies.
+   *
+   * It read correctly for a year because CC was a single address, so the
+   * comparison worked by luck; multi-CC (Stephanie, 2026-10-08) broke it
+   * silently. Brendan is CC'd on proposals by convention AND is on the BCC
+   * list, so this duplicated him with no watchers configured at all.
+   *
+   * proposalBccList() = the reply-to list PLUS the office watchers Stephanie
+   * asked for (2026-10-14) — see copy-emails.ts for why they are separate.
+   */
   const bcc = withArchiveBcc(
-    (await proposalBccList()).filter((e) => e !== toEmail && e !== ccEmail),
+    dropVisible(await proposalBccList(), toEmail, ccList),
     { opportunityId: proposal.opportunity_id, accountId: opp?.account_id },
-    [toEmail, ccEmail]
+    [toEmail, ...ccList]
   );
 
   const projectLabel =

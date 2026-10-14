@@ -227,11 +227,21 @@ try {
   const dupes = findNearMissDuplicates(
     live.map((r) => ({
       id: r.id,
-      // Category is part of the identity: the same money can legitimately sit
-      // under `labor` in one system and `employee_labor` in the other, so it is
-      // deliberately NOT in the key — but a $500 material and a $500 payout on
-      // one job in one week are not the same thing.
-      groupKey: `${r.opportunity_id}|${["labor", "employee_labor"].includes(r.category) ? "labor" : r.category}`,
+      /*
+       * CATEGORY IS NOT PART OF THE IDENTITY.
+       *
+       * The first version keyed on it, collapsing only labor/employee_labor,
+       * and missed a $2,593.96 Sunbelt Rentals charge that Salesforce files as
+       * `materials` and the app as `equipment`. Sunbelt rents equipment — it is
+       * one charge, filed into two buckets by two systems, exactly like
+       * labor/employee_labor.
+       *
+       * The category is how each system SORTED the money, not what the money
+       * IS. Checked against the live book before dropping it: cross-provenance
+       * pairs went 3 → 4 and the fourth is genuine, so it costs nothing. The
+       * payee, the exact cents and the 3-day window still all have to agree.
+       */
+      groupKey: r.opportunity_id,
       payee: r.vendor,
       amountCents: Number(r.amount_cents ?? 0),
       occurredAt: r.purchased_at,

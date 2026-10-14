@@ -331,7 +331,7 @@ async function dispatchCommercialNotification(input: {
      * not.
      */
     const pref = input.skipEmail
-      ? { email: null, lookupFailed: false }
+      ? { email: null, lookupFailed: false, optedOut: false }
       : await getEnabledNotifyEmail(input.recipientUserId);
     if (pref.lookupFailed) {
       // Visible, not silent. The bell below still lands, which is the half that
@@ -340,8 +340,18 @@ async function dispatchCommercialNotification(input: {
         `[notify] ${input.kind}: email skipped for ${input.recipientUserId} — preference unreadable, NOT treated as an opt-out`
       );
     }
-    const notifyEmail =
-      pref.email ?? (input.alwaysEmail && !pref.lookupFailed ? p.email ?? null : null);
+    if (pref.optedOut) {
+      // An explicit opt-out outranks `alwaysEmail`. This is the whole point of
+      // the flag: approval mail used to reach the one person who had turned
+      // email off, via the profile-address fallback below. The bell still
+      // lands, which is the half that must never be lost.
+      console.warn(
+        `[notify] ${input.kind}: email skipped for ${input.recipientUserId} — they have turned email notifications OFF`
+      );
+    }
+    const notifyEmail = pref.optedOut
+      ? null
+      : pref.email ?? (input.alwaysEmail && !pref.lookupFailed ? p.email ?? null : null);
     if (notifyEmail) {
       // List-Unsubscribe on every notification email. Stephanie 2026-08-17:
       // "half of them end up in spam/junk." Gmail and Outlook read a

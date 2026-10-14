@@ -1,77 +1,157 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * "Opted out" and "we could not tell" are different answers.
+ * FOUR answers, not three — and the fourth one was being mailed.
  *
- * `getEnabledNotifyEmail` destructured the query's `error` away and its catch
- * returned null, so a blip on `commercial_user_email_prefs` was
- * indistinguishable from a deliberate opt-out — and nothing logged. Four people
- * are opted in today (Brendan, Stephanie, Katie, developer@), so that silently
- * downgraded real users to bell-only for the duration of any wobble, with no
- * trace anywhere.
+ * This file used to assert three: an address, "no preference", and "we could
+ * not tell". That distinction was real and worth keeping; the problem is that
+ * "no preference" and "they turned it OFF" were the same answer, and the
+ * dispatcher's `alwaysEmail` fallback then mailed the profile address for both.
  *
- * The fix is NOT to fall back to the profile address on failure. One of the
- * five rows is an explicit `enabled = false`; emailing anyway on an unreadable
- * table would send unsolicited mail to the one person who asked not to receive
- * it. A missed notification is recoverable — that is not. So the email is
- * skipped, the failure is logged, and the BELL still lands.
+ * So for the three alwaysEmail kinds — approval_requested, approval_decided and
+ * proposal-signed-for-approvers — the one person in this table with
+ * `enabled = false` received approval mail anyway. She is an active admin and a
+ * proposal approver, so it was not a rare path.
  *
- * This is a source-shape test. The suite is deliberately DB-free, so it cannot
- * induce a real query error; what it can do is stop the three-way answer from
- * being collapsed back into two, which is the whole defect.
+ * The old version of this file could not have caught it: every assertion was a
+ * regex over the source, and one of them pinned the buggy line
+ * (`!row || row.enabled === false || !row.email`) as if it were correct, which
+ * made the bug load-bearing for a green suite. The tests below RUN the function
+ * against a mocked table instead, so they assert what it answers rather than
+ * how it is written.
  */
 
-const prefs = readFileSync(join(process.cwd(), "lib/notifications/email-prefs.ts"), "utf8");
-const events = readFileSync(join(process.cwd(), "lib/notifications/commercial-events.ts"), "utf8");
+let row: { email?: string; enabled?: boolean } | null = null;
+let queryError: string | null = null;
+let shouldThrow = false;
 
-describe("getEnabledNotifyEmail", () => {
-  it("returns whether the lookup failed, not just an address", () => {
-    expect(prefs).toContain("lookupFailed");
-    expect(prefs).toMatch(/Promise<\{\s*email: string \| null;\s*lookupFailed: boolean;?\s*\}>/);
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => {
+            if (shouldThrow) throw new Error("socket hang up");
+            return queryError
+              ? { data: null, error: { message: queryError } }
+              : { data: row, error: null };
+          },
+        }),
+      }),
+    }),
+  }),
+}));
+
+beforeEach(() => {
+  row = null;
+  queryError = null;
+  shouldThrow = false;
+  vi.resetModules();
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
+  process.env.SUPABASE_SECRET_KEY ??= "test-key";
+});
+
+const load = async () => (await import("@/lib/notifications/email-prefs")).getEnabledNotifyEmail;
+
+describe("getEnabledNotifyEmail answers four distinct questions", () => {
+  it("an opted-in address comes back", async () => {
+    row = { email: "brendan@tomcopainting.com", enabled: true };
+    expect(await (await load())("u1")).toEqual({
+      email: "brendan@tomcopainting.com",
+      lookupFailed: false,
+      optedOut: false,
+    });
   });
 
-  it("inspects the query error instead of discarding it", () => {
-    // THE REGRESSION: `const { data } = await sb…` with no `error`.
-    expect(prefs).toMatch(/const \{ data, error \} = await sb/);
-    expect(prefs).toMatch(/if \(error\)[\s\S]{0,200}lookupFailed: true/);
+  it("🔴 an explicit opt-out is flagged as such, NOT as an absent preference", async () => {
+    // The whole bug. `optedOut` has to be visible to the caller, because
+    // `email: null` alone is what `alwaysEmail` overrides.
+    row = { email: "k.sutton@precisionpaintingplus.net", enabled: false };
+    expect(await (await load())("u2")).toEqual({
+      email: null,
+      lookupFailed: false,
+      optedOut: true,
+    });
   });
 
-  it("treats a genuine opt-out as a decision, not a failure", () => {
-    // No row / disabled / no address must be `lookupFailed: false`, or every
-    // user without a preference looks like an outage.
-    expect(prefs).toMatch(/!row \|\| row\.enabled === false \|\| !row\.email\)\s*return \{ email: null, lookupFailed: false \}/);
+  it("no row at all means no preference expressed — alwaysEmail may still fill it", async () => {
+    row = null;
+    expect(await (await load())("u3")).toEqual({
+      email: null,
+      lookupFailed: false,
+      optedOut: false,
+    });
   });
 
-  it("says something when it cannot tell", () => {
-    // Silence is what made this survive.
-    expect(prefs).toContain("console.warn");
+  it("a row with no address is not an opt-out", async () => {
+    row = { enabled: true };
+    expect(await (await load())("u4")).toEqual({
+      email: null,
+      lookupFailed: false,
+      optedOut: false,
+    });
+  });
+
+  it("a query error is 'we could not tell', and never an opt-out", async () => {
+    queryError = "connection reset";
+    expect(await (await load())("u5")).toEqual({
+      email: null,
+      lookupFailed: true,
+      optedOut: false,
+    });
+  });
+
+  it("a thrown query is also 'we could not tell'", async () => {
+    shouldThrow = true;
+    expect(await (await load())("u6")).toEqual({
+      email: null,
+      lookupFailed: true,
+      optedOut: false,
+    });
   });
 });
 
-describe("the dispatcher's use of it", () => {
-  it("does not fall back to the profile address when the preference is unreadable", () => {
-    // `alwaysEmail` exists so an approver is never left with only a bell — it
-    // applies to someone with NO preference, not to someone whose preference we
-    // failed to read. Dropping that condition is how an opt-out gets mailed.
+/**
+ * The dispatcher's use of it. Still source-shape — driving `notifyCommercial`
+ * needs the whole bell/Slack/profile chain — but each assertion now pins the
+ * DECISION rather than an incidental line, and the opt-out one would have
+ * failed before the fix.
+ */
+const events = readFileSync(join(process.cwd(), "lib/notifications/commercial-events.ts"), "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
+const prefs = readFileSync(join(process.cwd(), "lib/notifications/email-prefs.ts"), "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
+
+describe("the dispatcher honours all four", () => {
+  it("an opt-out beats alwaysEmail", () => {
+    // THE REGRESSION: `pref.email ?? (alwaysEmail && !lookupFailed ? p.email …)`
+    // with no optedOut term reaches the profile address for someone who opted out.
+    expect(events).toMatch(/pref\.optedOut\s*\?\s*null/);
+  });
+
+  it("still does not fall back to the profile address when the preference is unreadable", () => {
     expect(events).toMatch(/input\.alwaysEmail && !pref\.lookupFailed/);
   });
 
-  it("logs the skip rather than swallowing it", () => {
-    expect(events).toMatch(/pref\.lookupFailed[\s\S]{0,300}console\.warn/);
+  it("logs both skips rather than swallowing them", () => {
     expect(events).toContain("NOT treated as an opt-out");
+    expect(events).toContain("turned email notifications OFF");
+  });
+
+  it("inspects the query error instead of discarding it", () => {
+    expect(prefs).toMatch(/const \{ data, error \} = await sb/);
   });
 
   it("still writes the bell when the email is skipped", () => {
-    // The bell row is inserted after this block unconditionally — a failed
-    // email preference must never cost the notification itself.
+    // A preference problem must never cost the notification itself.
     const i = events.indexOf("pref.lookupFailed");
     const j = events.indexOf('.from("notifications").insert(');
     expect(i).toBeGreaterThan(-1);
     expect(j).toBeGreaterThan(-1);
-    // The insert happens earlier in the function than the email block, so the
-    // bell is already written by the time any of this runs.
     expect(j).toBeLessThan(i);
   });
 });

@@ -112,6 +112,36 @@ export async function proposalBccList(): Promise<string[]> {
 }
 
 /**
+ * Which of the silent copies survive, once the people who can already SEE the
+ * message are removed.
+ *
+ * 🔴 THE SIGNATURE IS THE POINT. `visible` is `string[]`, never a string.
+ *
+ * `proposals/email.ts` keeps two things: `ccList` (the addresses) and `ccEmail`
+ * (those addresses joined with ", " for the audit note and the `cc_email`
+ * column). It filtered the BCC with `e !== ccEmail` — comparing ONE address
+ * against the whole joined string, which is always true as soon as there are
+ * two CCs. Anyone both CC'd and on the copy list stayed in `cc` AND `bcc`, and
+ * a repeated address is how a provider decides to send two copies. Brendan is
+ * CC'd on proposals by convention and is on the copy list, so it duplicated him
+ * with no watchers configured at all.
+ *
+ * It read fine for a year because CC was a single box, so the comparison
+ * worked by accident until multi-CC landed (Stephanie, 2026-10-08).
+ *
+ * `cc` is typed `string[]` and NOT `string | string[]`, deliberately. A
+ * permissive signature would still accept `ccEmail` and leave the bug
+ * reachable — the first version of this function did exactly that, and the
+ * "tsc now refuses it" claim was false until the type was narrowed. Now
+ * `dropVisible(list, to, ccEmail)` fails to compile.
+ */
+export function dropVisible(bcc: string[], to: string | null, cc: string[]): string[] {
+  const norm = (e: string) => e.trim().toLowerCase();
+  const seen = new Set([...(to ? [to] : []), ...cc].filter(Boolean).map(norm));
+  return bcc.filter((e) => !seen.has(norm(e)));
+}
+
+/**
  * Split the way addresses actually arrive — commas, semicolons, newlines or
  * plain spaces, because they get pasted out of Outlook and out of Slack.
  * Invalid fragments are dropped rather than passed to the mailer: one typo in a
