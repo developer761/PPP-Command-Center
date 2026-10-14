@@ -56,11 +56,31 @@ import { reportError, reportWarn } from "@/lib/observability";
  *   - Webhook secret: stored in RESEND_INBOUND_SECRET env var
  */
 
+/**
+ * Resend sends `from` as a STRING — "Acme <onboarding@resend.dev>" — and
+ * `to` as an array of strings. This type accepted only the nested
+ * `{ email, name }` shape, so `data.from?.email` was undefined on every real
+ * delivery, the handler hit its `no_from` guard and returned 200 with
+ * nothing stored.
+ *
+ * It returned 200, so Resend never retried and nothing ever alerted. Found
+ * 2026-10-14 from Kate's "I don't see the vendor's replies in the hub": the
+ * webhook had been answering 200 to every delivery and dropping all of them.
+ * The one message in the table arrived on 2026-09-03, which is the last time
+ * the payload matched this type.
+ *
+ * Both shapes are accepted now rather than swapping one guess for another —
+ * the September row proves the nested form existed at least once, and a
+ * webhook that silently discards mail is not something to be clever about.
+ */
+type ResendAddress = string | { email?: string; name?: string };
+
 type ResendInboundPayload = {
   type?: string;
   data?: {
-    from?: { email?: string; name?: string };
-    to?: Array<{ email?: string; name?: string }> | string[];
+    email_id?: string;
+    from?: ResendAddress;
+    to?: ResendAddress[];
     subject?: string;
     text?: string;
     html?: string;
@@ -70,6 +90,94 @@ type ResendInboundPayload = {
     created_at?: string;
   };
 };
+
+/**
+ * "Acme <onboarding@resend.dev>" → { email, name }, and the nested
+ * `{ email, name }` form straight through.
+ *
+ * A bare "a@b.com" with no display name is the other common shape, so the
+ * angle brackets are optional.
+ */
+export function parseAddress(v: unknown): { email: string | null; name: string | null } {
+  if (!v) return { email: null, name: null };
+  if (typeof v === "object") {
+    const o = v as { email?: unknown; name?: unknown };
+    return {
+      email: typeof o.email === "string" && o.email.trim() ? o.email.trim() : null,
+      name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : null,
+    };
+  }
+  if (typeof v !== "string") return { email: null, name: null };
+  const s = v.trim();
+  const angled = s.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (angled) {
+    const name = angled[1].replace(/^["']|["']$/g, "").trim();
+    return { email: angled[2].trim() || null, name: name || null };
+  }
+  return { email: s.includes("@") ? s : null, name: null };
+}
+
+/**
+ * Fetch the parts the webhook deliberately leaves out.
+ *
+ * Resend's docs are explicit: "webhooks do not include the email body,
+ * headers, or attachments, only their metadata." So the text we store in the
+ * Mail Hub, and the In-Reply-To we thread on, both have to be pulled back.
+ *
+ *   GET https://api.resend.com/emails/receiving/{id}
+ *
+ * Soft. If the key is missing or the call fails we keep whatever the payload
+ * carried and let the SUBJECT matcher thread it — a reply filed against the
+ * right order with an empty body beats no reply at all. Never throws.
+ */
+async function fetchReceivedEmail(emailId: string | null | undefined): Promise<{
+  text: string | null;
+  html: string | null;
+  headers: Record<string, string> | null;
+  messageId: string | null;
+} | null> {
+  if (!emailId) return null;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    reportWarn({
+      key: "resend_inbound_no_api_key",
+      message: "RESEND_API_KEY not set — inbound replies will store without a body",
+      platform: "shared",
+    });
+    return null;
+  }
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      reportWarn({
+        key: "resend_inbound_fetch_failed",
+        message: `Could not fetch inbound email ${emailId}: HTTP ${res.status}`,
+        platform: "shared",
+      });
+      return null;
+    }
+    const j = (await res.json()) as {
+      text?: string; html?: string;
+      headers?: Record<string, string>; message_id?: string;
+    };
+    return {
+      text: typeof j.text === "string" ? j.text : null,
+      html: typeof j.html === "string" ? j.html : null,
+      headers: j.headers ?? null,
+      messageId: typeof j.message_id === "string" ? j.message_id : null,
+    };
+  } catch (err) {
+    reportWarn({
+      key: "resend_inbound_fetch_threw",
+      message: `Fetching inbound email ${emailId} threw: ${err instanceof Error ? err.message : String(err)}`,
+      platform: "shared",
+    });
+    return null;
+  }
+}
 
 function adminClient() {
   return createSupabaseAdminClient(
@@ -228,19 +336,27 @@ export async function POST(request: Request) {
   // AND archived still lands in inbox_messages. The two storage paths
   // are independent on purpose.
 
-  const fromEmail = data.from?.email ?? null;
+  const parsedFrom = parseAddress(data.from);
+  const fromEmail = parsedFrom.email;
   if (!fromEmail) {
+    // Still possible — a malformed From really does exist — but now it means
+    // what it says instead of catching every well-formed delivery.
+    reportError({
+      key: "resend_inbound_no_from",
+      message: `Inbound webhook carried no usable From address: ${JSON.stringify(data.from ?? null).slice(0, 200)}`,
+      platform: "shared",
+    });
     return NextResponse.json({ ok: true, ignored: "no_from" });
   }
-  const fromName = data.from?.name ?? null;
-  const toEmail = Array.isArray(data.to)
-    ? typeof data.to[0] === "string"
-      ? (data.to[0] as string)
-      : (data.to[0] as { email?: string })?.email ?? null
-    : null;
+  const fromName = parsedFrom.name;
+  const toEmail = Array.isArray(data.to) ? parseAddress(data.to[0]).email : null;
   const subject = data.subject ?? null;
-  const bodyText = data.text ?? null;
-  const bodyHtml = data.html ?? null;
+  // The webhook carries metadata only, so the body and headers are pulled
+  // back by id. Falls through to whatever the payload had if that fails.
+  const fetched = data.text || data.html ? null : await fetchReceivedEmail(data.email_id);
+  const bodyText = data.text ?? fetched?.text ?? null;
+  const bodyHtml = data.html ?? fetched?.html ?? null;
+  const allHeaders = data.headers ?? fetched?.headers ?? null;
   // Dedup key for inbox_messages.resend_message_id (UNIQUE). A NULL never
   // collides in a Postgres UNIQUE index, so relying on data.message_id alone
   // means any inbound email lacking a message_id inserts a fresh DUPLICATE row
@@ -251,11 +367,19 @@ export async function POST(request: Request) {
   const svixId = headers.get("svix-id");
   const messageId =
     data.message_id ??
+    fetched?.messageId ??
     (svixId ? `svix:${svixId}` :
       `hash:${createHmac("sha256", "inbound-dedup")
         .update(`${fromEmail}|${subject ?? ""}|${data.created_at ?? ""}|${(bodyText ?? "").slice(0, 500)}`)
         .digest("hex").slice(0, 40)}`);
-  const inReplyTo = data.in_reply_to ?? data.headers?.["in-reply-to"] ?? null;
+  // Header names are case-insensitive on the wire; Resend returns them as
+  // sent, so a provider using "In-Reply-To" would otherwise miss.
+  const headerLookup = (name: string): string | null => {
+    if (!allHeaders) return null;
+    const hit = Object.entries(allHeaders).find(([k]) => k.toLowerCase() === name);
+    return hit ? String(hit[1]) : null;
+  };
+  const inReplyTo = data.in_reply_to ?? headerLookup("in-reply-to") ?? null;
 
   const sb = adminClient();
 
