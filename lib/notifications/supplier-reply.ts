@@ -37,6 +37,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
+import { splitQuotedReply } from "@/lib/email/quoted-reply";
 
 function adminClient() {
   return createClient(
@@ -62,28 +63,14 @@ export type SupplierReplyInput = {
  * What the vendor actually wrote, with the thread they were replying to left
  * behind.
  *
- * CUTS AT THE ATTRIBUTION LINE rather than filtering it out. The first
- * version dropped any line matching "On ... wrote:" and carried on, which
- * failed twice over on the first real message:
- *
- *   - it capped the middle at 80 characters, and a genuine attribution,
- *     "On Wed, Oct 14, 2026 at 11:22 AM PPP Support <support@...> wrote:",
- *     is longer than that, so the line survived the filter;
- *   - Gmail wraps that line, so the "wrote:" it anchored on is frequently
- *     not on the same line as the "On" anyway.
- *
- * Kate's reply previewed as her own sentence followed by the header of the
- * email she was answering. Everything below an attribution is quoted
- * history, so the honest operation is to stop there rather than drop one
- * line and keep reading.
+ * The cut itself lives in `splitQuotedReply` because the Mail Hub thread
+ * needs exactly the same one — it opens on the reply and folds the quoted
+ * order away. Two copies of this rule would drift, and the preview and the
+ * thread disagreeing about where a message ends is its own bug.
  */
 export function replyPreview(bodyText: string | null | undefined, max = 180): string {
-  const raw = (bodyText ?? "").replace(/\r\n/g, "\n");
-  const cutAt = raw.search(
-    /\n?\s*On\s[\s\S]{0,200}?wrote:|\n\s*-{2,}\s*Original Message\s*-{2,}|\n\s*_{5,}/i
-  );
-  const kept = cutAt >= 0 ? raw.slice(0, cutAt) : raw;
-  const lines = kept
+  const { reply } = splitQuotedReply(bodyText);
+  const lines = reply
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith(">"));

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMonthDay } from "@/lib/format";
 import { FILTER_SEL, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
+import { splitQuotedReply } from "@/lib/email/quoted-reply";
 
 /**
  * Inbox list + thread viewer. Filters by kind (All / Customer / Supplier /
@@ -720,6 +721,50 @@ function TabButton({
   );
 }
 
+/**
+ * A reply, with the order it was replying to folded away.
+ *
+ * Kate's first vendor reply is nine words. Underneath them sat the sixty
+ * lines of paint we had emailed her an hour earlier, quoted back — so the
+ * thread opened on our own order and she had to scroll to find the answer.
+ * The reply is the only part that is new, so it is the only part shown.
+ *
+ * The quote is kept, not dropped: a vendor who edits a line inside the quote
+ * ("2 gal — out of stock until Thursday") has put the answer there, and
+ * throwing it away to tidy the screen would lose it.
+ *
+ * Nothing above the attribution means the whole message IS down there — then
+ * there is nothing to fold, and it all renders.
+ */
+function MessageBody({ text }: { text: string }) {
+  const [showQuoted, setShowQuoted] = useState(false);
+  const { reply, quoted } = splitQuotedReply(text);
+  const pre = "text-xs text-ppp-charcoal whitespace-pre-wrap font-sans leading-relaxed";
+
+  if (!reply.trim() || !quoted.trim()) {
+    return <pre className={pre}>{text}</pre>;
+  }
+
+  return (
+    <>
+      <pre className={pre}>{reply.trimEnd()}</pre>
+      <button
+        type="button"
+        onClick={() => setShowQuoted((v) => !v)}
+        aria-expanded={showQuoted}
+        className="mt-2 px-3 py-2 sm:py-1 rounded border border-ppp-charcoal-100 bg-ppp-charcoal-50 text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
+      >
+        {showQuoted ? "Hide quoted text" : "Show quoted text"}
+      </button>
+      {showQuoted && (
+        <pre className={`${pre} mt-2 pl-3 border-l-2 border-ppp-charcoal-100 text-ppp-charcoal-500`}>
+          {quoted.trim()}
+        </pre>
+      )}
+    </>
+  );
+}
+
 function MessageRow({
   message,
   expanded,
@@ -780,9 +825,7 @@ function MessageRow({
             )}
           </div>
           {message.body_text ? (
-            <pre className="text-xs text-ppp-charcoal whitespace-pre-wrap font-sans leading-relaxed">
-              {message.body_text}
-            </pre>
+            <MessageBody text={message.body_text} />
           ) : (
             /**
              * Two different states, and saying the wrong one is worse than
