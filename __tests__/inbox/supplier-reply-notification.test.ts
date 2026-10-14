@@ -32,6 +32,38 @@ describe("the preview line", () => {
     expect(replyPreview(body)).toBe("Confirmed for Friday.");
   });
 
+  it("drops a REAL attribution, which is longer than the first rule allowed", () => {
+    // Verbatim from Kate's 2026-10-14 reply, which previewed as her sentence
+    // followed by the header of the mail she was answering. The old rule
+    // capped the middle at 80 chars; a real one with an address is longer.
+    const body =
+      'Hitting "reply" not "reply all" as a test. I am the vendor\n\n' +
+      "On Wed, Oct 14, 2026 at 11:22 AM PPP Support <support@precisionpaintingplus.net> wrote:\n" +
+      "> 2 gal — Ultra Spec INT — HC-172 Revere Pewter";
+    expect(replyPreview(body)).toBe('Hitting "reply" not "reply all" as a test. I am the vendor');
+  });
+
+  it("drops an attribution Gmail has WRAPPED across lines", () => {
+    // "wrote:" is routinely not on the same line as the "On", which the
+    // line-by-line rule could never have matched.
+    const body =
+      "Confirmed, shipping Friday.\n\n" +
+      "On Wed, Oct 14, 2026 at 11:22 AM Precision Painting Plus\n" +
+      "<support@precisionpaintingplus.net>\nwrote:\n> the order";
+    expect(replyPreview(body)).toBe("Confirmed, shipping Friday.");
+  });
+
+  it("drops Outlook's separator too", () => {
+    expect(replyPreview("We have it in stock.\n\n-----Original Message-----\nFrom: PPP"))
+      .toBe("We have it in stock.");
+  });
+
+  it("keeps a reply that merely contains the word 'on'", () => {
+    // The cut must not fire on ordinary prose.
+    expect(replyPreview("On Friday we can deliver the Revere Pewter."))
+      .toBe("On Friday we can deliver the Revere Pewter.");
+  });
+
   it("truncates rather than pasting a whole email into a bell row", () => {
     expect(replyPreview("x".repeat(400)).length).toBeLessThanOrEqual(180);
     expect(replyPreview("x".repeat(400))).toMatch(/…$/);
