@@ -11,6 +11,10 @@ type KindMeta = { label: string; category: NotificationCategory };
 const KIND_META: Record<string, KindMeta> = {
   // Residential Command Center
   customer_form_submitted: { label: "Colors submitted", category: "success" },
+  // A vendor answered a materials order. "warning" rather than "info": it is
+  // usually a question — out of stock, a substitution, a delivery date — and
+  // the order is not finished until somebody answers it.
+  supplier_reply: { label: "Vendor replied", category: "warning" },
   // Commercial — team
   commercial_account_team_added: { label: "Added to a GC team", category: "info" },
   commercial_opportunity_team_added: { label: "Added to a deal team", category: "info" },

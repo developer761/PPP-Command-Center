@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { notifySupplierReply } from "@/lib/notifications/supplier-reply";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import type {
@@ -388,6 +389,27 @@ export async function POST(request: Request) {
       received_at: data.created_at ?? new Date().toISOString(),
       raw_payload: payload as unknown as Record<string, unknown>,
     });
+
+  /**
+   * Kate 2026-10-14 asked how the guys see vendor replies. They threaded
+   * correctly and nothing announced them — the only signal was an unread
+   * count visible once you were already in Mail.
+   *
+   * AFTER the insert, and only for a reply we actually placed against an
+   * order. Deliberately not awaited into the response: this webhook must
+   * return 200 once the message is stored, or Resend retries and the same
+   * reply lands twice. notifySupplierReply never throws.
+   */
+  if (!insertErr && kind === "supplier_reply" && linkedOrderId) {
+    void notifySupplierReply({
+      orderId: linkedOrderId,
+      workOrderId: linkedWorkOrderId,
+      fromEmail: fromEmail.toLowerCase(),
+      fromName,
+      subject,
+      bodyText,
+    });
+  }
 
   if (insertErr) {
     // UNIQUE violation on resend_message_id = duplicate ingest (Resend
