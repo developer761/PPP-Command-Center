@@ -363,9 +363,24 @@ function formatEditDeadline(
 }
 
 export default function CustomerFormView({ token, customerName, formData, copy, isEditing = false, priorSubmission = null, hasOwnSubmission = false, isPreview = false, isInternal = false, colorDeadline = null }: Props) {
-  // Staff-facing entry (preview OR internal): shows the product-line picker and
-  // hides customer-only chrome. Only "internal" actually saves.
-  const isStaffEntry = isPreview || isInternal;
+  /**
+   * A PPP person is FILLING THIS IN — not looking at what the customer sees.
+   * Shows the product-line picker, autofills finishes, and skips the chrome
+   * written for a homeowner.
+   *
+   * PREVIEW IS NOT THIS, though it used to be. `isPreview || isInternal` made
+   * the one tool built to check the customer's form show something else: no
+   * "Confirm my selections" step, surface pickers still on a multi-room line,
+   * finishes autofilled, and the liability and deadline notices missing —
+   * three of those being things Kate asked for and none of them visible to
+   * the person checking. Opening the preview on 2026-10-14 submitted straight
+   * to "Got it — thanks!", skipping the affirmation entirely.
+   *
+   * Preview means: see exactly what the customer sees, save nothing. Saving
+   * is gated separately on `isPreview` (the autosave and submit both no-op),
+   * so presentation can follow the customer path without risking a write.
+   */
+  const isStaffEntry = isInternal;
   const editDeadline = formatEditDeadline(formData.scheduledStart, colorDeadline);
   // Kate 2026-09-04 — one shared function with the email, so the two can never
   // state different deadlines to the same customer.
