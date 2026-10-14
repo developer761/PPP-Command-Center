@@ -739,27 +739,72 @@ What makes it reachable is the write-back itself: approving a change order runs
 Opportunity is the one state the index cannot survive. **Fix it before §2d
 ships, not before §2a.**
 
-## 2f. ⚠️ THE ASSUMPTION THIS PLAN RESTS ON IS UNVERIFIED
+## 2f. ✅ SETTLED BY ONE SANDBOX WRITE — 2026-10-14
 
-§0⁻ asserts that a synced Quote makes `Opportunity_WorkOrderWhenClosedWon`
-create the WorkOrder, its line items and the `Payment_Term__c` rows. The data
-does not support it:
+**Stage 0 ran.** `scripts/tomco-writeback-stage0.mjs --apply`, against
+`precisionplus--dev.sandbox.my.salesforce.com`, as
+`katie@precisionpaintingplus.com.dev`. One Opportunity + Quote + QuoteLineItem,
+quote approved then synced, read back after 8 seconds. Records left in place for
+inspection: Opportunity `006Em00000uCH3HIAW`.
 
-- **All 100 Tomco work orders were created by a person** — Mary 69, Brendan 23,
-  Katie 4, Kate 4. None by the integration or by a flow.
-- **Zero `Payment_Term__c` rows exist** on any Tomco work order.
-- **85 Tomco opportunities already carry `SyncedQuoteId`** — so the condition has
-  been met 85 times and produced none of it.
+| Question | Answer |
+|---|---|
+| Does the money chain work end to end? | ✅ **Yes.** $12,345.67 went in on `PriceOverrideAmount__c` and came out on `Opportunity.Quote_Subtotal__c`, through all four hops unchanged |
+| Does the flow create the WorkOrder? | ✅ **YES — one, `00264207`, status Coordination.** The assumption HOLDS |
+| Are `Payment_Term__c` rows created? | ❌ No — zero. That half of the assumption is wrong, and harmless: Tomco has none in production either |
+| Does the CO-inclusive total populate? | ✅ **Yes, $12,345.67** — because the WorkOrder exists. §2⁰ predicted NULL; that prediction was wrong in the better direction |
+| Quota points written? | ✅ **Zero.** Katie's exclusion holds |
+| Email sent to anyone? | ✅ **None.** Katie's exclusion holds |
+| `Corporate_Name__c` | 🔴 **"PPP of SW LI LLC", not "Tomco Painting"** — see below |
 
-Either the flow excludes Tomco, or it has never fired for them. Flow bodies
-return `INSUFFICIENT_ACCESS`, so this cannot be settled by reading.
+**What this unblocks.** The WorkOrder is created, so `ChangeOrder__c.WorkOrder__c`
+has the parent it requires, and §2d can be built. The CO-inclusive figure Katie
+asked for will populate rather than coming out blank. Both of those were open.
 
-**It must be settled by one sandbox write before anything else is designed on
-top of it**, because three separate conclusions depend on the answer: whether
-the money rollup (§2⁰) ever runs, whether a change order has a WorkOrder to
-attach to (`ChangeOrder__c.WorkOrder__c` is required and create-only, and this
-user **cannot** create a Tomco WorkOrder — the record type is unavailable), and
-whether the customer-contact flows fire at all.
+### 2f¹. The one that came back wrong, and why it is NOT a defect
+
+`Corporate_Name__c` decides whether the record exists at all — every Tomco query
+in Command Center and in `import-tomco.mjs:61` filters on it — so a sale
+stamped with the wrong one is invisible to both systems. It came back
+`PPP of SW LI LLC`.
+
+Measured in both orgs before concluding anything:
+
+```
+PRODUCTION   Brendan Tomco owns 191 opportunities → "Tomco Painting"   191 of 191
+SANDBOX      Brendan Tomco owns  29 opportunities → "PPP of SW LI LLC"  29 of 29
+             "Tomco Painting" appears on ZERO sandbox records
+```
+
+The owner→corporate mapping that yields "Tomco Painting" **does not exist in the
+sandbox at all**. Brendan's sandbox user carries the right role (`Tomco`) and
+profile (`*Tomco`), so this is stale sandbox configuration rather than anything
+our write controls — in production the identical write maps to Tomco Painting,
+consistently, on every one of 191 records.
+
+**Two consequences, both of which change how the remaining stages are run:**
+
+1. **The sandbox cannot validate this field.** Every Stage 1–4 rehearsal will
+   produce records invisible to Tomco queries over there, and that is expected,
+   not a failure. Do not spend time "fixing" it in the sandbox.
+2. **The production read-back in §2a³ is therefore load-bearing, not
+   belt-and-braces.** It is the only place this can actually be verified. Read
+   `Corporate_Name__c` back after every production write and fail loudly if it
+   is not `Tomco Painting`.
+
+Worth one line to Katie: the sandbox's corporate-name mapping is stale, which
+costs nothing today but means no sandbox rehearsal can prove this particular
+field.
+
+### 2f². And a caveat about who the sandbox tests as
+
+The stored sandbox login authenticates as **`katie@precisionpaintingplus.com.dev`**,
+not Karan. That is the better identity to rehearse through — but it is still not
+proof for §2a¹'s close-date rule, because whether THAT user holds `Admin_Bypass`
+in the sandbox has not been checked. The probe set `CloseDate` on an INSERT,
+which the rule permits regardless; the rejection only appears on a later UPDATE
+of an already-won deal. Stage 2 is where that gets tested, and it must be run
+as a user confirmed not to hold the bypass.
 
 ## 3. Never write money derived from an invoice
 
@@ -923,10 +968,10 @@ depositing in her queue.
 
 ### 🔴 Blocking, ours to settle in the sandbox (no one to wait for)
 
-1. **§2f: does a synced Quote actually create the WorkOrder?** One sandbox write
-   settles it. Three conclusions hang off the answer: whether the money rollup
-   (§2⁰) ever runs, whether a change order has a WorkOrder to attach to, and
-   whether the customer flows fire. **Nothing else should be built first.**
+1. ✅ **§2f is answered** — the sandbox write ran on 2026-10-14. The flow does
+   create the WorkOrder, the money chain works, and both exclusions hold.
+   Nothing is blocked on it any more. The next thing to build is the Stage 1
+   pairing screen.
 2. **Open the four flows in Setup** — `Quote.ErrorWhenOpportunityClosed`,
    `ChangeOrder:AllowOnlyAuthorizedUsers`, `Opportunity.Hatch Campaign Initial
    Trigger`, `WorkOrder.SendLetsGetStartedEmail`. All four return
@@ -1021,28 +1066,17 @@ cases."*
 Each stage below has an **exit test that can fail**. A stage is not done because
 the code ran; it is done because the test came back with the number it should.
 
-### Stage 0 — settle §2f. One write. Sandbox.
+### Stage 0 — ✅ DONE, 2026-10-14. Results in §2f.
 
-The only thing built is a throwaway script. Create one Opportunity + Quote +
-QuoteLineItem in the sandbox against a Tomco record type, approve the quote,
-sync it, then read back:
+Ran `scripts/tomco-writeback-stage0.mjs --apply` against the sandbox. The money
+chain works end to end, the flow DOES create the WorkOrder (so §2d has its
+parent and the CO-inclusive total populates), and both of Katie's exclusions
+hold — zero quota points, no email. The only check that failed,
+`Corporate_Name__c`, is a stale sandbox mapping rather than a defect: in
+production Brendan's 191 opportunities all carry "Tomco Painting" and the
+sandbox has the string on no record at all.
 
-```
-Opportunity.Quote_Subtotal__c   == the PriceOverrideAmount__c we sent   ← §2⁰ chain
-Opportunity.Corporate_Name__c   == 'Tomco Painting'                     ← §2a³
-WorkOrder  WHERE Opportunity__c = <it>   → how many?                    ← §2f
-Payment_Term__c rows                     → how many?                    ← §2f
-QuotaPoints__c rows for the owner        → must be ZERO                 ← Katie's exclusion
-EmailMessage / activity on the Account   → must be NONE                 ← the email exclusion
-```
-
-**If the WorkOrder count is 0**, §2d's change-order path has no parent to attach
-to and the CO half of this feature stops here pending a decision. **If it is 1**,
-everything downstream is unblocked. Either answer is progress; not knowing is
-the only unacceptable state, and three sections of this plan are currently
-guesses resting on it.
-
-🔴 Run this as a user **without `Admin_Bypass`**. As Karan it proves nothing.
+Re-runnable, and it cleans up after itself with `--cleanup`.
 
 ### Stage 1 — the pairing screen. Our side only. No Salesforce writes.
 
