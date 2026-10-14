@@ -227,16 +227,72 @@ try {
   const dupes = findNearMissDuplicates(
     live.map((r) => ({
       id: r.id,
-      // Category is part of the identity: the same money can legitimately sit
-      // under `labor` in one system and `employee_labor` in the other, so it is
-      // deliberately NOT in the key — but a $500 material and a $500 payout on
-      // one job in one week are not the same thing.
-      groupKey: `${r.opportunity_id}|${["labor", "employee_labor"].includes(r.category) ? "labor" : r.category}`,
+      /*
+       * CATEGORY IS NOT PART OF THE IDENTITY.
+       *
+       * The first version keyed on it, collapsing only labor/employee_labor,
+       * and missed a $2,593.96 Sunbelt Rentals charge that Salesforce files as
+       * `materials` and the app as `equipment`. Sunbelt rents equipment — it is
+       * one charge, filed into two buckets by two systems, exactly like
+       * labor/employee_labor.
+       *
+       * The category is how each system SORTED the money, not what the money
+       * IS. Checked against the live book before dropping it: cross-provenance
+       * pairs went 3 → 4 and the fourth is genuine, so it costs nothing. The
+       * payee, the exact cents and the 3-day window still all have to agree.
+       */
+      groupKey: r.opportunity_id,
       payee: r.vendor,
       amountCents: Number(r.amount_cents ?? 0),
       occurredAt: r.purchased_at,
       imported: importedIds.has(r.id),
     })),
+  );
+
+  /*
+   * ── A DELETED PARENT TAKES ITS MONEY WITH IT ──────────────────────────────
+   *
+   * Two child tables have NO `deleted_at` of their own, so a soft-deleted
+   * parent leaves its children live and countable:
+   *
+   *   commercial_invoice_payments   26 live rows, $824,577.29, under 11
+   *                                 soft-deleted invoices
+   *   commercial_aia_line_items      5 live rows,  $97,850.85, under 4
+   *                                 soft-deleted applications
+   *
+   * Every reader filters the parent today — traced all five cash aggregators
+   * and both AIA rollups on 2026-10-14 — so none of that money is counted.
+   * What was missing is any check that keeps it that way. The invoice half has
+   * already been a live bug once (deleted invoices' payments counting toward
+   * cash), the trigger that maintains `paid_cents` has no `deleted_at`
+   * awareness so it keeps those figures warm, and one new `SUM(paid_cents)`
+   * written without the filter re-introduces it instantly.
+   *
+   * Asserted on the SURFACE rather than on the queries: a soft-deleted parent
+   * must not appear in the receivables report at all. That is true however the
+   * filtering is implemented, and false the moment somebody drops it.
+   */
+  const deletedInvoices = (
+    await pageAll("commercial_invoices", "id,invoice_number,deleted_at", ["id"])
+  ).filter((r) => r.deleted_at);
+  const deletedApps = (
+    await pageAll("commercial_aia_applications", "id,application_number,deleted_at", ["id"])
+  ).filter((r) => r.deleted_at);
+  const reportedIds = new Set(rec.rows.map((r) => r.sourceId ?? r.id).filter(Boolean));
+  const leakedInvoices = deletedInvoices.filter((i) => reportedIds.has(i.id));
+  const leakedApps = deletedApps.filter((a) => reportedIds.has(a.id));
+
+  check(
+    "there are soft-deleted parents to test the guard against",
+    deletedInvoices.length > 0 || deletedApps.length > 0,
+    `${deletedInvoices.length} deleted invoice(s), ${deletedApps.length} deleted application(s)`,
+  );
+  check(
+    "no soft-deleted invoice or application reaches the receivables report",
+    leakedInvoices.length === 0 && leakedApps.length === 0,
+    leakedInvoices.length || leakedApps.length
+      ? `LEAKED: ${[...leakedInvoices.map((i) => i.invoice_number), ...leakedApps.map((a) => `AIA #${a.application_number}`)].join(", ")}`
+      : `${deletedInvoices.length + deletedApps.length} deleted parent(s), none counted`,
   );
 
   check(

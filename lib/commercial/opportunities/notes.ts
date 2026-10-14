@@ -371,8 +371,11 @@ export async function addOpportunityNote(
       }
 
       // Team fanout — exclude already-notified mention recipients so
-      // each user gets exactly one notification per note.
+      // each user gets exactly one notification per note, and skip the Slack
+      // post when the mention variant above has already announced it: one note
+      // is one event, and the channel was getting two lines for it.
       await insertCommercialOppNoteAddedNotifications({
+        skipSlack: mentionedResolved.length > 0,
         opportunityId: input.opportunity_id,
         noteId: note.id,
         oppTitle: displayName,

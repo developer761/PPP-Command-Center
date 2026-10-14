@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtMonthDay } from "@/lib/format";
 import { FILTER_SEL, FILTER_GROUP_DATE } from "@/lib/ui/filter-chrome";
+import { splitQuotedReply } from "@/lib/email/quoted-reply";
 
 /**
  * Inbox list + thread viewer. Filters by kind (All / Customer / Supplier /
@@ -28,6 +29,9 @@ type InboxMessage = {
   from_name: string | null;
   subject: string | null;
   body_text: string | null;
+  /** Whether an HTML body exists. The markup itself is never sent — the
+   *  screen only needs to tell "HTML only" from "we have nothing". */
+  has_html?: boolean;
   received_at: string;
   read_at: string | null;
   archived_at: string | null;
@@ -717,6 +721,50 @@ function TabButton({
   );
 }
 
+/**
+ * A reply, with the order it was replying to folded away.
+ *
+ * Kate's first vendor reply is nine words. Underneath them sat the sixty
+ * lines of paint we had emailed her an hour earlier, quoted back — so the
+ * thread opened on our own order and she had to scroll to find the answer.
+ * The reply is the only part that is new, so it is the only part shown.
+ *
+ * The quote is kept, not dropped: a vendor who edits a line inside the quote
+ * ("2 gal — out of stock until Thursday") has put the answer there, and
+ * throwing it away to tidy the screen would lose it.
+ *
+ * Nothing above the attribution means the whole message IS down there — then
+ * there is nothing to fold, and it all renders.
+ */
+function MessageBody({ text }: { text: string }) {
+  const [showQuoted, setShowQuoted] = useState(false);
+  const { reply, quoted } = splitQuotedReply(text);
+  const pre = "text-xs text-ppp-charcoal whitespace-pre-wrap font-sans leading-relaxed";
+
+  if (!reply.trim() || !quoted.trim()) {
+    return <pre className={pre}>{text}</pre>;
+  }
+
+  return (
+    <>
+      <pre className={pre}>{reply.trimEnd()}</pre>
+      <button
+        type="button"
+        onClick={() => setShowQuoted((v) => !v)}
+        aria-expanded={showQuoted}
+        className="mt-2 px-3 py-2 sm:py-1 rounded border border-ppp-charcoal-100 bg-ppp-charcoal-50 text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-100 active:bg-ppp-charcoal-100 transition-colors touch-manipulation min-h-[44px] sm:min-h-0"
+      >
+        {showQuoted ? "Hide quoted text" : "Show quoted text"}
+      </button>
+      {showQuoted && (
+        <pre className={`${pre} mt-2 pl-3 border-l-2 border-ppp-charcoal-100 text-ppp-charcoal-500`}>
+          {quoted.trim()}
+        </pre>
+      )}
+    </>
+  );
+}
+
 function MessageRow({
   message,
   expanded,
@@ -777,11 +825,24 @@ function MessageRow({
             )}
           </div>
           {message.body_text ? (
-            <pre className="text-xs text-ppp-charcoal whitespace-pre-wrap font-sans leading-relaxed">
-              {message.body_text}
-            </pre>
+            <MessageBody text={message.body_text} />
           ) : (
-            <div className="text-xs text-ppp-charcoal-500 italic">(no plain-text body — HTML only)</div>
+            /**
+             * Two different states, and saying the wrong one is worse than
+             * saying nothing. "HTML only" claims we HAVE the message and are
+             * just not showing you this form of it. When both are empty we do
+             * not have it at all — Kate, 2026-10-14: "both messages state no
+             * text in the reply but I included text in both replies."
+             *
+             * Her replies had text. Resend's webhook carries metadata only and
+             * the call that fetches the body came back 401, so nothing was
+             * stored and the screen asserted the opposite.
+             */
+            <div className="text-xs text-ppp-charcoal-500 italic">
+              {message.has_html
+                ? "(no plain-text body — HTML only)"
+                : "(the text of this reply couldn't be loaded — it is not missing from the email)"}
+            </div>
           )}
           <div className="mt-3 flex items-center justify-end gap-2">
             <button

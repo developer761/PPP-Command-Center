@@ -37,6 +37,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
+import { splitQuotedReply } from "@/lib/email/quoted-reply";
 
 function adminClient() {
   return createClient(
@@ -58,14 +59,21 @@ export type SupplierReplyInput = {
   bodyText: string | null;
 };
 
-/** First meaningful line of a reply, with the quoted thread left behind. */
+/**
+ * What the vendor actually wrote, with the thread they were replying to left
+ * behind.
+ *
+ * The cut itself lives in `splitQuotedReply` because the Mail Hub thread
+ * needs exactly the same one — it opens on the reply and folds the quoted
+ * order away. Two copies of this rule would drift, and the preview and the
+ * thread disagreeing about where a message ends is its own bug.
+ */
 export function replyPreview(bodyText: string | null | undefined, max = 180): string {
-  const lines = (bodyText ?? "")
-    .split(/\r?\n/)
+  const { reply } = splitQuotedReply(bodyText);
+  const lines = reply
+    .split("\n")
     .map((l) => l.trim())
-    // Quoted history and the "On <date> X wrote:" header say nothing about
-    // what the vendor actually replied, and they are most of the body.
-    .filter((l) => l && !l.startsWith(">") && !/^on .{0,80}wrote:$/i.test(l));
+    .filter((l) => l && !l.startsWith(">"));
   const text = lines.join(" ").replace(/\s+/g, " ").trim();
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
@@ -126,8 +134,23 @@ export async function notifySupplierReply(input: SupplierReplyInput): Promise<vo
     const po = (order.po_number as string | null) ?? null;
     const woNum = (order.work_order_number as string | null) ?? null;
     const title = `${who} replied${po ? ` about PO ${po}` : ""}`;
+    /**
+     * "(no text in the reply)" was a lie when we simply could not fetch it.
+     * Kate, 2026-10-14: "both messages state no text in the reply but I
+     * included text in both replies." She had — Resend's webhook carries
+     * metadata only, and the follow-up fetch for the body returned 401.
+     *
+     * So the notification says which it is. A reader who knows the text
+     * exists but did not reach us goes and opens the thread; one told the
+     * reply was empty does not.
+     */
     const preview = replyPreview(input.bodyText);
-    const body = preview || (input.subject ?? "").trim() || "Open Mail to read the reply.";
+    const bodyMissing = !input.bodyText;
+    const body =
+      preview ||
+      (bodyMissing
+        ? "The reply text couldn't be loaded — open Mail to read it."
+        : (input.subject ?? "").trim() || "Open Mail to read the reply.");
     // Straight to the thread, filtered to this job — not a general inbox the
     // reader then has to search.
     const link = input.workOrderId
@@ -165,7 +188,10 @@ export async function notifySupplierReply(input: SupplierReplyInput): Promise<vo
           `From: ${input.fromEmail}`,
           input.subject ? `Subject: ${input.subject}` : null,
           "",
-          preview || "(no text in the reply)",
+          preview ||
+            (bodyMissing
+              ? "The text of this reply couldn't be loaded into the hub — open it in Mail."
+              : "(no text in the reply)"),
           "",
           base ? `Read it: ${base}${link}` : "Open Mail in the Command Center to read it.",
         ]

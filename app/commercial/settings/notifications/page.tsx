@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
+import { isAdminEmail } from "@/lib/auth/admin";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -52,14 +53,25 @@ async function requireUser(): Promise<string> {
   return user.id;
 }
 
-async function requireUserFull(): Promise<{ id: string; email: string | null }> {
+async function requireUserFull(): Promise<{ id: string; email: string | null; isAdmin: boolean }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/");
   await assertCommercialAccess(user.id);
-  return { id: user.id, email: user.email ?? null };
+  // Same admin test the tax-jurisdiction settings page uses: the profile flag,
+  // falling back to the env allow-list for the bootstrap admins.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    isAdmin: (profile?.is_admin as boolean | undefined) ?? isAdminEmail(user.email),
+  };
 }
 
 async function createAction(formData: FormData) {
@@ -137,15 +149,50 @@ async function removeEmailAction() {
   redirect(`${BASE}?ok=email_removed#email`);
 }
 
+/**
+ * Who gets a copy of every proposal that leaves the platform.
+ *
+ * Stephanie asked for this on 2026-10-14 and Karan's question was "how can they
+ * add it themselves?" — so it is a setting here rather than an environment
+ * variable somebody has to be asked to change.
+ *
+ * Admin-only: unlike everything else on this page, this list decides who
+ * receives mail about a GC, so it is not a personal preference.
+ */
+async function saveProposalWatchersAction(formData: FormData) {
+  "use server";
+  const { id: userId, isAdmin } = await requireUserFull();
+  if (!isAdmin) {
+    redirect(`${BASE}?error=${encodeURIComponent("Only an admin can change who is copied on proposals.")}#watchers`);
+  }
+  const { setProposalNotifyEmails } = await import("@/lib/commercial/proposals/copy-emails");
+  const raw = String(formData.get("emails") ?? "");
+  let saved: string[] = [];
+  try {
+    saved = await setProposalNotifyEmails(raw, userId);
+  } catch {
+    redirect(`${BASE}?error=${encodeURIComponent("Couldn't save that. Please try again.")}#watchers`);
+  }
+  revalidatePath(BASE);
+  // Say how many were KEPT, because the box silently drops anything that isn't
+  // an address and a count that disagrees with what they typed is the only
+  // signal they'll get that a line had a typo in it.
+  redirect(`${BASE}?ok=${encodeURIComponent(saved.length === 0 ? "watchers_none" : `watchers_${saved.length}`)}#watchers`);
+}
+
 export default async function CommercialNotificationSettingsPage({
   searchParams,
 }: {
   searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
-  const { id: userId, email: accountEmail } = await requireUserFull();
-  const [rules, emailPref, sp] = await Promise.all([
+  const { id: userId, email: accountEmail, isAdmin } = await requireUserFull();
+  const { getProposalNotifyEmails, PROPOSAL_COPY_EMAILS } = await import(
+    "@/lib/commercial/proposals/copy-emails"
+  );
+  const [rules, emailPref, watchers, sp] = await Promise.all([
     listNotificationRules(userId),
     getUserEmailPref(userId),
+    getProposalNotifyEmails(),
     searchParams,
   ]);
   const okMessages: Record<string, string> = {
@@ -154,7 +201,13 @@ export default async function CommercialNotificationSettingsPage({
     email_saved: "Email saved. Send a test to confirm it arrives.",
     email_test: "Test email sent — check your inbox.",
     email_removed: "Email notifications turned off.",
+    watchers_none: "Saved — nobody is copied on proposals now, apart from Brendan and the office inbox.",
   };
+  const watcherSaved = /^watchers_(\d+)$/.exec(sp.ok ?? "");
+  if (watcherSaved) {
+    const n = Number(watcherSaved[1]);
+    okMessages[sp.ok as string] = `Saved — ${n} ${n === 1 ? "person is" : "people are"} copied on every proposal from now on.`;
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -192,6 +245,68 @@ export default async function CommercialNotificationSettingsPage({
           ))}
         </div>
         <p className="text-[11px] text-ppp-charcoal-400 mt-2">These are always on and can&apos;t be turned off individually.</p>
+      </section>
+
+      {/* Who is copied on proposals — Stephanie 2026-10-14 */}
+      <section id="watchers" className="space-y-3 scroll-mt-20">
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Copy the office on proposals</h2>
+          <p className="text-[13px] text-ppp-charcoal-500 mt-1">
+            Everyone here gets a copy of every proposal that goes out to a GC, and of the signed
+            contract when one comes back. It&apos;s a blind copy, so the GC never sees these
+            addresses and can&apos;t reply to all of you by accident.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-ppp-charcoal-100 bg-surface p-4 sm:p-5 space-y-4">
+          <div className="rounded-lg bg-ppp-charcoal-50 border border-ppp-charcoal-100 px-3.5 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">Always copied</div>
+            <div className="text-[12.5px] text-ppp-charcoal-700 mt-1 break-words">
+              {PROPOSAL_COPY_EMAILS.join(" · ")}
+            </div>
+            <div className="text-[11.5px] text-ppp-charcoal-500 mt-1.5 leading-snug">
+              Replies from the GC go here. Proposals are also sent <em>from</em> the estimating
+              inbox, so whoever reads that mailbox already has a copy of everything in their sent
+              items.
+            </div>
+          </div>
+
+          {isAdmin ? (
+            <form action={saveProposalWatchersAction} className="space-y-2">
+              <label htmlFor="watcher-emails" className="block text-[12px] font-semibold text-ppp-charcoal-700">
+                Also copy these people
+              </label>
+              <textarea
+                id="watcher-emails"
+                name="emails"
+                rows={3}
+                defaultValue={watchers.join(", ")}
+                placeholder="stephanie@tomcopainting.com, mary@tomcopainting.com"
+                className="w-full rounded-lg border border-ppp-charcoal-200 px-3 py-2 text-sm text-ppp-charcoal placeholder:text-ppp-charcoal-300 focus:border-cc-brand-500 focus:outline-none focus:ring-1 focus:ring-cc-brand-500"
+              />
+              <p className="text-[11.5px] text-ppp-charcoal-500 leading-snug">
+                One per line, or separated by commas — however they paste. Anything that
+                isn&apos;t an email address is ignored. Leave it empty to copy nobody.
+              </p>
+              <PendingSubmitButton
+                className="inline-flex items-center rounded-lg bg-cc-brand-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-cc-brand-700 min-h-[44px] touch-manipulation"
+                pendingLabel="Saving…"
+              >
+                Save
+              </PendingSubmitButton>
+            </form>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="text-[12px] font-semibold text-ppp-charcoal-700">Also copied</div>
+              <div className="text-[12.5px] text-ppp-charcoal-700 break-words">
+                {watchers.length > 0 ? watchers.join(" · ") : "Nobody yet."}
+              </div>
+              <p className="text-[11.5px] text-ppp-charcoal-500">
+                An admin can change this list.
+              </p>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Email */}

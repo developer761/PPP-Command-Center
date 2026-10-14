@@ -77,7 +77,9 @@
     "check:intake-readiness": "node --env-file=.env.local scripts/check-intake-readiness.mjs",
     "check:consent-values": "node scripts/check-sms-consent-values.mjs",
     "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs",
-    "check:rule-backup": "node --env-file=.env.local scripts/check-rule-backup.mjs"
+    "check:rule-backup": "node --env-file=.env.local scripts/check-rule-backup.mjs",
+    "push": "node scripts/push-safe.mjs",
+    "push:check": "node scripts/push-safe.mjs --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

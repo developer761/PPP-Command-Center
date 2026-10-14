@@ -83,6 +83,27 @@ export type NearMissResult = {
  */
 export const NEAR_MISS_WINDOW_DAYS = 3;
 
+/**
+ * The payee, reduced to the part two systems agree on.
+ *
+ * Lower-casing and trimming is not enough. A $2,400 labor payout survived the
+ * 2026-10-14 cleanup of 35 duplicates because Salesforce holds the sub as
+ * **"Peter-Profinish"** and the app as **"Peter - Profinish"** — the same person
+ * in two spellings, so the two rows landed in different buckets and the pair was
+ * invisible. The root cause is a duplicate *employee* record feeding two vendor
+ * names, but the detector should not depend on that being tidy.
+ *
+ * Collapsing everything that is not a letter or a digit makes those identical.
+ * Checked against the real book before adopting it: cross-provenance pairs went
+ * from 3 to 4 and the fourth is genuine, so it costs nothing in false positives.
+ *
+ * It does NOT merge different payees — "Home Depot" and "HomeDepot2" stay
+ * distinct, and the amount plus the date window still have to agree.
+ */
+function normalisePayee(payee: string | null): string {
+  return (payee ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 function daysBetween(a: string | null, b: string | null): number | null {
   if (!a || !b) return null;
   const ta = new Date(a).getTime();
@@ -105,7 +126,7 @@ export function findNearMissDuplicates(
 ): NearMissResult {
   const buckets = new Map<string, NearMissRow[]>();
   for (const r of rows) {
-    const k = `${r.groupKey}|${(r.payee ?? "").trim().toLowerCase()}|${r.amountCents}`;
+    const k = `${r.groupKey}|${normalisePayee(r.payee)}|${r.amountCents}`;
     const bucket = buckets.get(k);
     if (bucket) bucket.push(r);
     else buckets.set(k, [r]);

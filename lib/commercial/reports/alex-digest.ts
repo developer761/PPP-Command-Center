@@ -584,6 +584,31 @@ export async function runAlexDigests(todayYmd = etTodayIso()): Promise<{
           continue;
         }
       }
+      /*
+       * 🔴 ONE SEND PER CADENCE PER DAY, EVEN ON A RETRY.
+       *
+       * The cadence collapse above stops three emails on a Monday-the-1st, but
+       * nothing stopped the SAME cadence going twice. The route's own docblock
+       * promises "re-runs from a Vercel retry or manual hit are safe — the bell
+       * row check inside each helper prevents duplicate sends", and that is
+       * true of the four bell-based jobs and was never true of this one: it
+       * writes no bell row, so it had nothing to check. Vercel retries any
+       * non-200 with backoff, and this runs at route.ts:127 — AFTER the four
+       * jobs — so any later failure in that handler re-ran the digest and Alex
+       * got the same figures again.
+       *
+       * The marker is written BEFORE the send, not after. A send that fails
+       * halfway has very likely already handed the message to Resend, and
+       * mailing a position report twice is worse than missing one — the next
+       * cadence carries the same figures forward anyway, by the argument in
+       * the collapse comment above.
+       */
+      const alreadySent = await digestAlreadySentToday(cadence, todayYmd);
+      if (alreadySent) {
+        out.skipped += 1;
+        continue;
+      }
+      await markDigestSent(cadence, todayYmd);
       const res = await sendDigest(cadence, to);
       if (res.ok) out.sent += 1;
       else {
@@ -596,6 +621,70 @@ export async function runAlexDigests(todayYmd = etTodayIso()): Promise<{
     out.ok = false;
     out.errors.push(err instanceof Error ? err.message : String(err));
     return out;
+  }
+}
+
+/**
+ * Has this cadence already gone out today?
+ *
+ * Read FRESH, not through `getCommercialSetting`, which caches for an hour per
+ * server instance — a cached "no" is exactly how a retry would send a second
+ * copy. One extra query on a once-a-day path costs nothing.
+ *
+ * A read that FAILS answers "no". The alternative is a readable outage
+ * silencing the report entirely, and a duplicate is the cheaper mistake of the
+ * two — but it is logged either way so it is never silent.
+ */
+const DIGEST_SENT_KEY = "alex_digest_last_sent";
+
+async function digestAlreadySentToday(cadence: DigestCadence, todayYmd: string): Promise<boolean> {
+  try {
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const { data, error } = await commercialDb()
+      .from("commercial_settings")
+      .select("value")
+      .eq("key", DIGEST_SENT_KEY)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const v = (data?.value ?? {}) as Record<string, unknown>;
+    return v[cadence] === todayYmd;
+  } catch (err) {
+    console.warn(
+      `[alex-digest] could not read the sent marker (${cadence}) — treating as not sent:`,
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+/** Stamp the cadence as sent for today, preserving the other two cadences. */
+async function markDigestSent(cadence: DigestCadence, todayYmd: string): Promise<void> {
+  try {
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const sb = commercialDb();
+    const { data } = await sb
+      .from("commercial_settings")
+      .select("value")
+      .eq("key", DIGEST_SENT_KEY)
+      .maybeSingle();
+    const prev = (data?.value ?? {}) as Record<string, unknown>;
+    const { error } = await sb.from("commercial_settings").upsert(
+      {
+        key: DIGEST_SENT_KEY,
+        value: { ...prev, [cadence]: todayYmd },
+        description: "Last date each Alex digest cadence was sent (retry guard).",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+    if (error) throw new Error(error.message);
+  } catch (err) {
+    // Not fatal: failing to RECORD the send must not cancel it. The cost is a
+    // possible duplicate on a retry, which is the state this was already in.
+    console.warn(
+      `[alex-digest] could not record the sent marker (${cadence}):`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 

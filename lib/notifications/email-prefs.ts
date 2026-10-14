@@ -46,7 +46,7 @@ export function isValidEmail(email: string): boolean {
  */
 export async function getEnabledNotifyEmail(
   userId: string
-): Promise<{ email: string | null; lookupFailed: boolean }> {
+): Promise<{ email: string | null; lookupFailed: boolean; optedOut: boolean }> {
   try {
     const sb = adminClient();
     const { data, error } = await sb
@@ -56,15 +56,42 @@ export async function getEnabledNotifyEmail(
       .maybeSingle();
     if (error) {
       console.warn(`[notify] email-pref lookup failed for ${userId}: ${error.message}`);
-      return { email: null, lookupFailed: true };
+      return { email: null, lookupFailed: true, optedOut: false };
     }
     const row = data as { email?: string; enabled?: boolean } | null;
-    if (!row || row.enabled === false || !row.email) return { email: null, lookupFailed: false };
-    return { email: row.email, lookupFailed: false };
+    /*
+     * 🔴 AN OPT-OUT IS ITS OWN ANSWER, NOT AN ABSENT PREFERENCE.
+     *
+     * This returned `{ email: null, lookupFailed: false }` for all three of
+     * "no row", "enabled = false" and "no address". The caller then does
+     *
+     *     pref.email ?? (alwaysEmail && !pref.lookupFailed ? profile.email : null)
+     *
+     * so for the three `alwaysEmail` kinds — approval_requested,
+     * approval_decided, proposal-signed-for-approvers — a deliberate opt-out
+     * fell through to the PROFILE address and was mailed anyway. One row in
+     * this table is `enabled = false` today, it belongs to an active admin who
+     * is also a proposal approver, and she was being emailed on every approval
+     * event despite having turned it off on the settings page.
+     *
+     * The docblock above already argued this case correctly for the
+     * lookup-failure path — "worse than a missed notification" — and the
+     * implementation just did not distinguish it. So the distinction is now in
+     * the return type, where a caller cannot ignore it by accident.
+     *
+     * "No row" still means no preference expressed, which `alwaysEmail` may
+     * legitimately fill from the profile; that is the behaviour approvals rely
+     * on for people who have never visited the settings page.
+     */
+    if (row?.enabled === false) {
+      return { email: null, lookupFailed: false, optedOut: true };
+    }
+    if (!row || !row.email) return { email: null, lookupFailed: false, optedOut: false };
+    return { email: row.email, lookupFailed: false, optedOut: false };
   } catch (err) {
     console.warn(
       `[notify] email-pref lookup threw for ${userId}: ${err instanceof Error ? err.message : String(err)}`
     );
-    return { email: null, lookupFailed: true };
+    return { email: null, lookupFailed: true, optedOut: false };
   }
 }

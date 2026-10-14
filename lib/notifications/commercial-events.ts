@@ -331,7 +331,7 @@ async function dispatchCommercialNotification(input: {
      * not.
      */
     const pref = input.skipEmail
-      ? { email: null, lookupFailed: false }
+      ? { email: null, lookupFailed: false, optedOut: false }
       : await getEnabledNotifyEmail(input.recipientUserId);
     if (pref.lookupFailed) {
       // Visible, not silent. The bell below still lands, which is the half that
@@ -340,8 +340,18 @@ async function dispatchCommercialNotification(input: {
         `[notify] ${input.kind}: email skipped for ${input.recipientUserId} — preference unreadable, NOT treated as an opt-out`
       );
     }
-    const notifyEmail =
-      pref.email ?? (input.alwaysEmail && !pref.lookupFailed ? p.email ?? null : null);
+    if (pref.optedOut) {
+      // An explicit opt-out outranks `alwaysEmail`. This is the whole point of
+      // the flag: approval mail used to reach the one person who had turned
+      // email off, via the profile-address fallback below. The bell still
+      // lands, which is the half that must never be lost.
+      console.warn(
+        `[notify] ${input.kind}: email skipped for ${input.recipientUserId} — they have turned email notifications OFF`
+      );
+    }
+    const notifyEmail = pref.optedOut
+      ? null
+      : pref.email ?? (input.alwaysEmail && !pref.lookupFailed ? p.email ?? null : null);
     if (notifyEmail) {
       // List-Unsubscribe on every notification email. Stephanie 2026-08-17:
       // "half of them end up in spam/junk." Gmail and Outlook read a
@@ -705,6 +715,19 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
   /** User IDs to skip (e.g. recipients who already got the @mention
    *  variant of this same note). Optional. */
   excludeUserIds?: string[];
+  /**
+   * Don't post to Slack — the @mention variant of this same note already did.
+   *
+   * ONE NOTE IS ONE EVENT. The bells were already de-duplicated through
+   * `excludeUserIds`, but both functions posted to the channel, so a note
+   * containing an @mention announced itself twice: "X tagged you in a note on
+   * Y" followed by "X added a note on Y". Same note, same second, two lines in
+   * the room — against the channel's own one-post-per-event rule.
+   *
+   * The mention post is the one that survives, because it says more: it names
+   * who was tagged. The team still sees the note.
+   */
+  skipSlack?: boolean;
 }): Promise<{ fanout: number }> {
   const sb = adminClient();
   const { data: rows } = await sb
@@ -765,7 +788,7 @@ export async function insertCommercialOppNoteAddedNotifications(input: {
   let fanout = 0;
   // ONE post per event — inserted above the per-recipient work below, so a
   // bell that fans out to five people still puts a single line in the channel.
-  await postCommercialSlack({
+  if (!input.skipSlack) await postCommercialSlack({
     text: `*${slackEscape(title)}*`,
     context: slackEscape(body),
     url: relativeLink,

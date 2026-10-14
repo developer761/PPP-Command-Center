@@ -7,6 +7,7 @@ import { AI_NOTE_MARK } from "./receivables-row-notes";
 import { receivablesCsv, receivablesFilename } from "./receivables-export";
 import { CSV_BOM } from "./export-guard";
 import { etTodayIso } from "@/lib/date-et";
+import { parseRecipients } from "@/lib/email/recipients";
 
 /**
  * Send the receivables sheet to Alex — the thing Mary does by hand today.
@@ -27,13 +28,21 @@ import { etTodayIso } from "@/lib/date-et";
 
 const DEFAULT_TO = "alex@precisionpaintingplus.com";
 
-/** Comma-separated override; falls back to Alex. */
+/**
+ * Comma-separated override; falls back to Alex.
+ *
+ * Validated and de-duplicated through the shared parser. This used to pass
+ * whatever was in the env var straight through — no lowercase, no de-dup and
+ * no shape check — so one stray word in the setting ("alex@x.com, tbd") made
+ * Resend reject the WHOLE send and the daily digest went silently quiet.
+ *
+ * An override that parses to nobody falls back to Alex rather than mailing
+ * no one: a misconfigured address should mean "the usual recipient", not
+ * "cancel the report".
+ */
 export function receivablesRecipients(): string[] {
-  const raw = (process.env.COMMERCIAL_RECEIVABLES_EMAIL || "").trim();
-  const list = raw
-    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
-    : [DEFAULT_TO];
-  return list;
+  const list = parseRecipients(process.env.COMMERCIAL_RECEIVABLES_EMAIL);
+  return list.length > 0 ? list : [DEFAULT_TO];
 }
 
 function escape(s: string): string {

@@ -93,7 +93,64 @@ export async function runOverdueTasksReminder(): Promise<Result> {
     const rows = (data ?? []) as unknown as Row[];
     out.found = rows.length;
 
+    /*
+     * 🔴 THE RECIPIENT HAS TO STILL BE HERE.
+     *
+     * The docblock above has promised "+ recipient profile active" since this
+     * cron was written, and the query never checked it — opportunity and
+     * account were inner-joined, the assignee was not. A task assigned to
+     * somebody since deactivated produced a Slack post that notified NOBODY,
+     * and counted it in `out.sent`, so the run reported success. That is the
+     * "posts with no bell recipients" trap, still live here while the three
+     * sibling crons (debrief-overdue, aia-dunning, custom-notification-rules)
+     * all filter it.
+     *
+     * Same test they use: `is_active !== false && has_new_platform_access
+     * !== false`. Not `=== true` — a null means "never set", which is how most
+     * rows read, and treating that as inactive would silence the whole office.
+     *
+     * A FAILED lookup does not silence anybody either. If this query errors we
+     * cannot tell who is active, and dropping every reminder would be a worse
+     * answer than sending them; so the set is left permissive and the failure
+     * is recorded, matching how the email-preference lookup handles the same
+     * dilemma.
+     */
+    const assigneeIds = [...new Set(rows.map((r) => r.assigned_user_id))];
+    let inactiveAssignees = new Set<string>();
+    if (assigneeIds.length > 0) {
+      const { data: profs, error: profErr } = await sb
+        .from("profiles")
+        .select("user_id, is_active, has_new_platform_access")
+        .in("user_id", assigneeIds);
+      if (profErr) {
+        out.errors.push(
+          `profile lookup failed: ${profErr.message} — reminders NOT suppressed, cannot tell who is active`,
+        );
+      } else {
+        const seen = new Set<string>();
+        inactiveAssignees = new Set(
+          ((profs ?? []) as Array<{
+            user_id: string;
+            is_active: boolean | null;
+            has_new_platform_access: boolean | null;
+          }>)
+            .filter((p) => {
+              seen.add(p.user_id);
+              return p.is_active === false || p.has_new_platform_access === false;
+            })
+            .map((p) => p.user_id),
+        );
+        // An assignee with NO profile row at all cannot receive a bell either.
+        for (const id of assigneeIds) if (!seen.has(id)) inactiveAssignees.add(id);
+      }
+    }
+
     for (const r of rows) {
+      if (inactiveAssignees.has(r.assigned_user_id)) {
+        // Skipped, not sent: no bell is possible, so no Slack post either.
+        out.skipped += 1;
+        continue;
+      }
       const opp = Array.isArray(r.opportunity) ? r.opportunity[0] ?? null : r.opportunity;
       if (!opp) {
         out.skipped += 1;

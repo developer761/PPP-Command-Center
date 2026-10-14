@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email/resend";
 import { isTransportFailure } from "@/lib/salesforce/writeback";
+import { parseRecipients } from "@/lib/email/recipients";
 
 /**
  * "Salesforce rejected this — here's exactly what you entered."
@@ -58,10 +59,11 @@ function adminClient() {
  * the alert still reaches the saver.
  */
 export function opsAlertRecipients(): string[] {
-  return (process.env.PPP_SF_FAILURE_ALERT_EMAILS ?? "")
-    .split(/[,;\s]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(s));
+  // Shared parser — it lowercases, validates AND de-duplicates. This function
+  // lowercased without de-duplicating, so "Kate@x.com, kate@x.com" held no
+  // textual duplicate in the env var and the function manufactured one; the
+  // result goes straight to `to` in materials-alerts.ts, i.e. two copies.
+  return parseRecipients(process.env.PPP_SF_FAILURE_ALERT_EMAILS);
 }
 
 async function resolveUserEmail(userId: string): Promise<string | null> {

@@ -211,9 +211,32 @@ export async function updateWorkOrder(
       .split(/[\s,;]+/)
       .map((e) => e.trim().toLowerCase())
       .filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
-    // De-dup, keep order, cap the joined string.
-    const uniq = [...new Set(valid)];
-    row.crew_email = uniq.length > 0 ? uniq.join(", ").slice(0, 500) : null;
+    /*
+     * De-dup, keep order, and cap by WHOLE ADDRESSES.
+     *
+     * 🔴 `uniq.join(", ").slice(0, 500)` validated every address and then cut
+     * the string mid-way through the last one — so a crew of about 18 stored a
+     * fragment like "forem", and Resend rejects the ENTIRE send on one invalid
+     * recipient. The work-order email simply never arrived, for every crew
+     * member, with nothing shown to the person who pressed Send and no
+     * re-validation on the send side.
+     *
+     * The column is TEXT (migration 107), so the 500 was arbitrary defence
+     * rather than a schema limit. The cap stays — an unbounded column invites a
+     * crafted POST — but it is applied to whole addresses and set far above any
+     * real crew, so nothing valid is ever dropped and nothing is ever cut in
+     * half. A crew of 50 at 40 characters each still fits.
+     */
+    const ADDRESS_LIMIT = 50;
+    const JOINED_LIMIT = 2000;
+    const kept: string[] = [];
+    for (const e of [...new Set(valid)]) {
+      if (kept.length >= ADDRESS_LIMIT) break;
+      const joined = kept.length === 0 ? e : `${kept.join(", ")}, ${e}`;
+      if (joined.length > JOINED_LIMIT) break;
+      kept.push(e);
+    }
+    row.crew_email = kept.length > 0 ? kept.join(", ") : null;
   }
   if (patch.scheduled_start_date !== undefined) row.scheduled_start_date = patch.scheduled_start_date || null;
   if (patch.scheduled_end_date !== undefined) row.scheduled_end_date = patch.scheduled_end_date || null;

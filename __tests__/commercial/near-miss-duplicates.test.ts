@@ -165,3 +165,46 @@ describe("it proves it measured", () => {
     expect(r.cross).toHaveLength(0);
   });
 });
+
+describe("one payee spelled two ways is still one payee", () => {
+  it("matches across punctuation — the $2,400 pair that survived the cleanup", () => {
+    // Salesforce holds the sub as "Peter-Profinish", the app as
+    // "Peter - Profinish". Lower-case-and-trim left them in different buckets,
+    // so this duplicate was invisible to the sweep that removed 35 others.
+    const r = findNearMissDuplicates([
+      row({ id: "sf", payee: "Peter-Profinish", amountCents: 240_000, occurredAt: "2026-09-23", imported: true }),
+      row({ id: "cc", payee: "Peter - Profinish", amountCents: 240_000, occurredAt: "2026-09-24", imported: false }),
+    ]);
+    expect(r.cross).toHaveLength(1);
+    expect(r.crossCents).toBe(240_000);
+  });
+
+  it("matches across case, punctuation and inner spacing together", () => {
+    const r = findNearMissDuplicates([
+      row({ id: "a", payee: "Sherwin-Williams Co.", occurredAt: "2026-09-23", imported: true }),
+      row({ id: "b", payee: "sherwin williams co", occurredAt: "2026-09-24", imported: false }),
+    ]);
+    expect(r.cross).toHaveLength(1);
+  });
+
+  it("does NOT merge genuinely different payees", () => {
+    // The guard on the normalisation: stripping punctuation must not turn two
+    // suppliers into one.
+    const r = findNearMissDuplicates([
+      row({ id: "a", payee: "Home Depot", occurredAt: "2026-09-23", imported: true }),
+      row({ id: "b", payee: "Home Depot 2", occurredAt: "2026-09-24", imported: false }),
+    ]);
+    expect(r.cross).toHaveLength(0);
+  });
+
+  it("a null payee does not collide with an empty-string payee's real twin", () => {
+    // Both normalise to "" — so they CAN pair, and that is correct: the job,
+    // amount and date window still have to agree. Stated so the behaviour is a
+    // decision rather than a surprise.
+    const r = findNearMissDuplicates([
+      row({ id: "a", payee: null, occurredAt: "2026-09-23", imported: true }),
+      row({ id: "b", payee: "", occurredAt: "2026-09-24", imported: false }),
+    ]);
+    expect(r.cross).toHaveLength(1);
+  });
+});

@@ -7,6 +7,7 @@ import type {
   InboundResult as ArchiveResult,
 } from "@/lib/commercial/email-archive/inbound";
 import { reportError, reportWarn } from "@/lib/observability";
+import { fetchReceivedEmail } from "@/lib/email/resend-receiving";
 
 /**
  * Resend inbound webhook — receives every email sent to
@@ -115,68 +116,6 @@ export function parseAddress(v: unknown): { email: string | null; name: string |
     return { email: angled[2].trim() || null, name: name || null };
   }
   return { email: s.includes("@") ? s : null, name: null };
-}
-
-/**
- * Fetch the parts the webhook deliberately leaves out.
- *
- * Resend's docs are explicit: "webhooks do not include the email body,
- * headers, or attachments, only their metadata." So the text we store in the
- * Mail Hub, and the In-Reply-To we thread on, both have to be pulled back.
- *
- *   GET https://api.resend.com/emails/receiving/{id}
- *
- * Soft. If the key is missing or the call fails we keep whatever the payload
- * carried and let the SUBJECT matcher thread it — a reply filed against the
- * right order with an empty body beats no reply at all. Never throws.
- */
-async function fetchReceivedEmail(emailId: string | null | undefined): Promise<{
-  text: string | null;
-  html: string | null;
-  headers: Record<string, string> | null;
-  messageId: string | null;
-} | null> {
-  if (!emailId) return null;
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    reportWarn({
-      key: "resend_inbound_no_api_key",
-      message: "RESEND_API_KEY not set — inbound replies will store without a body",
-      platform: "shared",
-    });
-    return null;
-  }
-  try {
-    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
-      headers: { Authorization: `Bearer ${key}` },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      reportWarn({
-        key: "resend_inbound_fetch_failed",
-        message: `Could not fetch inbound email ${emailId}: HTTP ${res.status}`,
-        platform: "shared",
-      });
-      return null;
-    }
-    const j = (await res.json()) as {
-      text?: string; html?: string;
-      headers?: Record<string, string>; message_id?: string;
-    };
-    return {
-      text: typeof j.text === "string" ? j.text : null,
-      html: typeof j.html === "string" ? j.html : null,
-      headers: j.headers ?? null,
-      messageId: typeof j.message_id === "string" ? j.message_id : null,
-    };
-  } catch (err) {
-    reportWarn({
-      key: "resend_inbound_fetch_threw",
-      message: `Fetching inbound email ${emailId} threw: ${err instanceof Error ? err.message : String(err)}`,
-      platform: "shared",
-    });
-    return null;
-  }
 }
 
 function adminClient() {
