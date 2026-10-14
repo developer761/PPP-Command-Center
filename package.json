@@ -76,7 +76,8 @@
     "verify:shared-faqs": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-shared-faqs-e2e.mjs",
     "check:intake-readiness": "node --env-file=.env.local scripts/check-intake-readiness.mjs",
     "check:consent-values": "node scripts/check-sms-consent-values.mjs",
-    "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs"
+    "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs",
+    "check:rule-backup": "node --env-file=.env.local scripts/check-rule-backup.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
