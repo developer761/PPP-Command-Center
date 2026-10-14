@@ -84,7 +84,14 @@ for (const row of outgoing) {
   if (!mine) bad(`commit ${sha.slice(0, 8)} was authored by ${author}, not you`);
 }
 
-const outFiles = lines(git("diff", "--name-only", `${REMOTE}/${BRANCH}..HEAD`));
+/*
+ * THREE dots, not two. `diff A..B` compares the two tips, so when the remote
+ * has moved it lists the other session's files as if they were in our push —
+ * the first run of this script claimed nine files including two messaging ones
+ * nobody here had touched, which is precisely the confusion this script exists
+ * to remove. `A...B` diffs from the merge base: only what WE changed.
+ */
+const outFiles = lines(git("diff", "--name-only", `${REMOTE}/${BRANCH}...HEAD`));
 console.log(`\n  ${outFiles.length} file(s):`);
 for (const f of outFiles) console.log(`      ${f}`);
 console.log("");
