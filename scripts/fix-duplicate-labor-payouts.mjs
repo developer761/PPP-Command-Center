@@ -80,8 +80,9 @@ if (ambiguous.length) {
   for (const [a,b] of ambiguous) console.log(`   ?  ${String(nameOf.get(a.opportunity_id)??"?").slice(0,30).padEnd(30)} ${String(a.vendor).slice(0,20).padEnd(20)} ${m(a.amount_cents).padStart(11)}  ${String(a.purchased_at).slice(0,10)} + ${String(b.purchased_at).slice(0,10)}  both ${sfImported.has(a.id)?"SF-imported":"CC-entered"}`);
 }
 console.log(`\nNET EFFECT on job costs: ${m(restore.reduce((n,r)=>n+Number(r.amount_cents??0),0) - del.reduce((n,r)=>n+Number(r.amount_cents??0),0))}`);
-console.log(`NET EFFECT on COST reconciliation: the ${restore.length} restored rows are the`);
-console.log(`  exact $3,638.80 the recon is short, so it should return to 1:1.`);
+console.log(`NET EFFECT on COST reconciliation: +${m(restore.reduce((n,r)=>n+Number(r.amount_cents??0),0))} — the restored rows`);
+console.log(`  carry the import-map row the recon counts, so this is the amount the COST`);
+console.log(`  dimension is currently short. Deleting the unmapped copies moves it by $0.`);
 
 if (!APPLY) { console.log(`\n(dry run — nothing written. re-run with --apply)\n`); process.exit(0); }
 
