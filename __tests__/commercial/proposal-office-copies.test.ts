@@ -3,19 +3,50 @@
  * does go out from Command? Me, Kim, Brendan, and Mary just so we can stay on
  * top of the goings on?"
  *
- * The trap this guards: PROPOSAL_COPY_EMAILS was both the BCC and the Reply-To,
- * so the obvious implementation — add three addresses to it — would have copied
- * them in AND redirected every GC reply to four extra inboxes. These tests pin
- * the separation, because the next person to read that env var will be tempted
- * by the same one-line change.
+ * Two traps are pinned here.
+ *
+ * 1. PROPOSAL_COPY_EMAILS is the BCC *and* the Reply-To, so the obvious
+ *    implementation — add three addresses to it — would have copied them in AND
+ *    redirected every GC reply to four extra inboxes. The next person to read
+ *    that env var will be tempted by the same one-line change.
+ *
+ * 2. The saved list must win over the environment even when it is EMPTY.
+ *    Falling back on an empty list would make "remove the last watcher" quietly
+ *    restore whatever the env var still held — a setting that will not stay off.
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const ENV_COPY = "COMMERCIAL_PROPOSAL_COPY_EMAILS";
 const ENV_NOTIFY = "COMMERCIAL_PROPOSAL_NOTIFY_EMAILS";
 
-/** The module reads env at import time, so each case needs a fresh import. */
-async function load(env: Record<string, string | undefined>) {
+/** What `commercial_settings` holds for the watcher key in a given case. */
+let settingsRow: { value: unknown } | null = null;
+let settingsError: string | null = null;
+const writes: Array<{ key: string; value: unknown; userId: string | null }> = [];
+
+vi.mock("@/lib/commercial/db", () => ({
+  commercialDb: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () =>
+            settingsError
+              ? { data: null, error: { message: settingsError } }
+              : { data: settingsRow, error: null },
+        }),
+      }),
+    }),
+  }),
+}));
+
+vi.mock("@/lib/commercial/settings", () => ({
+  setCommercialSetting: async (key: string, value: unknown, userId?: string | null) => {
+    writes.push({ key, value, userId: userId ?? null });
+  },
+}));
+
+/** The reply-to list is read at import time, so each case re-imports. */
+async function load(env: Record<string, string | undefined> = {}) {
   vi.resetModules();
   for (const k of [ENV_COPY, ENV_NOTIFY]) delete process.env[k];
   for (const [k, v] of Object.entries(env)) if (v !== undefined) process.env[k] = v;
@@ -26,6 +57,9 @@ const saved: Record<string, string | undefined> = {};
 beforeEach(() => {
   saved[ENV_COPY] = process.env[ENV_COPY];
   saved[ENV_NOTIFY] = process.env[ENV_NOTIFY];
+  settingsRow = null;
+  settingsError = null;
+  writes.length = 0;
 });
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) {
@@ -35,18 +69,17 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("the office watchers are copied but do not receive replies", () => {
-  it("adds watchers to the BCC and leaves Reply-To alone", async () => {
+describe("the office can edit the list themselves", () => {
+  it("BCCs whoever is saved in settings, and leaves Reply-To alone", async () => {
+    settingsRow = { value: ["stephanie@tomcopainting.com", "mary@tomcopainting.com"] };
     const m = await load({
       [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net",
-      [ENV_NOTIFY]: "stephanie@tomcopainting.com,kim@tomcopainting.com,mary@tomcopainting.com",
     });
-    // THE ASK: all five get a copy.
-    expect(m.proposalBccList()).toEqual([
+    // THE ASK: everyone saved gets a copy, alongside the standing two.
+    expect(await m.proposalBccList()).toEqual([
       "brendan@tomcopainting.com",
       "developer@precisionpaintingplus.net",
       "stephanie@tomcopainting.com",
-      "kim@tomcopainting.com",
       "mary@tomcopainting.com",
     ]);
     // THE THING THAT MUST NOT CHANGE: replies still go to Brendan + ops only.
@@ -54,80 +87,114 @@ describe("the office watchers are copied but do not receive replies", () => {
       "brendan@tomcopainting.com",
       "developer@precisionpaintingplus.net",
     ]);
-    expect(m.PROPOSAL_COPY_EMAILS).not.toContain("stephanie@tomcopainting.com");
+  });
+
+  it("saves a pasted list as a validated array", async () => {
+    const m = await load();
+    const stored = await m.setProposalNotifyEmails(
+      " Stephanie@TomcoPainting.com; mary@tomcopainting.com\n not-an-email ",
+      "user-1",
+    );
+    expect(stored).toEqual(["stephanie@tomcopainting.com", "mary@tomcopainting.com"]);
+    expect(writes).toEqual([
+      {
+        key: "proposal_notify_emails",
+        value: ["stephanie@tomcopainting.com", "mary@tomcopainting.com"],
+        userId: "user-1",
+      },
+    ]);
+  });
+
+  it("an EMPTY saved list means nobody — it does not fall back to the env var", async () => {
+    settingsRow = { value: [] };
+    const m = await load({ [ENV_NOTIFY]: "someone-old@tomcopainting.com" });
+    expect(await m.getProposalNotifyEmails()).toEqual([]);
+    expect(await m.proposalBccList()).toEqual(m.PROPOSAL_COPY_EMAILS);
+  });
+
+  it("uses the env var only until the setting has ever been saved", async () => {
+    settingsRow = null; // no row yet
+    const m = await load({ [ENV_NOTIFY]: "bootstrap@tomcopainting.com" });
+    expect(await m.getProposalNotifyEmails()).toEqual(["bootstrap@tomcopainting.com"]);
   });
 
   it("de-duplicates Brendan, who belongs on both lists by description", async () => {
-    const m = await load({
-      [ENV_COPY]: "brendan@tomcopainting.com",
-      [ENV_NOTIFY]: "brendan@tomcopainting.com,kim@tomcopainting.com",
-    });
-    expect(m.proposalBccList()).toEqual([
-      "brendan@tomcopainting.com",
-      "kim@tomcopainting.com",
-    ]);
+    settingsRow = { value: ["brendan@tomcopainting.com", "kim@tomcopainting.com"] };
+    const m = await load({ [ENV_COPY]: "brendan@tomcopainting.com" });
+    const bcc = await m.proposalBccList();
+    expect(bcc).toEqual(["brendan@tomcopainting.com", "kim@tomcopainting.com"]);
     // A repeated address in a BCC header is how a provider sends two copies.
-    expect(m.proposalBccList().filter((e) => e === "brendan@tomcopainting.com")).toHaveLength(1);
+    expect(bcc.filter((e) => e === "brendan@tomcopainting.com")).toHaveLength(1);
   });
 
-  it("changes nothing when no watchers are configured", async () => {
-    const m = await load({
-      [ENV_COPY]: "brendan@tomcopainting.com,developer@precisionpaintingplus.net",
-    });
-    expect(m.PROPOSAL_NOTIFY_EMAILS).toEqual([]);
-    expect(m.proposalBccList()).toEqual(m.PROPOSAL_COPY_EMAILS);
-  });
-
-  it("keeps Brendan and the ops inbox as the default when nothing is set", async () => {
-    const m = await load({});
-    expect(m.PROPOSAL_COPY_EMAILS).toEqual([
+  it("keeps Brendan and the ops inbox as the default when nothing is configured", async () => {
+    const m = await load();
+    expect(await m.proposalBccList()).toEqual([
       "brendan@tomcopainting.com",
       "developer@precisionpaintingplus.net",
     ]);
-    expect(m.proposalBccList()).toHaveLength(2);
   });
 });
 
-describe("a typo in the watcher list cannot break a send", () => {
-  it("drops malformed addresses instead of passing them to the mailer", async () => {
+describe("a settings problem cannot stop a proposal reaching its GC", () => {
+  it("falls back to the env list when the settings read fails", async () => {
+    settingsError = "connection reset";
     const m = await load({
-      [ENV_NOTIFY]: "kim@tomcopainting.com, not-an-email, ,mary@tomcopainting.com",
+      [ENV_COPY]: "brendan@tomcopainting.com",
+      [ENV_NOTIFY]: "mary@tomcopainting.com",
     });
-    expect(m.PROPOSAL_NOTIFY_EMAILS).toEqual([
-      "kim@tomcopainting.com",
+    await expect(m.proposalBccList()).resolves.toEqual([
+      "brendan@tomcopainting.com",
       "mary@tomcopainting.com",
     ]);
   });
 
-  it("normalises case and surrounding whitespace", async () => {
-    const m = await load({
-      [ENV_NOTIFY]: "  Stephanie@TomcoPainting.com  ,\tKIM@tomcopainting.com",
-    });
-    expect(m.PROPOSAL_NOTIFY_EMAILS).toEqual([
+  it("tolerates a legacy comma-string value instead of an array", async () => {
+    settingsRow = { value: "stephanie@tomcopainting.com,mary@tomcopainting.com" };
+    const m = await load();
+    expect(await m.getProposalNotifyEmails()).toEqual([
       "stephanie@tomcopainting.com",
-      "kim@tomcopainting.com",
+      "mary@tomcopainting.com",
     ]);
   });
 
-  it("treats an empty value as no watchers, not as one blank address", async () => {
-    const m = await load({ [ENV_NOTIFY]: "" });
-    expect(m.PROPOSAL_NOTIFY_EMAILS).toEqual([]);
+  it("drops a typo rather than handing it to the mailer", async () => {
+    settingsRow = { value: ["kim@tomcopainting.com", "not-an-email", ""] };
+    const m = await load();
+    expect(await m.getProposalNotifyEmails()).toEqual(["kim@tomcopainting.com"]);
+  });
+});
+
+describe("parseList takes addresses the way people paste them", () => {
+  it("splits on commas, semicolons, newlines and spaces, and de-duplicates", async () => {
+    const m = await load();
+    expect(
+      m.parseList("a@x.com, b@x.com; c@x.com\nd@x.com e@x.com\t a@x.com"),
+    ).toEqual(["a@x.com", "b@x.com", "c@x.com", "d@x.com", "e@x.com"]);
+  });
+
+  it("returns nothing for an empty or junk value", async () => {
+    const m = await load();
+    expect(m.parseList("")).toEqual([]);
+    expect(m.parseList("   ,  ; ")).toEqual([]);
   });
 });
 
 describe("both send paths use the combined list", () => {
-  it("the proposal email and the signature email both call proposalBccList", async () => {
-    // The signed contract matters as much as the proposal: an office that was
-    // copied on the offer and not on the executed version is worse off than one
-    // copied on neither. Asserted on the SEAM — that both modules import the
-    // combined helper — rather than on prose in a comment.
+  it("the proposal email and the signature email both await proposalBccList", async () => {
+    // The signed contract matters as much as the proposal: an office copied on
+    // the offer but not on the executed version is worse off than one copied on
+    // neither. Asserted on the SEAM, with comments stripped so a docblock
+    // mentioning the helper cannot pass for a call to it.
     const { readFileSync } = await import("node:fs");
     for (const f of [
       "lib/commercial/proposals/email.ts",
       "lib/commercial/esign/workflow.ts",
     ]) {
-      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-      expect(src, `${f} should BCC the combined list`).toContain("proposalBccList()");
+      const src = readFileSync(f, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      expect(src, `${f} should await the combined list`).toContain("await proposalBccList()");
     }
   });
 });

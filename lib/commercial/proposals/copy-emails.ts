@@ -38,12 +38,63 @@ export const PROPOSAL_COPY_EMAILS = parseList(
  * BCC rather than a visible CC on purpose: a real CC would put four internal
  * addresses on the GC's copy and invite a reply-all that reaches the whole
  * office. Each watcher still receives their own copy — which is what "stay on
- * top of the goings on" needs. Say the word if the visible CC is genuinely
- * wanted; it is a one-line change from here.
+ * top of the goings on" needs.
+ *
+ * WHY IT LIVES IN THE DATABASE AND NOT IN THE ENVIRONMENT
+ *
+ * Karan 2026-10-14: *"How can they add it themselves?"* An env var is a
+ * standing request to a contractor every time somebody joins or leaves the
+ * office, which is the kind of setting that quietly goes stale. So the list is
+ * `commercial_settings.proposal_notify_emails`, editable on
+ * Settings → Notifications by an admin, and the env var remains only as a
+ * bootstrap/override for a deploy that has no database write yet.
  */
-export const PROPOSAL_NOTIFY_EMAILS = parseList(
-  process.env.COMMERCIAL_PROPOSAL_NOTIFY_EMAILS || "",
-);
+export const SETTING_PROPOSAL_NOTIFY = "proposal_notify_emails";
+
+/**
+ * Deliberately NOT `getCommercialSetting` — that helper caches for an hour per
+ * server instance, so Stephanie adding Mary and watching the next proposal go
+ * out without her would look exactly like a bug. Proposals go out a handful of
+ * times a week; a fresh read costs nothing and means the setting is true the
+ * moment it is saved.
+ */
+export async function getProposalNotifyEmails(): Promise<string[]> {
+  const envList = parseList(process.env.COMMERCIAL_PROPOSAL_NOTIFY_EMAILS || "");
+  try {
+    const { commercialDb } = await import("@/lib/commercial/db");
+    const { data, error } = await commercialDb()
+      .from("commercial_settings")
+      .select("value")
+      .eq("key", SETTING_PROPOSAL_NOTIFY)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    // No row yet → fall back to the env var. An EMPTY SAVED LIST is a real
+    // answer ("nobody") and must not fall back, or removing the last watcher
+    // would silently restore whatever the environment still holds.
+    if (!data) return envList;
+    const saved = data.value;
+    return parseList(Array.isArray(saved) ? saved.join(",") : String(saved ?? ""));
+  } catch (err) {
+    // A settings read must never stop a proposal reaching its GC. Fall back to
+    // the environment and say so, rather than throwing inside the mailer.
+    console.warn(
+      "[proposals/copy-emails] could not read the watcher list, using env:",
+      err instanceof Error ? err.message : err,
+    );
+    return envList;
+  }
+}
+
+/** Save the watcher list. Returns what was stored, after validation. */
+export async function setProposalNotifyEmails(
+  raw: string,
+  userId?: string | null,
+): Promise<string[]> {
+  const list = parseList(raw);
+  const { setCommercialSetting } = await import("@/lib/commercial/settings");
+  await setCommercialSetting(SETTING_PROPOSAL_NOTIFY, list, userId ?? null);
+  return list;
+}
 
 /**
  * Everyone who gets a silent copy of a proposal or a signature email: the
@@ -56,13 +107,23 @@ export const PROPOSAL_NOTIFY_EMAILS = parseList(
  * Callers still have to drop the visible To/Cc themselves; this function does
  * not know who they are.
  */
-export function proposalBccList(): string[] {
-  return [...new Set([...PROPOSAL_COPY_EMAILS, ...PROPOSAL_NOTIFY_EMAILS])];
+export async function proposalBccList(): Promise<string[]> {
+  return [...new Set([...PROPOSAL_COPY_EMAILS, ...(await getProposalNotifyEmails())])];
 }
 
-function parseList(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter((e) => EMAIL_RE.test(e));
+/**
+ * Split the way addresses actually arrive — commas, semicolons, newlines or
+ * plain spaces, because they get pasted out of Outlook and out of Slack.
+ * Invalid fragments are dropped rather than passed to the mailer: one typo in a
+ * settings box must not stop a proposal reaching a GC.
+ */
+export function parseList(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(/[,;\s]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => EMAIL_RE.test(e)),
+    ),
+  ];
 }

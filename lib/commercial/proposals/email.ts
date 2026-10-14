@@ -175,7 +175,7 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
   // proposalBccList() = the reply-to list PLUS the office watchers Stephanie
   // asked for (2026-10-14) — see copy-emails.ts for why they are separate.
   const bcc = withArchiveBcc(
-    proposalBccList().filter((e) => e !== toEmail && e !== ccEmail),
+    (await proposalBccList()).filter((e) => e !== toEmail && e !== ccEmail),
     { opportunityId: proposal.opportunity_id, accountId: opp?.account_id },
     [toEmail, ccEmail]
   );

@@ -180,7 +180,7 @@ async function emailSigner(input: {
     process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const to = input.request.signer_email;
   const bcc = withArchiveBcc(
-    proposalBccList().filter((e) => e !== to),
+    (await proposalBccList()).filter((e) => e !== to),
     { opportunityId: input.request.opportunity_id },
     [to]
   );
