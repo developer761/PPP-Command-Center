@@ -1942,3 +1942,52 @@ somewhere, which would silently misroute every New England lead — it is not.
 They are stored as strings and the other 1,771 are fine, so these are three
 people who mistyped. Recorded here only so nobody else spends an afternoon
 chasing it.
+
+---
+
+## 33. The bot told four customers it was a real person, and A46 was not the code any of them got
+
+**Raised 2026-10-14. Not a question so much as something you should see — and
+the code side is already fixed.**
+
+A46 is critical and absolute: "NEVER CLAIM TO BE A PERSON." Searching the
+corpus for what the bot actually said turns up four turns like this:
+
+> "I'm a real person—this is Emily, the team's assistant. Happy to get you
+> taken care of!"
+
+All four are `fell_short`, so the grading caught that something was wrong.
+But the codes they carry are:
+
+| code | what the finding says |
+|---|---|
+| A32 | "reason clause on an ask" |
+| A23 | "em dash, other position" |
+| A29 ×2 | "answered a different question entirely" |
+
+**The em dash was flagged. The claim to be human was not.** No finding in the
+corpus codes these as A46, so A46's measured breach count reads as though the
+rule has never been broken — when it was broken four times in the sentences
+above.
+
+That matters for you in one specific way: if breach counts inform which rules
+get attention, A46 currently looks like a rule that holds itself. It does not.
+
+**On our side it can no longer happen.** Nothing refused a claim of humanity
+until now — A46 was enforced in the intent guide, in the `bot_suspected`
+template, and in the out-of-hours disclosure, none of which touch the model's
+own words. Since rapport is prepended to the template, the message that went
+out could read:
+
+> "Yes, I'm a real person! I'm an AI assistant, but I can take your project
+> details and get you set up with an estimator."
+
+Self-contradicting in two sentences, with the lie first. The validator now
+refuses any first-person claim of humanity in either language, and scores
+**zero false positives against all 651 turns you praised**. "A real person
+will call you" still goes out, because the estimator is a person and that is
+true — only the bot talking about itself is refused.
+
+**→ Nothing needed from you unless you disagree.** The one thing worth your
+word: should those four findings be re-coded to A46 as well, so the count
+reflects what happened? We have not touched your grading.

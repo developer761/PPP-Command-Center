@@ -314,6 +314,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "claimed_to_be_human"
   | "offered_to_hold"
   | "named_another_company"
   | "invented_availability"
@@ -1043,6 +1044,51 @@ const POINTS_ELSEWHERE_RE = new RegExp(
   /\b(?:another|a\s+different|some\s*one\s+else|somebody\s+else|other)\s+(?:\w+\s+){0,2}?(?:compan(?:y|ies)|contractor|painter|business|outfit|shop|vendor|pro|professional|guy|firm)\b/.source
   + "|" + /\b(?:try|call|contact|check\s+with|go\s+with|reach\s+out\s+to)\b[^.?!]{0,24}\b(?:another|a\s+different|other|someone\s+else|somebody\s+else)\b/.source
   + "|" + /\b(?:otra|otro)\s+(?:\w+\s+){0,2}?(?:compañía|empresa|contratista|pintor|negocio)\b/.source,
+  "i",
+);
+
+/**
+ * A46: THE BOT CLAIMING, ABOUT ITSELF, TO BE A PERSON.
+ *
+ * Kate's A46 is unambiguous and critical: "NEVER CLAIM TO BE A PERSON."
+ * Nothing refused one. Probed 2026-10-13 and every single claim was allowed:
+ *
+ *   "Yes, I'm a real person!"
+ *   "I'm not a bot, I'm Emily from the office"
+ *   "I'm a live agent here at PPP"
+ *   "Sí, soy una persona real"
+ *
+ * It was enforced in three places that all stop short of the model's own
+ * words: the intent guide tells it not to, the bot_suspected TEMPLATE is a
+ * truthful constant, and disclosure.ts adds the out-of-hours line. None of
+ * them refuse rapport, and rapport is prepended — so the message that
+ * actually goes out reads:
+ *
+ *   "Yes, I'm a real person! I'm an AI assistant, but I can take your
+ *    project details and get you set up with an estimator."
+ *
+ * It contradicts itself in two sentences and the lie is the one that comes
+ * first. Beyond Kate's rule this carries legal weight: several states
+ * require disclosure when a customer asks directly.
+ *
+ * ── FIRST PERSON IS THE WHOLE DISTINCTION ───────────────────────────────
+ *
+ * "A real person will call you" is TRUE and must go out — the estimator is a
+ * person. "I'm a real person" is the lie. So every branch below is anchored
+ * to the bot talking about ITSELF, and the tests hold that line in both
+ * directions.
+ */
+const CLAIMS_TO_BE_HUMAN = new RegExp(
+  // "I am / I'm / this is ... a real person / human / not a bot"
+  /\b(?:i\s*(?:'m|’m|\s+am)|this\s+is)\b[^.?!]{0,28}\b(?:real\s+person|actual\s+person|live\s+(?:person|agent|human)|human(?:\s+being)?|person,?\s+not\s+a\s+bot)\b/.source
+  + "|" + /\bi\s*(?:'m|’m|\s+am)\s+not\s+(?:a\s+)?(?:bot|robot|ai|a\.?i\.?|computer|machine|automated)\b/.source
+  + "|" + /\bnot\s+a\s+(?:bot|robot|ai)\b[^.?!]{0,16}\bi\s*(?:'m|’m|\s+am)\b/.source
+  // "yes" in answer to "are you real/a person", which is the same lie
+  + "|" + /\byes[,!\s]+(?:i\s*(?:'m|’m|\s+am)\s+)?(?:real|a\s+real\s+person|human|a\s+person)\b/.source
+  + "|" + /\bof\s+course\s+i\s*(?:'m|’m|\s+am)\s+(?:real|human|a\s+person)\b/.source
+  // Spanish, first person
+  + "|" + /\b(?:soy|habla)\s+(?:una?\s+)?(?:persona(?:\s+real)?|humano?|agente\s+real)\b/.source
+  + "|" + /\bno\s+soy\s+(?:un\s+)?(?:bot|robot|m[aá]quina|inteligencia)\b/.source,
   "i",
 );
 
@@ -1995,6 +2041,20 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
      * believes they have an appointment that does not exist. Nobody comes.
      * They find out by waiting in.
      */
+    /**
+     * A46 — NEVER CLAIM TO BE A PERSON, checked on the model's own words.
+     *
+     * First in this group deliberately: of everything the post-filter
+     * refuses, this is the only one that is a lie about what the customer is
+     * talking to, and in several states a legal requirement rather than a
+     * style rule.
+     */
+    if (CLAIMS_TO_BE_HUMAN.test(text)) {
+      return {
+        ok: false, reason: "claimed_to_be_human",
+        detail: `free text claims to be a person, which A46 forbids absolutely: "${text.slice(0, 90)}"`,
+      };
+    }
     if (OFFERS_TO_HOLD_RE.test(text)) {
       return {
         ok: false, reason: "offered_to_hold",
