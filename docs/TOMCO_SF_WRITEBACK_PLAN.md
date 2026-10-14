@@ -861,11 +861,16 @@ once      and as each of the remaining 39 open estimates sells, pair it too —
 forever   everything created after 2026-10-14 → plain INSERT, no pairing
 ```
 
-🔴 **One thing to confirm with Katie rather than assume:** "no longer create
-anything in SF" needs to cover **change orders** too, not just opportunities.
-§2d's whole matching rule exists because Salesforce already holds 43 Tomco
-change orders, 7 of which duplicate ours. If Mary stops raising those in
-Salesforce as well, §2d simplifies the same way §2a just did.
+✅ **CONFIRMED — it covers change orders too.** Katie, 2026-10-14 14:30, asked
+whether "nothing in SF" extended past opportunities: *"Yes, I told her to stop
+building anything in SF."*
+
+So §2d's match-then-update rule is also a one-off against a closed set, not a
+permanent necessity. The 43 Tomco change orders already in Salesforce (7 of them
+duplicating ours) still have to be matched rather than re-created — those exist
+— but no NEW Salesforce change order will appear to collide with one raised
+here. Once the current 43 are reconciled, the change-order step is a plain
+create.
 
 ⚠️ **And it does not retire the pairing screen early.** 39 open estimates
 predate the instruction. Until they are all closed, a deal selling in the
@@ -930,29 +935,25 @@ depositing in her queue.
 
 ### 🔴 Blocking, Katie's call
 
-4. **Does "Mary creates nothing in SF" cover CHANGE ORDERS too?** (§4b) She has
-   answered it for opportunities. Salesforce holds 43 Tomco change orders, 7 of
-   them duplicating ours — if Mary stops raising those there as well, §2d's
-   match-then-update rule collapses into a plain create.
-5. **`ReasonForChange__c`** — four candidates in §2d, no source column on our
+4. **`ReasonForChange__c`** — four candidates in §2d, no source column on our
    side, and the Salesforce default (`Client changed mind`) is a claim about her
    GCs we cannot support.
-6. **`Status__c` on a change order: `Approved` or `Approved-Auto`?** Org-wide
+5. **`Status__c` on a change order: `Approved` or `Approved-Auto`?** Org-wide
    `Approved-Auto` is 18,953 and `Approved` is 45 (27 of them Tomco's), which
    suggests a flow owns the value. §2d.
-7. **`Account.UniqueExternalId__c`** — she added the field to Opportunity on
+6. **`Account.UniqueExternalId__c`** — she added the field to Opportunity on
    2026-10-13; Account is the only remaining create with no external key.
-8. **CloseDate**: accept `Opportunity_SetCloseDateOnClosedWon` v4 overwriting it
+7. **CloseDate**: accept `Opportunity_SetCloseDateOnClosedWon` v4 overwriting it
    with `TODAY()`, or take the one-line flow exemption so the real award date
    survives into her FY reporting? (§5)
 
 ### 🟡 Worth telling her, not blocking
 
-9. **MotorMindz- TLA is $30,000 of sold work missing from her Salesforce total**
+8. **MotorMindz- TLA is $30,000 of sold work missing from her Salesforce total**
    since 2026-08-05 (§1). The write-back fixes it; she may want it fixed sooner.
-10. **Quote tax**: `Quote_CalculateTax` v16 makes `GrandTotal__c` tax-inclusive
+9. **Quote tax**: `Quote_CalculateTax` v16 makes `GrandTotal__c` tax-inclusive
     while the contract figure is not (§2b).
-11. **Tomco is already in PPP's residential dashboard** — ~$2.01M, ~9% of
+10. **Tomco is already in PPP's residential dashboard** — ~$2.01M, ~9% of
     "Revenue Sold", and Brendan is on the rep leaderboard against the
     residential field team (§8). The revenue half may be what she wants; the
     leaderboard half almost certainly is not.
@@ -960,8 +961,10 @@ depositing in her queue.
 ### ✅ Answered since the last draft — do not re-ask
 
 - **Does Mary keep creating Tomco records in Salesforce?** No — Katie instructed
-  her to stop, 2026-10-14. §4b. This makes the pairing screen a one-off against
-  a closed backlog of 43 open estimates rather than a permanent step.
+  her to stop, 2026-10-14, and confirmed the same afternoon that it covers
+  **everything**, not just opportunities: *"Yes, I told her to stop building
+  anything in SF."* §4b. So both the opportunity pairing AND the change-order
+  matching are one-offs against closed sets rather than permanent steps.
 
 - **The external id** — created in both orgs 2026-10-13. But see §4: the field
   was never the blocker.
