@@ -178,7 +178,7 @@ production: it is already paired (the map has it), so it exercises the UPDATE
 path with no create, no account match and no new quote.
 
 Worth telling Katie separately: her Tomco sales total is short by this $30,000
-today, and has been since 2026-08-05.
+today.
 
 **`OwnerId` is already Brendan** on 181 of 188 Tomco opportunities.
 
@@ -656,14 +656,36 @@ approve:
 | `'Other'` + `ReasonForChangeOther__c` = our CO title | most honest — it says "this came from the Command Center and the reason is the title" — but it makes Tomco's reason breakdown useless in Salesforce reports |
 | `'Client changed mind'` | **the default, and a claim about the GC's behaviour we have no evidence for.** Never let this land by omission |
 
-**Put all four to Katie.** This is a one-word decision that shows up in her
-change-order reporting forever, and it is the only field in this plan where the
-Command Center holds no answer at all.
+**Put all four to Katie — but as a confirm, not a blocker.** `'Scope change'`
+has now been accepted on a real record (above), so the plan works with it
+today; what remains is purely which word she wants in her reporting, and she can
+override it later without touching anything else. It is still the only field in
+this plan where the Command Center holds no answer at all.
 
-⚠️ **`Approved` is a near-unique state in this org.** Org-wide:
-`Approved-Auto` 18,953 · `Approved` **45, of which 27 are Tomco's** · `Denied` 74 (of 19,090).
-The normal approved state is `Approved-Auto`, which suggests a flow sets it.
-**Ask Katie which value is correct** before writing one.
+### ✅ `Approved` IS CORRECT — settled by experiment, 2026-10-14
+
+`Approved-Auto` is 18,953 of the org's change orders and `Approved` only 45 (27
+of them Tomco's), which looked like a flow owning the field — so rather than ask
+Katie to guess, `scripts/tomco-writeback-stage0-changeorder.mjs` wrote one
+against the Stage 0 work order and read it back:
+
+```
+Status__c 'Approved'                    → held. No flow rewrote it
+ReasonForChange__c 'Scope change'       → accepted
+WorkOrder.TotalChangeOrder__c           $0.00      → $1,111.11
+WorkOrder subtotal + CO                 $12,345.67 → $13,456.78
+Opportunity CO-inclusive total          $13,456.78
+```
+
+So the whole §2d mechanism works end to end on a real record, `Approved` counts
+toward the rollup, and **this is no longer a question for Katie.** Probe row
+`CO-30604` on `a09Em00000hf8ldIAA`; `ChangeOrder__c` is not deletable by this
+user, so it stays in the sandbox.
+
+The four active flows on this object did not interfere with the insert. The
+`ChangeOrder_AllowOnlyAuthorizedUsers` flow gates UPDATES specifically, so §2d's
+status-update path (the two change orders Salesforce holds as Pending Approval)
+is still untested — that is a Stage 4 check, not a Stage 0 one.
 
 ⚠️ Four active flows fire on these writes, none readable:
 `ChangeOrder_RouteToApproval` v13 (CreateAndUpdate — may submit for approval or
@@ -983,19 +1005,31 @@ depositing in her queue.
 4. **`ReasonForChange__c`** — four candidates in §2d, no source column on our
    side, and the Salesforce default (`Client changed mind`) is a claim about her
    GCs we cannot support.
-5. **`Status__c` on a change order: `Approved` or `Approved-Auto`?** Org-wide
-   `Approved-Auto` is 18,953 and `Approved` is 45 (27 of them Tomco's), which
-   suggests a flow owns the value. §2d.
-6. **`Account.UniqueExternalId__c`** — she added the field to Opportunity on
-   2026-10-13; Account is the only remaining create with no external key.
-7. **CloseDate**: accept `Opportunity_SetCloseDateOnClosedWon` v4 overwriting it
-   with `TODAY()`, or take the one-line flow exemption so the real award date
-   survives into her FY reporting? (§5)
+5. ✅ **ANSWERED — `Approved` is correct.** Written on a real sandbox change
+   order 2026-10-14: the value held, no flow rewrote it, and the rollup moved by
+   exactly the amount. §2d. Nothing needed from Katie.
+6. 🟡 **IN PROGRESS — Katie, 2026-10-14: "Adding that field now."**
+   `Account.UniqueExternalId__c` was absent in both orgs when re-checked that
+   afternoon. Verify it exists and is `externalId + unique` before Stage 3
+   relies on it; until then the Account create still falls back to the
+   exact-name lookup in §2a².
+7. ✅ **ANSWERED — accept today's date.** Katie, 2026-10-14: *"If the sync
+   happens regularly, then the Close Date should match the date that it's
+   created."* Correct, and it costs nothing even for the backlog: every deal in
+   the first payload was sold in October and is being written in October, so
+   **0 of 5 change fiscal quarter** (checked against PPP's Feb–Jan year rather
+   than assumed). `Close_Date_Uneditable_after_Closed_Won_L` stays active and
+   we stop trying to work around it — which also removes the §2a¹ worry about
+   testing as a user with `Admin_Bypass`, since we no longer send the field on
+   an update at all.
 
 ### 🟡 Worth telling her, not blocking
 
 8. **MotorMindz- TLA is $30,000 of sold work missing from her Salesforce total**
-   since 2026-08-05 (§1). The write-back fixes it; she may want it fixed sooner.
+    (§1). Won in the Command Center 2026-10-08; Salesforce still shows it as
+    Estimate Sent with a CloseDate of 2026-08-05 — which is the ESTIMATED close
+    on the open opportunity, not a sold date. An earlier draft read that as
+    "missing since August"; it has been missing since 8 October.
 9. **Quote tax**: `Quote_CalculateTax` v16 makes `GrandTotal__c` tax-inclusive
     while the contract figure is not (§2b).
 10. **Tomco is already in PPP's residential dashboard** — ~$2.01M, ~9% of

@@ -24,7 +24,16 @@ export type SfWriteSource =
   | "system_resync"
   | "vendor_email_sent"
   /** A Stripe payment from /pay/<token> marking its Payment_Term__c paid. */
-  | "online_payment";
+  | "online_payment"
+  /**
+   * The Tomco write-back: a sale closed in the Commercial Command Center being
+   * pushed into Salesforce.
+   *
+   * Its own source rather than `admin_manual` or `system_resync`, because the
+   * audit trail is the only place anyone can later ask "did the write-back do
+   * this, or did a person?" — and because the failure routing below keys on it.
+   */
+  | "tomco_writeback";
 
 export type SfWriteAttempt = {
   /** SF object name, e.g. "WorkOrderLineItem". */
@@ -221,19 +230,47 @@ export async function writeSf(
   // A rejection here means the hub and Salesforce now disagree: the person on
   // screen saw it save. Fire-and-forget so a slow Slack call never adds latency
   // to a customer's submit.
-  void alertMaterialsFailure({
-    kind: "salesforce_write_rejected",
-    summary: `Salesforce refused to update ${attempt.sObject}. The hub shows this saved; Salesforce does not.`,
-    workOrder: ctx.workOrderNumber ?? null,
-    detail: {
-      "Object": attempt.sObject,
-      "Record": attempt.recordId,
-      "Fields": Object.keys(attempt.fields).join(", "),
-      "Salesforce said": lastErrorCode ? `${lastErrorCode}: ${message}` : message,
-      "Tries": attempts,
-      "Source": ctx.source,
-    },
-  });
+  const failureDetail = {
+    "Object": attempt.sObject,
+    "Record": attempt.recordId,
+    "Fields": Object.keys(attempt.fields).join(", "),
+    "Salesforce said": lastErrorCode ? `${lastErrorCode}: ${message}` : message,
+    "Tries": attempts,
+    "Source": ctx.source,
+  };
+  if (ctx.source === "tomco_writeback") {
+    /*
+     * Tomco failures go to the COMMERCIAL channel, not Kate's materials alerts.
+     *
+     * `alertMaterialsFailure` pages the residential materials channel, and a
+     * Tomco write-back rejection is nothing to do with Kate or with paint
+     * orders. Worse, these are EXPECTED to fire routinely at first: any
+     * StageName change re-runs the ZIP-to-service-territory validation, and
+     * commercial GC addresses are exactly the population that fails it. Routing
+     * that into a channel whose readers cannot act on it is how a channel stops
+     * being read.
+     */
+    void import("@/lib/commercial/slack-notify")
+      .then(({ postCommercialSlack }) =>
+        postCommercialSlack({
+          text: `*Salesforce refused a Tomco write-back*`,
+          context: Object.entries(failureDetail)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(" · "),
+          tone: "bad",
+        }),
+      )
+      .catch(() => {
+        // A failed alert must never turn a failed write into a thrown error.
+      });
+  } else {
+    void alertMaterialsFailure({
+      kind: "salesforce_write_rejected",
+      summary: `Salesforce refused to update ${attempt.sObject}. The hub shows this saved; Salesforce does not.`,
+      workOrder: ctx.workOrderNumber ?? null,
+      detail: failureDetail,
+    });
+  }
 
   return {
     ok: false,

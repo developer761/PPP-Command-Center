@@ -15,12 +15,23 @@ import { resolveViewer } from "@/lib/auth/viewer-server";
  * So: the vendor list stays global and cached, this is tiny and uncached, and
  * the client merges them.
  *
- *   GET    → { favorites: string[], userState: string | null }
+ *   GET    → { favorites: string[], userState: string | null,
+ *              canManageVendors: boolean }
  *   POST   { supplierAccountId }       star
  *   DELETE { supplierAccountId }       unstar
  *
  * Any signed-in user, like the vendor list itself — a worker picks vendors too,
  * and a favorite is a preference, not a permission.
+ *
+ * `canManageVendors` rides along because it is the same shape of fact: per-user,
+ * uncached, and needed by the picker, which was showing an "Add" button to
+ * everybody. Adding a vendor is admin-only (Karan, 2026-10-14: "otherwise the
+ * guys will make the list get out of control") and has been enforced on the
+ * route and the page since it shipped — a rep clicking Add just got bounced
+ * back to the dashboard with no explanation. This is for hiding a control that
+ * cannot work, NOT for granting one: the admin check on
+ * /api/admin/supplier-settings is what actually stops the write, and it stays
+ * there whatever this field says.
  */
 export const dynamic = "force-dynamic";
 
@@ -39,6 +50,15 @@ async function viewerId(): Promise<string | null> {
   return viewer?.supabaseUserId ?? null;
 }
 
+/**
+ * Taken from resolveViewer rather than recomputed here. Two places deciding
+ * separately who counts as an admin is how the answer drifts — roles.ts is the
+ * one that knows about the bootstrap-email case.
+ */
+async function viewer() {
+  return resolveViewer({});
+}
+
 function noStore(body: unknown, status = 200) {
   return NextResponse.json(body, {
     status,
@@ -47,8 +67,10 @@ function noStore(body: unknown, status = 200) {
 }
 
 export async function GET() {
-  const userId = await viewerId();
+  const v = await viewer();
+  const userId = v?.supabaseUserId ?? null;
   if (!userId) return noStore({ error: "unauthorized" }, 401);
+  const canManageVendors = v?.isAdmin === true;
 
   const sb = db();
   const [fav, prof] = await Promise.all([
@@ -63,10 +85,13 @@ export async function GET() {
   // Either column missing (migration not pasted yet) must not take the vendor
   // picker down with it — an unfiltered, unsorted list is still a working one.
   const userState = ((prof.data as { state?: string | null } | null)?.state ?? "").trim().toUpperCase() || null;
-  if (fav.error) return noStore({ favorites: [], userState, degraded: true, message: fav.error.message });
+  if (fav.error) {
+    return noStore({ favorites: [], userState, canManageVendors, degraded: true, message: fav.error.message });
+  }
   return noStore({
     favorites: (fav.data ?? []).map((r) => r.supplier_account_id as string),
     userState,
+    canManageVendors,
   });
 }
 
