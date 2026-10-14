@@ -314,6 +314,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "restated_scope_from_chat"
   | "offsite_job_entered_booking_flow"
   | "asked_to_retype_held_data"
   | "asked_for_the_held_address"
@@ -2015,6 +2016,40 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
   // job is, and a caller that does not track scope should behave as it always
   // has.
+  /**
+   * A9 — DO NOT READ BACK THE SCOPE THEY JUST TYPED.
+   *
+   * "Summarize scope in the bot's OWN WORDS — but ONLY scope pulled FROM
+   * FILE. Never restate scope the customer just typed in chat." 56
+   * fell_short findings.
+   *
+   * Reproduced 2026-10-14. With the customer having just written "I need the
+   * kitchen and two bedrooms painted", confirm_scope was allowed and the
+   * renderer sent their own sentence straight back: "So we have this down
+   * as: I need the kitchen and two bedrooms painted. Have I got that right?"
+   *
+   * validateAction allowed it IDENTICALLY whether the scope came off the
+   * record or out of the chat — the whole distinction the rule turns on.
+   * scopeFromCustomer was already in the context and read at exactly one
+   * site, where it SATISFIES an A3 leg rather than refusing anything.
+   *
+   * Confirming scope from the RECORD stays allowed and is the point of the
+   * intent: a wrong lead form only surfaces if somebody reads it back.
+   *
+   * THERE IS A LEGAL MOVE, checked before refusing rather than after. With
+   * the scope just typed, ask_address is open — "What's the address for the
+   * project?" — which is A9's own corrective: act on it and move to the next
+   * piece of information needed.
+   */
+  if (a.intent === "confirm_scope" && ctx.scopeFromCustomer === true) {
+    return {
+      ok: false, reason: "restated_scope_from_chat",
+      detail: "they typed the scope in this conversation, so reading it back tells them "
+        + "nothing they did not just say. Act on it and ask for the next thing you do not "
+        + "hold (A9) — confirming is for scope that came off the record",
+    };
+  }
+
   /**
    * A6 — AN OFF-SITE JOB MUST NOT BE WALKED INTO THE IN-PERSON BOOKING FLOW.
    *

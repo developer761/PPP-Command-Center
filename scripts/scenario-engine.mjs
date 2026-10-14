@@ -219,6 +219,17 @@ export function waysThrough(scenario) {
      * exactly the breach found in the simulator on 2026-09-27.
      */
     jobRoute: jobRoute(derived.inquiryScope, known.area ?? null)?.route ?? null,
+    /**
+     * WHERE THE SCOPE CAME FROM, which production has always passed and this
+     * harness never did.
+     *
+     * scheduler-db.ts:597 and simulator.ts:419 both set it; the scenario
+     * engine left it undefined, so A9 — "never restate scope the customer
+     * just typed" — could not be exercised here at all. A context thinner
+     * than production disables a rule silently, which is the one thing a
+     * harness must never do.
+     */
+    scopeFromCustomer: derived.scopeFrom === "customer",
   };
 
   const renderFor = (intent, freeText) => renderMessage({
