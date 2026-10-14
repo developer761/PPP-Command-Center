@@ -656,14 +656,36 @@ approve:
 | `'Other'` + `ReasonForChangeOther__c` = our CO title | most honest — it says "this came from the Command Center and the reason is the title" — but it makes Tomco's reason breakdown useless in Salesforce reports |
 | `'Client changed mind'` | **the default, and a claim about the GC's behaviour we have no evidence for.** Never let this land by omission |
 
-**Put all four to Katie.** This is a one-word decision that shows up in her
-change-order reporting forever, and it is the only field in this plan where the
-Command Center holds no answer at all.
+**Put all four to Katie — but as a confirm, not a blocker.** `'Scope change'`
+has now been accepted on a real record (above), so the plan works with it
+today; what remains is purely which word she wants in her reporting, and she can
+override it later without touching anything else. It is still the only field in
+this plan where the Command Center holds no answer at all.
 
-⚠️ **`Approved` is a near-unique state in this org.** Org-wide:
-`Approved-Auto` 18,953 · `Approved` **45, of which 27 are Tomco's** · `Denied` 74 (of 19,090).
-The normal approved state is `Approved-Auto`, which suggests a flow sets it.
-**Ask Katie which value is correct** before writing one.
+### ✅ `Approved` IS CORRECT — settled by experiment, 2026-10-14
+
+`Approved-Auto` is 18,953 of the org's change orders and `Approved` only 45 (27
+of them Tomco's), which looked like a flow owning the field — so rather than ask
+Katie to guess, `scripts/tomco-writeback-stage0-changeorder.mjs` wrote one
+against the Stage 0 work order and read it back:
+
+```
+Status__c 'Approved'                    → held. No flow rewrote it
+ReasonForChange__c 'Scope change'       → accepted
+WorkOrder.TotalChangeOrder__c           $0.00      → $1,111.11
+WorkOrder subtotal + CO                 $12,345.67 → $13,456.78
+Opportunity CO-inclusive total          $13,456.78
+```
+
+So the whole §2d mechanism works end to end on a real record, `Approved` counts
+toward the rollup, and **this is no longer a question for Katie.** Probe row
+`CO-30604` on `a09Em00000hf8ldIAA`; `ChangeOrder__c` is not deletable by this
+user, so it stays in the sandbox.
+
+The four active flows on this object did not interfere with the insert. The
+`ChangeOrder_AllowOnlyAuthorizedUsers` flow gates UPDATES specifically, so §2d's
+status-update path (the two change orders Salesforce holds as Pending Approval)
+is still untested — that is a Stage 4 check, not a Stage 0 one.
 
 ⚠️ Four active flows fire on these writes, none readable:
 `ChangeOrder_RouteToApproval` v13 (CreateAndUpdate — may submit for approval or
@@ -983,11 +1005,13 @@ depositing in her queue.
 4. **`ReasonForChange__c`** — four candidates in §2d, no source column on our
    side, and the Salesforce default (`Client changed mind`) is a claim about her
    GCs we cannot support.
-5. **`Status__c` on a change order: `Approved` or `Approved-Auto`?** Org-wide
-   `Approved-Auto` is 18,953 and `Approved` is 45 (27 of them Tomco's), which
-   suggests a flow owns the value. §2d.
-6. **`Account.UniqueExternalId__c`** — she added the field to Opportunity on
-   2026-10-13; Account is the only remaining create with no external key.
+5. ✅ **ANSWERED — `Approved` is correct.** Written on a real sandbox change
+   order 2026-10-14: the value held, no flow rewrote it, and the rollup moved by
+   exactly the amount. §2d. Nothing needed from Katie.
+6. **`Account.UniqueExternalId__c`** — re-checked 2026-10-14: still **absent in
+   both orgs**. Only Opportunity has it. Account is the one record we create
+   with no external key, so this is real work she has to do, not just an
+   answer.
 7. **CloseDate**: accept `Opportunity_SetCloseDateOnClosedWon` v4 overwriting it
    with `TODAY()`, or take the one-line flow exemption so the real award date
    survives into her FY reporting? (§5)
