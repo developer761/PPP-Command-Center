@@ -314,6 +314,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "asked_for_the_held_address"
   | "claimed_to_be_human"
   | "offered_to_hold"
   | "named_another_company"
@@ -1009,6 +1010,21 @@ const PHOTO_ACK_FILLER = new RegExp(
   + "|por|las|los|la|el|un|una|unos|unas|de|del|y|que|se|ya|muy|con|en|su|sus|lo"
   + ")(?!\\p{L})",
   "giu",
+);
+
+/**
+ * A11: asking for the address AS A WHOLE.
+ *
+ * "full STREET address" is deliberately NOT matched — when the street is the
+ * half we are missing, asking for it in full is the remedy, not the breach.
+ * The negative lookahead is what separates them, and the tests pin both.
+ */
+const ASKS_FOR_THE_WHOLE_ADDRESS = new RegExp(
+  /\b(?:full|whole|complete|entire|exact)\s+(?!street\b)(?:property\s+|project\s+|home\s+|service\s+)?address\b/.source
+  + "|" + /\bre-?(?:send|type|enter|share)\b[^.?!]{0,20}\baddress\b/.source
+  + "|" + /\baddress\b[^.?!]{0,16}\bagain\b/.source
+  + "|" + /\b(?:direcci[oó]n)\s+(?:completa|entera)\b/.source,
+  "i",
 );
 
 /**
@@ -2049,6 +2065,53 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
      * talking to, and in several states a legal requirement rather than a
      * style rule.
      */
+    /**
+     * A11 — ASKING FOR THE WHOLE ADDRESS WHEN WE ALREADY HOLD HALF OF IT.
+     *
+     * A11 is the SECOND LARGEST fault class in Kate's entire corpus: 289
+     * fell_short findings, behind only A23's punctuation. It was enforced at
+     * the INTENT level — partial_address_walked_past above refuses an intent
+     * that moves on from a half address — and never on the model's words.
+     *
+     * Reproduced 2026-10-14. Customer says "It's 482 Marchmont Ave", so
+     * addressGap is "zip" — we hold the street and need the postcode. The
+     * model writes "Can you send me your full address?" and that sentence
+     * goes out ALONE: on `acknowledge` the template is a bare
+     * acknowledgement, so templateAddsNothing drops it and the rapport IS
+     * the message. The customer retypes the street they sent one message ago.
+     *
+     * ── THE STATE GATE IS THE WHOLE DESIGN ──────────────────────────────
+     *
+     * Scoring the text pattern alone against the corpus: it catches 215 of
+     * 277 A11 faults, and trips on 18 messages Kate PRAISED — among them
+     * "Yes, we can help with wallpaper as well. What's the full address for
+     * the project?" That is correct behaviour, because at that point NO
+     * address was held. Asking for the whole address is only a breach when
+     * we already have part of it, and no amount of reading the sentence can
+     * tell you which case you are in.
+     *
+     * So this fires only when addressGap is "zip" or "street" — we hold one
+     * half — and never on "both" or null, where asking for all of it is
+     * exactly right. Without that gate it would refuse her approved copy,
+     * which is the "two correct rules with no legal move between them"
+     * failure this codebase keeps producing.
+     *
+     * "full STREET address" survives on purpose: when the street is the
+     * missing half, asking for it in full is the remedy A11 asks for, and
+     * Kate praises it — "For the address, I have zip code [ZIP]. What's the
+     * full street address for the project?"
+     */
+    if (ctx.addressGap === "zip" || ctx.addressGap === "street") {
+      if (ASKS_FOR_THE_WHOLE_ADDRESS.test(text)) {
+        const held = ctx.addressGap === "zip" ? "the street" : "the ZIP";
+        const missing = ctx.addressGap === "zip" ? "the ZIP code" : "the house number and street";
+        return {
+          ok: false, reason: "asked_for_the_held_address",
+          detail: `we already hold ${held}, so asking for the whole address makes them retype it. `
+            + `Name what we have and ask only for ${missing} (A11): "${text.slice(0, 80)}"`,
+        };
+      }
+    }
     if (CLAIMS_TO_BE_HUMAN.test(text)) {
       return {
         ok: false, reason: "claimed_to_be_human",
