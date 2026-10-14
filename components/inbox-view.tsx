@@ -28,6 +28,9 @@ type InboxMessage = {
   from_name: string | null;
   subject: string | null;
   body_text: string | null;
+  /** Whether an HTML body exists. The markup itself is never sent — the
+   *  screen only needs to tell "HTML only" from "we have nothing". */
+  has_html?: boolean;
   received_at: string;
   read_at: string | null;
   archived_at: string | null;
@@ -781,7 +784,22 @@ function MessageRow({
               {message.body_text}
             </pre>
           ) : (
-            <div className="text-xs text-ppp-charcoal-500 italic">(no plain-text body — HTML only)</div>
+            /**
+             * Two different states, and saying the wrong one is worse than
+             * saying nothing. "HTML only" claims we HAVE the message and are
+             * just not showing you this form of it. When both are empty we do
+             * not have it at all — Kate, 2026-10-14: "both messages state no
+             * text in the reply but I included text in both replies."
+             *
+             * Her replies had text. Resend's webhook carries metadata only and
+             * the call that fetches the body came back 401, so nothing was
+             * stored and the screen asserted the opposite.
+             */
+            <div className="text-xs text-ppp-charcoal-500 italic">
+              {message.has_html
+                ? "(no plain-text body — HTML only)"
+                : "(the text of this reply couldn't be loaded — it is not missing from the email)"}
+            </div>
           )}
           <div className="mt-3 flex items-center justify-end gap-2">
             <button

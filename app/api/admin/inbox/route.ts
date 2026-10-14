@@ -87,7 +87,10 @@ export async function GET(request: Request) {
   let query = sb
     .from("inbox_messages")
     .select(
-      "id, kind, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, resend_message_id, received_at, read_at, archived_at"
+      // body_html is selected only to derive has_html below — it is never
+      // returned. A reply's HTML can be tens of kilobytes and the screen
+      // needs one boolean from it, not the markup.
+      "id, kind, linked_order_id, linked_work_order_id, from_email, from_name, to_email, subject, body_text, body_html, resend_message_id, received_at, read_at, archived_at"
     )
     .order("received_at", { ascending: false })
     .limit(limit);
@@ -167,12 +170,19 @@ export async function GET(request: Request) {
       if (m) woNumberByOrderId.set(o.id as string, m[1]);
     }
   }
-  const withWoNumber = (messages ?? []).map((m) => ({
-    ...m,
-    work_order_number: m.linked_order_id
-      ? woNumberByOrderId.get(m.linked_order_id as string) ?? null
-      : null,
-  }));
+  const withWoNumber = (messages ?? []).map((m) => {
+    // Drop the markup, keep the fact. The screen says "HTML only" when a
+    // reply has HTML and no text, and something honest when it has neither —
+    // those are different states and it used to claim the first for both.
+    const { body_html, ...rest } = m as typeof m & { body_html?: string | null };
+    return {
+      ...rest,
+      has_html: Boolean(body_html),
+      work_order_number: m.linked_order_id
+        ? woNumberByOrderId.get(m.linked_order_id as string) ?? null
+        : null,
+    };
+  });
 
   return NextResponse.json({
     ok: true,

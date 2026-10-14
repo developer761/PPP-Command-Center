@@ -100,3 +100,49 @@ describe("the bell can render it", () => {
     expect(read("lib/notifications/labels.ts")).toMatch(/supplier_reply: \{ label: "Vendor replied"/);
   });
 });
+
+/**
+ * Kate, 2026-10-14, after a clean end-to-end test: "both messages state no
+ * text in the reply but I included text in both replies."
+ *
+ * She had. Resend's webhook carries metadata only, and the follow-up fetch
+ * for the body came back HTTP 401 — the API key can send but cannot read
+ * received mail. Nothing was stored, and both the bell and the Mail Hub
+ * asserted the reply was empty.
+ *
+ * The key is a dashboard fix. Claiming the vendor wrote nothing is ours: a
+ * reader told the reply is empty does not go and look, which is the whole
+ * point of the notification.
+ */
+describe("an unreadable body is not an empty one", () => {
+  const read2 = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const strip2 = (s: string) =>
+    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+
+  it("the notification says it could not be loaded", () => {
+    const s = strip2(read2("lib/notifications/supplier-reply.ts"));
+    expect(s).toMatch(/const bodyMissing = !input\.bodyText/);
+    expect(s).toMatch(/couldn't be loaded/);
+  });
+
+  it("still says '(no text in the reply)' when there genuinely is none", () => {
+    // The honest version of the message has to survive, or we have swapped
+    // one false claim for another.
+    expect(strip2(read2("lib/notifications/supplier-reply.ts"))).toMatch(/\(no text in the reply\)/);
+  });
+
+  it("the Mail Hub tells the two states apart", () => {
+    const s = strip2(read2("components/inbox-view.tsx"));
+    expect(s).toMatch(/message\.has_html/);
+    expect(s).toMatch(/no plain-text body — HTML only/);
+    expect(s).toMatch(/couldn't be loaded/);
+  });
+
+  it("the API sends the fact, not the markup", () => {
+    // A reply's HTML runs to tens of kilobytes and the screen needs one
+    // boolean from it.
+    const s = strip2(read2("app/api/admin/inbox/route.ts"));
+    expect(s).toMatch(/has_html: Boolean\(body_html\)/);
+    expect(s).toMatch(/const \{ body_html, \.\.\.rest \}/);
+  });
+});

@@ -126,8 +126,23 @@ export async function notifySupplierReply(input: SupplierReplyInput): Promise<vo
     const po = (order.po_number as string | null) ?? null;
     const woNum = (order.work_order_number as string | null) ?? null;
     const title = `${who} replied${po ? ` about PO ${po}` : ""}`;
+    /**
+     * "(no text in the reply)" was a lie when we simply could not fetch it.
+     * Kate, 2026-10-14: "both messages state no text in the reply but I
+     * included text in both replies." She had — Resend's webhook carries
+     * metadata only, and the follow-up fetch for the body returned 401.
+     *
+     * So the notification says which it is. A reader who knows the text
+     * exists but did not reach us goes and opens the thread; one told the
+     * reply was empty does not.
+     */
     const preview = replyPreview(input.bodyText);
-    const body = preview || (input.subject ?? "").trim() || "Open Mail to read the reply.";
+    const bodyMissing = !input.bodyText;
+    const body =
+      preview ||
+      (bodyMissing
+        ? "The reply text couldn't be loaded — open Mail to read it."
+        : (input.subject ?? "").trim() || "Open Mail to read the reply.");
     // Straight to the thread, filtered to this job — not a general inbox the
     // reader then has to search.
     const link = input.workOrderId
@@ -165,7 +180,10 @@ export async function notifySupplierReply(input: SupplierReplyInput): Promise<vo
           `From: ${input.fromEmail}`,
           input.subject ? `Subject: ${input.subject}` : null,
           "",
-          preview || "(no text in the reply)",
+          preview ||
+            (bodyMissing
+              ? "The text of this reply couldn't be loaded into the hub — open it in Mail."
+              : "(no text in the reply)"),
           "",
           base ? `Read it: ${base}${link}` : "Open Mail in the Command Center to read it.",
         ]
