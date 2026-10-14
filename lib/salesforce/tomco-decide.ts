@@ -44,6 +44,23 @@ export const SF_ENTRY_STOPPED = "2026-10-14";
  */
 export const HOLD_SCORE = 40;
 
+/**
+ * Worth putting in front of a person at all.
+ *
+ * The ranker gives 10 points for closing within 90 days, which on its own is a
+ * coincidence rather than a resemblance — nearly every open estimate earns it.
+ * Showing those padded each queue item with absurdities: a $5,150 job was
+ * offered `AVR-Lot C` at $385,882.22 and `127 S. Fourth St.` at $35,287.60,
+ * five of eight entries being noise.
+ *
+ * That works directly against accuracy. A list full of obvious non-answers
+ * teaches a reader to skim, and skimming is how the wrong "same job" gets
+ * clicked — the exact mistake this screen exists to prevent. So 18 is the
+ * floor: one real signal (an amount within 20%, or shared words) beyond the
+ * date. Everything below it is counted, not listed.
+ */
+export const SHOW_SCORE = 18;
+
 export type WriteBackPlan =
   | {
       action: "update";
@@ -60,6 +77,9 @@ export type WriteBackPlan =
       why: string;
       /** What a person has to choose between, best first. */
       candidates: RankedCandidate[];
+      /** Open estimates that were checked and resemble nothing. Counted rather
+       *  than listed — "we looked at 43" is reassuring, seeing 43 is not. */
+      othersChecked: number;
     };
 
 export type DecideInput = {
@@ -133,13 +153,15 @@ export function decideWriteBack(input: DecideInput): WriteBackPlan {
    * and auto-inserting either would have double-counted a live sale.
    */
   if (contenders.length > 0) {
+    const worthShowing = ranked.filter((c) => c.score >= SHOW_SCORE).slice(0, 8);
     return {
       action: "hold",
       why:
         contenders.length === 1
           ? `One open Salesforce estimate looks like this job — ${contenders[0].reasons.join(", ")}. Someone has to confirm.`
           : `${contenders.length} open Salesforce estimates could be this job. Someone has to choose.`,
-      candidates: ranked.slice(0, 8),
+      candidates: worthShowing,
+      othersChecked: Math.max(0, input.openCandidates.length - worthShowing.length),
     };
   }
 
