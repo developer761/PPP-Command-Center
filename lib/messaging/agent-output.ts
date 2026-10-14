@@ -314,6 +314,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "offsite_job_entered_booking_flow"
   | "asked_to_retype_held_data"
   | "asked_for_the_held_address"
   | "claimed_to_be_human"
@@ -2014,6 +2015,45 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
   // job is, and a caller that does not track scope should behave as it always
   // has.
+  /**
+   * A6 — AN OFF-SITE JOB MUST NOT BE WALKED INTO THE IN-PERSON BOOKING FLOW.
+   *
+   * 93 fell_short findings, 85 of them critical, and the verifier found 92 of
+   * the 93 are precisely this: the booking flow ran on a job the lookup sends
+   * off-site, and the quick quote was never presented.
+   *
+   * Reproduced 2026-10-14. jobRoute("one accent wall in the living room")
+   * returns offsite — "partial-room work, which is fewer than two full rooms"
+   * — and ask_availability was ALLOWED anyway. The only jobRoute check in the
+   * file is the one below, which decides WHICH off-site intent may fire; it
+   * says nothing about the booking flow running instead.
+   *
+   * ── WHY THIS IS AN INTENT GUARD AND NOT A WORDING ONE ───────────────────
+   *
+   * A sentence cannot tell you. "We can provide a quick quote for this
+   * project. Do you prefer text or email?" appears in Kate's PRAISED set and
+   * in her FAULTED set — the same words, right or wrong depending on whether
+   * the booking flow had already been run. A freeText matcher scored 2 of 82
+   * on the real faults, which is how I found out it was the wrong instrument.
+   *
+   * The ladder is the carve-out, not the customer's wording: once
+   * present_offsite_quote has actually run, the quick quote HAS been put
+   * first, and a conversation that then arranges a visit is no longer the
+   * fault A6 describes.
+   */
+  if (
+    ctx.jobRoute === "offsite"
+    && a.intent === "ask_availability"
+    && !(ctx.priorIntents ?? []).includes("present_offsite_quote")
+  ) {
+    return {
+      ok: false, reason: "offsite_job_entered_booking_flow",
+      detail: "this job routes off-site, so the quick quote is PRESENTED as the plan "
+        + "before any in-person booking. Use present_offsite_quote and ask whether they "
+        + "want it by text or email (A6)",
+    };
+  }
+
   if (ctx.jobRoute && (a.intent === "present_offsite_quote" || a.intent === "offer_offsite_quote")) {
     const wanted = ctx.jobRoute === "offsite" ? "present_offsite_quote" : "offer_offsite_quote";
     if (a.intent !== wanted) {
