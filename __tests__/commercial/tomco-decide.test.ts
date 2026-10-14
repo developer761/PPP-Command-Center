@@ -12,7 +12,7 @@
  * legitimate. So every case below that is genuinely uncertain must HOLD.
  */
 import { describe, expect, it } from "vitest";
-import { decideWriteBack, HOLD_SCORE, SF_ENTRY_STOPPED } from "@/lib/salesforce/tomco-decide";
+import { decideWriteBack, HOLD_SCORE, SHOW_SCORE, SF_ENTRY_STOPPED } from "@/lib/salesforce/tomco-decide";
 import type { SfCandidate, SoldDeal } from "@/lib/salesforce/tomco-pairing";
 
 const CUTOVER = "2026-10-14";
@@ -198,5 +198,52 @@ describe("the threshold itself", () => {
 
   it("the cutover constant is the date Katie actually gave", () => {
     expect(SF_ENTRY_STOPPED).toBe("2026-10-14");
+  });
+});
+
+describe("the queue shows what resembles the job, and counts the rest", () => {
+  /**
+   * Seen on the rendered page: a $5,150 deal was offered `AVR-Lot C` at
+   * $385,882.22 and `127 S. Fourth St.` at $35,287.60 — scored on closing
+   * within 90 days and nothing else. Five of eight entries were noise.
+   *
+   * That works against accuracy rather than for it. A list full of obvious
+   * non-answers teaches a reader to skim, and skimming is how the wrong
+   * "same job" gets clicked.
+   */
+  const noise = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      cand({ sfId: `noise${i}`, name: `Unrelated Job ${i}`, accountName: "Someone Else", subtotalCents: 38_588_222, closeDate: "2026-10-01" }),
+    );
+
+  it("lists only candidates that resemble the job", () => {
+    const plan = decideWriteBack({
+      deal: deal({ title: "Cummins", accountName: "Cummins Sales and Service", contractCents: 515_000 }),
+      pairedSfId: null,
+      openCandidates: [CUMMINS, ...noise(10)],
+      ...BEFORE,
+    });
+    expect(plan.action).toBe("hold");
+    if (plan.action !== "hold") return;
+    // The real twin, and nothing scored on date proximity alone.
+    expect(plan.candidates.map((c) => c.sfId)).toEqual(["006cummins"]);
+    expect(plan.othersChecked).toBe(10);
+  });
+
+  it("still counts them, because 'we looked at 43' is the reassuring part", () => {
+    const plan = decideWriteBack({
+      deal: deal({ accountName: "PCCI Builders Corp." }),
+      pairedSfId: null,
+      openCandidates: [PCCI, ...noise(42)],
+      ...BEFORE,
+    });
+    if (plan.action !== "hold") throw new Error("expected a hold");
+    expect(plan.candidates.length + plan.othersChecked).toBe(43);
+  });
+
+  it("never hides a candidate that caused the hold", () => {
+    // The floor must sit below the hold threshold, or a deal could be held on
+    // a record the screen does not show — which would be unanswerable.
+    expect(SHOW_SCORE).toBeLessThan(HOLD_SCORE);
   });
 });

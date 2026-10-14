@@ -129,7 +129,7 @@ export default async function TomcoWritebackPage({
     loadError = err instanceof Error ? err.message : String(err);
   }
 
-  const held: Array<{ deal: SoldDeal; why: string; candidates: RankedCandidate[] }> = [];
+  const held: Array<{ deal: SoldDeal; why: string; candidates: RankedCandidate[]; othersChecked: number }> = [];
   const automatic: Array<{ deal: SoldDeal; why: string }> = [];
   for (const deal of deals) {
     if (resolved.has(deal.id)) continue;
@@ -139,7 +139,7 @@ export default async function TomcoWritebackPage({
       openCandidates: candidates,
       dealCreatedAt: created.get(deal.id) ?? null,
     });
-    if (plan.action === "hold") held.push({ deal, why: plan.why, candidates: plan.candidates });
+    if (plan.action === "hold") held.push({ deal, why: plan.why, candidates: plan.candidates, othersChecked: plan.othersChecked });
     else automatic.push({ deal, why: plan.why });
   }
 
@@ -196,7 +196,7 @@ export default async function TomcoWritebackPage({
                 </p>
               </div>
             ) : (
-              held.map(({ deal, why, candidates: cands }) => {
+              held.map(({ deal, why, candidates: cands, othersChecked }) => {
                 const seen = JSON.stringify(cands.map((c) => ({ sfId: c.sfId, name: c.name, score: c.score })));
                 return (
                   <div key={deal.id} className="rounded-xl border border-ppp-charcoal-100 bg-surface p-5 space-y-4">
@@ -253,6 +253,13 @@ export default async function TomcoWritebackPage({
                         </div>
                       ))}
                     </div>
+
+                    {othersChecked > 0 && (
+                      <p className="text-[12px] text-ppp-charcoal-500">
+                        {othersChecked} other open estimate{othersChecked === 1 ? " was" : "s were"} checked and
+                        resemble{othersChecked === 1 ? "s" : ""} nothing about this job.
+                      </p>
+                    )}
 
                     <form action={markNewAction} className="border-t border-ppp-charcoal-100 pt-3">
                       <input type="hidden" name="dealId" value={deal.id} />
