@@ -6,6 +6,7 @@ import { filterLedger, stageOf, type LedgerPayment, type LedgerQuery } from "@/l
 import { buildLedgerWorkbook } from "@/lib/payments/ledger-export";
 import { monthStartIso, previousDayIso, renderDailyReport } from "@/lib/payments/daily-report-email";
 import { listLedgerPayments, paymentsConfig } from "@/lib/payments/service";
+import { parseRecipients } from "@/lib/email/recipients";
 
 /**
  * The daily online-payments email with the Excel file attached.
@@ -16,10 +17,9 @@ import { listLedgerPayments, paymentsConfig } from "@/lib/payments/service";
  * recipients is one typo from reaching the wrong person.
  */
 export function reportRecipients(): string[] {
-  return (process.env.PAYMENTS_REPORT_EMAILS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s));
+  // Shared parser: also lowercases and de-duplicates, which this did not. Two
+  // spellings of one address in the env var sent the revenue report twice.
+  return parseRecipients(process.env.PAYMENTS_REPORT_EMAILS);
 }
 
 function appBaseUrl(): string {

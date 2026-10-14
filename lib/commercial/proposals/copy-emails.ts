@@ -1,6 +1,14 @@
 import "server-only";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { parseRecipients } from "@/lib/email/recipients";
+
+/**
+ * Split the way addresses actually arrive. Re-exported from the shared parser
+ * so proposals, ops alerts, the receivables digest and the payments report all
+ * behave identically — four hand-rolled variants, each missing a different one
+ * of split / lowercase / validate / de-dup, is what the 2026-10-14 audit found.
+ */
+export const parseList = parseRecipients;
 
 /**
  * Internal copies on every proposal email that reaches a GC (Karan 2026-08-04).
@@ -139,21 +147,4 @@ export function dropVisible(bcc: string[], to: string | null, cc: string[]): str
   const norm = (e: string) => e.trim().toLowerCase();
   const seen = new Set([...(to ? [to] : []), ...cc].filter(Boolean).map(norm));
   return bcc.filter((e) => !seen.has(norm(e)));
-}
-
-/**
- * Split the way addresses actually arrive — commas, semicolons, newlines or
- * plain spaces, because they get pasted out of Outlook and out of Slack.
- * Invalid fragments are dropped rather than passed to the mailer: one typo in a
- * settings box must not stop a proposal reaching a GC.
- */
-export function parseList(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(/[,;\s]+/)
-        .map((e) => e.trim().toLowerCase())
-        .filter((e) => EMAIL_RE.test(e)),
-    ),
-  ];
 }
