@@ -20,7 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import {
-  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, withoutPhotoAckSentences, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
   ANSWERS_A_QUESTION,
 } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
@@ -1797,7 +1797,28 @@ function renderBody(input: RenderInput): string {
     return keepingTheAnswer(`${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`);
   }
 
-  const rapport = (input.freeText ?? "").trim();
+  /**
+   * …AND IF WE ARE GOING TO THANK THEM FOR THE PHOTO, THE MODEL'S OWN
+   * THANK-YOU SENTENCE GOES.
+   *
+   * The guard further down drops rapport that is NOTHING but a photo
+   * acknowledgement. The model does not write all-or-nothing. Seen live
+   * 2026-10-14, after that guard had shipped and was believed sufficient:
+   *
+   *   "I'll check the calendar for that time. Thanks for the photo!
+   *    Thanks, got the photo. I can't set times myself, but the office
+   *    handles scheduling and will confirm what's open."
+   *
+   * The rapport's SECOND sentence says something real, so the whole thing
+   * survived and our own photo line was prepended on top of its first.
+   * Removing just the duplicated sentence keeps the half worth keeping.
+   *
+   * Only when photoThanks exists, so nothing is lost: the message still
+   * names the photo, once.
+   */
+  const rapport = photoThanks
+    ? withoutPhotoAckSentences(input.freeText)
+    : (input.freeText ?? "").trim();
   /**
    * The customer asked us something AND this intent's own template does not
    * answer it — so the rapport is the only place an answer can come from, and
