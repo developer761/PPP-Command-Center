@@ -178,7 +178,7 @@ production: it is already paired (the map has it), so it exercises the UPDATE
 path with no create, no account match and no new quote.
 
 Worth telling Katie separately: her Tomco sales total is short by this $30,000
-today, and has been since 2026-08-05.
+today.
 
 **`OwnerId` is already Brendan** on 181 of 188 Tomco opportunities.
 
@@ -1008,18 +1008,28 @@ depositing in her queue.
 5. ✅ **ANSWERED — `Approved` is correct.** Written on a real sandbox change
    order 2026-10-14: the value held, no flow rewrote it, and the rollup moved by
    exactly the amount. §2d. Nothing needed from Katie.
-6. **`Account.UniqueExternalId__c`** — re-checked 2026-10-14: still **absent in
-   both orgs**. Only Opportunity has it. Account is the one record we create
-   with no external key, so this is real work she has to do, not just an
-   answer.
-7. **CloseDate**: accept `Opportunity_SetCloseDateOnClosedWon` v4 overwriting it
-   with `TODAY()`, or take the one-line flow exemption so the real award date
-   survives into her FY reporting? (§5)
+6. 🟡 **IN PROGRESS — Katie, 2026-10-14: "Adding that field now."**
+   `Account.UniqueExternalId__c` was absent in both orgs when re-checked that
+   afternoon. Verify it exists and is `externalId + unique` before Stage 3
+   relies on it; until then the Account create still falls back to the
+   exact-name lookup in §2a².
+7. ✅ **ANSWERED — accept today's date.** Katie, 2026-10-14: *"If the sync
+   happens regularly, then the Close Date should match the date that it's
+   created."* Correct, and it costs nothing even for the backlog: every deal in
+   the first payload was sold in October and is being written in October, so
+   **0 of 5 change fiscal quarter** (checked against PPP's Feb–Jan year rather
+   than assumed). `Close_Date_Uneditable_after_Closed_Won_L` stays active and
+   we stop trying to work around it — which also removes the §2a¹ worry about
+   testing as a user with `Admin_Bypass`, since we no longer send the field on
+   an update at all.
 
 ### 🟡 Worth telling her, not blocking
 
 8. **MotorMindz- TLA is $30,000 of sold work missing from her Salesforce total**
-   since 2026-08-05 (§1). The write-back fixes it; she may want it fixed sooner.
+    (§1). Won in the Command Center 2026-10-08; Salesforce still shows it as
+    Estimate Sent with a CloseDate of 2026-08-05 — which is the ESTIMATED close
+    on the open opportunity, not a sold date. An earlier draft read that as
+    "missing since August"; it has been missing since 8 October.
 9. **Quote tax**: `Quote_CalculateTax` v16 makes `GrandTotal__c` tax-inclusive
     while the contract figure is not (§2b).
 10. **Tomco is already in PPP's residential dashboard** — ~$2.01M, ~9% of
