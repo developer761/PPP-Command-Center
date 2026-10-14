@@ -1798,15 +1798,22 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           >
             {submitting
               ? "Saving…"
+              /* Kate's wording — the affirmation names this button, so the
+                 button has to carry that exact name or the sentence above it
+                 refers to something that is not there.
+
+                 CONFIRMING IS CHECKED FIRST, including before isPreview. It
+                 used to come after, so a preview showed the affirmation
+                 sentence above a button reading "Submit (preview only)" —
+                 the sentence pointing at a control that was not on screen,
+                 in the one place built to check that it is. The blurb beside
+                 the button already says nothing will be saved. */
+              : confirming
+              ? "Confirm my selections"
               : isPreview
               ? "Submit (preview only)"
               : isInternal
               ? "Submit colors"
-              : confirming
-              /* Kate's wording — the affirmation names this button, so the
-                 button has to carry that exact name or the sentence above it
-                 refers to something that is not there. */
-              ? "Confirm my selections"
               : isEditing
               ? "Save changes"
               : "Submit my colors"}

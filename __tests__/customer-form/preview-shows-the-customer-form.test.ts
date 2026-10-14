@@ -90,6 +90,32 @@ describe("the review panel gets the width to be readable", () => {
   });
 });
 
+describe("the affirmation names a button that is actually there", () => {
+  /**
+   * 'By clicking "Confirm my selections" I affirm…' sat above a button
+   * reading "Submit (preview only)", because the label ladder tested
+   * isPreview before confirming. The sentence pointed at a control that was
+   * not on screen — in the one place built to check that it is.
+   */
+  it("checks confirming before the preview and internal labels", () => {
+    const s = view();
+    const confirming = s.indexOf("? \"Confirm my selections\"");
+    const preview = s.indexOf("? \"Submit (preview only)\"");
+    const internal = s.indexOf("? \"Submit colors\"");
+    expect(confirming, "no confirm label").toBeGreaterThan(-1);
+    expect(preview, "no preview label").toBeGreaterThan(-1);
+    expect(internal, "no internal label").toBeGreaterThan(-1);
+    expect(confirming).toBeLessThan(preview);
+    expect(confirming).toBeLessThan(internal);
+  });
+
+  it("still carries Kate's exact wording in both places", () => {
+    const s = view();
+    expect(s).toContain("Confirm my selections");
+    expect(s).toMatch(/affirm that I&rsquo;ve reviewed/);
+  });
+});
+
 describe("and it still cannot save — which is what makes the above safe", () => {
   it("the browser does not autosave a preview", () => {
     const s = view();
