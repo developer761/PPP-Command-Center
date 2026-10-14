@@ -67,6 +67,29 @@ describe("the customer's own steps are on the preview path", () => {
   });
 });
 
+describe("the review panel gets the width to be readable", () => {
+  /**
+   * Found by looking, which is the only way this one could be found. The
+   * review panel is a third child of the submit card, and that card is a row
+   * from `sm` up — so on a laptop the panel was squeezed to about 260px and
+   * every color wrapped mid-code, with the button stranded beside it. The
+   * phone layout was correct the whole time.
+   */
+  it("stops being a row while the customer is reviewing", () => {
+    const s = view();
+    const at = s.indexOf("rounded-2xl p-5 sm:p-7 flex flex-col gap-3");
+    expect(at, "submit card not found — did the classes change?").toBeGreaterThan(-1);
+    const card = s.slice(at, at + 220);
+    // The row classes must be conditional on NOT confirming.
+    expect(card).toMatch(/confirming\s*\?\s*""\s*:\s*"sm:flex-row/);
+  });
+
+  it("never applies the row classes unconditionally", () => {
+    // The shape of the original bug: these three baked into the class string.
+    expect(view()).not.toMatch(/p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center/);
+  });
+});
+
 describe("and it still cannot save — which is what makes the above safe", () => {
   it("the browser does not autosave a preview", () => {
     const s = view();

@@ -1681,8 +1681,20 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         </div>
       )}
 
+      {/* Blurb on the left, button on the right — until the review panel
+          appears between them. It is a third child of the same row, so on a
+          laptop it was squeezed to a ~260px column and every color wrapped
+          mid-code ("2108-50 Silver Fox (2108-" / "50)"), with the button
+          stranded beside it. The phone was fine; the row only exists from
+          `sm` up, which is why the layout nobody had looked at was the broken
+          one. Reading back a list of colors needs the width, so while
+          confirming the card stacks and the panel gets all of it. */}
       {(hasLineItems || globalNotes.trim().length > 0) && (
-        <div className="bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div
+          className={`bg-white border border-ppp-charcoal-100 rounded-2xl p-5 sm:p-7 flex flex-col gap-3 ${
+            confirming ? "" : "sm:flex-row sm:items-center sm:justify-between"
+          }`}
+        >
           {/* Kate round-2 #08: for Internal Entry, drop the "once you submit we'll
               order materials" customer copy — keep just the button. */}
           {!isInternal && (
