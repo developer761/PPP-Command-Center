@@ -314,6 +314,8 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "offered_to_hold"
+  | "named_another_company"
   | "invented_availability"
   | "banned_by_hard_no"
   | "wrong_offsite_rule"      // presented what should be offered, or the reverse
@@ -1006,6 +1008,42 @@ const PHOTO_ACK_FILLER = new RegExp(
   + "|por|las|los|la|el|un|una|unos|unas|de|del|y|que|se|ya|muy|con|en|su|sus|lo"
   + ")(?!\\p{L})",
   "giu",
+);
+
+/**
+ * A35: OFFERING TO HOLD, PENCIL IN OR PROVISIONALLY BOOK A SLOT.
+ *
+ * The verb alone is not enough — what is HELD has to be an appointment, so
+ * ordinary English survives: "hold on a moment", "I'll hold off until you
+ * confirm", "we reserve the right". The appointment nouns make it a promise.
+ */
+const OFFERS_TO_HOLD_RE = new RegExp(
+  // "pencil you in" — a promise whatever follows it
+  /\bpencil(?:ed|ing)?\s+(?:\w+\s+)?in\b/.source
+  + "|" + /\btentativ\w+\s+(?:book|hold|reserv|schedul|pencil)\w*/.source
+  + "|" + /\b(?:book|hold|reserv|schedul)\w*\s+(?:\w+\s+){0,2}?tentativ\w+/.source
+  + "|" + /\bprovisional\w*\s+(?:book|hold|reserv|schedul|put)\w*/.source
+  + "|" + /\b(?:put|pop)\s+(?:you|them|that)\s+down\s+provisional\w*/.source
+  // held / reserved / blocked off, where the thing held is a time or a visit
+  + "|" + /\b(?:hold|holding|reserv\w+|block(?:ing)?\s+off|set(?:ting)?\s+aside|sav(?:e|ing))\b[^.?!]{0,24}\b(?:slot|time|spot|appointment|appt|date|morning|afternoon|evening|window)\b/.source
+  + "|" + /\b(?:hold|holding|reserv\w+|sav(?:e|ing))\s+(?:it|that|this)\s+for\s+you\b/.source
+  // Spanish
+  + "|" + /\b(?:apart\w*|reserv\w*|guard\w*)\b[^.?!]{0,24}\b(?:cita|espacio|horario|lugar|hora)\b/.source,
+  "i",
+);
+
+/**
+ * A18: POINTING THE CUSTOMER AT SOMEBODY ELSE WHO COULD DO THE WORK.
+ *
+ * Narrow on purpose. It fires on being sent ELSEWHERE — another company, a
+ * different contractor, someone else — not on the words themselves. "We are
+ * a painting company" and "another coat of paint" must survive.
+ */
+const POINTS_ELSEWHERE_RE = new RegExp(
+  /\b(?:another|a\s+different|some\s*one\s+else|somebody\s+else|other)\s+(?:\w+\s+){0,2}?(?:compan(?:y|ies)|contractor|painter|business|outfit|shop|vendor|pro|professional|guy|firm)\b/.source
+  + "|" + /\b(?:try|call|contact|check\s+with|go\s+with|reach\s+out\s+to)\b[^.?!]{0,24}\b(?:another|a\s+different|other|someone\s+else|somebody\s+else)\b/.source
+  + "|" + /\b(?:otra|otro)\s+(?:\w+\s+){0,2}?(?:compañía|empresa|contratista|pintor|negocio)\b/.source,
+  "i",
 );
 
 export function onlyAcknowledgesThePhoto(text: string | null | undefined): boolean {
@@ -1934,6 +1972,57 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     // it carries a commitment it stops being rapport.
     if (PRICE.test(text)) {
       return { ok: false, reason: "quoted_a_price", detail: "free text quotes or implies a price; that is the estimator's job" };
+    }
+    /**
+     * A35 — NEVER OFFER TO HOLD A SLOT, and now something checks.
+     *
+     * Kate's A35, live and critical: "Never offer to tentatively hold, pencil
+     * in or provisionally book an appointment."
+     *
+     * Found 2026-10-13 by probing the validator with the rule's OWN WORDS.
+     * "I'll pencil you in" was allowed as-is. So were "Let me reserve that
+     * slot for you", "I'll hold it for you", "We'll tentatively book it" and
+     * "I'll block off that time".
+     *
+     * It LOOKED enforced, which is why it survived: "I can pencil you in for
+     * Tuesday" is refused — but for invented_availability, catching the day
+     * name, not the promise. Strip the day and the promise sails through. A
+     * rule enforced by coincidence is a rule enforced until the coincidence
+     * stops, and a probe that only tries the convenient phrasing confirms it.
+     *
+     * This is the most expensive thing the bot can say. The bot has no
+     * calendar — the office owns it — so a customer told their slot is held
+     * believes they have an appointment that does not exist. Nobody comes.
+     * They find out by waiting in.
+     */
+    if (OFFERS_TO_HOLD_RE.test(text)) {
+      return {
+        ok: false, reason: "offered_to_hold",
+        detail: `free text offers to hold or pencil in an appointment, which A35 forbids: "${text.slice(0, 90)}"`,
+      };
+    }
+    /**
+     * A18 — NEVER POINT THEM AT ANOTHER COMPANY.
+     *
+     * Enforced on FAQ content since the FAQ screen was built (workspace-faq.ts
+     * refuses to SAVE an answer naming a competitor) and never on a live
+     * reply. Same probe: "You might try another painting company", "a
+     * different contractor may be cheaper" and "Try Sherwin Williams for
+     * that" were all allowed as-is.
+     *
+     * Guarded at the saving end and open at the sending end is the harder
+     * half to notice, because the screen that admins look at is the one that
+     * works.
+     *
+     * Deliberately narrow: it fires on pointing them ELSEWHERE, not on the
+     * word "company". "We are a painting company" and "another coat" are
+     * untouched — see the tests.
+     */
+    if (POINTS_ELSEWHERE_RE.test(text)) {
+      return {
+        ok: false, reason: "named_another_company",
+        detail: `free text points the customer at another company, which A18 forbids: "${text.slice(0, 90)}"`,
+      };
     }
     const promise = outOfScopePromise(text);
     if (promise) {
