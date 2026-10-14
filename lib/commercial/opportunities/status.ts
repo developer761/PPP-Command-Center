@@ -870,6 +870,71 @@ export async function changeOpportunityStatus(
         );
       }
     }
+
+    /*
+     * A WON DEAL NEEDS A WORK ORDER, or the crew's hours have nowhere to go.
+     *
+     * Mary, 2026-10-13: *"I am not seeing some Opportunities in the Attendance
+     * drop-down box. Cummins and Motormindz are examples. I see them in the
+     * opportunity but not in the dropdown."*
+     *
+     * The Attendance picker lists WORK ORDERS, not deals — hours are logged
+     * against a job. Every one of the 92 migrated jobs has one because it came
+     * from a Salesforce work order. A deal won HERE got a project and no job,
+     * so it was invisible to Field Ops: won, with money on it, and no way to
+     * record the crew that is standing on it. Three deals were in that state
+     * when she wrote — MotorMindz ($30,000, with a proposal and costs on it),
+     * Flagstar Bank Trash Enclosures, and Thermo Fisher.
+     *
+     * That population only grows as Tomco moves off Salesforce, so it is fixed
+     * at the win rather than left to be noticed job by job.
+     *
+     * SAFE TO RUN ON EVERY WIN. `createJob` refuses when the deal already owns
+     * a live job — the guard that stops one deal spawning two job codes and
+     * splitting payroll — so re-winning, a sub-status edit, or the reconciler
+     * passing through all hit that guard and change nothing. The failure is
+     * swallowed for the same reason the project ensure swallows its own: a
+     * work order that could not be made must never block the sale from being
+     * recorded.
+     */
+    /*
+     * `isProjectBearing`, NOT the transition into it.
+     *
+     * This was gated on `isProjectBearing && !wasProjectBearing` — fire once,
+     * on the way in. That reads as careful and is not: the ensure is already
+     * idempotent (one indexed read when a job exists), so the narrower gate
+     * bought nothing and gave up the ability to heal.
+     *
+     * It had already lost a deal. Thermo Fisher Inspection Room, P.O. 718210,
+     * sits at pre_construction with an account and no work order — it became
+     * project-bearing before this shipped, so the transition never happened and
+     * no later status change would have given it one. Mary's bug, still live on
+     * that job, with the fix for it in the file.
+     *
+     * The project ensure directly above uses `||` for the same reason, and
+     * every failure here is swallowed (see below), so without a re-attempt a
+     * deal whose work order failed to be created once would never get another.
+     */
+    if (isProjectBearing) {
+      try {
+        const { ensureWorkOrderForWonOpportunity } =
+          await import("@/lib/commercial/field-ops/ensure-work-order");
+        const res = await ensureWorkOrderForWonOpportunity(input.opp_id, {
+          actingUserId: input.acting_user_id,
+        });
+        if (!res.ok) {
+          console.warn(
+            "[changeOpportunityStatus] work order ensure failed:",
+            res.error,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "[changeOpportunityStatus] work order ensure threw:",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
   }
 
   // Fan out a bell + email to every active team member on the opp
