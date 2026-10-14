@@ -90,9 +90,13 @@ describe("the body the webhook does not send", () => {
   it("is fetched by id from the receiving API", () => {
     // Resend: "webhooks do not include the email body, headers, or
     // attachments, only their metadata."
-    const r = route();
-    expect(r).toMatch(/https:\/\/api\.resend\.com\/emails\/receiving\//);
-    expect(r).toMatch(/fetchReceivedEmail\(data\.email_id\)/);
+    //
+    // The call itself lives in lib/email/resend-receiving.ts — the backfill
+    // that repairs messages stored while this was failing has to make the
+    // identical call, and two copies would drift.
+    expect(route()).toMatch(/fetchReceivedEmail\(data\.email_id\)/);
+    expect(strip(read("lib/email/resend-receiving.ts")))
+      .toMatch(/https:\/\/api\.resend\.com\/emails\/receiving\//);
   });
 
   it("only fetches when the payload really lacks it", () => {
@@ -102,9 +106,8 @@ describe("the body the webhook does not send", () => {
   it("stores the reply anyway when the fetch fails", () => {
     // A reply filed against the right order with an empty body beats no
     // reply at all — the subject matcher still threads it.
-    const r = route();
-    expect(r).toMatch(/data\.text \?\? fetched\?\.text \?\? null/);
-    expect(r).toMatch(/resend_inbound_fetch_failed/);
+    expect(route()).toMatch(/data\.text \?\? fetched\?\.text \?\? null/);
+    expect(strip(read("lib/email/resend-receiving.ts"))).toMatch(/resend_inbound_fetch_failed/);
   });
 
   it("matches In-Reply-To case-insensitively", () => {
