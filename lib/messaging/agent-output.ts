@@ -314,6 +314,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "asked_to_retype_held_data"
   | "asked_for_the_held_address"
   | "claimed_to_be_human"
   | "offered_to_hold"
@@ -1011,6 +1012,72 @@ const PHOTO_ACK_FILLER = new RegExp(
   + ")(?!\\p{L})",
   "giu",
 );
+
+/**
+ * A13: ASKING FOR A FIELD WE ALREADY HOLD.
+ *
+ * Kate: "Do not ask the customer to RETYPE data already held — contact
+ * details OR the address. CONFIRMING held data once is CORRECT." So the
+ * whole difficulty is telling an ASK from a READ-BACK, and the corpus shows
+ * the difference cleanly: a read-back PRESENTS the value.
+ *
+ *   praised   "Is [ADDRESS], Baldwin, NY [ZIP] the correct address?"
+ *   praised   "Is [PHONE] and [EMAIL] the best contact?"
+ *   faulted   "Could you share the full address for the project?"
+ *   faulted   "What's the best phone number to reach you at?"
+ *
+ * Scored over the corpus this catches 177 of 192 A13 faults with ZERO false
+ * positives on the 77 A13-praised messages.
+ *
+ * APOSTROPHES ARE NORMALISED FIRST. The corpus writes "What's" with U+2019,
+ * and matching only the ASCII quote missed 87 of those 177 — the same class
+ * of encoding assumption as \w not matching an accent, which cost two other
+ * bugs the same week.
+ */
+const SMART_APOSTROPHE = /[‘’]/g;
+
+/** Which held field a sentence is asking about, if any. */
+const FIELD_WORDS: ReadonlyArray<readonly [KnownField, RegExp]> = [
+  ["address", /\b(?:address|street|zip(?:\s*code)?)\b/i],
+  ["email", /\be-?mail\b/i],
+  ["phone", /\bphone(?:\s*number)?\b/i],
+  ["name", /\bname\b/i],
+];
+
+/** Wording that REQUESTS a value rather than reading one back. */
+const REQUESTS_A_VALUE =
+  /\b(?:what(?:'s| is| are)|which|can you|could you|would you|mind|please|send|share|provide|give|remind|re-?type|re-?send|re-?enter|text me|pass along|let me know|need your|need the|get your|grab your|have your)\b/i;
+
+/**
+ * A read-back carries the VALUE — an @, a run of digits, a scrubbed
+ * placeholder, or a rendered slot. An ask names only the field.
+ */
+const CARRIES_A_VALUE = /@|\d{3}|\[(?:ADDRESS|EMAIL|PHONE|ZIP|NAME)\]|\{[^}]+\}/i;
+
+/** "Is X still the best...?" — a confirmation, which A13 explicitly allows. */
+const READS_BACK = /\b(?:is|are|does|do)\b[^.?!]{0,60}\b(?:still|correct|right|best|the one)\b/i;
+
+/**
+ * The held fields this text asks the customer to retype.
+ *
+ * Sentence by sentence, because one message legitimately carries both — "Is
+ * [PHONE] still best? And what's the street name?" reads one back and asks
+ * for another.
+ */
+export function asksToRetype(
+  text: string,
+  held: Partial<Record<KnownField, boolean>>,
+): KnownField[] {
+  const out = new Set<KnownField>();
+  for (const sentence of text.replace(SMART_APOSTROPHE, "'").split(/(?<=[.?!])\s+/)) {
+    if (!REQUESTS_A_VALUE.test(sentence)) continue;
+    if (CARRIES_A_VALUE.test(sentence) || READS_BACK.test(sentence)) continue;
+    for (const [field, re] of FIELD_WORDS) {
+      if (held[field] === true && re.test(sentence)) out.add(field);
+    }
+  }
+  return [...out];
+}
 
 /**
  * A11: asking for the address AS A WHOLE.
@@ -2101,6 +2168,43 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
      * Kate praises it — "For the address, I have zip code [ZIP]. What's the
      * full street address for the project?"
      */
+    /**
+     * A13 — DO NOT MAKE THEM RETYPE WHAT WE ALREADY HAVE.
+     *
+     * 207 fell_short findings, the third largest class in the corpus. Like
+     * A11 it was enforced on the INTENT — ASK_SUPERSEDED_BY refuses
+     * ask_address / ask_contact / ask_project_details when the field is on
+     * file — and never on the model's words. Reproduced 2026-10-14 with the
+     * address held: "Can you retype your address for me?" was allowed and,
+     * on `acknowledge`, went out as the entire message.
+     *
+     * TWO CARVE-OUTS, both of which exist to keep a legal move available:
+     *
+     *  - a PARTIAL address is A11's business, not this one. If addressGap is
+     *    set we hold only half, and asking for the other half by name is the
+     *    required behaviour. Catching it here would leave the bot unable to
+     *    ask for the zip at all — the "two correct rules with no legal move
+     *    between them" failure this codebase keeps producing.
+     *  - a SECOND PROPERTY genuinely needs its own address, and Hatch's own
+     *    instruction is to run the flow again for it.
+     *
+     * availability is deliberately absent from FIELD_WORDS: it is not a
+     * knownField, and "What days work best?" is the close.
+     */
+    if (ctx.knownFields) {
+      const secondPlace = threadMentionsSecondProperty([
+        ...(ctx.customerMessages ?? []), ctx.customerText ?? "",
+      ]);
+      const retyped = asksToRetype(text, ctx.knownFields)
+        .filter((f) => !(f === "address" && (ctx.addressGap || secondPlace)));
+      if (retyped.length) {
+        return {
+          ok: false, reason: "asked_to_retype_held_data",
+          detail: `we already hold ${retyped.join(" and ")}, and this asks them to type it again. `
+            + `Read the value back to confirm it instead, or move on (A13): "${text.slice(0, 80)}"`,
+        };
+      }
+    }
     if (ctx.addressGap === "zip" || ctx.addressGap === "street") {
       if (ASKS_FOR_THE_WHOLE_ADDRESS.test(text)) {
         const held = ctx.addressGap === "zip" ? "the street" : "the ZIP";
