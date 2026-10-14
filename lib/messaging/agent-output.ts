@@ -23,6 +23,7 @@ import { parkKind, isAsk, conversationWasDeferred, threadIsBlockedOnEvent } from
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
+import { statedChannelPreference } from "./channel-preference";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -314,6 +315,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "transferred_a_text_only_customer"
   | "restated_scope_from_chat"
   | "offsite_job_entered_booking_flow"
   | "asked_to_retype_held_data"
@@ -2016,6 +2018,50 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
   // job is, and a caller that does not track scope should behave as it always
   // has.
+  /**
+   * A25 — SOMEBODY WHO ASKS TO BE TEXTED KEEPS BEING TEXTED.
+   *
+   * The intent guide for `transferred` already states this as a rule: "NOT
+   * for a text-only preference either: A25 says somebody who asks to be
+   * texted rather than called should keep being TEXTED, and handing them off
+   * is the defect that rule exists to stop."
+   *
+   * Nothing enforced it. Reproduced 2026-10-14: with the customer's words
+   * "text only please, don't call", `transferred` was ALLOWED and sent "I'm
+   * passing you over to our office now." The one thing they asked us not to
+   * do is the one thing we did.
+   *
+   * statedChannelPreference has existed and been tested the whole time —
+   * record-inbound.ts uses it — and the validator never consulted it. It is
+   * DERIVED here from customerText rather than added as a context field, so
+   * no caller needs updating and no harness can be thinner than production.
+   * That drift left A9 unexercised in the scenario engine entirely.
+   *
+   * ── WHY ONLY text_only, AND ONLY `transferred` ──────────────────────────
+   *
+   * email_only is the opposite case and must keep transferring: we cannot
+   * send email, so the office is exactly where that belongs. A `phone`
+   * preference needs a callback time captured first — A25's other half — and
+   * the validator cannot see the callback, which the renderer owns via
+   * phoneBranch. Refusing endings there without being able to read it would
+   * strand a customer who asked to be rung, so that half is left alone
+   * deliberately rather than half-guarded.
+   *
+   * `lost` and `bailout` stay legal: a text-only customer who declines the
+   * work has still declined it. This is about abandoning the channel, not
+   * about never ending a conversation.
+   */
+  if (a.intent === "transferred") {
+    const wordsNow = (ctx.customerText ?? "").trim();
+    if (wordsNow && statedChannelPreference(wordsNow) === "text_only") {
+      return {
+        ok: false, reason: "transferred_a_text_only_customer",
+        detail: "they asked to be texted rather than called, and texting is exactly what "
+          + "we can do. Keep the conversation here instead of handing it to the office (A25)",
+      };
+    }
+  }
+
   /**
    * A9 — DO NOT READ BACK THE SCOPE THEY JUST TYPED.
    *
