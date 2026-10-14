@@ -45,6 +45,17 @@ export default function SupplierPickList({
    *  Null until loaded, and null for anyone whose state is unset, both of
    *  which show the whole list rather than none of it. */
   const [userState, setUserState] = useState<string | null>(null);
+  /**
+   * Adding a vendor is admin-only, on the route AND on the settings page, and
+   * has been since it shipped. The picker did not know that, so it offered
+   * everyone an "Add" button whose only effect for a rep was a new tab that
+   * bounced straight back to the dashboard.
+   *
+   * Defaults to false so a failed or slow fetch hides the control rather than
+   * showing a dead one. Hiding it grants nothing either way — the 403 on
+   * /api/admin/supplier-settings is what keeps the list under control.
+   */
+  const [canManageVendors, setCanManageVendors] = useState(false);
 
   // Separate from the vendor list on purpose — that one is global and cached,
   // this one is per-user and must not be. A failure here is silent: an
@@ -58,6 +69,7 @@ export default function SupplierPickList({
         if (cancelled) return;
         if (Array.isArray(data?.favorites)) setFavorites(data.favorites);
         if (typeof data?.userState === "string" || data?.userState === null) setUserState(data.userState);
+        setCanManageVendors(data?.canManageVendors === true);
       } catch {
         /* the picker works unsorted */
       }
@@ -134,18 +146,20 @@ export default function SupplierPickList({
           placeholder="Search suppliers…"
           className="flex-1 min-w-0 px-3 py-2 sm:py-1.5 text-base sm:text-sm border border-ppp-charcoal-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-ppp-blue/30 focus:border-ppp-blue"
         />
-        <a
-          href="/dashboard/settings/suppliers?new=1"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-2 sm:py-1.5 text-xs sm:text-[11px] font-semibold uppercase tracking-wider rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors touch-manipulation"
-          title="Open Settings → Suppliers in a new tab"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 5v14 M5 12h14" />
-          </svg>
-          Add
-        </a>
+        {canManageVendors && (
+          <a
+            href="/dashboard/settings/suppliers?new=1"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-2 sm:py-1.5 text-xs sm:text-[11px] font-semibold uppercase tracking-wider rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors touch-manipulation"
+            title="Open Settings → Suppliers in a new tab"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            Add
+          </a>
+        )}
       </div>
 
       <div className="max-h-[26rem] overflow-y-auto">
@@ -196,17 +210,23 @@ export default function SupplierPickList({
             ) : suppliers.length === 0 ? (
               <>
                 <div>No active suppliers configured yet.</div>
-                <a
-                  href="/dashboard/settings/suppliers?new=1"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-xs font-semibold text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 5v14 M5 12h14" />
-                  </svg>
-                  Add a supplier
-                </a>
+                {canManageVendors ? (
+                  <a
+                    href="/dashboard/settings/suppliers?new=1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-blue-200 bg-ppp-blue-50 text-xs font-semibold text-ppp-blue-700 hover:bg-ppp-blue-100 transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 5v14 M5 12h14" />
+                    </svg>
+                    Add a supplier
+                  </a>
+                ) : (
+                  /* Dropping the button and leaving a dead end is the thing
+                     the empty state exists to avoid. Say who can fix it. */
+                  <div className="mt-2">Ask an admin to add one in Settings → Suppliers.</div>
+                )}
               </>
             ) : (
               "No suppliers match the search."
