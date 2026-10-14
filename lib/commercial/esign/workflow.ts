@@ -5,7 +5,7 @@ import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
 import { companyAddressLines, getOperatingCompany, type OperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getBrandLogoBuffer, getBrandSignatureBuffer } from "@/lib/commercial/operating-company/assets";
 import { proposalLabel } from "@/lib/commercial/proposals/constants";
-import { PROPOSAL_COPY_EMAILS } from "@/lib/commercial/proposals/copy-emails";
+import { PROPOSAL_COPY_EMAILS, proposalBccList } from "@/lib/commercial/proposals/copy-emails";
 import { SIGNATURE_STATUS_LABEL } from "./constants";
 import {
   downloadDocumentBytes,
@@ -180,7 +180,7 @@ async function emailSigner(input: {
     process.env.COMMERCIAL_PROPOSAL_FROM_ADDRESS;
   const to = input.request.signer_email;
   const bcc = withArchiveBcc(
-    PROPOSAL_COPY_EMAILS.filter((e) => e !== to),
+    proposalBccList().filter((e) => e !== to),
     { opportunityId: input.request.opportunity_id },
     [to]
   );

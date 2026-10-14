@@ -6,7 +6,7 @@ import { getProposal, sendProposal, type CommercialProposal } from "./db";
 import { getDocument, STORAGE_BUCKET } from "@/lib/commercial/documents/db";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
-import { PROPOSAL_COPY_EMAILS } from "./copy-emails";
+import { PROPOSAL_COPY_EMAILS, proposalBccList } from "./copy-emails";
 import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
 
 /**
@@ -172,8 +172,10 @@ export async function emailProposalToGc(input: EmailProposalInput): Promise<Emai
       ? PROPOSAL_COPY_EMAILS
       : oc.email || input.actor_email || undefined;
   // Don't BCC an address that's already the visible recipient/CC.
+  // proposalBccList() = the reply-to list PLUS the office watchers Stephanie
+  // asked for (2026-10-14) — see copy-emails.ts for why they are separate.
   const bcc = withArchiveBcc(
-    PROPOSAL_COPY_EMAILS.filter((e) => e !== toEmail && e !== ccEmail),
+    proposalBccList().filter((e) => e !== toEmail && e !== ccEmail),
     { opportunityId: proposal.opportunity_id, accountId: opp?.account_id },
     [toEmail, ccEmail]
   );
