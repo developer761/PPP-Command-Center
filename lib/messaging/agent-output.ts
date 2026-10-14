@@ -1186,6 +1186,50 @@ export function onlyAcknowledgesThePhoto(text: string | null | undefined): boole
   return left.length === 0;
 }
 
+/**
+ * THE SAME TEST, SENTENCE BY SENTENCE.
+ *
+ * onlyAcknowledgesThePhoto is all-or-nothing, and the model does not write
+ * all-or-nothing. Seen live 2026-10-14, after the whole-message version had
+ * shipped and was believed sufficient:
+ *
+ *   "I'll check the calendar for that time. Thanks for the photo!
+ *    Thanks, got the photo. I can't set times myself, but the office
+ *    handles scheduling and will confirm what's open."
+ *
+ * The rapport was "Thanks, got the photo. I can't set times myself, but…" —
+ * its SECOND sentence says something real, so the whole thing survived, and
+ * the renderer's own photo line was prepended on top of its first.
+ *
+ * Dropping the duplicated sentence keeps the half worth keeping. Only ever
+ * called once a photo thanks has already been added, so nothing is lost: the
+ * message still names the photo, once.
+ */
+export function withoutPhotoAckSentences(text: string | null | undefined): string {
+  const t = (text ?? "").trim();
+  if (!t) return "";
+  const kept = t
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !onlyAcknowledgesThePhoto(sentence))
+    .join(" ")
+    .trim();
+  if (!kept) return "";
+  /**
+   * AND A SENTENCE THAT MERELY OPENS WITH THANKS LOSES THE OPENING.
+   *
+   * "Thanks, I can see the water damage along the skirting" is worth keeping
+   * — it is the most useful thing the model can write about a photo — but
+   * after our own "Thanks for the photo!" it reads "Thanks for the photo!
+   * Thanks, I can see…". The observation is in the rest of the sentence, so
+   * only the opener goes.
+   *
+   * Anchored and comma-bound, so it can only remove a leading pleasantry:
+   * "Thanks for waiting on the measurements" keeps every word.
+   */
+  return kept.replace(/^(?:thanks|thank you|gracias)\s*[,!]\s*/i, (m) =>
+    (/^\s*(?:thanks|thank you|gracias)\s*[,!]/i.test(m) ? "" : m));
+}
+
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
