@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest";
 import { finishOptionsFor, PAINT_LINE_VALUES, BASE_FINISHES } from "@/lib/customer-form/material-types";
 import { buildConfirmationEmail } from "@/lib/customer-form/confirmation-email";
 import { inBuyList } from "@/lib/supplier-order/color-note-items";
+import { formatBucketsCans, gallonsOfOverride, convertUnit, containerCount } from "@/lib/supplier-order/estimate-gallons";
+import { normalizeBuildPayload } from "@/lib/supplier-order/build-state";
 import { surfacesMissingFinish, missingFinishMessage } from "@/lib/customer-form/missing-finish";
 import { COLOR_BRANDS, DEFAULT_COLOR_BRAND } from "@/lib/customer-form/color-brands";
 import { readFileSync } from "node:fs";
@@ -417,5 +419,66 @@ describe("FU.10 — the brand toggle", () => {
     // It is a BM chart; Sherwin Williams has its own VinylSafe link.
     const src = readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8");
     expect(src).toMatch(/brand\.id === "benjamin-moore" && \(/);
+  });
+});
+
+describe("FU.12 — a bucket AND loose gallons on one line", () => {
+  // "when they add 1 bucket on the order screen, allow them to add
+  // individual gallons alongside the bucket. Ex: 1 bucket + 2 gallons"
+  it("prints both on the vendor's line", () => {
+    expect(formatBucketsCans(0, 1, "bucket", 2)).toBe("1 bucket (×5 gal) + 2 gal");
+    expect(formatBucketsCans(0, 2, "bucket", 3)).toBe("2 buckets (×5 gal) + 3 gal");
+  });
+
+  it("prints pails alone exactly as before", () => {
+    expect(formatBucketsCans(0, 1, "bucket", 0)).toBe("1 bucket (×5 gal)");
+    expect(formatBucketsCans(0, 1, "bucket")).toBe("1 bucket (×5 gal)");
+  });
+
+  it("prints loose gallons alone rather than an em dash", () => {
+    // 0 pails + 2 gal is a real, if odd, thing to type on the way to 1 + 2.
+    expect(formatBucketsCans(0, 0, "bucket", 2)).toBe("2 gal");
+  });
+
+  it("counts the loose gallons as VOLUME, so the unit toggle keeps them", () => {
+    // 1 pail + 2 gal is seven gallons. Dropping the loose part on a switch
+    // to gallons is paint the worker asked for that nobody buys.
+    expect(gallonsOfOverride({ buckets: 0, cans: 1, unit: "bucket", looseGal: 2 })).toBe(7);
+    expect(convertUnit({ buckets: 0, cans: 1, unit: "bucket", looseGal: 2 }, "gal").cans).toBe(7);
+  });
+
+  it("does NOT fold them into the container count", () => {
+    // containerCount is what +/- steps. Folding loose gallons in would make
+    // one press move two numbers at once.
+    expect(containerCount({ buckets: 0, cans: 1, unit: "bucket" })).toBe(1);
+  });
+
+  it("survives the persistence boundary", () => {
+    const back = normalizeBuildPayload({
+      quantities: { "c1::Flat": { buckets: 0, cans: 1, unit: "bucket", looseGal: 2 } },
+    });
+    expect(back.quantities["c1::Flat"]).toEqual({ buckets: 0, cans: 1, unit: "bucket", looseGal: 2 });
+  });
+
+  it("is dropped for units where it has no meaning", () => {
+    // "2 gal" hanging off a quart line reads as part of the quart count.
+    const q = normalizeBuildPayload({
+      quantities: { "c1::Flat": { buckets: 0, cans: 4, unit: "qt", looseGal: 2 } },
+    });
+    expect(q.quantities["c1::Flat"]).toEqual({ buckets: 0, cans: 4, unit: "qt" });
+  });
+
+  it("adds nothing to a pail row that has none", () => {
+    const back = normalizeBuildPayload({
+      quantities: { "c1::Flat": { buckets: 0, cans: 3, unit: "bucket" } },
+    });
+    expect(back.quantities["c1::Flat"]).toEqual({ buckets: 0, cans: 3, unit: "bucket" });
+  });
+
+  it("clamps a garbled number before it reaches a vendor", () => {
+    const back = normalizeBuildPayload({
+      quantities: { "c1::Flat": { buckets: 0, cans: 1, unit: "bucket", looseGal: 10000 } },
+    });
+    expect(back.quantities["c1::Flat"].looseGal).toBe(99);
   });
 });

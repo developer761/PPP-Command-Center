@@ -801,6 +801,33 @@ export default function OrderBuilderView({
     });
   };
 
+  /**
+   * FU.12 — loose gallons beside the pails.
+   *
+   * Kate: "when they add 1 bucket on the order screen, allow them to add
+   * individual gallons alongside the bucket. Ex: 1 bucket + 2 gallons."
+   *
+   * Only reachable while the line is in pail mode; switching away clears it,
+   * because "2 gal" hanging off a quart line would be read as part of the
+   * quart count by anyone glancing at the row.
+   */
+  const adjustLooseGal = (e: GallonEstimate, delta: number) => {
+    const key = quantityKey(e.colorId, e.finish, e.isBathroom);
+    setPayload((cur) => {
+      const existing = readForEstimate(cur.quantities, e);
+      const base = existing ?? { buckets: 0, cans: e.cans, unit: (e.unit ?? "gal") as PaintUnit };
+      if (base.unit !== "bucket") return cur;
+      const next = Math.max(0, Math.min(99, (base.looseGal ?? 0) + delta));
+      return {
+        ...cur,
+        quantities: {
+          ...withoutLegacyKey(cur.quantities, e),
+          [key]: { ...base, looseGal: next },
+        },
+      };
+    });
+  };
+
   const setUnit = (e: GallonEstimate, unit: PaintUnit) => {
     const key = quantityKey(e.colorId, e.finish, e.isBathroom);
     // Decided OUT HERE, not inside the setPayload updater: an updater must be
@@ -1479,6 +1506,10 @@ export default function OrderBuilderView({
                 const key = quantityKey(e.colorId, e.finish, e.isBathroom);
                 const override = readForEstimate(payload.quantities, e);
                 const unit: PaintUnit = override?.unit ?? e.unit ?? "gal";
+                // FU.12 — loose gallons beside the pails. Same
+                // read-your-own-write rule as the quantity below: the local
+                // override is authoritative until the server echoes back.
+                const looseGal = unit === "bucket" ? (override?.looseGal ?? e.looseGal ?? 0) : 0;
                 // Read the worker's OWN number when they have set one, rather
                 // than waiting for the server to echo it back. Karan
                 // 2026-09-09: "when I add like a gallon there's a small delay."
@@ -1692,10 +1723,10 @@ export default function OrderBuilderView({
                               trip. Once an override exists the line is no
                               longer a placeholder either: a typed answer is an
                               answer. */}
-                          {override && containerCount(override) === 0
+                          {override && containerCount(override) === 0 && !(override.looseGal ?? 0)
                             ? "not ordering"
                             : override
-                            ? formatBucketsCans(override.buckets, override.cans, unit)
+                            ? formatBucketsCans(override.buckets, override.cans, unit, override.looseGal ?? 0)
                             : isPlaceholder
                               ? "⚠️ set qty"
                               : formatOrderQuantity(e)}
@@ -1768,6 +1799,35 @@ export default function OrderBuilderView({
                           );
                         })}
                       </div>
+                      {/* FU.12 — pails and loose gallons together. Only on a
+                          pail line; on a gallon line the main stepper is
+                          already the gallon count, and on a quart line loose
+                          gallons would read as quarts. */}
+                      {unit === "bucket" && (
+                        <div className="flex items-center justify-end gap-1.5 w-full">
+                          <span className="text-[11px] text-ppp-charcoal-500">+ loose gallons</span>
+                          <button
+                            type="button"
+                            onClick={() => adjustLooseGal(e, -1)}
+                            disabled={(looseGal ?? 0) <= 0}
+                            aria-label={`One fewer loose gallon of ${e.colorName}`}
+                            className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 disabled:bg-ppp-charcoal-100 disabled:text-ppp-charcoal-300 disabled:cursor-not-allowed flex items-center justify-center text-xl sm:text-base leading-none touch-manipulation"
+                          >
+                            −
+                          </button>
+                          <span className="text-[13px] sm:text-[12px] font-semibold tabular-nums min-w-[3.5rem] text-center">
+                            {looseGal ?? 0} gal
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => adjustLooseGal(e, 1)}
+                            aria-label={`One more loose gallon of ${e.colorName}`}
+                            className="h-11 w-11 sm:h-7 sm:w-7 rounded border border-ppp-charcoal-100 bg-white text-ppp-charcoal hover:bg-ppp-charcoal-50 flex items-center justify-center text-xl sm:text-base leading-none touch-manipulation"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
                       {unitNote?.key === quantityKey(e.colorId, e.finish, e.isBathroom) && (
                         <span className={`text-[11px] text-right ${unitNote.text.includes("from stock") ? "text-ppp-charcoal-500" : "text-ppp-orange-700"}`}>
                           {unitNote.text}

@@ -189,6 +189,8 @@ export type GallonEstimate = {
   /** Container unit for this line (Kate round-3 #27). Absent = gallons; the
    *  estimator only ever produces gallons, quarts come from a worker choice. */
   unit?: PaintUnit;
+  /** Loose gallons ordered alongside pails (Kate FU.12). Pail lines only. */
+  looseGal?: number;
   /** Total gallon-equivalent (buckets×5 + cans) — for sorting / sanity. */
   gallons: number;
   /** An accent wall is in scope for this color. The geometry cannot see one —
@@ -933,6 +935,25 @@ export type QuantityOverride = {
   cans: number;
   /** Defaults to "gal" when absent (every pre-#27 override). */
   unit?: PaintUnit;
+  /**
+   * Loose 1-gallon cans ALONGSIDE pails, when `unit` is "bucket".
+   *
+   * Kate FU.12 (2026-10-15): "when they add 1 bucket on the order screen,
+   * allow them to add individual gallons alongside the bucket. Ex: 1 bucket
+   * + 2 gallons."
+   *
+   * A gallon line already does this — `buckets` + `cans` prints "1 bucket
+   * (×5 gal) + 2 gal". A PAIL line could not, because in that mode `cans`
+   * holds the PAIL COUNT and `buckets` is always zero.
+   *
+   * This is a new field rather than reusing `buckets` on purpose: a stored
+   * pail row shaped {buckets: N, cans: 0} is a legacy row that build-state
+   * migrates by moving N into `cans`, so putting loose gallons there would
+   * be read as a pail count on the next load and order five times the paint.
+   *
+   * Only meaningful when unit === "bucket"; ignored otherwise.
+   */
+  looseGal?: number;
 };
 
 /** Canonical key for a color line — shared by the builder, the order-builder
@@ -960,6 +981,9 @@ export function quantityKey(
  * "+" jumped a whole pail.
  */
 export function containerCount(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
+  // NOTE: pails only on a pail line. FU.12's loose gallons are deliberately
+  // NOT counted here — this is what the +/- stepper steps, and folding them
+  // in would make one press move two different numbers.
   if (o.unit === "qt") return o.cans;
   // `|| o.buckets` is the legacy shape, where the pail count sat in `buckets`:
   // normalizeBuildPayload moves it on load, and this is the belt to that
@@ -988,9 +1012,15 @@ export const QUARTS_PER_GALLON = 4;
  *  as `containerCount` (which counts containers, because the +/- stepper steps
  *  containers). Three questions, three functions — conflating the last two is
  *  what made the unit toggle turn 2 pails into 2 gallons. */
-export function gallonsOfOverride(o: { buckets: number; cans: number; unit?: PaintUnit }): number {
+export function gallonsOfOverride(
+  o: { buckets: number; cans: number; unit?: PaintUnit; looseGal?: number }
+): number {
   if (o.unit === "qt") return o.cans / QUARTS_PER_GALLON;
-  if (o.unit === "bucket") return (o.cans || o.buckets) * GALLONS_PER_BUCKET;
+  // FU.12 — "1 bucket + 2 gal" is seven gallons. Without the loose part the
+  // unit toggle would silently drop it on the way to gallons or quarts,
+  // which is the same class of bug as the pail count sitting in the wrong
+  // field: paint the worker asked for that nobody buys.
+  if (o.unit === "bucket") return (o.cans || o.buckets) * GALLONS_PER_BUCKET + (o.looseGal ?? 0);
   return o.buckets * GALLONS_PER_BUCKET + o.cans;
 }
 
@@ -1019,7 +1049,7 @@ export function gallonsOfOverride(o: { buckets: number; cans: number; unit?: Pai
  * paint — and neither the screen nor the email showed anything wrong.
  */
 export function convertUnit(
-  o: { buckets: number; cans: number; unit?: PaintUnit },
+  o: { buckets: number; cans: number; unit?: PaintUnit; looseGal?: number },
   next: PaintUnit
 ): { buckets: number; cans: number; unit: PaintUnit } {
   const gal = gallonsOfOverride(o);
@@ -1183,14 +1213,20 @@ export function applyQuantityOverrides(
     // vendor — a 5x under-order, on the exact control Karan asked for. The
     // unit is the worker's decision; carry it through untouched.
     const unit: PaintUnit = o.unit === "qt" ? "qt" : o.unit === "bucket" ? "bucket" : "gal";
+    // FU.12 — loose gallons beside the pails. Clamped like everything else
+    // here: this is the last point before a number reaches a vendor.
+    const looseGal = unit === "bucket"
+      ? Math.max(0, Math.min(99, Math.floor(Number(o.looseGal) || 0)))
+      : 0;
     return {
       ...e,
       buckets: unit === "gal" ? buckets : 0,
       cans,
       unit,
+      looseGal,
       gallons:
         unit === "qt" ? 0
-        : unit === "bucket" ? cans * GALLONS_PER_BUCKET
+        : unit === "bucket" ? cans * GALLONS_PER_BUCKET + looseGal
         : buckets * GALLONS_PER_BUCKET + cans,
       // An explicitly-typed quantity is an answer, not a gap.
       manualOnly: false,
@@ -1216,7 +1252,7 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
     // A deliberately-excluded color is neither ordered nor outstanding — it
     // must not inflate "(+ N to confirm)" on the vendor email's TOTAL line.
     if (e.excluded) continue;
-    if (e.buckets > 0 || e.cans > 0) {
+    if (e.buckets > 0 || e.cans > 0 || (e.looseGal ?? 0) > 0) {
       if (e.unit === "qt") {
         quarts += e.cans;
       } else if (e.unit === "bucket") {
@@ -1224,7 +1260,8 @@ export function summarizeOrder(estimates: GallonEstimate[]): {
         // gallon tally counted 2 pails as 2 gallons, so the screen read
         // "Total: 2 gal" directly under a row reading "2 buckets (x5 gal)" —
         // a fifth of the paint, on the control Karan asked for.
-        cans += e.cans * GALLONS_PER_BUCKET;
+        // FU.12 — loose gallons are gallons, not pails.
+        cans += e.cans * GALLONS_PER_BUCKET + (e.looseGal ?? 0);
       } else {
         buckets += e.buckets;
         cans += e.cans;
@@ -1275,10 +1312,15 @@ export function addCustomItemsToTotal(
 }
 
 /** "2 buckets (×5 gal) + 3 gal" / "5 gal" / "4 qt" / "—". */
-export function formatBucketsCans(buckets: number, cans: number, unit: PaintUnit = "gal"): string {
+export function formatBucketsCans(buckets: number, cans: number, unit: PaintUnit = "gal", looseGal: number = 0): string {
   if (unit === "qt") return cans > 0 ? `${cans} qt` : "—";
   if (unit === "bucket") {
-    return cans > 0 ? `${cans} bucket${cans === 1 ? "" : "s"} (×${GALLONS_PER_BUCKET} gal)` : "—";
+    // FU.12 — pails and loose gallons on one line, worded the same way the
+    // gallon branch below already words it.
+    const parts: string[] = [];
+    if (cans > 0) parts.push(`${cans} bucket${cans === 1 ? "" : "s"} (×${GALLONS_PER_BUCKET} gal)`);
+    if (looseGal > 0) parts.push(`${looseGal} gal`);
+    return parts.length ? parts.join(" + ") : "—";
   }
   const parts: string[] = [];
   if (buckets > 0) parts.push(`${buckets} bucket${buckets === 1 ? "" : "s"} (×5 gal)`);
@@ -1300,8 +1342,10 @@ export function formatOrderQuantity(e: GallonEstimate): string {
   if (e.excluded) return "not ordering";
   if (e.manualOnly) return "manual entry required";
   if (e.unsized) return "needs review";
-  if (e.buckets === 0 && e.cans === 0) return e.needsMeasurement ? "needs measurement" : "—";
-  return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal");
+  if (e.buckets === 0 && e.cans === 0 && !(e.looseGal ?? 0)) {
+    return e.needsMeasurement ? "needs measurement" : "—";
+  }
+  return formatBucketsCans(e.buckets, e.cans, e.unit ?? "gal", e.looseGal ?? 0);
 }
 
 /**
