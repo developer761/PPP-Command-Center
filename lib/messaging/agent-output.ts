@@ -731,6 +731,47 @@ const REASON_CLAUSE =
   /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*|\bbefore (?:we|i)\b[^.!?]*|\bto get (?:you|this|that|your)\b[^.!?]*|\bto set (?:this|you|that)\b[^.!?]*/i;
 
 /**
+ * A15: AGREEING TO A TIME THE CUSTOMER NAMED.
+ *
+ * "Do NOT offer, confirm or suggest specific appointment times." The bot has
+ * no calendar — the office owns it — so agreeing is a promise it cannot
+ * keep. Found 2026-10-14: with the customer having asked "can you come
+ * Tuesday at 2?", every one of these was allowed and sent —
+ *
+ *   "Yes, that time works for us."
+ *   "That works, we'll see you then."
+ *   "Sure, the time you mentioned is open."
+ *   "I'll confirm you for the time you asked about."
+ *   "Our estimator is free at that hour, so it's confirmed."
+ *
+ * The existing invented_availability check catches a NAMED day or hour.
+ * None of these name one: they point AT the time the customer named — "that
+ * time", "then", "that hour" — and agree to it. Same destination as A35,
+ * somebody waiting in for an appointment nobody booked.
+ *
+ * ── BOTH HALVES IN ONE CLAUSE, AND NEVER A QUESTION ─────────────────────
+ *
+ * The pointer alone is everywhere in approved copy: "I'll check the calendar
+ * for that time" is our own template, and Kate praised "Looking forward to
+ * connecting then." So an agreement word AND a time pointer must fall in the
+ * SAME clause, a clause that ASKS is exempt — "What time window works for
+ * you that day?" is the flow doing its job — and the calendar line is carved
+ * out by name.
+ */
+const AGREES_TO_THEIR_TIME = new RegExp(
+  "(?:"
+  + /\b(?:yes|yep|sure|absolutely|confirm|confirms|confirmed|book|booked|all\s+set|locked\s+in|see\s+you|put\s+you\s+down|is\s+open|is\s+free|is\s+available)\b/.source
+  + ")[^.!?,]{0,40}\\b(?:that\\s+(?:time|hour|slot|day)|then|the\\s+(?:time|slot|hour|day)\\s+you\\s+(?:asked|mentioned|suggested|gave))\\b"
+  + "|\\b(?:that\\s+(?:time|hour|slot)|the\\s+(?:time|slot|hour)\\s+you\\s+(?:asked|mentioned|suggested))\\b[^.!?,]{0,40}(?:"
+  + /\b(?:works|is\s+(?:open|free|available|confirmed|good)|sounds\s+good|confirmed|booked|we\s+can\s+do)\b/.source
+  + ")",
+  "i",
+);
+
+/** Our own approved line: it names the time and promises nothing. */
+const CHECKING_THE_CALENDAR = /\bcheck(?:ing)?\s+(?:the|our)\s+calendar\b/i;
+
+/**
  * A41: saying the conversation cannot go on until they hand something over.
  *
  * Every branch needs BOTH halves — an inability to proceed AND a condition
@@ -807,6 +848,25 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
    * "until you give me"), while an honest limit names what the bot cannot do
    * and hands off. The conditional is the whole test.
    */
+  /**
+   * A15 — the bot has no calendar, so it cannot agree to a time.
+   *
+   * Clause by clause, because one message legitimately holds both halves:
+   * "I'll check the calendar for that time. What window works best?" points
+   * at the time twice and promises nothing either way.
+   */
+  for (const clause of text.split(/(?<=[.!?,])\s+/)) {
+    if (clause.includes("?")) continue;
+    if (CHECKING_THE_CALENDAR.test(clause)) continue;
+    if (AGREES_TO_THEIR_TIME.test(clause)) {
+      return {
+        ok: false,
+        why: "it agrees to the time the customer named, and the bot has no calendar to "
+          + "agree with — the office owns scheduling (A15)",
+      };
+    }
+  }
+
   if (BLOCKS_THE_FLOW.test(text)) {
     return {
       ok: false,
