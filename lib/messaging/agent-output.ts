@@ -733,6 +733,44 @@ const REASON_CLAUSE =
   /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*|\bbefore (?:we|i)\b[^.!?]*|\bto get (?:you|this|that|your)\b[^.!?]*|\bto set (?:this|you|that)\b[^.!?]*/i;
 
 /**
+ * A19: RECITING THE SERVICE MENU AT SOMEBODY WHO DID NOT ASK.
+ *
+ * "Do not recite the service menu back at the customer unless they ask."
+ * Found 2026-10-15, allowed in front of any template:
+ *
+ *   "We do interior painting, exterior painting, lime washing and skim
+ *    coating."
+ *
+ * to a customer whose message was "I need my living room painted". They
+ * asked for one thing and got a catalogue.
+ *
+ * THREE items is the threshold, not two. "We do interior and exterior
+ * painting" is how a person answers a question about scope, and Kate's rule
+ * is about the LIST — the moment it reads as a menu rather than a sentence.
+ * Two never reads as a menu; three starts to.
+ *
+ * The capability verb is required as well, so a customer's own list coming
+ * back in a scope summary is untouched: "the kitchen, two bedrooms and the
+ * hall" has three items and no claim about what we offer.
+ */
+const CATALOGUE_ITEM =
+  /\b(?:interior|exterior)\s+painting|\bpainting\b|\blime\s*wash\w*|\bskim\s*coat\w*|\bflooring\b|\bdry\s*wall\b|\bpower\s*wash\w*|\bwall\s*paper\b|\bcabinet\w*|\bminor\s+repairs?\b|\bcarpentry\b|\bstucco\b|\bplaster\b/gi;
+
+const CAPABILITY_VERB =
+  /\b(?:we\s+(?:do|offer|handle|provide|cover|specialize\s+in|take\s+on)|our\s+services\s+(?:include|are))\b/i;
+
+/** Did the customer ask what we cover? Then the list is the answer. */
+const ASKED_WHAT_WE_COVER =
+  /\b(?:what|which)\b[^.?!]{0,30}\b(?:services?|work|kinds?|types?|sort)\b|\bdo\s+you\s+(?:do|offer|handle|cover|guys\s+do)\b|\bwhat\s+(?:do|can)\s+you\s+do\b|\bqu[eé]\s+(?:servicios|trabajos)\b/i;
+
+export function recitesTheMenu(text: string, customerText?: string): boolean {
+  if (!CAPABILITY_VERB.test(text)) return false;
+  if (customerText && ASKED_WHAT_WE_COVER.test(customerText)) return false;
+  const items = new Set((text.match(CATALOGUE_ITEM) ?? []).map((m) => m.toLowerCase().replace(/\s+/g, " ")));
+  return items.size >= 3;
+}
+
+/**
  * A15: AGREEING TO A TIME THE CUSTOMER NAMED.
  *
  * "Do NOT offer, confirm or suggest specific appointment times." The bot has
@@ -867,6 +905,16 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
           + "agree with — the office owns scheduling (A15)",
       };
     }
+  }
+
+  /**
+   * A19 — the menu is an answer, not an opener. Only when they did not ask.
+   */
+  if (recitesTheMenu(text, customerText)) {
+    return {
+      ok: false,
+      why: "it recites the service list at a customer who did not ask what we cover (A19)",
+    };
   }
 
   if (BLOCKS_THE_FLOW.test(text)) {
