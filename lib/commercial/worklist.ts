@@ -48,7 +48,20 @@ export type WorkItem = {
 
 /** Everything the page has already loaded, in the shape this needs. */
 export type WorklistInput = {
-  /** Invoices with money still out. Grouped per GC before they become rows. */
+  /**
+   * Everything billed and overdue, grouped per GC before it becomes rows.
+   *
+   * 🔴 NOT JUST INVOICES. This was invoice-only while the "Owed to us" tile
+   * beside it counted overdue AIA as well — so the figure said chase $X and the
+   * list of who to chase left some of them out. On 2026-10-15, after AR aging
+   * stopped dating back-entered certificates from the day they were typed,
+   * $29,275.70 of genuinely overdue AIA existed that this list would not have
+   * shown. Two surfaces disagreeing about the money somebody is meant to go
+   * and collect.
+   *
+   * The caller feeds this from the receivables report, which is the same single
+   * definition the tile reads.
+   */
   overdueInvoices: {
     id: string;
     number: string | null;
@@ -56,6 +69,9 @@ export type WorklistInput = {
     accountName: string;
     balanceCents: number;
     daysLate: number;
+    /** Where this specific document lives. An AIA application is not under
+     *  /commercial/invoices, so it carries its own link. */
+    href?: string;
   }[];
   /** Won work that is finished enough to bill and has not been. */
   unbilled: { oppId: string; name: string; cents: number }[];
@@ -110,10 +126,10 @@ export function buildWorklist(input: WorklistInput): WorkItem[] {
   // same complaint as the counts it replaced, in a new shape. Money-first
   // ranking means the biggest debtor takes every slot, and nobody chases an
   // invoice anyway — they ring a GC about everything at once.
-  const byGc = new Map<string, { name: string; accountId: string | null; cents: number; count: number; oldest: number; invoiceId: string }>();
+  const byGc = new Map<string, { name: string; accountId: string | null; cents: number; count: number; oldest: number; invoiceId: string; href?: string }>();
   for (const inv of input.overdueInvoices) {
     const key = inv.accountId ?? inv.accountName;
-    const e = byGc.get(key) ?? { name: inv.accountName, accountId: inv.accountId, cents: 0, count: 0, oldest: 0, invoiceId: inv.id };
+    const e = byGc.get(key) ?? { name: inv.accountName, accountId: inv.accountId, cents: 0, count: 0, oldest: 0, invoiceId: inv.id, href: inv.href };
     e.cents += inv.balanceCents;
     e.count += 1;
     e.oldest = Math.max(e.oldest, inv.daysLate);
@@ -124,15 +140,18 @@ export function buildWorklist(input: WorklistInput): WorkItem[] {
       key: `gc:${key}`,
       subject: g.name,
       action: "Chase what they owe",
+      // "document", not "invoice": an overdue AIA application is one of these
+      // now, and calling it an invoice on the row that chases it would send
+      // somebody looking for an invoice that does not exist.
       why:
         g.count === 1
-          ? `one invoice, ${late(g.oldest)}`
-          : `${g.count} invoices, oldest ${late(g.oldest)}`,
+          ? `one document, ${late(g.oldest)}`
+          : `${g.count} documents, oldest ${late(g.oldest)}`,
       // A single invoice opens that invoice; several open the filtered
       // receivables list, which is the surface for working a GC down to zero.
       href:
         g.count === 1
-          ? `/commercial/invoices/${g.invoiceId}`
+          ? (g.href ?? `/commercial/invoices/${g.invoiceId}`)
           : g.accountId
             ? `/commercial/accounting?view=receivables&gc=${g.accountId}&overdue=1`
             : "/commercial/accounting?view=receivables&overdue=1",
