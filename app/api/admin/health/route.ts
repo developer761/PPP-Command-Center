@@ -7,7 +7,6 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { opsAlertRecipients } from "@/lib/customer-form/sf-failure-alert";
-import { getWritebackMode, loadAllowlist } from "@/lib/customer-form/writeback-mode";
 import { isJobComplete } from "@/lib/wo-progress/completion";
 
 /**
@@ -171,44 +170,6 @@ export async function GET() {
             : "Not set, and no ops email recipients either — a failed supplier order or bounced color form would tell NOBODY.",
       group: "platform",
       fix: "Create an incoming webhook for the paint/materials channel in Slack, then add PPP_MATERIALS_SLACK_WEBHOOK in Vercel → Settings → Environment Variables and redeploy.",
-    });
-  }
-
-  /**
-   * THE ONE SETTING THAT CAN MAKE GOING LIVE A NO-OP.
-   *
-   * Writeback defaults to `test_only`, deliberately — it is the safe default
-   * while the form is being built, and it writes to Salesforce ONLY for work
-   * orders someone has put on an allowlist. Every other customer submission
-   * is saved in the hub and goes no further.
-   *
-   * That is exactly right during testing and catastrophic on launch day: the
-   * form would look perfect, send its confirmations, notify the AM, and leave
-   * Salesforce untouched. Nothing errors. Nobody is told. The only symptom is
-   * colors quietly missing from the work order weeks later.
-   *
-   * This page is where someone looks before going live, so it has to say so.
-   * It was checking Resend, Slack, suppliers and four migrations, and not
-   * this.
-   */
-  {
-    const mode = await getWritebackMode();
-    const allowlist = mode === "test_only" ? await loadAllowlist() : [];
-    checks.push({
-      id: "writeback_mode",
-      label: "Salesforce writeback (customer color submissions)",
-      status: mode === "all" ? "ok" : "fail",
-      message:
-        mode === "all"
-          ? "Mode 'all' — every customer submission writes to Salesforce. This is the setting to be live on."
-          : mode === "off"
-            ? "Mode 'off' — NO customer submission reaches Salesforce. Colors are saved in the hub only, and nothing warns the customer or the AM."
-            : `Mode 'test_only' — only the ${allowlist.length} work order${allowlist.length === 1 ? "" : "s"} on the allowlist write to Salesforce. Every other customer's colors are saved in the hub and go no further, silently. This is the safe default for testing and the wrong one to launch on.`,
-      group: "platform",
-      fix:
-        mode === "all"
-          ? undefined
-          : "Open Settings → Salesforce Writeback and set the mode to 'all' before the first real customer form goes out.",
     });
   }
 
@@ -613,6 +574,33 @@ export async function GET() {
           "Webhook URL configured — critical failures auto-post to Slack with a 5-min dedup window. Click 'Send test Slack alert' above to verify end-to-end.",
       });
     }
+  }
+
+  /**
+   * TWO CARDS, ONE ID.
+   *
+   * Every check above pushes under a unique id, and the several branches
+   * that share one are mutually exclusive — only one fires per request. On
+   * 2026-10-14 I added a second `writeback_mode` check without noticing the
+   * first, because I listed the ids with `grep | head -30` and read a
+   * truncated list as the whole set. The page then rendered two cards saying
+   * the same thing under the same React key.
+   *
+   * Cheaper to notice here than to re-read 29 checks: a duplicate becomes a
+   * failing card on the page it pollutes, naming itself.
+   */
+  const idCounts = new Map<string, number>();
+  for (const c of checks) idCounts.set(c.id, (idCounts.get(c.id) ?? 0) + 1);
+  const duplicated = [...idCounts].filter(([, n]) => n > 1).map(([id]) => id);
+  if (duplicated.length > 0) {
+    checks.push({
+      id: "health_duplicate_ids",
+      label: "Setup Health is reporting the same check twice",
+      status: "fail",
+      group: "platform",
+      message: `${duplicated.length} check id${duplicated.length === 1 ? " is" : "s are"} pushed more than once this request: ${duplicated.join(", ")}. Two cards are saying the same thing, and they share a React key.`,
+      fix: "Find the duplicate id in app/api/admin/health/route.ts and delete the newer check, or give it its own id if it genuinely measures something different.",
+    });
   }
 
   // Aggregate summary
