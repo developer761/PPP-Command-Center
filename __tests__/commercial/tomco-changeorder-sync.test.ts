@@ -253,3 +253,51 @@ describe("the window between deploying and running the migration", () => {
     expect(isQueueNotReady("timeout exceeded")).toBe(false);
   });
 });
+
+describe("the sweep compares timestamps, not text", () => {
+  /*
+   * `updated_at` arrives from PostgREST with microsecond precision and a
+   * "+00:00" offset; `done_at` is a JS toISOString() — milliseconds and "Z".
+   * Compared as strings, '4' < 'Z', so a change made microseconds after an
+   * entry finished sorted as earlier and was never swept.
+   */
+  /*
+   * WHAT THIS DOES AND DOES NOT FIX, stated honestly because my first version
+   * of this test asserted something impossible.
+   *
+   * `Date.parse` truncates to milliseconds, so a change made 456 MICROseconds
+   * after a write finished is invisible to it — exactly as invisible as it was
+   * to the string comparison. That sub-millisecond case cannot be fixed in JS
+   * and is not worth fixing: it needs an edit landing inside the same
+   * millisecond as the write completing.
+   *
+   * What parsing does fix is the case where the two timestamps are not in the
+   * same shape — a non-UTC offset, a different fractional precision — where
+   * text ordering is not time ordering at all and can be wrong by hours.
+   */
+  it("compares instants, not text, when the offsets differ", () => {
+    // 09:00:00-05:00 is 14:00:00Z — the SAME instant as the write finishing,
+    // so nothing has changed since. As text, "0..." sorts before "1...".
+    expect(needsRequeue({ doneAt: "2026-10-15T14:00:00.000Z" }, "2026-10-15T09:00:00.000-05:00")).toBe(false);
+    // And an hour later in that offset IS later, though it still sorts first.
+    expect("2026-10-15T10:00:00.000-05:00" > "2026-10-15T14:00:00.000Z").toBe(false);
+    expect(needsRequeue({ doneAt: "2026-10-15T14:00:00.000Z" }, "2026-10-15T10:00:00.000-05:00")).toBe(true);
+  });
+
+  it("is not confused by microsecond precision on one side", () => {
+    // The common real shape: PostgREST microseconds vs a JS toISOString().
+    expect(needsRequeue({ doneAt: "2026-10-15T14:00:00.123Z" }, "2026-10-15T14:00:01.123456+00:00")).toBe(true);
+    expect(needsRequeue({ doneAt: "2026-10-15T14:00:01.123Z" }, "2026-10-15T14:00:00.123456+00:00")).toBe(false);
+  });
+
+  it("still ignores a change made before it finished", () => {
+    expect(
+      needsRequeue({ doneAt: "2026-10-15T14:00:00.456Z" }, "2026-10-15T14:00:00.123456+00:00"),
+    ).toBe(false);
+  });
+
+  it("refuses to guess when either timestamp is unreadable", () => {
+    expect(needsRequeue({ doneAt: "not a date" }, "2026-10-15T14:00:00Z")).toBe(false);
+    expect(needsRequeue({ doneAt: "2026-10-15T14:00:00Z" }, "not a date")).toBe(false);
+  });
+});

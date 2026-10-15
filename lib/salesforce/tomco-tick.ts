@@ -362,8 +362,20 @@ export function needsRequeue(
   if (!latestEntry) return true;
   // Still pending: the tick owns it, and it will be decided within the minute.
   if (!latestEntry.doneAt) return false;
-  // Finished — so only if the thing has changed here since.
-  return !!updatedAt && updatedAt > latestEntry.doneAt;
+  /*
+   * Finished — so only if the thing has changed here since.
+   *
+   * PARSED, not string-compared. `updated_at` comes from PostgREST with
+   * microsecond precision and a "+00:00" offset; `done_at` is a JS
+   * `toISOString()`, millisecond precision ending "Z". Compared as text,
+   * "…:00.123456+00:00" sorts BEFORE "…:00.123Z" because '4' < 'Z' — so an
+   * edit made in the same second an entry finished would never be swept.
+   */
+  if (!updatedAt) return false;
+  const changed = Date.parse(updatedAt);
+  const finished = Date.parse(latestEntry.doneAt);
+  if (!Number.isFinite(changed) || !Number.isFinite(finished)) return false;
+  return changed > finished;
 }
 
 export type SweepSummary = {
