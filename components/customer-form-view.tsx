@@ -1524,21 +1524,27 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                     chart, and Sherwin Williams has its own VinylSafe link in
                     its list above.
 
-                    HER LINK IS A GOOGLE DRIVE SHARE URL. FU.3 asks for it to
-                    be hosted on the hub instead, which removes the failure
-                    mode: today it resolves for anyone with the address, but
-                    it is a file in PPP's Drive, and the day its sharing is
-                    tightened a customer gets a request-access screen with
-                    nowhere to go and no way to tell us. Waiting on the PDF
-                    itself from Kate. */}
+                    FU.3 (2026-10-15) — SERVED FROM THE HUB, not Drive. The
+                    original was a Google Drive share URL: it resolved for
+                    anyone with the address, but it was a file in PPP's
+                    Drive, and the day its sharing was tightened a customer
+                    would have hit a request-access screen with nowhere to go
+                    and no way to tell us. Kate sent the file; it now ships
+                    in public/ and is served from our own domain, so it
+                    cannot be revoked out from under a customer mid-form.
+
+                    8 MB, and deliberately not recompressed — it is a color
+                    chart, and the swatches are the whole document. The size
+                    is on the button so nobody on cellular is surprised by
+                    it. */}
                 {brand.id === "benjamin-moore" && (
                   <a
-                    href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
+                    href="/colors-for-vinyl.pdf"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
                   >
-                    Vinyl Siding Colors
+                    Vinyl Siding Colors <span className="font-normal text-ppp-charcoal-500">(PDF, 8 MB)</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M7 17L17 7 M7 7h10v10" />
                     </svg>
