@@ -255,3 +255,244 @@ export async function updateExisting(
   }
   return out;
 }
+
+/**
+ * Create a sale Salesforce has never seen.
+ *
+ * The only action in this whole feature that can put a SECOND copy of a real
+ * sale into the total Katie runs the company on, so it is the most guarded.
+ *
+ * THE IDEMPOTENCY GUARD IS A QUERY, NOT A FLAG.
+ *
+ * `writeSf` retries up to three times on anything outside its fatal-error
+ * regex, and a timed-out create is a network error — so it retries the create.
+ * Two records from one call, before any id exists to store. The defence is to
+ * look the deal up by its external id immediately before inserting and again
+ * if anything goes wrong: `UniqueExternalId__c` is unique in the org, so the
+ * second insert of a pair is rejected by Salesforce itself rather than landing.
+ */
+export async function createNew(
+  ctx: Ctx,
+  deal: SoldDeal,
+  opts: { accountId: string | null; closeDate: string },
+): Promise<WriteBackOutcome> {
+  const out: WriteBackOutcome = {
+    dealId: deal.id,
+    dealTitle: deal.title,
+    action: "created",
+    sfId: null,
+    steps: [],
+    checks: [],
+  };
+  const contract = dollars(deal.contractCents);
+
+  // ── already there? ───────────────────────────────────────────────────────
+  const already = await soqlOne<{ Id: string; Name: string }>(
+    ctx,
+    `SELECT Id, Name FROM Opportunity WHERE UniqueExternalId__c = '${deal.id}'`,
+  );
+  if (already) {
+    return {
+      ...out,
+      action: "skipped",
+      sfId: already.Id,
+      steps: [`already in Salesforce as "${already.Name}" (${already.Id}) — nothing to create`],
+    };
+  }
+
+  // ── resolve by name, never from a constant ───────────────────────────────
+  // Every id differs between sandbox and production: the record type, the
+  // pricebook, the "Other" entry and Brendan's user are all different ids.
+  const rt = await soqlOne<{ Id: string }>(
+    ctx,
+    `SELECT Id FROM RecordType WHERE SobjectType = 'Opportunity' AND Name = 'Tomco' LIMIT 1`,
+  );
+  const book = await soqlOne<{ Id: string }>(
+    ctx,
+    `SELECT Id FROM Pricebook2 WHERE Name = 'Tomco' AND IsActive = true LIMIT 1`,
+  );
+  if (!rt || !book) {
+    return { ...out, action: "failed", error: "could not resolve the Tomco record type or pricebook" };
+  }
+  const pbe = await soqlOne<{ Id: string; Product2Id: string; UnitPrice: number }>(
+    ctx,
+    `SELECT Id, Product2Id, UnitPrice FROM PricebookEntry
+       WHERE Pricebook2Id = '${book.Id}' AND Product2.Name = 'Other' AND IsActive = true LIMIT 1`,
+  );
+  if (!pbe) {
+    return { ...out, action: "failed", error: `no active "Other" entry in the Tomco pricebook` };
+  }
+  const owner = await soqlOne<{ Id: string }>(
+    ctx,
+    `SELECT Id FROM User WHERE Name = 'Brendan Tomco' AND IsActive = true LIMIT 1`,
+  );
+
+  if (!ctx.apply) {
+    out.steps.push(
+      `would create: Opportunity "${deal.title.slice(0, 120)}" · Closed Won · ${opts.closeDate} · ` +
+        `${opts.accountId ? `account ${opts.accountId}` : "NO ACCOUNT"} · then a Quote and one line at ${contract.toFixed(2)}`,
+    );
+    return out;
+  }
+
+  // ── the opportunity ──────────────────────────────────────────────────────
+  // CloseDate IS sent here, and only here. It is required on insert
+  // (nillable=0, defaultedOnCreate=0) and rejected on update, which is exactly
+  // why this cannot be one upsert call.
+  const oppRes = await ctx.conn.sobject("Opportunity").create({
+    Name: deal.title.slice(0, 120),
+    StageName: "Closed Won",
+    CloseDate: opts.closeDate,
+    RecordTypeId: rt.Id,
+    Pricebook2Id: book.Id,
+    LeadSource: "Tomco",
+    UniqueExternalId__c: deal.id,
+    ...(opts.accountId ? { AccountId: opts.accountId } : {}),
+    ...(owner ? { OwnerId: owner.Id } : {}),
+  });
+  if (!oppRes.success) {
+    return { ...out, action: "failed", error: `opportunity: ${JSON.stringify(oppRes.errors ?? oppRes)}` };
+  }
+  out.sfId = oppRes.id;
+  out.steps.push(`Opportunity ${oppRes.id}`);
+
+  /*
+   * 🔴 SET THE NAME AGAIN. A FLOW OVERWRITES IT ON INSERT.
+   *
+   * We sent "Flagstar Bank Trash Enclosures" and Salesforce stored
+   * "PCCI Builders Corp. Opp - 2026-10-14" — something on this object renames
+   * an opportunity to "{Account} Opp - {date}" on create. 36 of the 200 Tomco
+   * records already carry that pattern, so it has been quietly costing them the
+   * job name for a while.
+   *
+   * It matters because the name is what Katie reads in a report and what a
+   * person matches on in the pairing queue; "PCCI Builders Corp. Opp" tells
+   * nobody which job it was. Tested: the rename HOLDS on a later update, so the
+   * fix is simply to say it twice.
+   */
+  const wanted = deal.title.slice(0, 120);
+  const named = await soqlOne<{ Name: string }>(ctx, `SELECT Name FROM Opportunity WHERE Id = '${oppRes.id}'`);
+  if (named && named.Name !== wanted) {
+    try {
+      await ctx.conn.sobject("Opportunity").update({ Id: oppRes.id, Name: wanted });
+      out.steps.push(`name restored (a flow had set it to "${named.Name}")`);
+    } catch (e) {
+      // Not fatal — the sale and its money are right, only the label is wrong.
+      out.steps.push(`⚠ could not restore the name: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // ── the quote and its one line ───────────────────────────────────────────
+  const quoteRes = await ctx.conn.sobject("Quote").create({
+    Name: deal.title.slice(0, 255),
+    OpportunityId: oppRes.id,
+    Pricebook2Id: book.Id,
+    Status: "Draft",
+  });
+  if (!quoteRes.success) {
+    // The sale exists and carries the external id, so a re-run finds it and
+    // does not duplicate. Report loudly: the money is not there yet.
+    return { ...out, action: "failed", sfId: oppRes.id, error: `quote: ${JSON.stringify(quoteRes.errors ?? quoteRes)} — the opportunity WAS created, re-run to finish it` };
+  }
+  out.steps.push(`Quote ${quoteRes.id}`);
+
+  const lineRes = await ctx.conn.sobject("QuoteLineItem").create({
+    QuoteId: quoteRes.id,
+    PricebookEntryId: pbe.Id,
+    Product2Id: pbe.Product2Id,
+    Quantity: 1,
+    UnitPrice: pbe.UnitPrice ?? 500,
+    PriceOverride__c: true,
+    PriceOverrideAmount__c: contract,
+  });
+  if (!lineRes.success) {
+    return { ...out, action: "failed", sfId: oppRes.id, error: `line: ${JSON.stringify(lineRes.errors ?? lineRes)} — re-run to finish it` };
+  }
+  out.steps.push(`line ${contract.toFixed(2)}`);
+
+  await ctx.conn.sobject("Quote").update({ Id: quoteRes.id, Status: "Approved" });
+  out.steps.push("quote approved");
+
+  /*
+   * 🔴 THE MAP ROW, OR TONIGHT'S IMPORT DUPLICATES THE DEAL.
+   *
+   * `SF.opps` is scoped `Corporate_Name__c = 'Tomco Painting'`, so a record
+   * this function creates is in the importer's scope immediately. The importer
+   * keys on the Salesforce 18-char id and knows nothing about
+   * `UniqueExternalId__c` — so with no map row, `mapped("deal", newId)` is null
+   * and `stageDeals` plain-INSERTs a SECOND commercial_opportunities row.
+   * Nothing constrains it. The first version of this function set the external
+   * id and stopped, which would have produced exactly that on the next run.
+   *
+   * Stamped at the EPOCH for the same reason pairing is: a fresh stamp makes
+   * `editedHere()` read the Command Center row as untouched, and Salesforce
+   * wins the next night — overwriting the contract value with the $500
+   * placeholder, the status, and the created date.
+   */
+  const { createClient: createAdmin } = await import("@supabase/supabase-js");
+  const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
+    auth: { persistSession: false },
+  });
+  const { error: mapErr } = await admin.from("commercial_import_map").upsert(
+    {
+      sf_id: oppRes.id,
+      entity: "deal",
+      row_id: deal.id,
+      notes: "created by the Tomco write-back",
+      updated_at: new Date(0).toISOString(),
+    },
+    { onConflict: "sf_id,entity" },
+  );
+  if (mapErr) {
+    return {
+      ...out,
+      action: "failed",
+      sfId: oppRes.id,
+      error:
+        `Salesforce has the sale but the link did not save here (${mapErr.message}). ` +
+        `FIX THIS BEFORE THE NEXT IMPORT — without it, tonight's run inserts a duplicate deal.`,
+    };
+  }
+  out.steps.push("linked in the import map (epoch-stamped)");
+
+  // ── read back ────────────────────────────────────────────────────────────
+  await new Promise((r) => setTimeout(r, 6000));
+  const after = await soqlOne<{
+    Name: string;
+    StageName: string;
+    Corporate_Name__c: string | null;
+    Quote_Subtotal__c: number | null;
+    AccountId: string | null;
+  }>(
+    ctx,
+    `SELECT Name, StageName, Corporate_Name__c, Quote_Subtotal__c, AccountId FROM Opportunity WHERE Id = '${oppRes.id}'`,
+  );
+  out.checks.push({ name: "stage is Closed Won", ok: after?.StageName === "Closed Won", detail: after?.StageName ?? "unknown" });
+  out.checks.push({
+    name: "Corporate_Name__c is Tomco Painting",
+    ok: after?.Corporate_Name__c === "Tomco Painting",
+    detail: after?.Corporate_Name__c ?? "unset",
+  });
+  out.checks.push({
+    name: "contract value arrived",
+    ok: Math.abs(Number(after?.Quote_Subtotal__c ?? 0) - contract) < 0.005,
+    detail: `Quote_Subtotal__c = ${after?.Quote_Subtotal__c ?? "null"} (sent ${contract.toFixed(2)})`,
+  });
+  out.checks.push({
+    name: "carries the job's name, not a generated one",
+    ok: (after as unknown as { Name?: string })?.Name === deal.title.slice(0, 120),
+    detail: (after as unknown as { Name?: string })?.Name ?? "unknown",
+  });
+  out.checks.push({
+    name: "hangs off an account",
+    ok: !!after?.AccountId,
+    detail: after?.AccountId ?? "ORPHAN — appears on no GC's page",
+  });
+  // Exactly one record carries this deal's id. The guard against the retry.
+  const dupes = await ctx.conn.query(
+    `SELECT COUNT(Id) n FROM Opportunity WHERE UniqueExternalId__c = '${deal.id}'`,
+  );
+  const n = Number((dupes.records?.[0] as { n?: number })?.n ?? 0);
+  out.checks.push({ name: "exactly one record for this deal", ok: n === 1, detail: `${n} found` });
+  return out;
+}

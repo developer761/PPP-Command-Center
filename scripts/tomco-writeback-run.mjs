@@ -125,7 +125,10 @@ for (const { deal, sfId } of todo) {
   }
   const out = await updateExisting(ctx, deal, sfId);
   results.push(out);
-  const icon = out.action === "failed" ? "🔴" : APPLY ? "✅" : "·";
+  // A skipped deal must not wear the same tick as a written one — the run that
+  // left 94 alone and wrote 2 printed 96 ticks, which reads as 96 writes.
+  const icon =
+    out.action === "failed" ? "🔴" : out.action === "skipped" ? "·" : APPLY ? "✅" : "·";
   console.log(`   ${icon} ${deal.title.slice(0, 46).padEnd(46)} ${money(deal.contractCents).padStart(13)}  ${sfId}`);
   for (const s of out.steps) console.log(`        ${s}`);
   if (out.error) console.log(`        error: ${out.error}`);
