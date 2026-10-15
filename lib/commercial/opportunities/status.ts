@@ -935,6 +935,35 @@ export async function changeOpportunityStatus(
         );
       }
     }
+
+    /*
+     * AND TELL SALESFORCE.
+     *
+     * Katie: "whenever we write in the commercial platform it should
+     * immediately write back into their salesforce." This is that moment — but
+     * it only QUEUES. A Salesforce write takes a second or two plus a
+     * read-back, and doing it here would mean a slow or unreachable org hangs
+     * or fails somebody marking a job won. A Tomco job must not fail to be sold
+     * because another company's org is down.
+     *
+     * /api/cron/tomco-writeback drains it within the minute, runs the decision
+     * that keeps a possible duplicate waiting for a person, and does the
+     * writing. queueForWriteBack never throws, for the same reason the two
+     * ensures above are wrapped.
+     *
+     * `isProjectBearing` rather than the transition into it, matching the
+     * work-order ensure directly above: the narrow gate reads as careful and
+     * is not — it already cost Thermo Fisher its work order. The queue's
+     * partial unique index makes a re-fire a no-op.
+     */
+    if (isProjectBearing) {
+      const { queueForWriteBack } = await import("@/lib/salesforce/tomco-queue");
+      await queueForWriteBack({
+        kind: "sale",
+        opportunityId: input.opp_id,
+        actingUserId: input.acting_user_id,
+      });
+    }
   }
 
   // Fan out a bell + email to every active team member on the opp

@@ -186,16 +186,14 @@ export async function listUnpairedSoldDeals(): Promise<SoldDeal[]> {
    */
   const { data: deals, error } = await sb
     .from("commercial_opportunities")
-    .select(
-      "id, title, title_override, title_override_mode, client_name, property_street, status, sub_status, accepted_contract_cents, decided_at, account_id, deleted_at",
-    )
+    .select(DEAL_COLS)
     .in("status", SOLD_STATUSES as unknown as string[])
     .is("deleted_at", null);
   if (error) throw new Error(`sold deals: ${error.message}`);
 
-  const sold = (deals ?? []).filter(
-    (d) => !(d.status === "pre_sale_closed" && d.sub_status !== "won"),
-  );
+  // One definition of sold, shared with `loadSoldDeal` — the sub-status half of
+  // the rule is easy to write once and forget the second time.
+  const sold = (deals ?? []).filter((d) => isSoldStatus(d.status, d.sub_status));
   if (sold.length === 0) return [];
 
   // Paging is deliberate: commercial_import_map's primary key is
@@ -235,6 +233,62 @@ export async function listUnpairedSoldDeals(): Promise<SoldDeal[]> {
       contractCents: d.accepted_contract_cents as number | null,
       decidedAt: d.decided_at as string | null,
     }));
+}
+
+/** The columns a `SoldDeal` is built from. One list, so the two readers agree. */
+const DEAL_COLS =
+  "id, title, title_override, title_override_mode, client_name, property_street, status, sub_status, accepted_contract_cents, decided_at, created_at, account_id, deleted_at";
+
+/** Is this status/sub-status pair a SOLD deal? The one definition. */
+export function isSoldStatus(status: string | null, subStatus: string | null): boolean {
+  if (!status || !(SOLD_STATUSES as readonly string[]).includes(status)) return false;
+  return !(status === "pre_sale_closed" && subStatus !== "won");
+}
+
+/**
+ * One deal, as the write-back needs it — for the per-minute tick, which has a
+ * single opportunity id and no reason to read all 98.
+ *
+ * Returns `sold: false` rather than null for a deal that is no longer sold:
+ * that is a real answer the tick acts on (the queue entry is finished, nothing
+ * is written), and it must not be confused with "deal not found".
+ */
+export async function loadSoldDeal(
+  opportunityId: string,
+): Promise<{ deal: SoldDeal; createdAt: string | null; sold: boolean } | null> {
+  const sb = adminClient();
+  const { data, error } = await sb
+    .from("commercial_opportunities")
+    .select(DEAL_COLS)
+    .eq("id", opportunityId)
+    .maybeSingle();
+  if (error) throw new Error(`deal ${opportunityId}: ${error.message}`);
+  if (!data) return null;
+  const d = data as Record<string, unknown>;
+  if (d.deleted_at) return null;
+
+  let accountName: string | null = null;
+  if (d.account_id) {
+    const { data: acct } = await sb
+      .from("commercial_accounts")
+      .select("company_name")
+      .eq("id", d.account_id as string)
+      .maybeSingle();
+    accountName = (acct as { company_name?: string } | null)?.company_name ?? null;
+  }
+  return {
+    deal: {
+      id: d.id as string,
+      // `derivedOppName`, like every other surface — never `title_override ||
+      // title`, which makes the nickname replace the GC and the address.
+      title: derivedOppName(d as unknown as Parameters<typeof derivedOppName>[0], accountName),
+      accountName,
+      contractCents: (d.accepted_contract_cents as number | null) ?? null,
+      decidedAt: (d.decided_at as string | null) ?? null,
+    },
+    createdAt: (d.created_at as string | null) ?? null,
+    sold: isSoldStatus(d.status as string | null, d.sub_status as string | null),
+  };
 }
 
 /** The open Tomco estimates a sold deal could be. */
@@ -436,7 +490,15 @@ export async function markDealAsNew(input: {
     },
     { onConflict: "opportunity_id" },
   );
-  return error ? { ok: false, error: error.message } : { ok: true };
+  if (error) return { ok: false, error: error.message };
+  /*
+   * Look at it NOW. A held queue entry otherwise waits out its back-off, so
+   * somebody who has just answered the question watches nothing happen for up
+   * to an hour — which is how a review queue stops being trusted.
+   */
+  const { releaseHold } = await import("@/lib/salesforce/tomco-queue");
+  await releaseHold(input.dealId);
+  return { ok: true };
 }
 
 /** Note a pairing for the audit trail. The LINK is the import-map row. */
@@ -463,6 +525,10 @@ export async function recordPairingDecision(input: {
     { onConflict: "opportunity_id" },
   );
   if (error) console.warn(`[tomco-pairing] audit note failed for ${input.dealId}: ${error.message}`);
+  // Same as `markDealAsNew`: the hold has been answered, so the next tick
+  // should act on it rather than the one an hour from now.
+  const { releaseHold } = await import("@/lib/salesforce/tomco-queue");
+  await releaseHold(input.dealId);
 }
 
 /**

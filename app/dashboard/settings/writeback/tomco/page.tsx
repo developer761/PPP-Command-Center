@@ -19,6 +19,7 @@ import {
   type SoldDeal,
 } from "@/lib/salesforce/tomco-pairing";
 import { decideWriteBack, SF_ENTRY_STOPPED } from "@/lib/salesforce/tomco-decide";
+import { listQueueForReview, type QueueReviewRow } from "@/lib/salesforce/tomco-queue";
 
 /**
  * Tomco write-back — the review queue.
@@ -112,6 +113,29 @@ export default async function TomcoWritebackPage({
   let loadError: string | null = null;
   const created = new Map<string, string | null>();
 
+  /*
+   * THE LIVE QUEUE, read separately and never allowed to break the page.
+   *
+   * The pairing half of this screen is the one that needs Salesforce; the queue
+   * is a local table. Read in its own try so an unreachable org still shows
+   * what is waiting — and so the reverse is true too, which matters because
+   * this is the only place the automatic half of the feature is visible at all.
+   */
+  let queue: QueueReviewRow[] = [];
+  let queueError: string | null = null;
+  let queueTableMissing = false;
+  try {
+    const q = await listQueueForReview();
+    queue = q.rows;
+    queueTableMissing = q.tableMissing;
+  } catch (err) {
+    queueError = err instanceof Error ? err.message : String(err);
+  }
+  const waiting = queue.filter((q) => !q.doneAt && !q.stalled && !q.heldReason);
+  const heldInQueue = queue.filter((q) => !q.doneAt && q.heldReason);
+  const stalled = queue.filter((q) => q.stalled);
+  const lastDone = queue.find((q) => q.doneAt)?.doneAt ?? null;
+
   try {
     [deals, candidates, resolved] = await Promise.all([
       listUnpairedSoldDeals(),
@@ -163,6 +187,89 @@ export default async function TomcoWritebackPage({
       {sp.ok && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{sp.ok}</div>
       )}
+
+      {/* ── the automatic half, made visible ── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-ppp-charcoal-400">Live sync</h2>
+          <p className="mt-1 text-[13px] text-ppp-charcoal-500">
+            A sold job, or a change order approved on one, is queued the moment it happens and written
+            to Salesforce within the minute. Shown here because a sync that works is otherwise
+            invisible — and &ldquo;it syncs automatically&rdquo; is not a claim anyone should have to
+            take on trust.
+          </p>
+        </div>
+        {queueError ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+            Couldn&apos;t read the queue: {queueError}
+          </div>
+        ) : queueTableMissing ? (
+          /*
+           * NOT an empty queue — a queue that does not exist yet. Saying
+           * "nothing waiting" here would read as all-clear while every sale
+           * since the deploy sat unsynced.
+           */
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+            <span className="font-semibold">The live sync is not switched on yet.</span> Its table has
+            not been created, so nothing is being queued and nothing is being written. Apply{" "}
+            <code className="font-mono text-[12px]">20261015140000_tomco_writeback_queue.sql</code>, and
+            the first nightly sweep after that queues everything already sold.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-ppp-charcoal-100 bg-surface">
+            <div className="grid grid-cols-3 divide-x divide-ppp-charcoal-100 border-b border-ppp-charcoal-100">
+              {[
+                { n: waiting.length, label: "waiting", hint: "goes within the minute" },
+                { n: heldInQueue.length, label: "needs a person", hint: "waiting on a decision" },
+                { n: stalled.length, label: "stopped asking", hint: "out of retries" },
+              ].map((c) => (
+                <div key={c.label} className="px-4 py-3">
+                  <div
+                    className={`font-mono text-xl font-bold tabular-nums ${
+                      c.label === "stopped asking" && c.n > 0 ? "text-rose-700" : "text-ppp-charcoal"
+                    }`}
+                  >
+                    {c.n}
+                  </div>
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-500">{c.label}</div>
+                  <div className="text-[11px] text-ppp-charcoal-400">{c.hint}</div>
+                </div>
+              ))}
+            </div>
+            {/* The failures first: they are the only rows that need acting on. */}
+            {[...stalled, ...heldInQueue, ...waiting].slice(0, 12).map((q) => (
+              <div key={q.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-ppp-charcoal-100 px-4 py-3 last:border-b-0">
+                <div className="min-w-0">
+                  <span className="text-[13.5px] font-semibold text-ppp-charcoal">{q.label}</span>
+                  {q.kind === "change_order" && (
+                    <span className="ml-2 rounded bg-ppp-charcoal-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-600">
+                      change order
+                    </span>
+                  )}
+                  <p className={`text-[12px] ${q.stalled ? "text-rose-700" : "text-ppp-charcoal-500"}`}>
+                    {q.stalled
+                      ? `Stopped after ${q.attempts} attempts — ${q.lastError ?? "no reason recorded"}`
+                      : q.heldReason ?? "queued"}
+                  </p>
+                </div>
+                <span className="font-mono text-[11px] tabular-nums text-ppp-charcoal-400">
+                  {q.queuedAt.slice(0, 16).replace("T", " ")}
+                </span>
+              </div>
+            ))}
+            {queue.length === 0 && (
+              <p className="px-4 py-3 text-[13px] text-ppp-charcoal-500">
+                Nothing in the queue. Everything sold here is already in Salesforce.
+              </p>
+            )}
+            {lastDone && (
+              <p className="border-t border-ppp-charcoal-100 px-4 py-2 text-[11px] text-ppp-charcoal-400">
+                Last written {lastDone.slice(0, 16).replace("T", " ")}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
 
       {loadError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
