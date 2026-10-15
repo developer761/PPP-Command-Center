@@ -2557,6 +2557,85 @@ export async function loadSalesforceSnapshot(
  * they always call loadDashboardData() without the `materials` opt.
  * ─────────────────────────────────────────────────────────────── */
 
+/**
+ * THE THIN SNAPSHOT IS THE FULL ONE WITH EIGHT ARRAYS EMPTIED.
+ *
+ * Every `thin ? … : …` in the builder above resolves to an empty value —
+ * none of them runs a different query, and nothing in the final assembly is
+ * derived from the dropped data (it is a flat object literal of independent
+ * results). So a thin snapshot can be produced from a full one for free.
+ *
+ * That matters for the warm cron, which was doing three sequential FORCED
+ * rebuilds — full, then thin, then materials — and so pulled Salesforce
+ * twice for data the first pull already had. Measured 2026-10-15:
+ *
+ *   [SF] snapshot COLD-COMPLETE in 22054ms
+ *   [SF] snapshot(thin) COLD-COMPLETE in 15865ms   ← this one
+ *   [SF] materials-bundle built in 35ms
+ *
+ * Sixteen seconds and a second full set of SOQL calls, every twenty
+ * minutes, for a subset of rows already in memory.
+ *
+ * KEEPING THIS HONEST: the field list below must match what the builder
+ * skips. `__tests__/config/thin-is-a-subset.test.ts` reads both and fails
+ * if a ninth thin-skipped query appears and is not handled here — the
+ * failure mode otherwise is a derived "thin" that silently still carries
+ * data a real thin build would have dropped.
+ */
+export function deriveThinFromFull(full: SalesforceSnapshot): SalesforceSnapshot {
+  return {
+    ...full,
+    opportunities: [],
+    quotes: [],
+    quotas: [],
+    subQuotas: [],
+    transactions: [],
+    reviews: [],
+    cases: [],
+    leadStats: { total: 0, converted: 0 },
+  };
+}
+
+/**
+ * Refresh all three caches from ONE Salesforce pull.
+ *
+ * Used by the warm cron. Full is fetched live; thin is derived; the
+ * materials bundle is derived from that thin. Each is written to the shared
+ * cache and seeded into this instance's in-memory cache, exactly as the
+ * individual loaders would have.
+ */
+export async function warmAllSnapshots(): Promise<{
+  full: boolean; thin: boolean; materials: boolean; ms: number;
+}> {
+  const t0 = Date.now();
+  const full = await loadSalesforceSnapshot({ forceRebuild: true });
+
+  const generation = await getCurrentGeneration();
+
+  const thin = deriveThinFromFull(full);
+  cache.set("snapshot-thin-v1", {
+    promise: Promise.resolve(thin),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    generation,
+  });
+  await writeSharedSnapshot("snapshot-thin-v1", thin);
+
+  const bundle = buildMaterialsBundle(thin);
+  cache.set(MATERIALS_BUNDLE_CACHE_KEY, {
+    promise: Promise.resolve(bundle),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    generation,
+  });
+  await writeSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY, bundle);
+
+  const ms = Date.now() - t0;
+  console.log(
+    `[SF] warmAllSnapshots: full(live) + thin(derived) + materials(derived) in ${ms}ms ` +
+    `— ${bundle.workOrders.length} WO, ${bundle.woLineItems.length} WOLI`
+  );
+  return { full: true, thin: true, materials: true, ms };
+}
+
 const MATERIALS_BUNDLE_CACHE_KEY = "materials-v1";
 
 /**
