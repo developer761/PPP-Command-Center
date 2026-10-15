@@ -88,10 +88,17 @@ export async function updateExisting(
     StageName: string;
     Corporate_Name__c: string | null;
     Quote_Subtotal__c: number | null;
+    /*
+     * The CANONICAL sales metric — `Opportunity.QuotedSubtotalWithChangeOrder__c`
+     * (no underscores on the Opportunity; the WorkOrder spells the same concept
+     * `Quoted_Subtotal_with_Change_Order__c`). Read only to describe a skip
+     * honestly, never written: it is derived.
+     */
+    QuotedSubtotalWithChangeOrder__c: number | null;
     Pricebook2Id: string | null;
   }>(
     ctx,
-    `SELECT Id, StageName, Corporate_Name__c, Quote_Subtotal__c, Pricebook2Id
+    `SELECT Id, StageName, Corporate_Name__c, Quote_Subtotal__c, QuotedSubtotalWithChangeOrder__c, Pricebook2Id
        FROM Opportunity WHERE Id = '${sfId}'`,
   );
   if (!opp) {
@@ -130,15 +137,31 @@ export async function updateExisting(
    * Once it is Closed Won over there, this function reports and stops.
    */
   if (opp.StageName === "Closed Won") {
+    /*
+     * SAY WHICH FIGURE DISAGREES, because the quote line is not the one that
+     * matters and a message naming only it sends people chasing nothing.
+     *
+     * Majestic Properties, on the first real tick: the quote line read $9,060
+     * against our $9,852.76, so this said "our base is 9852.76, and the
+     * difference is Salesforce's to keep" — reading as a $792.76 discrepancy on
+     * a job that agrees to the cent. `QuotedSubtotalWithChangeOrder__c`, the
+     * canonical sales metric and the number Katie's reports run on, is
+     * $9,852.76 there. The $792.76 lives in the work order's own line items,
+     * which no surface here claims to mirror.
+     */
+    const quoteLine = Number(opp.Quote_Subtotal__c ?? 0);
+    const canonical = Number(opp.QuotedSubtotalWithChangeOrder__c ?? 0);
+    const quoteLineAgrees = Math.abs(quoteLine - contract) < 0.005;
+    const canonicalAgrees = Math.abs(canonical - contract) < 0.005;
+    const note = quoteLineAgrees
+      ? ""
+      : canonicalAgrees
+        ? `; its quote line reads ${quoteLine.toFixed(2)}, but the total Katie's reports use already matches us to the cent`
+        : `; our base is ${contract.toFixed(2)} against their ${canonical.toFixed(2)} — the difference is Salesforce's to keep`;
     return {
       ...out,
       action: "skipped",
-      steps: [
-        `already Closed Won in Salesforce at ${opp.Quote_Subtotal__c ?? "—"} — left alone` +
-          (Math.abs(Number(opp.Quote_Subtotal__c ?? 0) - contract) >= 0.005
-            ? `; our base is ${contract.toFixed(2)}, and the difference is Salesforce's to keep`
-            : ""),
-      ],
+      steps: [`already Closed Won in Salesforce at ${canonical.toFixed(2)} — left alone${note}`],
     };
   }
   if (ctx.apply) {
