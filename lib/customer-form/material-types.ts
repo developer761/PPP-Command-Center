@@ -75,7 +75,20 @@ export type FinishesByScope = {
 };
 
 export type MaterialType = {
-  /** Value sent to SF / stored on the token / written to WorkOrder.MaterialType__c. */
+  /**
+   * The value stored on the token and written to
+   * `WorkOrder.Product_Lines__c` — a TEXT field.
+   *
+   * NOT MaterialType__c. This comment said it was, and it is wrong: the hub
+   * only ever READS MaterialType__c, as the estimator's answer from the
+   * quote, and writes its own answer to Product_Lines__c so what was SOLD
+   * can be read next to what was ORDERED (Kate R6.2).
+   *
+   * Worth correcting rather than tidying, because the wrong version cost
+   * real time: on 2026-10-15 it had me warn Katie that twelve new product
+   * lines needed adding to a restricted picklist before they could be
+   * written. They never touch that picklist.
+   */
   value: string;
   /** Group label for the optgroup in the picker. */
   group: string;
@@ -153,9 +166,11 @@ export const MATERIAL_TYPES: ReadonlyArray<MaterialType> = [
  *   - work orders already carrying "Regal Select Eggshell" still validate,
  *   - the picker can show them as their line rather than blanking out.
  *
- * ⚠️ WorkOrder.MaterialType__c is a Salesforce PICKLIST. If it is a RESTRICTED
- * picklist, the line-only values have to be added there before writes with them
- * will stick. Flagged for Katie.
+ * RESOLVED 2026-10-15. Katie: "MaterialType__c is a restricted picklist;
+ * Product_Lines__c is a text field and not restricted." It does not matter
+ * here, because the hub never writes MaterialType__c — it reads it as the
+ * estimator's answer and writes its own to Product_Lines__c. So nothing in
+ * this list has to exist as a picklist value.
  */
 export const PAINT_LINES: ReadonlyArray<MaterialType> = [
   // Finishes per product from Jason's completed sheet, 2026-09-09. His rule for
@@ -203,10 +218,10 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
    * exactly what that fallback is for. When Jason sends per-variant sheens
    * they slot in here and the fallback stops applying.
    *
-   * ⚠️ MaterialType__c / Product_Lines__c are Salesforce picklists. If
-   * either is RESTRICTED these values must be added there or the write is
-   * silently dropped — the same flag that is already open with Katie for the
-   * line-only values.
+   * No Salesforce picklist work is needed for these. Katie, 2026-10-15:
+   * "MaterialType__c is a restricted picklist; Product_Lines__c is a text
+   * field and not restricted." The hub writes only Product_Lines__c, so a
+   * new line name here reaches Salesforce as typed.
    */
   { value: "Regal Select Interior", group: "Benjamin Moore", category: "interior" },
   { value: "Regal Select Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
