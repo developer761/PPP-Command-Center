@@ -3,7 +3,7 @@ import { isAdminProfile } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
-import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
+import { loadRepsDirectory } from "@/lib/salesforce/queries";
 
 
 /**
@@ -39,16 +39,25 @@ export async function GET() {
 
   try {
     /**
-     * THIN. This endpoint maps reps down to { id, name } for a dropdown, and
-     * the full snapshot is 8.1MB — measured at 3227ms to read from the shared
-     * cache on this very route, on 2026-10-15, with a cold instance paying a
-     * 22s Salesforce rebuild instead. It fires on admin page loads, so that
-     * was the price of a list of names. Thin carries reps unchanged.
+     * A two-kilobyte answer that was costing megabytes.
+     *
+     * This mapped the snapshot's reps down to { id, name } for the View
+     * Switcher dropdown. Measured on production 2026-10-15: 3227ms against
+     * the 8.1MB full snapshot, and still 2365ms against the 3.6MB thin one,
+     * because the whole blob has to come back from Postgres, ungzip and
+     * JSON.parse before 26 names can be read out of it. It fires on admin
+     * page loads.
+     *
+     * loadRepsDirectory reads a small slice the warm cron writes beside the
+     * snapshots, and falls back to the thin snapshot when that slice is
+     * missing — which is exactly the previous behavior, so an un-warmed
+     * cache is no worse off than before.
+     *
+     * NOT made lazy instead: view-switcher.tsx pre-fetches deliberately,
+     * because fetching on dropdown-open left admins reading "No reps match"
+     * for up to thirty seconds. The pre-fetch is right; its cost was wrong.
      */
-    const snap = await loadSalesforceSnapshot({ thin: true });
-    const reps = snap.reps
-      .map((r) => ({ id: r.id, name: r.name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const reps = await loadRepsDirectory();
     return NextResponse.json(
       { reps },
       {

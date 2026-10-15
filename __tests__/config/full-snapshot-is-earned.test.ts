@@ -123,9 +123,53 @@ describe("only callers that need the full snapshot ask for it", () => {
     ).toEqual([]);
   });
 
-  it("the three that were switched stayed switched", () => {
-    expect(read("app/api/admin/reps/route.ts")).toMatch(/loadSalesforceSnapshot\(\{ thin: true \}\)/);
+  it("the switched callers stayed switched", () => {
+    // reps went further than thin — see the rep-directory block below.
     expect(read("app/api/search/index/route.ts")).toMatch(/loadDashboardData\(sp, \{ thin: true \}\)/);
     expect(read("app/dashboard/stuck/page.tsx")).toMatch(/loadDashboardData\(sp, \{ thin: true \}\)/);
+    expect(read("app/api/admin/inbox/route.ts")).not.toMatch(/loadSalesforceSnapshot\(\)/);
+    expect(read("app/api/admin/health/route.ts")).toMatch(/loadSalesforceSnapshot\(\{ thin: true \}\)/);
+  });
+});
+
+describe("the rep directory does not read a whole snapshot", () => {
+  /**
+   * Measured on production 2026-10-15: /api/admin/reps took 3227ms against
+   * the full snapshot and 2365ms against thin — for about two kilobytes of
+   * names, on an endpoint that fires on admin page loads.
+   *
+   * It cannot be made lazy; view-switcher.tsx pre-fetches on purpose,
+   * because fetching on dropdown-open left admins reading "No reps match"
+   * for up to thirty seconds. So the endpoint had to get cheaper instead.
+   */
+  it("reads the slice, not a snapshot", () => {
+    const route = read("app/api/admin/reps/route.ts");
+    expect(route).toContain("loadRepsDirectory()");
+    expect(route, "back to loading a whole snapshot for 26 names")
+      .not.toMatch(/loadSalesforceSnapshot\(/);
+  });
+
+  it("the warm writes the slice, or the fallback is the only path", () => {
+    const q = read("lib/salesforce/queries.ts");
+    const at = q.indexOf("export async function warmAllSnapshots");
+    expect(at).toBeGreaterThan(-1);
+    expect(q.slice(at)).toMatch(/writeSharedBlob\(REPS_SLICE_CACHE_KEY/);
+  });
+
+  it("falls back to the snapshot when the slice is absent", () => {
+    // A missing slice must be no worse than the old behavior, never an error.
+    const q = read("lib/salesforce/queries.ts");
+    const at = q.indexOf("export async function loadRepsDirectory");
+    const fn = q.slice(at, q.indexOf("\n}", at));
+    expect(fn).toMatch(/if \(slice\?\.reps\?\.length\) return slice\.reps;/);
+    expect(fn).toMatch(/loadSalesforceSnapshot\(\{ thin: true \}\)/);
+  });
+
+  it("sorts in both paths, so the dropdown order never depends on which ran", () => {
+    const q = read("lib/salesforce/queries.ts");
+    const warm = q.slice(q.indexOf("export async function warmAllSnapshots"));
+    const dir = q.slice(q.indexOf("export async function loadRepsDirectory"));
+    expect(warm).toMatch(/localeCompare/);
+    expect(dir.slice(0, 600)).toMatch(/localeCompare/);
   });
 });

@@ -2666,12 +2666,91 @@ export async function warmAllSnapshots(): Promise<{
   });
   await writeSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY, bundle);
 
+  await writeSharedBlob(REPS_SLICE_CACHE_KEY, {
+    reps: full.reps
+      .map((r) => ({ id: r.id, name: r.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  } satisfies RepsSlice);
+
   const ms = Date.now() - t0;
   console.log(
     `[SF] warmAllSnapshots: full(live) + thin(derived) + materials(derived) in ${ms}ms ` +
     `— ${bundle.workOrders.length} WO, ${bundle.woLineItems.length} WOLI`
   );
   return { full: true, thin: true, materials: true, ms };
+}
+
+/**
+ * A TINY SLICE, FOR CALLERS THAT NEED A TINY SLICE.
+ *
+ * `/api/admin/reps` returns ~26 reps as { id, name } so the View Switcher
+ * dropdown can be populated. It was reading the full 8.1MB snapshot to do
+ * it, and after moving to thin it still reads 3.6MB — measured at 2365ms on
+ * production, 2026-10-15, for about two kilobytes of names.
+ *
+ * It cannot simply be made lazy. That was the original design and it was
+ * changed deliberately: the comment in view-switcher.tsx records admins
+ * waiting 5-30s on "No reps match" when the dropdown fetched on open. The
+ * pre-fetch is right; the cost of the endpoint is what is wrong.
+ *
+ * So the warm writes the slice too, and the endpoint reads that. It rides
+ * the same snapshot_cache table and the same gzip path — no new
+ * infrastructure, no new expiry rules — and falls back to the thin snapshot
+ * whenever the slice is missing, which is exactly the behavior it had
+ * before.
+ */
+export const REPS_SLICE_CACHE_KEY = "reps-v1";
+
+export type RepsSlice = { reps: Array<{ id: string; name: string }> };
+
+async function writeSharedBlob(key: string, value: unknown): Promise<void> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    const gz = gzipSync(Buffer.from(JSON.stringify(value), "utf-8"));
+    const sb = snapshotCacheClient();
+    await sb.from("snapshot_cache").upsert({
+      key,
+      payload_gz: gz.toString("base64"),
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+    });
+    console.log(`[SF] shared blob "${key}" written (${gz.length} bytes gz)`);
+  } catch (err) {
+    console.warn(`[SF] shared blob "${key}" write failed (non-fatal):`, err instanceof Error ? err.message : err);
+  }
+}
+
+/** Null when absent, unreadable, or older than the serve-stale cap. The
+ *  caller falls back to the snapshot, so null is never fatal. */
+async function readSharedBlob<T>(key: string): Promise<T | null> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return null;
+    const sb = snapshotCacheClient();
+    const { data, error } = await sb
+      .from("snapshot_cache")
+      .select("payload_gz, fetched_at, expires_at")
+      .eq("key", key)
+      .maybeSingle();
+    if (error || !data?.payload_gz) return null;
+    const fetchedMs = new Date((data.fetched_at ?? data.expires_at) as string).getTime();
+    if (Number.isFinite(fetchedMs) && Date.now() - fetchedMs > SHARED_SNAPSHOT_SERVE_STALE_MAX_MS) return null;
+    return JSON.parse(gunzipSync(Buffer.from(data.payload_gz as string, "base64")).toString("utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The rep directory, from the slice when it is there and from the thin
+ * snapshot when it is not. Sorted here so both paths agree.
+ */
+export async function loadRepsDirectory(): Promise<Array<{ id: string; name: string }>> {
+  const slice = await readSharedBlob<RepsSlice>(REPS_SLICE_CACHE_KEY);
+  if (slice?.reps?.length) return slice.reps;
+  const snap = await loadSalesforceSnapshot({ thin: true });
+  return snap.reps
+    .map((r) => ({ id: r.id, name: r.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const MATERIALS_BUNDLE_CACHE_KEY = "materials-v1";
