@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { loadDashboardData } from "@/lib/data-source";
+import { warmAllSnapshots } from "@/lib/salesforce/queries";
 import { reportError } from "@/lib/observability";
 
 /**
@@ -35,7 +35,23 @@ import { reportError } from "@/lib/observability";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // SOQL rebuild can take 10-15s; give headroom
+/**
+ * Measured on production 2026-10-15, from a genuine cold start:
+ *
+ *   COLD START (no shared cache) ......  0.0s
+ *   Transaction__c, 62,258 rows ....... 11s
+ *   WorkOrder, 20,230 rows .............. 6s
+ *   everything else in parallel ......... 8s
+ *   COLD-COMPLETE ..................... 24.9s
+ *   write snapshot to shared cache .... +20s   (6.1 MB gzipped)
+ *                                       ─────
+ *                                       ~45s
+ *
+ * 60s left five seconds of headroom on a job that grows with PPP's data.
+ * A warm that times out leaves the cache empty, which is the exact state
+ * this cron exists to prevent.
+ */
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   // Bearer auth — Vercel cron auto-injects when CRON_SECRET is set.
@@ -46,25 +62,26 @@ export async function GET(request: Request) {
   }
 
   const tStart = Date.now();
-  // Empty searchParams is fine — loadDashboardData uses sp only for
-  // role/view-as resolution which the cron doesn't need.
-  const sp: Record<string, string | string[] | undefined> = {};
-
-  // Rebuild each cache SEQUENTIALLY: full → thin → materials. Two reasons:
-  // (1) we never hammer the SF API with concurrent full-snapshot pulls, and
-  // (2) the materials bundle re-derives from the thin snapshot, so rebuilding
-  // thin first means materials reuses the fresh thin (warm in this instance's
-  // in-memory cache) instead of triggering its own thin pull. forceRebuild
-  // makes each bypass serve-stale so they genuinely refresh.
-  const [fullRes] = await Promise.allSettled([
-    loadDashboardData(sp, { forceRebuild: true }),
-  ]);
-  const [thinRes] = await Promise.allSettled([
-    loadDashboardData(sp, { thin: true, forceRebuild: true }),
-  ]);
-  const [matsRes] = await Promise.allSettled([
-    loadDashboardData(sp, { materials: true, forceRebuild: true }),
-  ]);
+  /**
+   * ONE Salesforce pull, three caches.
+   *
+   * This used to be three sequential FORCED rebuilds — full, then thin,
+   * then materials — each going back to Salesforce. But thin is the full
+   * snapshot with eight arrays emptied, and the materials bundle is derived
+   * from thin, so the second and third pulls were re-fetching rows the
+   * first already had. Measured 2026-10-15:
+   *
+   *   [SF] snapshot COLD-COMPLETE in 22054ms
+   *   [SF] snapshot(thin) COLD-COMPLETE in 15865ms   ← re-pulled
+   *   [SF] materials-bundle built in 35ms
+   *
+   * Sixteen seconds and a second full set of SOQL calls, every twenty
+   * minutes. warmAllSnapshots fetches full live and derives the other two.
+   */
+  const [warmRes] = await Promise.allSettled([warmAllSnapshots()]);
+  const fullRes = warmRes;
+  const thinRes = warmRes;
+  const matsRes = warmRes;
 
   const result: Record<string, unknown> = {
     ok: true,

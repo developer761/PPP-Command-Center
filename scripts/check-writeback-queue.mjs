@@ -13,17 +13,29 @@
  * verified" flag are all database behaviour, and all four were either wrong or
  * unproven when they were written.
  *
- * So this is the layer that can see them. It follows `check:money`: real rows,
- * real constraints, assertions that can fail, and it cleans up after itself.
+ * 🔴 THE FIRST VERSION OF THIS FILE WAS ITSELF THE BUG IT TESTS FOR.
  *
- * 🔴 IT WRITES. Every row it creates is removed before it exits, including on
- * the failure paths — but it is a live database, so it refuses to run unless
- * the queue is quiet, and it never touches a row it did not create.
+ * It inserted a plain pending `sale` row for a real sold deal and asserted, in
+ * a comment, that "nothing here ever reaches Salesforce, because every probe
+ * row is deleted before the cron can claim it". Nothing made that true. The
+ * cron runs `* * * * *` against the same table, the probe was fully claimable
+ * in four separate windows, and had the cron won the race it would have run
+ * the real write path against the production org — then found the row deleted
+ * underneath it, so `markDone` and `markVerifyFailed` would both have silently
+ * matched zero rows. A test that can cause an unrecorded production write, and
+ * a docblock claiming it cannot. Both of today's recurring faults, in the file
+ * written to catch them.
+ *
+ * So now the probe is UNCLAIMABLE BY CONSTRUCTION, not by timing: every row it
+ * creates is born with `attempts = MAX_ATTEMPTS` and a fresh `last_attempt_at`,
+ * which are the two filters `claimPending` applies. Any block that needs those
+ * cleared restores them in the same breath. The cron cannot see these rows at
+ * all.
  */
 import { readFileSync } from "node:fs";
 
 const env = Object.fromEntries(
-  readFileSync(".env.local", "utf8")
+  readFileSync(new URL("../.env.local", import.meta.url), "utf8")
     .split("\n")
     .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
     .map((l) => {
@@ -34,6 +46,7 @@ const env = Object.fromEntries(
 for (const [k, v] of Object.entries(env)) process.env[k] ??= v;
 
 const { createClient } = await import("@supabase/supabase-js");
+const { MAX_ATTEMPTS } = await import("@/lib/salesforce/tomco-queue");
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
 const TABLE = "commercial_tomco_writeback_queue";
 
@@ -43,19 +56,42 @@ const check = (name, ok, detail = "") => {
   console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}${detail ? " — " + detail : ""}`);
 };
 
-/** Everything this run created, so the finally block can remove exactly that. */
+/** Everything this run created, so cleanup removes exactly that and no more. */
 const mine = new Set();
+/** The fields that make a row invisible to `claimPending`. */
+const PARKED = () => ({ attempts: MAX_ATTEMPTS, last_attempt_at: new Date().toISOString() });
+
 async function cleanup() {
   for (const id of mine) {
-    const { error } = await sb.from(TABLE).delete().eq("id", id);
-    if (error) console.log(`  🔴 could not remove probe row ${id}: ${error.message}`);
+    try {
+      const { error } = await sb.from(TABLE).delete().eq("id", id);
+      if (error) console.log(`  🔴 could not remove probe row ${id}: ${error.message}`);
+    } catch (err) {
+      // Never let one failure abandon the rest — this is the only thing
+      // standing between a crash and a row left in a production queue.
+      console.log(`  🔴 threw removing probe row ${id}: ${err?.message ?? err}`);
+    }
   }
+}
+
+/*
+ * `finally` does not run on a signal, and `npm run verify` is a long chain
+ * somebody interrupts routinely. Without these, ^C left a probe row behind.
+ */
+let cleaning = false;
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, async () => {
+    if (cleaning) return;
+    cleaning = true;
+    console.log(`\n  ${sig} — removing probe rows before exiting`);
+    await cleanup();
+    process.exit(130);
+  });
 }
 
 console.log("\nThe Tomco write-back queue, against the real database\n");
 
 try {
-  // ── it is safe to run ─────────────────────────────────────────────────────
   const { error: readErr } = await sb.from(TABLE).select("id, claimed_at, verify_failed_at").limit(1);
   if (readErr) {
     console.log(`  FAIL  the queue is not ready — ${readErr.message}`);
@@ -63,31 +99,35 @@ try {
     process.exit(1);
   }
 
-  const { count: pendingBefore } = await sb
-    .from(TABLE)
-    .select("id", { count: "exact", head: true })
-    .is("done_at", null);
   /*
-   * Refusing on a busy queue is not politeness. The probes below insert a
-   * `sale` row for a real deal, and the partial unique index allows only one
-   * pending sale per deal — so a probe could collide with genuine work, or
-   * worse, the per-minute cron could claim a probe row and try to write it to
-   * Salesforce. Quiet means nothing is in flight.
+   * CLAIMABLE, not merely unfinished.
+   *
+   * The first version refused to run while anything had `done_at IS NULL` —
+   * but held and stalled entries live in that state BY DESIGN, indefinitely,
+   * waiting for a person. One deal waiting on Katie would have made
+   * `npm run verify` exit 1 for ever, with a line that reads exactly like a
+   * broken invariant. What actually matters is that no row is in flight.
    */
-  check("the queue is quiet enough to probe", (pendingBefore ?? 0) === 0, `${pendingBefore} pending`);
-  if ((pendingBefore ?? 0) !== 0) {
-    console.log("\nSomething is waiting to sync. Re-run when the queue has drained.\n");
+  const { data: inFlight } = await sb
+    .from(TABLE)
+    .select("id, attempts, last_attempt_at, held_reason")
+    .is("done_at", null)
+    .lt("attempts", MAX_ATTEMPTS);
+  const claimable = (inFlight ?? []).filter((r) => !r.held_reason);
+  check("nothing is in flight to collide with", claimable.length === 0, `${claimable.length} claimable, ${(inFlight ?? []).length - claimable.length} held`);
+  if (claimable.length > 0) {
+    console.log("\nSomething is mid-sync. Re-run when the queue has drained.\n");
     process.exit(1);
   }
 
-  // A deal to hang probes off. Any sold one: nothing here ever reaches
-  // Salesforce, because every probe row is deleted before the cron can claim
-  // it, and the ones that are claimed are claimed by this script.
+  // Deterministic, so a failure is reproducible — `.limit(1)` with no order
+  // returns whatever Postgres feels like.
   const { data: deal } = await sb
     .from("commercial_opportunities")
     .select("id, title")
     .eq("status", "post_sale_closed")
     .is("deleted_at", null)
+    .order("id")
     .limit(1)
     .maybeSingle();
   check("there is a deal to probe with", !!deal, deal ? String(deal.title).slice(0, 40) : "none found");
@@ -100,109 +140,115 @@ try {
   };
 
   // ── the CHECK that a change order entry carries a change order ────────────
-  const bad = await insert({ kind: "change_order", opportunity_id: deal.id, change_order_id: null });
+  const bad = await insert({ kind: "change_order", opportunity_id: deal.id, change_order_id: null, ...PARKED() });
   check(
     "a change_order entry with no change order is refused",
     !!bad.error && bad.error.code === "23514",
-    bad.error ? `${bad.error.code}` : "🔴 it was ACCEPTED",
+    bad.error ? bad.error.code : "🔴 it was ACCEPTED",
   );
 
   // ── one pending entry per thing ───────────────────────────────────────────
-  const first = await insert({ kind: "sale", opportunity_id: deal.id });
+  const first = await insert({ kind: "sale", opportunity_id: deal.id, ...PARKED() });
   check("a sale can be queued", !first.error && !!first.data, first.error?.message ?? first.data?.id?.slice(0, 8));
-  const second = await insert({ kind: "sale", opportunity_id: deal.id });
+  if (!first.data) {
+    console.log("\nCould not create the probe row; the rest cannot run.\n");
+    process.exit(1);
+  }
+  const probeId = first.data.id;
+  const second = await insert({ kind: "sale", opportunity_id: deal.id, ...PARKED() });
   check(
     "the same sale cannot be queued twice while one is pending",
     !!second.error && second.error.code === "23505",
     second.error ? second.error.code : "🔴 a second pending entry was ACCEPTED",
   );
 
-  // ── the atomic claim ──────────────────────────────────────────────────────
+  // ── the atomic claim, raced through claimPending ITSELF ───────────────────
   //
-  // The defect this replaced: `claimPending` was a plain SELECT, so two
-  // overlapping ticks both "claimed" the same entry and both wrote to
-  // Salesforce. Raced here rather than reasoned about.
-  const claim = () =>
-    sb
-      .from(TABLE)
-      .update({ claimed_at: new Date().toISOString() })
-      .eq("id", first.data.id)
-      .is("done_at", null)
-      .is("claimed_at", null)
-      .select("id")
-      .maybeSingle();
-  const [a, b] = await Promise.all([claim(), claim()]);
-  const winners = [a, b].filter((r) => r.data).length;
-  check("two ticks racing for one entry produce exactly one winner", winners === 1, `${winners} winner(s)`);
+  // The first version raced a hand-rolled copy of the UPDATE, which proved
+  // Postgres does compare-and-swap and nothing about our code: strip the CAS
+  // out of `claimPending` and that check stayed green. This races the real
+  // function, so the regression it exists to catch actually fails it.
+  const { claimPending, peekPending, markHeld, markFailed, markDone, markVerifyFailed, rearmStalled } = await import(
+    "@/lib/salesforce/tomco-queue"
+  );
+  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, claimed_at: null }).eq("id", probeId);
+  const [runA, runB] = await Promise.all([claimPending(50), claimPending(50)]);
+  const gotA = runA.filter((r) => r.id === probeId).length;
+  const gotB = runB.filter((r) => r.id === probeId).length;
+  check(
+    "two concurrent claimPending calls cannot both take one entry",
+    gotA + gotB === 1,
+    `A took it ${gotA}×, B took it ${gotB}×`,
+  );
+  // Park it again the moment the race is over.
+  await sb.from(TABLE).update({ claimed_at: null, ...PARKED() }).eq("id", probeId);
 
-  // ── the back-off, and that both filters apply ─────────────────────────────
-  //
-  // `claimPending` chains two `.or()` clauses. If PostgREST let the second
-  // replace the first rather than ANDing them, the retry back-off would be
-  // silently ignored and every held entry retried every minute.
-  await sb.from(TABLE).update({ claimed_at: null, last_attempt_at: new Date().toISOString(), held_reason: "probe" }).eq("id", first.data.id);
-  const { claimPending, peekPending } = await import("@/lib/salesforce/tomco-queue");
-  const claimed = await claimPending(50);
+  // ── the back-off, and that BOTH filters apply ─────────────────────────────
+  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: new Date().toISOString(), claimed_at: null }).eq("id", probeId);
+  const inBackoff = await claimPending(50);
   check(
     "an entry inside the retry back-off is not claimed",
-    !claimed.some((c) => c.id === first.data.id),
-    `${claimed.length} claimed`,
+    !inBackoff.some((c) => c.id === probeId),
+    "the two or() filters are ANDed, not replaced",
   );
-  // Release anything this claimed so the cron is not left holding them.
-  for (const c of claimed) await sb.from(TABLE).update({ claimed_at: null }).eq("id", c.id);
+  for (const c of inBackoff) await sb.from(TABLE).update({ claimed_at: null }).eq("id", c.id);
 
-  // ── a held entry keeps its retry budget ───────────────────────────────────
-  const { markHeld, markFailed, markDone, markVerifyFailed } = await import("@/lib/salesforce/tomco-queue");
-  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, held_reason: null }).eq("id", first.data.id);
-  await markHeld(first.data.id, "probe hold");
-  const { data: afterHold } = await sb.from(TABLE).select("attempts, claimed_at, held_reason").eq("id", first.data.id).maybeSingle();
+  // ── a held entry keeps its retry budget, and loses its claim ──────────────
+  //
+  // The sentinel matters: `claimed_at` was already null in the first version,
+  // so "holding releases the claim" could not fail.
+  await sb.from(TABLE).update({ attempts: 0, claimed_at: new Date().toISOString(), ...PARKED() }).eq("id", probeId);
+  await sb.from(TABLE).update({ attempts: 0 }).eq("id", probeId);
+  await markHeld(probeId, "probe hold");
+  const { data: afterHold } = await sb.from(TABLE).select("attempts, claimed_at").eq("id", probeId).maybeSingle();
   check("holding does not spend an attempt", Number(afterHold?.attempts ?? -1) === 0, `attempts ${afterHold?.attempts}`);
-  check("holding releases the claim", afterHold?.claimed_at === null, String(afterHold?.claimed_at));
+  check("holding releases the claim", afterHold?.claimed_at === null, "it was set before the call");
 
   // ── a failure spends one, and releases the claim ──────────────────────────
-  await markFailed(first.data.id, 0, "probe failure");
-  const { data: afterFail } = await sb.from(TABLE).select("attempts, claimed_at, last_error").eq("id", first.data.id).maybeSingle();
+  await sb.from(TABLE).update({ claimed_at: new Date().toISOString() }).eq("id", probeId);
+  await markFailed(probeId, 0, "probe failure");
+  const { data: afterFail } = await sb.from(TABLE).select("attempts, claimed_at, last_error").eq("id", probeId).maybeSingle();
   check("a failure spends exactly one attempt", Number(afterFail?.attempts ?? -1) === 1, `attempts ${afterFail?.attempts}`);
-  check("a failure releases the claim", afterFail?.claimed_at === null, String(afterFail?.claimed_at));
+  check("a failure releases the claim", afterFail?.claimed_at === null, "it was set before the call");
 
   // ── an entry out of retries stops being claimed ───────────────────────────
-  await sb.from(TABLE).update({ attempts: 3, last_attempt_at: null, held_reason: null }).eq("id", first.data.id);
+  await sb.from(TABLE).update({ attempts: MAX_ATTEMPTS, last_attempt_at: null, held_reason: null }).eq("id", probeId);
   const stalledClaim = await claimPending(50);
   check(
     "an entry out of retries is not claimed again",
-    !stalledClaim.some((c) => c.id === first.data.id),
+    !stalledClaim.some((c) => c.id === probeId),
     "it waits for a person",
   );
   for (const c of stalledClaim) await sb.from(TABLE).update({ claimed_at: null }).eq("id", c.id);
 
   // ── and a person can put it back ──────────────────────────────────────────
-  const { rearmStalled } = await import("@/lib/salesforce/tomco-queue");
-  const rearmed = await rearmStalled(first.data.id);
-  const { data: afterRearm } = await sb.from(TABLE).select("attempts, last_error").eq("id", first.data.id).maybeSingle();
+  const rearmed = await rearmStalled(probeId);
+  const { data: afterRearm } = await sb.from(TABLE).select("attempts, last_error").eq("id", probeId).maybeSingle();
   check(
     "the review screen's button really does re-queue it",
     rearmed.ok && Number(afterRearm?.attempts ?? -1) === 0 && afterRearm?.last_error === null,
     `attempts ${afterRearm?.attempts}`,
   );
+  await sb.from(TABLE).update(PARKED()).eq("id", probeId);
 
   // ── a failed verification outlives being marked done ──────────────────────
   //
-  // The defect: the retry found Salesforce already correct, said "nothing to
-  // do", and `markDone` cleared the evidence. A sale at $0 in Katie's reports
-  // read as a clean sync.
-  await markVerifyFailed(first.data.id, "probe: the read-back disagreed");
-  await markDone(first.data.id, "probe: nothing to do");
+  // Sentinel again: `last_error` had been wiped by rearmStalled, so
+  // "marking done clears the retry error" could not fail either.
+  await sb.from(TABLE).update({ last_error: "probe sentinel" }).eq("id", probeId);
+  await markVerifyFailed(probeId, "probe: the read-back disagreed");
+  await markDone(probeId, "probe: nothing to do");
   const { data: afterDone } = await sb
     .from(TABLE)
-    .select("done_at, last_error, verify_failed_at, verify_failed_reason")
-    .eq("id", first.data.id)
+    .select("last_error, verify_failed_at, verify_failed_reason")
+    .eq("id", probeId)
     .maybeSingle();
   check("marking an entry done does not erase a failed verification", !!afterDone?.verify_failed_at, afterDone?.verify_failed_reason ?? "🔴 cleared");
-  check("marking an entry done does clear the retry error", afterDone?.last_error === null, String(afterDone?.last_error));
+  check("marking an entry done does clear the retry error", afterDone?.last_error === null, "a sentinel was set before the call");
 
   // ── and a verified write clears it ────────────────────────────────────────
-  await markDone(first.data.id, "probe: written and verified", { verified: true });
-  const { data: afterVerified } = await sb.from(TABLE).select("verify_failed_at").eq("id", first.data.id).maybeSingle();
+  await markDone(probeId, "probe: written and verified", { verified: true });
+  const { data: afterVerified } = await sb.from(TABLE).select("verify_failed_at").eq("id", probeId).maybeSingle();
   check(
     "a verified write clears it, so the flag can go green again",
     afterVerified?.verify_failed_at === null,
@@ -210,21 +256,35 @@ try {
   );
 
   // ── a plan run must not claim ─────────────────────────────────────────────
-  await sb.from(TABLE).update({ done_at: null, claimed_at: null, attempts: 0, last_attempt_at: null, verify_failed_at: null }).eq("id", first.data.id);
+  await sb.from(TABLE).update({ done_at: null, claimed_at: null, verify_failed_at: null, attempts: 0, last_attempt_at: null }).eq("id", probeId);
   const peeked = await peekPending(50);
-  const { data: afterPeek } = await sb.from(TABLE).select("claimed_at").eq("id", first.data.id).maybeSingle();
+  const { data: afterPeek } = await sb.from(TABLE).select("claimed_at").eq("id", probeId).maybeSingle();
   check(
     "a plan run sees the entry without claiming it",
-    peeked.some((p) => p.id === first.data.id) && afterPeek?.claimed_at === null,
+    peeked.some((p) => p.id === probeId) && afterPeek?.claimed_at === null,
     `peeked ${peeked.length}, claimed_at ${afterPeek?.claimed_at}`,
   );
+  await sb.from(TABLE).update(PARKED()).eq("id", probeId);
 } catch (err) {
   failures++;
   console.log(`  FAIL  the check itself threw — ${err?.message ?? err}`);
 } finally {
   await cleanup();
-  const { count } = await sb.from(TABLE).select("id", { count: "exact", head: true }).is("done_at", null);
-  console.log(`\n  probe rows removed · ${count} entries pending`);
+  /*
+   * PROVE the cleanup worked. The first version printed "probe rows removed"
+   * unconditionally and exited 0 with a live row still in the queue if a
+   * delete had failed — an assertion in the shape of a log line.
+   */
+  const ids = [...mine];
+  if (ids.length > 0) {
+    const { data: left, error } = await sb.from(TABLE).select("id").in("id", ids);
+    if (error) {
+      failures++;
+      console.log(`\n  FAIL  could not confirm the probe rows are gone — ${error.message}`);
+    } else {
+      check("every probe row this run created is gone", (left ?? []).length === 0, `${(left ?? []).length} left behind`);
+    }
+  }
 }
 
 console.log(

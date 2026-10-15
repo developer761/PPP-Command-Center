@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { fetchReceivedEmail } from "@/lib/email/resend-receiving";
 import { createClient } from "@/lib/supabase/server";
 import { resolveViewer } from "@/lib/auth/viewer-server";
@@ -190,27 +190,83 @@ export async function GET(request: Request) {
    * fetch is made. Capped because a genuinely broken key would otherwise
    * turn every page load into a row of doomed round trips.
    */
+  /**
+   * ── HEALING A MISSING BODY, WITHOUT MAKING ANYONE WAIT ────────────────
+   *
+   * Resend's inbound webhook carries metadata only, so a body is fetched
+   * separately by id. When that fetch has not happened, this fills it in.
+   *
+   * It used to do so BEFORE returning, and to give up silently when the
+   * fetch came back with nothing:
+   *
+   *     if (!fetched || (!fetched.text && !fetched.html)) return;
+   *
+   * Nothing recorded the attempt, so a message whose body can never be
+   * recovered — Resend has dropped it, the id is gone, or it is the old
+   * seeded MOCK row — was retried on EVERY load of Mail, for ever. Up to
+   * five Resend round trips before the page could render, permanently.
+   * Measured 2026-10-15: Mail took about fifteen seconds to list three
+   * messages. I added this yesterday; the retry-for-ever is mine.
+   *
+   * Two changes:
+   *
+   *   · it runs in `after()`, so the list returns immediately and the fetch
+   *     happens once the response is sent. A message heals by the next
+   *     load instead of holding up this one;
+   *   · a failed attempt is RECORDED, and after MAX_HEAL_ATTEMPTS the row
+   *     is left alone. The screen already distinguishes "no text" from
+   *     "could not be loaded", so a permanently unreadable reply still
+   *     reads honestly — it just stops costing a round trip to say so.
+   *
+   * The attempt count lives on `raw_payload` under a namespaced key rather
+   * than a new column, because migrations here are pasted into the SQL
+   * editor by hand and this does not warrant one. It is additive: the
+   * original webhook payload underneath is untouched.
+   */
   const MAX_HEAL_PER_REQUEST = 5;
+  const MAX_HEAL_ATTEMPTS = 3;
+  type HealMeta = { data?: { email_id?: string }; _ppp_body_heal?: { attempts?: number } };
+
   const needBody = (messages ?? [])
-    .filter((m) => !m.body_text && !m.body_html)
+    .filter((m) => {
+      if (m.body_text || m.body_html) return false;
+      const meta = (m.raw_payload ?? {}) as HealMeta;
+      if (!meta.data?.email_id) return false; // nothing to fetch with
+      return (meta._ppp_body_heal?.attempts ?? 0) < MAX_HEAL_ATTEMPTS;
+    })
     .slice(0, MAX_HEAL_PER_REQUEST);
+
   if (needBody.length > 0) {
-    await Promise.all(
-      needBody.map(async (m) => {
-        const payload = (m.raw_payload ?? {}) as { data?: { email_id?: string } };
-        const emailId = payload.data?.email_id;
-        if (!emailId) return;
-        const fetched = await fetchReceivedEmail(emailId);
-        if (!fetched || (!fetched.text && !fetched.html)) return;
-        // Write it back so the next reader costs nothing, and show it now.
-        await sb
-          .from("inbox_messages")
-          .update({ body_text: fetched.text, body_html: fetched.html })
-          .eq("id", m.id);
-        (m as { body_text: string | null }).body_text = fetched.text;
-        (m as { body_html: string | null }).body_html = fetched.html;
-      })
-    );
+    after(async () => {
+      await Promise.all(
+        needBody.map(async (m) => {
+          const meta = (m.raw_payload ?? {}) as HealMeta;
+          const emailId = meta.data?.email_id;
+          if (!emailId) return;
+          const fetched = await fetchReceivedEmail(emailId);
+          if (fetched && (fetched.text || fetched.html)) {
+            await sb
+              .from("inbox_messages")
+              .update({ body_text: fetched.text, body_html: fetched.html })
+              .eq("id", m.id);
+            return;
+          }
+          // Record the miss so this stops being free to retry.
+          const attempts = (meta._ppp_body_heal?.attempts ?? 0) + 1;
+          await sb
+            .from("inbox_messages")
+            .update({
+              raw_payload: { ...meta, _ppp_body_heal: { attempts, lastAt: new Date().toISOString() } },
+            })
+            .eq("id", m.id);
+          if (attempts >= MAX_HEAL_ATTEMPTS) {
+            console.warn(
+              `[inbox] giving up on the body for message ${m.id} after ${attempts} attempts — it will read as unreadable, which is true`
+            );
+          }
+        })
+      );
+    });
   }
 
   const withWoNumber = (messages ?? []).map((m) => {

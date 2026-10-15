@@ -85,7 +85,36 @@ describe("the Mail Hub repairs a missing body by itself", () => {
   it("fetches the body when a message has none", () => {
     const s = api();
     expect(s).toMatch(/from "@\/lib\/email\/resend-receiving"/);
-    expect(s).toMatch(/!m\.body_text && !m\.body_html/);
+    expect(s).toMatch(/if \(m\.body_text \|\| m\.body_html\) return false;/);
+  });
+
+  it("does it AFTER the response, so nobody waits on Resend", () => {
+    // It used to run before returning. Three messages took Mail about
+    // fifteen seconds to list, because the unhealable ones were refetched
+    // on every single load.
+    const s = api();
+    expect(s).toMatch(/import \{ NextResponse, after \} from "next\/server"/);
+    expect(s).toMatch(/after\(async \(\) => \{/);
+  });
+
+  it("gives up on a body that can never be fetched", () => {
+    // The original `return`ed without recording anything, so a message
+    // Resend cannot produce was retried for ever.
+    const s = api();
+    expect(s).toMatch(/MAX_HEAL_ATTEMPTS = 3/);
+    expect(s).toMatch(/_ppp_body_heal/);
+    expect(s).toMatch(/attempts \?\? 0\) < MAX_HEAL_ATTEMPTS/);
+  });
+
+  it("records the miss rather than only the success", () => {
+    const s = api();
+    expect(s).toMatch(/attempts = \(meta\._ppp_body_heal\?\.attempts \?\? 0\) \+ 1/);
+    expect(s).toMatch(/raw_payload: \{ \.\.\.meta, _ppp_body_heal:/);
+  });
+
+  it("skips a message with no email_id instead of counting attempts on it", () => {
+    // There is nothing to fetch with; retrying would never help.
+    expect(api()).toMatch(/if \(!meta\.data\?\.email_id\) return false;/);
   });
 
   it("writes it back, so the next reader costs nothing", () => {

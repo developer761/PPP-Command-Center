@@ -136,3 +136,19 @@ export function deriveInvoiceStatus(row: {
   if (isInvoiceOverdue(row)) return "overdue";
   return row.status;
 }
+
+/**
+ * An invoice the Salesforce migration created to carry a work order's balance
+ * (`stageInvoices` in scripts/import-tomco.mjs numbers them `SF-<work order>`).
+ *
+ * Its balance is the WORK ORDER's — contract less payments — not a document
+ * anybody sent. On most jobs that is still the right figure to chase (checked
+ * 2026-10-15: several small open balances on the office's hand-kept AR sheet
+ * match these rows to the cent), so they stay receivables. But once the job's
+ * real billing is in the
+ * platform as an issued AIA application, the placeholder and the certificate
+ * are the same money twice. Applied by `getReceivablesReport` and `getArAging`.
+ */
+export function isSalesforceCarryoverInvoice(inv: { invoice_number?: string | null }): boolean {
+  return /^SF-\d+$/.test((inv.invoice_number ?? "").trim());
+}

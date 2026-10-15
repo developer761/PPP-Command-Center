@@ -363,15 +363,41 @@ try {
     twoJobs.length ? twoJobs.slice(0, 3).map(([d, n]) => `${d.slice(0, 8)}×${n}`).join(" · ") : `${jobsPerDeal.size} deal(s) with a job`,
   );
 
-  const wos = (await pageAll("commercial_work_orders", "id,opportunity_id,voided_at", ["id"]))
+  /*
+   * 🔴 THE FIRST VERSION OF THIS CHECK WAS WRONG, and would have gone red on a
+   * supported action.
+   *
+   * It asserted "no deal has two live work orders". Migration 123 dropped that
+   * index ON PURPOSE — several sheets per deal is a feature, with a "+ Add
+   * another work order" button and a guide entry that says what it is for:
+   * "A second sheet, for splitting scope across crews." The first person to
+   * split a job would have turned this red and been told migration 123 was a
+   * regression.
+   *
+   * The real invariant is the one the phantom-work-order cleanup was written
+   * for. `scope_line_item_ids` EMPTY means "the whole proposal" (migration
+   * 123's own column comment), so two live sheets both covering the whole
+   * proposal is a duplicate however many sheets are allowed — while two with
+   * different, non-empty scopes is exactly the split the button exists to make.
+   *
+   * That is the shape `scripts/cleanup-phantom-work-orders.sql` was written by
+   * hand to fix after a second empty sheet appeared on 46 Tomco deals.
+   */
+  const wos = (await pageAll("commercial_work_orders", "id,opportunity_id,voided_at,scope_line_item_ids", ["id"]))
     .filter((w) => !w.voided_at && w.opportunity_id);
-  const wosPerDeal = new Map();
-  for (const w of wos) wosPerDeal.set(w.opportunity_id, (wosPerDeal.get(w.opportunity_id) ?? 0) + 1);
-  const twoWos = [...wosPerDeal.entries()].filter(([, n]) => n > 1);
+  const wholeProposalPerDeal = new Map();
+  for (const w of wos) {
+    const coversEverything = !Array.isArray(w.scope_line_item_ids) || w.scope_line_item_ids.length === 0;
+    if (!coversEverything) continue;
+    wholeProposalPerDeal.set(w.opportunity_id, (wholeProposalPerDeal.get(w.opportunity_id) ?? 0) + 1);
+  }
+  const duplicated = [...wholeProposalPerDeal.entries()].filter(([, n]) => n > 1);
   check(
-    "no deal has two live work orders — the index that used to refuse this was dropped in migration 123",
-    twoWos.length === 0,
-    twoWos.length ? twoWos.slice(0, 3).map(([d, n]) => `${d.slice(0, 8)}×${n}`).join(" · ") : `${wosPerDeal.size} deal(s) with one`,
+    "no deal has two live work orders that both cover the whole proposal",
+    duplicated.length === 0,
+    duplicated.length
+      ? duplicated.slice(0, 3).map(([d, n]) => `${d.slice(0, 8)}×${n}`).join(" · ")
+      : `${wos.length} live sheet(s) across ${new Set(wos.map((w) => w.opportunity_id)).size} deal(s)`,
   );
 
   /*

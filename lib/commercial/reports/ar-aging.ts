@@ -2,7 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, isSalesforceCarryoverInvoice } from "@/lib/commercial/invoices/constants";
 
 /**
  * AR Aging report (R4) — every OPEN invoice's balance bucketed by how far past
@@ -120,6 +120,8 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   // five sequential round-trips per live opportunity before rendering. Two
   // queries now, whatever the pipeline size.
   const aiaRows: { accountId: string; balance: number; days: number; dated: boolean }[] = [];
+  // Deals with an issued AIA application — see `isSalesforceCarryoverInvoice`.
+  const billsViaAia = new Set<string>();
   {
     const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
     const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
@@ -127,6 +129,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     const liveOpps = await listCommercialOpportunities({ includeArchived: true });
     const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
     const accountByOpp = new Map(liveOpps.map((o) => [o.id, o.account_id] as const));
+    for (const oppId of rollups.keys()) billsViaAia.add(oppId);
     for (const [oppId, roll] of rollups) {
       if (roll.dueNowCents <= 0) continue;
       const accountId = accountByOpp.get(oppId);
@@ -168,6 +171,9 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   let noDueDateCount = 0;
 
   for (const inv of open) {
+    // Same rule as the Receivables report: once a job's AIA history is in, a
+    // migrated Salesforce carry-over invoice on it is the same money again.
+    if (isSalesforceCarryoverInvoice(inv) && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
     const days = daysPastDue(inv.due_at, nowMs);
     const bucket = bucketOf(days);
     const bal = inv.balance_cents;

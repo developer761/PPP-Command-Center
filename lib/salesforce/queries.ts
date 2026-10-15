@@ -32,7 +32,25 @@ import {
 // The snapshot_generation counter in Supabase still invalidates across
 // instances on writeback or admin refresh — so a true data change is
 // reflected within ≤5s regardless of the per-instance TTL.
-const CACHE_TTL_MS = 30 * 60 * 1000;
+/**
+ * 30 → 60 min on 2026-10-15, and the number matters less than it looks.
+ *
+ * With the warm cron running every 20 minutes (vercel.json), the shared
+ * cache is refreshed every 20 minutes no matter what this says — so real
+ * staleness is bounded by the CRON, not by the TTL. The TTL is the backstop
+ * for when a warm does not happen.
+ *
+ * At 30 minutes that backstop was too tight: two warms are 40 minutes apart,
+ * so a SINGLE failed cron run left a 10-minute window in which a real person
+ * paid the 25-second cold build. Sixty minutes absorbs two consecutive
+ * failures. __tests__/config/snapshot-stays-warm.test.ts holds that
+ * arithmetic, because the cron and this constant live in different files and
+ * nothing else connects them.
+ *
+ * It does not make data staler in practice, and a true data change is still
+ * reflected within ≤5s via the snapshot_generation counter below.
+ */
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 // IMPORTANT: cache the PROMISE, not just the resolved value. On a cold cache,
 // when DashboardLayout + the page component both trigger loadDashboardData()
@@ -2538,6 +2556,85 @@ export async function loadSalesforceSnapshot(
  * code change. The bundle is INVISIBLE to non-materials surfaces because
  * they always call loadDashboardData() without the `materials` opt.
  * ─────────────────────────────────────────────────────────────── */
+
+/**
+ * THE THIN SNAPSHOT IS THE FULL ONE WITH EIGHT ARRAYS EMPTIED.
+ *
+ * Every `thin ? … : …` in the builder above resolves to an empty value —
+ * none of them runs a different query, and nothing in the final assembly is
+ * derived from the dropped data (it is a flat object literal of independent
+ * results). So a thin snapshot can be produced from a full one for free.
+ *
+ * That matters for the warm cron, which was doing three sequential FORCED
+ * rebuilds — full, then thin, then materials — and so pulled Salesforce
+ * twice for data the first pull already had. Measured 2026-10-15:
+ *
+ *   [SF] snapshot COLD-COMPLETE in 22054ms
+ *   [SF] snapshot(thin) COLD-COMPLETE in 15865ms   ← this one
+ *   [SF] materials-bundle built in 35ms
+ *
+ * Sixteen seconds and a second full set of SOQL calls, every twenty
+ * minutes, for a subset of rows already in memory.
+ *
+ * KEEPING THIS HONEST: the field list below must match what the builder
+ * skips. `__tests__/config/thin-is-a-subset.test.ts` reads both and fails
+ * if a ninth thin-skipped query appears and is not handled here — the
+ * failure mode otherwise is a derived "thin" that silently still carries
+ * data a real thin build would have dropped.
+ */
+export function deriveThinFromFull(full: SalesforceSnapshot): SalesforceSnapshot {
+  return {
+    ...full,
+    opportunities: [],
+    quotes: [],
+    quotas: [],
+    subQuotas: [],
+    transactions: [],
+    reviews: [],
+    cases: [],
+    leadStats: { total: 0, converted: 0 },
+  };
+}
+
+/**
+ * Refresh all three caches from ONE Salesforce pull.
+ *
+ * Used by the warm cron. Full is fetched live; thin is derived; the
+ * materials bundle is derived from that thin. Each is written to the shared
+ * cache and seeded into this instance's in-memory cache, exactly as the
+ * individual loaders would have.
+ */
+export async function warmAllSnapshots(): Promise<{
+  full: boolean; thin: boolean; materials: boolean; ms: number;
+}> {
+  const t0 = Date.now();
+  const full = await loadSalesforceSnapshot({ forceRebuild: true });
+
+  const generation = await getCurrentGeneration();
+
+  const thin = deriveThinFromFull(full);
+  cache.set("snapshot-thin-v1", {
+    promise: Promise.resolve(thin),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    generation,
+  });
+  await writeSharedSnapshot("snapshot-thin-v1", thin);
+
+  const bundle = buildMaterialsBundle(thin);
+  cache.set(MATERIALS_BUNDLE_CACHE_KEY, {
+    promise: Promise.resolve(bundle),
+    expiresAt: Date.now() + CACHE_TTL_MS,
+    generation,
+  });
+  await writeSharedSnapshot(MATERIALS_BUNDLE_CACHE_KEY, bundle);
+
+  const ms = Date.now() - t0;
+  console.log(
+    `[SF] warmAllSnapshots: full(live) + thin(derived) + materials(derived) in ${ms}ms ` +
+    `— ${bundle.workOrders.length} WO, ${bundle.woLineItems.length} WOLI`
+  );
+  return { full: true, thin: true, materials: true, ms };
+}
 
 const MATERIALS_BUNDLE_CACHE_KEY = "materials-v1";
 

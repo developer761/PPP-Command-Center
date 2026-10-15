@@ -417,19 +417,51 @@ export function contractProposalCents(rows: ContractProposalRow[]): {
 // ── When an AIA application falls due ────────────────────────────────────────
 
 /**
+ * How long after its period closes an application can be entered before we stop
+ * believing `frozen_at` is when it was really issued.
+ *
+ * A certificate raised in the ordinary course is frozen within days of the
+ * period ending. A month is generous for that, and far short of the gap a
+ * back-entry leaves.
+ */
+export const AIA_BACKDATED_AFTER_DAYS = 30;
+
+/**
  * The issue instant of an application, from whichever field recorded it.
  *
- * `frozen_at` is stamped when the certificate is issued and is the truth.
- * Older applications only carry `period_to`, a bare DATE, which is anchored at
+ * `frozen_at` is stamped when the certificate is issued and is usually the
+ * truth. Older applications only carry `period_to`, a bare DATE, anchored at
  * 16:00Z — noon ET — so the day it lands on can't be flipped by a timezone.
  * Null when neither is recorded: unknown, never "today".
+ *
+ * 🔴 EXCEPT WHEN IT WAS BACK-ENTERED, which is most of this book.
+ *
+ * Katie, 2026-10-15: *"AR aging dates back-entered AIA from when it was
+ * entered, so things look less overdue than they are."* Measured the same day:
+ * 25 of 41 issued applications were frozen more than thirty days after their
+ * period closed, the worst by 251 days — because Tomco's AIA history was typed
+ * into the platform in September and October, long after the work was billed.
+ *
+ * Aging from `frozen_at` therefore reported NOTHING overdue: 37 applications
+ * current, zero in every bucket. Aged from the period they actually bill, it is
+ * 12 current and 29 late, nine of them past ninety days. A collections report
+ * that says everyone has paid on time, about a book where nine certificates are
+ * a quarter overdue, is worse than no report.
+ *
+ * So a `frozen_at` more than `AIA_BACKDATED_AFTER_DAYS` after `period_to` is
+ * treated as a data-entry date rather than an issue date, and the period wins.
+ * A normally-issued certificate is untouched — the gap is days, not a month.
  */
 export function aiaIssuedAtFrom(
   frozenAt: string | null | undefined,
   periodTo: string | null | undefined
 ): string | null {
-  if (frozenAt) return frozenAt;
-  return periodTo ? `${periodTo}T16:00:00Z` : null;
+  const periodInstant = periodTo ? `${periodTo}T16:00:00Z` : null;
+  if (!frozenAt) return periodInstant;
+  if (!periodInstant) return frozenAt;
+  const lagMs = new Date(frozenAt).getTime() - new Date(periodInstant).getTime();
+  if (!Number.isFinite(lagMs)) return frozenAt;
+  return lagMs > AIA_BACKDATED_AFTER_DAYS * 86_400_000 ? periodInstant : frozenAt;
 }
 
 /**

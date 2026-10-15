@@ -117,7 +117,12 @@ async function allocatedWeekPredicate(
   return (ymd: string) => weeks.some(([from, to]) => ymd >= from && ymd <= to);
 }
 
-export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, OppLaborCost>> {
+export async function fieldOpsLaborByOpp(
+  oppIds: string[],
+  /** Inclusive `work_date` window (YYYY-MM-DD). Omit for all time — the
+   *  default every existing caller relies on. */
+  range?: { fromYmd: string; toYmd: string } | null
+): Promise<Map<string, OppLaborCost>> {
   const out = new Map<string, OppLaborCost>();
   const ids = [...new Set(oppIds.filter(Boolean))];
   if (ids.length === 0) return out;
@@ -138,15 +143,15 @@ export async function fieldOpsLaborByOpp(oppIds: string[]): Promise<Map<string, 
 
   // Approved/exported time entries on those jobs. Paginated — a long-running
   // deal can exceed Supabase's silent 1000-row cap.
-  const entries = await paginateAll<{ employee_id: string; job_id: string; work_date: string; actual_hours: number; status: string }>(() =>
-    sb
+  const entries = await paginateAll<{ employee_id: string; job_id: string; work_date: string; actual_hours: number; status: string }>(() => {
+    let q = sb
       .from("commercial_time_entries")
       .select("employee_id, job_id, work_date, actual_hours, status")
       .in("job_id", [...oppByJob.keys()])
-      .in("status", SETTLED_STATUSES as unknown as string[])
-      .order("work_date")
-      .order("id")
-  );
+      .in("status", SETTLED_STATUSES as unknown as string[]);
+    if (range) q = q.gte("work_date", range.fromYmd).lte("work_date", range.toYmd);
+    return q.order("work_date").order("id");
+  });
   if (entries.length === 0) return out;
 
   // W-2 ONLY — this "Crew labor" cost is the auto counterpart to the MANUAL

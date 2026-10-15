@@ -576,7 +576,11 @@ export const STALE_OPP_DAYS = 14;
  */
 export function wasWonInPeriod(
   opp: StatusTuple & { decided_at?: string | null; closed_out_at?: string | null },
-  periodStartDate: string
+  periodStartDate: string,
+  /** Inclusive end (YYYY-MM-DD). Omitted = open-ended, the original behaviour
+   *  ("won since the 1st"). The dashboard passes one for completed periods —
+   *  "Last quarter" must not count this quarter's wins. */
+  periodEndDate?: string
 ): boolean {
   if (!isPostSaleProject(opp)) return false;
   // A closed job counts in the month it was WON — but only once we can trust
@@ -586,7 +590,8 @@ export function wasWonInPeriod(
   // written by the code that keeps the two dates apart, which makes it the
   // marker for "this row's decided_at means what it says".
   if (opp.status === "post_sale_closed" && !opp.closed_out_at) return false;
-  return (opp.decided_at ?? "").slice(0, 10) >= periodStartDate;
+  const decided = (opp.decided_at ?? "").slice(0, 10);
+  return decided >= periodStartDate && (!periodEndDate || decided <= periodEndDate);
 }
 
 // ── "Needs attention" predicates ───────────────────────────────────────────
