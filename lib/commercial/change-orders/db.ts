@@ -469,11 +469,15 @@ export async function decideChangeOrder(
   return { ok: true, value: row };
 }
 
-/**
- * Bill an approved, additive CO as its own draft invoice, then link it back.
- * Guards: must be approved; must be positive (deduct COs adjust the contract
- * sum but aren't billed — the invoice schema forbids negative totals); must
- * not already have a live invoice.
+/*
+ * The docblock that used to sit here described `billChangeOrderAsInvoice` —
+ * "bill an approved, ADDITIVE change order as its own draft invoice… deduct COs
+ * adjust the contract sum but aren't billed". That function is gone, replaced by
+ * the tick below, and the sentence had outlived it: a deduct IS billed now, as a
+ * negative line capped so the invoice cannot total below $0.
+ *
+ * Deleted rather than corrected because it was already doing damage. Asked how
+ * to enter a credit, this file's own documentation said it could not be done.
  */
 // ═══════════════════════════════════════════════════════════════════════════
 //  Phase 1A — the change-order billing TICK
