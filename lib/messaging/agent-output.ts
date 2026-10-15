@@ -632,6 +632,24 @@ const BANNED_STYLE: { re: RegExp; why: string }[] = [
   { re: /[—–]/, why: "em dash" },
   { re: /\.\.\.|…/, why: "ellipsis" },
   { re: /[()]/, why: "parentheses" },
+  /**
+   * A23's fifth item, and the one place it was never checked.
+   *
+   * Kate relaying Mac and Jasmine: "no inverted punctuation… using that
+   * would be a flag that they're not talking to a spanish speaking
+   * individual." It is enforced on every TEMPLATE by language.test.ts, which
+   * now reads the syntax tree so an escape cannot hide one, and on every
+   * rendered scenario reply by the sweep. The model's own rapport was
+   * checked by neither, so this went out:
+   *
+   *   "¡Con gusto, con mucho gusto! Dónde queda la propiedad?"
+   *   "¿Entendido? Con gusto. Dónde queda la propiedad?"
+   *
+   * The template obeys the rule and the sentence in front of it does not,
+   * which is the same half-enforced shape as English rapport riding a
+   * Spanish template.
+   */
+  { re: /[¡¿]/, why: "inverted punctuation, which reads as machine translation (A23)" },
   { re: /\byep\b/i, why: '"Yep"' },
   { re: /thanks for letting me know/i, why: '"Thanks for letting me know"' },
   // A23 names five things. Three were checked here and two were not, and the
