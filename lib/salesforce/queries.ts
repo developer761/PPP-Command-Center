@@ -998,7 +998,7 @@ function isFieldRep(profileName: string | null, userId: string): boolean {
  * counter so a manual refresh / SF writeback invalidates both.
  */
 export async function loadSalesforceSnapshot(
-  opts?: { thin?: boolean; forceRebuild?: boolean }
+  opts?: { thin?: boolean; forceRebuild?: boolean; awaitSharedWrite?: boolean }
 ): Promise<SalesforceSnapshot> {
   const thin = !!opts?.thin;
   const forceRebuild = !!opts?.forceRebuild;
@@ -2532,9 +2532,25 @@ export async function loadSalesforceSnapshot(
       isSandbox,
       instanceUrl,
     };
-    // Populate the shared cache so OTHER cold instances skip the SF paging.
-    // Best-effort + non-blocking — a write failure never affects this response.
-    void writeSharedSnapshot(cacheKey, snapshot);
+    /**
+     * Populate the shared cache so OTHER cold instances skip the SF paging.
+     *
+     * Fire-and-forget for a USER request: a write failure must never affect
+     * the response, and nobody should wait on it.
+     *
+     * AWAITED for the cron, which exists to fill this cache and has nothing
+     * else to do. Measured 2026-10-15: the full snapshot upload takes ~52s,
+     * and warmAllSnapshots logged "complete" 36 SECONDS before that write
+     * landed. A serverless function that returns is a function that can be
+     * killed — so the warm would finish, report success, and leave the cache
+     * empty, which is very likely the "COLD START — no shared cache" seen
+     * hours after a successful 6am warm.
+     */
+    if (opts?.awaitSharedWrite) {
+      await writeSharedSnapshot(cacheKey, snapshot);
+    } else {
+      void writeSharedSnapshot(cacheKey, snapshot);
+    }
     console.log(`[SF] snapshot${thin ? "(thin)" : ""} COLD-COMPLETE in ${Date.now() - tSnapStart}ms`);
     return snapshot;
   };
@@ -2630,7 +2646,7 @@ export async function warmAllSnapshots(): Promise<{
   full: boolean; thin: boolean; materials: boolean; ms: number;
 }> {
   const t0 = Date.now();
-  const full = await loadSalesforceSnapshot({ forceRebuild: true });
+  const full = await loadSalesforceSnapshot({ forceRebuild: true, awaitSharedWrite: true });
 
   const generation = await getCurrentGeneration();
 
