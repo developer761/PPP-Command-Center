@@ -20,7 +20,7 @@
  * same conversation, same words, so a regression test can assert output.
  */
 import {
-  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
+  BARE_ACKNOWLEDGEMENT, onlyAcknowledgesThePhoto, withoutPhotoAckSentences, type Intent, mentionsWorkWeDoNotDo, longestSharedRun, asksSomething,
   ANSWERS_A_QUESTION,
 } from "./agent-output";
 import { tooManyAsks } from "./one-ask";
@@ -1406,11 +1406,45 @@ function renderBody(input: RenderInput): string {
     asksSomething(input.customerText) && !ANSWERS_A_QUESTION.has(input.intent)
       ? (input.freeText ?? "").trim()
       : "";
+  /**
+   * A26 — AND THE PHOTO THANKS HAS TO SURVIVE AN EARLY RETURN TOO.
+   *
+   * The photo line is pushed into `parts` near the bottom of renderBody, so
+   * every branch that RETURNS before reaching it silently drops it. Found
+   * 2026-10-14: a customer sends a photo and gets back a reply that never
+   * mentions it on five paths —
+   *
+   *   ask_availability with a zone      "What days work best for you this week?"
+   *   ask_availability with a time      "I'll check the calendar for that time."
+   *   checking_availability             "I'll check the calendar for that time."
+   *   schedule_follow_up on a callback  "No problem at all. What's a good time…"
+   *   discard naming what we cover      "I don't believe this is something we…"
+   *
+   * A26 is one line — "named the photo in one short line and carried on" —
+   * and on those paths it was no lines at all. 9 fell_short findings.
+   *
+   * It rides on keepingTheAnswer because the two have the same shape: a
+   * thing that must survive a branch returning early, and the same eight
+   * call sites. The ORDER matches the main path exactly — photo first, then
+   * the owed answer, then the body — so an early return reads like the
+   * ordinary one rather than merely containing the same words.
+   */
+  // Reads input.language directly rather than the local `es`, which is
+  // declared further down — this has to exist before keepingTheAnswer closes
+  // over it.
+  const photoThanks = input.photos && input.photos > 0
+    ? (input.language === "es"
+      ? (input.photos === 1 ? "Gracias por la foto!" : "Gracias por las fotos!")
+      : (input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!"))
+    : null;
+
   const keepingTheAnswer = (body: string): string => {
-    if (!owedAnswer || !body.trim()) return body;
+    if (!body.trim()) return body;
+    let out = body;
     // Some branches already build from freeText themselves.
-    if (body.includes(owedAnswer)) return body;
-    return `${owedAnswer} ${body}`.trim();
+    if (owedAnswer && !out.includes(owedAnswer)) out = `${owedAnswer} ${out}`.trim();
+    if (photoThanks && !out.includes(photoThanks)) out = `${photoThanks} ${out}`.trim();
+    return out;
   };
 
   // A partial address narrows the question before anything else happens.
@@ -1763,7 +1797,28 @@ function renderBody(input: RenderInput): string {
     return keepingTheAnswer(`${opener} We do cover ${input.covers}. I'll circle back if I'm wrong. Apologies for the inconvenience!`);
   }
 
-  const rapport = (input.freeText ?? "").trim();
+  /**
+   * …AND IF WE ARE GOING TO THANK THEM FOR THE PHOTO, THE MODEL'S OWN
+   * THANK-YOU SENTENCE GOES.
+   *
+   * The guard further down drops rapport that is NOTHING but a photo
+   * acknowledgement. The model does not write all-or-nothing. Seen live
+   * 2026-10-14, after that guard had shipped and was believed sufficient:
+   *
+   *   "I'll check the calendar for that time. Thanks for the photo!
+   *    Thanks, got the photo. I can't set times myself, but the office
+   *    handles scheduling and will confirm what's open."
+   *
+   * The rapport's SECOND sentence says something real, so the whole thing
+   * survived and our own photo line was prepended on top of its first.
+   * Removing just the duplicated sentence keeps the half worth keeping.
+   *
+   * Only when photoThanks exists, so nothing is lost: the message still
+   * names the photo, once.
+   */
+  const rapport = photoThanks
+    ? withoutPhotoAckSentences(input.freeText)
+    : (input.freeText ?? "").trim();
   /**
    * The customer asked us something AND this intent's own template does not
    * answer it — so the rapport is the only place an answer can come from, and
@@ -1781,31 +1836,14 @@ function renderBody(input: RenderInput): string {
   /** Where the model's rapport ended up, or -1 when it was not used at all. */
   let rapportAt = -1;
 
-  if (input.photos && input.photos > 0) {
-    // A26 in the customer's language, same as everything else.
-    parts.push(es
-      /**
-       * NO OPENING \u00a1, and it was written as \u00a1 so nothing caught it.
-       *
-       * Kate relaying Mac and Jasmine, 2026-09-28: "the bot should not use the
-       * proper \u00bf punctuation... using that would be a flag that they're not
-       * talking to a spanish speaking individual." Every other Spanish
-       * template obeys it and language.test.ts reads these files for the
-       * literal characters to keep them honest.
-       *
-       * This line held the escape instead, so the guard saw the six ASCII
-       * characters of "\u00a1" and passed, while the customer received "\u00a1".
-       * Found by rendering it in the sandbox rather than by reading the file \u2014
-       * which is the only way it could have been found.
-       *
-       * disclosure.ts uses the same escapes legitimately and says why: there
-       * it is a regex STRIPPING an inverted mark a customer typed. The escape
-       * is fine in a matcher and never in outbound copy, and the guard now
-       * tells those two apart.
-       */
-      ? (input.photos === 1 ? "Gracias por la foto!" : "Gracias por las fotos!")
-      : (input.photos === 1 ? "Thanks for the photo!" : "Thanks for the photos!"));
-  }
+  /**
+   * ONE SOURCE for the photo line, shared with keepingTheAnswer above.
+   *
+   * It used to be built inline here, which meant the early-return paths had
+   * nothing to reuse and simply dropped it. Two copies would drift; the
+   * Spanish half already carried an inverted mark the English half did not.
+   */
+  if (photoThanks) parts.push(photoThanks);
 
   // answer_question has no template of its own — the model's filtered rapport
   // IS the answer there, which is why it is the one intent allowed to carry
