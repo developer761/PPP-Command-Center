@@ -517,8 +517,37 @@ async function loadSalesforce(conn) {
   SF.txInScope = SF.tx.filter((t) => SF.liveWoIds.has(t.WorkOrder__c));
   SF.txOutOfScope = SF.tx.filter((t) => !SF.liveWoIds.has(t.WorkOrder__c));
   SF.attendanceInScope = SF.attendance.filter((a) => SF.liveWoIds.has(a.WorkOrder__c));
+  /*
+   * 🔴 A WORK ORDER WE CAUSED MUST NOT TELL US ANYTHING.
+   *
+   * `stageDeals` reads a deal's status from its work order. Salesforce creates
+   * one automatically when the write-back syncs a quote, and it arrives as
+   * "Coordination" — so our own echo came straight back as news, and the
+   * importer would set the deal to `pre_construction/coordination` on the next
+   * run.
+   *
+   * Measured on 2026-10-15, minutes after syncing five quotes: all five new
+   * work orders are "Coordination", and MotorMindz ($30,000, `pre_sale_closed/
+   * won`) is the one whose map stamp denies it the edit guard. It would have
+   * been moved out of won by nothing more than our own write coming back.
+   *
+   * So ours are excluded from `woByOpp` entirely. A deal whose ONLY work order
+   * is ours is then recorded separately, and `stageDeals` leaves that deal
+   * completely alone rather than falling back to the Salesforce stage — the
+   * platform owns the status of a deal it sold, and guessing from `IsWon` would
+   * drag a deal that is `in_progress` here back to `won`.
+   */
   SF.woByOpp = new Map();
-  for (const w of SF.wos) if (w.Opportunity__c) SF.woByOpp.set(w.Opportunity__c, w);
+  const oursByOpp = new Map();
+  for (const w of SF.wos) {
+    if (!w.Opportunity__c) continue;
+    if (SF.ourOwnWorkOrders.has(w.Id)) {
+      oursByOpp.set(w.Opportunity__c, (oursByOpp.get(w.Opportunity__c) ?? 0) + 1);
+      continue;
+    }
+    SF.woByOpp.set(w.Opportunity__c, w);
+  }
+  SF.onlyOurWorkOrder = new Set([...oursByOpp.keys()].filter((oppId) => !SF.woByOpp.has(oppId)));
   return SF;
 }
 
@@ -735,6 +764,16 @@ async function stageDeals() {
     }
     const accountId = mapped("account", o.AccountId);
     if (!accountId) { r.skipped.push(`${o.Name}: no imported GC account`); continue; }
+    /*
+     * The deal's only work order is one our own quote sync caused. Salesforce
+     * knows nothing about this deal that we did not just tell it, so there is
+     * nothing to import — and writing anything would be our echo overwriting
+     * the platform. See `SF.onlyOurWorkOrder`.
+     */
+    if (SF.onlyOurWorkOrder.has(o.Id)) {
+      r.skipped.push(`${o.Name}: its only Salesforce work order came from our own quote sync — left as the platform has it`);
+      continue;
+    }
     const wo = SF.woByOpp.get(o.Id);
     // The whole rule lives in `dealStatusForOpportunity`, with the reasoning and
     // a test. It used to be a ternary here, and the arm that mattered was wrong.
