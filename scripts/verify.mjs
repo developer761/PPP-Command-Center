@@ -168,6 +168,12 @@ step("money reconciles", "node --env-file=.env.local --loader ./scripts/app-modu
   skipIf: ENV,
 });
 
+step("write-back queue", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-writeback-queue.mjs", {
+  catches: "the Salesforce queue's claim, back-off, retry budget and verification flag behaving differently from what the code claims",
+  blind: "anything that happens inside Salesforce itself — this never writes there",
+  skipIf: ENV,
+});
+
 step("delivery flows", "node --env-file=.env.local --loader ./scripts/app-module-loader.mjs scripts/check-delivery-flows.mjs", {
   catches: "a document flow that cannot reach its recipient",
   blind: "whether the recipient reads it",

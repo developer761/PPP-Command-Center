@@ -102,11 +102,12 @@ Hers reverses **Jason's §1 of 2026-09-17** on three points: he said REMOVE
 semi-gloss from exterior and ADD low lustre, and she drops satin. Not
 changed — it needs the two of them.
 
-### The vinyl link
+### ~~The vinyl link~~ — CLOSED 2026-10-15
 
-A Google Drive share URL. It resolves today; the day that file's sharing is
-tightened a customer gets a request-access screen with nowhere to go. Every
-other link in that card is benjaminmoore.com. Shipped as given, flagged.
+Was a Google Drive share URL, flagged because the day that file's sharing was
+tightened a customer would have hit a request-access screen mid-form. Kate
+sent the PDF on 2026-10-15 (her FU.3) and it is now served from our own
+domain at `/colors-for-vinyl.pdf`. The failure mode is gone.
 
 ---
 
@@ -119,7 +120,9 @@ other link in that card is benjaminmoore.com. Shipped as given, flagged.
 In the "Need help picking colors?" section of the customer form, alongside
 "Recommended palettes", "Visualize on a room" and "Exterior stains".
 
-Link: `https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing`
+Link: **resolved 2026-10-15 (FU.3)** — Kate sent the file, it ships in
+`public/colors-for-vinyl.pdf` and the button points at `/colors-for-vinyl.pdf`.
+The Google Drive share URL it used to carry is gone.
 
 **One thing to settle first:** that is a Google Drive share link. It opens for
 anyone with the URL today, but it is a PPP Drive file — if sharing is ever

@@ -426,6 +426,48 @@ async function deleteApplicationAction(formData: FormData) {
   redirect(`${base(id, dealId, origin, from)}${backQ(back)}`);
 }
 
+/**
+ * 🔴 ONLY THE SCHEDULED VALUE MAY BE NEGATIVE.
+ *
+ * `scheduled_value_cents` lost its CHECK in migration 128, deliberately — a
+ * negative one is a credit line. The other three kept theirs (migration 081,
+ * all `>= 0`), and `upsertAiaLineItem` does not clamp them, so a negative
+ * reaches Postgres and the constraint error is redirected into the banner
+ * verbatim.
+ *
+ * This became reachable on 2026-10-15, when `parseDollarsToCents` learned to
+ * read "(500)" as −500 so Mary could enter a vendor credit. Before that the
+ * brackets parsed as null and fell to `?? 0` — a harmless blank line. After it,
+ * the same keystrokes would put `new row for relation
+ * "commercial_aia_line_items" violates check constraint
+ * "commercial_aia_line_items_this_period_cents_check"` on her screen.
+ *
+ * Shared by the add action and the autosave so the two halves of one screen
+ * cannot drift apart — which they already had: the edit row refuses negatives
+ * client-side while the add form accepted them.
+ */
+const AIA_COMPLETION_FIELDS = ["from_previous", "this_period", "materials_stored"] as const;
+const NEGATIVE_COMPLETION_MESSAGE =
+  "Only a credit line can be billed negative. Give this line a negative scheduled value, or enter the amounts as positive.";
+
+/**
+ * The same rule `clampCompletionToSign` enforces: completion follows the sign
+ * of the line. A credit line (negative scheduled value) bills negative; a
+ * normal one cannot.
+ *
+ * Caught here rather than left to the database so the person reading it gets a
+ * sentence instead of `new row for relation "commercial_aia_line_items"
+ * violates check constraint …`. The library would silently clamp a negative on
+ * a positive line to zero — a money field accepting input and storing nothing,
+ * reporting success — which is the other half of why this says no out loud.
+ */
+function negativeCompletionField(read: (name: string) => number): boolean {
+  const isCreditLine = read("scheduled") < 0;
+  if (isCreditLine) return false;
+  return AIA_COMPLETION_FIELDS.some((f) => read(f) < 0);
+}
+
+
 async function upsertLineAction(formData: FormData) {
   "use server";
   const userId = await requireCommercialUser();
@@ -439,6 +481,9 @@ async function upsertLineAction(formData: FormData) {
   if (!UUID_RE.test(id) || !UUID_RE.test(dealId) || !UUID_RE.test(appId)) redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const cents = (name: string) => parseDollarsToCents(String(formData.get(name) ?? "")) ?? 0;
+  if (negativeCompletionField(cents)) {
+    redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(NEGATIVE_COMPLETION_MESSAGE)}${backQ(back)}`);
+  }
   const result = await upsertAiaLineItem(appId, {
     ...(UUID_RE.test(lineId) ? { id: lineId } : {}),
     item_no: String(formData.get("item_no") ?? "").trim() || null,
@@ -474,6 +519,7 @@ async function saveLineAutosaveAction(formData: FormData): Promise<AiaLineSaveRe
   }
   if (!(await ownsAiaContext(id, dealId, appId))) return { ok: false, error: "Not found." };
   const cents = (name: string) => parseDollarsToCents(String(formData.get(name) ?? "")) ?? 0;
+  if (negativeCompletionField(cents)) return { ok: false, error: NEGATIVE_COMPLETION_MESSAGE };
   const result = await upsertAiaLineItem(appId, {
     id: lineId,
     item_no: String(formData.get("item_no") ?? "").trim() || null,

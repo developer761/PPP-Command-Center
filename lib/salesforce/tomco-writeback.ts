@@ -159,10 +159,33 @@ export async function updateExisting(
       : canonicalAgrees
         ? `; its quote line reads ${quoteLine.toFixed(2)}, but the total Katie's reports use already matches us to the cent`
         : `; our base is ${contract.toFixed(2)} against their ${canonical.toFixed(2)} — the difference is Salesforce's to keep`;
+    /*
+     * 🔴 A SKIP IS STILL A VERIFICATION, and saying so is what lets a failed
+     * one ever go green again.
+     *
+     * This returned `checks: []`. `finishDeal` sets `verified` from
+     * `checks.length > 0`, so a skip cleared nothing — and a skip is the state
+     * every successfully written deal settles into. So once a read-back had
+     * failed once (the six-second wait beating the org's flow chain is enough
+     * to do it), `verify_failed_at` could never be cleared by anything: the
+     * only paths that clear it are the ones that stop happening the moment the
+     * write succeeds. The review screen's "not verified" tile would have sat
+     * red for ever on a record that was perfectly correct.
+     *
+     * We have just read the figures. Asserting them IS the verification.
+     */
     return {
       ...out,
       action: "skipped",
       steps: [`already Closed Won in Salesforce at ${canonical.toFixed(2)} — left alone${note}`],
+      checks: [
+        { name: "stage is Closed Won", ok: true, detail: opp.StageName },
+        {
+          name: "Salesforce's total matches ours",
+          ok: canonicalAgrees || quoteLineAgrees,
+          detail: `canonical ${canonical.toFixed(2)} · quote line ${quoteLine.toFixed(2)} · ours ${contract.toFixed(2)}`,
+        },
+      ],
     };
   }
   /*
@@ -213,7 +236,50 @@ export async function updateExisting(
   }
   const quoteId = qs[0].Id;
 
-  // Only now, with somewhere for the money to go, is the stage moved.
+  /*
+   * 🔴 AND THE LINE, BEFORE THE STAGE — this is the half that was missing.
+   *
+   * The first version of this fix moved only the quote-COUNT checks above the
+   * stage write and left the line checks below it, while the docblock above
+   * claimed "the whole job is established as doable before any of it is done".
+   * It was not: an itemised quote (four Tomco quotes genuinely are) and a quote
+   * with no line both still returned `failed` with the opportunity already
+   * flipped to Closed Won and no money on it.
+   *
+   * Worse, that state was self-erasing. The entry was marked failed; an hour
+   * later the retry read `StageName === "Closed Won"`, returned `skipped` with
+   * no checks, and `markDone` cleared `last_error`. A sale sitting at $0 in
+   * Katie's reports ended up green, in none of the review screen's lists.
+   *
+   * Run in BOTH modes, unlike before: a plan run that cannot show you the
+   * refusal is not a plan of what will happen.
+   */
+  const lines = await ctx.conn.query(
+    `SELECT Id, PriceOverride__c, PriceOverrideAmount__c, TotalPrice__c FROM QuoteLineItem WHERE QuoteId = '${assertSalesforceId(quoteId, "quote id")}'`,
+  );
+  const ls = (lines.records ?? []) as Array<{ Id: string; PriceOverrideAmount__c: number | null }>;
+  if (ls.length > 1) {
+    // Four Tomco quotes are genuinely itemised. Spreading one contract figure
+    // across them, or collapsing them to one, both destroy the breakdown.
+    return {
+      ...out,
+      action: "failed",
+      error: `${ls.length} lines on quote ${quoteId} — itemised, a person decides. Nothing written.`,
+    };
+  }
+  if (ls.length === 0) {
+    return {
+      ...out,
+      action: "failed",
+      error:
+        `Quote ${quoteId} has no line item, so the contract value would have nowhere to go. ` +
+        `Nothing written — add a line in Salesforce and this will finish it.`,
+    };
+  }
+  const line = ls[0];
+
+  // Only now — with a quote, a line, and somewhere for the money to go — is
+  // anything written at all.
   if (ctx.apply) {
     const res = await writeSf(
       { sObject: "Opportunity", recordId: sfId, fields: { StageName: "Closed Won" } },
@@ -226,42 +292,16 @@ export async function updateExisting(
   }
 
   // ── the line, which is where the money lives ─────────────────────────────
-  if (quoteId && ctx.apply) {
-    const lines = await ctx.conn.query(
-      `SELECT Id, PriceOverride__c, PriceOverrideAmount__c, TotalPrice__c FROM QuoteLineItem WHERE QuoteId = '${quoteId}'`,
-    );
-    const ls = (lines.records ?? []) as Array<{ Id: string; PriceOverrideAmount__c: number | null }>;
-    if (ls.length > 1) {
-      // Four Tomco quotes are genuinely itemised. Spreading one contract figure
-      // across them, or collapsing them to one, both destroy the breakdown.
-      return { ...out, action: "failed", error: `${ls.length} lines on quote ${quoteId} — itemised, a person decides` };
-    }
-    if (ls.length === 1) {
-      if (Number(ls[0].PriceOverrideAmount__c ?? 0) === contract) {
-        out.steps.push(`line already ${contract.toFixed(2)} — left alone`);
-      } else {
-        const res = await writeSf(
-          { sObject: "QuoteLineItem", recordId: ls[0].Id, fields: { PriceOverride__c: true, PriceOverrideAmount__c: contract } },
-          { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { PriceOverrideAmount__c: ls[0].PriceOverrideAmount__c } },
-        );
-        if (!res.ok) return { ...out, action: "failed", error: `line: ${res.error}` };
-        out.steps.push(`line ${ls[0].PriceOverrideAmount__c ?? "—"} → ${contract.toFixed(2)}`);
-      }
+  if (ctx.apply) {
+    if (Number(line.PriceOverrideAmount__c ?? 0) === contract) {
+      out.steps.push(`line already ${contract.toFixed(2)} — left alone`);
     } else {
-      /*
-       * A quote with no line. The money has nowhere to go, and the stage has
-       * already moved — so this is reported as a FAILURE rather than a step,
-       * which is what gets it in front of somebody instead of reading as a
-       * completed sync. (The read-back's "contract value arrived" check would
-       * also fail, but a step that says this in passing read like a note.)
-       */
-      return {
-        ...out,
-        action: "failed",
-        error:
-          `Quote ${quoteId} has no line item, so the contract value has nowhere to go. ` +
-          `The stage is Closed Won; the money is NOT written. Add a line in Salesforce and this will finish it.`,
-      };
+      const res = await writeSf(
+        { sObject: "QuoteLineItem", recordId: line.Id, fields: { PriceOverride__c: true, PriceOverrideAmount__c: contract } },
+        { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { PriceOverrideAmount__c: line.PriceOverrideAmount__c } },
+      );
+      if (!res.ok) return { ...out, action: "failed", error: `line: ${res.error}` };
+      out.steps.push(`line ${line.PriceOverrideAmount__c ?? "—"} → ${contract.toFixed(2)}`);
     }
 
     // Approve the quote, which is what closes the sale in Tomco's convention:

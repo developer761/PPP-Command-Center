@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
-import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, type QueueEntry } from "@/lib/salesforce/tomco-queue";
+import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, peekPending, type QueueEntry } from "@/lib/salesforce/tomco-queue";
 import { decideWriteBack } from "@/lib/salesforce/tomco-decide";
 import {
   isSoldStatus,
@@ -101,40 +101,73 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
     return { ...empty, skipped: "Salesforce is not configured" };
   }
 
-  const pending = await claimPending(opts.limit ?? PER_TICK);
-  if (pending.length === 0) return empty;
+  /*
+   * 🔴 A PLAN RUN MUST NOT CLAIM. `claimPending` stamps `claimed_at`
+   * unconditionally, and every release is behind `if (ctx.apply)` — so a dry
+   * run used to strand up to ten entries for CLAIM_STALE_MS (ten minutes),
+   * delaying real syncs, and a second dry run would then report an EMPTY queue
+   * while ten things were waiting. A preview that changes what it previews is
+   * not a preview.
+   */
+  const limit = opts.limit ?? PER_TICK;
+  /*
+   * A plan run takes the whole list at once — it changes nothing, so there is
+   * nothing to strand. An apply run claims ONE AT A TIME, below.
+   */
+  const planned = opts.apply ? null : await peekPending(limit);
+  if (planned && planned.length === 0) return empty;
 
   const conn = await getSalesforceClient();
   const ctx = { conn, actorUserId: null, apply: opts.apply };
 
   /*
-   * The candidate list and the review decisions are read ONCE for the tick,
-   * not per entry. The candidate query is the expensive part (43 open
-   * estimates, paged), and a tick with five sales in it would otherwise make
-   * the same call five times for the same answer.
-   *
-   * Only when there is a sale to decide. A tick carrying nothing but change
-   * orders must not spend a Salesforce round trip on pairing candidates it
-   * will never look at.
+   * The candidate list and the review decisions cost one expensive Salesforce
+   * round trip (43 open estimates, paged), and a tick with five sales in it
+   * must not pay for it five times. Loaded LAZILY now rather than up front:
+   * with entries claimed one at a time we no longer know in advance whether
+   * this tick contains a sale, and a tick carrying only change orders must not
+   * spend that call on candidates it will never look at.
    */
-  const hasSale = pending.some((e) => e.kind === "sale");
-  let candidates: SfCandidate[] = [];
-  let resolved = new Map<string, { decision: string }>();
-  if (hasSale) {
-    [candidates, resolved] = await Promise.all([
-      listOpenSalesforceCandidates(),
-      listResolvedDeals() as Promise<Map<string, { decision: string }>>,
-    ]);
-  }
+  let candidates: SfCandidate[] | null = null;
+  let resolved: Map<string, { decision: string }> | null = null;
+  const pairingContext = async () => {
+    if (!candidates || !resolved) {
+      [candidates, resolved] = await Promise.all([
+        listOpenSalesforceCandidates(),
+        listResolvedDeals() as Promise<Map<string, { decision: string }>>,
+      ]);
+    }
+    return { candidates, resolved };
+  };
 
-  const out: TickSummary = { ...empty, claimed: pending.length, outcomes: [] };
+  const out: TickSummary = { ...empty, outcomes: [] };
 
-  for (const entry of pending) {
+  for (let i = 0; i < limit; i++) {
+    /*
+     * 🔴 ONE CLAIM AT A TIME.
+     *
+     * This used to claim all ten up front. Each entry costs ten to twenty
+     * seconds — a six-second wait for Salesforce's rollups plus several SOQL
+     * round trips — so a full batch can run to 200s against a `maxDuration` of
+     * 300. A tick killed at entry four left entries five to ten claimed and
+     * untouchable for CLAIM_STALE_MS, dropping throughput from ten a minute to
+     * four per ten minutes exactly when the queue is deepest.
+     *
+     * Claiming one at a time costs one extra round trip per entry, against
+     * entries that already take seconds, and means a death mid-tick strands at
+     * most one.
+     */
+    const entry = opts.apply ? (await claimPending(1))[0] : planned?.[i];
+    if (!entry) break;
+    out.claimed++;
     try {
-      const o =
-        entry.kind === "change_order"
-          ? await runChangeOrder(ctx, entry)
-          : await runSale(ctx, entry, candidates, resolved);
+      let o: TickOutcome;
+      if (entry.kind === "change_order") {
+        o = await runChangeOrder(ctx, entry);
+      } else {
+        const { candidates: c, resolved: r } = await pairingContext();
+        o = await runSale(ctx, entry, c, r);
+      }
       out.outcomes.push(o);
       if (o.result === "written") out.written++;
       else if (o.result === "nothing") out.nothing++;
@@ -152,15 +185,6 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
       out.failed++;
     }
   }
-  /*
-   * `ok` has to be able to be FALSE.
-   *
-   * It was initialised true and never assigned anywhere, so an external monitor
-   * reading this route saw success on a tick where all ten entries failed — a
-   * field that cannot fail, which this codebase treats as worse than no field.
-   * Held entries are not failures: they are the system correctly waiting for a
-   * person.
-   */
   out.ok = out.failed === 0;
   return out;
 }
@@ -180,7 +204,17 @@ async function runChangeOrder(
   const failedChecks = r.checks.filter((c) => !c.ok);
 
   if (r.action === "failed") {
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, r.error ?? r.why);
+    /*
+     * If anything was WRITTEN before it failed, the evidence has to outlive the
+     * attempt. Otherwise the next tick finds Salesforce already in its new
+     * state, returns "nothing to do", and `markDone` clears `last_error` —
+     * laundering a half-finished write into a green row. `markVerifyFailed`
+     * used to fire only for a failed read-back, never for a failed ACTION.
+     */
+    if (ctx.apply) {
+      if (r.steps.length > 0) await markVerifyFailed(entry.id, `${r.error ?? r.why} (after: ${r.steps.join(" · ")})`);
+      await markFailed(entry.id, entry.attempts, r.error ?? r.why);
+    }
     return { ...base, result: "failed", detail: r.error ?? r.why };
   }
   if (r.action === "held") {
@@ -342,8 +376,20 @@ export function needsRequeue(
   if (!latestEntry) return true;
   // Still pending: the tick owns it, and it will be decided within the minute.
   if (!latestEntry.doneAt) return false;
-  // Finished — so only if the thing has changed here since.
-  return !!updatedAt && updatedAt > latestEntry.doneAt;
+  /*
+   * Finished — so only if the thing has changed here since.
+   *
+   * PARSED, not string-compared. `updated_at` comes from PostgREST with
+   * microsecond precision and a "+00:00" offset; `done_at` is a JS
+   * `toISOString()`, millisecond precision ending "Z". Compared as text,
+   * "…:00.123456+00:00" sorts BEFORE "…:00.123Z" because '4' < 'Z' — so an
+   * edit made in the same second an entry finished would never be swept.
+   */
+  if (!updatedAt) return false;
+  const changed = Date.parse(updatedAt);
+  const finished = Date.parse(latestEntry.doneAt);
+  if (!Number.isFinite(changed) || !Number.isFinite(finished)) return false;
+  return changed > finished;
 }
 
 export type SweepSummary = {
@@ -534,7 +580,12 @@ async function finishDeal(
   r: { action: string; error?: string; checks: Array<{ name: string; ok: boolean; detail: string }>; steps: string[] },
 ): Promise<TickOutcome> {
   if (r.action === "failed") {
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, r.error ?? "failed");
+    // Same as the change-order branch: a failure that already wrote something
+    // leaves a mark the next tick's "skipped" cannot wipe.
+    if (ctx.apply) {
+      if (r.steps.length > 0) await markVerifyFailed(entry.id, `${r.error ?? "failed"} (after: ${r.steps.join(" · ")})`);
+      await markFailed(entry.id, entry.attempts, r.error ?? "failed");
+    }
     return { ...base, result: "failed", detail: r.error ?? "failed" };
   }
   const failedChecks = r.checks.filter((c) => !c.ok);

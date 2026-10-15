@@ -2,7 +2,7 @@
  * Kate, "Mods after AM Review Meet", 2026-10-09 — the customer-form items.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
@@ -26,8 +26,24 @@ describe("the Vinyl Siding Colors button", () => {
     expect(Math.abs(vinylAt - linksAt)).toBeLessThan(2000);
   });
 
-  it("points at the PDF she linked", () => {
-    expect(form()).toContain("https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing");
+  it("points at the copy WE serve, not her Drive", () => {
+    // Kate FU.3 (2026-10-15). The Drive share URL worked for anyone with
+    // the address, but it was a file in PPP's Drive: the day its sharing
+    // was tightened a customer would have hit a request-access screen
+    // mid-form, with nowhere to go and no way to tell us.
+    expect(form()).toContain('href="/colors-for-vinyl.pdf"');
+    expect(form(), "the Drive link is back").not.toContain("drive.google.com");
+  });
+
+  it("the file is actually in public/, or the button 404s", () => {
+    // A link to a file nobody shipped is worse than the Drive link it
+    // replaced — it fails for everyone, immediately.
+    const pdf = join(__dirname, "..", "..", "public", "colors-for-vinyl.pdf");
+    expect(existsSync(pdf), "public/colors-for-vinyl.pdf is missing").toBe(true);
+    const bytes = readFileSync(pdf);
+    expect(bytes.subarray(0, 5).toString("latin1"), "not a PDF").toBe("%PDF-");
+    // The real brochure is ~8 MB; a truncated or placeholder file is not.
+    expect(bytes.length).toBeGreaterThan(1_000_000);
   });
 
   it("opens safely in a new tab", () => {

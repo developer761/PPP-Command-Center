@@ -20,7 +20,7 @@
  * `addPurchase`/`updatePurchase`, which need a database.
  */
 import { describe, expect, it } from "vitest";
-import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { MAX_CENTS, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 
 describe("the money parser keeps the sign", () => {
   it("reads a credit as a negative number of cents", () => {
@@ -34,10 +34,22 @@ describe("the money parser keeps the sign", () => {
     expect(parseDollarsToCents("$1,250.00")).toBe(125_000);
   });
 
+  it("reads the accounting form, with brackets", () => {
+    // How a bookkeeper writes a credit. The accounting screen's own parser has
+    // always taken it; this one did not, so the same credit was typeable on one
+    // screen and refused on the other.
+    expect(parseDollarsToCents("(128.40)")).toBe(-12_840);
+    expect(parseDollarsToCents("($1,250.00)")).toBe(-125_000);
+    // Brackets AND a minus do not cancel out into a positive.
+    expect(parseDollarsToCents("(-128.40)")).toBe(-12_840);
+  });
+
   it("refuses what is not an amount", () => {
     expect(parseDollarsToCents("")).toBeNull();
     expect(parseDollarsToCents("credit")).toBeNull();
     expect(parseDollarsToCents("--5")).toBeNull();
+    expect(parseDollarsToCents("(5")).toBeNull();
+    expect(parseDollarsToCents("5)")).toBeNull();
     expect(parseDollarsToCents("1.234")).toBeNull();
   });
 
@@ -61,5 +73,58 @@ describe("the money parser keeps the sign", () => {
     const minusZero = parseDollarsToCents("-0.00");
     expect(minusZero === 0, "negative zero must satisfy the `=== 0` guards").toBe(true);
     expect(Math.round(minusZero as number) === 0).toBe(true);
+  });
+});
+
+describe("the ceiling, now shared by both parsers", () => {
+  /*
+   * `dollarsToCents` has always refused a figure big enough to overflow a
+   * Postgres bigint, so the raw error never reaches the user.
+   * `parseDollarsToCents` did not, and the two were only ever going to be
+   * compared after they started agreeing on sign.
+   */
+  it("refuses an amount that would overflow the column", () => {
+    expect(parseDollarsToCents("9999999999")).toBeNull();
+    expect(parseDollarsToCents("(9999999999)")).toBeNull();
+  });
+
+  it("accepts the largest amount that fits, so the limit is a limit", () => {
+    expect(parseDollarsToCents(String(MAX_CENTS / 100))).toBe(MAX_CENTS);
+    expect(parseDollarsToCents(`(${MAX_CENTS / 100})`)).toBe(-MAX_CENTS);
+  });
+});
+
+describe("a deductive AIA line can be billed, and a normal one cannot", () => {
+  /*
+   * `clampCompletionToSign` is explicit that a credit line must bill negative —
+   * clamping it to zero took the descoped work off the contract sum but never
+   * off the amount completed, and the job billed past 100%. The three `>= 0`
+   * CHECKs that refuse exactly that are dropped by migration 20261015190000;
+   * migration 128 had dropped only the scheduled-value one, because the bug in
+   * front of it was a failing insert, not a billing rule.
+   *
+   * The rule is the SIGN CONSISTENCY the library already enforces, so this
+   * pins it where a reader can see it.
+   */
+  const clamp = (scheduled: number, completion: number) => {
+    const credit = Math.round(scheduled) < 0;
+    const fit = (v: number) => (credit ? Math.min(0, v) : Math.max(0, v));
+    return fit(Math.round(completion));
+  };
+
+  it("a credit line bills negative", () => {
+    expect(clamp(-50_000, -50_000)).toBe(-50_000);
+  });
+
+  it("a credit line cannot be billed positive", () => {
+    expect(clamp(-50_000, 50_000)).toBe(0);
+  });
+
+  it("a normal line bills positive", () => {
+    expect(clamp(50_000, 50_000)).toBe(50_000);
+  });
+
+  it("a normal line cannot be billed negative — which is why the form refuses it rather than storing a silent zero", () => {
+    expect(clamp(50_000, -50_000)).toBe(0);
   });
 });

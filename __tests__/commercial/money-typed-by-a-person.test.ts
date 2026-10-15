@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/strip-comments";
+import { arOpenCents, dollarsToCents, MAX_CENTS } from "@/lib/commercial/accounting/money";
 
 /**
  * What happens when somebody types something that is not money.
@@ -15,57 +16,100 @@ import { stripComments } from "../helpers/strip-comments";
  *    allocation panel printed "Ties to the $X from Gusto, to the cent."
  *
  * The guard written for exactly this — `if (!Number.isFinite(cents))` — could
- * never fire, because the helper had already turned NaN into 0. A check that
- * cannot fail in the case it was written for.
+ * never fire, because the helper had already turned NaN into 0.
  *
- * The function is module-private, so this pins the SHAPE of the contract at
- * the seam instead: null for not-money, and every caller treating null as a
- * rejection. Comments are stripped first — tests here have matched their own
- * prose five times.
+ * 🔴 THIS FILE USED TO ASSERT ON SOURCE TEXT, and that cost a false alarm.
+ *
+ * The function was module-private in `app/commercial/accounting/page.tsx`, so
+ * every test here read the file and matched strings — including counting how
+ * many times `cents == null || cents <= 0` appeared and requiring at least
+ * three. On 2026-10-15 a real change (a vendor credit is negative, so the cost
+ * caller now rejects `=== 0` instead) took that count to two and the suite went
+ * red with nothing broken. Meanwhile none of those assertions could have caught
+ * the parser actually misreading a number.
+ *
+ * So the function was exported, and these call it. The one check that genuinely
+ * has to read the file — that no caller lets `null` through — stays, written to
+ * accept either guard spelling.
  */
 const SRC = stripComments(readFileSync("app/commercial/accounting/page.tsx", "utf8"));
 
-function body(name: string): string {
-  const start = SRC.indexOf(`function ${name}(`);
-  expect(start, `${name} not found`).toBeGreaterThan(-1);
-  return SRC.slice(start, SRC.indexOf("\n}", start));
-}
-
 describe("money typed by a person", () => {
   it("returns null rather than zero when it is not a number", () => {
-    const fn = body("dollarsToCents");
-    expect(fn).toContain("number | null");
-    // The exact regression: a bare `return 0` for unparseable input.
-    expect(fn).not.toMatch(/if\s*\(!Number\.isFinite\(n\)\)\s*return 0;/);
-    expect(fn).toContain("return null");
+    // The exact regression: "N/A" from a spreadsheet becoming $0.00.
+    expect(dollarsToCents("N/A")).toBeNull();
+    expect(dollarsToCents("abc")).toBeNull();
+    expect(dollarsToCents("")).toBeNull();
+    expect(dollarsToCents(null)).toBeNull();
+    expect(dollarsToCents(undefined)).toBeNull();
+    expect(dollarsToCents({})).toBeNull();
+    // And zero itself is still zero — distinguishable from "not a number",
+    // which is the whole point.
+    expect(dollarsToCents("0")).toBe(0);
   });
 
   it("validates the SHAPE before trusting the value", () => {
     // Number("") is 0 and Number("1e5") is 100000 — neither is money anybody
     // typed into a box.
-    expect(body("dollarsToCents")).toMatch(/\\d\*\\\.\?\\d\+|\\d\+/);
+    expect(dollarsToCents("1e5")).toBeNull();
+    expect(dollarsToCents("  ")).toBeNull();
+    expect(dollarsToCents("12.5.3")).toBeNull();
+  });
+
+  it("reads the money people actually type", () => {
+    expect(dollarsToCents("1,250.50")).toBe(125_050);
+    expect(dollarsToCents("$1,250.50")).toBe(125_050);
+    expect(dollarsToCents(" 1250.5 ")).toBe(125_050);
+    expect(dollarsToCents(".50")).toBe(50);
+    expect(dollarsToCents("-128.40")).toBe(-12_840);
   });
 
   it("reads accounting parentheses as negative, not positive", () => {
     // "(500)" is −500 on every statement Mary handles. Reading it as 500 would
     // be worse than rejecting it.
-    expect(body("dollarsToCents")).toContain("negative");
+    expect(dollarsToCents("(500)")).toBe(-50_000);
+    expect(dollarsToCents("($1,250.50)")).toBe(-125_050);
+    // Brackets around an already-negative number must not cancel back out.
+    expect(dollarsToCents("(-500)")).toBe(-50_000);
   });
 
   it("refuses a figure large enough to overflow the column", () => {
     // Otherwise the raw Postgres bigint error reaches the user.
-    expect(body("dollarsToCents")).toContain("1_000_000_000_00");
+    expect(dollarsToCents("9999999999")).toBeNull();
+    expect(dollarsToCents("(9999999999)")).toBeNull();
+    // And accepts the largest one that fits, so the limit is a limit and not a
+    // blanket refusal of big numbers.
+    expect(dollarsToCents(String(MAX_CENTS / 100))).toBe(MAX_CENTS);
   });
 
   it("every caller treats null as a rejection", () => {
-    // Three guarded on `cents <= 0`, which null does NOT satisfy — so each one
-    // had to learn about null or it would sail straight through.
-    const guards = SRC.match(/cents == null \|\| cents <= 0/g) ?? [];
-    expect(guards.length).toBeGreaterThanOrEqual(3);
-    expect(SRC).toContain("cents == null || cents < 0");
+    /*
+     * The one assertion that has to read the file: these guards live inside
+     * server actions in a page component, which a unit test cannot invoke.
+     *
+     * Written to accept BOTH spellings on purpose. `<= 0` is right for an AR
+     * line and an invoice payment — neither can be negative. `=== 0` is right
+     * for a job cost, because a vendor credit or a return IS negative. What
+     * must never appear is a caller that checks neither, because `null` does
+     * not satisfy `<= 0` and would sail straight through.
+     */
+    const callSites = SRC.match(/dollarsToCents\(/g) ?? [];
+    const guards = SRC.match(/cents == null \|\| cents (<= 0|=== 0|< 0)/g) ?? [];
+    expect(callSites.length, "no call sites found — has the helper been renamed?").toBeGreaterThanOrEqual(3);
+    expect(guards.length, "a caller of dollarsToCents does not check for null").toBeGreaterThanOrEqual(3);
   });
 
   it("the AR row leaves the field alone rather than writing zero over it", () => {
-    expect(SRC).toContain("dollarsToCents(raw) ?? undefined");
+    // Was a source-text match on the exact expression, which broke the moment
+    // the expression gained a sign guard — the same brittleness this file was
+    // just rewritten to stop. Asserted by calling it instead.
+    expect(arOpenCents("1,250.00")).toBe(125_000);
+    expect(arOpenCents("N/A"), "unparseable must not write zero over a real figure").toBeUndefined();
+    expect(arOpenCents("")).toBeUndefined();
+    expect(arOpenCents("0")).toBeUndefined();
+    // A negative receivable is not a thing, and `editArRow` writes into a JSON
+    // blob with no CHECK to refuse one.
+    expect(arOpenCents("-500")).toBeUndefined();
+    expect(arOpenCents("(500)")).toBeUndefined();
   });
 });

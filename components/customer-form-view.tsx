@@ -1524,21 +1524,27 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                     chart, and Sherwin Williams has its own VinylSafe link in
                     its list above.
 
-                    HER LINK IS A GOOGLE DRIVE SHARE URL. FU.3 asks for it to
-                    be hosted on the hub instead, which removes the failure
-                    mode: today it resolves for anyone with the address, but
-                    it is a file in PPP's Drive, and the day its sharing is
-                    tightened a customer gets a request-access screen with
-                    nowhere to go and no way to tell us. Waiting on the PDF
-                    itself from Kate. */}
+                    FU.3 (2026-10-15) — SERVED FROM THE HUB, not Drive. The
+                    original was a Google Drive share URL: it resolved for
+                    anyone with the address, but it was a file in PPP's
+                    Drive, and the day its sharing was tightened a customer
+                    would have hit a request-access screen with nowhere to go
+                    and no way to tell us. Kate sent the file; it now ships
+                    in public/ and is served from our own domain, so it
+                    cannot be revoked out from under a customer mid-form.
+
+                    8 MB, and deliberately not recompressed — it is a color
+                    chart, and the swatches are the whole document. The size
+                    is on the button so nobody on cellular is surprised by
+                    it. */}
                 {brand.id === "benjamin-moore" && (
                   <a
-                    href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
+                    href="/colors-for-vinyl.pdf"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
                   >
-                    Vinyl Siding Colors
+                    Vinyl Siding Colors <span className="font-normal text-ppp-charcoal-500">(PDF, 8 MB)</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M7 17L17 7 M7 7h10v10" />
                     </svg>
@@ -2148,11 +2154,19 @@ function LineItemSection({
           {/* Kate round-3 #33: nothing was scoped for this room in Salesforce,
               so there is nothing to pick a color for. Say so plainly instead
               of inventing a "Walls" row. */}
+          {/* Katie, 2026-10-15: "no need to explain that there are no
+              surfaces selected and that the team is sorting it out … It can
+              just say 'Please list any selected colors in the notes box
+              below.'"
+
+              The old copy told a homeowner about a gap in OUR Salesforce
+              data and promised we were fixing it — an internal problem
+              handed to the one person who can do nothing about it, and left
+              wondering whether their job is in trouble. What they need is
+              the sentence saying what to do. */}
           {hasNoSurfaces && (
             <div role="note" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/70 px-4 py-3 text-[13px] text-ppp-orange-700 leading-snug">
-              No surfaces are set up for this room yet, so there&rsquo;s nothing to pick here.
-              Our team is sorting it out — you can leave a note below if you already know
-              what you&rsquo;d like.
+              Please list any selected colors in the notes box below.
             </div>
           )}
           {!hideSurfaces && surfaces.map((surface) => (
@@ -2193,9 +2207,19 @@ function LineItemSection({
                 .map((r) => r.replace(/\b[a-z]/g, (c) => c.toUpperCase()))
                 .join(", ")}
               .
+              {/* Katie, 2026-10-15: "remove the note about 'one set of color
+                  pickers can't describe multiple rooms' — the customer
+                  doesn't know what the Color picker is referring to and may
+                  be confused."
+
+                  Right, and the reason generalizes: "color picker" is OUR
+                  word for a control this customer cannot even see, because
+                  the pickers are hidden on a multi-room line. The sentence
+                  explained our constraint instead of telling them what to
+                  do. The room list above it is the useful half and stays. */}
               <span className="block mt-0.5 text-amber-800">
                 {hideSurfaces
-                  ? "One set of color pickers can't describe several rooms, so tell us the colors for each room in the box below."
+                  ? "Please list the selected colors in each room in the notes box below."
                   : "The colors above apply to all of them. If you want different colors room by room, say so in the notes."}
               </span>
               {!state.notes.trim() && (

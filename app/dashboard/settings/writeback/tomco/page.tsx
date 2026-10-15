@@ -48,6 +48,8 @@ export const metadata = { title: "Tomco write-back" };
 export const dynamic = "force-dynamic";
 
 const BASE = "/dashboard/settings/writeback/tomco";
+/** Queue entry ids come from a form post, so they are checked before use. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function requireAdmin(): Promise<{ id: string }> {
   const supabase = await createClient();
@@ -99,6 +101,55 @@ async function undoAction(formData: FormData) {
 const money = (cents: number | null) =>
   cents == null ? "—" : `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
+/**
+ * Put a stalled entry back in the queue.
+ *
+ * An entry that spends its three attempts is never claimed again, and the
+ * nightly sweep cannot rescue it either — so without this it is stuck for good
+ * AND it blocks every future entry for that deal, with no remedy but editing
+ * the table by hand. A red row with no button is this codebase's own definition
+ * of documenting a trap rather than fixing it.
+ */
+async function rearmAction(formData: FormData) {
+  "use server";
+  await requireAdmin();
+  const id = String(formData.get("entry_id") ?? "");
+  if (!UUID_RE.test(id)) redirect(`${BASE}?error=${encodeURIComponent("Unknown queue entry.")}`);
+  const { rearmStalled } = await import("@/lib/salesforce/tomco-queue");
+  const res = await rearmStalled(id);
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?ok=${encodeURIComponent("Back in the queue — the next tick will try it again.")}`
+      : `${BASE}?error=${encodeURIComponent(res.error ?? "Could not re-queue it.")}`,
+  );
+}
+
+/**
+ * "It is a genuine second change order at this amount — create it."
+ *
+ * The only escape from the hold `syncChangeOrder` applies when every Salesforce
+ * change order at that amount already belongs to a different Command Center
+ * one. Without it that hold is permanent: holding does not count as an attempt,
+ * so the entry never becomes "stopped asking", so the retry button never shows,
+ * and the sweep skips anything still pending. The work would simply never reach
+ * Salesforce.
+ */
+async function allowSecondCoAction(formData: FormData) {
+  "use server";
+  const { id: userId } = await requireAdmin();
+  const coId = String(formData.get("change_order_id") ?? "");
+  if (!UUID_RE.test(coId)) redirect(`${BASE}?error=${encodeURIComponent("Unknown change order.")}`);
+  const { allowSecondChangeOrder } = await import("@/lib/salesforce/tomco-changeorder");
+  const res = await allowSecondChangeOrder(coId, userId);
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?ok=${encodeURIComponent("Noted — the next tick will add it to Salesforce as a second change order.")}`
+      : `${BASE}?error=${encodeURIComponent(res.error ?? "Could not record that.")}`,
+  );
+}
+
 export default async function TomcoWritebackPage({
   searchParams,
 }: {
@@ -134,6 +185,12 @@ export default async function TomcoWritebackPage({
   const waiting = queue.filter((q) => !q.doneAt && !q.stalled && !q.heldReason);
   const heldInQueue = queue.filter((q) => !q.doneAt && q.heldReason);
   const stalled = queue.filter((q) => q.stalled);
+  /*
+   * Written, and the read-back disagreed. Deliberately NOT filtered to pending
+   * entries — a finished one with this set is the dangerous case, because
+   * everything else about it reads as a success.
+   */
+  const unverified = queue.filter((q) => q.verifyFailedAt && !q.stalled);
   const lastDone = queue.find((q) => q.doneAt)?.doneAt ?? null;
 
   try {
@@ -210,23 +267,28 @@ export default async function TomcoWritebackPage({
            * since the deploy sat unsynced.
            */
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
-            <span className="font-semibold">The live sync is not switched on yet.</span> Its table has
-            not been created, so nothing is being queued and nothing is being written. Apply{" "}
-            <code className="font-mono text-[12px]">20261015140000_tomco_writeback_queue.sql</code>, and
-            the first nightly sweep after that queues everything already sold.
+            <span className="font-semibold">The live sync is not switched on yet.</span> Its table or
+            one of its columns is missing, so nothing is being queued and nothing is being written.
+            Apply any unrun migration named{" "}
+            <code className="font-mono text-[12px]">*_tomco_writeback_queue*.sql</code> — there are two,
+            and the second adds columns the first does not. The next nightly sweep then queues
+            everything already sold.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-ppp-charcoal-100 bg-surface">
-            <div className="grid grid-cols-3 divide-x divide-ppp-charcoal-100 border-b border-ppp-charcoal-100">
+            <div className="grid grid-cols-2 divide-x divide-y divide-ppp-charcoal-100 border-b border-ppp-charcoal-100 sm:grid-cols-4 sm:divide-y-0">
               {[
                 { n: waiting.length, label: "waiting", hint: "goes within the minute" },
                 { n: heldInQueue.length, label: "needs a person", hint: "waiting on a decision" },
                 { n: stalled.length, label: "stopped asking", hint: "out of retries" },
+                { n: unverified.length, label: "not verified", hint: "written, read-back disagreed" },
               ].map((c) => (
                 <div key={c.label} className="px-4 py-3">
                   <div
                     className={`font-mono text-xl font-bold tabular-nums ${
-                      c.label === "stopped asking" && c.n > 0 ? "text-rose-700" : "text-ppp-charcoal"
+                      (c.label === "stopped asking" || c.label === "not verified") && c.n > 0
+                        ? "text-rose-700"
+                        : "text-ppp-charcoal"
                     }`}
                   >
                     {c.n}
@@ -237,9 +299,9 @@ export default async function TomcoWritebackPage({
               ))}
             </div>
             {/* The failures first: they are the only rows that need acting on. */}
-            {[...stalled, ...heldInQueue, ...waiting].slice(0, 12).map((q) => (
-              <div key={q.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-ppp-charcoal-100 px-4 py-3 last:border-b-0">
-                <div className="min-w-0">
+            {[...stalled, ...unverified, ...heldInQueue, ...waiting].slice(0, 14).map((q) => (
+              <div key={q.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-ppp-charcoal-100 px-4 py-3 last:border-b-0">
+                <div className="min-w-0 flex-1">
                   <span className="text-[13.5px] font-semibold text-ppp-charcoal">{q.label}</span>
                   {q.kind === "change_order" && (
                     <span className="ml-2 rounded bg-ppp-charcoal-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ppp-charcoal-600">
@@ -251,10 +313,46 @@ export default async function TomcoWritebackPage({
                       ? `Stopped after ${q.attempts} attempts — ${q.lastError ?? "no reason recorded"}`
                       : q.heldReason ?? "queued"}
                   </p>
+                  {/*
+                    A write whose read-back disagreed. Shown even when the entry
+                    is finished, because that is exactly the case that used to
+                    disappear: the retry found Salesforce already in its new
+                    state, said "nothing to do", and the row went green.
+                  */}
+                  {q.verifyFailedAt && (
+                    <p className="mt-1 text-[12px] text-amber-800">
+                      <span className="font-semibold">Written but not verified.</span>{" "}
+                      {q.verifyFailedReason ?? "a read-back disagreed"}
+                    </p>
+                  )}
                 </div>
-                <span className="font-mono text-[11px] tabular-nums text-ppp-charcoal-400">
-                  {q.queuedAt.slice(0, 16).replace("T", " ")}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[11px] tabular-nums text-ppp-charcoal-400">
+                    {q.queuedAt.slice(0, 16).replace("T", " ")}
+                  </span>
+                  {!q.doneAt && q.kind === "change_order" && q.changeOrderId && /second change order|already linked to a different/i.test(q.heldReason ?? "") && (
+                    <form action={allowSecondCoAction}>
+                      <input type="hidden" name="change_order_id" value={q.changeOrderId} />
+                      <button
+                        type="submit"
+                        className="min-h-[44px] rounded-lg border border-ppp-charcoal-300 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                      >
+                        It&apos;s a second one — add it
+                      </button>
+                    </form>
+                  )}
+                  {q.stalled && (
+                    <form action={rearmAction}>
+                      <input type="hidden" name="entry_id" value={q.id} />
+                      <button
+                        type="submit"
+                        className="min-h-[44px] rounded-lg border border-rose-300 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-rose-700 hover:bg-rose-50"
+                      >
+                        Try again
+                      </button>
+                    </form>
+                  )}
+                </div>
               </div>
             ))}
             {queue.length === 0 && (
