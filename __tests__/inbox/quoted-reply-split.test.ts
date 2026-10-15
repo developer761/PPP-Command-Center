@@ -75,6 +75,42 @@ describe("splitting a reply from its quote", () => {
     expect(splitQuotedReply(body)).toEqual({ reply: body, quoted: "" });
   });
 
+  it("never cuts inside a WORD containing 'on'", () => {
+    // Kate's FU.13, verbatim. The newline before "On" was optional, so with
+    // the /i flag this matched the "on " inside "k.sutton" and the hub
+    // showed "...I'm the vendor, k.sutt" with "on is the sender" folded
+    // away as someone else's quoted email.
+    const body =
+      'Hitting "Reply All" as a test -- I\'m the vendor, k.sutton is the sender\n' +
+      "\n" +
+      "On Wed, Oct 14, 2026 at 11:24 AM Precision Painting Plus <\n" +
+      "orders@orders.precisionpaintingplus.net> wrote:\n" +
+      "> Hi there,";
+    const { reply, quoted } = splitQuotedReply(body);
+    expect(reply.trim()).toBe(
+      'Hitting "Reply All" as a test -- I\'m the vendor, k.sutton is the sender'
+    );
+    expect(reply).toContain("k.sutton is the sender");
+    expect(quoted).toContain("Precision Painting Plus");
+  });
+
+  it("still cuts an attribution sitting behind quote markers", () => {
+    // Nested replies indent the attribution with '>' before the "On".
+    const { reply } = splitQuotedReply(
+      "Confirmed.\n\n> On Wed, Oct 14, 2026 at 11:24 AM PPP wrote:\n>> order"
+    );
+    expect(reply.trim()).toBe("Confirmed.");
+  });
+
+  it("cuts an attribution that opens the body with no preceding newline", () => {
+    // Anchoring to line start must still allow the very first character.
+    const { reply, quoted } = splitQuotedReply(
+      "On Wed, Oct 14, 2026 at 11:24 AM PPP wrote:\n> order"
+    );
+    expect(reply.trim()).toBe("");
+    expect(quoted).toContain("PPP wrote:");
+  });
+
   it("reports an EMPTY reply when the person wrote below the quote", () => {
     // Not a failure — the caller decides. The thread view shows the whole
     // body in this case rather than folding a message out of sight.

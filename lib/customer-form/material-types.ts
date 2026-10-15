@@ -724,6 +724,35 @@ const INTERIOR_ONLY_EXTERIOR_DROPS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The order exterior sheens are offered in — Kate, FU.6, 2026-10-15:
+ * "Reorder the finishes for exterior products: flat, satin, low lustre, soft
+ * gloss (flip satin and low lustre)."
+ *
+ * Least shine to most, which is how the recommended-finishes table already
+ * reads and how a painter talks about sheen.
+ *
+ * Applied where the list is SERVED rather than by rewriting the five product
+ * literals, so a product added next month comes out ordered without anyone
+ * remembering this. Anything not named keeps its relative position after the
+ * ones that are, so an unknown sheen is never silently dropped.
+ */
+const EXTERIOR_SHEEN_ORDER: readonly string[] = [
+  "Flat",
+  "Satin",
+  "Low Lustre",
+  "Soft Gloss",
+];
+
+function orderExteriorSheens(finishes: readonly string[]): string[] {
+  const rank = (f: string) => {
+    const i = EXTERIOR_SHEEN_ORDER.indexOf(f);
+    return i === -1 ? EXTERIOR_SHEEN_ORDER.length : i;
+  };
+  // Stable: equal ranks keep the order the product declared them in.
+  return [...finishes].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
  * True when this product line is sold as an exterior product.
  *
  * Checks the RAW value before `paintLineFromValue`, which deliberately
@@ -780,10 +809,19 @@ export function finishOptionsFor(
   const product = productFor(materialType);
   const declared = product?.finishes;
   if (declared) {
-    if (Array.isArray(declared)) return [...declared];
+    if (Array.isArray(declared)) {
+      // A product with ONE list, not a by-scope pair — "Ultra Spec Exterior"
+      // and "Mooregard" are exterior-only, so their single list is the
+      // exterior list and FU.6's order applies to it too. Missing this is
+      // how the reorder reached the by-scope products and skipped the ones
+      // named for the exterior.
+      return isExteriorProduct(materialType) || scope === "exterior"
+        ? orderExteriorSheens(declared)
+        : [...declared];
+    }
     const byScope = declared as FinishesByScope;
     const wanted = scope === "exterior" ? byScope.exterior : scope === "interior" ? byScope.interior : null;
-    if (wanted) return [...wanted];
+    if (wanted) return scope === "exterior" ? orderExteriorSheens(wanted) : [...wanted];
     // No scope signal. Default to INTERIOR, which is the rule this file already
     // applies in materialTypeToSf: "Interior is the overwhelming majority of
     // PPP's work, so it's the safer default." Offering the union instead would
@@ -799,8 +837,10 @@ export function finishOptionsFor(
   // interior answers keep all three — so an exterior product with no list of
   // its own gets the exterior vocabulary rather than the interior one plus two.
   const base = isExteriorProduct(materialType) || scope === "exterior"
-    ? [...allOptions.filter((f) => !INTERIOR_ONLY_EXTERIOR_DROPS.has(f)),
-       ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f))]
+    ? orderExteriorSheens([
+        ...allOptions.filter((f) => !INTERIOR_ONLY_EXTERIOR_DROPS.has(f)),
+        ...EXTERIOR_ONLY_SHEENS.filter((f) => !allOptions.includes(f)),
+      ])
     : [...allOptions];
   if (!isStainProduct(materialType)) return base;
   return base.filter((f) => !INTERIOR_ONLY_SHEENS.has(f));

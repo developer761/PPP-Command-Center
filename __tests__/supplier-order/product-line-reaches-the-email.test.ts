@@ -105,7 +105,8 @@ describe("the new products are real products, not just strings", () => {
   it("each offers only finishes it is sold in — and every one is server-valid", () => {
     const cases: Array<[string, "interior" | "exterior", string[]]> = [
       ["Ultra Spec Interior", "interior", ["Flat", "Eggshell", "Satin", "Semi-Gloss"]],
-      ["Ultra Spec Exterior", "exterior", ["Low Lustre", "Satin", "Soft Gloss"]],
+      // Kate FU.6 — exterior sheens now read least shine to most.
+      ["Ultra Spec Exterior", "exterior", ["Satin", "Low Lustre", "Soft Gloss"]],
       ["Aura Bath & Spa", "interior", ["Matte"]],
       // Satin, corrected 2026-10-01 — Katie checked Benjamin Moore's page and
       // sent the can ("KITCHEN & BATH · INTERIOR · SATIN"). "Pearl" here was a

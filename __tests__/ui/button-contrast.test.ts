@@ -78,12 +78,33 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 const FILES = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))];
 
+/**
+ * Every class string in a file — double-quoted AND template-literal.
+ *
+ * This used to read `"..."` only. A className written as a template literal
+ * to toggle one class (`className={`bg-ppp-blue-700 ... ${x ? "a" : ""}`}`)
+ * became invisible, so the button kept its white-on-blue fill and the
+ * scanner stopped reporting it — and the stale-exemption check then said the
+ * problem was FIXED. Blinding a guard reads exactly like passing it.
+ *
+ * `${...}` holes are replaced with a space rather than dropped, so classes
+ * either side of an interpolation never fuse into one invented token.
+ */
+function classStrings(src: string): string[] {
+  const out: string[] = [];
+  for (const [, cls] of src.matchAll(/"([^"\n]*)"/g)) out.push(cls);
+  for (const [, raw] of src.matchAll(/`([^`]*)`/g)) {
+    out.push(raw.replace(/\$\{[^}]*\}/g, " ").replace(/\s+/g, " "));
+  }
+  return out;
+}
+
 /** Class strings pairing an exact brand-token fill with white text. */
 function offenders(family: "blue" | "orange" | "green"): string[] {
   const fill = new RegExp(String.raw`(?<![-\w])bg-ppp-${family}(?![-\w])`);
   const hits: string[] = [];
   for (const f of FILES) {
-    for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+    for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
       if (fill.test(cls) && /(?<![-\w:])text-white(?![-\w])/.test(cls)) {
         hits.push(`${f.replace(ROOT + "/", "")} :: ${cls.slice(0, 70)}`);
       }
@@ -161,7 +182,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     // acknowledging a press. Rest → hover lightens → press settles back.
     const bad: string[] = [];
     for (const f of FILES) {
-      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
         // Capture the opacity modifier too. `hover:bg-ppp-blue-50/40` and
         // `active:bg-ppp-blue-50` share a token but differ visibly — 40% vs
         // 100% — so stripping the `/40` reports a false positive on list rows
@@ -184,7 +205,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     // Two independent questions, two assertions.
     const bad: string[] = [];
     for (const f of FILES) {
-      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
         if (!/(?<![-\w:])text-white(?![-\w])/.test(cls)) continue;
         for (const [tok, hex] of Object.entries(LIGHT)) {
           const cn = "bg-" + tok.replace("--color-", "");
@@ -211,7 +232,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     // 1.64:1; it looked plausible and shipped past every other assertion here.
     const bad: string[] = [];
     for (const f of FILES) {
-      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
         const scrim = cls.match(/(?<![-\w:])bg-black\/\[?\.?(\d+)/);
         if (!scrim) continue;
         const fg = cls.match(/(?<![-\w:])text-(ppp-[a-z]+(?:-\d+)?)(?![-\w])/)?.[1];
@@ -249,7 +270,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     const bad: string[] = [];
     for (const f of FILES) {
       const src = readFileSync(f, "utf8");
-      for (const [, cls] of src.matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(src).map((c) => [null, c] as const)) {
         for (const [, prefix, tok] of cls.matchAll(
           /(?<![-\w])(?:hover:|active:|focus:|group-hover:|dark:|sm:|md:|lg:)*(text|bg|border|ring|from|to|via|decoration|outline|divide|shadow|accent|caret|fill|stroke)-(ppp-[a-z]+(?:-\d+)?)(?![-\w])/g
         )) {
@@ -271,7 +292,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     expect(inverting.length).toBeGreaterThan(0);
     const bad: string[] = [];
     for (const f of FILES) {
-      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
         if (!/(?<![-\w:])text-white(?![-\w])/.test(cls)) continue;
         for (const tok of inverting) {
           const cn = "bg-" + tok.replace("--color-", "");
@@ -293,7 +314,7 @@ describe("the hover ramp stays out of the dead zone", () => {
     const bad: string[] = [];
     const fill = /(?<![-\w])bg-ppp-blue(?![-\w])/;
     for (const f of FILES) {
-      for (const [, cls] of readFileSync(f, "utf8").matchAll(/"([^"\n]*)"/g)) {
+      for (const [, cls] of classStrings(readFileSync(f, "utf8")).map((c) => [null, c] as const)) {
         if (!fill.test(cls)) continue;
         if (/(hover|active):bg-ppp-blue-(600|700|800|900)(?![-\w])/.test(cls)) {
           bad.push(`${f.replace(ROOT + "/", "")} :: ${cls.slice(0, 70)}`);

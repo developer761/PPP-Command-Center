@@ -1697,8 +1697,19 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         >
           {/* Kate round-2 #08: for Internal Entry, drop the "once you submit we'll
               order materials" customer copy — keep just the button. */}
+          {/* Kate FU.7 (2026-10-15): while confirming, the order is the
+              list, then "Confirm my selections", then this as a footnote
+              beneath it.
+
+              Done with flex `order`, which moves it visually and leaves it
+              where it is in the DOM. That is fine for the keyboard — the
+              only focusable things here are "Go back" inside the panel and
+              the submit button, and those two keep their on-screen order —
+              but a screen reader still reads this sentence before the list.
+              It is one line of context ("once you submit…"), so hearing it
+              early is harmless; it would not be if it were a control. */}
           {!isInternal && (
-          <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
+          <div className={`text-[11px] sm:text-xs text-ppp-charcoal-500${confirming ? " order-3 text-center" : ""}`}>
             {isPreview ? (
               "Preview only — nothing will be saved when you click. This is to let our team test the form."
             ) : isEditing ? (
@@ -1737,7 +1748,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           {confirming && (
             <div
               ref={confirmRef}
-              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4"
+              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4 order-1"
             >
               <h3 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy">
                 Please check your selections
@@ -1794,7 +1805,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             // homeowner has to find, on a phone, often outdoors. blue-700 (#15749c)
             // is 5.24:1 and still reads as PPP blue. The brand fill is untouched
             // everywhere it doesn't carry white text.
-            className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue-700 text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-800 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
+            className={`shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue-700 text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-800 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed${confirming ? " order-2" : ""}`}
           >
             {submitting
               ? "Saving…"
@@ -2354,7 +2365,16 @@ function SurfaceRow({
                   <path d="M3.5 6.5h7a2.5 2.5 0 0 1 0 5H7" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M5.5 4.5 3.2 6.5l2.3 2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Apply to all areas
+                {/* Kate FU.14 (2026-10-15): "Update 'Apply to All Areas'
+                    button wording to 'Apply to All [SURFACE]'." The button
+                    sits in the Walls row and only ever copies the color to
+                    Walls elsewhere, so "all areas" overstated what it does —
+                    on a form with walls, ceiling and trim it reads as though
+                    it will fill all three. Named, it says what it does.
+
+                    `surface` is the row's own label, already the thing shown
+                    at the left of the row, so the two cannot disagree. */}
+                Apply to all {surface.toLowerCase()}
               </button>
             )}
             {/* The result, AT the button that produced it (Kate 2026-09-18).

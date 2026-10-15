@@ -2313,7 +2313,10 @@ function ColorNoteOffers({
           const line = offer.line;
           const id = identityFor(offer);
           const added = isOfferOnOrder(items, id);
-          const covered = inBuyList(line, estimates);
+          // Kate FU.2 — the note's own sheen decides whether the buy list
+          // already covers it. `id` is the parsed offer, so the finish here
+          // is the same one the row displays and adds.
+          const covered = inBuyList(line, estimates, id.finish);
           const q = qty[line] ?? "";
           return (
             <li key={line} className="py-1.5">
