@@ -263,6 +263,10 @@ export type QueueReviewRow = {
   outcome: string | null;
   /** Out of retries and not done: it has stopped asking. */
   stalled: boolean;
+  /** A read-back disagreed with what was written, and nothing has since proved
+   *  otherwise. Survives the entry being marked done — that is the point. */
+  verifyFailedAt: string | null;
+  verifyFailedReason: string | null;
 };
 
 /**
@@ -279,7 +283,7 @@ export async function listQueueForReview(
   const sb = adminClient();
   const { data, error } = await sb
     .from(TABLE)
-    .select("id, kind, opportunity_id, change_order_id, queued_at, attempts, held_reason, last_error, done_at, outcome")
+    .select("id, kind, opportunity_id, change_order_id, queued_at, attempts, held_reason, last_error, done_at, outcome, verify_failed_at, verify_failed_reason")
     // Pending first (done_at null sorts last ascending in Postgres, so order by
     // it descending with nulls first), then newest.
     .order("done_at", { ascending: false, nullsFirst: true })
@@ -305,6 +309,8 @@ export async function listQueueForReview(
     last_error: string | null;
     done_at: string | null;
     outcome: string | null;
+    verify_failed_at: string | null;
+    verify_failed_reason: string | null;
   }>;
   if (rows.length === 0) return { rows: [], tableMissing: false };
 
@@ -358,6 +364,8 @@ export async function listQueueForReview(
       doneAt: r.done_at,
       outcome: r.outcome,
       stalled: !r.done_at && Number(r.attempts ?? 0) >= MAX_ATTEMPTS,
+      verifyFailedAt: r.verify_failed_at ?? null,
+      verifyFailedReason: r.verify_failed_reason ?? null,
     };
   });
   return { rows: out, tableMissing: false };

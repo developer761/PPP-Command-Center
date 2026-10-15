@@ -329,6 +329,72 @@ try {
           .join(" · "),
     );
   }
+  /*
+   * ── ONE JOB, ONE WORK ORDER, NO INVENTED INVOICES ────────────────────────
+   *
+   * 🔴 ADDED BECAUSE NOTHING HERE COULD SEE ANY OF IT. Audited on 2026-10-15,
+   * when the quote sync was about to create five new Salesforce work orders:
+   *
+   *  · a second `commercial_jobs` row on one deal splits that job's payroll and
+   *    hours across two job codes. The database refuses it — but by THROWING
+   *    mid-sync, not by reporting, and no check read the table at all.
+   *  · `commercial_work_orders` lost its one-live-per-opportunity index in
+   *    migration 123, so a spurious one now inserts silently. That has already
+   *    happened once: a second empty draft work order on 46 Tomco deals, found
+   *    by a person and cleaned up with a hand-written SQL file.
+   *  · an invoice the importer invents from a work order is built FROM
+   *    Salesforce's own numbers, so the importer's reconcile ties perfectly,
+   *    and both surfaces here read the same rows so every identity above still
+   *    balances. It is invisible by construction.
+   *
+   * These are cheap reads and they close the one blind spot that mattered.
+   */
+  // Reuses the `pageAll` and client already open above — a second copy of each
+  // would be two things to keep in step for no reason.
+  const jobs = (await pageAll("commercial_jobs", "id,opportunity_id,job_code,deleted_at", ["id"]))
+    .filter((j) => !j.deleted_at && j.opportunity_id);
+  const jobsPerDeal = new Map();
+  for (const j of jobs) jobsPerDeal.set(j.opportunity_id, (jobsPerDeal.get(j.opportunity_id) ?? 0) + 1);
+  const twoJobs = [...jobsPerDeal.entries()].filter(([, n]) => n > 1);
+  check("there are jobs to scan", jobs.length > 0, `${jobs.length} live job(s)`);
+  check(
+    "no deal has two live jobs — payroll would split across the job codes",
+    twoJobs.length === 0,
+    twoJobs.length ? twoJobs.slice(0, 3).map(([d, n]) => `${d.slice(0, 8)}×${n}`).join(" · ") : `${jobsPerDeal.size} deal(s) with a job`,
+  );
+
+  const wos = (await pageAll("commercial_work_orders", "id,opportunity_id,voided_at", ["id"]))
+    .filter((w) => !w.voided_at && w.opportunity_id);
+  const wosPerDeal = new Map();
+  for (const w of wos) wosPerDeal.set(w.opportunity_id, (wosPerDeal.get(w.opportunity_id) ?? 0) + 1);
+  const twoWos = [...wosPerDeal.entries()].filter(([, n]) => n > 1);
+  check(
+    "no deal has two live work orders — the index that used to refuse this was dropped in migration 123",
+    twoWos.length === 0,
+    twoWos.length ? twoWos.slice(0, 3).map(([d, n]) => `${d.slice(0, 8)}×${n}`).join(" · ") : `${wosPerDeal.size} deal(s) with one`,
+  );
+
+  /*
+   * An `SF-` invoice is one the importer created from a Salesforce work order.
+   * Two of them on one deal means two work orders generated billing for the
+   * same job — the shape the quote sync would have produced.
+   */
+  const invs = (await pageAll("commercial_invoices", "id,opportunity_id,invoice_number,total_cents,deleted_at", ["id"]))
+    .filter((i) => !i.deleted_at);
+  const sfInvByDeal = new Map();
+  for (const i of invs.filter((i) => String(i.invoice_number ?? "").startsWith("SF-"))) {
+    const l = sfInvByDeal.get(i.opportunity_id) ?? [];
+    l.push(i);
+    sfInvByDeal.set(i.opportunity_id, l);
+  }
+  const doubleBilled = [...sfInvByDeal.entries()].filter(([, l]) => l.length > 1);
+  check(
+    "no deal carries two imported Salesforce invoices",
+    doubleBilled.length === 0,
+    doubleBilled.length
+      ? doubleBilled.slice(0, 3).map(([, l]) => l.map((i) => i.invoice_number).join("+")).join(" · ")
+      : `${sfInvByDeal.size} deal(s) with one`,
+  );
 } catch (err) {
   failures++;
   console.log(`  FAIL  the check itself threw — ${err?.message ?? err}`);
