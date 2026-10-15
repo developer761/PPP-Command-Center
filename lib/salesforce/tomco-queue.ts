@@ -89,6 +89,32 @@ export function isMissingQueueTable(message: string): boolean {
   );
 }
 
+/**
+ * The table is there but a COLUMN this code needs is not — the window between
+ * deploying a change and running its migration by hand.
+ *
+ * 🔴 WHY THIS IS NOT THE SAME CHECK. `isMissingQueueTable` keys on the table
+ * name, and PostgREST's message for a missing column names the COLUMN
+ * ("column commercial_tomco_writeback_queue.claimed_at does not exist" does
+ * mention both, but "Could not find the 'claimed_at' column of … in the schema
+ * cache" need not). The atomic claim added `claimed_at`, and without this the
+ * per-minute cron would throw and log a red 500 every sixty seconds from the
+ * moment the code deployed until somebody ran the SQL — which is precisely the
+ * noise that gets a real failure ignored.
+ *
+ * Treated as "not ready yet", exactly like a missing table: nothing is lost,
+ * because the nightly sweep queues everything it finds once the column exists.
+ */
+export function isMissingQueueColumn(message: string): boolean {
+  return /(column|could not find).*(claimed_at|verify_failed_at|verify_failed_reason)/i.test(message)
+    || /(claimed_at|verify_failed_at|verify_failed_reason).*(does not exist|schema cache)/i.test(message);
+}
+
+/** Either flavour of "the migration has not been run yet". */
+export function isQueueNotReady(message: string): boolean {
+  return isMissingQueueTable(message) || isMissingQueueColumn(message);
+}
+
 export type QueueEntry = {
   id: string;
   kind: QueueKind;
@@ -128,32 +154,100 @@ export const MAX_ATTEMPTS = 3;
  */
 export const RETRY_AFTER_MS = 60 * 60 * 1000;
 
-/** What the tick should work on, oldest first. */
+/**
+ * How long a claim is honoured before another tick may take the entry.
+ *
+ * A tick that dies mid-entry — the lambda hitting `maxDuration`, a deploy
+ * mid-flight — leaves `claimed_at` set and nothing to clear it. Without a
+ * staleness window that entry would never be touched again. Ten minutes is far
+ * longer than the worst realistic entry (about twenty seconds) and far shorter
+ * than the hour an entry waits between attempts anyway.
+ */
+export const CLAIM_STALE_MS = 10 * 60 * 1000;
+
+/**
+ * Take up to `limit` entries, ATOMICALLY, and return only the ones this caller
+ * now owns.
+ *
+ * 🔴 THE CLAIM IS THE WHOLE POINT. This used to be a plain SELECT, and nothing
+ * marked a row as taken until its processing finished — ten to twenty seconds
+ * later, because every entry waits six seconds for Salesforce's rollups before
+ * reading back. The cron fires every sixty seconds and a batch of ten takes up
+ * to 200s, so two ticks overlapped as a matter of course and the second re-read
+ * entries the first was still working on.
+ *
+ * What that cost, concretely: two ticks inside `syncChangeOrder` for the same
+ * change order both find no link, both find nothing at the matching amount, and
+ * both create a `ChangeOrder__c`. Two approved change orders for one piece of
+ * work, `TotalChangeOrder__c` doubled, and nothing in Salesforce to refuse it.
+ *
+ * The claim is one conditional UPDATE per candidate: it applies only while
+ * `claimed_at` is still what we read, so of two ticks racing for a row exactly
+ * one gets it back and the other sees no row and moves on.
+ */
 export async function claimPending(limit = 20): Promise<QueueEntry[]> {
   const sb = adminClient();
   const waitUntil = new Date(Date.now() - RETRY_AFTER_MS).toISOString();
+  const staleBefore = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
   const { data, error } = await sb
     .from(TABLE)
-    .select("id, kind, opportunity_id, change_order_id, attempts, queued_at, held_reason")
+    .select("id, kind, opportunity_id, change_order_id, attempts, queued_at, held_reason, claimed_at")
     .is("done_at", null)
     .lt("attempts", MAX_ATTEMPTS)
     // Never attempted, or last attempted long enough ago. A brand-new entry has
     // no `last_attempt_at`, so this is what makes the sync immediate.
     .or(`last_attempt_at.is.null,last_attempt_at.lt.${waitUntil}`)
+    // Unclaimed, or claimed by a tick that has evidently died.
+    .or(`claimed_at.is.null,claimed_at.lt.${staleBefore}`)
     .order("queued_at", { ascending: true })
-    .limit(limit);
+    // Ask for more than we need: some of these will be lost to another tick.
+    .limit(limit * 2);
   if (error) {
-    if (isMissingQueueTable(error.message)) return [];
+    if (isQueueNotReady(error.message)) return [];
     throw new Error(`write-back queue: ${error.message}`);
   }
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    kind: r.kind as QueueKind,
-    opportunityId: r.opportunity_id as string,
-    changeOrderId: (r.change_order_id as string | null) ?? null,
-    attempts: Number(r.attempts ?? 0),
-    queuedAt: r.queued_at as string,
-  }));
+
+  const mine: QueueEntry[] = [];
+  for (const r of data ?? []) {
+    if (mine.length >= limit) break;
+    const row = r as {
+      id: string;
+      kind: string;
+      opportunity_id: string;
+      change_order_id: string | null;
+      attempts: number | null;
+      queued_at: string;
+      claimed_at: string | null;
+    };
+    /*
+     * The compare-and-swap. `.is("claimed_at", null)` or `.eq` on the exact
+     * value we read means the update matches at most once — whoever gets the
+     * row back owns it, and the loser gets an empty result rather than an error.
+     */
+    let q = sb
+      .from(TABLE)
+      .update({ claimed_at: new Date().toISOString() })
+      .eq("id", row.id)
+      .is("done_at", null);
+    q = row.claimed_at === null ? q.is("claimed_at", null) : q.eq("claimed_at", row.claimed_at);
+    const { data: won, error: claimErr } = await q.select("id").maybeSingle();
+    if (claimErr) {
+      // Could not claim: leave it for the next tick rather than risk working on
+      // an entry we do not own.
+      console.warn(`[tomco-queue] could not claim ${row.id}: ${claimErr.message}`);
+      continue;
+    }
+    if (!won) continue; // another tick got there first
+    mine.push({
+      id: row.id,
+      kind: row.kind as QueueKind,
+      opportunityId: row.opportunity_id,
+      changeOrderId: row.change_order_id ?? null,
+      attempts: Number(row.attempts ?? 0),
+      queuedAt: row.queued_at,
+    });
+  }
+  return mine;
 }
 
 export type QueueReviewRow = {
@@ -197,7 +291,7 @@ export async function listQueueForReview(
      * and an empty list on this screen reads as "all clear" — the one thing it
      * must not say when it cannot tell. The caller renders the difference.
      */
-    if (isMissingQueueTable(error.message)) return { rows: [], tableMissing: true };
+    if (isQueueNotReady(error.message)) return { rows: [], tableMissing: true };
     throw new Error(`write-back queue: ${error.message}`);
   }
   const rows = (data ?? []) as Array<{
@@ -269,13 +363,55 @@ export async function listQueueForReview(
   return { rows: out, tableMissing: false };
 }
 
-/** Finished — written, or decided that nothing was needed. */
-export async function markDone(id: string, outcome: string): Promise<void> {
+/**
+ * Finished — written, or decided that nothing was needed.
+ *
+ * `verified` says whether a read-back actually confirmed it. 🔴 THE DEFAULT IS
+ * FALSE AND THAT MATTERS: a write whose read-back disagreed used to be marked
+ * failed, and then an hour later the retry found Salesforce already in its new
+ * state, returned "nothing to do", and marked the entry done — clearing
+ * `last_error` on the way. The entry went green and the evidence vanished,
+ * which is how a sale sitting at $0 in Katie's reports read as a clean sync.
+ *
+ * So `verify_failed_at` is cleared ONLY by a passing read-back. Marking an
+ * entry done leaves it standing, and the review screen shows it.
+ */
+export async function markDone(
+  id: string,
+  outcome: string,
+  opts: { verified?: boolean } = {},
+): Promise<void> {
   const sb = adminClient();
-  await sb
+  const patch: Record<string, unknown> = {
+    done_at: new Date().toISOString(),
+    outcome,
+    last_error: null,
+    held_reason: null,
+    claimed_at: null,
+  };
+  if (opts.verified) {
+    patch.verify_failed_at = null;
+    patch.verify_failed_reason = null;
+  }
+  const { error } = await sb.from(TABLE).update(patch).eq("id", id);
+  // Reported, not swallowed: a markDone that silently failed leaves the entry
+  // pending, and the next tick writes the same thing to Salesforce again.
+  if (error) console.warn(`[tomco-queue] could not mark ${id} done: ${error.message}`);
+}
+
+/**
+ * A read-back disagreed with what we just wrote.
+ *
+ * Recorded separately from `last_error` because it must OUTLIVE the entry being
+ * marked done. See `markDone`.
+ */
+export async function markVerifyFailed(id: string, reason: string): Promise<void> {
+  const sb = adminClient();
+  const { error } = await sb
     .from(TABLE)
-    .update({ done_at: new Date().toISOString(), outcome, last_error: null, held_reason: null })
+    .update({ verify_failed_at: new Date().toISOString(), verify_failed_reason: reason.slice(0, 2000) })
     .eq("id", id);
+  if (error) console.warn(`[tomco-queue] could not record the failed verification on ${id}: ${error.message}`);
 }
 
 /**
@@ -287,10 +423,12 @@ export async function markDone(id: string, outcome: string): Promise<void> {
  */
 export async function markHeld(id: string, reason: string): Promise<void> {
   const sb = adminClient();
-  await sb
+  const { error } = await sb
     .from(TABLE)
-    .update({ held_reason: reason, last_attempt_at: new Date().toISOString() })
+    // The claim is released: a held entry is not being worked on.
+    .update({ held_reason: reason, last_attempt_at: new Date().toISOString(), claimed_at: null })
     .eq("id", id);
+  if (error) console.warn(`[tomco-queue] could not hold ${id}: ${error.message}`);
 }
 
 /**
@@ -321,11 +459,47 @@ export async function releaseHold(opportunityId: string): Promise<void> {
   }
 }
 
-/** Tried and failed. Counts against the budget. */
+/**
+ * Tried and failed. Counts against the budget.
+ *
+ * `attempts + 1` from the value read at claim time is safe now that the claim
+ * is atomic — only one tick holds the entry, so there is no second writer to
+ * lose an update to.
+ */
 export async function markFailed(id: string, attempts: number, error: string): Promise<void> {
   const sb = adminClient();
-  await sb
+  const { error: err } = await sb
     .from(TABLE)
-    .update({ attempts: attempts + 1, last_attempt_at: new Date().toISOString(), last_error: error })
+    .update({
+      attempts: attempts + 1,
+      last_attempt_at: new Date().toISOString(),
+      last_error: error.slice(0, 2000),
+      claimed_at: null,
+    })
     .eq("id", id);
+  // 🔴 Reported. A markFailed that silently did nothing means `attempts` never
+  // advances, so the entry is retried every hour for ever and never reaches the
+  // "stopped asking" state a person is meant to see.
+  if (err) console.warn(`[tomco-queue] could not record the failure on ${id}: ${err.message}`);
+}
+
+/**
+ * Put a stalled entry back in the queue.
+ *
+ * An entry that spent its three attempts is never claimed again
+ * (`claimPending` filters `attempts < MAX_ATTEMPTS`) and the nightly sweep
+ * cannot rescue it either — `needsRequeue` declines anything still pending, and
+ * the partial unique index would refuse a fresh row anyway. So without this it
+ * is stuck for good AND it blocks every future entry for that deal, with no
+ * remedy but hand-editing the table. The review screen shows those rows in red;
+ * this is what the button behind them does.
+ */
+export async function rearmStalled(id: string): Promise<{ ok: boolean; error?: string }> {
+  const sb = adminClient();
+  const { error } = await sb
+    .from(TABLE)
+    .update({ attempts: 0, last_attempt_at: null, last_error: null, claimed_at: null })
+    .eq("id", id)
+    .is("done_at", null);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }

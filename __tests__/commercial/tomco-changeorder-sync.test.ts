@@ -27,6 +27,8 @@ import {
 } from "@/lib/salesforce/tomco-changeorder";
 import { isSoldStatus } from "@/lib/salesforce/tomco-pairing";
 import { needsRequeue } from "@/lib/salesforce/tomco-tick";
+import { isQueueNotReady } from "@/lib/salesforce/tomco-queue";
+import { dealStatusForOpportunity } from "@/lib/commercial/import/mapping";
 
 describe("which Salesforce status this change order should carry", () => {
   it("approved here → a status Salesforce's rollup counts", () => {
@@ -173,5 +175,81 @@ describe("the nightly sweep's re-queue rule", () => {
     expect(needsRequeue({ doneAt: "2026-10-15T11:00:00Z" }, "2026-10-15T10:00:00Z")).toBe(false);
     // The equal case is "the write is the most recent thing that happened".
     expect(needsRequeue({ doneAt: "2026-10-15T10:00:00Z" }, "2026-10-15T10:00:00Z")).toBe(false);
+  });
+});
+
+describe("where a Salesforce opportunity sits on our ladder", () => {
+  /*
+   * The rule that nearly un-won a $30,000 job. `openBidStatus` is for OPEN
+   * bids and its default arm is `qualifying/rfp`; the importer fell through to
+   * it whenever Salesforce had no work order, so a Closed Won opportunity with
+   * no work order was written back as an unqualified lead. Five Tomco deals
+   * were in that state on 2026-10-15, and MotorMindz ($30,000) was the one the
+   * edit guard did not protect.
+   */
+  it("a won opportunity with no work order stays won", () => {
+    expect(dealStatusForOpportunity({ workOrderStatus: null, isWon: true, stageName: "Closed Won" }))
+      .toEqual({ status: "pre_sale_closed", subStatus: "won" });
+  });
+
+  it("a won opportunity is won whatever its stage text says", () => {
+    // The stage is not consulted once IsWon is true — a renamed or unfamiliar
+    // stage must not be able to reopen a closed sale.
+    expect(dealStatusForOpportunity({ workOrderStatus: null, isWon: true, stageName: "Something Nobody Mapped" }))
+      .toEqual({ status: "pre_sale_closed", subStatus: "won" });
+  });
+
+  it("an open bid still reads from its stage", () => {
+    expect(dealStatusForOpportunity({ workOrderStatus: null, isWon: false, stageName: "Estimate Sent" }))
+      .toEqual({ status: "proposal", subStatus: "sent" });
+    expect(dealStatusForOpportunity({ workOrderStatus: null, isWon: false, stageName: "Opportunity Assigned" }))
+      .toEqual({ status: "estimating", subStatus: "estimating" });
+  });
+
+  it("a work order outranks both — it is a real job with crew on it", () => {
+    expect(dealStatusForOpportunity({ workOrderStatus: "Work In Progress", isWon: true, stageName: "Closed Won" }))
+      .toEqual({ status: "in_progress", subStatus: "wip_on_site" });
+  });
+
+  it("a work order whose status maps to nothing returns nothing, so the caller can skip", () => {
+    // This is what makes a freshly synced work order harmless: it arrives as
+    // New or Ready to Schedule, the importer skips the deal rather than
+    // guessing, and the platform's own status stands.
+    // Empty string, not undefined — the importer's guard is `if (!st.status)`,
+    // so what matters is that it is FALSY. Asserted as the caller reads it.
+    for (const woStatus of ["New", "Ready to Schedule", "Something Salesforce Renamed"]) {
+      const st = dealStatusForOpportunity({ workOrderStatus: woStatus, isWon: true, stageName: "Closed Won" });
+      expect(st.status, `${woStatus} should not map to a status`).toBeFalsy();
+    }
+  });
+});
+
+describe("the window between deploying and running the migration", () => {
+  /*
+   * This repo applies migrations by hand, so there is always a gap between the
+   * code going live and the column existing. The per-minute cron sits in that
+   * gap: without this, `claimPending` throws on a missing column and the route
+   * logs a 500 every sixty seconds until somebody runs the SQL — which is
+   * exactly the noise that teaches people to ignore a real failure.
+   */
+  it("recognises a missing table", () => {
+    expect(isQueueNotReady('relation "public.commercial_tomco_writeback_queue" does not exist')).toBe(true);
+    expect(isQueueNotReady("Could not find the table 'public.commercial_tomco_writeback_queue' in the schema cache")).toBe(true);
+  });
+
+  it("recognises a missing column, which names the column and not the table", () => {
+    expect(isQueueNotReady("Could not find the 'claimed_at' column of 'commercial_tomco_writeback_queue' in the schema cache")).toBe(true);
+    expect(isQueueNotReady('column commercial_tomco_writeback_queue.claimed_at does not exist')).toBe(true);
+    expect(isQueueNotReady("Could not find the 'verify_failed_at' column in the schema cache")).toBe(true);
+  });
+
+  it("does NOT swallow a real failure", () => {
+    // The point of the narrow match. A permission problem, an RLS refusal or a
+    // dead connection must still throw — treating those as "not ready yet"
+    // would make the sync silently stop with everything looking fine.
+    expect(isQueueNotReady("permission denied for table commercial_tomco_writeback_queue")).toBe(false);
+    expect(isQueueNotReady("new row violates row-level security policy")).toBe(false);
+    expect(isQueueNotReady("fetch failed")).toBe(false);
+    expect(isQueueNotReady("timeout exceeded")).toBe(false);
   });
 });

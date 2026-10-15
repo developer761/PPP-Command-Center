@@ -956,7 +956,26 @@ export async function changeOpportunityStatus(
      * is not — it already cost Thermo Fisher its work order. The queue's
      * partial unique index makes a re-fire a no-op.
      */
-    if (isProjectBearing) {
+    /*
+     * `|| wasProjectBearing` — THE UN-WIN MATTERS AS MUCH AS THE WIN.
+     *
+     * This was `isProjectBearing` alone, which meant a sale written to
+     * Salesforce and then reversed here stayed Closed Won over there for ever:
+     * nothing queued it, and the nightly sweep skips it too because it is no
+     * longer a sold deal. The local row has its `accepted_contract_cents`
+     * cleared on the un-win a few lines above, so there is not even a figure
+     * left here to reconcile against — the discrepancy becomes invisible.
+     *
+     * The project ensure two blocks above has always used `||` for exactly this
+     * reason: it archives the project on the way out. Same shape, 110 lines
+     * apart, and this one was missing it.
+     *
+     * What the tick does with it is NOT an automatic reversal. Un-winning a
+     * Closed Won opportunity in another company's org is not a decision this
+     * system gets to make on its own, so it is held for a person with the
+     * reason spelled out. See `runSale`.
+     */
+    if (isProjectBearing || wasProjectBearing) {
       const { queueForWriteBack } = await import("@/lib/salesforce/tomco-queue");
       await queueForWriteBack({
         kind: "sale",

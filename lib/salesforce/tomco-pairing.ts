@@ -4,6 +4,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { writeSf } from "@/lib/salesforce/writeback";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
+import { assertSalesforceId } from "@/lib/salesforce/soql";
 
 /**
  * Stage 1 of the Tomco write-back: linking a sale that exists in BOTH systems.
@@ -353,7 +354,7 @@ export async function pairDealToSalesforce(input: {
    * the screen was rendered from, which may be minutes old.
    */
   const check = await conn.query(
-    `SELECT Id, UniqueExternalId__c FROM Opportunity WHERE Id = '${input.sfOpportunityId}'`,
+    `SELECT Id, UniqueExternalId__c FROM Opportunity WHERE Id = '${assertSalesforceId(input.sfOpportunityId, "Salesforce opportunity id")}'`,
   );
   const existing = (check.records?.[0] as { UniqueExternalId__c?: string } | undefined)
     ?.UniqueExternalId__c;

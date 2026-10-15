@@ -556,6 +556,13 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   // Kate FU.10 — which brand's color links the help card shows. Screen only:
   // it picks nothing and is never submitted, so it stays out of the draft.
   const [brandId, setBrandId] = useState<(typeof COLOR_BRANDS)[number]["id"]>(DEFAULT_COLOR_BRAND.id);
+  /**
+   * The message in `submitError` is something the CUSTOMER can fix, not a
+   * failure on our side. Set beside the message rather than inferred from
+   * its wording — matching on text is how the two drift apart the first time
+   * somebody rewords one.
+   */
+  const [submitNeedsAction, setSubmitNeedsAction] = useState(false);
   const brand = COLOR_BRANDS.find((b) => b.id === brandId) ?? DEFAULT_COLOR_BRAND;
   const confirmRef = useRef<HTMLDivElement | null>(null);
   /** How many rooms came back from a local draft, once, on mount. */
@@ -1002,6 +1009,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     // would persist orphaned colorIds. Better to refuse early with a
     // clear message than corrupt the data quietly.
     if (catalog.status !== "ready") {
+      setSubmitNeedsAction(false);
       setSubmitError(
         catalog.status === "error"
           ? `Couldn't load the color catalog: ${catalog.message}. Refresh the page and try again.`
@@ -1053,6 +1061,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     // waiting on the finish and has the job in front of them.
     if (!isStaffEntry && missingFinish.length > 0) {
       setConfirming(false);
+      setSubmitNeedsAction(true);
       setSubmitError(missingFinishMessage(missingFinish));
       return;
     }
@@ -1082,6 +1091,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
               (isInteriorLine(li.productFamily) || !li.productFamily) &&
               roomsNamedIn(li.lineItemNotes).length >= 2
           );
+        setSubmitNeedsAction(true);
         setSubmitError(
           everyLineIsMultiRoom
             ? "Tell us the colors for each room in the box on the room card, then submit again."
@@ -1212,6 +1222,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
       setSubmitted(true);
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
+      setSubmitNeedsAction(false);
       setSubmitError(m);
     } finally {
       setSubmitting(false);
@@ -1879,9 +1890,32 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           ref={submitErrorRef}
           className="bg-ppp-orange-50 border border-ppp-orange-100 rounded-lg px-4 py-3 text-sm text-ppp-orange-700 scroll-mt-4"
         >
-          <span className="font-semibold">Something went wrong:</span> {submitError}
-          <br />
-          Please try again. If it keeps failing, reply to the PPP email and we&apos;ll fix it on our end.
+          {/**
+           * TWO DIFFERENT THINGS LIVE IN submitError, and saying the wrong
+           * one is worse than saying nothing.
+           *
+           * Most of it is a system failure — the catalog would not load, the
+           * server refused — where "something went wrong, try again, tell us
+           * if it keeps happening" is exactly right.
+           *
+           * But FU.1's "pick a finish before saving" is not a failure. It is
+           * an instruction, and the customer can act on it in five seconds.
+           * Dressed in the failure copy it read "Something went wrong … we'll
+           * fix it on our end", which tells a homeowner the form is broken
+           * and to go and email PPP about something only they can do. Seen on
+           * the real preview of WO 00321126 before anyone outside saw it.
+           */}
+          {submitNeedsAction ? (
+            <>
+              <span className="font-semibold">Before you submit:</span> {submitError}
+            </>
+          ) : (
+            <>
+              <span className="font-semibold">Something went wrong:</span> {submitError}
+              <br />
+              Please try again. If it keeps failing, reply to the PPP email and we&apos;ll fix it on our end.
+            </>
+          )}
         </div>
       )}
     </form>

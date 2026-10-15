@@ -104,17 +104,48 @@ describe("the genuinely new ones go through unattended", () => {
 });
 
 describe("the cutover is what makes this automatic", () => {
-  it("inserts a deal raised AFTER entry stopped, even against a high scorer", () => {
-    // The whole basis for running unattended: nobody could have created a
-    // Salesforce twin after this date, so a strong score is a coincidence.
+  /*
+   * 🔴 THIS TEST ASSERTED THE OPPOSITE UNTIL 2026-10-15, AND IT WAS WRONG.
+   *
+   * It read "inserts a deal raised AFTER entry stopped, even against a high
+   * scorer", on the reasoning that nobody could have created a Salesforce twin
+   * after the cutover, so a strong score must be coincidence.
+   *
+   * The premise does not hold for the one population this feature exists for.
+   * Measured against production the same day: 40 open Tomco estimates in
+   * Salesforce, NOT ONE of them paired, 36 of them carrying a value — the
+   * largest $385,882.22. Every one is a job that will be sold and worked in the
+   * Command Center, and anything raised here from now on is raised after the
+   * cutover. So the twin is real and the date says nothing about it.
+   *
+   * A wrong hold costs one click. A wrong insert puts a second Closed Won copy
+   * of a real sale into the total Katie runs the company on, and nothing
+   * downstream flags it because both records look legitimate.
+   */
+  it("HOLDS a deal raised after entry stopped when something over there resembles it", () => {
     const plan = decideWriteBack({
       deal: deal({ title: "Cummins", accountName: "Cummins Sales and Service", contractCents: 515_000 }),
       pairedSfId: null,
       openCandidates: [CUMMINS],
       ...AFTER,
     });
+    expect(plan.action).toBe("hold");
+    if (plan.action !== "hold") throw new Error("unreachable");
+    // And it shows the person what it is holding against.
+    expect(plan.candidates.map((c) => c.sfId)).toContain(CUMMINS.sfId);
+  });
+
+  it("inserts a deal raised after entry stopped when nothing over there resembles it", () => {
+    // The cutover still does its job — it is the reason the common case needs
+    // no human at all. It just does not override a live contender.
+    const plan = decideWriteBack({
+      deal: deal({ title: "Zzz Unrelated Job", accountName: "Nobody Else Ltd", contractCents: 1234 }),
+      pairedSfId: null,
+      openCandidates: [CUMMINS, PCCI],
+      ...AFTER,
+    });
     expect(plan.action).toBe("insert");
-    expect(plan.why).toMatch(/cannot have a twin/);
+    expect(plan.why).toMatch(/Nothing open over there resembles it/);
   });
 
   it("holds the SAME deal when it predates the cutover", () => {

@@ -3,6 +3,7 @@ import "server-only";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
+import { assertSalesforceId } from "@/lib/salesforce/soql";
 import { writeSf } from "@/lib/salesforce/writeback";
 
 /**
@@ -250,7 +251,7 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
 
   if (linkedSfId) {
     const r = await ctx.conn.query(
-      `SELECT Id, Name, CostChange__c, Status__c, WorkOrder__c FROM ChangeOrder__c WHERE Id = '${linkedSfId}'`,
+      `SELECT Id, Name, CostChange__c, Status__c, WorkOrder__c FROM ChangeOrder__c WHERE Id = '${assertSalesforceId(linkedSfId, "linked change order id")}'`,
     );
     const sf = r.records?.[0] as
       | { Id: string; Name: string; CostChange__c: number | null; Status__c: string | null }
@@ -321,7 +322,7 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
   }
 
   const wos = await ctx.conn.query(
-    `SELECT Id, WorkOrderNumber FROM WorkOrder WHERE Opportunity__c = '${sfOppId}' AND Status != 'Canceled'`,
+    `SELECT Id, WorkOrderNumber FROM WorkOrder WHERE Opportunity__c = '${assertSalesforceId(sfOppId, "opportunity id")}' AND Status != 'Canceled'`,
   );
   if (!wos.records.length) {
     /*
@@ -335,8 +336,73 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
   const existing = await ctx.conn.query(
     `SELECT Id, Name, CostChange__c, Status__c FROM ChangeOrder__c WHERE WorkOrder__c IN ('${woIds.join("','")}')`,
   );
-  const sameAmount = (existing.records as Array<{ Id: string; Name: string; CostChange__c: number | null; Status__c: string | null }>)
+  /*
+   * 🔴 NEVER ADOPT A RECORD THAT IS ALREADY SOMEBODY ELSE'S.
+   *
+   * Matching on amount alone stole links. Two approved change orders on one
+   * deal for the same amount is a live pattern here, and Salesforce holding one
+   * record at that amount is the normal case: the first Command Center change
+   * order adopted it, and then the second adopted it too — the map upserts on
+   * `(sf_id, entity)`, so the second quietly overwrote the first's `row_id`.
+   * The first lost its link, the second's money was never written to Salesforce
+   * at all, and both entries reported "adopted" and were marked done. The next
+   * sweep then re-queued the one that had lost its link, it stole the record
+   * back, and the two ping-ponged for ever, each run reporting success.
+   *
+   * The sale side has had this guard from the start ("refuse to steal a link").
+   * This is the same rule for change orders.
+   */
+  const { data: claimedRows } = await sb
+    .from("commercial_import_map")
+    .select("sf_id, row_id")
+    .eq("entity", CO_MAP_ENTITY);
+  const claimedBySomeoneElse = new Map(
+    ((claimedRows ?? []) as Array<{ sf_id: string; row_id: string }>)
+      .filter((r) => r.row_id !== local.id)
+      .map((r) => [r.sf_id, r.row_id]),
+  );
+
+  const allSameAmount = (existing.records as Array<{ Id: string; Name: string; CostChange__c: number | null; Status__c: string | null }>)
     .filter((x) => cents(x.CostChange__c) === Math.round(local.amountCents));
+  const takenAlready = allSameAmount.filter((x) => claimedBySomeoneElse.has(x.Id));
+  const sameAmount = allSameAmount.filter((x) => !claimedBySomeoneElse.has(x.Id));
+
+  /*
+   * AND NEVER TURN A DENIED RECORD BACK ON.
+   *
+   * A Salesforce change order at this amount that Tomco's own org has DENIED is
+   * not evidence that this is the same change order — it is evidence somebody
+   * over there rejected one. Adopting it and flipping it to Approved would
+   * re-enable money their org deliberately refused, and attribute it to a
+   * different scope. A person decides.
+   */
+  const deniedAtThisAmount = sameAmount.filter((x) => !salesforceCounts(x.Status__c));
+  if (local.shouldCount && deniedAtThisAmount.length > 0 && sameAmount.length === deniedAtThisAmount.length) {
+    return {
+      ...out,
+      action: "held",
+      why:
+        `Salesforce has a change order on this job at ${dollars(local.amountCents).toFixed(2)} that its own org has ` +
+        `${deniedAtThisAmount[0].Status__c} (${deniedAtThisAmount[0].Name}). Turning that back on is not a decision this can make.`,
+    };
+  }
+
+  if (sameAmount.length === 0 && takenAlready.length > 0) {
+    /*
+     * Every candidate at this amount belongs to another Command Center change
+     * order. Creating a second record is the RIGHT answer — this is genuinely a
+     * second change order for the same amount — but it is exactly the shape of
+     * a duplicate, so a person confirms rather than the machine assuming.
+     */
+    return {
+      ...out,
+      action: "held",
+      why:
+        `Salesforce has ${takenAlready.length} change order(s) on this job at ${dollars(local.amountCents).toFixed(2)}, ` +
+        `and every one is already linked to a different change order here. This may be a genuine second one at the same ` +
+        `amount — a person confirms before a second record is created.`,
+    };
+  }
 
   if (sameAmount.length > 1) {
     /*
@@ -449,30 +515,86 @@ async function linkChangeOrder(rowId: string, sfId: string, notes: string): Prom
 async function readBack(ctx: Ctx, sfId: string, local: LocalChangeOrder): Promise<ChangeOrderSyncOutcome["checks"]> {
   await new Promise((r) => setTimeout(r, 6000));
   const r = await ctx.conn.query(
-    `SELECT Id, Status__c, CostChange__c, WorkOrder__r.TotalChangeOrder__c FROM ChangeOrder__c WHERE Id = '${sfId}'`,
+    `SELECT Id, Status__c, CostChange__c, WorkOrder__c, WorkOrder__r.TotalChangeOrder__c FROM ChangeOrder__c WHERE Id = '${assertSalesforceId(sfId, "change order id")}'`,
   );
   const sf = r.records?.[0] as
-    | { Status__c: string | null; CostChange__c: number | null; WorkOrder__r?: { TotalChangeOrder__c: number | null } }
+    | {
+        Status__c: string | null;
+        CostChange__c: number | null;
+        WorkOrder__c: string | null;
+        WorkOrder__r?: { TotalChangeOrder__c: number | null };
+      }
     | undefined;
-  const counts = salesforceCounts(sf?.Status__c);
+  /*
+   * 🔴 THE RECORD CAME BACK AT ALL.
+   *
+   * Without this, a reversal whose record could not be read reported VERIFIED:
+   * `sf` was undefined, `salesforceCounts(undefined)` is false, `shouldCount`
+   * is false, so `false === false` passed with the detail "status unknown". The
+   * check that was supposed to prove the money came back out instead proved
+   * nothing and said it had.
+   */
   const checks: ChangeOrderSyncOutcome["checks"] = [
-    {
-      name: local.shouldCount ? "Salesforce counts it" : "Salesforce no longer counts it",
-      ok: counts === local.shouldCount,
-      detail: `status ${sf?.Status__c ?? "unknown"}`,
-    },
+    { name: "Salesforce returned the record", ok: !!sf, detail: sf ? sfId : `could not read ${sfId} back` },
   ];
+  if (!sf) return checks;
+
+  const counts = salesforceCounts(sf.Status__c);
+  checks.push({
+    name: local.shouldCount ? "Salesforce counts it" : "Salesforce no longer counts it",
+    ok: counts === local.shouldCount,
+    detail: `status ${sf.Status__c ?? "unset"}`,
+  });
   if (local.shouldCount) {
     checks.push({
       name: "amount matches",
-      ok: cents(sf?.CostChange__c) === Math.round(local.amountCents),
-      detail: `${dollars(cents(sf?.CostChange__c)).toFixed(2)} vs ${dollars(local.amountCents).toFixed(2)}`,
+      ok: cents(sf.CostChange__c) === Math.round(local.amountCents),
+      detail: `${dollars(cents(sf.CostChange__c)).toFixed(2)} vs ${dollars(local.amountCents).toFixed(2)}`,
     });
   }
+  /*
+   * THE ROLLUP CHECK WAS DECORATIVE, AND IT ALSO FIRED FALSELY.
+   *
+   * It was `total !== 0 || !shouldCount`. On a reversal the right-hand side is
+   * always true, so the check named "the work-order rollup moved" could not
+   * fail on the one path where it matters — it never verified the money came
+   * back out. On an approval it only asserted the total was non-zero, which
+   * passes on any job that already had another approved change order, so it
+   * could not detect THIS amount failing to land.
+   *
+   * And it failed on a legitimate state: a +$500 change order and a -$500
+   * deduct are both allowed, and together they leave the rollup at exactly $0 —
+   * a correct total that the old check called a failure, burning an attempt.
+   *
+   * So the honest assertion is the one that is actually checkable: the rollup
+   * equals the sum of the approved change orders Salesforce holds on that work
+   * order. If this record's money is in, that sum includes it; if a reversal
+   * worked, it does not.
+   */
+  const woId = sf.WorkOrder__c;
+  if (!woId) {
+    checks.push({ name: "the record is attached to a work order", ok: false, detail: "WorkOrder__c is empty" });
+    return checks;
+  }
+  const siblings = await ctx.conn.query(
+    `SELECT Id, CostChange__c, Status__c FROM ChangeOrder__c WHERE WorkOrder__c = '${assertSalesforceId(woId, "work order id")}'`,
+  );
+  const approvedSum = (siblings.records as Array<{ Id: string; CostChange__c: number | null; Status__c: string | null }>)
+    .filter((c) => salesforceCounts(c.Status__c))
+    .reduce((n, c) => n + cents(c.CostChange__c), 0);
+  const rollup = cents(sf.WorkOrder__r?.TotalChangeOrder__c);
   checks.push({
-    name: "the work-order rollup moved",
-    ok: Number(sf?.WorkOrder__r?.TotalChangeOrder__c ?? 0) !== 0 || !local.shouldCount,
-    detail: `TotalChangeOrder__c ${Number(sf?.WorkOrder__r?.TotalChangeOrder__c ?? 0).toFixed(2)}`,
+    name: "the work-order rollup equals its approved change orders",
+    ok: rollup === approvedSum,
+    detail: `rollup ${dollars(rollup).toFixed(2)} vs approved ${dollars(approvedSum).toFixed(2)}`,
+  });
+  // And this record's own money is on the right side of that sum.
+  const included = (siblings.records as Array<{ Id: string; Status__c: string | null }>)
+    .some((c) => c.Id === sfId && salesforceCounts(c.Status__c));
+  checks.push({
+    name: local.shouldCount ? "this change order is inside the rollup" : "this change order is outside the rollup",
+    ok: included === local.shouldCount,
+    detail: included ? "counted" : "not counted",
   });
   return checks;
 }

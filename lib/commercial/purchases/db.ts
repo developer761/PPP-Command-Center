@@ -342,8 +342,35 @@ export type AddPurchaseInput = {
 
 export async function addPurchase(input: AddPurchaseInput): Promise<Result<CommercialProjectPurchase>> {
   const amount = Math.round(input.amount_cents);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return { ok: false, error: "Enter a purchase amount greater than $0." };
+  /*
+   * A NEGATIVE AMOUNT IS A VENDOR CREDIT OR A RETURN, and it has to be typeable.
+   *
+   * Mary, 2026-10-15: *"This applies to a Vendor invoice credit? Return?"* It
+   * did not. This guard was `amount <= 0`, so a credit could not be entered by
+   * hand at all — while the database has no constraint against one, Salesforce
+   * records them as negative transactions, and SIXTEEN of them are already
+   * sitting in this table, imported: sixteen Aboffs and L.I. Hardware returns
+   * totalling -$2,811.85. So the platform stores them, reports them and the
+   * importer creates them, and the only thing that could not produce one was a
+   * person. That mattered the moment she stopped entering costs in Salesforce.
+   *
+   * Still refused: ZERO, which is not a transaction. The sign is the whole
+   * meaning here, so there is no "amount greater than $0" to ask for.
+   */
+  if (!Number.isFinite(amount) || amount === 0) {
+    return { ok: false, error: "Enter an amount. Use a minus sign for a vendor credit or a return." };
+  }
+  /*
+   * But not a negative REIMBURSEMENT. A reimbursement means somebody paid out
+   * of their own pocket and is owed it back; owing them a negative amount is
+   * not a thing the payout screens can represent, and it would read as the
+   * company being owed money by its own crew.
+   */
+  if (amount < 0 && input.reimburse_to) {
+    return {
+      ok: false,
+      error: "A credit cannot be a reimbursement — record the credit on its own, without a name to pay back.",
+    };
   }
   const category: PurchaseCategory = isPurchaseCategory(input.category) ? input.category : "other";
 
@@ -415,7 +442,17 @@ export async function updatePurchase(
   }
   if (patch.amount_cents !== undefined) {
     const a = Math.round(patch.amount_cents);
-    if (!Number.isFinite(a) || a <= 0) return { ok: false, error: "Enter a purchase amount greater than $0." };
+    // Negative is a vendor credit or return — see `addPurchase`. Zero is not a
+    // transaction.
+    if (!Number.isFinite(a) || a === 0) {
+      return { ok: false, error: "Enter an amount. Use a minus sign for a vendor credit or a return." };
+    }
+    if (a < 0 && (patch.reimburse_to ?? before.reimburse_to)) {
+      return {
+        ok: false,
+        error: "A credit cannot be a reimbursement — clear the name to pay back, or record the credit on its own.",
+      };
+    }
     next.amount_cents = a;
   }
   if (patch.purchased_at !== undefined) next.purchased_at = patch.purchased_at;

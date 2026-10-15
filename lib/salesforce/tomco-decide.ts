@@ -136,13 +136,37 @@ export function decideWriteBack(input: DecideInput): WriteBackPlan {
    */
   const createdAfterCutover =
     !!input.dealCreatedAt && input.dealCreatedAt.slice(0, 10) > cutover;
-  if (createdAfterCutover) {
+  /*
+   * 🔴 THE CUTOVER DOES NOT OVERRIDE A CONTENDER.
+   *
+   * This branch used to return `insert` even with high-scoring contenders, on
+   * the reasoning that a deal raised here after Salesforce entry stopped cannot
+   * have a twin over there. That premise is false for one real population, and
+   * it is the population this whole feature is about: the 43 open Salesforce
+   * estimates. Any of those not yet in the Command Center has to be entered
+   * here AFTER the cutover in order to be sold — so a genuine twin, created in
+   * Salesforce weeks before the cutover, pairs with a Command Center deal
+   * created after it.
+   *
+   * Concretely: Mary typed a $212,400 job into Salesforce on 2026-10-01. The
+   * estimator raises the same job here on 2026-10-20, because this is the
+   * system of record now. It sells. The ranker scores the Salesforce estimate
+   * 95 — same account, amount to the cent, words in common — and the old code
+   * inserted anyway, with a `why` that asserted the match predated the deal as
+   * if that settled it. Two Closed Won copies of one $212,400 sale, both
+   * looking legitimate.
+   *
+   * The asymmetry in this file's own docblock decides it: a wrong hold costs
+   * one click, a wrong insert costs a double-counted sale that nothing
+   * downstream flags. So the cutover only licenses an insert when there is
+   * nothing plausible to collide with — which is still the overwhelming
+   * majority of cases, and the ones it does not cover fall through to the hold
+   * directly below.
+   */
+  if (createdAfterCutover && contenders.length === 0) {
     return {
       action: "insert",
-      why:
-        contenders.length > 0
-          ? `Created after ${cutover}, when Salesforce entry stopped, so it cannot have a twin there — the ${contenders.length} similar record(s) predate it.`
-          : `Created after ${cutover}, when Salesforce entry stopped. Nothing to collide with.`,
+      why: `Created after ${cutover}, when Salesforce entry stopped. Nothing open over there resembles it.`,
     };
   }
 
