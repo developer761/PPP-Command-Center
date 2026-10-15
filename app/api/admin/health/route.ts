@@ -7,6 +7,7 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { opsAlertRecipients } from "@/lib/customer-form/sf-failure-alert";
+import { getWritebackMode, loadAllowlist } from "@/lib/customer-form/writeback-mode";
 import { isJobComplete } from "@/lib/wo-progress/completion";
 
 /**
@@ -170,6 +171,44 @@ export async function GET() {
             : "Not set, and no ops email recipients either — a failed supplier order or bounced color form would tell NOBODY.",
       group: "platform",
       fix: "Create an incoming webhook for the paint/materials channel in Slack, then add PPP_MATERIALS_SLACK_WEBHOOK in Vercel → Settings → Environment Variables and redeploy.",
+    });
+  }
+
+  /**
+   * THE ONE SETTING THAT CAN MAKE GOING LIVE A NO-OP.
+   *
+   * Writeback defaults to `test_only`, deliberately — it is the safe default
+   * while the form is being built, and it writes to Salesforce ONLY for work
+   * orders someone has put on an allowlist. Every other customer submission
+   * is saved in the hub and goes no further.
+   *
+   * That is exactly right during testing and catastrophic on launch day: the
+   * form would look perfect, send its confirmations, notify the AM, and leave
+   * Salesforce untouched. Nothing errors. Nobody is told. The only symptom is
+   * colors quietly missing from the work order weeks later.
+   *
+   * This page is where someone looks before going live, so it has to say so.
+   * It was checking Resend, Slack, suppliers and four migrations, and not
+   * this.
+   */
+  {
+    const mode = await getWritebackMode();
+    const allowlist = mode === "test_only" ? await loadAllowlist() : [];
+    checks.push({
+      id: "writeback_mode",
+      label: "Salesforce writeback (customer color submissions)",
+      status: mode === "all" ? "ok" : "fail",
+      message:
+        mode === "all"
+          ? "Mode 'all' — every customer submission writes to Salesforce. This is the setting to be live on."
+          : mode === "off"
+            ? "Mode 'off' — NO customer submission reaches Salesforce. Colors are saved in the hub only, and nothing warns the customer or the AM."
+            : `Mode 'test_only' — only the ${allowlist.length} work order${allowlist.length === 1 ? "" : "s"} on the allowlist write to Salesforce. Every other customer's colors are saved in the hub and go no further, silently. This is the safe default for testing and the wrong one to launch on.`,
+      group: "platform",
+      fix:
+        mode === "all"
+          ? undefined
+          : "Open Settings → Salesforce Writeback and set the mode to 'all' before the first real customer form goes out.",
     });
   }
 
