@@ -72,10 +72,16 @@ function money(n: number): string {
 
 /** Parse a loose dollar string ("1,250.00", "$1250") to a number, or null. */
 function parseDollars(s: string): number | null {
+  // The SIGN is kept. This stripped it (`[^0-9.]`), so a -$500 credit against
+  // 10 hours displayed "$50.00/hr" as though it were a cost — the one number on
+  // this form that is computed rather than typed, saying the opposite of what
+  // was entered. Zero is still not a number this form has any use for.
+  const negative = /^\s*-/.test(s);
   const cleaned = s.replace(/[^0-9.]/g, "");
   if (!cleaned) return null;
   const n = Number(cleaned);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  if (!Number.isFinite(n) || n === 0) return null;
+  return negative ? -n : n;
 }
 
 export default function PurchaseForm({
@@ -282,6 +288,15 @@ export default function PurchaseForm({
             className={INPUT_CLS}
             placeholder="1,250.00"
           />
+          {/*
+            Mary, 2026-10-15: "This applies to a Vendor invoice credit? Return?"
+            It does now, and the only way she would know is being told here —
+            the field looks like every other money field on the platform.
+          */}
+          <p className="mt-1 text-[11.5px] text-ppp-charcoal-500">
+            For a vendor credit or a return, put a minus in front — e.g.{" "}
+            <span className="font-mono">-128.40</span>.
+          </p>
         </div>
       </div>
 

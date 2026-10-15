@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
-import { claimPending, markDone, markFailed, markHeld, type QueueEntry } from "@/lib/salesforce/tomco-queue";
+import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, type QueueEntry } from "@/lib/salesforce/tomco-queue";
 import { decideWriteBack } from "@/lib/salesforce/tomco-decide";
 import {
   isSoldStatus,
@@ -11,8 +11,9 @@ import {
   type SfCandidate,
 } from "@/lib/salesforce/tomco-pairing";
 import { createNew, updateExisting } from "@/lib/salesforce/tomco-writeback";
-import { ROLLUP_TITLE, syncChangeOrder } from "@/lib/salesforce/tomco-changeorder";
+import { CO_MAP_ENTITY, ROLLUP_TITLE, syncChangeOrder } from "@/lib/salesforce/tomco-changeorder";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+import { assertSalesforceId, soqlString } from "@/lib/salesforce/soql";
 
 /**
  * The tick: everything waiting in the queue, written to Salesforce.
@@ -151,6 +152,16 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
       out.failed++;
     }
   }
+  /*
+   * `ok` has to be able to be FALSE.
+   *
+   * It was initialised true and never assigned anywhere, so an external monitor
+   * reading this route saw success on a tick where all ten entries failed — a
+   * field that cannot fail, which this codebase treats as worse than no field.
+   * Held entries are not failures: they are the system correctly waiting for a
+   * person.
+   */
+  out.ok = out.failed === 0;
   return out;
 }
 
@@ -178,15 +189,29 @@ async function runChangeOrder(
   }
   if (failedChecks.length > 0) {
     /*
-     * IT WROTE, AND THE READ-BACK DISAGREES. Not marked done: the point of
-     * reading back is to refuse to believe the write on its own, and marking it
-     * finished anyway would make the check decorative.
+     * IT WROTE, AND THE READ-BACK DISAGREES.
+     *
+     * Recorded in `verify_failed_at` as well as failing the attempt, and the
+     * two are not the same thing. The attempt is spent and will be retried; the
+     * failed VERIFICATION has to outlive that, because an hour later the retry
+     * finds Salesforce already in its new state, says "nothing to do", and
+     * marks the entry done. Without a separate mark, `markDone` cleared
+     * `last_error` and the entry went green — which is exactly how a sale
+     * sitting at $0 in Katie's reports read as a clean sync.
      */
     const detail = `wrote it, but: ${failedChecks.map((c) => `${c.name} — ${c.detail}`).join("; ")}`;
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, detail);
+    if (ctx.apply) {
+      await markVerifyFailed(entry.id, detail);
+      await markFailed(entry.id, entry.attempts, detail);
+    }
     return { ...base, result: "failed", detail };
   }
-  if (ctx.apply) await markDone(entry.id, `${r.action}: ${r.why}`);
+  /*
+   * `verified` only when a read-back actually ran AND passed. An action of
+   * "nothing" produces no checks, so it clears nothing — a previously failed
+   * verification stays on the record for a person to see.
+   */
+  if (ctx.apply) await markDone(entry.id, `${r.action}: ${r.why}`, { verified: r.checks.length > 0 });
   return { ...base, result: r.action === "nothing" ? "nothing" : "written", detail: r.why };
 }
 
@@ -205,14 +230,32 @@ async function runSale(
 
   if (!loaded.sold) {
     /*
-     * UN-WON BEFORE THE TICK GOT TO IT. Finished, and nothing written: the
-     * queue is fired on every status change into a sold state, so a deal moved
-     * in and straight back out again leaves an entry describing a sale that no
-     * longer exists. Writing it would put a Closed Won in Salesforce for a job
-     * this platform says was not sold.
+     * NOT SOLD ANY MORE. Two different situations, and telling them apart is
+     * the whole point.
+     *
+     * If Salesforce never had it, there is nothing to do: the queue fires on
+     * every status change into a sold state, so a deal moved in and straight
+     * back out leaves an entry describing a sale that never reached anybody.
+     * Writing it would put a Closed Won in Salesforce for a job this platform
+     * says was not sold.
+     *
+     * If Salesforce DOES have it, that is a Closed Won opportunity over there
+     * for a sale this platform has reversed — and un-winning a record in
+     * another company's org, with its own validation rules on close dates and
+     * stages, is not a decision this system makes unattended. HELD, with the
+     * figures named, so a person does it deliberately.
      */
-    if (ctx.apply) await markDone(entry.id, "no longer a sold deal here");
-    return { ...base, result: "nothing", detail: "no longer a sold deal here" };
+    const pairedSfId = await pairedSfIdFor(entry.opportunityId);
+    if (!pairedSfId) {
+      if (ctx.apply) await markDone(entry.id, "no longer a sold deal here, and Salesforce never had it");
+      return { ...base, result: "nothing", detail: "no longer a sold deal here, and Salesforce never had it" };
+    }
+    const why =
+      `This deal is no longer sold here, but Salesforce still holds it as a sale (${pairedSfId}). ` +
+      `Reversing a Closed Won opportunity in Tomco's org is not something the sync will do on its own — ` +
+      `somebody has to decide what should happen to it over there.`;
+    if (ctx.apply) await markHeld(entry.id, why);
+    return { ...base, result: "held", detail: why };
   }
 
   const pairedSfId = await pairedSfIdFor(entry.opportunityId);
@@ -248,7 +291,7 @@ async function runSale(
    */
   let accountId: string | null = null;
   if (loaded.deal.accountName) {
-    const safe = loaded.deal.accountName.replace(/'/g, "\\'");
+    const safe = soqlString(loaded.deal.accountName);
     // SOQL `=` is case-insensitive, which is what makes "Cummins Sales" and
     // "Cummins sales" one company.
     const r = await ctx.conn.query(`SELECT Id, Name FROM Account WHERE Name = '${safe}'`);
@@ -398,13 +441,47 @@ export async function sweepForMissedWriteBacks(): Promise<SweepSummary> {
     if ((data ?? []).length < 1000) break;
   }
 
-  // ── approved change orders ───────────────────────────────────────────────
+  /*
+   * ── change orders ──────────────────────────────────────────────────────
+   *
+   * 🔴 NOT JUST THE APPROVED ONES.
+   *
+   * This asked only for `deleted_at IS NULL AND status = 'approved'`, so a
+   * REVERSAL could never be swept up — a declined or deleted change order is
+   * outside that set by definition. Its single chance was the call at the
+   * moment of the decision, and that call is documented to return `{ok:false}`
+   * rather than throw, with both call sites discarding the result. So a queue
+   * insert that failed on a decline left money approved in Salesforce that this
+   * platform says is not owed, with nothing anywhere that would ever notice.
+   *
+   * The rule that covers both directions: anything LINKED to a Salesforce
+   * change order is something Salesforce may still be counting, whatever its
+   * state here. So linked rows are swept regardless of status or deletion, and
+   * `syncChangeOrder` decides what Salesforce should hold.
+   */
+  const linkedRowIds = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("commercial_import_map")
+      .select("row_id")
+      .eq("entity", CO_MAP_ENTITY)
+      .order("sf_id")
+      .range(from, from + 999);
+    if (error) {
+      out.errors.push(`change-order links: ${error.message}`);
+      out.ok = false;
+      break;
+    }
+    for (const r of data ?? []) linkedRowIds.add((r as { row_id: string }).row_id);
+    if ((data ?? []).length < 1000) break;
+  }
+
   for (let from = 0; ; from += 1000) {
     const { data, error } = await sb
       .from("commercial_change_orders")
+      // No status or deleted filter: the filtering happens below, so a reversal
+      // is visible to this sweep.
       .select("id, opportunity_id, status, title, updated_at, deleted_at")
-      .is("deleted_at", null)
-      .eq("status", "approved")
       .order("id")
       .range(from, from + 999);
     if (error) {
@@ -413,11 +490,27 @@ export async function sweepForMissedWriteBacks(): Promise<SweepSummary> {
       break;
     }
     for (const r of data ?? []) {
-      const c = r as { id: string; opportunity_id: string; title: string | null; updated_at: string | null };
+      const c = r as {
+        id: string;
+        opportunity_id: string;
+        status: string;
+        title: string | null;
+        updated_at: string | null;
+        deleted_at: string | null;
+      };
       // The migrated rollup rows are never pushed — see ROLLUP_TITLE. Filtered
       // here as well as inside `syncChangeOrder` so the sweep does not queue 18
       // entries a night that exist only to decide to do nothing.
       if (ROLLUP_TITLE.test(String(c.title ?? ""))) continue;
+      /*
+       * Worth a look if EITHER Salesforce should be counting it (approved and
+       * live here) OR Salesforce may still be counting it (linked, whatever it
+       * is here now). Everything else — a pending change order nobody has
+       * decided, a declined one that was never pushed — has nothing to sync.
+       */
+      const shouldCount = !c.deleted_at && c.status === "approved";
+      const salesforceMayHoldIt = linkedRowIds.has(c.id);
+      if (!shouldCount && !salesforceMayHoldIt) continue;
       if (!needs(latestCo, c.id, c.updated_at)) continue;
       const q = await queueForWriteBack({
         kind: "change_order",
@@ -446,12 +539,16 @@ async function finishDeal(
   }
   const failedChecks = r.checks.filter((c) => !c.ok);
   if (failedChecks.length > 0) {
+    // See the change-order branch: the failed verification outlives the attempt.
     const detail = `wrote it, but: ${failedChecks.map((c) => `${c.name} — ${c.detail}`).join("; ")}`;
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, detail);
+    if (ctx.apply) {
+      await markVerifyFailed(entry.id, detail);
+      await markFailed(entry.id, entry.attempts, detail);
+    }
     return { ...base, result: "failed", detail };
   }
   const detail = r.steps.length ? r.steps.join(" · ") : r.action;
-  if (ctx.apply) await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000));
+  if (ctx.apply) await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000), { verified: r.checks.length > 0 });
   /*
    * `skipped` is what `updateExisting` returns for a deal Salesforce already
    * has as Closed Won at the right value — the 93-of-94 case. Finished, and

@@ -29,6 +29,7 @@ import {
   isClosedWorkOrder,
   OPEN_BID_STATUS,
   openBidStatus,
+  dealStatusForOpportunity,
   planInvoice,
   planInvoiceColumns,
   adjustmentLabel,
@@ -477,6 +478,33 @@ async function loadSalesforce(conn) {
       FROM ContentDocument WHERE Id IN (${docIds.slice(i, i + 200).map((d) => `'${d}'`).join(",")})`));
   }
   SF.loaded = true;
+
+  /*
+   * 🔴 THE WORK ORDERS WE CAUSED OURSELVES.
+   *
+   * Katie stopped Salesforce entry for Tomco on 2026-10-14. Since then the only
+   * way a Tomco work order comes into being is the write-back syncing a quote —
+   * Salesforce's own automation creates one from it. So a Tomco work order
+   * created after the cutover is OUR echo, not a source of truth, and the
+   * stages that read a work order as new information must not believe it.
+   *
+   * What this prevents, measured on 2026-10-15: `stageInvoices` is a bare
+   * `put("invoice", w.Id, …)` with no adopt path, so each new work-order id
+   * would INSERT an invoice numbered `SF-<new number>` carrying the whole
+   * contract with nothing paid — and because Tomco's terms are "Upon Receipt",
+   * already past due. Five of them, on five deals whose billing is done here by
+   * hand. Nothing would have caught it: the importer's own reconcile builds that
+   * invoice FROM Salesforce's numbers, so it ties perfectly, and `check:money`
+   * reads both surfaces from the same rows, so every identity still balances.
+   *
+   * If PPP ever starts raising Tomco work orders in Salesforce again, this is
+   * the line to revisit — it would then be hiding real ones.
+   */
+  const SF_ENTRY_STOPPED = "2026-10-14";
+  SF.ourOwnWorkOrders = new Set(
+    SF.wos.filter((w) => String(w.CreatedDate ?? "").slice(0, 10) > SF_ENTRY_STOPPED).map((w) => w.Id),
+  );
+
   // Kept so a stage can ask Salesforce a follow-up question of its own —
   // `pushedChangeOrderDollarsByWorkOrder` needs the change orders the write-back
   // created, which are not part of any bulk fetch above.
@@ -708,7 +736,9 @@ async function stageDeals() {
     const accountId = mapped("account", o.AccountId);
     if (!accountId) { r.skipped.push(`${o.Name}: no imported GC account`); continue; }
     const wo = SF.woByOpp.get(o.Id);
-    const st = wo ? dealStatusForWorkOrder(wo.Status) : openBidStatus(o.StageName);
+    // The whole rule lives in `dealStatusForOpportunity`, with the reasoning and
+    // a test. It used to be a ternary here, and the arm that mattered was wrong.
+    const st = dealStatusForOpportunity({ workOrderStatus: wo?.Status ?? null, isWon: !!o.IsWon, stageName: o.StageName });
     if (!st.status) { r.skipped.push(`${o.Name}: unmapped work order status "${wo?.Status}"`); continue; }
     await put("deal", o.Id, "commercial_opportunities", {
       account_id: accountId,
@@ -781,8 +811,14 @@ async function stageJobs() {
      * 2026-09-22 and `project` got in c7b5f3f2, and the only one of the three
      * that never received it.
      *
-     * `commercial_work_orders` is UNIQUE on opportunity_id where not voided
-     * (migration 106). The platform creates these itself: the one-off flow
+     * `commercial_work_orders` WAS unique on opportunity_id where not voided
+     * (migration 106) — migration 123 DROPPED that index to allow several live
+     * work orders per opportunity, so the database no longer refuses a second
+     * one. The adopt below is now the only thing standing between a new
+     * Salesforce work-order id and a duplicate row; it used to be a backstop.
+     * `cleanup-phantom-work-orders.sql` is what the old failure looked like in
+     * practice: a second empty draft work order on 46 Tomco deals, found by a
+     * person and cleaned up by hand. The platform creates these itself: the one-off flow
      * always did, and since 5a88e357 `ensureWorkOrderForWonOpportunity` does it
      * on EVERY win. So a deal won here owns a work order this importer never
      * mapped, and `put()` would do a plain INSERT straight into that index.
@@ -807,15 +843,27 @@ async function stageJobs() {
         .maybeSingle();
       if (woErr) throw new Error(`work order lookup ${dealId}: ${woErr.message}`);
       if (liveWo?.id) {
-        if (COMMIT) {
-          const { error } = await sb.from("commercial_import_map").upsert(
-            { entity: "work_order", sf_id: w.Id, row_id: liveWo.id, source: "salesforce",
-              notes: "Work order already existed on the platform — the deal was won here. Adopted rather than duplicated." },
-            { onConflict: "entity,sf_id" }
-          );
-          if (error) throw new Error(`adopt work order ${w.Id}: ${error.message}`);
-        }
-        MAP.set(`work_order:${w.Id}`, liveWo.id);
+      /*
+       * EPOCH-STAMPED, OR THE ADOPTION OVERWRITES WHAT IT JUST ADOPTED.
+       *
+       * The map row used to be upserted raw, with no `updated_at`, so
+       * `editedHere` found no WROTE_AT entry, returned false at its first line
+       * ("never written by us — nothing to protect"), and `put` went straight
+       * on to overwrite the platform's row with Salesforce's values — renaming
+       * the live job to `SF-<number>` and resetting its status on the very
+       * first night. The guard that exists to protect a platform row could not
+       * fire on the one case it was written for.
+       *
+       * `remember(..., epoch)` is what the write-back uses for the same reason:
+       * a 1970 stamp makes any row touched since read as human-edited, so the
+       * platform keeps what it owns for the whole dual run. It also sets MAP in
+       * a dry run, which the hand-rolled version did only under --commit.
+       */
+        await remember(
+          "work_order", w.Id, liveWo.id,
+          "Work order already existed on the platform — the deal was won here. Adopted rather than duplicated.",
+          new Date(0).toISOString(),
+        );
         r.adopted = (r.adopted ?? 0) + 1;
         r.notes.push(`${w.WorkOrderNumber}: adopted the work order Command Center already created for this deal`);
       }
@@ -1004,6 +1052,16 @@ async function stageChangeOrders() {
      * the remainder — the part of Salesforce's total that is not represented by
      * a change order of its own. See `pushedChangeOrderDollarsByWorkOrder`.
      */
+    /*
+     * And never a rollup row from one of our own work orders. Its
+     * `TotalChangeOrder__c` is the sum of change orders THIS platform pushed —
+     * carrying it back as a rollup row would count every one of them twice. The
+     * subtraction below reaches the same answer today, but only while every
+     * pushed change order is correctly linked; this does not depend on that.
+     */
+    if (SF.ourOwnWorkOrders.has(w.Id) && !mapped("change_order", w.Id)) {
+      continue;
+    }
     const pushed = cents(pushedByWo.get(w.Id) ?? 0);
     const amount = cents(w.TotalChangeOrder__c) - pushed + residual;
     if (pushed) {
@@ -1131,6 +1189,21 @@ async function stageInvoices() {
       totalPaymentsIn: w.TotalPaymentsIn__c,
       balanceOwed: w.BalanceOwed__c,
     });
+    /*
+     * NEVER INVENT AN INVOICE FROM A WORK ORDER WE CAUSED.
+     *
+     * Insert-only, and deliberately: an invoice already imported from a real
+     * Salesforce work order keeps updating, because skipping an UPDATE would
+     * freeze a figure Salesforce still owns. What is refused is bringing a NEW
+     * invoice into existence out of our own echo. See `SF.ourOwnWorkOrders`.
+     */
+    if (SF.ourOwnWorkOrders.has(w.Id) && !mapped("invoice", w.Id)) {
+      r.notes.push(
+        `${w.WorkOrderNumber}: created by our own quote sync — not raising an invoice from it ` +
+          `(this deal's billing is done in the Command Center)`,
+      );
+      continue;
+    }
     const cols = planInvoiceColumns(plan);
     if (cols.taxFolded) r.skipped.push(`${w.WorkOrderNumber}: tax folded into the subtotal (no 3-dp rate reproduced it exactly)`);
     const note = adjustmentLabel(plan);
@@ -1875,13 +1948,27 @@ async function stageAttendance() {
         .limit(1)
         .maybeSingle();
       if (liveJob?.id) {
-        if (COMMIT) {
-          await sb.from("commercial_import_map").upsert(
-            { entity: "job", sf_id: w.Id, row_id: liveJob.id, source: "salesforce" },
-            { onConflict: "entity,sf_id" }
-          );
-          MAP.set(`job:${w.Id}`, liveJob.id);
-        }
+      /*
+       * EPOCH-STAMPED, OR THE ADOPTION OVERWRITES WHAT IT JUST ADOPTED.
+       *
+       * The map row used to be upserted raw, with no `updated_at`, so
+       * `editedHere` found no WROTE_AT entry, returned false at its first line
+       * ("never written by us — nothing to protect"), and `put` went straight
+       * on to overwrite the platform's row with Salesforce's values — renaming
+       * the live job to `SF-<number>` and resetting its status on the very
+       * first night. The guard that exists to protect a platform row could not
+       * fire on the one case it was written for.
+       *
+       * `remember(..., epoch)` is what the write-back uses for the same reason:
+       * a 1970 stamp makes any row touched since read as human-edited, so the
+       * platform keeps what it owns for the whole dual run. It also sets MAP in
+       * a dry run, which the hand-rolled version did only under --commit.
+       */
+        await remember(
+          "job", w.Id, liveJob.id,
+          "Field Ops job already existed on the platform — the deal was won here. Adopted rather than duplicated.",
+          new Date(0).toISOString(),
+        );
         r.notes.push(`${w.WorkOrderNumber}: adopted the job Command Center already created for this deal`);
       }
     }
@@ -2320,12 +2407,12 @@ async function stageProjects() {
         .maybeSingle();
       if (error) throw new Error(`projects lookup ${dealId}: ${error.message}`);
       if (already) {
-        if (COMMIT) {
-          await remember("project", w.Id, already.id,
-            "Project already existed on the platform — the deal was sold here, not in Salesforce. Adopted rather than duplicated.");
-        } else {
-          MAP.set(`project:${w.Id}`, already.id);
-        }
+        // Epoch-stamped for the same reason as the work order and the job
+        // above: a fresh stamp lets the very next `put` overwrite the row this
+        // adoption just claimed. `remember` sets MAP in a dry run too.
+        await remember("project", w.Id, already.id,
+          "Project already existed on the platform — the deal was sold here, not in Salesforce. Adopted rather than duplicated.",
+          new Date(0).toISOString());
         r.adopted = (r.adopted ?? 0) + 1;
       }
     }

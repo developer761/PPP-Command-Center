@@ -232,11 +232,18 @@ async function addPurchaseAction(formData: FormData) {
     ...vendorPick.preserve,
   };
   const cents = parseDollarsToCents(rawAmount);
-  if (cents === null || cents <= 0) {
+  /*
+   * ZERO is refused; NEGATIVE is a vendor credit or a return.
+   *
+   * Mary asked for this directly on 2026-10-15. The guard was `cents <= 0`, so
+   * a credit could not be typed — even though sixteen imported ones are already
+   * in the book. `parseDollarsToCents` has always accepted a leading minus.
+   */
+  if (cents === null || cents === 0) {
     costsRedirect(
       account_id,
       opp_id,
-      { error: "Enter a transaction amount greater than $0.", ...preserve },
+      { error: "Enter an amount. Use a minus sign for a vendor credit or a return.", ...preserve },
       back,
       origin,
       from,
@@ -342,12 +349,19 @@ async function updatePurchaseAction(formData: FormData) {
     ...vendorPick.preserve,
   };
   const cents = parseDollarsToCents(rawAmount);
-  if (cents === null || cents <= 0) {
+  /*
+   * ZERO is refused; NEGATIVE is a vendor credit or a return.
+   *
+   * Mary asked for this directly on 2026-10-15. The guard was `cents <= 0`, so
+   * a credit could not be typed — even though sixteen imported ones are already
+   * in the book. `parseDollarsToCents` has always accepted a leading minus.
+   */
+  if (cents === null || cents === 0) {
     costsRedirect(
       account_id,
       opp_id,
       {
-        error: "Enter a transaction amount greater than $0.",
+        error: "Enter an amount. Use a minus sign for a vendor credit or a return.",
         edit_purchase: purchase_id,
         ...preserve,
       },

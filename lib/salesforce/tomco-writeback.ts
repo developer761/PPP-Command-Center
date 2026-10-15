@@ -2,6 +2,7 @@ import "server-only";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { writeSf } from "@/lib/salesforce/writeback";
+import { assertSalesforceId } from "@/lib/salesforce/soql";
 import type { SoldDeal } from "@/lib/salesforce/tomco-pairing";
 
 /**
@@ -164,20 +165,26 @@ export async function updateExisting(
       steps: [`already Closed Won in Salesforce at ${canonical.toFixed(2)} — left alone${note}`],
     };
   }
-  if (ctx.apply) {
-    const res = await writeSf(
-      { sObject: "Opportunity", recordId: sfId, fields: { StageName: "Closed Won" } },
-      { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { StageName: opp.StageName } },
-    );
-    if (!res.ok) return { ...out, action: "failed", error: `stage: ${res.error}` };
-    out.steps.push(`stage ${opp.StageName} → Closed Won`);
-  } else {
-    out.steps.push(`would set stage ${opp.StageName} → Closed Won, and the line to ${contract.toFixed(2)}`);
-  }
-
-  // ── the quote, matched rather than created ───────────────────────────────
+  /*
+   * ── THE QUOTE IS SETTLED BEFORE THE STAGE IS TOUCHED ─────────────────────
+   *
+   * 🔴 THIS ORDER IS THE FIX. The stage was written to Closed Won FIRST and the
+   * quote investigated afterwards, so every refusal below left a Closed Won
+   * opportunity behind carrying no money:
+   *
+   *   · two quotes → returned "a person has to say which is the sale", with the
+   *     stage already flipped
+   *   · no quote → created a Draft one, then took the `ls.length === 0` arm and
+   *     wrote NO line ("see the insert path"), and `qs[0]` was the pre-create
+   *     array so the new quote was never approved either
+   *
+   * Either way: Closed Won at $0 in Katie's reports, the read-back's "contract
+   * value arrived" check failing, three attempts burned, the entry stalled —
+   * and the stage write standing. So the whole job is established as doable
+   * before any of it is done.
+   */
   const quotes = await ctx.conn.query(
-    `SELECT Id, Status, Subtotal__c FROM Quote WHERE OpportunityId = '${sfId}'`,
+    `SELECT Id, Status, Subtotal__c FROM Quote WHERE OpportunityId = '${assertSalesforceId(sfId, "opportunity id")}'`,
   );
   const qs = (quotes.records ?? []) as Array<{ Id: string; Status: string; Subtotal__c: number | null }>;
   if (qs.length > 1) {
@@ -187,22 +194,35 @@ export async function updateExisting(
      * "Estimate Sent / Quote Sent" with exactly one quote; more than one is
      * rare and worth a person.
      */
-    return { ...out, action: "failed", error: `${qs.length} quotes on ${sfId} — a person has to say which is the sale` };
+    return { ...out, action: "failed", error: `${qs.length} quotes on ${sfId} — a person has to say which is the sale. Nothing written.` };
   }
+  if (qs.length === 0) {
+    /*
+     * No quote at all. This path cannot build one end-to-end — it writes no
+     * line (the insert path owns that), so creating one here produced an
+     * approved-looking sale with nothing on it. Refused, before anything is
+     * written, so the opportunity is left exactly as Salesforce has it.
+     */
+    return {
+      ...out,
+      action: "failed",
+      error:
+        `${sfId} has no quote, and the money lives on a quote line. Nothing written — ` +
+        `build the quote in Salesforce, or let this deal go in through the insert path.`,
+    };
+  }
+  const quoteId = qs[0].Id;
 
-  let quoteId = qs[0]?.Id ?? null;
-  if (!quoteId) {
-    out.steps.push("no quote on this opportunity — creating one");
-    if (ctx.apply) {
-      const created = await ctx.conn.sobject("Quote").create({
-        Name: deal.title.slice(0, 255),
-        OpportunityId: sfId,
-        ...(opp.Pricebook2Id ? { Pricebook2Id: opp.Pricebook2Id } : {}),
-        Status: "Draft",
-      });
-      if (!created.success) return { ...out, action: "failed", error: `quote create failed` };
-      quoteId = created.id;
-    }
+  // Only now, with somewhere for the money to go, is the stage moved.
+  if (ctx.apply) {
+    const res = await writeSf(
+      { sObject: "Opportunity", recordId: sfId, fields: { StageName: "Closed Won" } },
+      { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { StageName: opp.StageName } },
+    );
+    if (!res.ok) return { ...out, action: "failed", error: `stage: ${res.error}` };
+    out.steps.push(`stage ${opp.StageName} → Closed Won`);
+  } else {
+    out.steps.push(`would set stage ${opp.StageName} → Closed Won, and the line to ${contract.toFixed(2)}`);
   }
 
   // ── the line, which is where the money lives ─────────────────────────────
@@ -228,7 +248,20 @@ export async function updateExisting(
         out.steps.push(`line ${ls[0].PriceOverrideAmount__c ?? "—"} → ${contract.toFixed(2)}`);
       }
     } else {
-      out.steps.push("no line on the quote — see the insert path; not created on an update");
+      /*
+       * A quote with no line. The money has nowhere to go, and the stage has
+       * already moved — so this is reported as a FAILURE rather than a step,
+       * which is what gets it in front of somebody instead of reading as a
+       * completed sync. (The read-back's "contract value arrived" check would
+       * also fail, but a step that says this in passing read like a note.)
+       */
+      return {
+        ...out,
+        action: "failed",
+        error:
+          `Quote ${quoteId} has no line item, so the contract value has nowhere to go. ` +
+          `The stage is Closed Won; the money is NOT written. Add a line in Salesforce and this will finish it.`,
+      };
     }
 
     // Approve the quote, which is what closes the sale in Tomco's convention:

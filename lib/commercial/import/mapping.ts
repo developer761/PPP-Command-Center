@@ -84,6 +84,40 @@ export function openBidStatus(stageName: string | null | undefined): DealStatus 
 export const OPEN_BID_STATUS: DealStatus = { status: "proposal", subStatus: "sent" };
 
 /**
+ * Where a Salesforce opportunity sits on the Command Center's ladder.
+ *
+ * The whole rule, in one testable place. It used to be a ternary at the single
+ * call site in the importer, and the arm that mattered was wrong: with no work
+ * order it fell through to `openBidStatus`, whose default is `qualifying/rfp` —
+ * so a Closed Won opportunity that had no work order was written back as an
+ * UNQUALIFIED LEAD.
+ *
+ * Measured on 2026-10-15: five Tomco deals were in that state, MotorMindz
+ * ($30,000) among them, and MotorMindz was the one `editedHere` did not protect
+ * (its map stamp equals its row stamp to the microsecond). The next nightly run
+ * would have un-won a thirty-thousand-dollar job.
+ *
+ * THE ORDER IS THE RULE. A work order is the strongest evidence — it is a real
+ * job with crew on it — so it wins when present. Being WON is next: it is a
+ * fact about the sale, and no absence of a work order makes it untrue. Only
+ * when neither holds is the Salesforce stage a guide to an open bid.
+ *
+ * Returns `{status: undefined}` when a work order's status maps to nothing
+ * (`New`, `Ready to Schedule`); the caller skips those rather than guessing,
+ * which is also what makes a freshly synced work order harmless.
+ */
+export function dealStatusForOpportunity(input: {
+  /** The opportunity's live work order, if Salesforce has one. */
+  workOrderStatus?: string | null;
+  isWon: boolean;
+  stageName?: string | null;
+}): DealStatus {
+  if (input.workOrderStatus != null) return dealStatusForWorkOrder(input.workOrderStatus);
+  if (input.isWon) return { status: "pre_sale_closed", subStatus: "won" };
+  return openBidStatus(input.stageName);
+}
+
+/**
  * A Tomco work order's status → the FIELD OPS job's status.
  *
  * A different vocabulary from the deal's, and a different question: not "where
