@@ -24,6 +24,7 @@ import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { statedChannelPreference } from "./channel-preference";
+import { scopeFromCustomer as scopeSaidNow } from "./scope";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -315,6 +316,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "discarded_work_we_cover"
   | "transferred_a_text_only_customer"
   | "restated_scope_from_chat"
   | "offsite_job_entered_booking_flow"
@@ -2062,6 +2064,67 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
   // job is, and a caller that does not track scope should behave as it always
   // has.
+  /**
+   * A8 — DO NOT TURN DOWN WORK WE ACTUALLY DO.
+   *
+   * A8's corrective has two halves and this is the expensive one: "carried on
+   * with a covered job instead of discarding it". Reproduced 2026-10-14 —
+   * `discard` was ALLOWED on every one of these:
+   *
+   *   "I need my living room painted"        the core service
+   *   "I want my kitchen cabinets refinished"
+   *   "Can you power wash my patio"
+   *   "I need wallpaper hung in the hall"
+   *   "I need skim coating in the bedroom"
+   *
+   * and the customer is told "I don't believe this is something we take on."
+   * A lead asking for exactly what PPP sells, turned away.
+   *
+   * ── THE DISCRIMINATOR, AND WHY IT NEEDS NO NEW CONTEXT FIELD ────────────
+   *
+   * `discard` has two legitimate uses — work we do not cover, and a wrong
+   * number or junk — so refusing it whenever nothing out-of-scope is named
+   * would break the second. The pair that separates them is already here:
+   *
+   *   scopeFromCustomer   they DESCRIBED work in this conversation
+   *   mentionsWorkWeDoNotDo   and named something we do not do
+   *
+   * Described work with nothing out of scope is a covered job. A wrong
+   * number describes no work, so scopeFromCustomer is false and discard
+   * stays available. "I need my roof replaced" is safe from the other side
+   * too: the scope parser does not recognise roofing as our work, so it
+   * never sets scopeFromCustomer at all.
+   *
+   * Using the fields already in context rather than passing the workspace's
+   * service list keeps every caller and both harnesses in step — the drift
+   * that left A9 unexercised by 182 scenario checks.
+   */
+  if (
+    a.intent === "discard"
+    /**
+     * THIS MESSAGE describes the work, not merely the conversation.
+     *
+     * The first version used ctx.scopeFromCustomer, which is a
+     * CONVERSATION-level fact — scope arrived at some point — and combined
+     * it with customerText, which is this turn. address-dodged.test.ts
+     * caught it: a customer who gave their scope three turns ago and then
+     * asked "what times do you have available this week?" was treated as
+     * describing covered work in a message that describes none.
+     *
+     * Reading the scope out of the CURRENT message is what was actually
+     * verified, and it is the honest version of the claim.
+     */
+    && scopeSaidNow(ctx.customerText) !== null
+    && !mentionsWorkWeDoNotDo(ctx.customerText ?? "")
+  ) {
+    return {
+      ok: false, reason: "discarded_work_we_cover",
+      detail: "they described a job and named nothing we do not do, so this turns away "
+        + "work PPP takes on. Carry on with the flow instead (A8) — discard is for work "
+        + "outside the service list, or for a wrong number",
+    };
+  }
+
   /**
    * A25 — SOMEBODY WHO ASKS TO BE TEXTED KEEPS BEING TEXTED.
    *
