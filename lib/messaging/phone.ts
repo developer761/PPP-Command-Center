@@ -49,9 +49,34 @@ export function toE164(raw: string | null | undefined): E164 | null {
   s = s.replace(/[^\d]/g, "");
   if (!s) return null;
 
-  // Already international and not +1: accept if it is plausibly E.164. We do
-  // not validate foreign numbering plans — we just refuse to mangle them.
-  if (hadPlus && !s.startsWith("1")) {
+  /**
+   * A "+" IN FRONT OF A TEN-DIGIT US NUMBER IS A TYPO, NOT A COUNTRY CODE.
+   *
+   * Found 2026-10-15 by listing every non-US number in the real lead data.
+   * Eight of 2,042 are not +1, and six of those eight are plainly local:
+   *
+   *   +5165286105  +5163611799  +5164769219  +5164455205   516, Nassau
+   *   +6465650369                                          646, Manhattan
+   *   +6099531140                                          609, New Jersey
+   *
+   * All six arrived from Meta, where somebody typed a "+" before a ten-digit
+   * number. Read as international, +5165286105 is +51 65286105 — Peru, and
+   * not a valid Peruvian number either, so the message silently fails and a
+   * real Nassau lead is never contacted.
+   *
+   * The two genuine international numbers in the same data are LONGER:
+   * +905544202801 (Turkey, 12 digits) and +233244707688 (Ghana, 12). That
+   * length difference is the discriminator, and it is why this is narrow:
+   * exactly ten digits, AND the first three and the next three both start
+   * 2-9, which is the NANP rule the code below already applies.
+   *
+   * A genuine ten-digit international number shaped like a NANP number would
+   * be mangled by this. It is the right trade for a regional painter whose
+   * leads come from US ad targeting: today those six are lost silently,
+   * which is the worse failure and the harder one to notice.
+   */
+  const looksNanp = s.length === 10 && /^[2-9]/.test(s.slice(0, 3)) && /^[2-9]/.test(s.slice(3, 6));
+  if (hadPlus && !s.startsWith("1") && !looksNanp) {
     const intl = `+${s}`;
     return isE164(intl) ? (intl as E164) : null;
   }
