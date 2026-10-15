@@ -51,6 +51,11 @@ const GATES = [
   ["rules are wired", "node", ["scripts/check-rules-are-wired.mjs"]],
   ["options nothing passes", "node", ["scripts/check-unpassed-options.mjs"]],
   ["settings with no writer", "node", ["scripts/check-settings-have-writers.mjs"]],
+  // Column names are strings. tsc cannot see them, and a try/catch turns the
+  // Postgres error into a tidy card — which is how a health check spent
+  // months reporting a database error instead of whether the customer's
+  // colors were reaching Salesforce.
+  ["columns that exist", "node", ["scripts/check-queried-columns.mjs"]],
   ["lint budget", "node", ["scripts/check-lint-budget.mjs"]],
   ...(fast ? [] : [
     ["tests", "npx", ["vitest", "run"]],

@@ -504,11 +504,23 @@ export async function GET() {
   try {
     const sb = adminClient();
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    /**
+     * COLUMN NAMES. This read used `source` and `written_at`; the table has
+     * `triggered_by` and `attempted_at` (migration 003), and writeSfBatch
+     * inserts `triggered_by`. So the query errored every time and the check
+     * reported a database error instead of a number — the one check built to
+     * answer Katie's 2026-06-03 question, "are the customer's colors landing
+     * in Salesforce at all?", has never once answered it.
+     *
+     * Nothing caught it because the catch below turns it into a presentable
+     * card, and because a wrong column name is invisible to tsc: these are
+     * strings to everything except Postgres.
+     */
     const { data: rows, error } = await sb
       .from("sf_writes_audit")
-      .select("succeeded, source")
-      .gte("written_at", since)
-      .eq("source", "customer_form_submit");
+      .select("succeeded, triggered_by")
+      .gte("attempted_at", since)
+      .eq("triggered_by", "customer_form_submit");
     if (error) throw error;
     const total = rows?.length ?? 0;
     const failed = rows?.filter((r) => r.succeeded === false).length ?? 0;
@@ -537,7 +549,7 @@ export async function GET() {
         status: failRate > 20 ? "fail" : "warn",
         group: "data",
         message: `${failed} of ${total} customer-form writes failed (${failRate}%). Common causes: a Salesforce validation rule blocking the write, FLS hiding ColorXxx__c from the OAuth user, or a picklist mismatch (e.g. a new finish value the SF picklist doesn't have).`,
-        fix: "Check sf_writes_audit in Supabase (filter source='customer_form_submit', succeeded=false) for the error_message column — it usually pinpoints which field SF rejected. Most-common fix: ensure ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c are editable by the OAuth user's profile.",
+        fix: "Check sf_writes_audit in Supabase (filter triggered_by='customer_form_submit', succeeded=false) for the error_message column — it usually pinpoints which field SF rejected. Most-common fix: ensure ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c are editable by the OAuth user's profile.",
       });
     }
   } catch (err) {

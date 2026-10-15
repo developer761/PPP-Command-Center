@@ -79,7 +79,8 @@
     "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs",
     "check:rule-backup": "node --env-file=.env.local scripts/check-rule-backup.mjs",
     "push": "node scripts/push-safe.mjs",
-    "push:check": "node scripts/push-safe.mjs --dry-run"
+    "push:check": "node scripts/push-safe.mjs --dry-run",
+    "check:queried-columns": "node scripts/check-queried-columns.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
