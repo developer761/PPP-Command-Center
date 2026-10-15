@@ -730,6 +730,28 @@ export const ECHO_WORDS = 5;
 const REASON_CLAUSE =
   /\b(?:since|because|in order to|that way)\b[^.!?]*|\bso (?:we|i)\s+(?:can|could|will)\b[^.!?]*|\bso that we\b[^.!?]*|\bto save you\b[^.!?]*|\bfor faster\b[^.!?]*|\bbefore (?:we|i)\b[^.!?]*|\bto get (?:you|this|that|your)\b[^.!?]*|\bto set (?:this|you|that)\b[^.!?]*/i;
 
+/**
+ * A41: saying the conversation cannot go on until they hand something over.
+ *
+ * Every branch needs BOTH halves — an inability to proceed AND a condition
+ * on the customer supplying something. "I can't set times myself" has the
+ * first and not the second, and must keep sending: A15 requires it.
+ */
+const BLOCKS_THE_FLOW = new RegExp(
+  // "can't continue / proceed / move forward / go further" + without/until/unless
+  /\b(?:can'?t|cannot|can not|unable to|not able to)\s+(?:\w+\s+){0,2}?(?:continue|proceed|move\s+(?:forward|on|ahead)|go\s+(?:any\s+)?(?:further|forward)|help|do\s+(?:anything|this|that)|get\s+(?:started|going)|set\s+(?:this|you)\s+up)\b[^.!?]{0,40}\b(?:without|until|unless|till)\b/.source
+  // "I do need X before we can …"
+  + "|" + /\b(?:i|we)\s+(?:do\s+)?(?:need|require|must have)\b[^.!?]{0,40}\bbefore\s+(?:we|i)\s+(?:can|could)\b/.source
+  // "I have to stop here" / "I'll have to stop"
+  + "|" + /\b(?:i|we)\s+(?:have|has|had)\s+to\s+stop\s+(?:here|there|now)\b/.source
+  // "that's a required field" / "it's required, I can't skip it"
+  + "|" + /\b(?:required|mandatory)\s+(?:field|information|detail)\b/.source
+  + "|" + /\bcan'?t\s+skip\s+(?:it|that|this)\b/.source
+  // Spanish
+  + "|" + /\bno\s+(?:puedo|podemos)\s+(?:continuar|seguir|avanzar)\b[^.!?]{0,40}\b(?:sin|hasta)\b/.source,
+  "i",
+);
+
 export type RapportCheck = { ok: true } | { ok: false; why: string };
 
 /**
@@ -756,6 +778,41 @@ export function checkTone(text: string, customerText?: string, templateAsks = tr
 
   for (const b of BANNED_STYLE) {
     if (b.re.test(text)) return { ok: false, why: `it uses ${b.why}` };
+  }
+
+  /**
+   * A41 — DO NOT TELL THEM THE CONVERSATION CANNOT CONTINUE.
+   *
+   * "Do not block the flow on a REFUSAL. If they decline to give a field,
+   * continue and move on." The intent-level half of this is enforced — a
+   * refused field does not stop ask_address happening — and the WORDING half
+   * was not. Found 2026-10-14, all allowed and all sent verbatim:
+   *
+   *   "I can't continue without it, so I'll need you to give me that field."
+   *   "Unfortunately I can't move forward until you give me the zip."
+   *   "We can't proceed without your email."
+   *   "I'm unable to continue unless you provide the address."
+   *
+   * A customer who has just declined something is told the conversation is
+   * stuck until they relent. That is the deadlock A41 exists to prevent, and
+   * it is said in the one place nothing was checking.
+   *
+   * ── THE LINE IT MUST NOT CROSS ──────────────────────────────────────────
+   *
+   * "I can't set times myself, but the office handles scheduling" and "I
+   * can't quote a price, the estimator will" are CORRECT — A15 and A1
+   * require exactly that, and they are among the most common honest things
+   * the bot says. The difference is what the inability is tied to: a block
+   * conditions it on the CUSTOMER handing something over ("without it",
+   * "until you give me"), while an honest limit names what the bot cannot do
+   * and hands off. The conditional is the whole test.
+   */
+  if (BLOCKS_THE_FLOW.test(text)) {
+    return {
+      ok: false,
+      why: "it tells the customer the conversation cannot continue without something "
+        + "they declined — A41 says carry on and move to the next thing",
+    };
   }
 
   /**
