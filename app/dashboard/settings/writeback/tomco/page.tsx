@@ -125,6 +125,31 @@ async function rearmAction(formData: FormData) {
   );
 }
 
+/**
+ * "It is a genuine second change order at this amount — create it."
+ *
+ * The only escape from the hold `syncChangeOrder` applies when every Salesforce
+ * change order at that amount already belongs to a different Command Center
+ * one. Without it that hold is permanent: holding does not count as an attempt,
+ * so the entry never becomes "stopped asking", so the retry button never shows,
+ * and the sweep skips anything still pending. The work would simply never reach
+ * Salesforce.
+ */
+async function allowSecondCoAction(formData: FormData) {
+  "use server";
+  const { id: userId } = await requireAdmin();
+  const coId = String(formData.get("change_order_id") ?? "");
+  if (!UUID_RE.test(coId)) redirect(`${BASE}?error=${encodeURIComponent("Unknown change order.")}`);
+  const { allowSecondChangeOrder } = await import("@/lib/salesforce/tomco-changeorder");
+  const res = await allowSecondChangeOrder(coId, userId);
+  revalidatePath(BASE);
+  redirect(
+    res.ok
+      ? `${BASE}?ok=${encodeURIComponent("Noted — the next tick will add it to Salesforce as a second change order.")}`
+      : `${BASE}?error=${encodeURIComponent(res.error ?? "Could not record that.")}`,
+  );
+}
+
 export default async function TomcoWritebackPage({
   searchParams,
 }: {
@@ -242,10 +267,12 @@ export default async function TomcoWritebackPage({
            * since the deploy sat unsynced.
            */
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
-            <span className="font-semibold">The live sync is not switched on yet.</span> Its table has
-            not been created, so nothing is being queued and nothing is being written. Apply{" "}
-            <code className="font-mono text-[12px]">20261015140000_tomco_writeback_queue.sql</code>, and
-            the first nightly sweep after that queues everything already sold.
+            <span className="font-semibold">The live sync is not switched on yet.</span> Its table or
+            one of its columns is missing, so nothing is being queued and nothing is being written.
+            Apply any unrun migration named{" "}
+            <code className="font-mono text-[12px]">*_tomco_writeback_queue*.sql</code> — there are two,
+            and the second adds columns the first does not. The next nightly sweep then queues
+            everything already sold.
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-ppp-charcoal-100 bg-surface">
@@ -303,6 +330,17 @@ export default async function TomcoWritebackPage({
                   <span className="font-mono text-[11px] tabular-nums text-ppp-charcoal-400">
                     {q.queuedAt.slice(0, 16).replace("T", " ")}
                   </span>
+                  {!q.doneAt && q.kind === "change_order" && q.changeOrderId && /second change order|already linked to a different/i.test(q.heldReason ?? "") && (
+                    <form action={allowSecondCoAction}>
+                      <input type="hidden" name="change_order_id" value={q.changeOrderId} />
+                      <button
+                        type="submit"
+                        className="min-h-[44px] rounded-lg border border-ppp-charcoal-300 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                      >
+                        It&apos;s a second one — add it
+                      </button>
+                    </form>
+                  )}
                   {q.stalled && (
                     <form action={rearmAction}>
                       <input type="hidden" name="entry_id" value={q.id} />

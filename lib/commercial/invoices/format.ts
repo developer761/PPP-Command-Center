@@ -3,6 +3,10 @@
  * anywhere client or server-side).
  */
 
+/** One ceiling, shared with the accounting parser rather than duplicated. */
+import { MAX_CENTS } from "@/lib/commercial/accounting/money";
+export { MAX_CENTS };
+
 /** Format cents as compact "$1.2M" / "$10.4k" / "$123" for KPI tiles.
  *  Karan 2026-07-07: $10,400 was rounding to "$10k" — dropping the
  *  $400 gave people a wrong at-a-glance number ("did they mean 10 or
@@ -67,7 +71,14 @@ export function parseDollarsToCents(s: string): number | null {
   // Brackets around an already-negative number would cancel out; a value is
   // negative if either form says so, never because both do.
   const cents = Math.round(asNum * 100);
-  return bracketed ? -Math.abs(cents) : cents;
+  const signed = bracketed ? -Math.abs(cents) : cents;
+  /*
+   * The same ceiling the accounting parser has always had. Beyond it a bigint
+   * overflows Postgres and the raw error reaches the user. The two parsers
+   * agreed on nothing but sign until now; this is the other half.
+   */
+  if (Math.abs(signed) > MAX_CENTS) return null;
+  return signed;
 }
 
 /** "Jul 6, 2026" in America/New_York for invoice header dates. */

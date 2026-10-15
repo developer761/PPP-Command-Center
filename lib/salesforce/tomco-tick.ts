@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
-import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, type QueueEntry } from "@/lib/salesforce/tomco-queue";
+import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, peekPending, type QueueEntry } from "@/lib/salesforce/tomco-queue";
 import { decideWriteBack } from "@/lib/salesforce/tomco-decide";
 import {
   isSoldStatus,
@@ -101,7 +101,17 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
     return { ...empty, skipped: "Salesforce is not configured" };
   }
 
-  const pending = await claimPending(opts.limit ?? PER_TICK);
+  /*
+   * 🔴 A PLAN RUN MUST NOT CLAIM. `claimPending` stamps `claimed_at`
+   * unconditionally, and every release is behind `if (ctx.apply)` — so a dry
+   * run used to strand up to ten entries for CLAIM_STALE_MS (ten minutes),
+   * delaying real syncs, and a second dry run would then report an EMPTY queue
+   * while ten things were waiting. A preview that changes what it previews is
+   * not a preview.
+   */
+  const pending = opts.apply
+    ? await claimPending(opts.limit ?? PER_TICK)
+    : await peekPending(opts.limit ?? PER_TICK);
   if (pending.length === 0) return empty;
 
   const conn = await getSalesforceClient();
@@ -180,7 +190,17 @@ async function runChangeOrder(
   const failedChecks = r.checks.filter((c) => !c.ok);
 
   if (r.action === "failed") {
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, r.error ?? r.why);
+    /*
+     * If anything was WRITTEN before it failed, the evidence has to outlive the
+     * attempt. Otherwise the next tick finds Salesforce already in its new
+     * state, returns "nothing to do", and `markDone` clears `last_error` —
+     * laundering a half-finished write into a green row. `markVerifyFailed`
+     * used to fire only for a failed read-back, never for a failed ACTION.
+     */
+    if (ctx.apply) {
+      if (r.steps.length > 0) await markVerifyFailed(entry.id, `${r.error ?? r.why} (after: ${r.steps.join(" · ")})`);
+      await markFailed(entry.id, entry.attempts, r.error ?? r.why);
+    }
     return { ...base, result: "failed", detail: r.error ?? r.why };
   }
   if (r.action === "held") {
@@ -534,7 +554,12 @@ async function finishDeal(
   r: { action: string; error?: string; checks: Array<{ name: string; ok: boolean; detail: string }>; steps: string[] },
 ): Promise<TickOutcome> {
   if (r.action === "failed") {
-    if (ctx.apply) await markFailed(entry.id, entry.attempts, r.error ?? "failed");
+    // Same as the change-order branch: a failure that already wrote something
+    // leaves a mark the next tick's "skipped" cannot wipe.
+    if (ctx.apply) {
+      if (r.steps.length > 0) await markVerifyFailed(entry.id, `${r.error ?? "failed"} (after: ${r.steps.join(" · ")})`);
+      await markFailed(entry.id, entry.attempts, r.error ?? "failed");
+    }
     return { ...base, result: "failed", detail: r.error ?? "failed" };
   }
   const failedChecks = r.checks.filter((c) => !c.ok);

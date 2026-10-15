@@ -20,7 +20,7 @@
  * `addPurchase`/`updatePurchase`, which need a database.
  */
 import { describe, expect, it } from "vitest";
-import { parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { MAX_CENTS, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 
 describe("the money parser keeps the sign", () => {
   it("reads a credit as a negative number of cents", () => {
@@ -73,5 +73,23 @@ describe("the money parser keeps the sign", () => {
     const minusZero = parseDollarsToCents("-0.00");
     expect(minusZero === 0, "negative zero must satisfy the `=== 0` guards").toBe(true);
     expect(Math.round(minusZero as number) === 0).toBe(true);
+  });
+});
+
+describe("the ceiling, now shared by both parsers", () => {
+  /*
+   * `dollarsToCents` has always refused a figure big enough to overflow a
+   * Postgres bigint, so the raw error never reaches the user.
+   * `parseDollarsToCents` did not, and the two were only ever going to be
+   * compared after they started agreeing on sign.
+   */
+  it("refuses an amount that would overflow the column", () => {
+    expect(parseDollarsToCents("9999999999")).toBeNull();
+    expect(parseDollarsToCents("(9999999999)")).toBeNull();
+  });
+
+  it("accepts the largest amount that fits, so the limit is a limit", () => {
+    expect(parseDollarsToCents(String(MAX_CENTS / 100))).toBe(MAX_CENTS);
+    expect(parseDollarsToCents(`(${MAX_CENTS / 100})`)).toBe(-MAX_CENTS);
   });
 });

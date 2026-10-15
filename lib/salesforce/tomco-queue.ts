@@ -166,6 +166,41 @@ export const RETRY_AFTER_MS = 60 * 60 * 1000;
 export const CLAIM_STALE_MS = 10 * 60 * 1000;
 
 /**
+ * The same set `claimPending` would take, WITHOUT claiming any of it.
+ *
+ * For plan runs. `claimPending` stamps `claimed_at` and only the apply path
+ * releases it, so a dry run that claimed would strand entries for ten minutes
+ * and then report an EMPTY queue on its second run — a preview that changes
+ * the thing it is previewing.
+ */
+export async function peekPending(limit = 20): Promise<QueueEntry[]> {
+  const sb = adminClient();
+  const waitUntil = new Date(Date.now() - RETRY_AFTER_MS).toISOString();
+  const staleBefore = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("id, kind, opportunity_id, change_order_id, attempts, queued_at")
+    .is("done_at", null)
+    .lt("attempts", MAX_ATTEMPTS)
+    .or(`last_attempt_at.is.null,last_attempt_at.lt.${waitUntil}`)
+    .or(`claimed_at.is.null,claimed_at.lt.${staleBefore}`)
+    .order("queued_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    if (isQueueNotReady(error.message)) return [];
+    throw new Error(`write-back queue: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as QueueKind,
+    opportunityId: r.opportunity_id as string,
+    changeOrderId: (r.change_order_id as string | null) ?? null,
+    attempts: Number(r.attempts ?? 0),
+    queuedAt: r.queued_at as string,
+  }));
+}
+
+/**
  * Take up to `limit` entries, ATOMICALLY, and return only the ones this caller
  * now owns.
  *
@@ -253,6 +288,8 @@ export async function claimPending(limit = 20): Promise<QueueEntry[]> {
 export type QueueReviewRow = {
   id: string;
   kind: QueueKind;
+  /** The change order itself, for the actions that act on one. */
+  changeOrderId: string | null;
   /** The deal, named the way every other surface names it. */
   label: string;
   queuedAt: string;
@@ -356,6 +393,7 @@ export async function listQueueForReview(
     return {
       id: r.id,
       kind: r.kind as QueueKind,
+      changeOrderId: r.change_order_id ?? null,
       label: r.kind === "change_order" ? `${title} · CO-${co ?? "?"}` : title,
       queuedAt: r.queued_at,
       attempts: Number(r.attempts ?? 0),
@@ -462,6 +500,27 @@ export async function releaseHold(opportunityId: string): Promise<void> {
   } catch (err) {
     console.warn(
       `[tomco-queue] could not release the hold on ${opportunityId}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
+ * The change-order equivalent of `releaseHold`: a person has answered the
+ * question this entry was waiting on, so look at it on the next tick rather
+ * than at the end of the hour-long back-off.
+ */
+export async function releaseHoldForChangeOrder(changeOrderId: string): Promise<void> {
+  try {
+    const sb = adminClient();
+    await sb
+      .from(TABLE)
+      .update({ held_reason: null, last_attempt_at: null })
+      .eq("change_order_id", changeOrderId)
+      .is("done_at", null);
+  } catch (err) {
+    console.warn(
+      `[tomco-queue] could not release the hold on change order ${changeOrderId}:`,
       err instanceof Error ? err.message : String(err),
     );
   }

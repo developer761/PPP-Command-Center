@@ -226,7 +226,21 @@ async function remember(entity, sfId, rowId, notes, wroteAt) {
   // machine's clock instead would make every row look edited-by-a-human on the
   // next run if the two clocks disagree by a second.
   const stamp = wroteAt ?? new Date().toISOString();
-  if (COMMIT) WROTE_AT.set(`${entity}:${sfId}`, stamp);
+  /*
+   * SET IN A DRY RUN TOO, or the rehearsal gets the one branch wrong that it
+   * exists to show you.
+   *
+   * `put` deliberately runs `editedHere` in a dry run so the report can say
+   * "would keep (yours)". But `editedHere` returns false at its first line
+   * when `WROTE_AT` has no entry — so with this behind `if (COMMIT)`, a dry run
+   * reported "would UPDATE" for exactly the rows that `--commit` then reports
+   * as "KEPT (yours)". The adoptions are the worst case: their whole point is
+   * the epoch stamp that makes the guard fire, and the rehearsal could not
+   * show it.
+   *
+   * Safe in a dry run because WROTE_AT is in-memory and the process exits.
+   */
+  WROTE_AT.set(`${entity}:${sfId}`, stamp);
   if (!COMMIT) return;
   const { error } = await sb
     .from("commercial_import_map")
@@ -501,6 +515,31 @@ async function loadSalesforce(conn) {
    * the line to revisit — it would then be hiding real ones.
    */
   const SF_ENTRY_STOPPED = "2026-10-14";
+  /*
+   * 🔴 ASSERT THE SHAPE, because the failure is silent and total.
+   *
+   * This is a string comparison on `CreatedDate`, which Salesforce returns as
+   * "2026-10-15T17:19:44.000+0000" and jsforce passes through unparsed. If it
+   * ever arrives as a Date instead — a jsforce option, a cached fixture —
+   * `String(date).slice(0,10)` is "Wed Oct 15", and "W" > "2" makes EVERY work
+   * order ours: `woByOpp` empties, no deal gets its status, no invoice is
+   * raised, and the run reports a clean success having imported nothing.
+   *
+   * Also worth knowing which way the comparison errs. Salesforce returns UTC
+   * and Tomco works Eastern, so a work order created 2026-10-14 at 20:00 ET is
+   * 2026-10-15T00:00Z and sorts as ours. That over-includes: its deal's status
+   * is never imported and its invoice never raised. A four-hour window on one
+   * day, and measured on 2026-10-15 nothing lives in it — the only work orders
+   * past the cutover are the five our own sync caused.
+   */
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
+  const badShape = SF.wos.find((w) => !ISO_DATE.test(String(w.CreatedDate ?? "")));
+  if (badShape) {
+    throw new Error(
+      `WorkOrder.CreatedDate is not the ISO string this expects (${JSON.stringify(String(badShape.CreatedDate).slice(0, 40))}). ` +
+        `Refusing to run: the comparison below would classify every work order as our own and import nothing, silently.`,
+    );
+  }
   SF.ourOwnWorkOrders = new Set(
     SF.wos.filter((w) => String(w.CreatedDate ?? "").slice(0, 10) > SF_ENTRY_STOPPED).map((w) => w.Id),
   );
@@ -895,8 +934,10 @@ async function stageJobs() {
        *
        * `remember(..., epoch)` is what the write-back uses for the same reason:
        * a 1970 stamp makes any row touched since read as human-edited, so the
-       * platform keeps what it owns for the whole dual run. It also sets MAP in
-       * a dry run, which the hand-rolled version did only under --commit.
+       * platform keeps what it owns for the whole dual run. It also sets MAP
+       * AND the stamp in a dry run, which the hand-rolled version did only
+       * under --commit — so the rehearsal now shows the same "kept (yours)"
+       * the real run will.
        */
         await remember(
           "work_order", w.Id, liveWo.id,
@@ -2000,8 +2041,10 @@ async function stageAttendance() {
        *
        * `remember(..., epoch)` is what the write-back uses for the same reason:
        * a 1970 stamp makes any row touched since read as human-edited, so the
-       * platform keeps what it owns for the whole dual run. It also sets MAP in
-       * a dry run, which the hand-rolled version did only under --commit.
+       * platform keeps what it owns for the whole dual run. It also sets MAP
+       * AND the stamp in a dry run, which the hand-rolled version did only
+       * under --commit — so the rehearsal now shows the same "kept (yours)"
+       * the real run will.
        */
         await remember(
           "job", w.Id, liveJob.id,

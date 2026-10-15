@@ -93,6 +93,26 @@ export const ROLLUP_TITLE = /^approved change orders$/i;
  */
 export const CO_MAP_ENTITY = "change_order_record";
 
+/**
+ * A person's answer to "is this a genuine second change order at the same
+ * amount?" — recorded so the tick stops asking.
+ *
+ * 🔴 WITHOUT THIS THE GUARD LOSES MONEY. Refusing to adopt a Salesforce record
+ * that already belongs to another change order is right: the alternative was
+ * two Command Center rows taking turns stealing one link, one of them never
+ * written to Salesforce at all. But a HOLD with no way out is not better. Two
+ * approved change orders on one deal for the same amount is a live pattern
+ * here, and the second one would have held for ever — `markHeld` does not
+ * count attempts, so it never becomes "stopped asking", so the review screen's
+ * retry button never appears, and the sweep skips anything still pending.
+ * Quietly, permanently, that work would never reach `TotalChangeOrder__c`.
+ *
+ * `row_id` is the Command Center change order and `sf_id` is a marker rather
+ * than a Salesforce record, so it cannot collide with a real link.
+ */
+export const CO_FORCE_NEW_ENTITY = "change_order_force_new";
+export const coForceNewMarker = (changeOrderId: string) => `force:${changeOrderId}`;
+
 export type ChangeOrderSyncOutcome = {
   changeOrderId: string;
   label: string;
@@ -272,7 +292,31 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
     }
     out.sfId = sf.Id;
     if (!changeOrderNeedsWrite({ status: sf.Status__c, costChange: sf.CostChange__c }, local)) {
-      return { ...out, action: "nothing", why: `Salesforce already has it as ${sf.Status__c}`, sfId: sf.Id };
+      /*
+       * Nothing to write — but we have just READ the state, so assert it.
+       * Returning no checks would mean `verified` is false and a previously
+       * failed verification could never be cleared: "nothing to do" is exactly
+       * the state a correctly written change order settles into for ever. See
+       * the same reasoning in `updateExisting`'s Closed Won skip.
+       */
+      return {
+        ...out,
+        action: "nothing",
+        why: `Salesforce already has it as ${sf.Status__c}`,
+        sfId: sf.Id,
+        checks: [
+          {
+            name: local.shouldCount ? "Salesforce counts it" : "Salesforce no longer counts it",
+            ok: salesforceCounts(sf.Status__c) === local.shouldCount,
+            detail: `status ${sf.Status__c ?? "unset"}`,
+          },
+          {
+            name: "amount matches",
+            ok: !local.shouldCount || cents(sf.CostChange__c) === Math.round(local.amountCents),
+            detail: `${dollars(cents(sf.CostChange__c)).toFixed(2)} vs ${dollars(local.amountCents).toFixed(2)}`,
+          },
+        ],
+      };
     }
     if (!ctx.apply) {
       return { ...out, action: "updated", sfId: sf.Id, why: `${sf.Status__c ?? "unset"} → ${desired}` };
@@ -387,7 +431,20 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
     };
   }
 
-  if (sameAmount.length === 0 && takenAlready.length > 0) {
+  /*
+   * Has a person already said "yes, it is a genuine second one"? Then stop
+   * holding and create it. Checked before the hold below, which is the only
+   * thing that makes that hold escapable.
+   */
+  const { data: forced } = await sb
+    .from("commercial_import_map")
+    .select("row_id")
+    .eq("entity", CO_FORCE_NEW_ENTITY)
+    .eq("row_id", local.id)
+    .maybeSingle();
+  const personSaysItIsNew = !!forced;
+
+  if (!personSaysItIsNew && sameAmount.length === 0 && takenAlready.length > 0) {
     /*
      * Every candidate at this amount belongs to another Command Center change
      * order. Creating a second record is the RIGHT answer — this is genuinely a
@@ -404,7 +461,7 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
     };
   }
 
-  if (sameAmount.length > 1) {
+  if (!personSaysItIsNew && sameAmount.length > 1) {
     /*
      * No key can tell "entered twice" from "two genuine change orders for the
      * same amount", and that case is live in this data. A person decides.
@@ -416,7 +473,7 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
     };
   }
 
-  if (sameAmount.length === 1) {
+  if (!personSaysItIsNew && sameAmount.length === 1) {
     // ADOPT: Salesforce already has it. Link the two, then make the status agree.
     const sf = sameAmount[0];
     out.sfId = sf.Id;
@@ -485,6 +542,35 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
   }
   out.steps.push("linked in the import map");
   return { ...out, action: "created", why: `created on ${wos.records[0].WorkOrderNumber}`, checks: await readBack(ctx, res.id, local) };
+}
+
+/**
+ * "Yes, it is a genuine second change order at this amount — create it."
+ *
+ * The one action that releases the hold described on `CO_FORCE_NEW_ENTITY`.
+ * Recorded rather than applied immediately, so the decision survives and the
+ * next tick does the writing through the normal path.
+ */
+export async function allowSecondChangeOrder(
+  changeOrderId: string,
+  actorUserId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = admin();
+  const { error } = await sb.from("commercial_import_map").upsert(
+    {
+      sf_id: coForceNewMarker(changeOrderId),
+      entity: CO_FORCE_NEW_ENTITY,
+      row_id: changeOrderId,
+      notes: `a person confirmed this is a second change order at the same amount, not a duplicate${actorUserId ? ` (${actorUserId})` : ""}`,
+      updated_at: new Date(0).toISOString(),
+    },
+    { onConflict: "sf_id,entity" },
+  );
+  if (error) return { ok: false, error: error.message };
+  // Let the next tick act on it rather than waiting out the back-off.
+  const { releaseHoldForChangeOrder } = await import("@/lib/salesforce/tomco-queue");
+  await releaseHoldForChangeOrder(changeOrderId);
+  return { ok: true };
 }
 
 /** Record which Salesforce change order a Command Center one is. */

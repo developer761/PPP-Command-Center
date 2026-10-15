@@ -49,3 +49,21 @@ export function dollarsToCents(raw: unknown): number | null {
   if (Math.abs(cents) > MAX_CENTS) return null;
   return cents;
 }
+
+/**
+ * The open amount for an AR line, or `undefined` to leave the stored one alone.
+ *
+ * Three different answers matter here and the first version collapsed two of
+ * them: unparseable text used to become `0` and write zero over a real figure.
+ * It must mean "do not touch the field".
+ *
+ * A NEGATIVE also means do not touch it. `editArRow` writes into a JSON blob in
+ * `commercial_settings`, so no database CHECK would refuse one, and a negative
+ * receivable is not a thing — it would simply render as one. The ADD form has
+ * always guarded `cents <= 0`; this is the edit path finally agreeing with it,
+ * which matters more since the parser began reading "(500)" as −500.
+ */
+export function arOpenCents(raw: unknown): number | undefined {
+  const cents = dollarsToCents(raw);
+  return cents != null && cents > 0 ? cents : undefined;
+}

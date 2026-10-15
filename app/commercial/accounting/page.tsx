@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { dollarsToCents } from "@/lib/commercial/accounting/money";
+import { arOpenCents, dollarsToCents } from "@/lib/commercial/accounting/money";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -340,7 +340,10 @@ async function editArRowAction(formData: FormData) {
       note: String(formData.get("note") ?? "").trim() || undefined,
       // `null` here means they typed something that is not money. Leaving the
       // field alone beats writing $0.00 over a real figure.
-      openCents: raw ? dollarsToCents(raw) ?? undefined : undefined,
+      // `arOpenCents` keeps the three answers apart: a figure, or undefined to
+      // leave the stored one alone — for unparseable text AND for a negative,
+      // which nothing downstream would refuse. See its docblock.
+      openCents: raw ? arOpenCents(raw) : undefined,
     });
   }
   revalidatePath(BASE);

@@ -209,7 +209,13 @@ async function addLineItemAction(formData: FormData) {
   const unit = String(formData.get("unit") ?? "").trim() || null;
   const priceRaw = String(formData.get("unit_price") ?? "");
   const unit_price_cents = parseDollarsToCents(priceRaw);
-  if (!description || !Number.isFinite(quantity) || quantity <= 0 || unit_price_cents === null) {
+  /*
+   * The sign is checked HERE as well as in `addLineItem`, which returns the
+   * bare token `unit_price_negative` — redirected into the banner verbatim, so
+   * the user would read that string. Newly reachable since
+   * `parseDollarsToCents` began reading "(500)" as −500.
+   */
+  if (!description || !Number.isFinite(quantity) || quantity <= 0 || unit_price_cents === null || unit_price_cents < 0) {
     redirect(withFrom(`/commercial/invoices/${invoice_id}?error=` + encodeURIComponent("Fill description, quantity, and price."), from));
   }
   const result = await addLineItem(invoice_id, { description, quantity, unit, unit_price_cents: unit_price_cents! }, user.id);

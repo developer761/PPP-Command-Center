@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/strip-comments";
-import { dollarsToCents, MAX_CENTS } from "@/lib/commercial/accounting/money";
+import { arOpenCents, dollarsToCents, MAX_CENTS } from "@/lib/commercial/accounting/money";
 
 /**
  * What happens when somebody types something that is not money.
@@ -100,6 +100,16 @@ describe("money typed by a person", () => {
   });
 
   it("the AR row leaves the field alone rather than writing zero over it", () => {
-    expect(SRC).toContain("dollarsToCents(raw) ?? undefined");
+    // Was a source-text match on the exact expression, which broke the moment
+    // the expression gained a sign guard — the same brittleness this file was
+    // just rewritten to stop. Asserted by calling it instead.
+    expect(arOpenCents("1,250.00")).toBe(125_000);
+    expect(arOpenCents("N/A"), "unparseable must not write zero over a real figure").toBeUndefined();
+    expect(arOpenCents("")).toBeUndefined();
+    expect(arOpenCents("0")).toBeUndefined();
+    // A negative receivable is not a thing, and `editArRow` writes into a JSON
+    // blob with no CHECK to refuse one.
+    expect(arOpenCents("-500")).toBeUndefined();
+    expect(arOpenCents("(500)")).toBeUndefined();
   });
 });
