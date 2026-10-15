@@ -1991,3 +1991,53 @@ true — only the bot talking about itself is refused.
 **→ Nothing needed from you unless you disagree.** The one thing worth your
 word: should those four findings be re-coded to A46 as well, so the count
 reflects what happened? We have not touched your grading.
+
+---
+
+## 34. A32 cannot be enforced in code, and the corpus is what says so
+
+**Raised 2026-10-14. No decision needed — recorded so nobody tries this again
+and quietly makes the bot worse.**
+
+A32 says "CUT THE REASON — the ask stands alone." It is the fourth largest
+fault class in your corpus (198 `fell_short`), and it is currently enforced
+only on rapport that sits ALONGSIDE a template, never on the two intents
+where the model writes the whole message (`answer_question` and a reaction).
+That exemption is deliberate and correct: an answer to "how long will it
+take" IS a reason, so checking it there made the bot answer with silence.
+
+We tried to close the gap precisely — flag a justification only when it OPENS
+the sentence that carries the ask, never on the answering sentence, never on
+A7's mandated off-site reason. It worked on every example we wrote. Then we
+scored it against your 2,806 graded messages:
+
+| clauses flagged | A32 faults caught | messages you PRAISED that it refuses |
+|---|---|---|
+| all | 67 of 198 | **13** |
+| without "before" | 11 of 198 | 4 |
+| without "before" and "since" | 8 of 198 | 2 |
+
+**The catching power is almost entirely in "before" and "since", and those
+are the same words you use in messages you praised:**
+
+> "Hi! Yes, we do lime washing. **Before I get you set up for a quote**, can
+> you share your first and last name?"
+>
+> "Got it. **Since you're moving**, are you able to give me the full street
+> address for the house in Centereach?"
+
+Both open the ask with a justification. Both are `did_well`. So the pattern
+you fault and the pattern you praise are the same shape, and no regex can
+separate them — the difference is judgement about whether the reason earns
+its place.
+
+**Why we did not ship it anyway at 67-for-13.** On those two intents the
+model's words ARE the message, so refusing them leaves nothing to send: the
+turn renders empty and the conversation is handed to a person with no draft.
+A false positive there is not a clumsy sentence, it is a customer getting
+silence. Thirteen of those to catch sixty-seven is a bad trade.
+
+**So A32 stays with the model**, which already receives it in the prompt on
+every turn as a critical rule. **→ Worth a look only if you disagree that the
+two examples above are fine** — if they are actually faults you would want
+flagged, the numbers change and we would build it.
