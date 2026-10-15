@@ -1112,6 +1112,48 @@ sandbox has the string on no record at all.
 
 Re-runnable, and it cleans up after itself with `--cleanup`.
 
+### ✅ STAGES 1–4 ARE DONE — 2026-10-14/15
+
+All 98 sold Tomco deals are in Salesforce. Closed Won stands at **98
+opportunities, $2,535,825.79**, and the reconciliation reads **92 of 93 with
+COST and CONTRACT both 1:1**.
+
+| Stage | What happened |
+|---|---|
+| 1 · pair | Cummins → `Cummins -Interior`, PCCI → `Facade Renovation-Eastport` (both the top-ranked candidate, 100 and 98), Flagstar cleared as new. Zero deals waiting on a human |
+| 2 · update | MotorMindz $30,000, Cummins $5,150, PCCI $8,900. **93 linked deals left untouched** — see §1 |
+| 3 · create | Flagstar $2,400 and Thermo Fisher $5,375, both accounts matched by exact name, neither created |
+| 4 · change orders | 2 created ("Drip Caps" $550, "Bathroom Ceiling" $450), 2 approved (CO-32564 $5,200, CO-32246 $865.70), **18 synthetic rollup rows correctly skipped** |
+
+**Four things this proved that were open questions:**
+
+- `ChangeOrder_AllowOnlyAuthorizedUsers` does NOT block the integration user —
+  both status updates went through.
+- The change-order rollup works end to end: DuCon's work order now reads
+  `TotalChangeOrder__c = $865.70` and subtotal+COs `$13,465.70`, matching us.
+- `Corporate_Name__c` holds as "Tomco Painting" on every production write. The
+  sandbox failure in §2f was a stale sandbox mapping, as diagnosed.
+- A flow **renames an opportunity on insert** to `{Account} Opp - {date}`. We
+  sent "Flagstar Bank Trash Enclosures" and Salesforce stored "PCCI Builders
+  Corp. Opp - 2026-10-14". 36 of their 200 Tomco records already carry that
+  pattern. The rename HOLDS on a later update, so `createNew` sets it twice.
+
+#### The one remaining difference is out of scope on purpose
+
+```
+CASH  DuCon- TENANT  $865.57
+```
+
+Cheque 530812 was split by the GC: Salesforce holds the $480.87 against the
+original invoice, and the Command Center holds $865.57 against `INV-0025`, the
+change-order invoice. That is real cash Salesforce does not know about — and
+§3 forbids writing it. Invoice-derived money is permanently read-only in this
+direction, because `planInvoiceColumns` folds tax into the subtotal when no
+3-decimal rate reproduces Salesforce's, and `taxFolded` is stored nowhere. The
+write-back carries **the sale and its value**, never the cash.
+
+---
+
 ### Stage 1 — the pairing screen. Our side only. No Salesforce writes.
 
 §4a. Read-only against Salesforce: list the sold-and-unmapped deals beside the
