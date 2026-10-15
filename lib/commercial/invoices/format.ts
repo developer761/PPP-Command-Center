@@ -50,11 +50,24 @@ export function formatCentsFull(cents: number): string {
 /** Parse a dollar-string ("$1,234.56", "1234.56", "1234") into cents.
  *  Returns null on unparseable input. */
 export function parseDollarsToCents(s: string): number | null {
-  const cleaned = s.replace(/[$,\s]/g, "").trim();
+  /*
+   * Brackets mean negative, which is how a bookkeeper writes one.
+   *
+   * The accounting screen's own parser has always read "(128.40)"; this one did
+   * not, so the same credit was typeable on one screen and rejected on the
+   * other. Mary is the person entering vendor credits and she writes them the
+   * accounting way. Added here so both screens take both forms.
+   */
+  const trimmed = s.trim();
+  const bracketed = /^\(.*\)$/.test(trimmed);
+  const cleaned = (bracketed ? trimmed.replace(/^\(|\)$/g, "") : trimmed).replace(/[$,\s]/g, "").trim();
   if (!/^-?\d+(\.\d{0,2})?$/.test(cleaned)) return null;
   const asNum = parseFloat(cleaned);
   if (!Number.isFinite(asNum)) return null;
-  return Math.round(asNum * 100);
+  // Brackets around an already-negative number would cancel out; a value is
+  // negative if either form says so, never because both do.
+  const cents = Math.round(asNum * 100);
+  return bracketed ? -Math.abs(cents) : cents;
 }
 
 /** "Jul 6, 2026" in America/New_York for invoice header dates. */

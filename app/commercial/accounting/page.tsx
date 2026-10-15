@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { dollarsToCents } from "@/lib/commercial/accounting/money";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -261,38 +262,8 @@ async function settleReimbursementAction(formData: FormData) {
  *
  * Amounts arrive as typed dollars ("1,250.50"), so they are parsed once, here.
  */
-/**
- * Money a person typed → cents, or NULL when it is not money.
- *
- * It used to return 0 for anything unparseable. For three of its callers that
- * was harmless — they reject `cents <= 0` — but it is the wrong shape, and it
- * made "abc" and "nothing" the same value. Payroll is where that becomes
- * expensive: a Gusto cost of `N/A` pasted from a spreadsheet saved as $0.00,
- * cleared every blocker, and let the week post with that person's entire
- * payroll on no job while the screen certified the split tied to the cent.
- *
- * Returning null makes "not a number" distinguishable from "zero", which is
- * the distinction every caller actually needed.
- *
- * Accounting parentheses are read as negative — `(500)` means −500 on every
- * statement Mary handles, and silently reading it as 500 would be worse than
- * rejecting it.
- */
-function dollarsToCents(raw: unknown): number | null {
-  const text = String(raw ?? "").trim();
-  if (!text) return null;
-  const negative = /^\(.*\)$/.test(text);
-  const bare = text.replace(/^\(|\)$/g, "").replace(/[$,\s]/g, "");
-  // Number("") is 0 and Number("1e5") is 100000 — neither is money somebody
-  // typed, so the shape is checked before the value.
-  if (!/^-?\d*\.?\d+$/.test(bare)) return null;
-  const n = Number(bare);
-  if (!Number.isFinite(n)) return null;
-  const cents = Math.round(n * 100) * (negative ? -1 : 1);
-  // Beyond this a bigint overflows Postgres and the raw error reaches the user.
-  if (Math.abs(cents) > 1_000_000_000_00) return null;
-  return cents;
-}
+// `dollarsToCents` now lives in lib/commercial/accounting/money.ts, where a
+// test can call it instead of reading this file's source. See its docblock.
 
 /** A bare YYYY-MM-DD anchored at noon ET, so it lands on the day picked. */
 function pickedDate(raw: unknown): string | undefined {
@@ -588,8 +559,21 @@ async function recordSpendAction(formData: FormData) {
   const cents = dollarsToCents(formData.get("amount"));
   const isLabor = String(formData.get("kind") ?? "") === "labor";
   const view = isLabor ? "labor-out" : "purchases";
-  if (!oppId || cents == null || cents <= 0) {
-    redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount.")}`);
+  /*
+   * ZERO is refused; NEGATIVE is a vendor credit or a return.
+   *
+   * Mary, 2026-10-15: *"This applies to a Vendor invoice credit? Return?"* This
+   * screen is where she enters vendor invoices, and `cents <= 0` meant she
+   * could not enter the credit for one. The AR line and the invoice payment
+   * above keep their `<= 0` — a negative payment or a negative receivable line
+   * is a different thing and not what this is for — but a COST is signed, and
+   * sixteen negative ones are already in the book from Salesforce.
+   *
+   * `dollarsToCents` already reads both "-128.40" and the accounting form
+   * "(128.40)", so either is accepted here.
+   */
+  if (!oppId || cents == null || cents === 0) {
+    redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount. Use a minus sign, or brackets, for a vendor credit or a return.")}`);
   }
   const hoursRaw = String(formData.get("hours") ?? "").trim();
   const { addPurchase } = await import("@/lib/commercial/purchases/db");

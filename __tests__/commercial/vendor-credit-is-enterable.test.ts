@@ -34,10 +34,22 @@ describe("the money parser keeps the sign", () => {
     expect(parseDollarsToCents("$1,250.00")).toBe(125_000);
   });
 
+  it("reads the accounting form, with brackets", () => {
+    // How a bookkeeper writes a credit. The accounting screen's own parser has
+    // always taken it; this one did not, so the same credit was typeable on one
+    // screen and refused on the other.
+    expect(parseDollarsToCents("(128.40)")).toBe(-12_840);
+    expect(parseDollarsToCents("($1,250.00)")).toBe(-125_000);
+    // Brackets AND a minus do not cancel out into a positive.
+    expect(parseDollarsToCents("(-128.40)")).toBe(-12_840);
+  });
+
   it("refuses what is not an amount", () => {
     expect(parseDollarsToCents("")).toBeNull();
     expect(parseDollarsToCents("credit")).toBeNull();
     expect(parseDollarsToCents("--5")).toBeNull();
+    expect(parseDollarsToCents("(5")).toBeNull();
+    expect(parseDollarsToCents("5)")).toBeNull();
     expect(parseDollarsToCents("1.234")).toBeNull();
   });
 
