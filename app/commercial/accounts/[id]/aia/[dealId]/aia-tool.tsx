@@ -448,9 +448,22 @@ async function deleteApplicationAction(formData: FormData) {
  */
 const AIA_COMPLETION_FIELDS = ["from_previous", "this_period", "materials_stored"] as const;
 const NEGATIVE_COMPLETION_MESSAGE =
-  "Only the scheduled value can be negative, for a credit line. Billed to date, this period and materials stored cannot.";
+  "Only a credit line can be billed negative. Give this line a negative scheduled value, or enter the amounts as positive.";
 
+/**
+ * The same rule `clampCompletionToSign` enforces: completion follows the sign
+ * of the line. A credit line (negative scheduled value) bills negative; a
+ * normal one cannot.
+ *
+ * Caught here rather than left to the database so the person reading it gets a
+ * sentence instead of `new row for relation "commercial_aia_line_items"
+ * violates check constraint …`. The library would silently clamp a negative on
+ * a positive line to zero — a money field accepting input and storing nothing,
+ * reporting success — which is the other half of why this says no out loud.
+ */
 function negativeCompletionField(read: (name: string) => number): boolean {
+  const isCreditLine = read("scheduled") < 0;
+  if (isCreditLine) return false;
   return AIA_COMPLETION_FIELDS.some((f) => read(f) < 0);
 }
 

@@ -109,42 +109,65 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
    * while ten things were waiting. A preview that changes what it previews is
    * not a preview.
    */
-  const pending = opts.apply
-    ? await claimPending(opts.limit ?? PER_TICK)
-    : await peekPending(opts.limit ?? PER_TICK);
-  if (pending.length === 0) return empty;
+  const limit = opts.limit ?? PER_TICK;
+  /*
+   * A plan run takes the whole list at once — it changes nothing, so there is
+   * nothing to strand. An apply run claims ONE AT A TIME, below.
+   */
+  const planned = opts.apply ? null : await peekPending(limit);
+  if (planned && planned.length === 0) return empty;
 
   const conn = await getSalesforceClient();
   const ctx = { conn, actorUserId: null, apply: opts.apply };
 
   /*
-   * The candidate list and the review decisions are read ONCE for the tick,
-   * not per entry. The candidate query is the expensive part (43 open
-   * estimates, paged), and a tick with five sales in it would otherwise make
-   * the same call five times for the same answer.
-   *
-   * Only when there is a sale to decide. A tick carrying nothing but change
-   * orders must not spend a Salesforce round trip on pairing candidates it
-   * will never look at.
+   * The candidate list and the review decisions cost one expensive Salesforce
+   * round trip (43 open estimates, paged), and a tick with five sales in it
+   * must not pay for it five times. Loaded LAZILY now rather than up front:
+   * with entries claimed one at a time we no longer know in advance whether
+   * this tick contains a sale, and a tick carrying only change orders must not
+   * spend that call on candidates it will never look at.
    */
-  const hasSale = pending.some((e) => e.kind === "sale");
-  let candidates: SfCandidate[] = [];
-  let resolved = new Map<string, { decision: string }>();
-  if (hasSale) {
-    [candidates, resolved] = await Promise.all([
-      listOpenSalesforceCandidates(),
-      listResolvedDeals() as Promise<Map<string, { decision: string }>>,
-    ]);
-  }
+  let candidates: SfCandidate[] | null = null;
+  let resolved: Map<string, { decision: string }> | null = null;
+  const pairingContext = async () => {
+    if (!candidates || !resolved) {
+      [candidates, resolved] = await Promise.all([
+        listOpenSalesforceCandidates(),
+        listResolvedDeals() as Promise<Map<string, { decision: string }>>,
+      ]);
+    }
+    return { candidates, resolved };
+  };
 
-  const out: TickSummary = { ...empty, claimed: pending.length, outcomes: [] };
+  const out: TickSummary = { ...empty, outcomes: [] };
 
-  for (const entry of pending) {
+  for (let i = 0; i < limit; i++) {
+    /*
+     * 🔴 ONE CLAIM AT A TIME.
+     *
+     * This used to claim all ten up front. Each entry costs ten to twenty
+     * seconds — a six-second wait for Salesforce's rollups plus several SOQL
+     * round trips — so a full batch can run to 200s against a `maxDuration` of
+     * 300. A tick killed at entry four left entries five to ten claimed and
+     * untouchable for CLAIM_STALE_MS, dropping throughput from ten a minute to
+     * four per ten minutes exactly when the queue is deepest.
+     *
+     * Claiming one at a time costs one extra round trip per entry, against
+     * entries that already take seconds, and means a death mid-tick strands at
+     * most one.
+     */
+    const entry = opts.apply ? (await claimPending(1))[0] : planned?.[i];
+    if (!entry) break;
+    out.claimed++;
     try {
-      const o =
-        entry.kind === "change_order"
-          ? await runChangeOrder(ctx, entry)
-          : await runSale(ctx, entry, candidates, resolved);
+      let o: TickOutcome;
+      if (entry.kind === "change_order") {
+        o = await runChangeOrder(ctx, entry);
+      } else {
+        const { candidates: c, resolved: r } = await pairingContext();
+        o = await runSale(ctx, entry, c, r);
+      }
       out.outcomes.push(o);
       if (o.result === "written") out.written++;
       else if (o.result === "nothing") out.nothing++;
@@ -162,15 +185,6 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
       out.failed++;
     }
   }
-  /*
-   * `ok` has to be able to be FALSE.
-   *
-   * It was initialised true and never assigned anywhere, so an external monitor
-   * reading this route saw success on a tick where all ten entries failed — a
-   * field that cannot fail, which this codebase treats as worse than no field.
-   * Held entries are not failures: they are the system correctly waiting for a
-   * person.
-   */
   out.ok = out.failed === 0;
   return out;
 }

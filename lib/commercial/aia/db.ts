@@ -1177,6 +1177,24 @@ function clampCompletionToSign(line: {
   };
 }
 
+/**
+ * The three `>= 0` CHECKs that migration 20261015190000 removes.
+ *
+ * Until it is applied, a credit line billed negative — the thing
+ * `clampCompletionToSign` deliberately produces — is refused by the database,
+ * and the raw constraint text would reach whoever typed it. Translated here so
+ * the message names the cause and the remedy.
+ */
+function completionConstraintMessage(message: string): string | null {
+  if (!/commercial_aia_line_items_(from_previous|this_period|materials_stored)_cents_check/.test(message)) {
+    return null;
+  }
+  return (
+    "This database still has the old rule that a billed amount cannot be negative, so a credit line " +
+    "cannot be billed on it. Apply migration 20261015190000_aia_credit_lines_can_be_billed.sql and try again."
+  );
+}
+
 export async function upsertAiaLineItem(
   applicationId: string,
   line: Partial<AiaLineItem> & { id?: string },
@@ -1214,7 +1232,9 @@ export async function upsertAiaLineItem(
       .eq("application_id", applicationId)
       .select(COLS)
       .maybeSingle();
-    if (error || !data) return { ok: false, error: error?.message ?? "update_failed" };
+    if (error || !data) {
+      return { ok: false, error: (error && completionConstraintMessage(error.message)) ?? error?.message ?? "update_failed" };
+    }
     // 2026-07-29 re-audit fix: the G703 schedule of values IS the dollar
     // breakdown of a payment certificate — every change now leaves a trail.
     await logUpdate("commercial_aia_line_items", line.id, line, data, actorUserId ?? null);
@@ -1247,7 +1267,9 @@ export async function upsertAiaLineItem(
     .insert(payload)
     .select(COLS)
     .maybeSingle();
-  if (error || !data) return { ok: false, error: error?.message ?? "insert_failed" };
+  if (error || !data) {
+    return { ok: false, error: (error && completionConstraintMessage(error.message)) ?? error?.message ?? "insert_failed" };
+  }
   await logInsert("commercial_aia_line_items", (data as AiaLineItem).id, data, actorUserId ?? null);
   return { ok: true, value: data as AiaLineItem };
 }

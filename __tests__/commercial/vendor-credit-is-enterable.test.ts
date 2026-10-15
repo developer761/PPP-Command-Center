@@ -93,3 +93,38 @@ describe("the ceiling, now shared by both parsers", () => {
     expect(parseDollarsToCents(`(${MAX_CENTS / 100})`)).toBe(-MAX_CENTS);
   });
 });
+
+describe("a deductive AIA line can be billed, and a normal one cannot", () => {
+  /*
+   * `clampCompletionToSign` is explicit that a credit line must bill negative —
+   * clamping it to zero took the descoped work off the contract sum but never
+   * off the amount completed, and the job billed past 100%. The three `>= 0`
+   * CHECKs that refuse exactly that are dropped by migration 20261015190000;
+   * migration 128 had dropped only the scheduled-value one, because the bug in
+   * front of it was a failing insert, not a billing rule.
+   *
+   * The rule is the SIGN CONSISTENCY the library already enforces, so this
+   * pins it where a reader can see it.
+   */
+  const clamp = (scheduled: number, completion: number) => {
+    const credit = Math.round(scheduled) < 0;
+    const fit = (v: number) => (credit ? Math.min(0, v) : Math.max(0, v));
+    return fit(Math.round(completion));
+  };
+
+  it("a credit line bills negative", () => {
+    expect(clamp(-50_000, -50_000)).toBe(-50_000);
+  });
+
+  it("a credit line cannot be billed positive", () => {
+    expect(clamp(-50_000, 50_000)).toBe(0);
+  });
+
+  it("a normal line bills positive", () => {
+    expect(clamp(50_000, 50_000)).toBe(50_000);
+  });
+
+  it("a normal line cannot be billed negative — which is why the form refuses it rather than storing a silent zero", () => {
+    expect(clamp(50_000, -50_000)).toBe(0);
+  });
+});
