@@ -976,6 +976,49 @@ export async function updateAiaApplication(
     }
   }
 
+  /*
+   * 🔴 AN APPLICATION WITH NOTHING ON IT IS NOT A CERTIFICATE.
+   *
+   * Mary, 2026-10-15, on Bannett: *"I see this submitted AIA#4 but it was not
+   * sent- nor created by Stepahnie or myself. Does CC generate this
+   * automatically?"* It does not — Stephanie created it at 16:16, three
+   * minutes after #3 — but it was plainly a mis-click: no start date, $0.00
+   * billed, and its retainage sitting at 0% where #1-#3 were all 5%.
+   *
+   * It mattered because applications are CUMULATIVE: the newest issued one
+   * governs the balance. So an empty #4 at 0% released the $1,875 of retention
+   * still being held, which is exactly the gap between Mary's $4,750 and the
+   * $6,625 the platform was showing Alex. Two jobs are in that state — Bannett
+   * #4 and LMJ Water Lilies #3 — and both were submitted within a minute of
+   * being created.
+   *
+   * Nothing is lost by refusing: a draft with nothing on it can still be
+   * edited, and a genuine retainage-release application bills $0 this period
+   * but carries `is_retainage_release`, which is exempt below.
+   */
+  if (patch.status !== undefined && patch.status !== "draft" && before.status === "draft" && !before.is_retainage_release) {
+    const sbLines = commercialDb();
+    const { data: lineRows } = await sbLines
+      .from("commercial_aia_line_items")
+      .select("this_period_cents, materials_stored_cents")
+      .eq("application_id", id);
+    const billed = (lineRows ?? []).reduce(
+      (n, l) =>
+        n +
+        Number((l as { this_period_cents?: number }).this_period_cents ?? 0) +
+        Number((l as { materials_stored_cents?: number }).materials_stored_cents ?? 0),
+      0,
+    );
+    if (billed === 0) {
+      return {
+        ok: false,
+        error:
+          "This application bills nothing this period, so there is no certificate to issue. " +
+          "Put an amount on a line first, or delete it if it was opened by mistake.",
+      };
+    }
+  }
+
   // ISSUING freezes G702 lines 1 and 2 onto the application.
   //
   // Both were recomputed on every read — line 1 from the live contract ladder,
