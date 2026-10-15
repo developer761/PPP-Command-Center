@@ -356,11 +356,73 @@ const PRICE = new RegExp(
     // A money word followed by ANY amount, however it is introduced. The old
     // version listed the introducers — is, will be, starts at, around, about —
     // so "costs run about 1800" and "price: 2500" both went straight through.
-    String.raw`\b(?:costs?|pric\w*|quotes?|charges?|estimates?|rates?|fee)\b[^.!?]{0,24}\d`,
+    /**
+     * A money word near a number — but the number has to be MONEY.
+     *
+     * This matched any digit within 24 characters of a money word, and in a
+     * painting conversation most digits are not prices. Three messages Kate
+     * PRAISED were refused as price quotes:
+     *
+     *   "Before we get your text quote moving, is 8 Marlo, Livingston…"
+     *                                               ^ a house number
+     *   "Since you're looking for a rough estimate for a living area and 2
+     *    bedrooms"                                                    ^ a count
+     *   "The quote covers 3 rooms"                                    ^ a count
+     *
+     * So the bot could not say "estimate for 2 bedrooms" — a sentence this
+     * flow produces constantly — without the turn being refused for quoting
+     * a price it never quoted.
+     *
+     * The lookahead excludes a digit that is plainly a COUNT or an ADDRESS:
+     * followed by a room, unit, measurement or street word. A real price is
+     * followed by none of those, and every money-shaped form is still caught
+     * by the $ , currency-word and magnitude branches around this one.
+     *
+     * Found 2026-10-15 by scoring the price guard against the corpus and
+     * checking whether the false positives were mine. They were not — they
+     * predate this week — which is the only reason they were looked at.
+     */
+    String.raw`\b(?:costs?|pric\w*|quotes?|charges?|estimates?|rates?|fee)\b[^.!?]{0,24}\d+(?!\d)(?!\s*(?:bed|bath|room|rooms|bedrooms?|bathrooms?|walls?|ceilings?|doors?|windows?|coats?|floors?|stories|storeys|square|sq\.?\s|sqft|feet|ft\b|gallons?|[a-z]*\s+(?:st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|way|ct|court|pl|place)\b|[A-Z][a-z]{2,}))`,
     // …and an amount followed by a money word, which is the other order.
     String.raw`\d[^.!?]{0,16}\b(?:per hour|an hour|per room|a room|per square|per sq)\b`,
     // Written amounts. "roughly fifteen hundred" carries no digit at all.
-    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|grand|k)\b`,
+    /**
+     * …AND THE SAME UNIT CARVE-OUT, which this line never had.
+     *
+     * "About two thousand sq ft of wall" was refused as a price quote.
+     * Square footage is the single most ordinary thing in a painting
+     * conversation, and A9 asks the bot to summarise scope — so the rule
+     * against quoting a price was making it unable to repeat back the size
+     * of the job. Two correct rules with no legal move between them, which
+     * is this codebase's most common failure and was sitting inside the
+     * price check itself.
+     *
+     * Found 2026-10-15 while testing the magnitude line below; the false
+     * positive belonged to this one.
+     */
+    String.raw`\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(?:hundred|thousand|grand|k)\b(?!\s*(?:square|sq\.?\s|sq\b|feet|ft\b|sqft|gallons?|litres?|liters?))`,
+    /**
+     * A MAGNITUDE WITH NO NUMBER AT ALL — "somewhere in the low thousands".
+     *
+     * Found 2026-10-15 while re-probing the findings a verifier had refuted.
+     * A1 is enforced well: of seven plausible prices, six were refused. These
+     * five were not, and A1's corrective forbids all of them — "gave no
+     * price, no ballpark AND NO RANGE":
+     *
+     *   "Expect somewhere in the low thousands."
+     *   "It's usually in the hundreds."
+     *   "Somewhere in the mid thousands."
+     *   "Under a thousand usually."
+     *   "In the low to mid thousands."
+     *
+     * No digit, no currency word, and a customer reads every one as a price.
+     *
+     * THE UNIT IS THE DISCRIMINATOR. "a few thousand SQUARE FEET" is a
+     * measurement and the single most ordinary thing in a painting
+     * conversation, so a magnitude followed by a unit is never a price. That
+     * negative lookahead is the whole safety of this line.
+     */
+    String.raw`\b(?:in\s+the\s+|somewhere\s+in\s+the\s+|around\s+the\s+|about\s+the\s+|under\s+a\s+|over\s+a\s+|low|mid|high)\s*(?:to\s+(?:low|mid|high)\s*)?(?:hundreds?|thousands?)\b(?!\s*(?:square|sq\.?\s|feet|ft\b|sqft|gallons?|litres?|liters?))`,
     // A WRITTEN NUMBER MEETING A CURRENCY WORD, which the line above misses
     // because it only looks for a MAGNITUDE after the number. "fifty dollars"
     // is as much a quote as "$50", and it went straight through: probed with
