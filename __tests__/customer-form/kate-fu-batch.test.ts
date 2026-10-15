@@ -6,9 +6,13 @@
  * them, each test naming the item it belongs to.
  */
 import { describe, it, expect } from "vitest";
-import { finishOptionsFor } from "@/lib/customer-form/material-types";
+import { finishOptionsFor, PAINT_LINE_VALUES, BASE_FINISHES } from "@/lib/customer-form/material-types";
 import { buildConfirmationEmail } from "@/lib/customer-form/confirmation-email";
 import { inBuyList } from "@/lib/supplier-order/color-note-items";
+import { surfacesMissingFinish, missingFinishMessage } from "@/lib/customer-form/missing-finish";
+import { COLOR_BRANDS, DEFAULT_COLOR_BRAND } from "@/lib/customer-form/color-brands";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /** Minimal real inputs for buildConfirmationEmail — the templates and the
  *  renderer are not what FU.8 is about. */
@@ -234,5 +238,184 @@ describe("FU.6 — products whose single list IS the exterior list", () => {
     expect(finishOptionsFor([], "Ultra Spec Interior", "interior")).toEqual([
       "Flat", "Eggshell", "Satin", "Semi-Gloss",
     ]);
+  });
+});
+
+describe("FU.1 — a color with no finish blocks the save", () => {
+  const R = (o: Partial<Parameters<typeof surfacesMissingFinish>[0][number]>) => ({
+    room: "Kitchen", surface: "Walls", ...o,
+  });
+
+  it("blocks a color with no finish", () => {
+    expect(surfacesMissingFinish([R({ colorId: "c1", finish: null })]))
+      .toEqual(["Kitchen → Walls"]);
+  });
+
+  it("ALLOWS an empty surface — saving partial progress is the point", () => {
+    // Her ask is explicit: "continue allowing the customer to save the form
+    // without all colors filled in so they can save progress and come back."
+    expect(surfacesMissingFinish([R({ colorId: null, finish: null })])).toEqual([]);
+  });
+
+  it("allows a surface they said not to paint", () => {
+    expect(surfacesMissingFinish([R({ colorId: "c1", finish: null, skipped: true })])).toEqual([]);
+  });
+
+  it("allows a color that has its finish", () => {
+    expect(surfacesMissingFinish([R({ colorId: "c1", finish: "Flat" })])).toEqual([]);
+  });
+
+  it("treats a whitespace finish as missing", () => {
+    expect(surfacesMissingFinish([R({ colorId: "c1", finish: "   " })]))
+      .toEqual(["Kitchen → Walls"]);
+  });
+
+  it("names every offender, room and surface", () => {
+    expect(surfacesMissingFinish([
+      R({ colorId: "c1", finish: "Flat" }),
+      R({ room: "Hall", surface: "Trim", colorId: "c2", finish: null }),
+      R({ room: "Bath", surface: "Ceiling", colorId: "c3", finish: null }),
+    ])).toEqual(["Hall → Trim", "Bath → Ceiling"]);
+  });
+
+  it("promises their other answers are safe", () => {
+    // The September failure was a refusal that DID lose their work. The
+    // message has to say this one does not, or it reads the same.
+    expect(missingFinishMessage(["Hall → Trim"])).toMatch(/Nothing else you have entered is lost/);
+    expect(missingFinishMessage(["a", "b"])).toContain("a; b");
+    expect(missingFinishMessage([])).toBe("");
+  });
+});
+
+describe("FU.1 — the form actually refuses, in the browser", () => {
+  const src = () =>
+    readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*\/\/.*$/gm, " ");
+
+  it("returns before sending when a finish is missing", () => {
+    const s = src();
+    expect(s).toMatch(/if \(!isStaffEntry && missingFinish\.length > 0\)/);
+    const at = s.indexOf("missingFinish.length > 0");
+    expect(s.slice(at, at + 220)).toMatch(/return;/);
+  });
+
+  it("uses the shared message, not a second copy of the wording", () => {
+    expect(src()).toContain("missingFinishMessage(missingFinish)");
+  });
+
+  it("drops out of the confirmation step so they see the form again", () => {
+    const s = src();
+    const at = s.indexOf("missingFinish.length > 0");
+    expect(s.slice(at, at + 220)).toContain("setConfirming(false)");
+  });
+});
+
+describe("FU.15 / FU.16 — the product line list", () => {
+  it("offers an interior and an exterior of each line Kate named", () => {
+    for (const v of [
+      "Ultra Spec Interior", "Ultra Spec Exterior",
+      "Regal Select Interior", "Regal Select Exterior",
+      "Ben Interior", "Ben Exterior",
+      "Aura Interior", "Aura Exterior",
+      "SW Emerald Interior", "SW Emerald Exterior",
+      "SW Duration Interior", "SW Duration Exterior",
+      "SW Super Paint Interior", "SW Super Paint Exterior",
+    ]) {
+      expect(PAINT_LINE_VALUES, `${v} missing from the picker`).toContain(v);
+    }
+  });
+
+  it("adds Evo by Gemini (FU.16)", () => {
+    expect(PAINT_LINE_VALUES).toContain("Evo by Gemini");
+  });
+
+  it("gives each new variant the sheens for its OWN side of the wall", () => {
+    // None declares a finish list — inventing sheens is how a deck gets
+    // ordered in eggshell — so each must inherit the right vocabulary.
+    // BASE_FINISHES is what the picker passes; ALL_FINISH_VALUES is the
+    // server's accept-list and is deliberately wider.
+    const ext = finishOptionsFor(BASE_FINISHES, "Regal Select Exterior", "exterior");
+    expect(ext).toContain("Low Lustre");
+    expect(ext).toContain("Soft Gloss");
+    expect(ext).not.toContain("Eggshell");
+
+    const int = finishOptionsFor(BASE_FINISHES, "Regal Select Interior", "interior");
+    expect(int).toContain("Eggshell");
+    expect(int).not.toContain("Low Lustre");
+  });
+
+  it("orders the inherited exterior sheens Kate's way (FU.6)", () => {
+    const ext = finishOptionsFor(BASE_FINISHES, "Aura Exterior", "exterior");
+    const named = ext.filter((f) => ["Flat", "Satin", "Low Lustre", "Soft Gloss"].includes(f));
+    expect(named).toEqual(["Flat", "Satin", "Low Lustre", "Soft Gloss"]);
+  });
+
+  it("every new value is accepted by the server", () => {
+    // A dropdown option the submit route rejects is the 400 that told a
+    // customer their own valid choice was invalid (2026-09-09).
+    for (const v of ["Regal Select Exterior", "Aura Interior", "Evo by Gemini", "SW Duration Exterior"]) {
+      expect(PAINT_LINE_VALUES).toContain(v);
+    }
+  });
+});
+
+describe("FU.10 — the brand toggle", () => {
+  it("offers Benjamin Moore, Sherwin Williams and Farrow & Ball", () => {
+    expect(COLOR_BRANDS.map((b) => b.label)).toEqual([
+      "Benjamin Moore", "Sherwin Williams", "Farrow & Ball",
+    ]);
+  });
+
+  it("defaults to Benjamin Moore — 'as now'", () => {
+    expect(DEFAULT_COLOR_BRAND.id).toBe("benjamin-moore");
+    expect(COLOR_BRANDS[0].id).toBe("benjamin-moore");
+  });
+
+  it("carries every URL Kate listed, rejoined where the PDF wrapped them", () => {
+    const all = COLOR_BRANDS.flatMap((b) => b.links.map((l) => l.href));
+    for (const href of [
+      "https://www.farrow-ball.com/us/paint/all-paint-colours",
+      "https://www.farrow-ball.com/us/room-inspiration",
+      "https://www.farrow-ball.com/us/paint/exterior-masonry",
+      "https://www.sherwin-williams.com/en-us/color/color-collections",
+      // "color-vis / ualizer" in her PDF — a URL wrong by one character
+      // still looks right in review and 404s for the customer.
+      "https://www.sherwin-williams.com/en-us/color/color-tools/color-visualizer/cvw/#/active",
+      "https://www.sherwin-williams.com/en-us/color/exterior-paint-colors",
+      // "vin / yl-safe" in her PDF.
+      "https://www.sherwin-williams.com/en-us/color/color-collections/vinyl-safe",
+    ]) {
+      expect(all, `${href} missing`).toContain(href);
+    }
+  });
+
+  it("keeps the Benjamin Moore links that were already there", () => {
+    const bm = COLOR_BRANDS[0].links.map((l) => l.href);
+    expect(bm).toContain("https://www.benjaminmoore.com/en-us/color-overview/color-palettes");
+    expect(bm).toContain("https://www.benjaminmoore.com/en-us/color-overview/find-your-color/color-a-room");
+    expect(bm).toContain("https://www.benjaminmoore.com/en-us/b/woodluxe-exterior-wood-stain");
+  });
+
+  it("has no line breaks or spaces hiding in a URL", () => {
+    for (const b of COLOR_BRANDS) {
+      for (const l of b.links) {
+        expect(l.href, l.href).toMatch(/^https:\/\/\S+$/);
+        expect(l.href).not.toMatch(/\s/);
+      }
+    }
+  });
+
+  it("gives every brand its own blurb and at least three links", () => {
+    for (const b of COLOR_BRANDS) {
+      expect(b.blurb.length, b.label).toBeGreaterThan(40);
+      expect(b.links.length, b.label).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("shows the vinyl chart only under Benjamin Moore", () => {
+    // It is a BM chart; Sherwin Williams has its own VinylSafe link.
+    const src = readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8");
+    expect(src).toMatch(/brand\.id === "benjamin-moore" && \(/);
   });
 });

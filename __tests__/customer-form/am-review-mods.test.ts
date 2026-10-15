@@ -15,11 +15,15 @@ describe("the Vinyl Siding Colors button", () => {
     const s = form();
     const cardAt = s.indexOf("Need help picking colors?");
     const vinylAt = s.indexOf("Vinyl Siding Colors");
-    const stainsAt = s.indexOf("Exterior stains");
+    // Kate FU.10 moved the brand links into COLOR_BRANDS, so "Exterior
+    // stains" is no longer a literal in this file. Its siblings are now the
+    // one anchor they all render through.
+    const linksAt = s.indexOf("{brand.links.map((l) => (");
     expect(cardAt).toBeGreaterThan(-1);
+    expect(linksAt, "brand links are not rendered from the data").toBeGreaterThan(-1);
     expect(vinylAt).toBeGreaterThan(cardAt);
     // Next to its siblings, not stranded somewhere else on the page.
-    expect(Math.abs(vinylAt - stainsAt)).toBeLessThan(1200);
+    expect(Math.abs(vinylAt - linksAt)).toBeLessThan(2000);
   });
 
   it("points at the PDF she linked", () => {

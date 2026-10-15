@@ -184,6 +184,49 @@ export const PAINT_LINES: ReadonlyArray<MaterialType> = [
     value: "Ultra Spec Exterior", group: "Benjamin Moore — Exterior", category: "exterior",
     finishes: ["Low Lustre", "Satin", "Soft Gloss"],
   },
+  /**
+   * ── FU.15 — AN INTERIOR AND AN EXTERIOR OF EACH LINE ──────────────────
+   *
+   * Kate (2026-10-15): "Product line selector: add an interior and exterior
+   * version of each line (where available/applicable). Example: Ultra Spec
+   * Interior, Ultra Spec Exterior, Regal Select Interior, Regal Select
+   * Exterior, etc."
+   *
+   * Ultra Spec already had both. These are the rest of the lines Benjamin
+   * Moore and Sherwin Williams genuinely sell on both sides of the wall.
+   *
+   * NONE OF THEM DECLARES A FINISH LIST, deliberately. The per-product
+   * sheens in this file all come from Jason's completed sheet, and inventing
+   * them is how a deck gets ordered in eggshell. With no list each falls
+   * through to the scoped vocabulary — the interior sheens for an interior
+   * variant, Kate's FU.6 exterior ladder for an exterior one — which is
+   * exactly what that fallback is for. When Jason sends per-variant sheens
+   * they slot in here and the fallback stops applying.
+   *
+   * ⚠️ MaterialType__c / Product_Lines__c are Salesforce picklists. If
+   * either is RESTRICTED these values must be added there or the write is
+   * silently dropped — the same flag that is already open with Katie for the
+   * line-only values.
+   */
+  { value: "Regal Select Interior", group: "Benjamin Moore", category: "interior" },
+  { value: "Regal Select Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Ben Interior", group: "Benjamin Moore", category: "interior" },
+  { value: "Ben Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "Aura Interior", group: "Benjamin Moore", category: "interior" },
+  { value: "Aura Exterior", group: "Benjamin Moore — Exterior", category: "exterior" },
+  { value: "SW Emerald Interior", group: "Sherwin Williams", category: "interior" },
+  { value: "SW Emerald Exterior", group: "Sherwin Williams", category: "exterior" },
+  { value: "SW Duration Interior", group: "Sherwin Williams", category: "interior" },
+  { value: "SW Duration Exterior", group: "Sherwin Williams", category: "exterior" },
+  { value: "SW Super Paint Interior", group: "Sherwin Williams", category: "interior" },
+  { value: "SW Super Paint Exterior", group: "Sherwin Williams", category: "exterior" },
+  /**
+   * FU.16 — "Add Evo by Gemini to the product line list on the order
+   * materials screen." Gemini is a third vendor alongside BM and SW, so it
+   * gets its own group rather than being filed under either. No finish list
+   * for the same reason as above.
+   */
+  { value: "Evo by Gemini", group: "Gemini", category: "any" },
   {
     value: "Regal Select", group: "Benjamin Moore", category: "interior",
     // §6: "Regal select satin/pearl". Stays INTERIOR — Jason's exterior answer
