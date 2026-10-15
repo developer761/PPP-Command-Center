@@ -192,8 +192,20 @@ describe("a multi-room line has no pickers for a customer", () => {
     expect(src()).toMatch(/hideSurfaces \? "Colors for these rooms" : "Notes for this room"/);
   });
 
-  it("tells the customer why the pickers are missing", () => {
-    expect(src()).toMatch(/One set of color pickers can't describe several rooms/);
+  it("tells the customer what to do, in their words not ours", () => {
+    // Katie, 2026-10-15: "remove the note about 'one set of color pickers
+    // can't describe multiple rooms' — the customer doesn't know what the
+    // Color picker is referring to and may be confused."
+    expect(src()).toMatch(/Please list the selected colors in each room in the notes box below/);
+  });
+
+  it("does not name a control the customer cannot see", () => {
+    // The pickers are HIDDEN on a multi-room line, so the old copy explained
+    // our own constraint using our own word for a thing not on their screen.
+    // Scoped to the customer-facing strings; the code may still say "picker".
+    const strings = [...src().matchAll(/"([^"\n]{25,})"/g)].map((m) => m[1]);
+    const jargon = strings.filter((t) => /color picker/i.test(t));
+    expect(jargon, `customer-facing copy naming the picker:\n${jargon.join("\n")}`).toEqual([]);
   });
 
   /* ── Her page-2 rule ──────────────────────────────────────────────── */

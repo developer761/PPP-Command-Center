@@ -2154,11 +2154,19 @@ function LineItemSection({
           {/* Kate round-3 #33: nothing was scoped for this room in Salesforce,
               so there is nothing to pick a color for. Say so plainly instead
               of inventing a "Walls" row. */}
+          {/* Katie, 2026-10-15: "no need to explain that there are no
+              surfaces selected and that the team is sorting it out … It can
+              just say 'Please list any selected colors in the notes box
+              below.'"
+
+              The old copy told a homeowner about a gap in OUR Salesforce
+              data and promised we were fixing it — an internal problem
+              handed to the one person who can do nothing about it, and left
+              wondering whether their job is in trouble. What they need is
+              the sentence saying what to do. */}
           {hasNoSurfaces && (
             <div role="note" className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50/70 px-4 py-3 text-[13px] text-ppp-orange-700 leading-snug">
-              No surfaces are set up for this room yet, so there&rsquo;s nothing to pick here.
-              Our team is sorting it out — you can leave a note below if you already know
-              what you&rsquo;d like.
+              Please list any selected colors in the notes box below.
             </div>
           )}
           {!hideSurfaces && surfaces.map((surface) => (
@@ -2199,9 +2207,19 @@ function LineItemSection({
                 .map((r) => r.replace(/\b[a-z]/g, (c) => c.toUpperCase()))
                 .join(", ")}
               .
+              {/* Katie, 2026-10-15: "remove the note about 'one set of color
+                  pickers can't describe multiple rooms' — the customer
+                  doesn't know what the Color picker is referring to and may
+                  be confused."
+
+                  Right, and the reason generalizes: "color picker" is OUR
+                  word for a control this customer cannot even see, because
+                  the pickers are hidden on a multi-room line. The sentence
+                  explained our constraint instead of telling them what to
+                  do. The room list above it is the useful half and stays. */}
               <span className="block mt-0.5 text-amber-800">
                 {hideSurfaces
-                  ? "One set of color pickers can't describe several rooms, so tell us the colors for each room in the box below."
+                  ? "Please list the selected colors in each room in the notes box below."
                   : "The colors above apply to all of them. If you want different colors room by room, say so in the notes."}
               </span>
               {!state.notes.trim() && (
