@@ -322,19 +322,41 @@ async function readSharedSnapshot(
 async function writeSharedSnapshot(key: string, snap: SalesforceSnapshot): Promise<void> {
   try {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) return;
+    /**
+     * This write was measured at ~20s for the full snapshot on 2026-10-15 —
+     * nearly as long as fetching it from Salesforce. The payload is a 6.1MB
+     * gzip, which base64 inflates by a third to ~8.1MB of text before it
+     * goes over HTTP to PostgREST.
+     *
+     * Which of those three steps costs the time is not obvious — serialize,
+     * encode, or upload — and changing the storage format on a guess is how
+     * you spend an afternoon making the wrong part faster. So each step is
+     * timed and logged. The next cron run says where the 20 seconds go.
+     */
+    const tSer = Date.now();
     const gz = gzipSync(Buffer.from(JSON.stringify(snap), "utf-8"));
+    const msSerialize = Date.now() - tSer;
     if (gz.length > SHARED_SNAPSHOT_MAX_GZ_BYTES) {
       console.warn(`[SF] snapshot too large to share-cache (${(gz.length / 1e6).toFixed(1)}MB gz) — skipping shared write`);
       return;
     }
+    const tEnc = Date.now();
+    const b64 = gz.toString("base64");
+    const msEncode = Date.now() - tEnc;
     const sb = snapshotCacheClient();
+    const tUp = Date.now();
     await sb.from("snapshot_cache").upsert({
       key,
-      payload_gz: gz.toString("base64"),
+      payload_gz: b64,
       fetched_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
     });
-    console.log(`[SF] snapshot written to SHARED cache (${(gz.length / 1e6).toFixed(1)}MB gz)`);
+    const msUpload = Date.now() - tUp;
+    console.log(
+      `[SF] shared-cache write "${key}": ${(gz.length / 1e6).toFixed(1)}MB gz ` +
+      `→ ${(b64.length / 1e6).toFixed(1)}MB b64 · ` +
+      `serialize ${msSerialize}ms · encode ${msEncode}ms · upload ${msUpload}ms`
+    );
   } catch (err) {
     console.warn("[SF] shared snapshot write failed (non-fatal):", err instanceof Error ? err.message : err);
   }
