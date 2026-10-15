@@ -735,10 +735,78 @@ if (unreachable.length) {
   for (const i of unreachable) console.log(`     ${i}`);
 }
 
+/**
+ * EVERY STATE STILL HAS A LEGAL MOVE.
+ *
+ * Eleven new refusal reasons were added to validateAction over two days —
+ * claimed_to_be_human, offered_to_hold, named_another_company,
+ * asked_for_the_held_address, asked_to_retype_held_data,
+ * restated_scope_from_chat, discarded_work_we_cover, pursued_after_a_decline,
+ * transferred_a_text_only_customer, offsite_job_entered_booking_flow and the
+ * A15/A19/A41/A23 wording checks.
+ *
+ * Each was verified alone. This checks them TOGETHER, in the states where
+ * several fire at once, because this codebase's signature failure is two
+ * correct rules with no legal move between them — "the best leads couldn't
+ * convert". A rule that refuses everything is worse than the rule it
+ * enforces, and nothing else here would notice.
+ */
+console.log("");
+let stuck = 0;
+for (const [label, scen] of [
+  ["decline with every field held", { text: "Not interested, thanks", history: ["I need my living room painted", "123 Main St Garden City NY 11530", "John Smith john@example.com"] }],
+  ["decline with nothing held", { text: "We're not moving forward" }],
+  ["off-site job, everything held", { text: "just the one accent wall in the living room", history: ["123 Main St Garden City NY 11530", "John Smith john@example.com"] }],
+  ["off-site AND a decline", { text: "actually not interested, it's just one accent wall" }],
+  ["text-only AND a decline", { text: "text only please, don't call. not interested" }],
+  ["partial address, scope just typed", { text: "I need my living room painted at 482 Marchmont Ave" }],
+  ["es, photo, partial address", { text: "necesito pintar la sala, estoy en 482 Marchmont Ave", speaks: "es", mediaCount: 1 }],
+  ["everything held, availability due", { text: "sounds good", history: ["I need my living room painted", "123 Main St Garden City NY 11530", "John Smith john@example.com 5165551234"] }],
+  ["scope typed with a photo", { text: "here's the kitchen I want painted", mediaCount: 1 }],
+]) {
+  const w = waysThrough({ name: label, ...scen });
+  const sayable = w.open.filter((i) => { try { return !!w.say(i); } catch { return false; } });
+  if (!sayable.length) { stuck++; console.log(`     NOTHING CAN BE SAID in: ${label}`); }
+}
+ok("every state leaves at least one thing the bot can legally say", stuck === 0,
+   "9 states where several of the new guards fire at once");
+
 // The opt-out path, checked from the other side.
 console.log("");
 ok("a plain-language opt-out is suppressed, not answered",
    classifyInbound("please take me off your list") === "opt_out");
+
+/**
+ * THE NINE PHRASINGS THAT USED TO BE ANSWERED.
+ *
+ * Widened 2026-10-14 after nine of ten plain-language opt-outs classified as
+ * "normal". Swept here as well as in the unit tests because this file is
+ * what gets run against production, and an opt-out that is merely classified
+ * and never acted on is the one failure nobody is allowed to have.
+ */
+for (const said of [
+  "please halt all communication",
+  "please cease all communication",
+  "I want to end all communication with you",
+  "stop communication",
+  "take my number off your list",
+  "remove my number from your list",
+  "don't keep texting me",
+  "remove from list",
+  "stop with the constant texting",
+]) {
+  ok(`"${said}" is an opt-out`, classifyInbound(said) === "opt_out", classifyInbound(said));
+}
+
+/** And the other direction: a DECLINE keeps the lead alive. */
+for (const said of [
+  "No thanks, we hired someone else",
+  "we're all set for now",
+  "I'm not interested",
+  "Can you stop by tomorrow?",
+]) {
+  ok(`"${said}" is NOT an opt-out`, classifyInbound(said) === "normal", classifyInbound(said));
+}
 ok("declining the work is NOT suppressed",
    classifyInbound("No thanks, we already hired someone else") === "normal");
 
