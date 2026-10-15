@@ -394,8 +394,8 @@ export async function sweepForMissedWriteBacks(): Promise<SweepSummary> {
     if (error) {
       // The migration is applied by hand; until it is, there is nothing to
       // sweep and nothing wrong. See `isMissingQueueTable`.
-      const { isMissingQueueTable } = await import("@/lib/salesforce/tomco-queue");
-      if (isMissingQueueTable(error.message)) {
+      const { isQueueNotReady } = await import("@/lib/salesforce/tomco-queue");
+      if (isQueueNotReady(error.message)) {
         return { ...out, errors: ["the write-back queue table does not exist yet — migration not applied"] };
       }
       out.errors.push(`queue: ${error.message}`);

@@ -89,6 +89,32 @@ export function isMissingQueueTable(message: string): boolean {
   );
 }
 
+/**
+ * The table is there but a COLUMN this code needs is not — the window between
+ * deploying a change and running its migration by hand.
+ *
+ * 🔴 WHY THIS IS NOT THE SAME CHECK. `isMissingQueueTable` keys on the table
+ * name, and PostgREST's message for a missing column names the COLUMN
+ * ("column commercial_tomco_writeback_queue.claimed_at does not exist" does
+ * mention both, but "Could not find the 'claimed_at' column of … in the schema
+ * cache" need not). The atomic claim added `claimed_at`, and without this the
+ * per-minute cron would throw and log a red 500 every sixty seconds from the
+ * moment the code deployed until somebody ran the SQL — which is precisely the
+ * noise that gets a real failure ignored.
+ *
+ * Treated as "not ready yet", exactly like a missing table: nothing is lost,
+ * because the nightly sweep queues everything it finds once the column exists.
+ */
+export function isMissingQueueColumn(message: string): boolean {
+  return /(column|could not find).*(claimed_at|verify_failed_at|verify_failed_reason)/i.test(message)
+    || /(claimed_at|verify_failed_at|verify_failed_reason).*(does not exist|schema cache)/i.test(message);
+}
+
+/** Either flavour of "the migration has not been run yet". */
+export function isQueueNotReady(message: string): boolean {
+  return isMissingQueueTable(message) || isMissingQueueColumn(message);
+}
+
 export type QueueEntry = {
   id: string;
   kind: QueueKind;
@@ -177,7 +203,7 @@ export async function claimPending(limit = 20): Promise<QueueEntry[]> {
     // Ask for more than we need: some of these will be lost to another tick.
     .limit(limit * 2);
   if (error) {
-    if (isMissingQueueTable(error.message)) return [];
+    if (isQueueNotReady(error.message)) return [];
     throw new Error(`write-back queue: ${error.message}`);
   }
 
@@ -265,7 +291,7 @@ export async function listQueueForReview(
      * and an empty list on this screen reads as "all clear" — the one thing it
      * must not say when it cannot tell. The caller renders the difference.
      */
-    if (isMissingQueueTable(error.message)) return { rows: [], tableMissing: true };
+    if (isQueueNotReady(error.message)) return { rows: [], tableMissing: true };
     throw new Error(`write-back queue: ${error.message}`);
   }
   const rows = (data ?? []) as Array<{

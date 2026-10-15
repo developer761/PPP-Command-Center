@@ -27,6 +27,7 @@ import {
 } from "@/lib/salesforce/tomco-changeorder";
 import { isSoldStatus } from "@/lib/salesforce/tomco-pairing";
 import { needsRequeue } from "@/lib/salesforce/tomco-tick";
+import { isQueueNotReady } from "@/lib/salesforce/tomco-queue";
 import { dealStatusForOpportunity } from "@/lib/commercial/import/mapping";
 
 describe("which Salesforce status this change order should carry", () => {
@@ -220,5 +221,35 @@ describe("where a Salesforce opportunity sits on our ladder", () => {
       const st = dealStatusForOpportunity({ workOrderStatus: woStatus, isWon: true, stageName: "Closed Won" });
       expect(st.status, `${woStatus} should not map to a status`).toBeFalsy();
     }
+  });
+});
+
+describe("the window between deploying and running the migration", () => {
+  /*
+   * This repo applies migrations by hand, so there is always a gap between the
+   * code going live and the column existing. The per-minute cron sits in that
+   * gap: without this, `claimPending` throws on a missing column and the route
+   * logs a 500 every sixty seconds until somebody runs the SQL — which is
+   * exactly the noise that teaches people to ignore a real failure.
+   */
+  it("recognises a missing table", () => {
+    expect(isQueueNotReady('relation "public.commercial_tomco_writeback_queue" does not exist')).toBe(true);
+    expect(isQueueNotReady("Could not find the table 'public.commercial_tomco_writeback_queue' in the schema cache")).toBe(true);
+  });
+
+  it("recognises a missing column, which names the column and not the table", () => {
+    expect(isQueueNotReady("Could not find the 'claimed_at' column of 'commercial_tomco_writeback_queue' in the schema cache")).toBe(true);
+    expect(isQueueNotReady('column commercial_tomco_writeback_queue.claimed_at does not exist')).toBe(true);
+    expect(isQueueNotReady("Could not find the 'verify_failed_at' column in the schema cache")).toBe(true);
+  });
+
+  it("does NOT swallow a real failure", () => {
+    // The point of the narrow match. A permission problem, an RLS refusal or a
+    // dead connection must still throw — treating those as "not ready yet"
+    // would make the sync silently stop with everything looking fine.
+    expect(isQueueNotReady("permission denied for table commercial_tomco_writeback_queue")).toBe(false);
+    expect(isQueueNotReady("new row violates row-level security policy")).toBe(false);
+    expect(isQueueNotReady("fetch failed")).toBe(false);
+    expect(isQueueNotReady("timeout exceeded")).toBe(false);
   });
 });
