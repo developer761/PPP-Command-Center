@@ -239,6 +239,7 @@ export function StatCard({
   delta,
   href,
   icon,
+  info,
 }: {
   label: string;
   value: ReactNode;
@@ -249,6 +250,10 @@ export function StatCard({
   delta?: { value: number; suffix?: string } | null;
   href?: string;
   icon?: ReactNode;
+  /** An explainer control (e.g. `<MetricInfo>`) pinned to the top-right
+   *  corner. Rendered OUTSIDE the tile's link, never inside it — a button in
+   *  an <a> is invalid and its tap would navigate instead of explaining. */
+  info?: ReactNode;
 }) {
   const valueCls =
     tone === "emerald" ? "text-emerald-700"
@@ -271,7 +276,7 @@ export function StatCard({
     <>
       <span aria-hidden className={`absolute left-0 top-0 bottom-0 w-1 ${accent}`} />
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
+        <div className={`text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-500 ${info ? "pr-6" : ""}`}>{label}</div>
         {icon && <span aria-hidden className="text-ppp-charcoal-300 shrink-0">{icon}</span>}
       </div>
       <div className="mt-1 flex items-end justify-between gap-2">
@@ -291,9 +296,16 @@ export function StatCard({
   );
 
   const cls = "relative block bg-surface border border-ppp-charcoal-100 rounded-xl pl-4 pr-3.5 py-3 overflow-hidden";
-  return href ? (
+  const tile = href ? (
     <Link href={href} className={`${cls} transition-all hover:shadow-md hover:border-ppp-charcoal-200 touch-manipulation`}>{inner}</Link>
   ) : (
     <div className={cls}>{inner}</div>
+  );
+  if (!info) return tile;
+  return (
+    <div className="relative">
+      {tile}
+      <div className="absolute top-2.5 right-2.5">{info}</div>
+    </div>
   );
 }

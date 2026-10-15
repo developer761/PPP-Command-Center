@@ -11,6 +11,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { etDateOf } from "@/lib/date-et";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
 import { uploadDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
 import { PURCHASE_CATEGORIES, isPurchaseCategory, type PurchaseCategory } from "./constants";
@@ -148,7 +149,13 @@ export async function costBreakdownForProject(oppId: string): Promise<CostBreakd
 
 /** Per-category cost sums for MANY projects at once (deal/projects list). Keyed
  *  by opportunity_id. One query — no N+1. */
-export async function costBreakdownByOpp(oppIds: string[]): Promise<Map<string, CostBreakdown>> {
+export async function costBreakdownByOpp(
+  oppIds: string[],
+  /** Inclusive ET dates. Omit for every purchase ever (the default, unchanged).
+   *  A purchase is dated by `purchased_at`, falling back to `created_at` for
+   *  any legacy row that has no purchase date. */
+  range?: { fromYmd: string; toYmd: string } | null
+): Promise<Map<string, CostBreakdown>> {
   const out = new Map<string, CostBreakdown>();
   const ids = [...new Set(oppIds.filter(Boolean))];
   if (ids.length === 0) return out;
@@ -156,16 +163,22 @@ export async function costBreakdownByOpp(oppIds: string[]): Promise<Map<string, 
   // Paginated — this spans EVERY project on the dashboard / projects list, so
   // the 1000-row cap bit soonest here: costs past row 1000 vanished, inflating
   // margin platform-wide (audit M3).
-  const data = await paginateAll<{ opportunity_id: string; category: string; amount_cents: number }>(() =>
+  const data = await paginateAll<{ opportunity_id: string; category: string; amount_cents: number; purchased_at: string | null; created_at: string | null }>(() =>
     sb
       .from("commercial_project_purchases")
-      .select("opportunity_id, category, amount_cents")
+      .select("opportunity_id, category, amount_cents, purchased_at, created_at")
       .in("opportunity_id", ids)
       .is("deleted_at", null)
       .order("id")
   );
   const byOpp = new Map<string, { category: string; amount_cents: number }[]>();
   for (const r of data) {
+    if (range) {
+      // Filtered here, not in the query: the date is a coalesce of two
+      // columns, and an ET calendar day is not a UTC one.
+      const ymd = etDateOf(r.purchased_at ?? r.created_at);
+      if (!ymd || ymd < range.fromYmd || ymd > range.toYmd) continue;
+    }
     const arr = byOpp.get(r.opportunity_id) ?? [];
     arr.push(r);
     byOpp.set(r.opportunity_id, arr);

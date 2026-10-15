@@ -2,7 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, isSalesforceCarryoverInvoice, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
@@ -47,6 +47,11 @@ import { safeNowMs } from "@/lib/commercial/now";
  * means. So these rows carry their money like any other, and say plainly that
  * no invoice exists yet. They never age and are never chased — there is nothing
  * to chase with until somebody bills it.
+ *
+ * NO LONGER EMITTED by `getReceivablesReport` (2026-10-15 — receivables are
+ * billed money only; see the invoice loop). The kind stays in the union because
+ * the Tomco Balance Owed report and the label maps still speak it, and removing
+ * it would turn a report change into a cross-cutting type change.
  */
 export type ReceivableKind = "invoice" | "aia" | "retainage" | "uninvoiced";
 
@@ -103,6 +108,7 @@ export function receivableVerdict(status: InvoiceStatus): "skip" | "uninvoiced" 
   if (status === "draft") return "uninvoiced";
   return "invoice";
 }
+
 
 export type ReceivableFilters = {
   /** Billed/issued on or after this ET date. */
@@ -224,23 +230,18 @@ export async function getReceivablesReport(
   const rows: ReceivableRow[] = [];
 
   /**
-   * DEALS THAT BILL THROUGH AIA, so a draft invoice on one is not chased too.
+   * DEALS THAT BILL THROUGH AIA — an issued application exists (the bulk
+   * rollup only returns deals that have one).
    *
-   * A job billed on G702/G703 still carries its original invoice row, sitting
-   * at `draft` because it was never issued — the certificates are the billing.
-   * `receivableVerdict` put that draft on the list as "Won, not invoiced" for
-   * its FULL balance, and the AIA rollup added the certificate and its
-   * retainage underneath. The same work, counted twice.
-   *
-   * Measured 2026-09-22 on The Bannett Group — Home Goods, Shirley NY: a
-   * $37,500 contract showing $37,500 uninvoiced + $33,750 AIA + $3,750
-   * retention = $75,000 owed on a $37,500 job. It overstated the headline
-   * "Total outstanding" on every tab of Accounting, the Reports card and the
-   * emailed receivables sheet by $37,500.
-   *
-   * AR aging and the account statement were never wrong — they read
-   * `aiaBillingRollupBulk` and exclude drafts — which is why the two figures
-   * on screen disagreed by exactly this amount.
+   * History: this first stopped a never-issued DRAFT invoice on an AIA job
+   * from being chased beside its certificates (2026-09-22: one job read twice
+   * its contract value owed — the full draft plus the certificate plus its
+   * retention). Drafts no longer reach this list at all (2026-10-15), so it
+   * now guards the other way the same job can be counted twice: a migrated
+   * Salesforce carry-over invoice still holding the work order's balance after
+   * the job's AIA history has been entered here. On 2026-10-15 that applied to
+   * no job yet — two part-paid migrated jobs are still waiting to have their
+   * AIA applications entered — which is exactly when a guard is cheap.
    */
   const aiaRollupsForSkip = await aiaBillingRollupBulk(opps.map((o) => o.id));
   const billsViaAia = new Set(
@@ -252,20 +253,33 @@ export async function getReceivablesReport(
   // ── Invoices ────────────────────────────────────────────────────────────
   for (const inv of invoices) {
     const verdict = receivableVerdict(deriveInvoiceStatus(inv));
-    if (verdict === "skip") continue;
-    const uninvoiced = verdict === "uninvoiced";
+    /**
+     * BILLED ONLY. Katie 2026-10-15, after Alex put this report beside Mary's
+     * hand-kept AR sheet and the two disagreed by ~$800k: receivables are what
+     * has been INVOICED (or certified on an AIA application) and not yet paid,
+     * plus retention, shown separately. Work that is won and not yet billed is
+     * not owed to us yet, so it does not belong on the chase list or in its
+     * total.
+     *
+     * This reverses the 2026-09-17 decision to carry drafts here as
+     * "uninvoiced" so the total matched Salesforce's work-order Balance Owed.
+     * That figure answers a different question — what is left to collect on
+     * the contract, billed or not — and it still has its own home in the
+     * Tomco Balance Owed report (`tomco/balance-owed.ts`), which keeps asking
+     * `receivableVerdict` and keeps the "uninvoiced" rows. Only this report,
+     * and everything that reads it, changes.
+     */
+    if (verdict !== "invoice") continue;
     const open = Math.max(0, inv.balance_cents);
     if (open <= 0) continue;
-    // See `billsViaAia`: on an AIA job the certificates ARE the billing, so an
-    // unissued invoice beside them is the same money a second time.
-    if (uninvoiced && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
+    if (isSalesforceCarryoverInvoice(inv) && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
     // An invoice on a deal that was deleted (or whose account was) is gone from
     // the app and must be gone from the chase list too.
     if (inv.opportunity_id && !oppById.has(inv.opportunity_id)) continue;
     const { job, accountId, account } = jobNameFor(inv.opportunity_id);
     const issued = inv.issued_at ?? null;
     rows.push({
-      kind: uninvoiced ? "uninvoiced" : "invoice",
+      kind: "invoice",
       key: `invoice:${inv.id}`,
       sourceId: inv.id,
       accountId,
@@ -273,13 +287,10 @@ export async function getReceivablesReport(
       opportunityId: inv.opportunity_id ?? null,
       jobName: job,
       openCents: open,
-      reference: uninvoiced
-        ? "Won, not invoiced"
-        : [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null].filter(Boolean).join(" · "),
+      reference: [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null].filter(Boolean).join(" · "),
       note: inv.notes?.trim() || null,
       issuedIso: issued,
-      // Nothing that has not been billed can be late.
-      daysOut: uninvoiced || !inv.due_at ? null : daysPastDue(inv.due_at, nowMs),
+      daysOut: !inv.due_at ? null : daysPastDue(inv.due_at, nowMs),
       href: `/commercial/invoices/${inv.id}`,
       billingHref: inv.opportunity_id
         ? `/commercial/opportunities/${inv.opportunity_id}?tab=invoices`

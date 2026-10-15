@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { visibleWorklist, type WorkItem } from "@/lib/commercial/worklist";
@@ -38,11 +39,14 @@ export function Worklist({
   items,
   shown,
   atRiskCents,
+  info,
 }: {
   items: WorkItem[];
   /** How many to render. The rest are counted, not listed. */
   shown: number;
   atRiskCents: number;
+  /** Optional explainer beside the heading (the dashboard's ⓘ). */
+  info?: ReactNode;
 }) {
   const top = visibleWorklist(items, shown);
   const more = items.length - top.length;
@@ -56,6 +60,7 @@ export function Worklist({
           <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-cc-brand-600 text-white text-[10px] font-bold tabular-nums">
             {items.length}
           </span>
+          {info}
         </h2>
         {atRiskCents > 0 && (
           <p className="text-[12px] text-ppp-charcoal-500">

@@ -19,6 +19,7 @@
  * deliberately different scopes, each labeled. Reuses the opps/accounts/
  * invoices/projects list fetches; everything else is derived JS-side.
  */
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { oppStatusDisplayLabel } from "@/lib/commercial/opportunities/kanban-columns";
 import Image from "next/image";
@@ -41,7 +42,6 @@ import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db"
 import { costBreakdownByOpp, emptyCostBreakdown } from "@/lib/commercial/purchases/db";
 import { PURCHASE_CATEGORIES, PURCHASE_CATEGORY_META } from "@/lib/commercial/purchases/constants";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
-import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
 import { marginFrom } from "@/lib/commercial/projects/financials";
 import TrendChart from "@/components/trend-chart";
 import { DonutChart, HBars, StatCard, type ChartTone, type DonutSegment } from "@/components/commercial/charts";
@@ -55,6 +55,16 @@ import { Worklist, WorklistClear } from "@/components/commercial/worklist";
 import { PAYROLL_HREF } from "@/lib/commercial/field-ops/unrated-hours-note";
 import { IN_DELIVERY_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { hadHeadToHead } from "@/lib/commercial/win-loss/reports";
+import {
+  DASHBOARD_PRESETS, DASHBOARD_DEFAULT, dashboardRange, priorDashboardRange,
+  resolvePreset, validYmd, fiscalYearStartMonth,
+} from "@/lib/commercial/reports/presets";
+import { loadPeriodBilling, monthlyPointsFor } from "@/lib/commercial/reports/period-billing";
+import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
+import { getReceivablesReport } from "@/lib/commercial/reports/receivables";
+import { dashboardMetricNotes, type MetricKey } from "@/lib/commercial/dashboard/metric-notes";
+import { MetricInfo } from "@/components/commercial/metric-info";
+import { DashboardPeriodBar } from "@/components/commercial/dashboard-period-bar";
 
 const DASH_COST_TONE: Record<string, ChartTone> = {
   materials: "blue", labor: "brand", subcontractor: "navy", equipment: "amber", permit: "neutral", other: "neutral",
@@ -91,11 +101,20 @@ function relativeLabel(iso: string | null | undefined): string {
   return `in ${-days}d`;
 }
 
-export default async function CommercialDashboardPage() {
+export default async function CommercialDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // ONE clock read for the whole render. There were four, and they are all
   // comparisons against today: four separate reads can straddle midnight
   // mid-render and put a row in two different aging buckets on one screen.
   const nowMs = Date.now();
+  const sp = await searchParams;
+  const one = (k: string) => {
+    const v = sp[k];
+    return Array.isArray(v) ? v[0] : v;
+  };
   const { getOperatingCompany } = await import("@/lib/commercial/operating-company/db");
   //
   // ── EVERY READ THIS PAGE MAKES, IN ONE WAVE ──────────────────────────────
@@ -120,6 +139,8 @@ export default async function CommercialDashboardPage() {
     archivedOpps,
     allProjectRows,
     liveWorkOrders,
+    fyStartMonth,
+    receivables,
   ] = await Promise.all([
     // Report folders: the dashboard links into AR aging and Win/Loss. Someone
     // outside those folders gets the number without a link that would bounce
@@ -144,7 +165,37 @@ export default async function CommercialDashboardPage() {
     // Work-order state per job, loaded rather than inferred (Brendan
     // 2026-08-26).
     listAllWorkOrders().catch(() => []),
+    // The fiscal year the period picker counts in (PPP: February).
+    fiscalYearStartMonth(),
+    // "Owed to us" IS the Receivables report's total — one definition of
+    // what is owed, so the tile and the report it stands for cannot disagree.
+    getReceivablesReport(nowMs),
   ]);
+
+  // ─── THE PERIOD (Katie 2026-10-15, for Alex) ───
+  // One window for every ACTIVITY figure on the page; balances stay "as of
+  // today". A custom range with a missing or impossible date falls back to the
+  // default, and the picker says so by showing the default as selected.
+  const todayEt = etTodayIso();
+  const askedPreset = resolvePreset(one("period"), DASHBOARD_PRESETS, DASHBOARD_DEFAULT);
+  const customFrom = validYmd(one("from")) ?? "";
+  const customTo = validYmd(one("to")) ?? "";
+  const preset = askedPreset === "custom" && !(customFrom && customTo) ? DASHBOARD_DEFAULT : askedPreset;
+  const range = dashboardRange(preset, fyStartMonth, todayEt, { from: customFrom, to: customTo });
+  const priorRange = priorDashboardRange(preset, fyStartMonth, todayEt);
+  const notes = dashboardMetricNotes(range ? range.label : "All time");
+  const info = (key: MetricKey, label: string) => (
+    <MetricInfo label={label} note={notes[key].text} scope={notes[key].scope} />
+  );
+  const periodPresets = DASHBOARD_PRESETS.map((p) => ({
+    ...p,
+    href:
+      p.key === "custom"
+        ? `/commercial?period=custom${customFrom && customTo ? `&from=${customFrom}&to=${customTo}` : ""}`
+        : p.key === DASHBOARD_DEFAULT
+          ? "/commercial"
+          : `/commercial?period=${p.key}`,
+  }));
   const canOpenArAging = !!reportAccess?.visible.has("ar-aging");
   const canOpenWinLoss = !!reportAccess?.visible.has("win-loss");
   // Fallback deal value for deals with no bid range. The meeting removed Bid
@@ -159,9 +210,15 @@ export default async function CommercialDashboardPage() {
   // WAVE 2 — the only two reads with a real dependency. The proposal map needs
   // `opps`; the cost breakdown needs `allProjectRows`. Both come from the wave
   // above, and neither needs the other, so they go together.
-  const [currentProposalByOpp, byOpp] = await Promise.all([
+  //
+  // The three PERIOD reads join it: billing, purchases and crew labor, each
+  // limited to the picked window (`range` null = all time).
+  const allProjectIds = allProjectRows.map((p) => p.opp.id);
+  const [currentProposalByOpp, byOpp, periodBilling, periodLaborByOpp] = await Promise.all([
     listCurrentProposalByOpp(opps.map((o) => o.id)),
-    costBreakdownByOpp(allProjectRows.map((p) => p.opp.id)),
+    costBreakdownByOpp(allProjectIds, range),
+    loadPeriodBilling(allProjectIds, invoices, range),
+    fieldOpsLaborByOpp(allProjectIds, range),
   ]);
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
@@ -215,67 +272,32 @@ export default async function CommercialDashboardPage() {
   // and unaffected either way.
   // `archivedOpps` is fetched in the single wave at the top.
   const realOppIds = new Set([...opps.map((o) => o.id), ...archivedOpps.map((o) => o.id)]);
-  const archivedOppIds = new Set(archivedOpps.map((o) => o.id));
   const billableInvoices = invoices.filter(
     (i) =>
       BILLABLE_INVOICE_STATUSES.has(deriveInvoiceStatus(i)) &&
       (i.opportunity_id == null || realOppIds.has(i.opportunity_id))
   );
-  // AIA payment applications are receivables with no invoice row, so a GC being
-  // progress-billed $400k through G702/G703 contributed nothing here (2026-08-17).
-  // Net of retainage — retainage is owed at close-out, not now, and folding it
-  // in would put every AIA job permanently in the overdue column.
-  const aiaDueNowCents = projectRows.reduce((acc, r) => acc + (r.aiaDueNowCents ?? 0), 0);
-  const arOutstandingCents =
-    billableInvoices
-      // Clamp per invoice so a credit/overpaid invoice can't net down the AR —
-      // one "Outstanding" definition platform-wide (matches the account rollup).
-      .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) + aiaDueNowCents;
-  // The slice of that owed on deals someone has archived — real money, but it
-  // won't appear in Gross, so the tile says why the two don't tie out.
-  const arArchivedCents = billableInvoices
-    .filter((i) => i.opportunity_id != null && archivedOppIds.has(i.opportunity_id))
-    .reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0);
+  // Overdue invoices feed the worklist's "Chase what they owe" rows.
   const overdueInvoices = billableInvoices.filter((i) => deriveInvoiceStatus(i) === "overdue");
-  // AIA applications age too. `arOutstandingCents` has folded them in since
-  // 2026-08-17, but "overdue" did not — so a job billed only through G702/G703
-  // and sixty days late read "unpaid invoices, none overdue" in calm blue on
-  // this tile, while the AR-aging report one click away showed it red in the
-  // 61-90 bucket. Same due-date ladder both sides (issue date + standard terms).
-  const overdueAia = projectRows.filter(
-    (r) => (r.aiaDueNowCents ?? 0) > 0 && r.aiaDueAt && daysPastDue(r.aiaDueAt, nowMs) > 0
-  );
-  /**
-   * MONEY THAT CANNOT BE LATE BECAUSE NOBODY GAVE IT A DUE DATE.
-   *
-   * `isInvoiceOverdue` returns false when `due_at` is null, and ALL 18 open
-   * issued invoices are exactly that — the Salesforce migration brought no due
-   * dates across. So `arOverdueCount` is structurally 0, and this tile read
-   * "billed and unpaid, none overdue" in calm blue over $876,693.04, the
-   * oldest line 386 days old ($232,705.30 open since February).
-   *
-   * Every other AR surface already discloses it — receivables.ts computes
-   * `noDueDateCount` for precisely this and the AR-aging page, the Receivables
-   * report and Accounting's Receivables tab all render a caveat. This tile,
-   * the one Alex actually reads each morning, was the only one asserting the
-   * opposite.
-   *
-   * Not counted as overdue — a missing due date is not evidence of lateness —
-   * but it is no longer reported as its absence.
-   */
-  const arNoDueDateCents = billableInvoices
-    .filter((i) => !i.due_at && Math.max(0, i.balance_cents ?? 0) > 0)
-    .reduce((n, i) => n + Math.max(0, i.balance_cents ?? 0), 0);
-  const arNoDueDateCount = billableInvoices.filter(
-    (i) => !i.due_at && Math.max(0, i.balance_cents ?? 0) > 0
-  ).length;
 
-  const arOverdueCount = overdueInvoices.length + overdueAia.length;
-  // The DOLLARS overdue (per-invoice clamped) — the number a CEO actually fears,
-  // shown on the tile instead of a bare count (2026-08 CEO/AR UX walk).
-  const arOverdueCents =
-    overdueInvoices.reduce((acc, i) => acc + Math.max(0, i.balance_cents), 0) +
-    overdueAia.reduce((acc, r) => acc + r.aiaDueNowCents, 0);
+  /**
+   * "OWED TO US" = THE RECEIVABLES REPORT'S TOTAL (Katie 2026-10-15).
+   *
+   * This tile used to run its own arithmetic — sent/partial/overdue invoice
+   * balances plus AIA due now on ACTIVE jobs only, retention excluded — while
+   * the Receivables report one click away counted retention, AIA on closed and
+   * archived jobs, and (until today) won-but-unbilled drafts. Alex had three
+   * "owed" figures on two screens and none matched Mary's sheet.
+   *
+   * Now there is one rule, and it lives in `getReceivablesReport`: billed and
+   * unpaid (sent invoices + issued AIA applications, net of retention) plus
+   * retention held, shown separately; nothing that has not been billed. This
+   * tile reads that total, so it cannot drift from the report again.
+   */
+  const arOutstandingCents = receivables.totalOpenCents;
+  const arRetentionCents = receivables.retainageCents;
+  const arOverdueCents = receivables.overdueCents;
+  const arNoDueDateCents = receivables.noDueDateCents;
 
   // ─── Opp buckets ───
   // "Open" = the PRE-SALE pipeline only (deals still being sold). Post-sale
@@ -289,89 +311,53 @@ export default async function CommercialDashboardPage() {
   // into production still counts as a win (isWon alone missed those — audit H2).
   const wonOpps = opps.filter((o) => isPostSaleProject(o));
   const lostOpps = opps.filter((o) => isLost(o));
-  // Win-rate basis: won + lost, EXCLUDING no-bids. We never quoted a no-bid, so
-  // it says nothing about how we price or sell — the win/loss report excludes
-  // them and this tile did not, which was one of three ways the two disagreed.
-  const decidedOpps = [
-    ...wonOpps,
-    ...lostOpps.filter((o) => o.loss_reason !== "no_bid"),
-  ];
+  // Win-rate basis: won + lost, EXCLUDING no-bids (see `lostIn` below). We
+  // never quoted a no-bid, so it says nothing about how we price or sell.
   const weightedPipeline = openOpps.reduce((acc, o) => acc + oppWeighted(o), 0);
 
-  // ─── This month ───
-  const now = new Date(nowMs);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  // decided_at is a DATE column ("2026-08-01"); compare it to a bare ET
-  // month-start DATE — the full-ISO monthStart sorts AFTER "2026-08-01" and
-  // silently drops every deal decided on the 1st.
-  const monthStartDate = `${etTodayIso().slice(0, 7)}-01`;
-  // M1: ONE definition of "won in this month" on BOTH halves of the rate. The
-  // numerator used `wasWonInPeriod`, which skips a closed-out deal whose date
-  // can't be trusted yet, while the denominator counted it anyway — so every
-  // legacy closed-out job silently deflated the rate. Whatever the numerator
-  // won't count, the denominator doesn't either.
-  const wonThisMonth = wonOpps.filter((o) => wasWonInPeriod(o, monthStartDate));
-  const countableThisMonth = decidedOpps.filter(
-    (o) =>
-      (isLost(o) && (o.decided_at ?? "") >= monthStartDate) ||
-      wasWonInPeriod(o, monthStartDate)
-  );
-  const totalDecidedForMonth = countableThisMonth.length;
+  // ─── Wins in the period ───
+  // Was "this month" only. Now the picked range, with ONE predicate for both
+  // halves of the rate and for the delta (`wasWonInPeriod`). The old "vs last"
+  // compared against raw `decided_at` on UTC month bounds, so it counted legacy
+  // closed-out jobs the month figure deliberately skips and could shift a day
+  // at the month edge.
+  //
+  // All time: every won deal is a win, whatever its date — the date guard in
+  // `wasWonInPeriod` exists to put a win in the right MONTH, and with no window
+  // there is no month to get wrong.
+  const wonIn = (r: { fromYmd: string; toYmd: string } | null) =>
+    r ? wonOpps.filter((o) => wasWonInPeriod(o, r.fromYmd, r.toYmd)) : wonOpps;
+  const lostIn = (r: { fromYmd: string; toYmd: string } | null) =>
+    lostOpps.filter((o) => {
+      if (o.loss_reason === "no_bid") return false;
+      if (!r) return true;
+      const d = (o.decided_at ?? "").slice(0, 10);
+      return d >= r.fromYmd && d <= r.toYmd;
+    });
+  const wonThisPeriod = wonIn(range);
+  const lostThisPeriod = lostIn(range).length;
   /**
-   * A win rate needs something to have been lost.
-   *
-   * This guarded only the empty month, so a month with wins and no losses on
-   * record printed "100% win" on Alex's dashboard — which is not a measurement,
-   * it is the absence of one. Tomco's migration brought in 92 won jobs and no
-   * lost bids, so that is the live state, not a hypothetical. The Win/Loss
-   * report already refused this case; the tile that links to it did not.
-   *
-   * Same predicate as the report, from the same module, so they cannot drift.
+   * A win rate needs something to have been lost — a period with wins and no
+   * losses on record is not "100%", it is the absence of a measurement
+   * (Tomco's migration brought 92 won jobs and no lost bids). Same predicate as
+   * the Win/Loss report, from the same module, so they cannot drift.
    */
-  const lostThisMonth = totalDecidedForMonth - wonThisMonth.length;
-  const monthWinPct = hadHeadToHead({
-    wonCount: wonThisMonth.length,
-    lostCount: lostThisMonth,
-  })
-    ? Math.round((wonThisMonth.length / totalDecidedForMonth) * 100)
+  const periodWinPct = hadHeadToHead({ wonCount: wonThisPeriod.length, lostCount: lostThisPeriod })
+    ? Math.round((wonThisPeriod.length / (wonThisPeriod.length + lostThisPeriod)) * 100)
     : null;
-  // D1: the tile and the report it opens must cover the SAME period. The tile
-  // is this month; the report defaults to the quarter, so tapping a "62% win"
-  // tile used to land on a different number with nothing explaining the gap.
-  // Carry the month through as an explicit range.
-  const monthEndDate = (() => {
-    const [y, m] = monthStartDate.split("-").map(Number);
-    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    return `${monthStartDate.slice(0, 7)}-${String(last).padStart(2, "0")}`;
-  })();
-  const winLossMonthHref = `/commercial/reports/win-loss?from=${monthStartDate}&to=${monthEndDate}`;
+  // D1: the tile and the report it opens cover the SAME period.
+  const winLossHref = range
+    ? `/commercial/reports/win-loss?from=${range.fromYmd}&to=${range.toYmd}`
+    : "/commercial/reports/win-loss";
 
-  // ─── Momentum deltas (accurate, no snapshot needed) ───
+  // ─── Momentum ───
   // "N new this week" from created_at — a real momentum signal for the
-  // morning glance. We deliberately DON'T show a week-over-week pipeline-$
-  // delta: that needs a historical state snapshot we don't keep, and a
-  // faked one would mislead.
+  // morning glance, deliberately NOT tied to the picker. We don't show a
+  // pipeline-$ delta: that needs a historical snapshot we don't keep.
   const weekAgoIso = new Date(nowMs - 7 * 86_400_000).toISOString();
   const newThisWeek = openOpps.filter((o) => (o.created_at ?? "") >= weekAgoIso).length;
-  // Wins vs the SAME point last month — compare month-to-date against last
-  // month's first (equal) span of elapsed time, not the full prior month.
-  // Otherwise early in a month the delta is almost always negative even
-  // when pace is fine ("Jul 2: 1 vs 12"). Using elapsed-ms avoids day-of-
-  // month overflow bugs (Jan 31 → Feb has no 31).
-  const monthStartMs = new Date(monthStart).getTime();
-  const elapsedThisMonthMs = nowMs - monthStartMs;
-  const lastMonthStartMs = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
-  const lastMonthStartIso = new Date(lastMonthStartMs).toISOString();
-  const lastMonthCutoffIso = new Date(lastMonthStartMs + elapsedThisMonthMs).toISOString();
-  // decided_at is a DATE column — compare against DATE-only bounds (full ISO
-  // would drop the 1st-of-month here too).
-  const lastMonthStartDate = lastMonthStartIso.slice(0, 10);
-  const lastMonthCutoffDate = lastMonthCutoffIso.slice(0, 10);
-  const wonLastMonthToDate = wonOpps.filter(
-    (o) =>
-      (o.decided_at ?? "") >= lastMonthStartDate && (o.decided_at ?? "") < lastMonthCutoffDate
-  ).length;
-  const winsDelta = wonThisMonth.length - wonLastMonthToDate;
+  // Wins vs the previous period at the same point (`priorDashboardRange`).
+  const winsDelta = priorRange ? wonThisPeriod.length - wonIn(priorRange).length : 0;
 
   // ─── NEEDS ATTENTION signals ───
   // One read of the ET calendar day for every needs-attention predicate below.
@@ -478,7 +464,6 @@ export default async function CommercialDashboardPage() {
   // allDeals:true so a PRE-SALE bid's costs (shown in its own reachable P&L) roll
   // into the portfolio too — otherwise deal ⊄ portfolio for pre-sale costs (#6).
   // `allProjectRows` is fetched in the single wave at the top.
-  const allProjectOppIds = new Set(allProjectRows.map((p) => p.opp.id));
   // `byOpp` is fetched in wave 2 at the top.
   const costs = emptyCostBreakdown();
   for (const b of byOpp.values()) {
@@ -492,7 +477,20 @@ export default async function CommercialDashboardPage() {
   // Through the shared calculator, not inline: Alex's recurring email carries
   // the same four figures, and two places doing this arithmetic is how the
   // platform ends up saying 62% on screen and 58% in his inbox.
-  const pnl = companyPnl({ projects: allProjectRows, purchaseCostCents: costs.total });
+  //
+  // PERIOD-SCOPED (2026-10-15): the same calculator, fed each job's billing and
+  // crew labor INSIDE the picked window instead of its lifetime figures. Over
+  // "All time" the inputs equal the project rows' own (see period-billing.ts),
+  // so the lifetime view is unchanged.
+  const periodPnlRows = allProjectRows.map((p) => {
+    const labor = periodLaborByOpp.get(p.opp.id);
+    return {
+      billedContractCents: periodBilling.byOpp.get(p.opp.id) ?? 0,
+      fieldOpsLaborCents: labor?.cents ?? 0,
+      laborUnratedHours: labor?.unratedHours ?? 0,
+    };
+  });
+  const pnl = companyPnl({ projects: periodPnlRows, purchaseCostCents: costs.total });
   const crewLaborCents = pnl.crewLaborCents;
   const laborUnratedHours = pnl.unratedHours;
   const totalCostCents = pnl.totalCostCents;
@@ -552,16 +550,22 @@ export default async function CommercialDashboardPage() {
   // helper scoped to the SAME project opps as the headline, so the trend is
   // always a subset of gross (never exceeds it) and buckets by ET like the rest
   // of the app.
-  const revenueMonthly = monthlyBilledSeries(invoices, {
-    months: 6,
-    oppIds: allProjectOppIds,
-    nowIso: new Date().toISOString(),
-  });
+  //
+  // Both ledgers now (invoices by SENT date + AIA by billing period), from the same
+  // fold as Gross — a job billed only through AIA used to raise Gross and never
+  // appear here. Months span the picked range, padded to at least six.
+  const revenueMonthly = monthlyPointsFor(periodBilling.monthly, range, todayEt);
   // This month vs last (billed, pre-tax) — the "how are we doing lately"
-  // answer a CEO opens the app for. Values come straight off the trend's last
-  // two buckets (which are $K), so they always agree with the chart.
-  const thisMonthBilledCents = Math.round((revenueMonthly.at(-1)?.value ?? 0) * 100000);
-  const lastMonthBilledCents = Math.round((revenueMonthly.at(-2)?.value ?? 0) * 100000);
+  // answer a CEO opens the app for. Read from the monthly map directly, not the
+  // chart's last two bars: a "Last FY" chart ends in January.
+  const monthKey = (offset: number) => {
+    const y = Number(todayEt.slice(0, 4));
+    const m = Number(todayEt.slice(5, 7)) - 1 + offset;
+    const yy = y + Math.floor(m / 12);
+    return `${yy}-${String(((m % 12) + 12) % 12 + 1).padStart(2, "0")}`;
+  };
+  const thisMonthBilledCents = periodBilling.monthly.get(monthKey(0)) ?? 0;
+  const lastMonthBilledCents = periodBilling.monthly.get(monthKey(-1)) ?? 0;
   const momBilledDeltaPct =
     lastMonthBilledCents > 0
       ? Math.round(((thisMonthBilledCents - lastMonthBilledCents) / lastMonthBilledCents) * 100)
@@ -577,11 +581,17 @@ export default async function CommercialDashboardPage() {
       ? [{ label: "Crew labor", value: crewLaborCents, tone: CREW_LABOR_TONE, valueLabel: formatCentsCompact(crewLaborCents) }]
       : []),
   ];
+  // In the picked window: each job's billing and its costs (purchases + crew
+  // labor) inside the same dates, so a job's net here is that period's net.
   const revProjectBars = allProjectRows
-    .filter((p) => p.billedContractCents > 0)
-    .map((p) => {
-      const gross = p.billedContractCents;
-      const m = marginFrom(gross, p.costsCents);
+    .map((p) => ({
+      p,
+      gross: periodBilling.byOpp.get(p.opp.id) ?? 0,
+      costCents: (byOpp.get(p.opp.id)?.total ?? 0) + (periodLaborByOpp.get(p.opp.id)?.cents ?? 0),
+    }))
+    .filter(({ gross }) => gross > 0)
+    .map(({ p, gross, costCents }) => {
+      const m = marginFrom(gross, costCents);
       const net = m.cents;
       return {
         label: derivedOppName(p.opp, accountNameById.get(p.opp.account_id) ?? ""),
@@ -628,12 +638,20 @@ export default async function CommercialDashboardPage() {
         </div>
       </div>
 
+      {/* ═══ Period picker — drives the activity figures below ═══ */}
+      <DashboardPeriodBar
+        active={preset}
+        presets={periodPresets}
+        resolved={range}
+        custom={{ from: customFrom, to: customTo }}
+      />
+
       {/* ═══ Revenue & P&L — the money headline, on top (whole Command Center) ═══ */}
       <section>
         <h2 className="text-sm font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Are we making money?
-          <span className="text-[11px] font-medium text-ppp-charcoal-500">— whole company · every opportunity</span>
+          <span className="text-[11px] font-medium text-ppp-charcoal-500">— whole company · {range ? range.label : "all time"}</span>
         </h2>
         {/* Calm zero-state on a brand-new workspace — one line, not four "$0"
             tiles + a flat chart that read as "is this broken?" (2026-08 first-run
@@ -644,14 +662,14 @@ export default async function CommercialDashboardPage() {
             first & biggest; Gross (only-goes-up) demoted; Job costs last. Plain
             subs, no formulas (2026-08 CEO UX walk). */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" />
-          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} />
-          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub="billed to date" spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} />
-          <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · labor · crew" : "materials · labor"} />
+          <StatCard label="Net profit" value={`${netProfitCents < 0 ? "−" : ""}${formatCentsCompact(Math.abs(netProfitCents))}`} tone={netProfitCents < 0 ? "rose" : "emerald"} sub="after job costs" info={info("netProfit", "Net profit")} />
+          <StatCard label="Margin" value={revMarginPct === null ? "—" : `${revMarginPct}%`} tone={revMarginTone} sub={revMarginPct === null ? "no revenue yet" : revMarginPct < 0 ? "losing money" : revMarginPct < 15 ? "thin" : "healthy"} info={info("margin", "Margin")} />
+          <StatCard label="Gross revenue" value={formatCentsCompact(grossRevenueCents)} tone="brand" sub={range ? "billed in period" : "billed to date"} spark={revenueMonthly.map((r) => r.value)} sparkLabels={revenueMonthly.map((r) => r.label)} info={info("grossRevenue", "Gross revenue")} />
+          <StatCard label="Job costs" value={formatCentsCompact(totalCostCents)} tone="amber" sub={totalCostCents === 0 ? "none logged" : crewLaborCents > 0 ? "materials · labor · crew" : "materials · labor"} info={info("jobCosts", "Job costs")} />
         </div>
         <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
           <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
-            <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue billed</h3>
+            <h3 className="text-[13px] font-bold text-ppp-charcoal inline-flex items-center gap-1.5">Revenue billed{info("revenueChart", "Revenue billed")}</h3>
             <div className="flex items-baseline gap-2 text-[11.5px] tabular-nums">
               <span className="text-ppp-charcoal-500">This month <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
               {momBilledDeltaPct !== null && momBilledDeltaPct !== 0 && (
@@ -666,7 +684,7 @@ export default async function CommercialDashboardPage() {
         </div>
 
         {/* Directly under "This month" — where Brendan asked for it. */}
-        <JobsInFlight jobs={jobsInFlight} />
+        <JobsInFlight jobs={jobsInFlight} info={info("jobsInFlight", "Jobs in flight")} />
         <details className="group/rev mt-3">
           <summary className="list-none cursor-pointer inline-flex items-center gap-1.5 text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 min-h-[44px] select-none">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="transition-transform group-open/rev:rotate-90"><path d="M9 18l6-6-6-6" /></svg>
@@ -674,7 +692,7 @@ export default async function CommercialDashboardPage() {
           </summary>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-2">
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
-              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3">Where the money goes</h3>
+              <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 inline-flex items-center gap-1.5">Where the money goes{info("costBreakdown", "Where the money goes")}</h3>
               {revCostSegments.length > 0 ? (
                 <DonutChart size={144} segments={revCostSegments} centerValue={formatCentsCompact(totalCostCents)} centerLabel="job costs" />
               ) : (
@@ -688,13 +706,13 @@ export default async function CommercialDashboardPage() {
             </div>
             <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-2 mb-3">
-                <h3 className="text-[13px] font-bold text-ppp-charcoal">Revenue by project</h3>
+                <h3 className="text-[13px] font-bold text-ppp-charcoal inline-flex items-center gap-1.5">Revenue by project{info("revenueByProject", "Revenue by project")}</h3>
                 <Link href="/commercial/opportunities?lane=under_contract" className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1">Under contract →</Link>
               </div>
               {revProjectBars.length > 0 ? (
                 <HBars items={revProjectBars} />
               ) : (
-                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">No billed revenue yet.</p>
+                <p className="text-[12px] text-ppp-charcoal-500 py-6 text-center">{range ? "Nothing billed in this period." : "No billed revenue yet."}</p>
               )}
             </div>
           </div>
@@ -717,9 +735,9 @@ export default async function CommercialDashboardPage() {
           Five tiles also divide cleanly at every breakpoint, where six left an
           orphan on the three-up. */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} />
-        <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" />
-        <DashStat label="Wins · mo" value={wonThisMonth.length.toLocaleString()} sub={monthWinPct !== null ? `${monthWinPct}% win` : wonThisMonth.length > 0 ? "none lost on record" : "this month"} tone="emerald" href={canOpenWinLoss ? winLossMonthHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} />
+        <DashStat label="Pipeline" value={formatCentsCompact(weightedPipeline)} sub="expected value" tone="blue" href="/commercial/opportunities" delta={newThisWeek > 0 ? { value: newThisWeek, suffix: " new" } : null} info={info("pipeline", "Pipeline")} />
+        <DashStat label="Open" value={openOpps.length.toLocaleString()} sub="opportunities" tone="navy" href="/commercial/opportunities" info={info("open", "Open")} />
+        <DashStat label="Wins" value={wonThisPeriod.length.toLocaleString()} sub={periodWinPct !== null ? `${periodWinPct}% win` : wonThisPeriod.length > 0 ? "none lost on record" : range ? range.label : "all time"} tone="emerald" href={canOpenWinLoss ? winLossHref : undefined} delta={winsDelta !== 0 ? { value: winsDelta, suffix: " vs last" } : null} info={info("wins", "Wins")} />
         {/* Brendan 2026-09-23: "dashboard add pending bids for approval."
             A bid sitting in the approval queue is the one thing on this page
             nobody else will chase — the estimator has done their part and is
@@ -732,30 +750,35 @@ export default async function CommercialDashboardPage() {
           sub={awaitingApprovalCount === 0 ? "nothing waiting" : awaitingApprovalCount === 1 ? "bid to approve" : "bids to approve"}
           tone={awaitingApprovalCount > 0 ? "amber" : "navy"}
           href="/commercial/proposals?status=pending_approval"
+          info={info("awaitingApproval", "Awaiting approval")}
         />
-        <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" />
+        <DashStat label="Active GCs" value={accounts.filter((a) => !a.do_not_bid).length.toLocaleString()} sub="general contractors" tone="blue" href="/commercial/accounts" info={info("activeGcs", "Active GCs")} />
         <DashStat
           label="Owed to us"
           value={formatCentsCompact(arOutstandingCents)}
           sub={
             arOutstandingCents === 0
-              // Not "invoices all paid": this total includes AIA payment
-              // applications, and an AIA-billed job raises no invoice.
               ? "nothing outstanding"
-              : arOverdueCount > 0
-              ? `${formatCentsCompact(arOverdueCents)} overdue`
-              : arNoDueDateCount > 0
-              ? // Cannot be "none overdue" when nothing has a date to be late
-                // against — see arNoDueDateCents.
-                `${formatCentsCompact(arNoDueDateCents)} with no due date set`
-              : arArchivedCents > 0
-              ? // Why this can exceed Gross: archived deals keep their debt but
-                // leave the performance numbers.
-                `incl. ${formatCentsCompact(arArchivedCents)} on archived deals`
-              : "billed and unpaid, none overdue"
+              : [
+                  arOverdueCents > 0
+                    ? `${formatCentsCompact(arOverdueCents)} overdue`
+                    : arNoDueDateCents > 0
+                      ? // Cannot be "none overdue" when some of it has no date
+                        // to be late against.
+                        `${formatCentsCompact(arNoDueDateCents)} no due date`
+                      : null,
+                  // Retention is IN the total and named, so it can be told
+                  // apart from money that is collectible now.
+                  arRetentionCents > 0 ? `${formatCentsCompact(arRetentionCents)} retention` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "billed and unpaid, none overdue"
           }
-          tone={arOverdueCount > 0 ? "rose" : arNoDueDateCount > 0 ? "amber" : "blue"}
-          href={canOpenArAging ? "/commercial/reports/ar-aging" : undefined}
+          tone={arOverdueCents > 0 ? "rose" : arNoDueDateCents > 0 ? "amber" : "blue"}
+          // The Receivables report is the one this total IS; AR aging buckets
+          // the same book by lateness. Prefer the former when it's visible.
+          href={reportAccess?.visible.has("receivables") ? "/commercial/reports/receivables" : canOpenArAging ? "/commercial/reports/ar-aging" : undefined}
+          info={info("owedToUs", "Owed to us")}
         />
       </section>
 
@@ -775,7 +798,7 @@ export default async function CommercialDashboardPage() {
           linking to the surface that does it. Built from the reads this page
           already makes. */}
       {worklistItems.length > 0 ? (
-        <Worklist items={worklistItems} shown={8} atRiskCents={worklistAtRisk} />
+        <Worklist items={worklistItems} shown={8} atRiskCents={worklistAtRisk} info={info("worklist", "What needs doing")} />
       ) : (
         <WorklistClear />
       )}
@@ -817,7 +840,7 @@ export default async function CommercialDashboardPage() {
               />
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={billedPctOfContract !== null ? `${billedPctOfContract}% billed` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=under_contract" />
+              <DashStat label="Contract" value={formatCentsCompact(production.contractValueCents)} sub={billedPctOfContract !== null ? `${billedPctOfContract}% billed` : "incl. COs"} tone="navy" href="/commercial/opportunities?lane=under_contract" info={info("contract", "Contract")} />
               <DashStat
                 label="Billed"
                 value={formatCentsCompact(production.billedContractCents)}
@@ -830,11 +853,12 @@ export default async function CommercialDashboardPage() {
                 }
                 tone={production.overBilledCents > 0 ? "amber" : "emerald"}
                 href="/commercial/opportunities?lane=under_contract"
+                info={info("billed", "Billed")}
               />
-              <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/opportunities?lane=under_contract" />
+              <DashStat label="Left to bill" value={formatCentsCompact(production.leftToBillCents)} sub="contract − billed" tone="blue" href="/commercial/opportunities?lane=under_contract" info={info("leftToBill", "Left to bill")} />
               {/* Active jobs only, AIA folded in — distinct from "Owed to us"
                   above (whole book, invoice ledger). */}
-              <DashStat label="Open · active jobs" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "unpaid, incl. AIA"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/opportunities?lane=under_contract" />
+              <DashStat label="Open · active jobs" value={formatCentsCompact(production.outstandingCents)} sub={production.pendingCoCount > 0 ? `${production.pendingCoCount} CO pending` : "unpaid, incl. AIA"} tone={production.outstandingCents > 0 ? "amber" : "blue"} href="/commercial/opportunities?lane=under_contract" info={info("openActiveJobs", "Open · active jobs")} />
             </div>
           </div>
         </section>
@@ -842,8 +866,8 @@ export default async function CommercialDashboardPage() {
 
       {/* ─── Two-column: Top 5 open + Recent activity ─── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} proposalTotalByOpp={proposalTotalByOpp} currentProposalByOpp={currentProposalByOpp} />
-        <RecentActivityCard opps={recentOpps} accountNameById={accountNameById} />
+        <TopOpenDealsCard opps={topOpenDeals} accountNameById={accountNameById} proposalTotalByOpp={proposalTotalByOpp} currentProposalByOpp={currentProposalByOpp} info={info("topOpen", "Top 5 open opportunities")} />
+        <RecentActivityCard opps={recentOpps} accountNameById={accountNameById} info={info("recentActivity", "Recent activity")} />
       </section>
 
       {/* ─── Quick actions ─── */}
@@ -890,6 +914,7 @@ function DashStat({
   tone = "neutral",
   href,
   delta,
+  info,
 }: {
   label: string;
   value: string;
@@ -897,6 +922,9 @@ function DashStat({
   tone?: "neutral" | "blue" | "emerald" | "amber" | "rose" | "navy";
   href?: string;
   delta?: { value: number; suffix?: string } | null;
+  /** The ⓘ, pinned top-right OUTSIDE the link (a button inside an <a> is
+   *  invalid, and its tap would navigate instead of explaining). */
+  info?: ReactNode;
 }) {
   const dot =
     tone === "emerald" ? "bg-emerald-500"
@@ -911,7 +939,7 @@ function DashStat({
     <>
       <div className="flex items-center gap-1.5 min-w-0">
         <span aria-hidden className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-        <span className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate">{label}</span>
+        <span className={`text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500 truncate ${info ? "pr-6" : ""}`}>{label}</span>
       </div>
       <div className={`font-condensed text-xl sm:text-2xl font-black leading-none tabular-nums mt-1 ${valueCls}`}>{value}</div>
       <div className="mt-0.5 flex items-center gap-1 flex-wrap">
@@ -926,10 +954,17 @@ function DashStat({
     </>
   );
   const cls = "block bg-surface border border-ppp-charcoal-100 rounded-lg px-3 py-2.5 min-h-[44px] transition-all";
-  return href ? (
+  const tile = href ? (
     <Link href={href} className={`${cls} hover:border-ppp-charcoal-200 hover:shadow-sm touch-manipulation`}>{inner}</Link>
   ) : (
     <div className={cls}>{inner}</div>
+  );
+  if (!info) return tile;
+  return (
+    <div className="relative">
+      {tile}
+      <div className="absolute top-2 right-2">{info}</div>
+    </div>
   );
 }
 
@@ -941,6 +976,7 @@ function TopOpenDealsCard({
   accountNameById,
   proposalTotalByOpp,
   currentProposalByOpp,
+  info,
 }: {
   opps: CommercialOpportunity[];
   accountNameById: Map<string, string>;
@@ -948,6 +984,7 @@ function TopOpenDealsCard({
   proposalTotalByOpp: Map<string, number>;
   /** Newest live proposal per deal — what lets a row say "mark it approved". */
   currentProposalByOpp: Map<string, { id: string; status: string }>;
+  info?: ReactNode;
 }) {
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl">
@@ -957,6 +994,7 @@ function TopOpenDealsCard({
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Top 5 open opportunities
+          {info}
         </h3>
         <Link
           href="/commercial/opportunities"
@@ -1042,9 +1080,11 @@ function TopOpenDealsCard({
 function RecentActivityCard({
   opps,
   accountNameById,
+  info,
 }: {
   opps: CommercialOpportunity[];
   accountNameById: Map<string, string>;
+  info?: ReactNode;
 }) {
   return (
     <div className="bg-surface border border-ppp-charcoal-100 rounded-xl overflow-hidden">
@@ -1052,6 +1092,7 @@ function RecentActivityCard({
         <h3 className="text-sm font-bold text-ppp-charcoal flex items-center gap-2">
           <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" />
           Recent activity
+          {info}
         </h3>
         <Link
           href="/commercial/opportunities?sort=updated"

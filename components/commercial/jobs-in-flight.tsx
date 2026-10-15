@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 // One money formatter, not two — the copy here had already drifted from the
@@ -28,13 +29,20 @@ import type { JobInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 // them drifting apart indefinitely.
 export type { JobInFlight } from "@/lib/commercial/reports/jobs-in-flight";
 
-export function JobsInFlight({ jobs }: { jobs: JobInFlight[] }) {
+export function JobsInFlight({
+  jobs,
+  info,
+}: {
+  jobs: JobInFlight[];
+  /** Optional explainer beside the heading (the dashboard's ⓘ). */
+  info?: ReactNode;
+}) {
   if (jobs.length === 0) return null;
 
   return (
     <div className="mt-3 bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5 shadow-sm">
       <div className="flex items-baseline justify-between gap-2 mb-3 flex-wrap">
-        <h3 className="text-[13px] font-bold text-ppp-charcoal">Jobs in flight</h3>
+        <h3 className="text-[13px] font-bold text-ppp-charcoal inline-flex items-center gap-1.5">Jobs in flight{info}</h3>
         <Link
           href="/commercial/opportunities?lane=under_contract"
           className="text-[11.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] inline-flex items-center px-1"

@@ -334,3 +334,168 @@ export function activityRange(preset: ActivityPreset): RangeResult | null {
       return null;
   }
 }
+
+// ─────────────────────────── Dashboard ───────────────────────────
+//
+// Katie 2026-10-15, for Alex: the Commercial home screen gets ONE period
+// picker, defaulting to this fiscal year. Quarters and years are FISCAL —
+// PPP's year starts in February (FY26 = 2026-02-01 → 2027-01-31, Q1 = Feb–Apr)
+// — read from `fiscal_year_start_month`, so a licensee on a calendar year gets
+// calendar quarters with no code change.
+//
+// Only the ACTIVITY figures follow the range (revenue billed, job costs, net,
+// margin, wins). Balances — what is owed, the pipeline, what is under
+// contract — are "as of today" whatever the picker says. See
+// `lib/commercial/dashboard/metric-notes.ts`, which tells the reader the same.
+
+export type DashboardPreset =
+  | "this_month" | "last_month" | "this_quarter" | "last_quarter"
+  | "this_fy" | "last_fy" | "all" | "custom";
+
+export const DASHBOARD_PRESETS: { key: DashboardPreset; label: string }[] = [
+  { key: "this_month", label: "This month" },
+  { key: "last_month", label: "Last month" },
+  { key: "this_quarter", label: "This quarter" },
+  { key: "last_quarter", label: "Last quarter" },
+  { key: "this_fy", label: "This FY" },
+  { key: "last_fy", label: "Last FY" },
+  { key: "all", label: "All time" },
+  { key: "custom", label: "Custom" },
+];
+
+export const DASHBOARD_DEFAULT: DashboardPreset = "this_fy";
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A real calendar date in YYYY-MM-DD, or null. "2026-02-31" is not one. */
+export function validYmd(raw: string | null | undefined): string | null {
+  if (!raw || !YMD_RE.test(raw)) return null;
+  const d = new Date(`${raw}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === raw ? raw : null;
+}
+
+/** First day of the month `n` months after (y, m), as YYYY-MM-DD. m is 1-based. */
+function monthStartPlus(y: number, m: number, n: number): string {
+  const total = y * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${pad((total % 12) + 1)}-01`;
+}
+
+/** The day before a YYYY-MM-DD. */
+function dayBefore(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Calendar days from `a` to `b` (b − a). */
+function daysBetweenYmd(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+}
+
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Resolve a dashboard preset to an inclusive ET date window.
+ *
+ * Null for `all` (no filter — callers must not invent a sentinel start date
+ * that silently clips history), and for a `custom` range whose dates are
+ * missing or invalid, which falls back to the default rather than guessing.
+ *
+ * `today` is a parameter so the fiscal arithmetic is testable on any date; the
+ * page passes `etTodayIso()`.
+ */
+export function dashboardRange(
+  preset: DashboardPreset,
+  fyStartMonth: number,
+  today: string = etTodayIso(),
+  custom?: { from?: string | null; to?: string | null }
+): RangeResult | null {
+  const y = Number(today.slice(0, 4));
+  const m = Number(today.slice(5, 7));
+  const fyStart = Math.min(12, Math.max(1, Math.round(fyStartMonth || 1)));
+  const fiscal = fyStart !== 1;
+  // FY named by its START year (FY26 = Feb 2026 → Jan 2027).
+  const fyYear = m >= fyStart ? y : y - 1;
+  const fyLabel = (yy: number) => (fiscal ? `FY${String(yy).slice(-2)}` : `${yy}`);
+  // Months since the fiscal year began (0-based), and the quarter that puts us in.
+  const monthsIntoFy = (m - fyStart + 12) % 12;
+  const qIndex = Math.floor(monthsIntoFy / 3); // 0..3
+  const qStart = monthStartPlus(fyYear, fyStart, qIndex * 3);
+  const qLabel = (fy: number, q: number) => `Q${q + 1} ${fyLabel(fy)}`;
+
+  switch (preset) {
+    case "this_month":
+      return { fromYmd: `${y}-${pad(m)}-01`, toYmd: today, label: "This month" };
+    case "last_month": {
+      const from = monthStartPlus(y, m, -1);
+      return { fromYmd: from, toYmd: dayBefore(`${y}-${pad(m)}-01`), label: "Last month" };
+    }
+    case "this_quarter":
+      return { fromYmd: qStart, toYmd: today, label: qLabel(fyYear, qIndex) };
+    case "last_quarter": {
+      const prevFy = qIndex === 0 ? fyYear - 1 : fyYear;
+      const prevQ = qIndex === 0 ? 3 : qIndex - 1;
+      const from = monthStartPlus(prevFy, fyStart, prevQ * 3);
+      return { fromYmd: from, toYmd: dayBefore(qStart), label: qLabel(prevFy, prevQ) };
+    }
+    case "this_fy":
+      return { fromYmd: monthStartPlus(fyYear, fyStart, 0), toYmd: today, label: `${fyLabel(fyYear)} to date` };
+    case "last_fy":
+      return {
+        fromYmd: monthStartPlus(fyYear - 1, fyStart, 0),
+        toYmd: dayBefore(monthStartPlus(fyYear, fyStart, 0)),
+        label: fyLabel(fyYear - 1),
+      };
+    case "custom": {
+      const from = validYmd(custom?.from ?? null);
+      const to = validYmd(custom?.to ?? null);
+      if (!from || !to) return dashboardRange(DASHBOARD_DEFAULT, fyStartMonth, today);
+      // Accept either order — a reversed pair is a slip, not a request for nothing.
+      const [a, b] = from <= to ? [from, to] : [to, from];
+      return { fromYmd: a, toYmd: b, label: `${a} → ${b}` };
+    }
+    case "all":
+    default:
+      return null;
+  }
+}
+
+/**
+ * The window a delta compares against — "vs last", like for like.
+ *
+ * An IN-PROGRESS period (this month / quarter / FY) is compared with the SAME
+ * number of elapsed days at the start of the period before it, so the 2nd of
+ * the month is not measured against the whole of last month. A COMPLETED period
+ * is compared with the whole period before it. All time and custom ranges have
+ * no natural "last", so they get none rather than an invented one.
+ */
+export function priorDashboardRange(
+  preset: DashboardPreset,
+  fyStartMonth: number,
+  today: string = etTodayIso()
+): RangeResult | null {
+  const cur = dashboardRange(preset, fyStartMonth, today);
+  if (!cur || preset === "all" || preset === "custom") return null;
+  const prevOf: Partial<Record<DashboardPreset, DashboardPreset>> = {
+    this_month: "last_month",
+    this_quarter: "last_quarter",
+    this_fy: "last_fy",
+  };
+  const prevPreset = prevOf[preset];
+  if (prevPreset) {
+    const prev = dashboardRange(prevPreset, fyStartMonth, today)!;
+    const elapsed = daysBetweenYmd(cur.fromYmd, cur.toYmd);
+    const cutoff = addDays(prev.fromYmd, elapsed);
+    return { fromYmd: prev.fromYmd, toYmd: cutoff < prev.toYmd ? cutoff : prev.toYmd, label: `same point ${prev.label.toLowerCase()}` };
+  }
+  // Completed periods: the period immediately before, in the same unit —
+  // "last month" as seen from the first day of the period being shown.
+  if (preset === "last_month" || preset === "last_quarter" || preset === "last_fy") {
+    return dashboardRange(preset, fyStartMonth, cur.fromYmd);
+  }
+  return null;
+}

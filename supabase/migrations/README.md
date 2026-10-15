@@ -16,6 +16,7 @@ The app must tolerate the migration being un-applied — e.g., `createToken` fal
 | File | What it does |
 |---|---|
 | `20260925210000_a_submittal_revision_could_never_be_saved.sql` | Unique index on submittals becomes (opportunity_id, submittal_number, **revision_number**). A revision deliberately reuses its parent's number, so "+ Create revision" collided with its own parent and had never once worked. |
+| `20261015180000_fiscal_year_starts_february.sql` | Sets `commercial_settings.fiscal_year_start_month` to **2** — PPP's fiscal year starts in February. Drives the Commercial dashboard's "This FY" default and fiscal quarters, and the Estimator report's year presets. Was seeded at 1 and nothing writes it. |
 | `001_system_credentials.sql` | Encrypted credentials table (Salesforce OAuth refresh token, etc.). |
 | `002_profiles_and_view_as.sql` | `profiles` table (admin flag, SF user id mapping) + `view_as_log` audit table. |
 | `003_customer_form_tokens.sql` | The customer-form token system. Adds `kind` column for `preview` vs real sends. |
