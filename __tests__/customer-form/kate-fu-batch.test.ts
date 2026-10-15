@@ -482,3 +482,65 @@ describe("FU.12 — a bucket AND loose gallons on one line", () => {
     expect(back.quantities["c1::Flat"].looseGal).toBe(99);
   });
 });
+
+describe("a message the customer can act on is not a system failure", () => {
+  /**
+   * Found by looking at the real preview of WO 00321126. FU.1's refusal
+   * came out wrapped in the generic failure copy:
+   *
+   *   "Something went wrong: Pick a finish for these before saving …
+   *    Please try again. If it keeps failing, reply to the PPP email and
+   *    we'll fix it on our end."
+   *
+   * That tells a homeowner the form is broken and to email PPP about the
+   * one thing only they can do. Five seconds of work, turned into a
+   * support email.
+   */
+  const src = () =>
+    readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*\/\/.*$/gm, " ");
+
+  it("has a separate heading for something the customer must do", () => {
+    const s = src();
+    expect(s).toContain("Before you submit:");
+    expect(s).toContain("Something went wrong:");
+  });
+
+  it("only shows 'we'll fix it on our end' for a real failure", () => {
+    const s = src();
+    const at = s.indexOf("we&apos;ll fix it on our end");
+    expect(at).toBeGreaterThan(-1);
+    // It must sit in the branch taken when the flag is FALSE.
+    const before = s.slice(Math.max(0, at - 400), at);
+    expect(before).toMatch(/submitNeedsAction \?/);
+    expect(before).toMatch(/Something went wrong:/);
+  });
+
+  it("flags the finish refusal as the customer's to fix", () => {
+    const s = src();
+    const at = s.indexOf("missingFinishMessage(missingFinish)");
+    expect(s.slice(Math.max(0, at - 200), at)).toContain("setSubmitNeedsAction(true)");
+  });
+
+  it("flags the empty-submission refusal the same way", () => {
+    const s = src();
+    // The USE inside setSubmitError, not the declaration above it.
+    const at = s.indexOf("setSubmitError(\n          everyLineIsMultiRoom");
+    expect(at, "the empty-submission refusal moved").toBeGreaterThan(-1);
+    expect(s.slice(Math.max(0, at - 200), at)).toContain("setSubmitNeedsAction(true)");
+  });
+
+  it("resets the flag for a genuine failure, so it cannot stick", () => {
+    const s = src();
+    // The catalog failure and the thrown-error catch both clear it.
+    expect((s.match(/setSubmitNeedsAction\(false\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("decides on a flag, not by matching the wording", () => {
+    // Sniffing the text is how the two drift apart the first time somebody
+    // rewords a message.
+    const s = src();
+    expect(s).not.toMatch(/submitError.*\.includes\("Pick a finish"\)/);
+  });
+});
