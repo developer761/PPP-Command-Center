@@ -24,6 +24,7 @@ import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
 import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { statedChannelPreference } from "./channel-preference";
+import { declinesTheWork } from "./parking";
 import { scopeFromCustomer as scopeSaidNow } from "./scope";
 
 /** Emily's terminal states, verbatim. */
@@ -316,6 +317,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "pursued_after_a_decline"
   | "discarded_work_we_cover"
   | "transferred_a_text_only_customer"
   | "restated_scope_from_chat"
@@ -1519,6 +1521,35 @@ const DEFERRAL_ENDINGS = new Set<string>(["schedule_follow_up"]);
  * the model another way to be wrong for nothing. The two off-site intents are
  * the second rung.
  */
+/**
+ * Intents that CHASE the job — the ones A17 stops after a decline.
+ *
+ * The warm close is deliberately absent: lost, bailout and
+ * acknowledge_negative are what the rule wants instead, and escalate stays
+ * so a person can still pick it up.
+ */
+const PURSUES_THE_JOB = new Set<string>([
+  "ask_project_details", "ask_address", "ask_contact", "ask_availability",
+  "confirm_scope", "confirm_address", "confirm_contact",
+  "checking_availability", "success",
+  "present_offsite_quote", "offer_offsite_quote",
+]);
+
+/**
+ * schedule_follow_up is DELIBERATELY ABSENT.
+ *
+ * parking-a40.test.ts asserts it stays available after "we found someone
+ * else", and that test predates this guard. It is also the most arguable
+ * member of the list: "I'll check back in with you later on" can read as a
+ * warm close that leaves the door open, which is what A17 asks for, rather
+ * than as chasing.
+ *
+ * So the clear cases are covered — asking for the address, contact or
+ * availability after a decline — and a judgement call that an existing test
+ * already settled is left where it was rather than overridden to suit a new
+ * check.
+ */
+
 const RAN_A7_LADDER = new Set<string>([
   "offer_offsite_quote", "present_offsite_quote", "ask_availability",
 ]);
@@ -2181,6 +2212,30 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   // UNKNOWN ROUTE REFUSES NEITHER. Both rules are gated on knowing what the
   // job is, and a caller that does not track scope should behave as it always
   // has.
+  /**
+   * A17 — WHEN THEY SAY THEY ARE NOT GOING AHEAD, STOP PURSUING.
+   *
+   * Reproduced 2026-10-14. After "We're not moving forward", "Not
+   * interested, thanks" or "No thanks, we already hired someone",
+   * ask_availability, ask_contact and schedule_follow_up were ALL still open
+   * and every pursuing sentence was allowed.
+   *
+   * Kate's corrective is one word: "stopped pursuing". The warm close —
+   * lost, bailout, acknowledge_negative — stays available and is the whole
+   * point: close well, leave the door open, do not chase.
+   *
+   * The decline test is IMPORTED rather than rewritten. parking.ts already
+   * owns that judgement, because telling a decline from a park is the thing
+   * it exists to do, and a second definition would drift from the first.
+   */
+  if (PURSUES_THE_JOB.has(a.intent) && declinesTheWork(ctx.customerText)) {
+    return {
+      ok: false, reason: "pursued_after_a_decline",
+      detail: "they said they are not going ahead, so this keeps chasing them. Close "
+        + "warmly and leave the door open instead (A17)",
+    };
+  }
+
   /**
    * A8 — DO NOT TURN DOWN WORK WE ACTUALLY DO.
    *

@@ -69,8 +69,45 @@ export type ParkKind =
  * 2026-09-18: "A DECLINE IS NOT ALWAYS WORDED AS ONE… a keyword sweep for
  * this missed exactly that one."
  */
-const DECLINED =
-  /\b(?:not\s+interested|no\s+thanks?|we(?:'re|\s+are)?\s+all\s+set|already\s+(?:hired|booked|found|got)|went\s+(?:with|another)|found\s+(?:someone|somebody|another)|hired\s+(?:someone|somebody)|going\s+(?:with|in)\s+another|changed\s+(?:my|our)\s+mind|decided\s+(?:not|against))\b/i;
+const DECLINED_WORDS =
+  /\b(?:not\s+interested|no\s+thanks?|we(?:'re|\s+are)?\s+all\s+set|already\s+(?:hired|booked|found|got)|went\s+(?:with|another)|found\s+(?:someone|somebody|another)|hired\s+(?:someone|somebody)|going\s+(?:with|in)\s+another|changed\s+(?:my|our)\s+mind|decided\s+(?:not|against)|not\s+moving\s+forward|hold(?:ing)?\s+off|pass\s+(?:for\s+now|on\s+(?:this|it))|do\s?n'?t\s+need\s+it\s+(?:any\s*more|now)|no\s+longer\s+(?:need|interested))\b/i;
+
+/**
+ * …BUT NOT WHEN THEY GO ON TO SAY WHAT THEY DO STILL WANT.
+ *
+ * Narrowing the job uses the same words as declining it:
+ *
+ *   "we decided not to paint the exterior, just inside"   narrowing
+ *   "no thanks to the cabinets, just the rooms"           narrowing
+ *   "we decided not to move forward, we hired someone"    a real decline
+ *
+ * The first two name work they still want; a real decline names none. Both
+ * halves matter and they fail in opposite directions — reading a narrowing
+ * as a decline abandons a live job, and reading a decline as a narrowing
+ * keeps chasing somebody who already said no.
+ *
+ * Measured 2026-10-14 against the previous pattern, which MISSED "we're not
+ * moving forward" — A17's own wording — along with "holding off", "pass for
+ * now" and "don't need it any more, and read both narrowings above as
+ * declines.
+ */
+const STILL_WANTS =
+  /\b(?:just|only|still)\b[^.!?]{0,30}\b(?:the\s+)?(?:inside|outside|interior|exterior|walls?|ceilings?|rooms?|kitchen|bath\w*|bedrooms?|hall\w*|trim|cabinets?|doors?|floors?)\b/i;
+
+const DECLINED = {
+  test: (t: string) => DECLINED_WORDS.test(t) && !STILL_WANTS.test(t),
+};
+
+/**
+ * NOT GOING AHEAD, for callers outside this file.
+ *
+ * A17 — "Not moving forward means stop pursuing" — needs the same judgement
+ * the park logic makes, and there is no second definition of a decline.
+ */
+export function declinesTheWork(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  return !!t && DECLINED.test(t);
+}
 
 /**
  * Asking for the QUOTE itself by some channel. A7 / phone pricing, and
