@@ -115,16 +115,45 @@ const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
   [
     // stop/quit + how we are reaching them. The verb is ENUMERATED, never
     // open, so "stop by tomorrow" and "stop at the house" cannot match.
-    String.raw`\b(?:stop|quit|cease|halt|discontinue)\s+(?:any\s+|the\s+)?(?:text\w*|messag\w*|contact\w*|calling|email\w*|sending|reaching)\b`,
+    String.raw`\b(?:stop|quit|cease|halt|discontinue)\s+(?:any\s+|all\s+|the\s+|your\s+|with\s+the\s+|constant\s+)*(?:text\w*|messag\w*|contact\w*|calling|email\w*|sending|reaching|communicat\w*|correspond\w*)\b`,
+    /**
+     * ── WIDENED 2026-10-14, AND WHY EACH ADDITION IS SAFE ─────────────────
+     *
+     * Nine of ten plain-language opt-outs classified as "normal", so the bot
+     * would have REPLIED to somebody who asked it to stop:
+     *
+     *   "please halt all communication"     "stop communication"
+     *   "please cease all communication"    "take my number off your list"
+     *   "I want to end all communication"   "remove my number from your list"
+     *   "don't keep texting me"             "stop with the constant texting"
+     *
+     * Every addition keeps the two protections this pattern was built with.
+     * The verb after stop stays ENUMERATED, so "stop by tomorrow" and "stop
+     * at the house first" still cannot match. And every branch still needs a
+     * communication noun or a list, so a DECLINE of the service — "no
+     * thanks", "we hired someone" — stays A17 and keeps the lead alive.
+     *
+     * "communication" and "correspondence" earn their place because they are
+     * what somebody reaches for when being formal about it, and being formal
+     * about it is the tone of a person who has had enough.
+     */
     // "stop all", which is STOPALL typed the way a person types it.
     String.raw`\b(?:stop|quit)\s+all\b`,
-    // take/remove me off the list
-    String.raw`\b(?:take|get|remove|delete)\s+me\s+(?:off|out\s+of|from)\b`,
-    // do not contact me
-    String.raw`\b(?:do\s?n'?t|do\s+not|never|no\s+longer)\s+(?:text|contact|messag\w*|call|email|reach)\s+me\b`,
+    // "end all communication with you" — here the NOUN carries it, since
+    // "end" is too common a verb to enumerate against on its own.
+    String.raw`\b(?:end|stop|cease|halt|discontinue)\b[^.!?]{0,24}\b(?:communicat\w*|correspond\w*)\b`,
+    // take/remove me — or MY NUMBER — off the list. "take me off" matched and
+    // "take my number off" did not, which is the same sentence.
+    String.raw`\b(?:take|get|remove|delete)\s+(?:me|my\s+(?:number|phone|name|info\w*|details?|contact))\s+(?:off|out\s+of|from)\b`,
+    // "remove from list" with nothing in between, which people do type.
+    String.raw`\b(?:remove|delete|take)\s+(?:me\s+)?from\s+(?:your\s+|the\s+)?list\b`,
+    // do not contact me — now tolerating one interposed word, so "don't KEEP
+    // texting me" matches. The fixed adjacency was the whole miss.
+    String.raw`\b(?:do\s?n'?t|do\s+not|never|no\s+longer|quit|stop)\s+(?:keep\s+|continue\s+|keep\s+on\s+)?(?:text\w*|contact\w*|messag\w*|call\w*|email\w*|reach\w*)\s+(?:me|us)\b`,
     String.raw`\bleave\s+me\s+alone\b`,
     String.raw`\bunsubscribe\b`,
-    String.raw`\bopt\s*me\s*out\b`,
+    // bare "opt out", the phrase on every compliance footer.
+    String.raw`\bopt\s*(?:me\s*)?out\b`,
     String.raw`\bno\s+more\s+(?:texts?|messages?|emails?|calls?)\b`,
     /*
       ── THE SAME RULE IN SPANISH ──────────────────────────────────────────
