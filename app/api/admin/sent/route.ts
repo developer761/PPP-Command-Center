@@ -183,7 +183,12 @@ export async function GET(request: Request) {
           summary: { returned: 0, totalLoaded: 0, formInvites: 0, supplierOrders: 0, scopeNote: "no_sf_user_mapping" },
         });
       }
-      const snapshot = await loadSalesforceSnapshot();
+      /**
+       * workOrders only. The full snapshot is 8.1MB and ~3.2s to read from the
+       * shared cache (22s if the instance is cold); thin carries every field
+       * this reads. Measured 2026-10-15.
+       */
+      const snapshot = await loadSalesforceSnapshot({ thin: true });
       const owned = snapshot.workOrders
         .filter((w) => w.ownerId === viewer.effectiveUserId)
         .map((w) => w.id);

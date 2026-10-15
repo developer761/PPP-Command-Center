@@ -72,7 +72,12 @@ export async function GET(request: Request) {
     }, { status: 400 });
   }
   try {
-    const snapshot = await loadSalesforceSnapshot();
+    /**
+     * workOrders only. The full snapshot is 8.1MB and ~3.2s to read from the
+     * shared cache (22s if the instance is cold); thin carries every field
+     * this reads. Measured 2026-10-15.
+     */
+    const snapshot = await loadSalesforceSnapshot({ thin: true });
     const hit = snapshot.workOrders.find((w) => w.workOrderNumber === numeric);
     if (hit) {
       return NextResponse.json({

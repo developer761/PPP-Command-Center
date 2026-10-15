@@ -38,7 +38,14 @@ export async function GET() {
   }
 
   try {
-    const snap = await loadSalesforceSnapshot();
+    /**
+     * THIN. This endpoint maps reps down to { id, name } for a dropdown, and
+     * the full snapshot is 8.1MB — measured at 3227ms to read from the shared
+     * cache on this very route, on 2026-10-15, with a cold instance paying a
+     * 22s Salesforce rebuild instead. It fires on admin page loads, so that
+     * was the price of a list of names. Thin carries reps unchanged.
+     */
+    const snap = await loadSalesforceSnapshot({ thin: true });
     const reps = snap.reps
       .map((r) => ({ id: r.id, name: r.name }))
       .sort((a, b) => a.name.localeCompare(b.name));

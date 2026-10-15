@@ -31,7 +31,8 @@ export default async function StuckDealsPage({
   searchParams: SP;
 }) {
   const sp = await searchParams;
-  const bundle = await loadDashboardData(sp);
+  const bundle = await loadDashboardData(sp, { thin: true });
+  // THIN: deriveStuckDeals reads reps and workOrders only — both in thin.
 
   const deals = bundle.snapshot ? deriveStuckDeals(bundle.snapshot, 14) : [];
   const totalAtRisk = deals.reduce((sum, d) => sum + d.amount, 0);

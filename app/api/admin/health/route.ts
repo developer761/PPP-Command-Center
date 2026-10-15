@@ -317,7 +317,12 @@ export async function GET() {
   // don't go through the color form). Completed jobs with missing surfaces
   // are historical noise and can't be retroactively fixed anyway.
   try {
-    const snapshot = await loadSalesforceSnapshot();
+    /**
+     * workOrders + woLineItems only. The full snapshot is 8.1MB and ~3.2s to
+     * read from the shared cache (22s if the instance is cold); thin carries
+     * every field this reads. Measured 2026-10-15.
+     */
+    const snapshot = await loadSalesforceSnapshot({ thin: true });
     // Build a lookup of WO id → { status, workTypeName, workOrderNumber } so
     // we can filter line items to only the ones that matter.
     type WoMeta = { status: string | null; workTypeName: string | null; workOrderNumber: string | null };
