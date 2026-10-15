@@ -548,6 +548,41 @@ const OPENS_WITH_ACKNOWLEDGEMENT =
  */
 const TEMPLATE_ECHO_WORDS = 4;
 
+/**
+ * Words that occur in English and not in Spanish.
+ *
+ * Deliberately a POSITIVE test. Rapport is three or four words, a language
+ * classifier is unreliable at that length, and the cost of guessing wrong is
+ * deleting a perfectly good Spanish pleasantry — "Perfecto.", "Con gusto.",
+ * "Listo." — which would leave the reply colder than it should be. Anything
+ * this cannot prove is English goes out unchanged.
+ *
+ * Every word here is a function word or a fixed phrase with no Spanish
+ * homograph. "no" and "problema" are deliberately absent: "no problem" is
+ * English but "no" alone is Spanish, and the overlap is where a naive list
+ * starts eating correct copy.
+ */
+const ENGLISH_ONLY = new RegExp(
+  "\\b(?:"
+  + "the|and|with|that|this|your|you|you're|youre|our|their|for|from|have|has|had"
+  + "|will|would|can|could|should|i'?ll|we'?ll|i'?m|we'?re|it'?s|let'?s"
+  + "|thanks|thank|happy|glad|sure|great|awesome|perfect(?:ly)?|got|get|help|helping"
+  + "|here|there|just|know|right|about|over|back|soon|more|any|all set|no problem"
+  + "|of course|sounds good|good to|looking|taking|sending|reach|reaching"
+  + ")\\b",
+  "i",
+);
+
+/**
+ * True when this text is provably English.
+ *
+ * Used only to keep English rapport out of a Spanish reply (A30). "Perfecto."
+ * and "Con gusto." return false, and so does anything ambiguous.
+ */
+export function readsAsEnglish(text: string | null | undefined): boolean {
+  return ENGLISH_ONLY.test((text ?? "").trim());
+}
+
 export function rapportIsRedundant(rapport: string, template: string): boolean {
   const said = rapport.trim();
   if (!said) return true;
@@ -1926,6 +1961,30 @@ function renderBody(input: RenderInput): string {
     // something is, two acknowledgements stacked is a much smaller fault than
     // ignoring a customer who asked us a direct question.
     && !(rapportIsRedundant(rapport, pick) && !answerIsOwed)
+    /**
+     * A30 — AND IT HAS TO BE IN THE CUSTOMER'S LANGUAGE.
+     *
+     * The templates are translated; the model's own sentence is not
+     * guaranteed to be. Found 2026-10-15, rendering a Spanish conversation:
+     *
+     *   "Happy to help with that. Dónde queda la propiedad?"
+     *   "Got it, thank you. Dónde queda la propiedad?"
+     *
+     * which is the bug that started A30 with its halves swapped — "Hola! Con
+     * gusto le ayudo. What are you looking to have painted?"
+     *
+     * DROPPED, NOT REFUSED. The template is already correct and says the
+     * substantive thing; losing the rapport costs a pleasantry, while
+     * refusing the turn would cost the whole reply. Everything else in this
+     * block drops rather than refuses for the same reason.
+     *
+     * POSITIVELY ENGLISH, not "fails a Spanish test". Rapport is short and a
+     * language classifier is unreliable on three words — "Perfecto." and
+     * "Con gusto." must survive, and they would not survive a guess. So this
+     * looks for English function words that do not occur in Spanish at all,
+     * and anything it cannot prove is English goes out unchanged.
+     */
+    && !(es && readsAsEnglish(rapport))
   ) {
     parts.push(rapport);
     rapportAt = parts.length - 1;
