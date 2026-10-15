@@ -39,6 +39,7 @@ import {
   isReimbursement,
   employeeFromCrewWorker,
   matchExistingPayment,
+  matchExistingPurchase,
   ymd,
 } from "../lib/commercial/import/mapping.ts";
 
@@ -399,6 +400,10 @@ function printReport(r) {
   }
   if (r.adopted) {
     console.log(`   🤝 ${r.adopted} row(s) ADOPTED — already created on the platform, claimed into the import map instead of duplicated`);
+    // The detail matters: an adoption is the importer deciding that a row
+    // somebody typed IS the Salesforce record. Worth being able to check.
+    for (const a of (r.adoptedRows ?? []).slice(0, 8)) console.log(`     - ${a}`);
+    if ((r.adoptedRows ?? []).length > 8) console.log(`     …and ${r.adoptedRows.length - 8} more`);
   }
   if (r.gone) {
     console.log(`   🗑  ${r.gone} row(s) DELETED on the platform since the import mapped them — the deletion stands, Salesforce did not re-create them:`);
@@ -1310,6 +1315,51 @@ async function stageCosts() {
       from += data.length;
     }
   }
+
+  /*
+   * COSTS MARY ALREADY ENTERED HERE.
+   *
+   * She records job costs in the Commercial Command Center, which is correct
+   * and wanted. The trouble was that the same purchase also sits in Salesforce,
+   * and this stage only ever asked "is this Salesforce id mapped?" — answered
+   * no, and inserted a second row. Five such pairs were live on 2026-10-14 and
+   * the list grew by one while that day's cleanup was running, because nothing
+   * stopped it recurring.
+   *
+   * So look for her row first and ADOPT it. Both rows are real records of one
+   * real purchase; deleting hers throws away the entry she was right to make.
+   * One row, one cost, and the map row that keeps the systems reconcilable.
+   */
+  const purchasePool = new Map(); // opportunity_id → unmapped live rows
+  /** Row ids this importer already owns: they belong to another transaction. */
+  const purchaseMapped = new Set();
+  for (const [key, rowId] of MAP) if (key.startsWith("purchase:")) purchaseMapped.add(rowId);
+  {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from("commercial_project_purchases")
+        .select("id, opportunity_id, vendor, amount_cents, purchased_at, deleted_at")
+        .order("id")
+        .range(from, from + 999);
+      if (error) throw new Error(`purchases (pool): ${error.message}`);
+      for (const p of data ?? []) {
+        if (p.deleted_at || !p.opportunity_id) continue;
+        if (!purchasePool.has(p.opportunity_id)) purchasePool.set(p.opportunity_id, []);
+        purchasePool.get(p.opportunity_id).push({
+          id: p.id,
+          vendor: p.vendor,
+          amount_cents: Number(p.amount_cents ?? 0),
+          purchased_at: p.purchased_at,
+          mapped: purchaseMapped.has(p.id),
+        });
+      }
+      if (!data || data.length < 1000) break;
+      from += data.length;
+    }
+  }
+  /** Rows claimed this run, so two Salesforce transactions cannot adopt one row. */
+  const claimedPurchases = new Set();
   for (const t of SF.txInScope) {
     const kind = { recordType: t.RecordType?.DeveloperName ?? null, payeeType: t.PayeeType__c ?? null };
     const category = purchaseCategory(kind);
@@ -1360,6 +1410,53 @@ async function stageCosts() {
      * deal it now belongs to.
      */
     const projectForDeal = mapped("project", SF.wos.find((w) => w.Id === t.WorkOrder__c)?.Id);
+
+    // Not mapped yet? She may already have entered it. Adopt rather than
+    // insert a second row — the decision lives in lib/commercial/import/
+    // mapping.ts with the rest of the ones that have to be right.
+    if (!mapped("purchase", t.Id)) {
+      const pool = (purchasePool.get(dealId) ?? []).filter(
+        (p) => !p.mapped && !claimedPurchases.has(p.id),
+      );
+      const hit = matchExistingPurchase(pool, {
+        vendor: vendor?.name ?? t.RetailVendor__r?.Name ?? t.Payee__r?.Name ?? null,
+        amount_cents: cents(t.Amount__c),
+        purchased_at: at(ymd(t.Date__c)),
+      });
+      if (hit.kind === "ask") {
+        r.skipped.push(
+          `cost ${t.Name ?? t.Id}: ${money(cents(t.Amount__c))} — ${hit.why}; left for a human rather than added again`,
+        );
+        continue;
+      }
+      if (hit.kind === "adopt") {
+        claimedPurchases.add(hit.row.id);
+        /*
+         * STAMPED AT THE EPOCH, like the write-back's pairing.
+         *
+         * `editedHere()` compares a row's `updated_at` against this stamp to
+         * decide who wins. Stamping NOW would make Mary's row look untouched
+         * since the last sync, and the very next run would overwrite the
+         * category she chose ("equipment", against Salesforce's "materials")
+         * and her description with Salesforce's. Her entry is the one that
+         * should survive — the amounts already agree, which is what made this
+         * a match at all, so there is nothing Salesforce can usefully add.
+         */
+        await remember(
+          "purchase",
+          t.Id,
+          hit.row.id,
+          "adopted: already entered in the Command Center",
+          new Date(0).toISOString(),
+        );
+        r.adopted = (r.adopted ?? 0) + 1;
+        if (!r.adoptedRows) r.adoptedRows = [];
+        if (r.adoptedRows.length < 40) {
+          r.adoptedRows.push(`${money(cents(t.Amount__c))} ${vendor?.name ?? "—"} — ${hit.why}`);
+        }
+      }
+    }
+
     await put("purchase", t.Id, "commercial_project_purchases", {
       opportunity_id: dealId,
       account_id: accountId,

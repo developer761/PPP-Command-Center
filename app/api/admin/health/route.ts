@@ -7,7 +7,6 @@ import { isAdminEmail } from "@/lib/auth/admin";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { loadSalesforceSnapshot } from "@/lib/salesforce/queries";
 import { opsAlertRecipients } from "@/lib/customer-form/sf-failure-alert";
-import { getWritebackMode, loadAllowlist } from "@/lib/customer-form/writeback-mode";
 import { isJobComplete } from "@/lib/wo-progress/completion";
 
 /**
@@ -171,44 +170,6 @@ export async function GET() {
             : "Not set, and no ops email recipients either — a failed supplier order or bounced color form would tell NOBODY.",
       group: "platform",
       fix: "Create an incoming webhook for the paint/materials channel in Slack, then add PPP_MATERIALS_SLACK_WEBHOOK in Vercel → Settings → Environment Variables and redeploy.",
-    });
-  }
-
-  /**
-   * THE ONE SETTING THAT CAN MAKE GOING LIVE A NO-OP.
-   *
-   * Writeback defaults to `test_only`, deliberately — it is the safe default
-   * while the form is being built, and it writes to Salesforce ONLY for work
-   * orders someone has put on an allowlist. Every other customer submission
-   * is saved in the hub and goes no further.
-   *
-   * That is exactly right during testing and catastrophic on launch day: the
-   * form would look perfect, send its confirmations, notify the AM, and leave
-   * Salesforce untouched. Nothing errors. Nobody is told. The only symptom is
-   * colors quietly missing from the work order weeks later.
-   *
-   * This page is where someone looks before going live, so it has to say so.
-   * It was checking Resend, Slack, suppliers and four migrations, and not
-   * this.
-   */
-  {
-    const mode = await getWritebackMode();
-    const allowlist = mode === "test_only" ? await loadAllowlist() : [];
-    checks.push({
-      id: "writeback_mode",
-      label: "Salesforce writeback (customer color submissions)",
-      status: mode === "all" ? "ok" : "fail",
-      message:
-        mode === "all"
-          ? "Mode 'all' — every customer submission writes to Salesforce. This is the setting to be live on."
-          : mode === "off"
-            ? "Mode 'off' — NO customer submission reaches Salesforce. Colors are saved in the hub only, and nothing warns the customer or the AM."
-            : `Mode 'test_only' — only the ${allowlist.length} work order${allowlist.length === 1 ? "" : "s"} on the allowlist write to Salesforce. Every other customer's colors are saved in the hub and go no further, silently. This is the safe default for testing and the wrong one to launch on.`,
-      group: "platform",
-      fix:
-        mode === "all"
-          ? undefined
-          : "Open Settings → Salesforce Writeback and set the mode to 'all' before the first real customer form goes out.",
     });
   }
 
@@ -504,11 +465,23 @@ export async function GET() {
   try {
     const sb = adminClient();
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    /**
+     * COLUMN NAMES. This read used `source` and `written_at`; the table has
+     * `triggered_by` and `attempted_at` (migration 003), and writeSfBatch
+     * inserts `triggered_by`. So the query errored every time and the check
+     * reported a database error instead of a number — the one check built to
+     * answer Katie's 2026-06-03 question, "are the customer's colors landing
+     * in Salesforce at all?", has never once answered it.
+     *
+     * Nothing caught it because the catch below turns it into a presentable
+     * card, and because a wrong column name is invisible to tsc: these are
+     * strings to everything except Postgres.
+     */
     const { data: rows, error } = await sb
       .from("sf_writes_audit")
-      .select("succeeded, source")
-      .gte("written_at", since)
-      .eq("source", "customer_form_submit");
+      .select("succeeded, triggered_by")
+      .gte("attempted_at", since)
+      .eq("triggered_by", "customer_form_submit");
     if (error) throw error;
     const total = rows?.length ?? 0;
     const failed = rows?.filter((r) => r.succeeded === false).length ?? 0;
@@ -537,7 +510,7 @@ export async function GET() {
         status: failRate > 20 ? "fail" : "warn",
         group: "data",
         message: `${failed} of ${total} customer-form writes failed (${failRate}%). Common causes: a Salesforce validation rule blocking the write, FLS hiding ColorXxx__c from the OAuth user, or a picklist mismatch (e.g. a new finish value the SF picklist doesn't have).`,
-        fix: "Check sf_writes_audit in Supabase (filter source='customer_form_submit', succeeded=false) for the error_message column — it usually pinpoints which field SF rejected. Most-common fix: ensure ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c are editable by the OAuth user's profile.",
+        fix: "Check sf_writes_audit in Supabase (filter triggered_by='customer_form_submit', succeeded=false) for the error_message column — it usually pinpoints which field SF rejected. Most-common fix: ensure ColorWall__c / ColorCeiling__c / ColorTrim__c / ColorOther__c / ColorFloor__c are editable by the OAuth user's profile.",
       });
     }
   } catch (err) {
@@ -601,6 +574,33 @@ export async function GET() {
           "Webhook URL configured — critical failures auto-post to Slack with a 5-min dedup window. Click 'Send test Slack alert' above to verify end-to-end.",
       });
     }
+  }
+
+  /**
+   * TWO CARDS, ONE ID.
+   *
+   * Every check above pushes under a unique id, and the several branches
+   * that share one are mutually exclusive — only one fires per request. On
+   * 2026-10-14 I added a second `writeback_mode` check without noticing the
+   * first, because I listed the ids with `grep | head -30` and read a
+   * truncated list as the whole set. The page then rendered two cards saying
+   * the same thing under the same React key.
+   *
+   * Cheaper to notice here than to re-read 29 checks: a duplicate becomes a
+   * failing card on the page it pollutes, naming itself.
+   */
+  const idCounts = new Map<string, number>();
+  for (const c of checks) idCounts.set(c.id, (idCounts.get(c.id) ?? 0) + 1);
+  const duplicated = [...idCounts].filter(([, n]) => n > 1).map(([id]) => id);
+  if (duplicated.length > 0) {
+    checks.push({
+      id: "health_duplicate_ids",
+      label: "Setup Health is reporting the same check twice",
+      status: "fail",
+      group: "platform",
+      message: `${duplicated.length} check id${duplicated.length === 1 ? " is" : "s are"} pushed more than once this request: ${duplicated.join(", ")}. Two cards are saying the same thing, and they share a React key.`,
+      fix: "Find the duplicate id in app/api/admin/health/route.ts and delete the newer check, or give it its own id if it genuinely measures something different.",
+    });
   }
 
   // Aggregate summary

@@ -85,7 +85,6 @@ export async function GET(request: Request) {
     kind: string | null;
     created_at: string | null;
     submitted_at: string | null;
-    resubmitted_at: string | null;
     expires_at: string | null;
     customer_name: string | null;
     created_by_user_id: string | null;
@@ -94,7 +93,7 @@ export async function GET(request: Request) {
     const { data: tokenRow } = await sb
       .from("customer_form_tokens")
       .select(
-        "token, work_order_id, work_order_number, kind, created_at, submitted_at, resubmitted_at, expires_at, customer_name, created_by_user_id"
+        "token, work_order_id, work_order_number, kind, created_at, submitted_at, expires_at, customer_name, created_by_user_id"
       )
       .eq("token", tokenParam)
       .maybeSingle();
@@ -106,7 +105,6 @@ export async function GET(request: Request) {
       kind: (tokenRow?.kind as string | null) ?? null,
       created_at: (tokenRow?.created_at as string | null) ?? null,
       submitted_at: (tokenRow?.submitted_at as string | null) ?? null,
-      resubmitted_at: (tokenRow?.resubmitted_at as string | null) ?? null,
       expires_at: (tokenRow?.expires_at as string | null) ?? null,
       customer_name: (tokenRow?.customer_name as string | null) ?? null,
       created_by_user_id: (tokenRow?.created_by_user_id as string | null) ?? null,
@@ -275,7 +273,7 @@ export async function GET(request: Request) {
   type PayloadSurface = { surface?: unknown; colorId?: unknown; skipped?: unknown };
   type PayloadLine = { id?: unknown; surfaces?: PayloadSurface[] };
   const payloadSummary = tokenRows
-    .filter((t) => t.submitted_at || t.resubmitted_at)
+    .filter((t) => t.submitted_at)
     .slice(0, 5)
     .map((t) => {
       // Try every reasonable column name so we find the payload wherever
@@ -321,7 +319,6 @@ export async function GET(request: Request) {
         token: ((t.token as string) ?? "").slice(0, 12) + "…",
         kind: (t.kind as string | null) ?? null,
         submitted_at: (t.submitted_at as string | null) ?? null,
-        resubmitted_at: (t.resubmitted_at as string | null) ?? null,
         payload_column_used:
           t.submitted_payload !== undefined
             ? "submitted_payload"
@@ -348,7 +345,7 @@ export async function GET(request: Request) {
       };
     });
 
-  const submittedTokens = tokenRows.filter((t) => t.submitted_at || t.resubmitted_at);
+  const submittedTokens = tokenRows.filter((t) => t.submitted_at);
   const allPayloadsEmpty = payloadSummary.length > 0 && payloadSummary.every((s) => s.would_produce_zero_attempts);
 
   let verdict: string;

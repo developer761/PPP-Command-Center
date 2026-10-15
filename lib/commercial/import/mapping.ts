@@ -594,3 +594,127 @@ export function planInvoiceColumns(plan: InvoicePlan): {
   // customer sees, so keep that exact and fold the tax in, loudly.
   return { subtotal_cents: totalTarget, tax_pct: 0, taxFolded: true };
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * COSTS ENTERED HERE, AND THE SAME COST ARRIVING FROM SALESFORCE.
+ *
+ * Mary records job costs in the Commercial Command Center. That is correct and
+ * wanted — it is the platform going forward. The problem was never her entries;
+ * it is that the SAME purchase also sits in Salesforce, and the importer, which
+ * only ever asked "is this Salesforce id mapped yet?", answered no and inserted
+ * a second row. Five pairs were live on 2026-10-14, and the list grew by one
+ * while that day's work was going on, because nothing stops it recurring.
+ *
+ * Deleting one side was the wrong instinct. Both rows are real records of one
+ * real purchase, and deleting Mary's throws away the entry she was right to
+ * make. So the importer ADOPTS instead: it recognises her row as this
+ * Salesforce transaction and maps the two together. One row, one cost, and the
+ * link that keeps the two systems reconcilable.
+ *
+ * Mirrors matchExistingPayment deliberately — same three answers, same reasons.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+export type ExistingPurchase = {
+  id: string;
+  vendor: string | null;
+  amount_cents: number;
+  purchased_at: string | null;
+  /** A row the importer already owns cannot be adopted by a second one. */
+  mapped: boolean;
+};
+
+export type IncomingPurchase = {
+  vendor: string | null;
+  amount_cents: number;
+  purchased_at: string | null;
+};
+
+export type PurchaseMatch =
+  | { kind: "insert"; why: string }
+  | { kind: "adopt"; row: ExistingPurchase; why: string }
+  | { kind: "ask"; row: ExistingPurchase | null; why: string };
+
+/**
+ * How far apart the two systems date the same purchase.
+ *
+ * Measured on the real pairs: 0 to 3 days. A receipt is logged in one system
+ * the day it is spent and in the other when somebody gets to it.
+ */
+const PURCHASE_WINDOW_DAYS = 3;
+
+/**
+ * Whole days between two timestamps, as EASTERN days.
+ *
+ * The same reasoning as the payment matcher's local copy: `purchased_at` is
+ * TIMESTAMPTZ, and a `.slice(0, 10)` on a true instant reads as tomorrow for
+ * anything recorded after 8pm ET. `ymd` does the conversion the rest of this
+ * file relies on. Module-scoped because the payment version is trapped inside
+ * its own function, and two subtly different day definitions in one file is how
+ * one of these quietly stops agreeing with the other.
+ */
+function daysApart(a: string | null | undefined, b: string | null | undefined): number | null {
+  const x = ymd(a), y = ymd(b);
+  if (x === null || y === null) return null;
+  return Math.abs(Date.parse(`${x}T12:00:00Z`) - Date.parse(`${y}T12:00:00Z`)) / 86_400_000;
+}
+
+/**
+ * The vendor, reduced to what both systems agree on.
+ *
+ * Salesforce holds the sub as "Peter-Profinish" and the app as
+ * "Peter - Profinish" — the same person, two spellings, and a trim-and-lowercase
+ * comparison puts them in different buckets. That one difference hid a $2,400
+ * duplicate through an entire cleanup.
+ */
+function normaliseVendor(v: string | null | undefined): string {
+  return String(v ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+export function matchExistingPurchase(
+  existing: ExistingPurchase[],
+  incoming: IncomingPurchase,
+): PurchaseMatch {
+  const want = normaliseVendor(incoming.vendor);
+  // A blank vendor on either side is not a match — it is an absence. Adopting
+  // on (amount, date) alone would merge two unrelated receipts for the same
+  // money on one job in one week, which is a thing that happens.
+  if (!want) return { kind: "insert", why: "no vendor to match on" };
+  if (!incoming.purchased_at) return { kind: "insert", why: "no date to match on" };
+
+  const candidates = existing.filter((p) => {
+    if (p.mapped) return false;                       // already another transaction's
+    if (p.amount_cents !== incoming.amount_cents) return false;
+    if (normaliseVendor(p.vendor) !== want) return false;
+    const gap = daysApart(p.purchased_at, incoming.purchased_at);
+    return gap !== null && gap <= PURCHASE_WINDOW_DAYS;
+  });
+
+  if (candidates.length === 0) {
+    return { kind: "insert", why: "nothing here matches this purchase" };
+  }
+  if (candidates.length > 1) {
+    /*
+     * Two unmapped rows for the same vendor, amount and week. They might be two
+     * genuine receipts — a crew buying the same thing twice is ordinary — so
+     * adopting one at random would silently attach the Salesforce record to
+     * whichever sorted first and leave the other orphaned. A person decides.
+     */
+    return {
+      kind: "ask",
+      row: null,
+      why: `${candidates.length} rows here match this vendor and amount within ${PURCHASE_WINDOW_DAYS} days`,
+    };
+  }
+  const row = candidates[0];
+  const gap = daysApart(row.purchased_at, incoming.purchased_at) ?? 0;
+  return {
+    kind: "adopt",
+    row,
+    why:
+      gap === 0
+        ? "already recorded here on the same day"
+        : `already recorded here ${gap} day${gap === 1 ? "" : "s"} ${
+            (row.purchased_at ?? "") < (incoming.purchased_at ?? "") ? "earlier" : "later"
+          }`,
+  };
+}
