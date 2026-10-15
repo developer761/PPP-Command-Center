@@ -21,6 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { MAX_CENTS, parseDollarsToCents } from "@/lib/commercial/invoices/format";
+import { AIA_BACKDATED_AFTER_DAYS, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
 
 describe("the money parser keeps the sign", () => {
   it("reads a credit as a negative number of cents", () => {
@@ -126,5 +127,51 @@ describe("a deductive AIA line can be billed, and a normal one cannot", () => {
 
   it("a normal line cannot be billed negative — which is why the form refuses it rather than storing a silent zero", () => {
     expect(clamp(50_000, -50_000)).toBe(0);
+  });
+});
+
+describe("a back-entered certificate ages from when it was billed", () => {
+  /*
+   * Katie, 2026-10-15: "AR aging dates back-entered AIA from when it was
+   * entered, so things look less overdue than they are."
+   *
+   * Measured the same day: 25 of 41 issued applications were frozen more than
+   * thirty days after their period closed, the worst by 251 days, because
+   * Tomco's AIA history was typed in during September and October. Aged from
+   * `frozen_at` the report showed 37 current and NOTHING overdue; aged from the
+   * period, 12 current and 29 late, nine past ninety days.
+   */
+  const PERIOD = "2026-02-28";
+  const periodInstant = `${PERIOD}T16:00:00Z`;
+
+  it("a certificate issued in the ordinary course keeps its issue date", () => {
+    // Days after the period, not a month — this is the normal case and must
+    // not move.
+    const frozen = "2026-03-05T14:00:00.000Z";
+    expect(aiaIssuedAtFrom(frozen, PERIOD)).toBe(frozen);
+  });
+
+  it("one typed in months later ages from the period it bills", () => {
+    expect(aiaIssuedAtFrom("2026-09-22T14:27:00.000Z", PERIOD)).toBe(periodInstant);
+  });
+
+  it("the boundary is a month, and it is not inclusive", () => {
+    const justInside = new Date(Date.parse(periodInstant) + AIA_BACKDATED_AFTER_DAYS * 86_400_000).toISOString();
+    expect(aiaIssuedAtFrom(justInside, PERIOD), "exactly 30 days is still believed").toBe(justInside);
+    const justOutside = new Date(Date.parse(periodInstant) + AIA_BACKDATED_AFTER_DAYS * 86_400_000 + 1000).toISOString();
+    expect(aiaIssuedAtFrom(justOutside, PERIOD), "a second past 30 days is a back-entry").toBe(periodInstant);
+  });
+
+  it("falls back cleanly when one side is missing", () => {
+    expect(aiaIssuedAtFrom(null, PERIOD)).toBe(periodInstant);
+    expect(aiaIssuedAtFrom("2026-09-22T14:27:00.000Z", null)).toBe("2026-09-22T14:27:00.000Z");
+    expect(aiaIssuedAtFrom(null, null)).toBeNull();
+  });
+
+  it("a certificate frozen BEFORE its period closes is left alone", () => {
+    // Progress billing raised ahead of the period end. The lag is negative, so
+    // the rule must not fire.
+    const early = "2026-02-20T14:00:00.000Z";
+    expect(aiaIssuedAtFrom(early, PERIOD)).toBe(early);
   });
 });
