@@ -42,7 +42,9 @@ describe("stain does not offer interior sheens", () => {
     // Ultra Spec now declares its own finishes (Jason 2026-09-09), so it is no
     // longer the generic list — interior is the no-scope default.
     expect(finishOptionsFor(ALL, "Ultra Spec")).toEqual(["Flat", "Eggshell", "Satin", "Semi-Gloss"]);
-    expect(finishOptionsFor(ALL, "Ultra Spec", "exterior")).toEqual(["Low Lustre", "Satin", "Soft Gloss"]);
+    // Kate FU.6 (2026-10-15) reordered exterior sheens: flat, satin, low
+    // lustre, soft gloss. Same set, new order.
+    expect(finishOptionsFor(ALL, "Ultra Spec", "exterior")).toEqual(["Satin", "Low Lustre", "Soft Gloss"]);
     expect(finishOptionsFor(ALL, null)).toEqual(ALL);
     expect(finishOptionsFor(ALL, "")).toEqual(ALL);
   });

@@ -46,9 +46,29 @@
  *
  * The `wrote:` is required, which is what keeps the cut off ordinary prose —
  * "On Friday we can deliver the Revere Pewter" is a reply, not a header.
+ *
+ * ── THE "On" MUST START A LINE ──────────────────────────────────────────
+ *
+ * It did not, and Kate found it the same afternoon (FU.13, 2026-10-15). The
+ * newline was optional — `\n?\s*On\s` — so with the `i` flag the pattern
+ * matched the "on " inside a WORD. Her vendor reply read
+ *
+ *     Hitting "Reply All" as a test -- I'm the vendor, k.sutton is the sender
+ *
+ * and the hub showed `...I'm the vendor, k.sutt`, a "Show quoted text"
+ * button, and `on is the sender` folded away behind it. The cut landed in
+ * the middle of her name, and the rest of her sentence was filed as someone
+ * else's quoted email.
+ *
+ * Every test I wrote put the attribution at the start of a line, so the
+ * suite was green on a rule that could fire anywhere in a sentence.
+ *
+ * A real attribution is always at the start of a line, optionally behind
+ * some `>` quote markers. Anchoring there costs nothing and makes a
+ * mid-word match impossible.
  */
 const QUOTE_MARKER =
-  /\n?\s*On\s[\s\S]{0,200}?wrote:|\n\s*-{2,}\s*Original Message\s*-{2,}|\n\s*_{5,}/i;
+  /(?:^|\n)[ \t]*>*[ \t]*On\s[\s\S]{0,200}?wrote:|\n\s*-{2,}\s*Original Message\s*-{2,}|\n\s*_{5,}/i;
 
 export type SplitReply = {
   /** What this person wrote. Empty when they wrote below the quote. */

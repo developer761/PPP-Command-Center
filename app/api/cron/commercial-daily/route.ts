@@ -132,6 +132,35 @@ export async function GET(request: Request) {
     console.warn("[cron/commercial-daily] Alex digests failed:", err);
   }
 
+  /*
+   * THE TOMCO WRITE-BACK BACKSTOP.
+   *
+   * The sale itself is queued the moment it is marked sold, and
+   * /api/cron/tomco-writeback drains that queue within the minute. This is the
+   * net underneath it: `queueForWriteBack` never throws — a job must not fail
+   * to be sold because a bookkeeping row could not be written — and "never
+   * throws" means it can silently not happen. This also catches anything that
+   * ran out of retries, anything held and since cleared, and every sale that
+   * closed before the feature existed.
+   *
+   * It only ENQUEUES; the per-minute tick does the writing. So a failure here
+   * delays a sync and cannot touch Salesforce, which is why it is isolated the
+   * same way as everything else riding this slot.
+   */
+  let tomcoSweep = { ok: true, queuedSales: 0, queuedChangeOrders: 0, errors: [] as string[] };
+  try {
+    const { sweepForMissedWriteBacks } = await import("@/lib/salesforce/tomco-tick");
+    tomcoSweep = await sweepForMissedWriteBacks();
+    if (tomcoSweep.queuedSales || tomcoSweep.queuedChangeOrders) {
+      console.log(
+        `[cron/commercial-daily] Tomco write-back sweep queued ${tomcoSweep.queuedSales} sale(s) and ${tomcoSweep.queuedChangeOrders} change order(s)`,
+      );
+    }
+  } catch (err) {
+    console.warn("[cron/commercial-daily] Tomco write-back sweep failed:", err);
+    tomcoSweep = { ok: false, queuedSales: 0, queuedChangeOrders: 0, errors: [String(err)] };
+  }
+
   // Force-close forgotten clock-outs (missed clock-out zeroes a worked day + blocks
   // next-day clock-in). Isolated so a failure here can't 500 the reminder cron.
   let stalePunches = { closed: 0 };
@@ -261,6 +290,7 @@ export async function GET(request: Request) {
       aiaDunning,
       scheduleEmails,
       digests,
+      tomcoWriteBackSweep: tomcoSweep,
     },
     { status }
   );

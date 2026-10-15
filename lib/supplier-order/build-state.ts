@@ -80,10 +80,20 @@ export function normalizeBuildPayload(raw: unknown): OrderBuildPayload {
       // pails, or a pail and 2 gallons mislabelled?), it already reads as
       // something rather than nothing, and guessing would change orders that
       // are currently right.
+      // FU.12 — loose gallons beside the pails. Carried explicitly because
+      // this function REBUILDS the object, so a field added to the type and
+      // not listed here is dropped on the way to the database while the
+      // screen still shows it. Clamped here; the pail-line-only rule lives
+      // once, on the write below, rather than being stated twice.
+      const looseGal = Math.max(0, Math.min(99, Math.floor(Number(q.looseGal) || 0)));
+      // Only written when it is actually set. A `looseGal: 0` on every pail
+      // row would bloat every stored draft and change the shape of rows
+      // nobody has touched.
+      const loose = unit === "bucket" && looseGal > 0 ? { looseGal } : null;
       out.quantities[k] =
         unit === "bucket" && buckets > 0 && cans === 0
-          ? { buckets: 0, cans: buckets, unit }
-          : { buckets, cans, unit };
+          ? { buckets: 0, cans: buckets, unit, ...loose }
+          : { buckets, cans, unit, ...loose };
     }
   }
 

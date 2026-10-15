@@ -163,6 +163,13 @@ DELETE FROM public.commercial_import_map;
 --     written to Salesforce unattended.
 DELETE FROM public.commercial_tomco_writeback_decisions;
 
+-- 17. The Tomco write-back queue. Its rows cascade away with the deals they
+--     point at, so this is belt-and-braces rather than strictly required —
+--     except for one thing it is required for: a row left here would have the
+--     per-minute tick try to write a deleted deal into Salesforce a minute
+--     after the wipe, and report it as a failure every hour thereafter.
+DELETE FROM public.commercial_tomco_writeback_queue;
+
 COMMIT;
 
 -- ─── Proof, not a promise: every line below must read 0. ─────────────────────
@@ -186,6 +193,7 @@ UNION ALL SELECT 'signature events',   count(*) FROM public.commercial_signature
 UNION ALL SELECT 'commercial bells',   count(*) FROM public.notifications WHERE kind LIKE 'commercial\_%'
 UNION ALL SELECT 'SF import map',       count(*) FROM public.commercial_import_map
 UNION ALL SELECT 'writeback decisions', count(*) FROM public.commercial_tomco_writeback_decisions
+UNION ALL SELECT 'writeback queue',    count(*) FROM public.commercial_tomco_writeback_queue
 
 -- ─── And every line below must be NON-zero: the setup that had to survive. ──
 UNION ALL SELECT '— vendors KEPT',        count(*) FROM public.commercial_vendors

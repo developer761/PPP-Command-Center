@@ -35,6 +35,39 @@ export function escapeHtml(value: string): string {
 
 export type ConfirmationEmail = { subject: string; text: string; html: string };
 
+/**
+ * A customer's note, with its line breaks intact.
+ *
+ * Kate FU.8 (2026-10-15): "the text isn't easily skimmable by the customer,
+ * needs breaks between rooms."
+ *
+ * On a multi-room line the customer answers into a template —
+ *
+ *     Living Room:
+ *     Walls: Carter Plum CW-355
+ *
+ *     Dining Room:
+ *     Walls: 01 White
+ *
+ * — and this went through escapeHtml alone, so HTML collapsed every newline
+ * and the email showed one unreadable run-on: "Living Room: Walls: Carter
+ * Plum CW-355 Dining Room: Walls: 01 White". The plain-text half of the same
+ * email was fine, which is why it was easy to miss.
+ *
+ * Escape FIRST, then add the markup, so the breaks cannot be forged by a
+ * customer typing tags into the box.
+ */
+function noteHtml(note: string): string {
+  return escapeHtml(note)
+    .replace(/\r\n/g, "\n")
+    // A blank line between rooms becomes real vertical space; a single
+    // newline inside a room becomes a plain line break.
+    .replace(/\n{2,}/g, '</div><div style="margin-top:7px;">')
+    .replace(/\n/g, "<br />")
+    .replace(/^/, '<div>')
+    .replace(/$/, "</div>");
+}
+
 export function buildConfirmationEmail(input: {
   templates: Pick<Templates, "confirm_subject" | "confirm_intro" | "confirm_outro" | "email_signoff">;
   /** Already-rendered variable map from buildVars(). */
@@ -77,7 +110,13 @@ export function buildConfirmationEmail(input: {
   const textRooms: string[] = [];
   for (const room of rooms) {
     textRooms.push(room.room.toUpperCase());
-    for (const s of room.surfaces) textRooms.push(`  ${s.surface}: ${receiptSurfaceText(s)}`);
+    // Kate FU.8 — a multi-room line never showed the customer a surface
+    // picker, so every surface on it reads "No color chosen yet". Printing a
+    // question nobody was asked is what made this unskimmable; their own
+    // note below is the actual answer.
+    if (!room.multiRoom) {
+      for (const s of room.surfaces) textRooms.push(`  ${s.surface}: ${receiptSurfaceText(s)}`);
+    }
     if (room.notes) textRooms.push(`  Your note: ${room.notes}`);
     textRooms.push("");
   }
@@ -114,7 +153,10 @@ export function buildConfirmationEmail(input: {
 
   const roomBlocks = rooms
     .map((room) => {
-      const surfaceRows = room.surfaces
+      // Kate FU.8 — see the plain-text branch above. Same rule, so the two
+      // halves of the same email cannot disagree about what the customer
+      // was asked.
+      const surfaceRows = (room.multiRoom ? [] : room.surfaces)
         .map((s) => {
           const unanswered = s.skipped || !s.colorName;
           const colorText = escapeHtml(receiptColorText(s));
@@ -138,7 +180,7 @@ export function buildConfirmationEmail(input: {
         })
         .join("\n");
       const noteRow = room.notes
-        ? `<tr><td colspan="3" style="padding:6px 10px 8px 10px; font-size:9pt; color:#666; border-bottom:1px solid #eee;"><em>Note: ${escapeHtml(room.notes)}</em></td></tr>`
+        ? `<tr><td colspan="3" style="padding:6px 10px 8px 10px; font-size:9pt; color:#666; border-bottom:1px solid #eee;"><em>Note: ${noteHtml(room.notes)}</em></td></tr>`
         : "";
       return `<tr><td colspan="3" style="padding:9px 10px 8px 10px; font-size:9.5pt; font-weight:bold; color:#333; background:#f5f5f5; border-bottom:1px solid #e0e0e0;">${escapeHtml(room.room)}</td></tr>
           ${surfaceRows}
@@ -152,8 +194,24 @@ export function buildConfirmationEmail(input: {
   // wrong at once, and the reader is a customer who had just told us they
   // were not ready to pick yet.
   const hasAnyColors = rooms.some((r) => r.surfaces.some((s) => s.colorName || s.skipped));
+  /**
+   * Anything worth printing — a color, a deliberate skip, OR a note.
+   *
+   * The table used to be gated on `hasAnyColors` alone, and the per-room
+   * notes live inside it. On a multi-room job the customer answers ENTIRELY
+   * in notes and picks no surface colors at all, so the whole table was
+   * dropped and the HTML receipt arrived with none of their answers in it.
+   * The plain-text half had them the whole time, which is why nobody saw it:
+   * mail clients show the HTML.
+   *
+   * Found while implementing Kate's FU.8, which is about this same email.
+   * The LABEL still keys off real colors — "Notes received" is the honest
+   * heading when that is what we got.
+   */
+  const hasAnythingToShow =
+    hasAnyColors || rooms.some((r) => (r.notes ?? "").trim().length > 0);
 
-  const roomsHtml = !hasAnyColors ? "" : `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:1px solid #e0e0e0; border-collapse:collapse;">
+  const roomsHtml = !hasAnythingToShow ? "" : `<table border="0" cellpadding="0" cellspacing="0" style="width:100%; border:1px solid #e0e0e0; border-collapse:collapse;">
         <tbody>
           <tr>
             <th align="left" style="padding:6px 10px; font-size:8pt; letter-spacing:0.06em; text-transform:uppercase; color:#888; font-weight:bold; border-bottom:1px solid #e0e0e0;">Surface</th>

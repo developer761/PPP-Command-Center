@@ -107,17 +107,32 @@ function FinishBlock({
           column heading hidden because the rows are stacked and there are no
           columns for it to label) and the rows' own 3-column grid from `sm` up,
           so the heading lands exactly over the column it names. */}
-      <div className="border-b border-ppp-charcoal-100 pb-1.5 flex items-baseline justify-between gap-3 flex-wrap sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:justify-normal">
-        <h4 className="font-condensed text-sm sm:text-base font-bold text-ppp-navy">{title}</h4>
-        <span className="hidden sm:block text-[10px] font-semibold uppercase tracking-wider text-ppp-charcoal-500">
+      {/* Kate FU.5 (2026-10-15): "Could we add a darker color to the
+          interior/exterior headers on the finish table? … Maybe a dark grey,
+          or make it the navy color that the Interior/Exterior text is and
+          make the header text white."
+
+          Her second option, which is the one that uses a color already in
+          the design rather than introducing a grey: the whole header row
+          becomes navy with white text, so Interior and Exterior read as
+          section headings instead of as the first line of the list.
+
+          White on ppp-navy (#172B4D) is 14.2:1 — comfortably past AA, and
+          unlike brand blue it is a pairing that does carry white text. The
+          muted charcoal on the two secondary labels would not survive the
+          flip, so they go to a light tint of white instead of a dark grey
+          nobody could read. */}
+      <div className="rounded-t-lg bg-ppp-navy px-3 py-2 flex items-baseline justify-between gap-3 flex-wrap sm:grid sm:grid-cols-[6.5rem_12rem_1fr] sm:gap-4 sm:justify-normal">
+        <h4 className="font-condensed text-sm sm:text-base font-bold text-white">{title}</h4>
+        <span className="hidden sm:block text-[10px] font-semibold uppercase tracking-wider text-white/70">
           Recommended Surface
         </span>
-        <span className="text-[10px] sm:text-[11px] text-ppp-charcoal-500 sm:text-right">
+        <span className="text-[10px] sm:text-[11px] text-white/70 sm:text-right">
           {caption}
         </span>
       </div>
 
-      <ul className="divide-y divide-ppp-charcoal-100">
+      <ul className="divide-y divide-ppp-charcoal-100 border border-t-0 border-ppp-charcoal-100 rounded-b-lg px-3">
         {rows.map((r) => (
           <li
             key={`${title}-${r.finish}`}

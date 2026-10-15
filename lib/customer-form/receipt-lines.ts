@@ -17,6 +17,8 @@
  * lib/email/resend.ts; what to say lives here.
  */
 
+import { isInteriorLine, roomsNamedIn } from "@/lib/supplier-order/multi-room";
+
 export type ReceiptSurface = {
   surface: string;
   colorName: string | null;
@@ -29,6 +31,20 @@ export type ReceiptRoom = {
   room: string;
   surfaces: ReceiptSurface[];
   notes: string | null;
+  /**
+   * A multi-room line — one Salesforce line covering several rooms, where the
+   * customer answers in free text and never sees surface pickers at all.
+   *
+   * Kate FU.8 (2026-10-15): "when there is a multi-room line item, hide the
+   * surfaces on the customer's form and on the customer's confirmation email
+   * instead of showing 'Not chosen yet'."
+   *
+   * The blank surfaces are printed everywhere else on purpose — "no color
+   * chosen yet" is the line most likely to get somebody back into the form
+   * before we order. That argument does not apply here: there was no picker
+   * to fill, so the blank reports a question the customer was never asked.
+   */
+  multiRoom: boolean;
 };
 
 /** One line item as the submit route has already sanitized it. */
@@ -36,6 +52,13 @@ export type ReceiptInputLine = {
   id?: string | null;
   surfaces?: unknown;
   notes?: string | null;
+};
+
+/** What the LINE ITEM says in Salesforce — used only to spot a multi-room
+ *  line. Separate from `notes` above, which is what the customer typed. */
+export type ReceiptLineContext = {
+  lineItemNotes?: string | null;
+  productFamily?: string | null;
 };
 
 function str(v: unknown): string | null {
@@ -54,6 +77,9 @@ function str(v: unknown): string | null {
 export function buildReceiptRooms(input: {
   lineItems: ReadonlyArray<ReceiptInputLine>;
   roomLabelById: ReadonlyMap<string, string>;
+  /** Per line id, what Salesforce says about it. Absent = treat as a normal
+   *  line, which is the behavior every caller had before FU.8. */
+  contextById?: ReadonlyMap<string, ReceiptLineContext>;
 }): ReceiptRoom[] {
   const rooms: ReceiptRoom[] = [];
   for (const li of input.lineItems) {
@@ -79,10 +105,18 @@ export function buildReceiptRooms(input: {
       });
     }
     if (surfaces.length === 0 && !str(li.notes)) continue;
+    // Same rule the form uses to hide the pickers, so the receipt and the
+    // screen agree about which lines are multi-room.
+    const ctx = input.contextById?.get(id);
+    const multiRoom =
+      !!ctx &&
+      (isInteriorLine(ctx.productFamily ?? null) || !ctx.productFamily) &&
+      roomsNamedIn(ctx.lineItemNotes ?? null).length >= 2;
     rooms.push({
       room: input.roomLabelById.get(id) ?? "Unnamed area",
       surfaces,
       notes: str(li.notes),
+      multiRoom,
     });
   }
   return rooms;

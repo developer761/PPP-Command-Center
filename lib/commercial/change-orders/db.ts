@@ -439,14 +439,45 @@ export async function decideChangeOrder(
   if (!updated) return { ok: false, error: "This change order changed in another tab — reload and try again." };
   const row = updated as CommercialChangeOrder;
   await logUpdate("commercial_change_orders", id, before, row, userId);
+
+  /*
+   * TELL SALESFORCE — BOTH WAYS.
+   *
+   * A change order approved after the sale moves the sale's value, so Katie's
+   * total is wrong from this moment until Salesforce hears about it. The four
+   * reconciliation differences closed on 2026-10-14 were all of these.
+   *
+   * Queued on the DECLINE as well, which is the case nobody would exercise by
+   * hand before it mattered: an approved change order that was already pushed
+   * and is now declined has money in Katie's total that this platform says is
+   * not owed. `syncChangeOrder` sets the Salesforce record to Denied, and —
+   * measured on 18 live work orders — the rollup stops counting it. Queueing
+   * only the approval would have left that money there forever.
+   *
+   * Only queues something Salesforce could plausibly be holding: a decline on
+   * a change order that was never approved has nothing to reverse.
+   */
+  if (decision === "approved" || before.status === "approved") {
+    const { queueForWriteBack } = await import("@/lib/salesforce/tomco-queue");
+    await queueForWriteBack({
+      kind: "change_order",
+      opportunityId: row.opportunity_id,
+      changeOrderId: row.id,
+      actingUserId: userId,
+    });
+  }
   return { ok: true, value: row };
 }
 
-/**
- * Bill an approved, additive CO as its own draft invoice, then link it back.
- * Guards: must be approved; must be positive (deduct COs adjust the contract
- * sum but aren't billed — the invoice schema forbids negative totals); must
- * not already have a live invoice.
+/*
+ * The docblock that used to sit here described `billChangeOrderAsInvoice` —
+ * "bill an approved, ADDITIVE change order as its own draft invoice… deduct COs
+ * adjust the contract sum but aren't billed". That function is gone, replaced by
+ * the tick below, and the sentence had outlived it: a deduct IS billed now, as a
+ * negative line capped so the invoice cannot total below $0.
+ *
+ * Deleted rather than corrected because it was already doing damage. Asked how
+ * to enter a credit, this file's own documentation said it could not be done.
  */
 // ═══════════════════════════════════════════════════════════════════════════
 //  Phase 1A — the change-order billing TICK
@@ -838,6 +869,27 @@ export async function deleteChangeOrder(id: string, userId: string): Promise<Res
     .is("deleted_at", null);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_change_orders", id, before, userId);
+
+  /*
+   * A DELETED CHANGE ORDER MUST ALSO LEAVE SALESFORCE'S TOTAL.
+   *
+   * Same reason as the decline in `decideChangeOrder`: if it was approved, the
+   * write-back may already have pushed it, and deleting it here while leaving
+   * it approved there would put the two systems out by its amount — silently,
+   * because nothing in the Command Center would ever mention it again.
+   *
+   * `syncChangeOrder` reads `deleted_at` as "should not count", so the one
+   * reversal path serves the decline and the delete both.
+   */
+  if (before.status === "approved") {
+    const { queueForWriteBack } = await import("@/lib/salesforce/tomco-queue");
+    await queueForWriteBack({
+      kind: "change_order",
+      opportunityId: before.opportunity_id,
+      changeOrderId: id,
+      actingUserId: userId,
+    });
+  }
   return { ok: true, value: true };
 }
 

@@ -1083,12 +1083,18 @@ export async function POST(
   // was protected from the duplicate noise and the customer was not.
   if (notifySender && runWrites && hasMeaningfulSubmission && status.token.customer_email) {
     const receiptRoomLabels = new Map<string, string>();
+    // Kate FU.8 — the receipt needs to know which lines are multi-room so it
+    // can leave the surfaces off, the same way the form does.
+    const receiptContext = new Map<string, { lineItemNotes: string | null; productFamily: string | null }>();
     for (const li of fresh.lineItems) {
-      if (li.id) receiptRoomLabels.set(li.id, roomLabelFrom(li.areaLabel, li.productName));
+      if (!li.id) continue;
+      receiptRoomLabels.set(li.id, roomLabelFrom(li.areaLabel, li.productName));
+      receiptContext.set(li.id, { lineItemNotes: li.lineItemNotes, productFamily: li.productFamily });
     }
     const rooms = buildReceiptRooms({
       lineItems: sanitizedLineItems,
       roomLabelById: receiptRoomLabels,
+      contextById: receiptContext,
     });
     const receiptNotes = sanitizeNotesField(body.globalNotes);
     // receiptRecipient validates the address and refuses to fall back to the

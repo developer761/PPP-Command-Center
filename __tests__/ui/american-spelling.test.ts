@@ -30,7 +30,23 @@ describe("American spelling, everywhere a person can read it", () => {
       .split("\n")
       .filter(Boolean)
       // This file names the misspellings in order to forbid them.
-      .filter((l) => !l.startsWith("__tests__/ui/american-spelling.test.ts"));
+      .filter((l) => !l.startsWith("__tests__/ui/american-spelling.test.ts"))
+      /**
+       * A third party's URL is not our spelling.
+       *
+       * Farrow & Ball — added to the customer form's brand toggle on
+       * 2026-10-15 — serve their range at /paint/all-paint-colours. That is
+       * their path, not our prose: Americanizing it gives the customer a
+       * 404, which is a worse outcome than a British "u" nobody reads.
+       *
+       * Narrow on purpose. Only the URL itself is exempt, so the same line's
+       * visible label ("All paint colors") is still checked, and a British
+       * spelling anywhere else on the line still fails.
+       */
+      .filter((l) => {
+        const withoutUrls = l.replace(/https?:\/\/\S+/g, "");
+        return /colour|labour/i.test(withoutUrls);
+      });
 
     expect(
       hits,

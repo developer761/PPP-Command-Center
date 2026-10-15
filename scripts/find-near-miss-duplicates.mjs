@@ -60,7 +60,23 @@ sweep("── NON-LABOR COSTS (materials, equipment, subs…)", NONLABOR,
 let pays = []; try { pays = await page("commercial_invoice_payments", "id,invoice_id,amount_cents,paid_at,reference,recorded_by_user_id,voided_at", ["id"]); } catch { pays = (await page("commercial_invoice_payments", "id,invoice_id,amount_cents,paid_at,reference,recorded_by_user_id", ["id"])); }
 const invs = await page("commercial_invoices", "id,opportunity_id,deleted_at", ["id"]);
 const oppOfInv = new Map(invs.map((i) => [i.id, i.opportunity_id]));
-sweep("── INVOICE PAYMENTS (cash in)", pays,
+/*
+ * A PAYMENT ON A DELETED INVOICE IS NOT DOUBLE-COUNTED CASH.
+ *
+ * It reaches no money surface — the receivables report refuses a soft-deleted
+ * parent, and `check:money` asserts that on 26 of them. But this sweep was
+ * grouping on the DEAL, so a person's payment on an invoice they later deleted
+ * paired with the importer's copy on the live one and came out as "🔴 2
+ * cross-provenance pairs · $16,462.85". Both pairs were exactly that: J.
+ * Carleton's $11,617.85 on deleted INV-0027 and Panera's $4,845.00 on a deleted
+ * invoice, measured 2026-10-15.
+ *
+ * A report that says $16,000 of cash may be counted twice, when none of it is,
+ * is worse than no report — the next real one is read as noise too.
+ */
+const deadInvoice = new Set(invs.filter((i) => i.deleted_at).map((i) => i.id));
+const livePays = pays.filter((p) => !deadInvoice.has(p.invoice_id));
+sweep("── INVOICE PAYMENTS (cash in)", livePays,
   (r) => `${oppOfInv.get(r.invoice_id)}|${r.amount_cents}`, (r) => r.paid_at, (r) => r.amount_cents, mappedBy("payment"),
   (r) => `${String(nameOf.get(oppOfInv.get(r.invoice_id)) ?? "?").slice(0, 26).padEnd(26)} ref=${String(r.reference ?? "-").slice(0, 12).padEnd(12)} ${r.recorded_by_user_id ? "person" : "import"}`);
 

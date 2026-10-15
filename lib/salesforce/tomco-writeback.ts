@@ -88,10 +88,17 @@ export async function updateExisting(
     StageName: string;
     Corporate_Name__c: string | null;
     Quote_Subtotal__c: number | null;
+    /*
+     * The CANONICAL sales metric — `Opportunity.QuotedSubtotalWithChangeOrder__c`
+     * (no underscores on the Opportunity; the WorkOrder spells the same concept
+     * `Quoted_Subtotal_with_Change_Order__c`). Read only to describe a skip
+     * honestly, never written: it is derived.
+     */
+    QuotedSubtotalWithChangeOrder__c: number | null;
     Pricebook2Id: string | null;
   }>(
     ctx,
-    `SELECT Id, StageName, Corporate_Name__c, Quote_Subtotal__c, Pricebook2Id
+    `SELECT Id, StageName, Corporate_Name__c, Quote_Subtotal__c, QuotedSubtotalWithChangeOrder__c, Pricebook2Id
        FROM Opportunity WHERE Id = '${sfId}'`,
   );
   if (!opp) {
@@ -130,15 +137,31 @@ export async function updateExisting(
    * Once it is Closed Won over there, this function reports and stops.
    */
   if (opp.StageName === "Closed Won") {
+    /*
+     * SAY WHICH FIGURE DISAGREES, because the quote line is not the one that
+     * matters and a message naming only it sends people chasing nothing.
+     *
+     * Majestic Properties, on the first real tick: the quote line read $9,060
+     * against our $9,852.76, so this said "our base is 9852.76, and the
+     * difference is Salesforce's to keep" — reading as a $792.76 discrepancy on
+     * a job that agrees to the cent. `QuotedSubtotalWithChangeOrder__c`, the
+     * canonical sales metric and the number Katie's reports run on, is
+     * $9,852.76 there. The $792.76 lives in the work order's own line items,
+     * which no surface here claims to mirror.
+     */
+    const quoteLine = Number(opp.Quote_Subtotal__c ?? 0);
+    const canonical = Number(opp.QuotedSubtotalWithChangeOrder__c ?? 0);
+    const quoteLineAgrees = Math.abs(quoteLine - contract) < 0.005;
+    const canonicalAgrees = Math.abs(canonical - contract) < 0.005;
+    const note = quoteLineAgrees
+      ? ""
+      : canonicalAgrees
+        ? `; its quote line reads ${quoteLine.toFixed(2)}, but the total Katie's reports use already matches us to the cent`
+        : `; our base is ${contract.toFixed(2)} against their ${canonical.toFixed(2)} — the difference is Salesforce's to keep`;
     return {
       ...out,
       action: "skipped",
-      steps: [
-        `already Closed Won in Salesforce at ${opp.Quote_Subtotal__c ?? "—"} — left alone` +
-          (Math.abs(Number(opp.Quote_Subtotal__c ?? 0) - contract) >= 0.005
-            ? `; our base is ${contract.toFixed(2)}, and the difference is Salesforce's to keep`
-            : ""),
-      ],
+      steps: [`already Closed Won in Salesforce at ${canonical.toFixed(2)} — left alone${note}`],
     };
   }
   if (ctx.apply) {
@@ -414,6 +437,45 @@ export async function createNew(
   out.steps.push("quote approved");
 
   /*
+   * 🔴 AND SYNC THE QUOTE, OR THE SALE READS AS $0 IN KATIE'S REPORTS.
+   *
+   * Katie, 2026-10-15, asked for the order of operations: *"Account →
+   * Opportunity → Quote w/ Line Items → Approve then Sync Quote and the
+   * automation should handle it from there forward."* This is the "Sync Quote"
+   * step, which on the Opportunity is `SyncedQuoteId`.
+   *
+   * It is not a tidying step. Measured on the four deals this function had
+   * already created: every one had an Approved quote, NO synced quote, no work
+   * order, and `QuotedSubtotalWithChangeOrder__c` — the canonical PPP sales
+   * metric, the one her reports run on — sitting at NULL. The money was in
+   * `Quote_Subtotal__c` and nowhere her reporting looks.
+   *
+   * The work order is the other half of what it buys. Of 200 Tomco
+   * opportunities, all 85 with a synced quote have a work order and only 10% of
+   * those without one do. No work order means no `ChangeOrder__c` can attach
+   * (`WorkOrder__c` is required and create-only, and this user cannot create a
+   * Tomco work order), so every change order on a deal we created would have
+   * been held with "no live work order in Salesforce to attach it to" — forever.
+   *
+   * Best-effort on purpose: the opportunity, quote and line are already in and
+   * correct, and the read-back checks below report what the org did with this.
+   * Failing the whole write-back here would strand a sale that is otherwise
+   * complete.
+   */
+  const syncRes = await ctx.conn
+    .sobject("Opportunity")
+    .update({ Id: oppRes.id, SyncedQuoteId: quoteRes.id })
+    .catch((err: unknown) => ({ success: false, errors: [err instanceof Error ? err.message : String(err)] }));
+  if ((syncRes as { success?: boolean }).success === false) {
+    out.steps.push(
+      `🔴 quote NOT synced (${JSON.stringify((syncRes as { errors?: unknown }).errors)}) — ` +
+        `no work order will be created and this sale will read as $0 in the canonical total until it is`,
+    );
+  } else {
+    out.steps.push("quote synced — the org creates the work order from here");
+  }
+
+  /*
    * 🔴 THE MAP ROW, OR TONIGHT'S IMPORT DUPLICATES THE DEAL.
    *
    * `SF.opps` is scoped `Corporate_Name__c = 'Tomco Painting'`, so a record
@@ -462,10 +524,11 @@ export async function createNew(
     StageName: string;
     Corporate_Name__c: string | null;
     Quote_Subtotal__c: number | null;
+    SyncedQuoteId: string | null;
     AccountId: string | null;
   }>(
     ctx,
-    `SELECT Name, StageName, Corporate_Name__c, Quote_Subtotal__c, AccountId FROM Opportunity WHERE Id = '${oppRes.id}'`,
+    `SELECT Name, StageName, Corporate_Name__c, Quote_Subtotal__c, SyncedQuoteId, AccountId FROM Opportunity WHERE Id = '${oppRes.id}'`,
   );
   out.checks.push({ name: "stage is Closed Won", ok: after?.StageName === "Closed Won", detail: after?.StageName ?? "unknown" });
   out.checks.push({
@@ -494,5 +557,38 @@ export async function createNew(
   );
   const n = Number((dupes.records?.[0] as { n?: number })?.n ?? 0);
   out.checks.push({ name: "exactly one record for this deal", ok: n === 1, detail: `${n} found` });
+
+  /*
+   * THE QUOTE IS SYNCED, AND A WORK ORDER FOLLOWED.
+   *
+   * Checked rather than assumed because the first four records this function
+   * created were missing both, and nothing said so — they read as four clean
+   * successes with a green tick on every other check. The work order is what
+   * populates the canonical total and what a change order attaches to, so its
+   * absence is a defect, not a detail.
+   *
+   * The work order is created by the org's own automation, which is not
+   * instant. Reported as a separate check rather than folded into the sync one,
+   * so "we asked and it has not appeared yet" reads differently from "we never
+   * asked".
+   */
+  out.checks.push({
+    name: "quote is synced to the opportunity",
+    ok: !!after?.SyncedQuoteId,
+    detail: after?.SyncedQuoteId
+      ? after.SyncedQuoteId
+      : "NOT synced — no work order will be created, and the canonical total stays empty",
+  });
+  const wo = await soqlOne<{ WorkOrderNumber: string; Status: string }>(
+    ctx,
+    `SELECT WorkOrderNumber, Status FROM WorkOrder WHERE Opportunity__c = '${oppRes.id}' AND Status != 'Canceled' LIMIT 1`,
+  );
+  out.checks.push({
+    name: "a work order exists for it",
+    ok: !!wo,
+    detail: wo
+      ? `${wo.WorkOrderNumber} (${wo.Status})`
+      : "none yet — the org creates it from the synced quote, which can lag; re-check before approving change orders on this job",
+  });
   return out;
 }

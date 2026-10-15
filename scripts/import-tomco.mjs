@@ -477,6 +477,10 @@ async function loadSalesforce(conn) {
       FROM ContentDocument WHERE Id IN (${docIds.slice(i, i + 200).map((d) => `'${d}'`).join(",")})`));
   }
   SF.loaded = true;
+  // Kept so a stage can ask Salesforce a follow-up question of its own —
+  // `pushedChangeOrderDollarsByWorkOrder` needs the change orders the write-back
+  // created, which are not part of any bulk fetch above.
+  SF.conn = conn;
   // Everything we import hangs off the 92 LIVE work orders. Transactions and
   // attendance also exist on canceled ones (5 and 6 of them) and on lost
   // opportunities we are not importing — the reconciliation has to compare
@@ -895,9 +899,88 @@ async function liveHandMadeChangeOrderDeals() {
   return deals;
 }
 
+/**
+ * Change-order money Salesforce holds BECAUSE WE PUT IT THERE.
+ *
+ * The write-back pushes a change order approved here into Salesforce as a real
+ * `ChangeOrder__c`, which lifts that job's `TotalChangeOrder__c` — the number
+ * this stage carries into the migrated CO-001 rollup row. So without this, the
+ * money comes straight back as a second copy of itself.
+ *
+ * Live on 2026-10-15, before the write-back had pushed anything a second time:
+ * Green Leaf — FW Webb showed $18,800.00 in Salesforce against an $18,250.00
+ * rollup row here and a $550.00 "Drip Caps" change order typed by hand. The
+ * next run of this stage would have moved the rollup row to $18,800 and billed
+ * the GC's contract $550 twice.
+ *
+ * Returns dollars keyed by Salesforce WORK ORDER id, because that is what the
+ * rollup is on. Only approved, undeleted rows count — a reversed one has
+ * already been set to Denied over there, so Salesforce is not counting it
+ * either.
+ */
+async function pushedChangeOrderDollarsByWorkOrder() {
+  // The links the write-back wrote: ChangeOrder__c id -> our row id.
+  const links = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("commercial_import_map")
+      .select("sf_id, row_id")
+      .eq("entity", "change_order_record")
+      .order("sf_id")
+      .range(from, from + 999);
+    if (error) throw new Error(`import map (change_order_record): ${error.message}`);
+    links.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  const byWo = new Map();
+  if (!links.length) return byWo;
+
+  // Which of those are still approved HERE.
+  const rowIds = new Set(links.map((l) => l.row_id));
+  const live = new Set();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb
+      .from("commercial_change_orders")
+      .select("id, status, deleted_at")
+      .is("deleted_at", null)
+      .eq("status", "approved")
+      .order("id")
+      .range(from, from + 999);
+    if (error) throw new Error(`change orders (pushed): ${error.message}`);
+    for (const c of data ?? []) if (rowIds.has(c.id)) live.add(c.id);
+    if ((data ?? []).length < 1000) break;
+  }
+
+  /*
+   * Read the AMOUNT FROM SALESFORCE, not from our row.
+   *
+   * They agree by construction — the write-back put it there — but if they ever
+   * disagree, Salesforce's figure is the one inside `TotalChangeOrder__c`, and
+   * it is `TotalChangeOrder__c` we are subtracting from. Using our number would
+   * leave the difference behind as a silent few dollars either way.
+   *
+   * Also filtered to approved statuses on the Salesforce side, for the same
+   * reason: the rollup counts those and nothing else (measured 2026-10-15).
+   */
+  const ids = links.filter((l) => live.has(l.row_id)).map((l) => l.sf_id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const q = await SF.conn.query(
+      `SELECT Id, WorkOrder__c, CostChange__c, Status__c FROM ChangeOrder__c WHERE Id IN ('${chunk.join("','")}')`,
+    );
+    for (const c of q.records) {
+      if (!c.WorkOrder__c) continue;
+      if (!["Approved", "Approved-Auto", "Legacy Import (Approved)"].includes(c.Status__c)) continue;
+      byWo.set(c.WorkOrder__c, (byWo.get(c.WorkOrder__c) ?? 0) + Number(c.CostChange__c ?? 0));
+    }
+  }
+  return byWo;
+}
+
 async function stageChangeOrders() {
   const r = newReport("change-orders");
   const handMade = await liveHandMadeChangeOrderDeals();
+  const pushedByWo = await pushedChangeOrderDollarsByWorkOrder();
   for (const w of SF.wos) {
     const plan = planInvoice({
       quotedSubtotalWithCo: w.Quoted_Subtotal_with_Change_Order__c,
@@ -913,8 +996,79 @@ async function stageChangeOrders() {
     // balance says the work happened — so it goes into the contract as one,
     // which is what an unlogged extra IS.
     const residual = !plan.isOverpaid && plan.adjustmentCents > 0 ? plan.adjustmentCents : 0;
-    const amount = cents(w.TotalChangeOrder__c) + residual;
-    if (amount === 0) continue;
+    /*
+     * MINUS WHAT WE PUT THERE OURSELVES.
+     *
+     * `TotalChangeOrder__c` now includes every change order the write-back
+     * pushed, and those are already real rows here. The rollup row carries only
+     * the remainder — the part of Salesforce's total that is not represented by
+     * a change order of its own. See `pushedChangeOrderDollarsByWorkOrder`.
+     */
+    const pushed = cents(pushedByWo.get(w.Id) ?? 0);
+    const amount = cents(w.TotalChangeOrder__c) - pushed + residual;
+    if (pushed) {
+      r.skipped.push(
+        `${w.WorkOrderNumber}: ${money(pushed)} of Salesforce's change-order total is change orders this platform pushed — ` +
+          `carrying ${money(amount)}, not ${money(cents(w.TotalChangeOrder__c) + residual)}`,
+      );
+    }
+    /*
+     * A remainder the subtraction drove BELOW ZERO means the subtraction is
+     * wrong, so stop rather than write. The honest readings are "a pushed
+     * change order was reversed in Salesforce by hand" and "the rollup has not
+     * caught up yet"; either way, inventing a negative rollup row would move a
+     * real contract.
+     *
+     * 🔴 `pushed > 0` IS LOAD-BEARING. `amount_cents` is SIGNED — a negative
+     * change order is a deduct or a credit, and work order 00283348 has
+     * carried a legitimate -$2,000.00 of them since the migration. The first
+     * version of this guard tested `amount < 0` alone and refused that job,
+     * turning a correct import into a skipped one. A negative total is only
+     * suspicious when we are the ones who made it negative.
+     */
+    if (pushed > 0 && amount < 0) {
+      r.skipped.push(
+        `${w.WorkOrderNumber}: 🔴 Salesforce's change-order total (${money(cents(w.TotalChangeOrder__c))}) is LESS than the ` +
+          `${money(pushed)} of change orders this platform pushed into it. Left alone — somebody has to look.`,
+      );
+      continue;
+    }
+    if (amount === 0) {
+      /*
+       * Nothing left for the rollup row to carry. If one EXISTS and still holds
+       * money, it is now stale — and it cannot simply be set to zero, because
+       * `commercial_change_orders` has `CHECK (amount_cents <> 0)`. So it is
+       * reported rather than written: a $0 change order is not a thing this
+       * platform can represent, and quietly leaving the old figure in place
+       * while saying nothing is how the double-counting started.
+       */
+      const rollupRowId = mapped("change_order", w.Id);
+      if (rollupRowId) {
+        /*
+         * ONLY IF THE ROW IS STILL LIVE AND STILL HOLDS MONEY.
+         *
+         * `mapped` answers from the import map, which remembers a row whether
+         * or not it was later deleted — so the first version of this note fired
+         * on PCCI Builders 00302953, whose carried-over rollup row was
+         * soft-deleted months ago. It reported a problem that did not exist and
+         * asked somebody to delete a row that was already gone.
+         */
+        const { data: existing } = await sb
+          .from("commercial_change_orders")
+          .select("amount_cents, deleted_at")
+          .eq("id", rollupRowId)
+          .maybeSingle();
+        if (existing && !existing.deleted_at && Number(existing.amount_cents) !== 0) {
+          r.notes.push(
+            `🔴 ${w.WorkOrderNumber}: this job's rollup row still holds ${money(existing.amount_cents)}, but there is nothing ` +
+              `left in Salesforce's change-order total that this platform does not already hold as a real change order` +
+              (pushed ? ` (${money(pushed)} of it is change orders pushed from here)` : "") +
+              `. Delete that row by hand — it cannot be set to $0 (the table forbids it).`,
+          );
+        }
+      }
+      continue;
+    }
     const dealId = mapped("deal", w.Opportunity__c);
     const accountId = mapped("account", w.AccountId) ?? mapped("account", SF.opps.find((o) => o.Id === w.Opportunity__c)?.AccountId);
     if (!dealId || !accountId) { r.skipped.push(`${w.WorkOrderNumber}: deal or account missing`); continue; }

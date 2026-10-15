@@ -190,6 +190,8 @@ const FINISH_OPTIONS = BASE_FINISHES;
 // entry in that file. Picker is filtered per-WO (interior-only WOs hide
 // exterior products and vice versa) — Katie 2026-06-05.
 import { BASE_FINISHES, filterMaterialTypesForWorkOrder, finishOptionsFor, isStainProduct, isInteriorWorkOrder, isExteriorWorkOrder, paintLineListsFor } from "@/lib/customer-form/material-types";
+import { missingFinishMessage } from "@/lib/customer-form/missing-finish";
+import { COLOR_BRANDS, DEFAULT_COLOR_BRAND } from "@/lib/customer-form/color-brands";
 import { applyToAllTargets, finishForTarget } from "@/lib/customer-form/apply-to-all";
 import FinishGuideSection from "@/components/finish-guide-section";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
@@ -551,6 +553,10 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
   );
 
   const [confirming, setConfirming] = useState(false);
+  // Kate FU.10 — which brand's color links the help card shows. Screen only:
+  // it picks nothing and is never submitted, so it stays out of the draft.
+  const [brandId, setBrandId] = useState<(typeof COLOR_BRANDS)[number]["id"]>(DEFAULT_COLOR_BRAND.id);
+  const brand = COLOR_BRANDS.find((b) => b.id === brandId) ?? DEFAULT_COLOR_BRAND;
   const confirmRef = useRef<HTMLDivElement | null>(null);
   /** How many rooms came back from a local draft, once, on mount. */
   const [restoredRooms, setRestoredRooms] = useState(0);
@@ -1011,8 +1017,26 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
     // customer gives us; this was the one place that threw it away.
     //
     // The colors still save without a finish, and PPP follows up on the few
-    // that are missing. So it is now a warning carried through the submit,
-    // never a wall.
+    // that are missing. So it became a warning carried through the submit.
+    //
+    // ── AND NOW A WALL AGAIN, BUT A DIFFERENT ONE ───────────────────────
+    //
+    // Kate FU.1 (2026-10-15): "continue allowing the customer to save the
+    // form without all colors filled in so they can save progress and come
+    // back, BUT when they enter a color, the finish is required before
+    // saving. They should not be able to save their changes if they add a
+    // color without adding a finish."
+    //
+    // That is Katie's 2026-05-29 rule returning, so it is worth being exact
+    // about what went wrong in September and what is different now. The
+    // damage on WO 00317803 was not the refusal — it was that the refusal
+    // came from the SERVER after the whole payload had been rejected, so
+    // three correctly-filled rooms were discarded and had to be typed again.
+    //
+    // This refuses in the BROWSER, before anything is sent. Every answer
+    // stays on screen and in the local draft; the customer picks the one
+    // missing finish and submits. A surface with no color at all is still
+    // fine — saving partial progress is explicitly part of her ask.
     const missingFinish: string[] = [];
     formData.lineItems.forEach((li, i) => {
       const st = state[li.id];
@@ -1024,6 +1048,14 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         }
       }
     });
+    // FU.1 — refuse here, in the browser, with everything still on screen.
+    // Staff entry is exempt: an AM keying colors off a quote is often
+    // waiting on the finish and has the job in front of them.
+    if (!isStaffEntry && missingFinish.length > 0) {
+      setConfirming(false);
+      setSubmitError(missingFinishMessage(missingFinish));
+      return;
+    }
     /**
      * Kate's page-2 rule, which only makes sense now that the pickers are
      * gone on a multi-room line: "this error should not show for them on
@@ -1430,74 +1462,77 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
                 Need help picking colors?
               </h3>
               <p className="text-xs sm:text-sm text-ppp-charcoal-600 mt-1 leading-relaxed">
-                Check out Benjamin Moore&apos;s recommended palettes and their
-                interactive room visualizer to see colors before you pick — or
-                browse their exterior wood stains if your job includes decking,
-                siding or fencing.
+                {brand.blurb}
               </p>
-              <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                <a
-                  href="https://www.benjaminmoore.com/en-us/color-overview/color-palettes"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
-                >
-                  Recommended palettes
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M7 17L17 7 M7 7h10v10" />
-                  </svg>
-                </a>
-                <a
-                  href="https://www.benjaminmoore.com/en-us/color-overview/find-your-color/color-a-room"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
-                >
-                  Visualize on a room
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M7 17L17 7 M7 7h10v10" />
-                  </svg>
-                </a>
-                {/* Kate 2026-09-10: "on the customer facing Color selection
-                    form, in this section can we include a button 'Exterior
-                    Stains'". Woodluxe is the line PPP actually orders — it is
-                    the exterior stain now in the product picker — so the
-                    customer researches the same range the crew will buy. */}
-                <a
-                  href="https://www.benjaminmoore.com/en-us/b/woodluxe-exterior-wood-stain"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
-                >
-                  Exterior stains
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M7 17L17 7 M7 7h10v10" />
-                  </svg>
-                </a>
-                {/* Kate 2026-10-09: 'Add a button labeled "Vinyl Siding
-                    Colors" and link to this pdf … in the "Need help picking
-                    colors?" section of the customer form.'
+              {/* Kate FU.10 (2026-10-15) — a Brand toggle, defaulting to
+                  Benjamin Moore. Radios rather than buttons: it is a choice
+                  between three mutually exclusive things, which is what a
+                  radio group means to a screen reader and what arrow keys
+                  already navigate. */}
+              <fieldset className="mt-3 border-0 p-0 m-0">
+                <legend className="sr-only">Which brand&apos;s colors would you like to browse?</legend>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Brand">
+                  {COLOR_BRANDS.map((b) => {
+                    const on = b.id === brand.id;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        onClick={() => setBrandId(b.id)}
+                        className={`px-3 py-2 min-h-[44px] sm:min-h-0 rounded-lg border text-xs font-semibold transition-colors touch-manipulation ${
+                          on
+                            ? "bg-ppp-blue-700 text-white border-ppp-blue-700"
+                            : "bg-white text-ppp-charcoal border-ppp-blue-200 hover:bg-ppp-blue-50"
+                        }`}
+                      >
+                        {b.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                {brand.links.map((l) => (
+                  <a
+                    key={l.href}
+                    href={l.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                  >
+                    {l.label}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M7 17L17 7 M7 7h10v10" />
+                    </svg>
+                  </a>
+                ))}
+                {/* Kate 2026-10-09: a "Vinyl Siding Colors" button in this
+                    section. Shown for Benjamin Moore only — it is a BM vinyl
+                    chart, and Sherwin Williams has its own VinylSafe link in
+                    its list above.
 
-                    HER LINK IS A GOOGLE DRIVE SHARE URL, and that is a
-                    standing risk rather than a defect today: it resolves for
-                    anyone with the address right now, but it is a file in
-                    PPP's Drive, and the day its sharing is tightened a
-                    customer gets a request-access screen with nowhere to go
-                    and no way to tell us. Every other link in this card
-                    points at benjaminmoore.com, which cannot do that. Raised
-                    with Karan — serving a copy from our own domain removes
-                    the failure mode entirely. */}
-                <a
-                  href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
-                >
-                  Vinyl Siding Colors
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M7 17L17 7 M7 7h10v10" />
-                  </svg>
-                </a>
+                    HER LINK IS A GOOGLE DRIVE SHARE URL. FU.3 asks for it to
+                    be hosted on the hub instead, which removes the failure
+                    mode: today it resolves for anyone with the address, but
+                    it is a file in PPP's Drive, and the day its sharing is
+                    tightened a customer gets a request-access screen with
+                    nowhere to go and no way to tell us. Waiting on the PDF
+                    itself from Kate. */}
+                {brand.id === "benjamin-moore" && (
+                  <a
+                    href="https://drive.google.com/file/d/1sPNen01-vP0WpGlhr6rJDuIXkE2ykC7z/view?usp=sharing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-lg bg-white border border-ppp-blue-200 text-sm font-semibold text-ppp-blue-700 hover:bg-ppp-blue-50 active:bg-ppp-blue-100 transition-colors touch-manipulation"
+                  >
+                    Vinyl Siding Colors
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M7 17L17 7 M7 7h10v10" />
+                    </svg>
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -1697,8 +1732,19 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
         >
           {/* Kate round-2 #08: for Internal Entry, drop the "once you submit we'll
               order materials" customer copy — keep just the button. */}
+          {/* Kate FU.7 (2026-10-15): while confirming, the order is the
+              list, then "Confirm my selections", then this as a footnote
+              beneath it.
+
+              Done with flex `order`, which moves it visually and leaves it
+              where it is in the DOM. That is fine for the keyboard — the
+              only focusable things here are "Go back" inside the panel and
+              the submit button, and those two keep their on-screen order —
+              but a screen reader still reads this sentence before the list.
+              It is one line of context ("once you submit…"), so hearing it
+              early is harmless; it would not be if it were a control. */}
           {!isInternal && (
-          <div className="text-[11px] sm:text-xs text-ppp-charcoal-500">
+          <div className={`text-[11px] sm:text-xs text-ppp-charcoal-500${confirming ? " order-3 text-center" : ""}`}>
             {isPreview ? (
               "Preview only — nothing will be saved when you click. This is to let our team test the form."
             ) : isEditing ? (
@@ -1737,7 +1783,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
           {confirming && (
             <div
               ref={confirmRef}
-              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4"
+              className="w-full text-left rounded-xl border border-ppp-blue-200 bg-ppp-blue-50/40 px-4 py-4 scroll-mt-4 order-1"
             >
               <h3 className="font-condensed text-base sm:text-lg font-bold text-ppp-navy">
                 Please check your selections
@@ -1794,7 +1840,7 @@ export default function CustomerFormView({ token, customerName, formData, copy, 
             // homeowner has to find, on a phone, often outdoors. blue-700 (#15749c)
             // is 5.24:1 and still reads as PPP blue. The brand fill is untouched
             // everywhere it doesn't carry white text.
-            className="shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue-700 text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-800 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed"
+            className={`shrink-0 inline-flex items-center justify-center min-h-[48px] px-6 py-3 rounded-lg bg-ppp-blue-700 text-white text-sm sm:text-base font-semibold hover:bg-ppp-blue-800 transition-colors shadow-md shadow-ppp-blue/30 disabled:opacity-60 disabled:cursor-not-allowed${confirming ? " order-2" : ""}`}
           >
             {submitting
               ? "Saving…"
@@ -2354,7 +2400,16 @@ function SurfaceRow({
                   <path d="M3.5 6.5h7a2.5 2.5 0 0 1 0 5H7" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M5.5 4.5 3.2 6.5l2.3 2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Apply to all areas
+                {/* Kate FU.14 (2026-10-15): "Update 'Apply to All Areas'
+                    button wording to 'Apply to All [SURFACE]'." The button
+                    sits in the Walls row and only ever copies the color to
+                    Walls elsewhere, so "all areas" overstated what it does —
+                    on a form with walls, ceiling and trim it reads as though
+                    it will fill all three. Named, it says what it does.
+
+                    `surface` is the row's own label, already the thing shown
+                    at the left of the row, so the two cannot disagree. */}
+                Apply to all {surface.toLowerCase()}
               </button>
             )}
             {/* The result, AT the button that produced it (Kate 2026-09-18).

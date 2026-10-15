@@ -155,13 +155,40 @@ export function isPlaceholderRoom(room: string): boolean {
  * Already covered by the buy-list above — the rep wrote a color into the notes
  * AND set it on the Salesforce color field, so it is already being ordered
  * with a computed gallon count. Adding it again double-orders.
+ *
+ * ── COLOR + FINISH IS THE UNIQUE ITEM ───────────────────────────────────
+ *
+ * Kate, FU.2 (2026-10-15): "Color + Finish should be considered a unique
+ * item — so even if the color is the same, if the finish is different, this
+ * is automatically a different product and should be treated separately."
+ *
+ * This matched on the color alone, so a note reading "01 White semigloss"
+ * was refused with "This color already exists on the order. Increase
+ * quantity above." because flat 01 White was already being bought. They are
+ * two different cans: increasing the quantity of the flat one buys the wrong
+ * paint, and the semigloss never gets ordered.
+ *
+ * The buy list itself has always keyed on color+finish — estimate-gallons
+ * rolls up per `colorId::finish`. It was only this check that forgot.
+ *
+ * `noteFinish` is what the note line itself named, which the caller already
+ * parsed. The rule is deliberately narrow: a mismatch only EXCLUDES an
+ * estimate when both sides actually state a finish. An unknown finish on
+ * either side falls back to the old color-only behavior, because warning
+ * about a possible duplicate is the safer error — the estimator can see the
+ * buy list and judge, where a silent second can of paint costs money.
  */
 export function inBuyList(
   line: string,
-  estimates: ReadonlyArray<{ colorName: string; colorCode: string | null }>
+  estimates: ReadonlyArray<{ colorName: string; colorCode: string | null; finish?: string | null }>,
+  noteFinish?: string | null
 ): boolean {
   const hay = ` ${line.toLowerCase().replace(/\s+/g, " ")} `;
+  const wanted = (noteFinish ?? "").trim().toLowerCase();
   return estimates.some((e) => {
+    // Different sheen = different product. Only decisive when BOTH are known.
+    const have = (e.finish ?? "").trim().toLowerCase();
+    if (wanted && have && wanted !== have) return false;
     const code = (e.colorCode ?? "").trim().toLowerCase();
     // Codes are distinctive ("hc-6", "sw6462"); bound them so "hc-6" doesn't
     // match inside "hc-62".
