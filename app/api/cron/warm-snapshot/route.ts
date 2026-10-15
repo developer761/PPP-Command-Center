@@ -35,7 +35,23 @@ import { reportError } from "@/lib/observability";
  */
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // SOQL rebuild can take 10-15s; give headroom
+/**
+ * Measured on production 2026-10-15, from a genuine cold start:
+ *
+ *   COLD START (no shared cache) ......  0.0s
+ *   Transaction__c, 62,258 rows ....... 11s
+ *   WorkOrder, 20,230 rows .............. 6s
+ *   everything else in parallel ......... 8s
+ *   COLD-COMPLETE ..................... 24.9s
+ *   write snapshot to shared cache .... +20s   (6.1 MB gzipped)
+ *                                       ─────
+ *                                       ~45s
+ *
+ * 60s left five seconds of headroom on a job that grows with PPP's data.
+ * A warm that times out leaves the cache empty, which is the exact state
+ * this cron exists to prevent.
+ */
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   // Bearer auth — Vercel cron auto-injects when CRON_SECRET is set.

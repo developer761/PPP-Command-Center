@@ -32,7 +32,25 @@ import {
 // The snapshot_generation counter in Supabase still invalidates across
 // instances on writeback or admin refresh — so a true data change is
 // reflected within ≤5s regardless of the per-instance TTL.
-const CACHE_TTL_MS = 30 * 60 * 1000;
+/**
+ * 30 → 60 min on 2026-10-15, and the number matters less than it looks.
+ *
+ * With the warm cron running every 20 minutes (vercel.json), the shared
+ * cache is refreshed every 20 minutes no matter what this says — so real
+ * staleness is bounded by the CRON, not by the TTL. The TTL is the backstop
+ * for when a warm does not happen.
+ *
+ * At 30 minutes that backstop was too tight: two warms are 40 minutes apart,
+ * so a SINGLE failed cron run left a 10-minute window in which a real person
+ * paid the 25-second cold build. Sixty minutes absorbs two consecutive
+ * failures. __tests__/config/snapshot-stays-warm.test.ts holds that
+ * arithmetic, because the cron and this constant live in different files and
+ * nothing else connects them.
+ *
+ * It does not make data staler in practice, and a true data change is still
+ * reflected within ≤5s via the snapshot_generation counter below.
+ */
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 // IMPORTANT: cache the PROMISE, not just the resolved value. On a cold cache,
 // when DashboardLayout + the page component both trigger loadDashboardData()
