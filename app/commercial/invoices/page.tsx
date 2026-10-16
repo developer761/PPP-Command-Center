@@ -52,7 +52,6 @@ import { LABEL_CLS, INPUT_CLS, TEXTAREA_CLS } from "@/lib/commercial/form-classn
 import { InstantSearch } from "@/components/commercial/instant-search";
 import { MoneyInput } from "@/components/commercial/money-input";
 import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/statement";
-import { logDelete } from "@/lib/commercial/audit-log";
 
 export const metadata = { title: "Invoices" };
 
@@ -192,76 +191,29 @@ async function bulkDeleteInvoicesForOppAction(formData: FormData) {
   // Won opportunities need bulk-clear too (test data cleanup, duplicate imports,
   // etc). Auto-void logic below preserves payment history for any paid
   // rows so the audit trail stays intact even on an active deal.
-  // Guard 2: block if any invoice has recorded payments.
-  const { data: invRows } = await sb
-    .from("commercial_invoices")
-    .select("id, status, paid_cents")
-    .eq("opportunity_id", opp_id)
-    .is("deleted_at", null);
-  const rows = (invRows ?? []) as { id: string; status: string; paid_cents: number }[];
-  // Karan 2026-07-08 revised policy: on a DELETED parent the operator is
-  // clearly cleaning up orphaned rows — refusing to wipe because one
-  // invoice had a payment leaves the user stuck. Auto-void any non-void
-  // paid invoices first so the audit trail records the payments
-  // (paid_cents + payments log stay intact) then soft-delete everything.
-  const now = new Date().toISOString();
-  const paidNonVoid = rows.filter((r) => (r.paid_cents ?? 0) > 0 && r.status !== "void");
-  if (paidNonVoid.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ status: "void", voided_at: now })
-      .in("id", paidNonVoid.map((r) => r.id));
-  }
-  if (rows.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ deleted_at: now })
-      .in("id", rows.map((r) => r.id));
-    // Free any change orders billed on these invoices so they can be re-billed.
-    // The single-invoice softDeleteInvoice path does this; the bulk path stamped
-    // deleted_at directly and skipped it, so the CO's line/milestone tag + the
-    // mig-093 partial-unique slot survived — re-ticking the CO then failed
-    // forever with a raw 23505 and no UI escape (audit M1). Per-invoice because
-    // the release strips exactly that invoice's CO lines + nulls only COs still
-    // pointing at it (never stomps another invoice's claim).
-    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
-    for (const r of rows) {
-      await releaseTickedChangeOrders(r.id);
-    }
-    // 2026-07-29 re-audit fix: bulk void/delete previously left NO audit
-    // trail — paid invoices could be auto-voided + wiped with no record of
-    // who or what the balances were. Batch-log a status-change row per
-    // invoice (actor, prior status, payment amount) into the same log the
-    // single-record path writes.
-    // AND the platform audit log. These two bulk paths never called logDelete
-    // — the exact gap closed for the single-invoice path yesterday, where a
-    // $286,695 invoice vanished with no entry anyone could reach. The status
-    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
-    // it cannot answer "who removed these".
-    for (const r of rows) {
-      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
-      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
-    }
-    await sb.from("commercial_invoice_status_log").insert(
-      rows.map((r) => ({
-        invoice_id: r.id,
-        from_status: r.status,
-        to_status: "void",
-        actor_user_id: user.id,
-        note: `Bulk-deleted (orphan cleanup on deleted deal)${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
-      }))
-    );
-  }
+  // Void-first-then-delete, checked at every step, in one shared copy.
+  const { bulkVoidAndDeleteInvoices } = await import("@/lib/commercial/invoices/bulk-delete");
+  const result = await bulkVoidAndDeleteInvoices(
+    { column: "opportunity_id", id: opp_id },
+    user.id,
+    "orphan cleanup on deleted deal",
+  );
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
+  // A failure or a partial delete lands on the deal's own scoped view, which
+  // is where the error banner renders — and says what is left.
+  if (!result.ok || result.warning) {
+    const msg = result.ok ? result.warning! : result.error;
+    redirect(`/commercial/invoices?opportunity_id=${opp_id}${result.deleted > 0 ? `&bulk_deleted=${result.deleted}` : ""}&error=${encodeURIComponent(msg)}`);
+  }
   // Karan 2026-07-09: preserve the caller's scope so the flash lands on
   // the same filtered view instead of dumping the user on the unfiltered
   // list.
   const returnAccountId = String(formData.get("return_account_id") ?? "");
   if (UUID_RE.test(returnAccountId)) {
-    redirect(`/commercial/invoices?account_id=${returnAccountId}&bulk_deleted=${rows.length}`);
+    redirect(`/commercial/invoices?account_id=${returnAccountId}&bulk_deleted=${result.deleted}`);
   }
-  redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+  redirect(`/commercial/invoices?bulk_deleted=${result.deleted}`);
 }
 
 /**
@@ -294,60 +246,20 @@ async function bulkDeleteInvoicesForAccountAction(formData: FormData) {
   if (!(acctRow as { deleted_at: string | null }).deleted_at) {
     redirect(`/commercial/invoices?account_id=${account_id}&error=${encodeURIComponent("Bulk delete only allowed on deleted accounts — void or delete individual invoices instead.")}`);
   }
-  const { data: invRows } = await sb
-    .from("commercial_invoices")
-    .select("id, status, paid_cents")
-    .eq("account_id", account_id)
-    .is("deleted_at", null);
-  const rows = (invRows ?? []) as { id: string; status: string; paid_cents: number }[];
-  // Auto-void paid non-void invoices then wipe. Same rationale as the
-  // per-opp variant: on a deleted parent, refusing to wipe because one
-  // invoice took a payment leaves the operator stuck. Voiding first
-  // preserves the audit trail (paid_cents + payments log stay intact).
-  const now = new Date().toISOString();
-  const paidNonVoid = rows.filter((r) => (r.paid_cents ?? 0) > 0 && r.status !== "void");
-  if (paidNonVoid.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ status: "void", voided_at: now })
-      .in("id", paidNonVoid.map((r) => r.id));
-  }
-  if (rows.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ deleted_at: now })
-      .in("id", rows.map((r) => r.id));
-    // Free change orders billed on these invoices so they can be re-billed —
-    // same M1 fix as the per-opp variant above (bulk path skipped the CO
-    // release the single-invoice path does, bricking re-billing forever).
-    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
-    for (const r of rows) {
-      await releaseTickedChangeOrders(r.id);
-    }
-    // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
-    // trail survives orphan cleanup (see per-opp variant above).
-    // AND the platform audit log. These two bulk paths never called logDelete
-    // — the exact gap closed for the single-invoice path yesterday, where a
-    // $286,695 invoice vanished with no entry anyone could reach. The status
-    // log below is per-invoice, and a deleted invoice is hidden everywhere, so
-    // it cannot answer "who removed these".
-    for (const r of rows) {
-      const { data: full } = await sb.from("commercial_invoices").select("*").eq("id", r.id).maybeSingle();
-      if (full) await logDelete("commercial_invoices", r.id, full, user.id);
-    }
-    await sb.from("commercial_invoice_status_log").insert(
-      rows.map((r) => ({
-        invoice_id: r.id,
-        from_status: r.status,
-        to_status: "void",
-        actor_user_id: user.id,
-        note: `Bulk-deleted (orphan cleanup on deleted account)${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
-      }))
-    );
-  }
+  // Void-first-then-delete, checked at every step, in one shared copy.
+  const { bulkVoidAndDeleteInvoices } = await import("@/lib/commercial/invoices/bulk-delete");
+  const result = await bulkVoidAndDeleteInvoices(
+    { column: "account_id", id: account_id },
+    user.id,
+    "orphan cleanup on deleted account",
+  );
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
-  redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+  if (!result.ok || result.warning) {
+    const msg = result.ok ? result.warning! : result.error;
+    redirect(`/commercial/invoices?account_id=${account_id}${result.deleted > 0 ? `&bulk_deleted=${result.deleted}` : ""}&error=${encodeURIComponent(msg)}`);
+  }
+  redirect(`/commercial/invoices?bulk_deleted=${result.deleted}`);
 }
 
 /**

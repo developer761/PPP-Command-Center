@@ -651,56 +651,24 @@ async function bulkDeleteInvoicesFromDetailAction(formData: FormData) {
       redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent("Bulk delete only allowed on deleted accounts.")}`);
     }
   }
-  // Karan 2026-07-08: auto-void paid non-void invoices then wipe. The
-  // operator is cleaning up an orphan cluster — refusing to wipe
-  // because one had a payment leaves them stuck. Voiding first
-  // preserves the audit trail (payments log + paid_cents intact).
+  // Void-first-then-delete, checked at every step, in one shared copy (this
+  // one used to skip the platform audit log the list-page copies wrote).
   const parentCol = scope === "opp" ? "opportunity_id" : "account_id";
-  const { data: invRows } = await sb
-    .from("commercial_invoices")
-    .select("id, status, paid_cents")
-    .eq(parentCol, parent_id)
-    .is("deleted_at", null);
-  const rows = (invRows ?? []) as { id: string; status: string; paid_cents: number }[];
-  const now = new Date().toISOString();
-  const paidNonVoid = rows.filter((r) => (r.paid_cents ?? 0) > 0 && r.status !== "void");
-  if (paidNonVoid.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ status: "void", voided_at: now })
-      .in("id", paidNonVoid.map((r) => r.id));
-  }
-  if (rows.length > 0) {
-    await sb
-      .from("commercial_invoices")
-      .update({ deleted_at: now })
-      .in("id", rows.map((r) => r.id));
-    // 2026-07-29 re-audit fix: batch-log the bulk void/delete so the money
-    // trail survives orphan cleanup (matches the invoices-list bulk actions).
-    await sb.from("commercial_invoice_status_log").insert(
-      rows.map((r) => ({
-        invoice_id: r.id,
-        from_status: r.status,
-        to_status: "void",
-        actor_user_id: user.id,
-        note: `Bulk-deleted (orphan cleanup, ${scope})${(r.paid_cents ?? 0) > 0 ? ` — had $${((r.paid_cents ?? 0) / 100).toFixed(2)} paid; auto-voided` : ""}`.slice(0, 500),
-      }))
-    );
-    // Release any change orders ticked onto these invoices (audit M1). The two
-    // copies of this bulk action on the invoices LIST page do this; this one
-    // didn't — and because the CO line item survives on the soft-deleted
-    // invoice, the partial unique index on change_order_id kept holding the
-    // slot. The CO then read as un-billed, offered "re-bill", and every retry
-    // failed on a raw duplicate-key error: that change order could never be
-    // billed again and its dollars were invisible to AR.
-    const { releaseTickedChangeOrders } = await import("@/lib/commercial/invoices/status");
-    for (const r of rows) {
-      await releaseTickedChangeOrders(r.id);
-    }
-  }
+  const { bulkVoidAndDeleteInvoices } = await import("@/lib/commercial/invoices/bulk-delete");
+  const result = await bulkVoidAndDeleteInvoices(
+    { column: parentCol, id: parent_id },
+    user.id,
+    `orphan cleanup, ${scope}`,
+  );
   revalidatePath("/commercial/invoices");
   revalidatePath("/commercial");
-  redirect(`/commercial/invoices?bulk_deleted=${rows.length}`);
+  if (!result.ok) {
+    redirect(`${back_href}${back_href.includes("?") ? "&" : "?"}error=${encodeURIComponent(result.error)}`);
+  }
+  if (result.warning) {
+    redirect(`/commercial/invoices?${parentCol}=${parent_id}&bulk_deleted=${result.deleted}&error=${encodeURIComponent(result.warning)}`);
+  }
+  redirect(`/commercial/invoices?bulk_deleted=${result.deleted}`);
 }
 
 // ────────────── Page ──────────────
