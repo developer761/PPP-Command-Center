@@ -109,11 +109,13 @@ describe("the fixes select the column they branch on", () => {
 describe("the account hover card counts billed the way the rollup does", () => {
   const src = read("app/api/commercial/account-summary/[id]/route.ts");
 
-  it("excludes draft as well as void", () => {
+  it("reads the Account 360 rollup instead of summing invoices itself", () => {
     // Void was excluded and draft was not, so the card overstated "$X billed"
     // against the Account 360 tile beside it, which uses the shared rollup.
-    expect(src).toMatch(/\.not\("status", "in", "\(void,draft\)"\)/);
-    expect(src).not.toMatch(/\.neq\("status", "void"\)/);
+    // It now IS that rollup (which drops drafts, voids and the SF- carry-over
+    // on AIA jobs), so there is no second status filter here to drift.
+    expect(src).toMatch(/getInvoiceRollupForAccount\(id\)/);
+    expect(src).not.toMatch(/\.from\("commercial_invoices"\)/);
   });
 });
 

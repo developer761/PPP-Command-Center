@@ -25,6 +25,25 @@ import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 
 export type KpiTone = "default" | "good" | "warn" | "bad";
 
+/**
+ * A share of the contract, or null when there is no contract to share.
+ *
+ * Every call site used to divide by `contractCents || 1`: on a $0 contract
+ * that is "÷ one cent", so $5,000 billed read 500000%. Each site happens to
+ * sit behind `hasContract` today; this makes the rule hold without relying on
+ * that, and a caller that forgets gets a dash rather than a plausible lie.
+ */
+export function pctOfContract(
+  i: { contractCents?: number | null },
+  cents: number | null | undefined
+): number | null {
+  const whole = i.contractCents ?? 0;
+  if (!(whole > 0)) return null;
+  return Math.round(((cents ?? 0) / whole) * 100);
+}
+
+const pctLabel = (pct: number | null): string => (pct == null ? "—" : `${pct}%`);
+
 export type StageKpi = {
   key: string;
   label: string;
@@ -249,7 +268,7 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         out.push({
           key: "billed",
           label: "Billed",
-          value: `${Math.round(((i.billedPreTaxCents ?? 0) / (i.contractCents || 1)) * 100)}%`,
+          value: pctLabel(pctOfContract(i, i.billedPreTaxCents)),
           sub: `${money(i.billedPreTaxCents)} of ${money(i.contractCents)}`,
           href: "?tab=project&sub=invoices",
       });
@@ -272,13 +291,13 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
 
   if (phase === "in_progress" || phase === "billing") {
     if (hasContract) {
-      const pct = Math.round(((i.billedPreTaxCents ?? 0) / (i.contractCents || 1)) * 100);
+      const pct = pctOfContract(i, i.billedPreTaxCents);
       out.push({
         key: "billed",
         label: "Billed",
-        value: `${pct}%`,
+        value: pctLabel(pct),
         sub: `${money(i.billedPreTaxCents)} of ${money(i.contractCents)}`,
-        tone: pct > 100 ? "warn" : "default",
+        tone: pct != null && pct > 100 ? "warn" : "default",
         href: "?tab=project&sub=invoices",
       });
     }
@@ -371,8 +390,8 @@ export function stageKpis(i: StageKpiInput): StageKpi[] {
         label: "Retainage held",
         value: money(i.retainageHeldCents),
         sub:
-          hasContract
-            ? `${Math.round(((i.retainageHeldCents ?? 0) / (i.contractCents || 1)) * 100)}% of contract`
+          hasContract && pctOfContract(i, i.retainageHeldCents) != null
+            ? `${pctOfContract(i, i.retainageHeldCents)}% of contract`
             : null,
         tone: "warn",
       });

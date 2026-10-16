@@ -14,6 +14,7 @@ import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submitta
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
 import { DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 import type { CommercialOpportunity } from "@/lib/commercial/opportunities/db";
 
 export type ProjectRow = {
@@ -339,12 +340,7 @@ export async function listProjects(opts: {
   const supersededOpps = new Set(latestIssuedByOpp.keys());
   for (const inv of invData) {
     if (inv.status === "void") continue;
-    if (
-      supersededOpps.has(inv.opportunity_id) &&
-      /^SF-\d+$/.test((inv.invoice_number ?? "").trim())
-    ) {
-      continue;
-    }
+    if (isSupersededByAia(inv, supersededOpps)) continue;
     const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     if (inv.status === "draft") {
       e.draftCount += 1;

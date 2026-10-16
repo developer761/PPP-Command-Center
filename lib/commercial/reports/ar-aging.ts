@@ -2,7 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, invoiceDueAtFrom, isSalesforceCarryoverInvoice } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, invoiceDueAtFrom } from "@/lib/commercial/invoices/constants";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 
 /**
  * AR Aging report (R4) — every OPEN invoice's balance bucketed by how far past
@@ -120,7 +121,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   // five sequential round-trips per live opportunity before rendering. Two
   // queries now, whatever the pipeline size.
   const aiaRows: { accountId: string; balance: number; days: number; dated: boolean }[] = [];
-  // Deals with an issued AIA application — see `isSalesforceCarryoverInvoice`.
+  // Deals with an issued AIA application — see `isSupersededByAia`.
   const billsViaAia = new Set<string>();
   {
     const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
@@ -173,7 +174,7 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
   for (const inv of open) {
     // Same rule as the Receivables report: once a job's AIA history is in, a
     // migrated Salesforce carry-over invoice on it is the same money again.
-    if (isSalesforceCarryoverInvoice(inv) && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
+    if (isSupersededByAia(inv, billsViaAia)) continue;
     /*
      * A SENT INVOICE WITH NO DUE DATE STILL AGES, from the day it went out
      * plus the standard terms. Six live invoices carried no due date on

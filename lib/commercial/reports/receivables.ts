@@ -2,7 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, isSalesforceCarryoverInvoice, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "@/lib/commercial/invoices/constants";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
@@ -273,7 +274,7 @@ export async function getReceivablesReport(
     if (verdict !== "invoice") continue;
     const open = Math.max(0, inv.balance_cents);
     if (open <= 0) continue;
-    if (isSalesforceCarryoverInvoice(inv) && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
+    if (isSupersededByAia(inv, billsViaAia)) continue;
     // An invoice on a deal that was deleted (or whose account was) is gone from
     // the app and must be gone from the chase list too.
     if (inv.opportunity_id && !oppById.has(inv.opportunity_id)) continue;

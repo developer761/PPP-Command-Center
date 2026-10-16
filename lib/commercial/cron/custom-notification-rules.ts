@@ -6,6 +6,7 @@ import { insertCustomRuleNotification } from "@/lib/notifications/commercial-eve
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { OPEN_OPP_STATUSES } from "@/lib/commercial/opportunities/constants";
 import type { NotificationRule } from "@/lib/commercial/notification-rules/db";
+import { dealsBilledViaAia, isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 
 /**
  * Daily cron job — evaluate every ENABLED custom notification rule and fire the
@@ -153,6 +154,28 @@ async function touchEvaluated(sb: ReturnType<typeof commercialDb>, ruleId: strin
     .eq("id", ruleId);
 }
 
+type DueInvoice = {
+  id: string;
+  account_id: string;
+  opportunity_id: string | null;
+  invoice_number: string;
+  due_at: string;
+  balance_cents: number;
+};
+
+/**
+ * The `SF-####` carry-over on a job billed by certificate is the same money as
+ * those certificates (lib/commercial/invoices/carryover.ts). Receivables and
+ * AR aging already leave it off the chase list; an alert telling somebody it
+ * is past due would send them after a balance the GC has paid through the
+ * G702s.
+ */
+async function withoutSupersededCarryover(data: unknown): Promise<DueInvoice[]> {
+  const rows = (data ?? []) as DueInvoice[];
+  const billedViaAia = await dealsBilledViaAia(rows.map((r) => r.opportunity_id ?? ""));
+  return rows.filter((r) => !isSupersededByAia(r, billedViaAia));
+}
+
 async function evaluateRule(
   sb: ReturnType<typeof commercialDb>,
   rule: NotificationRule,
@@ -183,7 +206,7 @@ async function evaluateRule(
       // "overdue"); oldest-due first so the daily cap converges deterministically.
       const { data, error } = await sb
         .from("commercial_invoices")
-        .select("id, account_id, invoice_number, due_at, balance_cents, status")
+        .select("id, account_id, opportunity_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
         .gt("balance_cents", 0)
         .not("due_at", "is", null)
@@ -192,7 +215,7 @@ async function evaluateRule(
         .order("due_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "invoice_overdue");
-      return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
+      return (await withoutSupersededCarryover(data))
         .filter((i) => !deletedAccountIds.has(i.account_id))
         .map((i) => ({
         entityId: i.id,
@@ -333,7 +356,7 @@ async function evaluateRule(
         .slice(0, 10);
       const { data, error } = await sb
         .from("commercial_invoices")
-        .select("id, account_id, invoice_number, due_at, balance_cents, status")
+        .select("id, account_id, opportunity_id, invoice_number, due_at, balance_cents, status")
         .not("status", "in", "(void,paid,draft)")
         .gt("balance_cents", 0)
         .not("due_at", "is", null)
@@ -343,7 +366,7 @@ async function evaluateRule(
         .order("due_at", { ascending: true })
         .limit(500);
       warnIfCapped(data, error, "invoice_due_soon");
-      return ((data ?? []) as Array<{ id: string; account_id: string; invoice_number: string; due_at: string; balance_cents: number }>)
+      return (await withoutSupersededCarryover(data))
         .filter((i) => !deletedAccountIds.has(i.account_id))
         .map((i) => ({
         entityId: i.id,

@@ -4,6 +4,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
 import { loadPeriodBilling, type PeriodInvoice } from "./period-billing";
+import { dealsBilledViaAia, isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 import { etDateOf } from "@/lib/date-et";
 
 /**
@@ -205,6 +206,7 @@ export async function getCashFlowReport(range: {
 
   const invoices = await paginateAll<{
     id: string;
+    invoice_number: string | null;
     account_id: string | null;
     opportunity_id: string | null;
     status: string;
@@ -218,7 +220,7 @@ export async function getCashFlowReport(range: {
     sb
       .from("commercial_invoices")
       .select(
-        "id, account_id, opportunity_id, status, issued_at, created_at, subtotal_cents, total_cents, paid_cents, balance_cents"
+        "id, invoice_number, account_id, opportunity_id, status, issued_at, created_at, subtotal_cents, total_cents, paid_cents, balance_cents"
       )
       .neq("status", "void")
       .is("deleted_at", null)
@@ -270,9 +272,16 @@ export async function getCashFlowReport(range: {
     issuedAt: string | null;
     accountId: string | null;
   }[] = [];
+  // The `SF-####` carry-over on a job billed by certificate carries the SAME
+  // cheques as those certificates' payments (lib/commercial/invoices/
+  // carryover.ts), and `aiaCash` below already counts them. The billed side
+  // drops the carry-over inside `period-billing`; collected must drop it too,
+  // or the rate divides double-counted cash by single-counted billing.
+  const billedViaAia = await dealsBilledViaAia(invoices.map((i) => i.opportunity_id ?? ""));
   for (const p of payments) {
     const inv = invById.get(p.invoice_id);
     if (!inv) continue; // voided or deleted invoice — not cash
+    if (isSupersededByAia(inv, billedViaAia)) continue;
     cashRows.push({
       amount_cents: Number(p.amount_cents) || 0,
       paid_at: p.paid_at,
@@ -377,6 +386,7 @@ export async function getCashFlowReport(range: {
    * carries the tax inside the contract price, with no separate tax line.
    */
   const periodInvoices: PeriodInvoice[] = invoices.map((i) => ({
+    invoice_number: i.invoice_number,
     status: i.status,
     subtotal_cents: Number(i.total_cents) || 0,
     issued_at: i.issued_at,

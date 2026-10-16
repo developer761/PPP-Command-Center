@@ -3,7 +3,7 @@ import { requireReportAccess } from "@/lib/commercial/reports/access";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
-import { getChangeOrderVendorReport } from "@/lib/commercial/reports/change-orders-vendors";
+import { getChangeOrderVendorReport, hasVendorActivity, topVendorShareLabel } from "@/lib/commercial/reports/change-orders-vendors";
 import { formatCentsFull, formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { CHANGE_ORDER_PRESETS, CHANGE_ORDER_DEFAULT, changeOrderRange, resolvePreset, type ChangeOrderPreset } from "@/lib/commercial/reports/presets";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
@@ -46,10 +46,6 @@ export default async function ChangeOrdersReportPage({
   const r = await getChangeOrderVendorReport(range);
   const co = r.co;
   const mergedVendors = r.vendors.filter((v) => v.variants > 1).length;
-  const topVendorPct =
-    r.vendorTotalCents > 0 && r.vendors[0]
-      ? Math.round((r.vendors[0].cents / r.vendorTotalCents) * 100)
-      : null;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">
@@ -166,7 +162,7 @@ export default async function ChangeOrdersReportPage({
       <section className="space-y-3 pt-2">
         <h3 className="text-[13px] font-bold text-ppp-charcoal">Vendor spend · {range.label}</h3>
 
-        {r.vendorTotalCents === 0 ? (
+        {!hasVendorActivity(r) ? (
           <div className="bg-surface border border-ppp-charcoal-100 rounded-xl p-6 text-center">
             <p className="text-[13px] font-semibold text-ppp-charcoal">No purchases logged in {range.label}.</p>
             <p className="text-[12px] text-ppp-charcoal-500 mt-1">
@@ -180,7 +176,7 @@ export default async function ChangeOrdersReportPage({
               <Kpi
                 label="Biggest vendor"
                 value={r.vendors[0] ? formatCentsCompact(r.vendors[0].cents) : "—"}
-                sub={r.vendors[0] ? `${r.vendors[0].name} · ${topVendorPct}% of spend` : undefined}
+                sub={topVendorShareLabel(r)}
               />
               <Kpi
                 label="Unattributed"

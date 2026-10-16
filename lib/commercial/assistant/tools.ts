@@ -4,7 +4,9 @@ import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
-import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";import { formatCentsFull } from "@/lib/commercial/invoices/format";
+import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
 
 /**
  * What the assistant is allowed to look up.
@@ -110,8 +112,8 @@ export async function jobSummary(query: string): Promise<string> {
   const o = rows[0];
   const oppId = o.id as string;
   const [invoices, purchases, account] = await Promise.all([
-    paginateAll<{ status: string | null; total_cents: number; paid_cents: number; balance_cents: number }>(() =>
-      sb.from("commercial_invoices").select("status, total_cents, paid_cents, balance_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
+    paginateAll<{ invoice_number: string | null; opportunity_id: string | null; status: string | null; total_cents: number; paid_cents: number; balance_cents: number }>(() =>
+      sb.from("commercial_invoices").select("invoice_number, opportunity_id, status, total_cents, paid_cents, balance_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
     ),
     paginateAll<{ category: string; amount_cents: number }>(() =>
       sb.from("commercial_project_purchases").select("category, amount_cents").eq("opportunity_id", oppId).is("deleted_at", null).order("id")
@@ -146,8 +148,15 @@ export async function jobSummary(query: string): Promise<string> {
    * a void row keeps a live-looking balance forever.
    */
   const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
+  // `aia` is non-null exactly when this job has an issued certificate — the
+  // `dealsBilledViaAia` condition — and then the `SF-####` carry-over is the
+  // same money as those certificates. Adding both said "Billed $187,754.18" on
+  // an $88,627.09 contract. See lib/commercial/invoices/carryover.ts.
+  const billedViaAia = new Set(aia ? [oppId] : []);
   const billable = invoices.filter(
-    (i) => receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]) === "invoice",
+    (i) =>
+      receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]) === "invoice" &&
+      !isSupersededByAia(i, billedViaAia),
   );
   const billed = billable.reduce((n, i) => n + Number(i.total_cents), 0) + (aia?.billedCents ?? 0);
   const paid = billable.reduce((n, i) => n + Number(i.paid_cents), 0) + (aia?.collectedCents ?? 0);
@@ -160,7 +169,7 @@ export async function jobSummary(query: string): Promise<string> {
   return [
     `${name}`,
     `GC: ${(account as { company_name?: string } | null)?.company_name ?? "—"}`,
-    `Stage: ${o.status}/${o.sub_status}`,
+    `Stage: ${o.sub_status ? `${o.status}/${o.sub_status}` : o.status}`,
     `Contract: ${money(Number(o.accepted_contract_cents ?? 0))}`,
     `Billed: ${money(billed)} · Collected: ${money(paid)} · Outstanding: ${money(owed)}`,
     `Cost so far: ${money(cost)} (${[...byCat.entries()].map(([c, v]) => `${c} ${money(v)}`).join(", ") || "none logged"})`,
@@ -172,8 +181,8 @@ export async function jobSummary(query: string): Promise<string> {
 export async function moneyOverview(): Promise<string> {
   const sb = commercialDb();
   const [invoices, purchases, payments] = await Promise.all([
-    paginateAll<{ total_cents: number; paid_cents: number; balance_cents: number; due_at: string | null; status: string }>(() =>
-      sb.from("commercial_invoices").select("total_cents, paid_cents, balance_cents, due_at, status").is("deleted_at", null).order("id")
+    paginateAll<{ invoice_number: string | null; opportunity_id: string | null; total_cents: number; paid_cents: number; balance_cents: number; due_at: string | null; status: string }>(() =>
+      sb.from("commercial_invoices").select("invoice_number, opportunity_id, total_cents, paid_cents, balance_cents, due_at, status").is("deleted_at", null).order("id")
     ),
     paginateAll<{ category: string; amount_cents: number }>(() =>
       sb.from("commercial_project_purchases").select("category, amount_cents").is("deleted_at", null).order("id")
@@ -188,10 +197,13 @@ export async function moneyOverview(): Promise<string> {
      * the join is the only way to ask. Same shape as sumCommercialPaymentsSince
      * in invoices/db.ts, which is the reference.
      */
-    paginateAll<{ amount_cents: number }>(() =>
+    paginateAll<{
+      amount_cents: number;
+      commercial_invoices: { invoice_number: string | null; opportunity_id: string | null } | null;
+    }>(() =>
       sb
         .from("commercial_invoice_payments")
-        .select("amount_cents, commercial_invoices!inner(deleted_at)")
+        .select("amount_cents, commercial_invoices!inner(deleted_at, invoice_number, opportunity_id)")
         .is("commercial_invoices.deleted_at", null)
         .order("id")
     ),
@@ -262,12 +274,23 @@ export async function moneyOverview(): Promise<string> {
    * and was wrong, invisibly, because the tests could not reach the decision.
    */
   const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
-  const scored = invoices
+  /**
+   * The `SF-####` carry-over on a job with issued certificates is the same
+   * money as those certificates — its balance and its cheques are already in
+   * the AIA figures above. `aiaRolls` holds an entry exactly for those deals,
+   * which is the set `dealsBilledViaAia` builds; it is already loaded.
+   */
+  const billedViaAia = new Set(aiaRolls.keys());
+  const liveInvoices = invoices.filter((i) => !isSupersededByAia(i, billedViaAia));
+  const livePayments = payments.filter(
+    (p) => !p.commercial_invoices || !isSupersededByAia(p.commercial_invoices, billedViaAia),
+  );
+  const scored = liveInvoices
     .map((i) => ({ i, verdict: receivableVerdict(i.status as never) }))
     .filter((x) => x.verdict !== "skip" && Number(x.i.balance_cents) > 0);
   const open = scored.map((x) => x.i);
   const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaOwed;
-  const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
+  const collected = livePayments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
   // Drafts are never aged — see the verdict above.
   const late = scored
     .filter((x) => x.verdict === "invoice")
@@ -282,7 +305,7 @@ export async function moneyOverview(): Promise<string> {
   return [
     `Outstanding: ${money(owed)} across ${open.length + aiaOpenCount} open items (invoices + AIA applications).`,
     `Past due: ${money(late.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaLateCents)} across ${late.length + aiaLateCount}.`,
-    `Collected all time: ${money(collected)} over ${payments.length} payments.`,
+    `Collected all time: ${money(collected)} over ${livePayments.length} payments.`,
     `Costs: ${[...byCat.entries()].map(([c, v]) => `${c} ${money(v)}`).join(", ")}.`,
     `Pages: /commercial/accounting?view=receivables and /commercial/accounting?view=aging`,
   ].join("\n");
@@ -367,7 +390,8 @@ export async function openBids(): Promise<string> {
   return [
     `${rows.length} open bids worth ${money(total)}.`,
     ...top.map(
-      (r) => `- ${nameOf(r as unknown as NameCols, acct.get(r.account_id) ?? null)}: ${money(Number(r.bid_value_low_cents ?? 0))} (${r.sub_status})`
+      (r) =>
+        `- ${nameOf(r as unknown as NameCols, acct.get(r.account_id) ?? null)}: ${money(Number(r.bid_value_low_cents ?? 0))}${r.sub_status ? ` (${r.sub_status})` : ""}`
     ),
     `Page: /commercial/reports/pipeline`,
   ].join("\n");

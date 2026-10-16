@@ -107,6 +107,33 @@ export type ChangeOrderVendorReport = {
 
 const EMPTY_BUCKET: CoBucket = { count: 0, cents: 0 };
 
+/**
+ * Did anything get bought in the window? NOT `vendorTotalCents !== 0`: refunds
+ * and credits are negative rows, so a period of $4,000 bought and $4,000
+ * returned nets to zero and read "No purchases logged" over two real purchases.
+ * Zero-amount rows are already skipped by the fold, so a row counted is a row
+ * that moved money.
+ */
+export function hasVendorActivity(r: Pick<ChangeOrderVendorReport, "vendors" | "unattributedCount">): boolean {
+  return r.vendors.length > 0 || r.unattributedCount > 0;
+}
+
+/**
+ * The biggest vendor's line under its tile. A share only means something
+ * against a positive total: when credits outweigh spend the old division
+ * printed "null% of spend" (and, before the null guard, a negative percent).
+ */
+export function topVendorShareLabel(
+  r: Pick<ChangeOrderVendorReport, "vendors" | "vendorTotalCents">
+): string | undefined {
+  const top = r.vendors[0];
+  if (!top) return undefined;
+  if (r.vendorTotalCents > 0) {
+    return `${top.name} · ${Math.round((top.cents / r.vendorTotalCents) * 100)}% of spend`;
+  }
+  return `${top.name} · credits outweigh spend, so no share`;
+}
+
 /** The shape this report returns when there is nothing to report. Exported
  *  so a page can degrade one card instead of failing whole. */
 export const EMPTY: ChangeOrderVendorReport = {

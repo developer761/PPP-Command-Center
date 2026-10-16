@@ -31,6 +31,7 @@ const RANGE = { fromYmd: "2026-05-01", toYmd: "2026-10-16", label: "last 6m" };
  *  caller hands it `total_cents` so cash is measured against what the customer
  *  was actually asked for. */
 const invoice = (over: Partial<PeriodInvoice> = {}): PeriodInvoice => ({
+  invoice_number: "INV-0001",
   status: "sent",
   subtotal_cents: 100_00,
   issued_at: "2026-06-10T16:00:00Z",

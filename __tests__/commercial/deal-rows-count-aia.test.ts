@@ -107,7 +107,7 @@ describe("the deal report rows respect invoice status", () => {
   it("selects the column the verdict needs", () => {
     // Asking for a status it never fetched is the silent half of this bug:
     // `status` comes back undefined and every invoice looks like the default.
-    expect(src).toMatch(/\.select\("opportunity_id, status,/);
+    expect(src).toMatch(/\.select\("opportunity_id, invoice_number, status,/);
   });
 
   it("drops a void entirely and counts a draft as neither billed nor owed", () => {

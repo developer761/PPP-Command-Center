@@ -5,6 +5,7 @@ import { paginateAll } from "@/lib/commercial/paginate";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { bidMidCents } from "@/lib/commercial/reports/pipeline";
 import { formatUsPhone } from "@/lib/commercial/format-phone";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 import type { ReportSpec } from "@/lib/commercial/reports/grouped/spec";
 
 /**
@@ -105,6 +106,7 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
   const [invoices, accounts, contacts] = await Promise.all([
     paginateAll<{
       opportunity_id: string;
+      invoice_number: string | null;
       status: string | null;
       subtotal_cents: number;
       total_cents: number;
@@ -113,7 +115,7 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
     }>(() =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents, balance_cents")
+        .select("opportunity_id, invoice_number, status, subtotal_cents, total_cents, paid_cents, balance_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -225,7 +227,12 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
    * today, in the module that sits right next to this one.
    */
   const { receivableVerdict } = await import("@/lib/commercial/reports/receivables");
+  // `aiaByOpp` holds an entry exactly for the deals with an issued certificate
+  // — the `dealsBilledViaAia` set — and on those the `SF-####` carry-over is
+  // the same money as the certificates (lib/commercial/invoices/carryover.ts).
+  const billedViaAia = new Set(aiaByOpp.keys());
   for (const i of invoices) {
+    if (isSupersededByAia(i, billedViaAia)) continue;
     const verdict = receivableVerdict(i.status as Parameters<typeof receivableVerdict>[0]);
     // Void: nobody owes it and nobody billed it. It contributes nothing.
     if (verdict === "skip") continue;
@@ -290,10 +297,10 @@ export async function getDealReportRows(): Promise<DealReportRow[]> {
       contractCents: Number(o.accepted_contract_cents ?? 0) + (coByOpp.get(o.id) ?? 0),
       bidCents: bid,
       taxCents: Math.max(0, m.total - m.sub),
-      // Invoice subtotal PLUS anything billed through AIA. The two are
-      // mutually exclusive in practice — a job bills one way or the other —
-      // but adding rather than choosing means a job that has done both is
-      // still right, and a job that has done neither is still zero.
+      // Invoice subtotal PLUS anything billed through AIA. Adding rather than
+      // choosing keeps a job that has genuinely done both right — and the one
+      // case where both ledgers hold the SAME bill, the `SF-####` carry-over,
+      // was dropped from `m` above.
       billedCents: m.sub + (aia?.billedCents ?? 0),
       paidCents: m.paid + (aia?.collectedCents ?? 0),
       // `dueNowCents` is G702 line 6 less what has been collected, and it

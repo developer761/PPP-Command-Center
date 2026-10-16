@@ -3,6 +3,7 @@ import { apiAccessDenied } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
+import { getInvoiceRollupForAccount } from "@/lib/commercial/invoices/rollup";
 
 /**
  * GET /api/commercial/account-summary/[id]
@@ -49,7 +50,7 @@ export async function GET(
 
   // Two lightweight aggregate queries — small enough that a single
   // round trip beats keeping this data in a materialized view for now.
-  const [openBidsRes, invoiceRes, latestRes] = await Promise.all([
+  const [openBidsRes, rollup, latestRes] = await Promise.all([
     sb
       .from("commercial_opportunities")
       .select("id", { count: "exact", head: true })
@@ -63,19 +64,21 @@ export async function GET(
       // only "estimating" survived the v2 migration, so this count was badly
       // undercounting. "Open bids" = the pre-sale open lanes (v2).
       .in("status", ["qualifying", "estimating", "proposal"]),
-    sb
-      .from("commercial_invoices")
-      .select("total_cents")
-      .eq("account_id", id)
-      .is("deleted_at", null)
-      // A DRAFT IS NOT BILLED EITHER.
-      //
-      // Void was excluded and draft was not, so this card said "$X billed"
-      // counting invoices nobody has sent — and the platform's own rollup for
-      // the same figure (lib/commercial/invoices/rollup.ts) excludes both. The
-      // hover card therefore overstated billed against the Account 360 tile
-      // sitting right beside it.
-      .not("status", "in", "(void,draft)"),
+    /**
+     * THE ACCOUNT 360 FIGURE, NOT A COPY OF IT.
+     *
+     * This summed invoices and AIA by hand, and each fix to that arithmetic
+     * was a fix to a second definition: drafts were counted until 2026-07-28,
+     * AIA was missing until the next pass, and the `SF-####` carry-over was
+     * never dropped — on a job billed by certificate it is the same money as
+     * those certificates (lib/commercial/invoices/carryover.ts), so the card
+     * would have counted LMJ Cipla twice while the tile beside it did not.
+     *
+     * `invoiced_cents` is issued invoices at their with-tax total (what the GC
+     * was sent) plus AIA billed, which carries no separate tax line. Reading
+     * the rollup means the hover card and Account 360 are one number.
+     */
+    getInvoiceRollupForAccount(id),
     sb
       .from("commercial_opportunities")
       .select("updated_at")
@@ -86,36 +89,9 @@ export async function GET(
       .maybeSingle(),
   ]);
 
-  /**
-   * AIA COUNTS HERE TOO — the hover card is a GC's size at a glance.
-   *
-   * This summed invoices alone. LMJ Management & Construction, the biggest GC
-   * in the book, carries 18 AIA applications across its jobs — AIREF #1 at
-   * $189,434.20, #2 at $272,448.21, #3 and #4 besides. The card showed
-   * $456,723.49 for an account that has billed well over a million.
-   *
-   * Same rollup every other money surface uses, so the hover card and the
-   * account page cannot disagree. Scoped to this account's opportunities: the
-   * applications table is keyed by opportunity, not account.
-   */
-  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
-  const { data: oppRows } = await sb
-    .from("commercial_opportunities")
-    .select("id")
-    .eq("account_id", id)
-    .is("deleted_at", null);
-  const oppIds = ((oppRows ?? []) as { id: string }[]).map((o) => o.id);
-  let aiaBilledCents = 0;
-  if (oppIds.length > 0) {
-    for (const [, roll] of await aiaBillingRollupBulk(oppIds)) {
-      aiaBilledCents += roll.billedCents;
-    }
-  }
-  const invoiced_cents =
-    ((invoiceRes.data ?? []) as { total_cents: number }[]).reduce(
-      (acc, r) => acc + (r.total_cents ?? 0),
-      0,
-    ) + aiaBilledCents;
+  // AIA is in it (LMJ Management read $456,723.49 on invoices alone, for a GC
+  // that has billed well over a million by certificate) — see the rollup.
+  const invoiced_cents = rollup.invoiced_cents;
   const last_activity_at =
     (latestRes.data as { updated_at?: string } | null)?.updated_at ?? null;
 

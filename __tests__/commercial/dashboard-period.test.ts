@@ -117,11 +117,11 @@ describe("priorDashboardRange — vs last, like for like", () => {
 
 describe("foldPeriodBilling — both ledgers, dated by when they were billed", () => {
   const invoices = [
-    { status: "sent", subtotal_cents: 100_00, issued_at: "2026-09-10T15:00:00Z", created_at: "2026-08-01T15:00:00Z", opportunity_id: "o1" },
-    { status: "paid", subtotal_cents: 50_00, issued_at: "2026-03-05T15:00:00Z", created_at: "2026-03-05T15:00:00Z", opportunity_id: "o1" },
-    { status: "draft", subtotal_cents: 999_00, issued_at: null, created_at: "2026-09-01T15:00:00Z", opportunity_id: "o1" },
-    { status: "void", subtotal_cents: 999_00, issued_at: "2026-09-01T15:00:00Z", created_at: "2026-09-01T15:00:00Z", opportunity_id: "o1" },
-    { status: "sent", subtotal_cents: 7_00, issued_at: "2026-09-01T15:00:00Z", created_at: "2026-09-01T15:00:00Z", opportunity_id: "elsewhere" },
+    { invoice_number: "INV-0001", status: "sent", subtotal_cents: 100_00, issued_at: "2026-09-10T15:00:00Z", created_at: "2026-08-01T15:00:00Z", opportunity_id: "o1" },
+    { invoice_number: "INV-0002", status: "paid", subtotal_cents: 50_00, issued_at: "2026-03-05T15:00:00Z", created_at: "2026-03-05T15:00:00Z", opportunity_id: "o1" },
+    { invoice_number: "INV-0003", status: "draft", subtotal_cents: 999_00, issued_at: null, created_at: "2026-09-01T15:00:00Z", opportunity_id: "o1" },
+    { invoice_number: "INV-0004", status: "void", subtotal_cents: 999_00, issued_at: "2026-09-01T15:00:00Z", created_at: "2026-09-01T15:00:00Z", opportunity_id: "o1" },
+    { invoice_number: "INV-0005", status: "sent", subtotal_cents: 7_00, issued_at: "2026-09-01T15:00:00Z", created_at: "2026-09-01T15:00:00Z", opportunity_id: "elsewhere" },
   ];
   // Three issued applications, completed-to-date 300 → 500 → 900, plus a draft.
   const apps = [

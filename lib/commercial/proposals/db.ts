@@ -2278,7 +2278,11 @@ async function assertProposalEditable(
 
   return {
     ok: false,
-    error: `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`,
+    // A row with no status read "This one is undefined." Say plainly that
+    // there is none instead.
+    error: row.status
+      ? `Only draft proposals can be edited. This one is ${row.status}. Start a new revision to make changes.`
+      : "Only draft proposals can be edited, and this one has no status recorded. Start a new revision to make changes.",
   };
 }
 

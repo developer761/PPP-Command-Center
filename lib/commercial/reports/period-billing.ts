@@ -3,6 +3,7 @@ import "server-only";
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
+import { isSupersededByAia } from "@/lib/commercial/invoices/carryover";
 import { etDateOf } from "@/lib/date-et";
 import type { RangeResult } from "./presets";
 
@@ -40,6 +41,12 @@ import type { RangeResult } from "./presets";
  *
  * Pre-tax and gross of retainage, like every other "billed" figure: retainage
  * is earned revenue that is merely held.
+ *
+ * And the `SF-####` carry-over invoice on a job that also has issued
+ * certificates is NOT added: it is the same money as those certificates (see
+ * lib/commercial/invoices/carryover.ts). `projects/db.ts` already skips it, so
+ * without the same guard here the identity above breaks the first time such
+ * an invoice is live — and "Gross revenue" counts the job twice.
  */
 
 export type PeriodInvoice = {
@@ -48,6 +55,9 @@ export type PeriodInvoice = {
   issued_at?: string | null;
   created_at: string | null;
   opportunity_id?: string | null;
+  /** For the carry-over guard. A caller that drops it loses the guard, so
+   *  it is required rather than optional. */
+  invoice_number: string | null;
 };
 
 export type PeriodAiaApp = {
@@ -95,9 +105,16 @@ export function foldPeriodBilling(
     if (inRange(ymd, range)) byOpp.set(oppId, (byOpp.get(oppId) ?? 0) + cents);
   };
 
+  // Deals with an issued certificate — the same condition `dealsBilledViaAia`
+  // reads, taken from the applications already in hand.
+  const billedViaAia = new Set(
+    apps.filter((a) => ISSUED_AIA.has(a.status)).map((a) => a.opportunity_id)
+  );
+
   for (const inv of invoices) {
     if (inv.status === "draft" || inv.status === "void") continue;
     if (!inv.opportunity_id || (oppIds && !oppIds.has(inv.opportunity_id))) continue;
+    if (isSupersededByAia(inv, billedViaAia)) continue;
     add(inv.opportunity_id, etDateOf(inv.issued_at ?? inv.created_at), Number(inv.subtotal_cents ?? 0));
   }
 
