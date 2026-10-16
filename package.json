@@ -74,6 +74,7 @@
     "check:writers": "node scripts/check-settings-have-writers.mjs",
     "verify:snippets": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-snippets-e2e.mjs",
     "verify:shared-faqs": "node --env-file=.env.local --import ./scripts/ts-resolve-register.mjs scripts/verify-shared-faqs-e2e.mjs",
+    "check:serviced-states": "node --env-file=.env.local scripts/check-active-workspaces-are-serviced.mjs",
     "check:intake-readiness": "node --env-file=.env.local scripts/check-intake-readiness.mjs",
     "check:consent-values": "node scripts/check-sms-consent-values.mjs",
     "check:consent-eligibility": "node --env-file=.env.local scripts/check-consent-eligibility.mjs",
