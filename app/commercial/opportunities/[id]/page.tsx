@@ -2417,7 +2417,9 @@ export default async function OpportunityDetailPage({
     ).length,
     approvedNotSentCount: dealProposals.filter((p) => p.status === "approved")
       .length,
-    hasWorkOrder: !!pathWorkOrder,
+    // SENT, not merely written — see the Work Order tile above for the four
+    // live jobs this was silencing.
+    hasWorkOrder: !!pathWorkOrder?.sent_at,
     // Both loaded for any won deal, so these are real answers rather than
     // "didn't look" — the mistake this strip has already made three times.
     closeoutComplete: pathIsWon
@@ -2480,7 +2482,9 @@ export default async function OpportunityDetailPage({
     // the job is on site, so on an earlier stage this stays undefined — which
     // nextStep reads as "unknown", not "none".
     submittalCount: pathIsWon ? liveSubmittals.length : undefined,
-    hasWorkOrder: !!pathWorkOrder,
+    // SENT, not merely written — see the Work Order tile above for the four
+    // live jobs this was silencing.
+    hasWorkOrder: !!pathWorkOrder?.sent_at,
   });
 
   // ── The delivery checklist, in the order the work happens ──────────────
@@ -2669,8 +2673,30 @@ export default async function OpportunityDetailPage({
           phase: "Pre-Construction",
           label: "Work Order",
           href: tabHref("work-order"),
-          state: pathWorkOrder ? "Written" : "Not written",
-          status: pathWorkOrder ? "done" : "todo",
+          /*
+           * 🔴 GREEN MEANS THE CREW HAS IT, NOT THAT A ROW EXISTS.
+           *
+           * This was `pathWorkOrder ? "done" : "todo"` — true of a draft with
+           * no scope, no dates, no notes and no crew email. Measured
+           * 2026-10-16: FOUR live deals read "Written / done" with no sheet
+           * ever sent, and 170 hours of real labor logged against them.
+           * Cummins-Interior (10h) and PCCI Eastport (80h) are both
+           * `in_progress / wip_on_site` — crews working, no marching orders.
+           *
+           * Worse, the same boolean silences the warning built for exactly
+           * this ("No work order yet — the crew has nothing describing the
+           * scope") and offers "Put it in progress — the crew has its scope"
+           * on jobs where it does not.
+           *
+           * A draft is real progress, so it is not "todo" either. Three
+           * states, and the middle one is the honest answer.
+           */
+          state: !pathWorkOrder
+            ? "Not written"
+            : pathWorkOrder.sent_at
+              ? "Sent to the crew"
+              : "Draft — not sent",
+          status: !pathWorkOrder ? "todo" : pathWorkOrder.sent_at ? "done" : "active",
         },
         {
           key: "change-orders",
