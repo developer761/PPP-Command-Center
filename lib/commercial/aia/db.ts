@@ -64,7 +64,7 @@ export type AiaApplication = {
   /**
    * The release this certificate's retainage baseline was read from when it
    * was ISSUED, and when that was stamped. Pinned so renumbering cannot move
-   * it — see `releaseBaselineFor`. Absent until migration 20261016200000.
+   * it — see `releaseBaselineFor`. Absent until migration 20261016200100.
    */
   release_baseline_app_id?: string | null;
   release_baseline_pinned_at?: string | null;
@@ -90,7 +90,7 @@ export type AiaLineItem = {
   /**
    * The first row of the chain this line was carried forward from — an
    * identity nobody can type over, which `item_no` and the description are
-   * not. Absent until migration 20261016200000; null on rows seeded before it.
+   * not. Absent until migration 20261016200100; null on rows seeded before it.
    */
   source_line_id?: string | null;
   position: number;
@@ -781,11 +781,11 @@ async function seedAiaScheduleOfValues(
           carryNo += 1;
         }
         let { error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows);
-        // Migration 20261016200000 not applied yet: carry forward without the
+        // Migration 20261016200100 not applied yet: carry forward without the
         // chain id. Matching then falls back to the normalised item_no, which
         // is what every sheet before it relied on.
         if (carryErr && /source_line_id/i.test(carryErr.message)) {
-          console.warn("[aia] commercial_aia_line_items has no source_line_id — run migration 20261016200000. Seeding without it.");
+          console.warn("[aia] commercial_aia_line_items has no source_line_id — run migration 20261016200100. Seeding without it.");
           for (const r of rows) delete r.source_line_id;
           ({ error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows));
         }
@@ -1313,7 +1313,7 @@ export async function updateAiaApplication(
        * Issued certificates now pin their baseline (`releaseBaselineFor`),
        * which blocks nothing. But anything issued before that column existed
        * still reads the rule, so this refusal protects them, and it protects
-       * all of them until migration 20261016200000 is applied.
+       * all of them until migration 20261016200100 is applied.
        *
        * NARROW ON PURPOSE. Renumbering is a feature Stephanie uses — her real
        * 4→5 was nearly "restored" by mistake once. Only a RELEASE is checked,
@@ -1486,13 +1486,13 @@ export async function updateAiaApplication(
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
-  // Pre-migration-20261016200000: the release pin is the newest optional
+  // Pre-migration-20261016200100: the release pin is the newest optional
   // column, so it goes on its own first — dropping the 128/130 freeze along
   // with it would un-freeze every certificate issued in the gap. Without the
   // pin the renumber refusal above still protects issued certificates.
   if (error && /release_baseline_app_id|release_baseline_pinned_at/i.test(error.message)) {
     console.warn(
-      "[commercial/aia] applications table has no release_baseline columns — run migration 20261016200000. Writing without them."
+      "[commercial/aia] applications table has no release_baseline columns — run migration 20261016200100. Writing without them."
     );
     delete next.release_baseline_app_id;
     delete next.release_baseline_pinned_at;
@@ -1833,7 +1833,10 @@ export async function listAiaLineItemsWithRelease(
   // baseline; a draft (or a pre-pin certificate) reads the rule.
   const release = releaseBaselineFor(app, (releases ?? []) as AiaReleaseCandidate[]);
   if (!release) return lines;
-  return applyReleasedRetainage(lines, await listAiaLineItems(release.id));
+  // Always strict, whatever the caller asked for: an empty release sheet from
+  // a failed read releases nothing and withholds the full rate again — the
+  // same wrong certificate the releases read above refuses to produce.
+  return applyReleasedRetainage(lines, await listAiaLineItems(release.id, { strict: true }));
 }
 
 export async function resolveG702(applicationId: string, _depth = 0): Promise<AiaG702 | null> {
@@ -2285,7 +2288,7 @@ export async function aiaBillingRollupBulk(
   }>(() =>
     sb
       .from("commercial_aia_applications")
-      // `*` so the release pin is read when migration 20261016200000 is in and
+      // `*` so the release pin is read when migration 20261016200100 is in and
       // simply absent when it is not — naming the column would fail the whole
       // rollup, and with it AR, the GC statement and receivables.
       .select(COLS)

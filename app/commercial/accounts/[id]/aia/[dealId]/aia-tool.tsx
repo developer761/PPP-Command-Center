@@ -670,7 +670,10 @@ export async function AiaTool({
           // was seeded so its two sheets foot before we render/export it (audit
           // F2). No-op on an issued (frozen) certificate.
           if (application.status === "draft") {
-            await reconcileDraftChangeOrderRows(selectedAppId);
+            // Not blocking the page: it renders what is stored, the next render
+            // retries, and export + issue both refuse on this failure.
+            const folded = await reconcileDraftChangeOrderRows(selectedAppId);
+            if (!folded.ok) console.error(`[aia] draft ${selectedAppId} change-order refold failed on render: ${folded.error}`);
           }
           const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
           const [lines, g702, lienWaiver, payments, provenance] = await Promise.all([

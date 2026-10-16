@@ -210,7 +210,7 @@ export async function listProjects(opts: {
         // only thing that can say whether the money on it is late. Without them
         // an AIA-billed job could only ever be counted as current.
         //
-        // `*` so the release pin (migration 20261016200000) is read when it
+        // `*` so the release pin (migration 20261016200100) is read when it
         // exists and absent when it does not; naming it would fail the listing.
         .select("*")
         .in("opportunity_id", oppIds)
@@ -468,7 +468,7 @@ export async function listProjects(opts: {
         sb
           .from("commercial_aia_line_items")
           // `*`: `id` + `source_line_id` are the chain the release matches on,
-          // and the second does not exist until migration 20261016200000.
+          // and the second does not exist until migration 20261016200100.
           .select("*")
           .in("application_id", lineAppIds)
           .order("id", { ascending: true })

@@ -277,7 +277,7 @@ export default async function CreateProposalRoute({
     }
     if (failed.length === 0 && totalWarning) {
       redirect(
-        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(`All ${parentItems.length} line items copied forward. ${totalWarning}`)}${backQs}`
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(`All ${parentItems.length} line items copied forward. ${totalWarning}${result.warning ? ` ${result.warning}` : ""}`)}${backQs}`
       );
     }
     if (failed.length > 0) {

@@ -281,8 +281,26 @@ export async function addMilestone(
         allowChangeOrderLine: !!draft.change_order_id,
       }).catch(() => ({ ok: false as const }));
       if (!rm.ok) {
-        await sb.from("commercial_invoice_line_items").delete().eq("id", lineItemId).eq("invoice_id", invoiceId);
-        await recomputeSubtotal(invoiceId);
+        // The fallback is read too: an unread delete here left the charge on
+        // the invoice with no milestone, untracked, behind "couldn't add".
+        const { error: delErr } = await sb
+          .from("commercial_invoice_line_items")
+          .delete()
+          .eq("id", lineItemId)
+          .eq("invoice_id", invoiceId);
+        if (delErr) {
+          return {
+            ok: false,
+            error: `The milestone couldn't be added, and its charge is still on the invoice. Remove that line before sending. (${error?.message ?? delErr.message})`,
+          };
+        }
+        const retotal = await recomputeSubtotal(invoiceId);
+        if (!retotal.ok) {
+          return {
+            ok: false,
+            error: `The milestone couldn't be added. Its charge was taken back off, but the invoice total may be out of date — reload and check it before sending. (${error?.message ?? retotal.error})`,
+          };
+        }
       }
     }
     return { ok: false, error: error?.message ?? "Could not add the milestone." };
@@ -406,7 +424,7 @@ export async function deleteMilestone(
   id: string,
   actorUserId: string,
   opts?: { skipCoClaimClear?: boolean }
-): Promise<Result<null>> {
+): Promise<Result<{ totalStale: boolean }>> {
   const existing = await getMilestone(id);
   if (!existing) return { ok: false, error: "Milestone not found." };
   // Void invoices are immutable — nothing to do (the UI hides these on void).
@@ -504,17 +522,23 @@ export async function deleteMilestone(
     console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
   });
   }
-  if (retotalError) {
-    return {
-      ok: false,
-      error: `The milestone and its charge were removed, but the invoice total couldn't be re-added — it may be out of date. Reload the invoice and check it before sending. (${retotalError})`,
-    };
-  }
-  return {
-    ok: true,
-    value: null,
-    warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
-  };
+  /*
+   * A failed RE-TOTAL is not a failed delete. The milestone and its charge are
+   * gone and the CO's claim is released, so this is a success with a warning —
+   * reported as ok:false it sent the change-order rollback to tell the user
+   * the charge was still on the invoice ("billed twice") when it wasn't, and
+   * made tick-off skip its notice and its empty-draft cleanup.
+   */
+  const warning =
+    [
+      paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : null,
+      retotalError
+        ? `The milestone and its charge were removed, but the invoice total couldn't be re-added — it may be out of date. Reload the invoice and check it before sending. (${retotalError})`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+  return { ok: true, value: { totalStale: retotalError != null }, warning };
 }
 
 // ────────────── Per-milestone lien waiver ──────────────

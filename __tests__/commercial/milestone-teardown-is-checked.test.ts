@@ -115,8 +115,14 @@ describe("deleteMilestone", () => {
     recomputeSubtotal.mockResolvedValue({ ok: false, error: "re-total failed" });
     script({});
     const r = await del();
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/total couldn't be re-added/);
+    // A SUCCESS with a warning: the milestone and its charge are gone. As
+    // ok:false the CO rollback read it as "charge still on the invoice — billed
+    // twice", and tick-off skipped its notice and empty-draft cleanup.
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.totalStale).toBe(true);
+      expect(r.warning).toMatch(/total couldn't be re-added/);
+    }
     expect(claimWrites()).toHaveLength(1); // the charge is gone; free the CO
   });
 

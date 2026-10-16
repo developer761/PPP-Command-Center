@@ -36,7 +36,18 @@ export async function GET(
 
   // Fold any change orders approved since a DRAFT was seeded into its schedule
   // of values so the exported G702/G703 foots (audit F2). No-op once issued.
-  if (application.status === "draft") await reconcileDraftChangeOrderRows(applicationId);
+  if (application.status === "draft") {
+    // A failed refold leaves the draft's change-order rows at the OLD tax, and
+    // this workbook is what a GC's accounts payable reads — so it doesn't go
+    // out. The issue path refuses on the same failure.
+    const folded = await reconcileDraftChangeOrderRows(applicationId);
+    if (!folded.ok) {
+      return new NextResponse(
+        `This certificate's change orders couldn't be brought up to date, so the spreadsheet wasn't made — its tax could be out of date. Reload the application and try the export again. (${folded.error})`,
+        { status: 409, headers: { "content-type": "text/plain; charset=utf-8" } }
+      );
+    }
+  }
 
   const [opp, lines, g702] = await Promise.all([
     getCommercialOpportunity(application.opportunity_id),

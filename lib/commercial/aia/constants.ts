@@ -275,7 +275,7 @@ export function pickReleaseApplication<T extends AiaReleaseCandidate>(
 }
 
 /** What an application carries about its OWN release baseline (migration
- *  20261016200000). Both absent until that migration is applied. */
+ *  20261016200100). Both absent until that migration is applied. */
 export type AiaReleaseBaselinePin = {
   status?: string | null;
   application_number: number;

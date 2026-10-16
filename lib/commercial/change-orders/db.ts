@@ -382,7 +382,11 @@ export async function updateChangeOrder(
     );
     const apps = await listAiaApplications(row.opportunity_id);
     for (const a of apps.filter((x) => x.status === "draft")) {
-      await reconcileDraftChangeOrderRows(a.id);
+      // It RETURNS its failure; the catch below only sees a throw.
+      const folded = await reconcileDraftChangeOrderRows(a.id);
+      if (!folded.ok) {
+        console.warn(`[change-orders] CO ${id} not folded into draft certificate ${a.id}: ${folded.error}`);
+      }
     }
   } catch (err) {
     console.warn(
@@ -712,7 +716,10 @@ async function tickChangeOrderOn(
     // treated as unsafe: the credit comes back off.
     if (sumErr) {
       console.error(`[change-orders] credit re-check read failed on invoice ${invoiceId}: ${sumErr.message}`);
-      await removeTickedChangeOrder(invoiceId, co.id, userId);
+      // If the peel itself failed, the credit is STILL on the invoice — keep the
+      // draft (it is where the charge is) and say so, like the two branches below.
+      const stuck = await removeTickedChangeOrder(invoiceId, co.id, userId);
+      if (stuck) return { ok: false, error: `Couldn't confirm the invoice total after adding this credit. ${stuck}` };
       if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
       return { ok: false, error: "Couldn't confirm the invoice total after adding this credit, so it wasn't added. Please try again." };
     }
@@ -891,7 +898,11 @@ async function removeTickedChangeOrder(invoiceId: string, coId: string, userId: 
     // Rollback of a LOST claim — we never owned the CO's invoiced_invoice_id, so
     // don't clear it (would stomp the winner). D5.
     const res = await deleteMilestone((ms as { id: string }).id, userId, { skipCoClaimClear: true });
-    return res.ok ? null : `${left} (${res.error})`;
+    if (!res.ok) return `${left} (${res.error})`;
+    if (res.value.totalStale) {
+      return `The change order was taken back off ${inv?.invoice_number ?? "the invoice"}, but its total couldn't be re-added and may be out of date. Reload it and check before sending.`;
+    }
+    return null;
   }
   const { data: line, error: lineErr } = await sb
     .from("commercial_invoice_line_items")

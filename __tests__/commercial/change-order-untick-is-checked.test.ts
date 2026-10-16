@@ -62,6 +62,9 @@ type Script = {
   line?: Answer;
   lineDel?: Answer;
   claim?: Answer;
+  /** The credit re-check's read of every line on the invoice (not `.single`). */
+  lineSum?: Answer;
+  amount?: number;
 };
 
 function script(s: Script) {
@@ -69,7 +72,7 @@ function script(s: Script) {
     if (c.table === "commercial_change_orders") {
       if (c.op === "select")
         return {
-          data: { id: "co1", opportunity_id: "opp-1", account_id: "acc-1", status: "approved", amount_cents: 5_000, invoiced_invoice_id: s.invoiced, co_number: 1, title: "Extra coat" },
+          data: { id: "co1", opportunity_id: "opp-1", account_id: "acc-1", status: "approved", amount_cents: s.amount ?? 5_000, invoiced_invoice_id: s.invoiced, co_number: 1, title: "Extra coat" },
         };
       if (c.op === "update") return s.claim ?? { data: { id: "co1" } };
     }
@@ -77,6 +80,7 @@ function script(s: Script) {
     if (c.table === "commercial_aia_applications") return { data: null, count: 0 };
     if (c.table === "commercial_invoice_milestones") return s.ms ?? { data: null };
     if (c.table === "commercial_invoice_line_items") {
+      if (c.op === "select" && !c.single && s.lineSum) return s.lineSum;
       if (c.op === "select") return s.line ?? { data: { id: "li1" } };
       if (c.op === "delete") return s.lineDel ?? { data: null };
     }
@@ -180,5 +184,40 @@ describe("the lost-race rollback when ticking a change order on", () => {
     const r = await tick(true, "inv1");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/billed twice/);
+  });
+});
+
+describe("the credit re-check when ticking a deduct change order on", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    recomputeSubtotal.mockReset().mockResolvedValue({ ok: true });
+    deleteMilestone.mockReset().mockResolvedValue({ ok: true, value: null });
+  });
+
+  it("says the credit is still on the invoice when the re-check read AND the peel both fail", async () => {
+    // The re-check fails closed and peels the credit back off. If that peel
+    // fails too, "it wasn't added" is false: the credit is on INV-7, the CO was
+    // never claimed, so it reads un-billed and can be ticked — applied twice.
+    script({
+      invoiced: null,
+      amount: -5_000,
+      lineSum: { data: null, error: { message: "timeout" } },
+      lineDel: { error: { message: "boom" } },
+    });
+    const r = await tick(true, "inv1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/couldn't be taken back off/);
+      expect(r.error).not.toMatch(/so it wasn't added/);
+    }
+    expect(claimWrites()).toHaveLength(0);
+  });
+
+  it("says only 'it wasn't added' when the peel did land", async () => {
+    script({ invoiced: null, amount: -5_000, lineSum: { data: null, error: { message: "timeout" } } });
+    const r = await tick(true, "inv1");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/so it wasn't added/);
+    expect(lineDeletes()).toHaveLength(1);
   });
 });
