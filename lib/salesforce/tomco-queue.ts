@@ -397,9 +397,10 @@ export type QueueReviewRow = {
  * held for a decision is held in a table nobody opens, and "it syncs
  * automatically" becomes an unverifiable claim. Read-only.
  */
-export async function listQueueForReview(
-  opts: { recentDone?: number } = {},
-): Promise<{ rows: QueueReviewRow[]; tableMissing: boolean }> {
+/** How many finished entries the review screen shows for context. */
+const RECENT_DONE_SHOWN = 25;
+
+export async function listQueueForReview(): Promise<{ rows: QueueReviewRow[]; tableMissing: boolean }> {
   const sb = adminClient();
   const COLS =
     "id, kind, opportunity_id, change_order_id, queued_at, attempts, held_reason, last_error, done_at, outcome, verify_failed_at, verify_failed_reason";
@@ -436,7 +437,7 @@ export async function listQueueForReview(
           .select(COLS)
           .not("done_at", "is", null)
           .order("done_at", { ascending: false })
-          .limit(opts.recentDone ?? 25);
+          .limit(RECENT_DONE_SHOWN);
   const error = ("error" in pending && pending.error) || ("error" in unverified && unverified.error) || ("error" in recent && recent.error) || null;
   if (error) {
     /*
