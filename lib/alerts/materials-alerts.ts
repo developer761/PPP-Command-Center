@@ -146,11 +146,20 @@ async function emailFallback(a: MaterialsAlert, why: string): Promise<{ ok: bool
   const to = opsAlertRecipients();
   if (to.length === 0) return { ok: false, detail: "no ops recipients configured" };
   try {
-    await sendEmail({
+    // sendEmail RETURNS { ok: false }; it does not throw. This awaited the
+    // call and returned ok:true regardless, so when Slack was down AND the
+    // email was refused, deliverMaterialsAlert was told the alert had been
+    // delivered. Its "Nobody was told about this failure" branch — written
+    // for exactly that case — could never run.
+    const res = await sendEmail({
       to,
       subject: `[PPP alert] ${LABEL[a.kind]}${a.workOrder ? ` — WO ${a.workOrder}` : ""}`,
       text: `${buildAlertText(a)}\n\n---\nSent by email because Slack was unavailable (${why}).`,
     });
+    if (!res?.ok) {
+      const why2 = "error" in (res ?? {}) ? (res as { error?: string }).error : "unknown";
+      return { ok: false, detail: `email refused: ${why2 ?? "unknown"}` };
+    }
     return { ok: true, detail: "email" };
   } catch (err) {
     return { ok: false, detail: `email threw: ${err instanceof Error ? err.message : String(err)}` };

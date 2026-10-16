@@ -233,7 +233,16 @@ export async function alertSalesforceWriteFailure(input: SfFailureAlertInput): P
     }
 
     const { subject, html, text } = renderSfFailureAlert(input);
-    await sendEmail({ to, subject, html, text });
+    // Returns { ok: false } rather than throwing — the catch below could
+    // never see a refused send, so a Salesforce rejection could go
+    // unreported twice over: once by SF, once by the alert about it.
+    const res = await sendEmail({ to, subject, html, text });
+    if (!res?.ok) {
+      console.error(
+        `[sf-failure-alert] alert NOT SENT to ${to.join(", ")}: ` +
+          `${"error" in (res ?? {}) ? (res as { error?: string }).error : "unknown"}`
+      );
+    }
   } catch (err) {
     // Never let the alert break the request that triggered it.
     console.error("[sf-failure-alert] could not send:", err);

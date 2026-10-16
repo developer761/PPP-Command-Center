@@ -118,12 +118,20 @@ describe("the webhook stays safe", () => {
   it("does not await it into the response", () => {
     // A slow or failed notification must not make Resend retry — a retry
     // re-delivers the same reply.
-    expect(hook()).toMatch(/void notifySupplierReply\(/);
+    expect(hook()).not.toMatch(/await notifySupplierReply\(/);
+  });
+
+  it("but is not merely detached either", () => {
+    // `void` satisfied the rule above and lost the work: on Vercel the
+    // instance freezes at the response, so the bell and email telling
+    // somebody a vendor replied could simply never happen. afterResponse
+    // keeps both properties — the 200 goes back first, the work survives.
+    expect(hook()).toMatch(/afterResponse\("vendor reply notification", \(\) =>/);
   });
 
   it("fires only after the message is stored", () => {
     const h = hook();
-    expect(h.indexOf(".insert({")).toBeLessThan(h.indexOf("void notifySupplierReply("));
+    expect(h.indexOf(".insert({")).toBeLessThan(h.indexOf('afterResponse("vendor reply notification"'));
   });
 });
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { alertMaterialsFailure } from "@/lib/alerts/materials-alerts";
@@ -236,39 +237,45 @@ export async function POST(request: Request) {
     const o = existingOrder.data as Record<string, unknown> | null;
     const t = existingToken.data as Record<string, unknown> | null;
     if (o) {
-      void alertMaterialsFailure({
-        kind: "supplier_order_bounced",
-        summary: `The vendor never received this order — Resend reported "${status}".`,
-        workOrder: (o.work_order_number as string | null) ?? null,
-        detail: {
-          "PO": (o.po_number as string | null) ?? null,
-          "Vendor": (o.supplier_name as string | null) ?? null,
-          "Sent to": (o.sent_to_email as string | null) ?? null,
-          "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
-        },
-      });
+      afterResponse("materials failure alert", () =>
+        alertMaterialsFailure({
+          kind: "supplier_order_bounced",
+          summary: `The vendor never received this order — Resend reported "${status}".`,
+          workOrder: (o.work_order_number as string | null) ?? null,
+          detail: {
+            "PO": (o.po_number as string | null) ?? null,
+            "Vendor": (o.supplier_name as string | null) ?? null,
+            "Sent to": (o.sent_to_email as string | null) ?? null,
+            "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
+          },
+        })
+      );
     }
     if (t) {
-      void alertMaterialsFailure({
-        kind: "color_form_bounced",
-        summary: `The customer never received the color form — Resend reported "${status}". The job is waiting on colors.`,
-        workOrder: (t.work_order_number as string | null) ?? null,
-        detail: {
-          "Customer": (t.customer_name as string | null) ?? null,
-          "Sent to": (t.customer_email as string | null) ?? null,
-          "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
-        },
-      });
+      afterResponse("materials failure alert", () =>
+        alertMaterialsFailure({
+          kind: "color_form_bounced",
+          summary: `The customer never received the color form — Resend reported "${status}". The job is waiting on colors.`,
+          workOrder: (t.work_order_number as string | null) ?? null,
+          detail: {
+            "Customer": (t.customer_name as string | null) ?? null,
+            "Sent to": (t.customer_email as string | null) ?? null,
+            "Reason": payload.data?.bounce?.message ?? payload.data?.bounce?.type ?? null,
+          },
+        })
+      );
     }
     if (!o && !t) {
       // A hard bounce we cannot tie to a job is still a bounce. Worth saying so
       // rather than dropping it, because it usually means a send happened
       // outside the flows that record a message id.
-      void alertMaterialsFailure({
-        kind: "unexpected_error",
-        summary: `An email ${status} but matched no supplier order or color form.`,
-        detail: { "Resend id": emailId, "Event": eventType },
-      });
+      afterResponse("materials failure alert", () =>
+        alertMaterialsFailure({
+          kind: "unexpected_error",
+          summary: `An email ${status} but matched no supplier order or color form.`,
+          detail: { "Resend id": emailId, "Event": eventType },
+        })
+      );
     }
   }
 

@@ -67,7 +67,11 @@ describe("a receipt that does not send is reported", () => {
     // receiptRecipient refuses to fall back to the staff address on an
     // internal token. It existed; the route passed customer_email raw.
     expect(route).toMatch(/receiptRecipient\(\{/);
-    expect(route).toMatch(/to: recipient\.email/);
+    // Captured as `receiptTo` first: the send now runs inside an
+    // afterResponse callback, where the `if (recipient.email)` narrowing
+    // above does not apply.
+    expect(route).toMatch(/const receiptTo = recipient\.email;/);
+    expect(route).toMatch(/to: receiptTo,/);
   });
 
   it("says so when there is no address to send to", () => {

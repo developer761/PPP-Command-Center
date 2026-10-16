@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileByUserId, logViewAs, invalidateProfileCache } from "@/lib/auth/profile";
@@ -71,18 +72,20 @@ export async function POST(request: Request) {
   // for the first half-minute of the proxy.
   invalidateProfileCache(gate.user.id);
 
-  void logViewAs({
-    admin_user_id: gate.user.id,
-    admin_email: gate.profile?.email ?? gate.user.email ?? "",
-    // The column predates proxy login and is named for Salesforce ids; it is
-    // TEXT, and what matters is that the row names WHO was proxied.
-    target_sf_user_id: target.sf_user_id || targetUserId,
-    target_label: target.full_name || target.email || targetUserId,
-    action: "proxy_start",
-    path: new URL(request.url).pathname,
-    user_agent: request.headers.get("user-agent"),
-    ip_address: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-  });
+  afterResponse("view-as audit row", () =>
+    logViewAs({
+      admin_user_id: gate.user.id,
+      admin_email: gate.profile?.email ?? gate.user.email ?? "",
+      // The column predates proxy login and is named for Salesforce ids; it is
+      // TEXT, and what matters is that the row names WHO was proxied.
+      target_sf_user_id: target.sf_user_id || targetUserId,
+      target_label: target.full_name || target.email || targetUserId,
+      action: "proxy_start",
+      path: new URL(request.url).pathname,
+      user_agent: request.headers.get("user-agent"),
+      ip_address: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    })
+  );
 
   return NextResponse.json({
     ok: true,
@@ -105,16 +108,18 @@ export async function DELETE(request: Request) {
 
   if (wasProxying) {
     const real = await getProfileByUserId(data.user.id, { ignoreProxy: true });
-    void logViewAs({
-      admin_user_id: data.user.id,
-      admin_email: real?.email ?? data.user.email ?? "",
-      target_sf_user_id: wasProxying,
-      target_label: null,
-      action: "proxy_end",
-      path: new URL(request.url).pathname,
-      user_agent: request.headers.get("user-agent"),
-      ip_address: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-    });
+    afterResponse("view-as audit row", () =>
+      logViewAs({
+        admin_user_id: data.user.id,
+        admin_email: real?.email ?? data.user.email ?? "",
+        target_sf_user_id: wasProxying,
+        target_label: null,
+        action: "proxy_end",
+        path: new URL(request.url).pathname,
+        user_agent: request.headers.get("user-agent"),
+        ip_address: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      })
+    );
   }
 
   return NextResponse.json({ ok: true });
