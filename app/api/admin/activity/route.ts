@@ -143,6 +143,29 @@ export async function GET(request: Request) {
 
     const [formRes, orderRes, inboxRes] = await Promise.allSettled([formQuery, orderQuery, inboxQuery]);
 
+    /**
+     * Each branch below is correctly guarded — `fulfilled && !error` — so a
+     * failed source contributes nothing and the feed still renders. What it
+     * did not do is SAY so. A Supabase error here is returned, not thrown,
+     * and allSettled swallows a rejection by design, so "the customer has
+     * done nothing this week" and "we could not read the forms table" were
+     * the same screen.
+     *
+     * Not fatal, deliberately: a partial feed beats an error page. But it
+     * has to be findable, so each failure is named.
+     */
+    for (const [label, res] of [
+      ["color forms", formRes],
+      ["supplier orders", orderRes],
+      ["inbox", inboxRes],
+    ] as const) {
+      if (res.status === "rejected") {
+        console.error(`[activity] ${label} query threw — those events are missing from the feed:`, res.reason);
+      } else if (res.value.error) {
+        console.error(`[activity] ${label} query refused — those events are missing from the feed: ${res.value.error.message}`);
+      }
+    }
+
     const events: ActivityEvent[] = [];
 
     if (formRes.status === "fulfilled" && !formRes.value.error) {
