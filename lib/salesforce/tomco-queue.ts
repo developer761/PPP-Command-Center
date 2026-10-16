@@ -378,6 +378,11 @@ export type QueueReviewRow = {
   outcome: string | null;
   /** Out of retries and not done: it has stopped asking. */
   stalled: boolean;
+  /**
+   * Held, and parked until a person acts — never re-tried on a timer. See
+   * `markHeld`'s `waitsFor: "person"`.
+   */
+  waitingForPerson: boolean;
   /** A read-back disagreed with what was written, and nothing has since proved
    *  otherwise. Survives the entry being marked done — that is the point. */
   verifyFailedAt: string | null;
@@ -393,17 +398,46 @@ export type QueueReviewRow = {
  * automatically" becomes an unverifiable claim. Read-only.
  */
 export async function listQueueForReview(
-  limit = 40,
+  opts: { recentDone?: number } = {},
 ): Promise<{ rows: QueueReviewRow[]; tableMissing: boolean }> {
   const sb = adminClient();
-  const { data, error } = await sb
-    .from(TABLE)
-    .select("id, kind, opportunity_id, change_order_id, queued_at, attempts, held_reason, last_error, done_at, outcome, verify_failed_at, verify_failed_reason")
-    // Pending first (done_at null sorts last ascending in Postgres, so order by
-    // it descending with nulls first), then newest.
-    .order("done_at", { ascending: false, nullsFirst: true })
-    .order("queued_at", { ascending: false })
-    .limit(limit);
+  const COLS =
+    "id, kind, opportunity_id, change_order_id, queued_at, attempts, held_reason, last_error, done_at, outcome, verify_failed_at, verify_failed_reason";
+  /*
+   * 🔴 EVERY ROW THAT NEEDS SOMEBODY, NOT THE FIRST 40.
+   *
+   * This was one `.limit(40)` over the whole table, and the screen's tiles —
+   * waiting, needs a person, stopped asking, not verified — were counted from
+   * those 40. With 117 rows in the table, a held or unverified entry outside
+   * the newest 40 was in no tile and on no list: the review screen said "0
+   * not verified" about a write whose read-back had failed. So: every pending
+   * row and every unverified row, PAGED, plus the most recent finished ones
+   * for context. The tiles are now counts of the whole table.
+   */
+  const readAll = async (filter: "pending" | "unverified") => {
+    const out: unknown[] = [];
+    for (let from = 0; ; from += 1000) {
+      let q = sb.from(TABLE).select(COLS);
+      q = filter === "pending" ? q.is("done_at", null) : q.not("verify_failed_at", "is", null);
+      const { data, error } = await q.order("queued_at", { ascending: false }).range(from, from + 999);
+      if (error) return { error };
+      out.push(...(data ?? []));
+      if ((data ?? []).length < 1000) break;
+    }
+    return { data: out };
+  };
+  const pending = await readAll("pending");
+  const unverified = "error" in pending ? pending : await readAll("unverified");
+  const recent =
+    "error" in unverified
+      ? unverified
+      : await sb
+          .from(TABLE)
+          .select(COLS)
+          .not("done_at", "is", null)
+          .order("done_at", { ascending: false })
+          .limit(opts.recentDone ?? 25);
+  const error = ("error" in pending && pending.error) || ("error" in unverified && unverified.error) || ("error" in recent && recent.error) || null;
   if (error) {
     /*
      * REPORTED, NOT SWALLOWED. The migration for this table is applied by hand,
@@ -412,6 +446,18 @@ export async function listQueueForReview(
      */
     if (isQueueNotReady(error.message)) return { rows: [], tableMissing: true };
     throw new Error(`write-back queue: ${error.message}`);
+  }
+  const seen = new Set<string>();
+  const data: unknown[] = [];
+  for (const r of [
+    ...((pending as { data: unknown[] }).data ?? []),
+    ...((unverified as { data: unknown[] }).data ?? []),
+    ...(((recent as { data: unknown[] | null }).data ?? []) as unknown[]),
+  ]) {
+    const id = (r as { id: string }).id;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    data.push(r);
   }
   const rows = (data ?? []) as Array<{
     id: string;
@@ -434,16 +480,20 @@ export async function listQueueForReview(
    * reading "a7172b3f-…" is a row nobody can act on, and a row reading a
    * DIFFERENT name from the deal page is worse than either.
    */
-  const { data: deals } = await sb
-    .from("commercial_opportunities")
-    .select(
-      "id, title, title_override, title_override_mode, client_name, property_street, account_id",
-    )
-    .in("id", [...new Set(rows.map((r) => r.opportunity_id))]);
+  const dealIds = [...new Set(rows.map((r) => r.opportunity_id))];
+  const deals: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < dealIds.length; i += 200) {
+    const { data: part, error: dErr } = await sb
+      .from("commercial_opportunities")
+      .select("id, title, title_override, title_override_mode, client_name, property_street, account_id")
+      .in("id", dealIds.slice(i, i + 200));
+    if (dErr) throw new Error(`write-back queue names: ${dErr.message}`);
+    deals.push(...((part ?? []) as Array<Record<string, unknown>>));
+  }
   const acctIds = [...new Set((deals ?? []).map((d) => d.account_id).filter(Boolean))] as string[];
   const acctNames = new Map<string, string>();
-  if (acctIds.length) {
-    const { data: accts } = await sb.from("commercial_accounts").select("id, company_name").in("id", acctIds);
+  for (let i = 0; i < acctIds.length; i += 200) {
+    const { data: accts } = await sb.from("commercial_accounts").select("id, company_name").in("id", acctIds.slice(i, i + 200));
     for (const a of accts ?? []) acctNames.set(a.id as string, a.company_name as string);
   }
   const { derivedOppName } = await import("@/lib/commercial/opportunities/db");
@@ -459,9 +509,9 @@ export async function listQueueForReview(
   }
 
   const coNumbers = new Map<string, number | null>();
-  const coIds = rows.map((r) => r.change_order_id).filter(Boolean) as string[];
-  if (coIds.length) {
-    const { data: cos } = await sb.from("commercial_change_orders").select("id, co_number").in("id", coIds);
+  const coIds = [...new Set(rows.map((r) => r.change_order_id).filter(Boolean) as string[])];
+  for (let i = 0; i < coIds.length; i += 200) {
+    const { data: cos } = await sb.from("commercial_change_orders").select("id, co_number").in("id", coIds.slice(i, i + 200));
     for (const c of cos ?? []) coNumbers.set(c.id as string, (c.co_number as number | null) ?? null);
   }
 
@@ -479,7 +529,8 @@ export async function listQueueForReview(
       lastError: r.last_error,
       doneAt: r.done_at,
       outcome: r.outcome,
-      stalled: !r.done_at && Number(r.attempts ?? 0) >= MAX_ATTEMPTS,
+      stalled: !r.done_at && Number(r.attempts ?? 0) >= MAX_ATTEMPTS && !r.held_reason,
+      waitingForPerson: !r.done_at && Number(r.attempts ?? 0) >= MAX_ATTEMPTS && !!r.held_reason,
       verifyFailedAt: r.verify_failed_at ?? null,
       verifyFailedReason: r.verify_failed_reason ?? null,
     };
@@ -555,10 +606,31 @@ export async function markDone(
     patch.verify_failed_at = null;
     patch.verify_failed_reason = null;
   }
-  const { error } = await sb.from(TABLE).update(patch).eq("id", id);
   // Reported, not swallowed: a markDone that silently failed leaves the entry
   // pending, and the next tick writes the same thing to Salesforce again.
-  if (error) console.warn(`[tomco-queue] could not mark ${id} done: ${error.message}`);
+  await mustTouchOne(sb.from(TABLE).update(patch).eq("id", id).select("id"), `mark ${id} done`);
+}
+
+/**
+ * 🔴 AN UPDATE THAT MATCHED NOTHING IS NOT A SUCCESS (F38).
+ *
+ * Every writer here did `const { error } = await …update(…).eq("id", id)` and
+ * treated "no error" as done. PostgREST reports an update that matched ZERO
+ * rows as success — so a mark against a row that had been deleted, or an id
+ * that was never right, vanished without a word, and the tick reported the
+ * entry finished. The probe script hit exactly this: it deleted its own row
+ * mid-run and every mark after that "succeeded".
+ *
+ * Throws, so the tick's per-entry catch records it as a failure rather than a
+ * finish. Exported for `npm run check:writeback`, which proves it can fail.
+ */
+export async function mustTouchOne(
+  q: PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>,
+  what: string,
+): Promise<void> {
+  const { data, error } = await q;
+  if (error) throw new Error(`[tomco-queue] could not ${what}: ${error.message}`);
+  if (!data || data.length === 0) throw new Error(`[tomco-queue] could not ${what}: no such queue entry (0 rows matched)`);
 }
 
 /**
@@ -569,11 +641,14 @@ export async function markDone(
  */
 export async function markVerifyFailed(id: string, reason: string): Promise<void> {
   const sb = adminClient();
-  const { error } = await sb
-    .from(TABLE)
-    .update({ verify_failed_at: new Date().toISOString(), verify_failed_reason: reason.slice(0, 2000) })
-    .eq("id", id);
-  if (error) console.warn(`[tomco-queue] could not record the failed verification on ${id}: ${error.message}`);
+  await mustTouchOne(
+    sb
+      .from(TABLE)
+      .update({ verify_failed_at: new Date().toISOString(), verify_failed_reason: reason.slice(0, 2000) })
+      .eq("id", id)
+      .select("id"),
+    `record the failed verification on ${id}`,
+  );
 }
 
 /**
@@ -596,7 +671,26 @@ export async function markVerifyFailed(id: string, reason: string): Promise<void
 export async function markHeld(
   id: string,
   reason: string,
-  opts: { attemptsBeforeClaim?: number } = {},
+  opts: {
+    attemptsBeforeClaim?: number;
+    /**
+     * WHAT THE HOLD IS WAITING FOR (F38).
+     *
+     * `"event"` — something that happens on its own: the sale this change
+     * order belongs to reaching Salesforce, the org creating a work order from
+     * a synced quote. Re-checked on the hourly back-off, attempts refunded.
+     *
+     * `"person"` — a decision only a human can make: is this the same sale,
+     * what happens to a deleted job's Salesforce record, which of two equal
+     * change orders is this one. These used to be re-checked hourly for ever,
+     * two or three SOQL queries a time against Tomco's org, to reach the same
+     * answer, with nobody told. Now the entry is PARKED — `attempts` set to
+     * `MAX_ATTEMPTS`, the same idiom the probe uses to make a row unclaimable —
+     * and it waits, without a timer, for the review screen's action
+     * (`releaseHold`, `releaseHoldForChangeOrder`, `rearmStalled`).
+     */
+    waitsFor?: "event" | "person";
+  } = {},
 ): Promise<void> {
   const sb = adminClient();
   const patch: Record<string, unknown> = {
@@ -605,9 +699,46 @@ export async function markHeld(
     // The claim is released: a held entry is not being worked on.
     claimed_at: null,
   };
-  if (typeof opts.attemptsBeforeClaim === "number") patch.attempts = opts.attemptsBeforeClaim;
-  const { error } = await sb.from(TABLE).update(patch).eq("id", id);
-  if (error) console.warn(`[tomco-queue] could not hold ${id}: ${error.message}`);
+  if (opts.waitsFor === "person") patch.attempts = MAX_ATTEMPTS;
+  else if (typeof opts.attemptsBeforeClaim === "number") patch.attempts = opts.attemptsBeforeClaim;
+  await mustTouchOne(sb.from(TABLE).update(patch).eq("id", id).select("id"), `hold ${id}`);
+}
+
+/**
+ * How long an event-hold may wait on its own before a person is asked.
+ *
+ * "The deal is not in Salesforce yet" clears within the minute when the sale
+ * syncs — unless the sale is itself waiting on somebody, in which case it
+ * never clears and used to be re-asked every hour indefinitely. A day is far
+ * past any real lag in the org's automation.
+ */
+export const EVENT_HOLD_MAX_MS = 24 * 60 * 60 * 1000;
+
+/** Pure: has an event-hold waited long enough to need a person? */
+export function eventHoldHasExpired(queuedAt: string, now: number = Date.now()): boolean {
+  const t = Date.parse(queuedAt);
+  return Number.isFinite(t) && now - t > EVENT_HOLD_MAX_MS;
+}
+
+/**
+ * The sale for this deal has just reached Salesforce — look again NOW at the
+ * change orders that were waiting for it, rather than at the end of the hour.
+ * Only event-holds: a change order parked for a person stays parked.
+ */
+export async function nudgeChangeOrdersWaitingOnSale(opportunityId: string): Promise<void> {
+  try {
+    const sb = adminClient();
+    await sb
+      .from(TABLE)
+      .update({ last_attempt_at: null })
+      .eq("opportunity_id", opportunityId)
+      .eq("kind", "change_order")
+      .is("done_at", null)
+      .lt("attempts", MAX_ATTEMPTS)
+      .not("held_reason", "is", null);
+  } catch (err) {
+    console.warn(`[tomco-queue] could not nudge change orders on ${opportunityId}:`, err instanceof Error ? err.message : String(err));
+  }
 }
 
 /**
@@ -625,11 +756,15 @@ export async function markHeld(
 export async function releaseHold(opportunityId: string): Promise<void> {
   try {
     const sb = adminClient();
+    // A held entry may be PARKED for a person (attempts = MAX_ATTEMPTS); the
+    // person has now acted, so it gets its budget back. Only held entries — a
+    // genuinely stalled failure is not this decision's to rearm.
     await sb
       .from(TABLE)
-      .update({ held_reason: null, last_attempt_at: null })
+      .update({ held_reason: null, last_attempt_at: null, attempts: 0 })
       .eq("opportunity_id", opportunityId)
-      .is("done_at", null);
+      .is("done_at", null)
+      .not("held_reason", "is", null);
   } catch (err) {
     console.warn(
       `[tomco-queue] could not release the hold on ${opportunityId}:`,
@@ -648,9 +783,10 @@ export async function releaseHoldForChangeOrder(changeOrderId: string): Promise<
     const sb = adminClient();
     await sb
       .from(TABLE)
-      .update({ held_reason: null, last_attempt_at: null })
+      .update({ held_reason: null, last_attempt_at: null, attempts: 0 })
       .eq("change_order_id", changeOrderId)
-      .is("done_at", null);
+      .is("done_at", null)
+      .not("held_reason", "is", null);
   } catch (err) {
     console.warn(
       `[tomco-queue] could not release the hold on change order ${changeOrderId}:`,
@@ -675,19 +811,22 @@ export async function releaseHoldForChangeOrder(changeOrderId: string): Promise<
  */
 export async function markFailed(id: string, attemptsBeforeClaim: number, error: string): Promise<void> {
   const sb = adminClient();
-  const { error: err } = await sb
-    .from(TABLE)
-    .update({
-      attempts: attemptsBeforeClaim + 1,
-      last_attempt_at: new Date().toISOString(),
-      last_error: error.slice(0, 2000),
-      claimed_at: null,
-    })
-    .eq("id", id);
   // 🔴 Reported. A markFailed that silently did nothing means `attempts` never
   // advances, so the entry is retried every hour for ever and never reaches the
   // "stopped asking" state a person is meant to see.
-  if (err) console.warn(`[tomco-queue] could not record the failure on ${id}: ${err.message}`);
+  await mustTouchOne(
+    sb
+      .from(TABLE)
+      .update({
+        attempts: attemptsBeforeClaim + 1,
+        last_attempt_at: new Date().toISOString(),
+        last_error: error.slice(0, 2000),
+        claimed_at: null,
+      })
+      .eq("id", id)
+      .select("id"),
+    `record the failure on ${id}`,
+  );
 }
 
 /**
@@ -703,10 +842,19 @@ export async function markFailed(id: string, attemptsBeforeClaim: number, error:
  */
 export async function rearmStalled(id: string): Promise<{ ok: boolean; error?: string }> {
   const sb = adminClient();
-  const { error } = await sb
+  /*
+   * Also the "Re-check" behind an entry PARKED for a person: the person has
+   * done what the hold asked (created the account in Salesforce, finished a
+   * half-built sale), so the reason is cleared and the next tick decides again.
+   * If the condition still holds, the tick simply parks it again.
+   */
+  const { data, error } = await sb
     .from(TABLE)
-    .update({ attempts: 0, last_attempt_at: null, last_error: null, claimed_at: null })
+    .update({ attempts: 0, last_attempt_at: null, last_error: null, claimed_at: null, held_reason: null })
     .eq("id", id)
-    .is("done_at", null);
-  return error ? { ok: false, error: error.message } : { ok: true };
+    .is("done_at", null)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) return { ok: false, error: "That entry is no longer waiting — it may already have finished." };
+  return { ok: true };
 }

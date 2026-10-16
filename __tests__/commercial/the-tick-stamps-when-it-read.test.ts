@@ -115,6 +115,7 @@ vi.mock("@/lib/salesforce/tomco-pairing", () => ({
 vi.mock("@/lib/salesforce/tomco-decide", () => ({ decideWriteBack: () => h.plan }));
 
 vi.mock("@/lib/salesforce/tomco-writeback", () => ({
+  CREATED_LINK_NOTE: "created by the Tomco write-back",
   createNew: async () => {
     await sleep(h.writeMs);
     return { action: "created", checks: [{ name: "contract value", ok: true, detail: "" }], steps: ["created"] };

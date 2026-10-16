@@ -326,6 +326,62 @@ export async function writeSfBatch(
   return results;
 }
 
+/**
+ * Record a Salesforce CREATE in the same audit trail `writeSf` keeps for
+ * updates, and alert on a refused one the same way.
+ *
+ * 🔴 WHY CREATES DO NOT GO THROUGH `writeSf`. `writeSf` retries up to three
+ * times on anything that looks like a transport failure, and a timed-out create
+ * may well have landed — retrying it is how one sale becomes two. So a create
+ * is made ONCE, by the caller, and this only records what happened.
+ *
+ * Before this existed the write-back's creates — every Opportunity, Quote,
+ * QuoteLineItem and ChangeOrder__c it ever made — were absent from
+ * `sf_writes_audit` and from Slack. The table that answers "did the write-back
+ * do this, or did a person?" had a hole exactly where the answer matters most.
+ *
+ * Never throws: an audit failure must not turn a successful create into a
+ * reported failure the caller then acts on (by retrying it).
+ */
+export async function logSfCreate(input: {
+  sObject: string;
+  /** The new record's id, or null when Salesforce refused the create. */
+  recordId: string | null;
+  fields: Record<string, unknown>;
+  source: SfWriteSource;
+  triggeredByUserId?: string | null;
+  succeeded: boolean;
+  error?: string | null;
+  durationMs?: number;
+}): Promise<void> {
+  await logAudit({
+    sObject: input.sObject,
+    // The column is NOT NULL, and a refused create has no id to record.
+    recordId: input.recordId ?? "(not created)",
+    fields: input.fields,
+    priorValues: { _operation: "create" },
+    source: input.source,
+    triggeredByUserId: input.triggeredByUserId ?? null,
+    triggeredByToken: null,
+    succeeded: input.succeeded,
+    errorCode: input.succeeded ? null : "CREATE_REFUSED",
+    errorMessage: input.succeeded ? null : String(input.error ?? "unknown").slice(0, 2000),
+    retryCount: 0,
+    durationMs: input.durationMs ?? 0,
+  });
+  if (!input.succeeded && input.source === "tomco_writeback") {
+    void import("@/lib/commercial/slack-notify")
+      .then(({ postCommercialSlack }) =>
+        postCommercialSlack({
+          text: `*Salesforce refused a Tomco write-back create*`,
+          context: `Object: ${input.sObject} · Salesforce said: ${String(input.error ?? "unknown").slice(0, 300)}`,
+          tone: "bad",
+        }),
+      )
+      .catch(() => {});
+  }
+}
+
 async function logAudit(input: {
   sObject: string;
   recordId: string;

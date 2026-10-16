@@ -155,14 +155,27 @@ try {
    * whatever Postgres feels like.
    */
   const pickProbeDeal = async () => {
-    const { data: deleted } = await sb
+    /*
+     * Deleted AND not linked to Salesforce. Since F24 a deleted deal that
+     * Salesforce still holds is HELD for a person and the channel is alerted —
+     * still no Salesforce write, but a probe must not page anybody either. An
+     * unlinked deleted deal can only be marked done.
+     */
+    const { data: deletedRows, error: delErr } = await sb
       .from("commercial_opportunities")
       .select("id, title")
       .not("deleted_at", "is", null)
       .order("id")
-      .limit(1)
-      .maybeSingle();
-    if (deleted) return { deal: deleted, why: "deleted here — the cron can only mark it done" };
+      .limit(50);
+    if (delErr) throw new Error(`probe deal: ${delErr.message}`);
+    const ids = (deletedRows ?? []).map((d) => d.id);
+    const { data: linkedRows, error: linkErr } = ids.length
+      ? await sb.from("commercial_import_map").select("row_id").eq("entity", "deal").in("row_id", ids)
+      : { data: [], error: null };
+    if (linkErr) throw new Error(`probe deal links: ${linkErr.message}`);
+    const linked = new Set((linkedRows ?? []).map((r) => r.row_id));
+    const deleted = (deletedRows ?? []).find((d) => !linked.has(d.id));
+    if (deleted) return { deal: deleted, why: "deleted here and never in Salesforce — the cron can only mark it done" };
     // `SOLD_STATUSES` in lib/salesforce/tomco-pairing.ts. Anything outside it
     // is not sold, so the write path returns before it reaches Salesforce.
     const sold = ["pre_sale_closed", "pre_construction", "in_progress", "billing", "post_sale_closed"];
@@ -434,6 +447,105 @@ try {
     `peeked ${peeked.length}, claimed_at ${afterPeek?.claimed_at}`,
   );
   await sb.from(TABLE).update(PARKED()).eq("id", probeId);
+
+  // ── F38: a mark that matched no row is a failure, not a success ──────────
+  //
+  // Every writer used to treat "no error" as done, and PostgREST reports an
+  // update matching ZERO rows as success. This file once deleted its own row
+  // mid-run and every mark after that "succeeded". A random id matches nothing,
+  // so nothing is written by this block at all.
+  {
+    const { randomUUID } = await import("node:crypto");
+    let threw = null;
+    try {
+      await markDone(randomUUID(), "probe: no such entry");
+    } catch (e) {
+      threw = e?.message ?? String(e);
+    }
+    check("marking an entry that does not exist fails loudly instead of 'succeeding'", !!threw, threw ?? "🔴 it reported success");
+  }
+
+  // ── F38: a hold that waits for a PERSON is parked, not retried hourly ─────
+  {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, held_reason: null }).eq("id", probeId);
+    await markHeld(probeId, "probe: waiting for a person", { attemptsBeforeClaim: 0, waitsFor: "person" });
+    // Past the back-off, so ONLY the parking can keep it out of a claim.
+    await sb.from(TABLE).update({ last_attempt_at: twoHoursAgo }).eq("id", probeId);
+    const parkedClaim = await claimPending(50);
+    await release(parkedClaim);
+    check(
+      "a person-hold is not re-claimed when its back-off runs out",
+      !parkedClaim.some((c) => c.id === probeId),
+      "it waits for the review screen, not a timer",
+    );
+    const { listQueueForReview } = await import("@/lib/salesforce/tomco-queue");
+    const view = await listQueueForReview();
+    const mineRow = view.rows.find((r) => r.id === probeId);
+    check(
+      "the review screen shows it as waiting for a person, not as a failure",
+      !!mineRow && mineRow.waitingForPerson === true && mineRow.stalled === false,
+      mineRow ? `waitingForPerson ${mineRow.waitingForPerson}, stalled ${mineRow.stalled}` : "🔴 not on the screen at all",
+    );
+    const reArmed = await rearmStalled(probeId);
+    const { data: afterReArm } = await sb.from(TABLE).select("attempts, held_reason").eq("id", probeId).maybeSingle();
+    await sb.from(TABLE).update(PARKED()).eq("id", probeId);
+    check(
+      "its Re-check button un-parks it",
+      reArmed.ok && Number(afterReArm?.attempts ?? -1) === 0 && afterReArm?.held_reason === null,
+      `attempts ${afterReArm?.attempts}, held_reason ${JSON.stringify(afterReArm?.held_reason)}`,
+    );
+  }
+
+  // ── F38: the review screen sees every entry that needs somebody ──────────
+  //
+  // It read the newest 40 rows of the whole table and counted its tiles from
+  // them. An unverified write finished long ago sorts last — so this one would
+  // have been in no tile and on no list. Only meaningful with more than 40
+  // rows in the table, which is checked, not assumed.
+  {
+    const { count, error: cErr } = await sb.from(TABLE).select("id", { count: "exact", head: true });
+    if (cErr) throw new Error(`queue count: ${cErr.message}`);
+    await sb
+      .from(TABLE)
+      .update({ done_at: "2000-01-01T00:00:00Z", queued_at: "2000-01-01T00:00:00Z", verify_failed_at: new Date().toISOString(), verify_failed_reason: "probe: an old unverified write" })
+      .eq("id", probeId);
+    const { listQueueForReview } = await import("@/lib/salesforce/tomco-queue");
+    const view = await listQueueForReview();
+    await sb.from(TABLE).update({ done_at: null, verify_failed_at: null, verify_failed_reason: null, ...PARKED() }).eq("id", probeId);
+    check(
+      "an unverified write is on the review screen however old it is",
+      (count ?? 0) > 40 && view.rows.some((r) => r.id === probeId),
+      `${count} rows in the queue · ${view.rows.length} on screen · probe ${view.rows.some((r) => r.id === probeId) ? "shown" : "🔴 MISSING"}`,
+    );
+  }
+
+  // ── F23 b: a failed link read throws; it is never "not linked" ───────────
+  //
+  // A dropped error read as null — "Salesforce never had this deal" — and the
+  // tick took the INSERT path for a sale already in Tomco's org. Proven against
+  // the real database: with a valid key the probe deal (unlinked) reads null;
+  // with a refused key the same call must THROW, not read null.
+  {
+    const { pairedLinkFor } = await import("@/lib/salesforce/tomco-tick");
+    const good = await pairedLinkFor(deal.id);
+    const realKey = process.env.SUPABASE_SECRET_KEY;
+    let threw = null;
+    let returned;
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_this_key_is_deliberately_invalid";
+    try {
+      returned = await pairedLinkFor(deal.id);
+    } catch (e) {
+      threw = e?.message ?? String(e);
+    } finally {
+      process.env.SUPABASE_SECRET_KEY = realKey;
+    }
+    check(
+      "a link read the database refused is an error, never 'not linked'",
+      good === null && !!threw,
+      threw ? `valid key → no link; refused key → threw (${threw.slice(0, 70)})` : `🔴 refused key returned ${JSON.stringify(returned)}`,
+    );
+  }
 } catch (err) {
   failures++;
   console.log(`  FAIL  the check itself threw — ${err?.message ?? err}`);

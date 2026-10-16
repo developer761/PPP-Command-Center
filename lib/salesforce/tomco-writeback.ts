@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
-import { writeSf } from "@/lib/salesforce/writeback";
+import { logSfCreate, writeSf } from "@/lib/salesforce/writeback";
 import { assertSalesforceId } from "@/lib/salesforce/soql";
 import type { SoldDeal } from "@/lib/salesforce/tomco-pairing";
 
@@ -41,7 +41,12 @@ const dollars = (cents: number | null | undefined) => Math.round(Number(cents ??
 export type WriteBackOutcome = {
   dealId: string;
   dealTitle: string;
-  action: "updated" | "created" | "skipped" | "failed";
+  /**
+   * `adopted`: Salesforce already had this sale under OUR external id and the
+   * link row here had been lost — re-linked, nothing created.
+   * `held`: a person has to look; `error` says what at.
+   */
+  action: "updated" | "created" | "adopted" | "skipped" | "held" | "failed";
   sfId: string | null;
   steps: string[];
   /** Everything that must be true afterwards, and whether it is. */
@@ -60,6 +65,91 @@ async function soqlOne<T = Record<string, unknown>>(ctx: Ctx, q: string): Promis
   return (r.records?.[0] as T) ?? null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * A Command Center deal id, or a thrown error — it goes into SOQL as the
+ * external id, and like a Salesforce id it is never a place for an escape.
+ */
+export function assertDealId(id: string): string {
+  if (!UUID_RE.test(id)) throw new Error(`deal id is not a uuid: ${JSON.stringify(String(id).slice(0, 40))}`);
+  return id;
+}
+
+/** The note a link row carries when the write-back built the Salesforce side. */
+export const CREATED_LINK_NOTE = "created by the Tomco write-back";
+
+/**
+ * Link a deal to its Salesforce opportunity in the import map.
+ *
+ * Stamped at the EPOCH for the same reason pairing is: a fresh stamp makes
+ * `editedHere()` read the Command Center row as untouched, and Salesforce
+ * would win the next import — overwriting the contract value with the $500
+ * placeholder, the status, and the created date.
+ */
+async function linkDeal(sfId: string, dealId: string, notes: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { createClient: createAdmin } = await import("@supabase/supabase-js");
+  const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
+    auth: { persistSession: false },
+  });
+  const { data, error } = await admin
+    .from("commercial_import_map")
+    .upsert(
+      { sf_id: sfId, entity: "deal", row_id: dealId, notes, updated_at: new Date(0).toISOString() },
+      { onConflict: "sf_id,entity" },
+    )
+    .select("sf_id");
+  if (error) return { ok: false, error: error.message };
+  // An upsert that touched nothing is not a link. Reported, not believed.
+  if (!data || data.length === 0) return { ok: false, error: "the upsert returned no row" };
+  return { ok: true };
+}
+
+/**
+ * What a sale the write-back BUILT is missing, if anything.
+ *
+ * Katie's order, 2026-10-15: "Account -> Opportunity -> Quote w/ Line Items ->
+ * Approve then Sync Quote". A create that fails part-way leaves a Closed Won
+ * opportunity with some of that missing — and the next tick, finding Closed
+ * Won, used to report "already Closed Won — left alone" and mark it VERIFIED.
+ * That is how a half-built sale would have gone green. Pure, so the rule has a
+ * test.
+ */
+export function missingFromOwnBuild(input: {
+  stageName: string | null;
+  syncedQuoteId: string | null;
+  quotes: Array<{ id: string; status: string | null; lines: number }>;
+}): string[] {
+  const missing: string[] = [];
+  if (input.stageName !== "Closed Won") missing.push(`stage is ${input.stageName ?? "unset"}, not Closed Won`);
+  if (input.quotes.length === 0) missing.push("no quote");
+  else if (input.quotes.length > 1) missing.push(`${input.quotes.length} quotes, expected one`);
+  else {
+    const q = input.quotes[0];
+    if (q.lines === 0) missing.push("the quote has no line item");
+    if (q.status !== "Approved") missing.push(`the quote is ${q.status ?? "unset"}, not Approved`);
+    if (input.syncedQuoteId !== q.id) missing.push("the quote is not synced to the opportunity");
+  }
+  return missing;
+}
+
+async function inspectOwnBuild(ctx: Ctx, sfId: string): Promise<string[]> {
+  const id = assertSalesforceId(sfId, "opportunity id");
+  const opp = await soqlOne<{ StageName: string | null; SyncedQuoteId: string | null }>(
+    ctx,
+    `SELECT StageName, SyncedQuoteId FROM Opportunity WHERE Id = '${id}'`,
+  );
+  const qs = ((await ctx.conn.query(`SELECT Id, Status FROM Quote WHERE OpportunityId = '${id}'`)).records ?? []) as Array<{
+    Id: string;
+    Status: string | null;
+  }>;
+  const quotes: Array<{ id: string; status: string | null; lines: number }> = [];
+  for (const q of qs) {
+    const n = await ctx.conn.query(`SELECT COUNT() FROM QuoteLineItem WHERE QuoteId = '${assertSalesforceId(q.Id, "quote id")}'`);
+    quotes.push({ id: q.Id, status: q.Status, lines: Number(n.totalSize ?? 0) });
+  }
+  return missingFromOwnBuild({ stageName: opp?.StageName ?? null, syncedQuoteId: opp?.SyncedQuoteId ?? null, quotes });
+}
+
 /**
  * Update a deal Salesforce already has.
  *
@@ -73,6 +163,10 @@ export async function updateExisting(
   ctx: Ctx,
   deal: SoldDeal,
   sfId: string,
+  opts: {
+    /** The link row says the write-back built this record (see CREATED_LINK_NOTE). */
+    builtByWriteBack?: boolean;
+  } = {},
 ): Promise<WriteBackOutcome> {
   const out: WriteBackOutcome = {
     dealId: deal.id,
@@ -100,7 +194,7 @@ export async function updateExisting(
   }>(
     ctx,
     `SELECT Id, StageName, Corporate_Name__c, Quote_Subtotal__c, QuotedSubtotalWithChangeOrder__c, Pricebook2Id
-       FROM Opportunity WHERE Id = '${sfId}'`,
+       FROM Opportunity WHERE Id = '${assertSalesforceId(sfId, "opportunity id")}'`,
   );
   if (!opp) {
     return { ...out, action: "failed", error: `Salesforce has no opportunity ${sfId}` };
@@ -137,6 +231,29 @@ export async function updateExisting(
    * it. So the money is written only when WE are the ones closing the sale.
    * Once it is Closed Won over there, this function reports and stops.
    */
+  if (opp.StageName === "Closed Won" && opts.builtByWriteBack) {
+    /*
+     * 🔴 A SALE WE BUILT, CHECKED FOR BEING WHOLE BEFORE IT IS CALLED DONE.
+     *
+     * `createNew` links the record the moment the opportunity exists (F23), so
+     * a create that fails afterwards — the quote, its line, the approval, the
+     * sync — comes back here on the retry. This branch used to call that
+     * "already Closed Won — left alone" and mark it verified. It is held for a
+     * person instead, with exactly what is missing, and nothing is written:
+     * finishing or rebuilding a half-made sale in Tomco's org is not a decision
+     * the sync makes unattended.
+     */
+    const missing = await inspectOwnBuild(ctx, sfId);
+    if (missing.length > 0) {
+      return {
+        ...out,
+        action: "held",
+        error:
+          `The write-back built ${sfId} but it is incomplete: ${missing.join("; ")}. Nothing was written. ` +
+          `Somebody finishes it in Salesforce (Account → Opportunity → Quote with line → Approved → Sync), then re-checks it here.`,
+      };
+    }
+  }
   if (opp.StageName === "Closed Won") {
     /*
      * SAY WHICH FIGURE DISAGREES, because the quote line is not the one that
@@ -355,7 +472,7 @@ export async function updateExisting(
     }>(
       ctx,
       `SELECT StageName, Corporate_Name__c, Quote_Subtotal__c, QuotedSubtotalWithChangeOrder__c
-         FROM Opportunity WHERE Id = '${sfId}'`,
+         FROM Opportunity WHERE Id = '${assertSalesforceId(sfId, "opportunity id")}'`,
     );
     out.checks.push({
       name: "stage is Closed Won",
@@ -384,12 +501,27 @@ export async function updateExisting(
  *
  * THE IDEMPOTENCY GUARD IS A QUERY, NOT A FLAG.
  *
- * `writeSf` retries up to three times on anything outside its fatal-error
- * regex, and a timed-out create is a network error — so it retries the create.
- * Two records from one call, before any id exists to store. The defence is to
- * look the deal up by its external id immediately before inserting and again
- * if anything goes wrong: `UniqueExternalId__c` is unique in the org, so the
- * second insert of a pair is rejected by Salesforce itself rather than landing.
+ * Every create here is made ONCE — never through `writeSf`, whose transport
+ * retry would repeat a create that may already have landed. The defence is to
+ * look the deal up by its external id immediately before inserting, and again
+ * if the insert throws: `UniqueExternalId__c` is unique in the org, so a second
+ * insert of the same deal is refused by Salesforce itself rather than landing.
+ *
+ * 🔴 AND WHAT IT FINDS IS ADOPTED, NOT IGNORED (F23).
+ *
+ * Finding the deal already there used to return "skipped" and write nothing
+ * here — so the import map still had no row, every later tick took this insert
+ * path again, and the importer (which keys on Salesforce's id and knows nothing
+ * of the external id) would plain-INSERT a second deal on its next run. Now the
+ * record is linked, and handed to the update path like any linked deal.
+ *
+ * 🔴 AND THE LINK IS WRITTEN THE MOMENT THE OPPORTUNITY EXISTS.
+ *
+ * It used to be written last, after the quote, its line, the approval and the
+ * sync — and the approval was an unchecked `Quote.update` that could throw past
+ * it. Any failure in between left a Closed Won opportunity in Salesforce with
+ * no row here. Linking first means a later failure leaves a linked, half-built
+ * record, which `updateExisting` recognises and holds for a person.
  */
 export async function createNew(
   ctx: Ctx,
@@ -405,18 +537,38 @@ export async function createNew(
     checks: [],
   };
   const contract = dollars(deal.contractCents);
+  const extId = assertDealId(deal.id);
+  const findByExternalId = () =>
+    soqlOne<{ Id: string; Name: string; StageName: string }>(
+      ctx,
+      `SELECT Id, Name, StageName FROM Opportunity WHERE UniqueExternalId__c = '${extId}'`,
+    );
 
-  // ── already there? ───────────────────────────────────────────────────────
-  const already = await soqlOne<{ Id: string; Name: string }>(
-    ctx,
-    `SELECT Id, Name FROM Opportunity WHERE UniqueExternalId__c = '${deal.id}'`,
-  );
+  // ── already there? Adopt it — never create a second ──────────────────────
+  const already = await findByExternalId();
   if (already) {
+    if (!ctx.apply) {
+      return {
+        ...out,
+        action: "adopted",
+        sfId: already.Id,
+        steps: [`would link "${already.Name}" (${already.Id}) — Salesforce already has it under this deal's external id; nothing created`],
+      };
+    }
+    const linked = await linkDeal(already.Id, deal.id, "linked by its UniqueExternalId__c — the link row here had been lost");
+    if (!linked.ok) {
+      return {
+        ...out,
+        action: "failed",
+        sfId: already.Id,
+        error: `Salesforce already has this sale (${already.Id}) but the link did not save here (${linked.error}). Nothing was created.`,
+      };
+    }
+    const r = await updateExisting(ctx, deal, already.Id);
     return {
-      ...out,
-      action: "skipped",
-      sfId: already.Id,
-      steps: [`already in Salesforce as "${already.Name}" (${already.Id}) — nothing to create`],
+      ...r,
+      action: r.action === "skipped" ? "adopted" : r.action,
+      steps: [`re-linked ${already.Id} by its external id — nothing created`, ...r.steps],
     };
   }
 
@@ -437,7 +589,7 @@ export async function createNew(
   const pbe = await soqlOne<{ Id: string; Product2Id: string; UnitPrice: number }>(
     ctx,
     `SELECT Id, Product2Id, UnitPrice FROM PricebookEntry
-       WHERE Pricebook2Id = '${book.Id}' AND Product2.Name = 'Other' AND IsActive = true LIMIT 1`,
+       WHERE Pricebook2Id = '${assertSalesforceId(book.Id, "pricebook id")}' AND Product2.Name = 'Other' AND IsActive = true LIMIT 1`,
   );
   if (!pbe) {
     return { ...out, action: "failed", error: `no active "Other" entry in the Tomco pricebook` };
@@ -455,11 +607,47 @@ export async function createNew(
     return out;
   }
 
+  /** One create, once, recorded in `sf_writes_audit` whatever happens. */
+  const createOnce = async (
+    sObject: string,
+    fields: Record<string, unknown>,
+  ): Promise<{ ok: true; id: string } | { ok: false; error: string }> => {
+    const t0 = Date.now();
+    try {
+      const res = (await ctx.conn.sobject(sObject).create(fields)) as { success?: boolean; id?: string; errors?: unknown };
+      const ok = !!res.success && !!res.id;
+      await logSfCreate({
+        sObject,
+        recordId: ok ? res.id! : null,
+        fields,
+        source: "tomco_writeback",
+        triggeredByUserId: ctx.actorUserId,
+        succeeded: ok,
+        error: ok ? null : JSON.stringify(res.errors ?? res),
+        durationMs: Date.now() - t0,
+      });
+      return ok ? { ok: true, id: res.id! } : { ok: false, error: JSON.stringify(res.errors ?? res) };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      await logSfCreate({
+        sObject,
+        recordId: null,
+        fields,
+        source: "tomco_writeback",
+        triggeredByUserId: ctx.actorUserId,
+        succeeded: false,
+        error,
+        durationMs: Date.now() - t0,
+      });
+      return { ok: false, error };
+    }
+  };
+
   // ── the opportunity ──────────────────────────────────────────────────────
   // CloseDate IS sent here, and only here. It is required on insert
   // (nillable=0, defaultedOnCreate=0) and rejected on update, which is exactly
   // why this cannot be one upsert call.
-  const oppRes = await ctx.conn.sobject("Opportunity").create({
+  const opp = await createOnce("Opportunity", {
     Name: deal.title.slice(0, 120),
     StageName: "Closed Won",
     CloseDate: opts.closeDate,
@@ -470,54 +658,83 @@ export async function createNew(
     ...(opts.accountId ? { AccountId: opts.accountId } : {}),
     ...(owner ? { OwnerId: owner.Id } : {}),
   });
-  if (!oppRes.success) {
-    return { ...out, action: "failed", error: `opportunity: ${JSON.stringify(oppRes.errors ?? oppRes)}` };
+  if (!opp.ok) {
+    /*
+     * A thrown create is not proof nothing landed — a timeout can arrive after
+     * the insert committed. Look before reporting, and link what is there, so
+     * the retry does not create it again.
+     */
+    const landed = await findByExternalId();
+    if (landed) {
+      const linked = await linkDeal(landed.Id, deal.id, CREATED_LINK_NOTE);
+      return {
+        ...out,
+        action: "failed",
+        sfId: landed.Id,
+        error:
+          `the create reported "${opp.error}" but the opportunity landed (${landed.Id}); ` +
+          (linked.ok ? "it is linked, and the retry finishes or holds it" : `and the link did not save (${linked.error}) — the retry re-links it by its external id`),
+      };
+    }
+    return { ...out, action: "failed", error: `opportunity: ${opp.error}` };
   }
-  out.sfId = oppRes.id;
-  out.steps.push(`Opportunity ${oppRes.id}`);
+  out.sfId = opp.id;
+  out.steps.push(`Opportunity ${opp.id}`);
+
+  /*
+   * 🔴 THE MAP ROW, NOW — OR TONIGHT'S IMPORT DUPLICATES THE DEAL.
+   *
+   * `SF.opps` is scoped `Corporate_Name__c = 'Tomco Painting'`, so a record
+   * this function creates is in the importer's scope immediately, and the
+   * importer keys on the Salesforce id. With no map row it plain-INSERTs a
+   * SECOND commercial_opportunities row. So the link is the first thing done
+   * after the record exists, not the last.
+   */
+  const linked = await linkDeal(opp.id, deal.id, CREATED_LINK_NOTE);
+  if (!linked.ok) {
+    return {
+      ...out,
+      action: "failed",
+      error:
+        `Salesforce has the sale (${opp.id}) but the link did not save here (${linked.error}). ` +
+        `The next tick finds it by its external id and re-links it rather than creating a second.`,
+    };
+  }
+  out.steps.push("linked in the import map (epoch-stamped)");
 
   /*
    * 🔴 SET THE NAME AGAIN. A FLOW OVERWRITES IT ON INSERT.
    *
    * We sent "Flagstar Bank Trash Enclosures" and Salesforce stored
    * "PCCI Builders Corp. Opp - 2026-10-14" — something on this object renames
-   * an opportunity to "{Account} Opp - {date}" on create. 36 of the 200 Tomco
-   * records already carry that pattern, so it has been quietly costing them the
-   * job name for a while.
-   *
-   * It matters because the name is what Katie reads in a report and what a
-   * person matches on in the pairing queue; "PCCI Builders Corp. Opp" tells
-   * nobody which job it was. Tested: the rename HOLDS on a later update, so the
-   * fix is simply to say it twice.
+   * an opportunity to "{Account} Opp - {date}" on create. Tested: the rename
+   * HOLDS on a later update, so the fix is simply to say it twice. Through
+   * `writeSf` now, so it is in the audit trail like every other update.
    */
   const wanted = deal.title.slice(0, 120);
-  const named = await soqlOne<{ Name: string }>(ctx, `SELECT Name FROM Opportunity WHERE Id = '${oppRes.id}'`);
+  const named = await soqlOne<{ Name: string }>(ctx, `SELECT Name FROM Opportunity WHERE Id = '${assertSalesforceId(opp.id)}'`);
   if (named && named.Name !== wanted) {
-    try {
-      await ctx.conn.sobject("Opportunity").update({ Id: oppRes.id, Name: wanted });
-      out.steps.push(`name restored (a flow had set it to "${named.Name}")`);
-    } catch (e) {
-      // Not fatal — the sale and its money are right, only the label is wrong.
-      out.steps.push(`⚠ could not restore the name: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    const res = await writeSf(
+      { sObject: "Opportunity", recordId: opp.id, fields: { Name: wanted } },
+      { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { Name: named.Name } },
+    );
+    // Not fatal — the sale and its money are right, only the label is wrong.
+    out.steps.push(res.ok ? `name restored (a flow had set it to "${named.Name}")` : `⚠ could not restore the name: ${res.error}`);
   }
 
   // ── the quote and its one line ───────────────────────────────────────────
-  const quoteRes = await ctx.conn.sobject("Quote").create({
+  const halfBuilt = "the opportunity is in Salesforce and linked here; the retry holds it for a person to finish rather than building a second";
+  const quote = await createOnce("Quote", {
     Name: deal.title.slice(0, 255),
-    OpportunityId: oppRes.id,
+    OpportunityId: opp.id,
     Pricebook2Id: book.Id,
     Status: "Draft",
   });
-  if (!quoteRes.success) {
-    // The sale exists and carries the external id, so a re-run finds it and
-    // does not duplicate. Report loudly: the money is not there yet.
-    return { ...out, action: "failed", sfId: oppRes.id, error: `quote: ${JSON.stringify(quoteRes.errors ?? quoteRes)} — the opportunity WAS created, re-run to finish it` };
-  }
-  out.steps.push(`Quote ${quoteRes.id}`);
+  if (!quote.ok) return { ...out, action: "failed", error: `quote: ${quote.error} — ${halfBuilt}` };
+  out.steps.push(`Quote ${quote.id}`);
 
-  const lineRes = await ctx.conn.sobject("QuoteLineItem").create({
-    QuoteId: quoteRes.id,
+  const line = await createOnce("QuoteLineItem", {
+    QuoteId: quote.id,
     PricebookEntryId: pbe.Id,
     Product2Id: pbe.Product2Id,
     Quantity: 1,
@@ -525,94 +742,41 @@ export async function createNew(
     PriceOverride__c: true,
     PriceOverrideAmount__c: contract,
   });
-  if (!lineRes.success) {
-    return { ...out, action: "failed", sfId: oppRes.id, error: `line: ${JSON.stringify(lineRes.errors ?? lineRes)} — re-run to finish it` };
-  }
+  if (!line.ok) return { ...out, action: "failed", error: `line: ${line.error} — ${halfBuilt}` };
   out.steps.push(`line ${contract.toFixed(2)}`);
 
-  await ctx.conn.sobject("Quote").update({ Id: quoteRes.id, Status: "Approved" });
+  /*
+   * 🔴 CHECKED NOW. This was a bare `Quote.update` whose result nobody read and
+   * whose throw escaped the function before the link was written (F23 a).
+   */
+  const approved = await writeSf(
+    { sObject: "Quote", recordId: quote.id, fields: { Status: "Approved" } },
+    { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { Status: "Draft" } },
+  );
+  if (!approved.ok) return { ...out, action: "failed", error: `quote approval: ${approved.error} — ${halfBuilt}` };
   out.steps.push("quote approved");
 
   /*
    * 🔴 AND SYNC THE QUOTE, OR THE SALE READS AS $0 IN KATIE'S REPORTS.
    *
-   * Katie, 2026-10-15, asked for the order of operations: *"Account →
-   * Opportunity → Quote w/ Line Items → Approve then Sync Quote and the
-   * automation should handle it from there forward."* This is the "Sync Quote"
-   * step, which on the Opportunity is `SyncedQuoteId`.
+   * Katie, 2026-10-15: *"Account → Opportunity → Quote w/ Line Items → Approve
+   * then Sync Quote and the automation should handle it from there forward."*
+   * This is the "Sync Quote" step, which on the Opportunity is `SyncedQuoteId`.
+   * Without it there is no work order, `QuotedSubtotalWithChangeOrder__c` stays
+   * NULL, and no change order can ever attach.
    *
-   * It is not a tidying step. Measured on the four deals this function had
-   * already created: every one had an Approved quote, NO synced quote, no work
-   * order, and `QuotedSubtotalWithChangeOrder__c` — the canonical PPP sales
-   * metric, the one her reports run on — sitting at NULL. The money was in
-   * `Quote_Subtotal__c` and nowhere her reporting looks.
-   *
-   * The work order is the other half of what it buys. Of 200 Tomco
-   * opportunities, all 85 with a synced quote have a work order and only 10% of
-   * those without one do. No work order means no `ChangeOrder__c` can attach
-   * (`WorkOrder__c` is required and create-only, and this user cannot create a
-   * Tomco work order), so every change order on a deal we created would have
-   * been held with "no live work order in Salesforce to attach it to" — forever.
-   *
-   * Best-effort on purpose: the opportunity, quote and line are already in and
-   * correct, and the read-back checks below report what the org did with this.
-   * Failing the whole write-back here would strand a sale that is otherwise
-   * complete.
+   * Best-effort on purpose: the read-back below fails the entry if it did not
+   * take, and the retry then holds the half-built sale for a person.
    */
-  const syncRes = await ctx.conn
-    .sobject("Opportunity")
-    .update({ Id: oppRes.id, SyncedQuoteId: quoteRes.id })
-    .catch((err: unknown) => ({ success: false, errors: [err instanceof Error ? err.message : String(err)] }));
-  if ((syncRes as { success?: boolean }).success === false) {
-    out.steps.push(
-      `🔴 quote NOT synced (${JSON.stringify((syncRes as { errors?: unknown }).errors)}) — ` +
-        `no work order will be created and this sale will read as $0 in the canonical total until it is`,
-    );
-  } else {
-    out.steps.push("quote synced — the org creates the work order from here");
-  }
-
-  /*
-   * 🔴 THE MAP ROW, OR TONIGHT'S IMPORT DUPLICATES THE DEAL.
-   *
-   * `SF.opps` is scoped `Corporate_Name__c = 'Tomco Painting'`, so a record
-   * this function creates is in the importer's scope immediately. The importer
-   * keys on the Salesforce 18-char id and knows nothing about
-   * `UniqueExternalId__c` — so with no map row, `mapped("deal", newId)` is null
-   * and `stageDeals` plain-INSERTs a SECOND commercial_opportunities row.
-   * Nothing constrains it. The first version of this function set the external
-   * id and stopped, which would have produced exactly that on the next run.
-   *
-   * Stamped at the EPOCH for the same reason pairing is: a fresh stamp makes
-   * `editedHere()` read the Command Center row as untouched, and Salesforce
-   * wins the next night — overwriting the contract value with the $500
-   * placeholder, the status, and the created date.
-   */
-  const { createClient: createAdmin } = await import("@supabase/supabase-js");
-  const admin = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
-    auth: { persistSession: false },
-  });
-  const { error: mapErr } = await admin.from("commercial_import_map").upsert(
-    {
-      sf_id: oppRes.id,
-      entity: "deal",
-      row_id: deal.id,
-      notes: "created by the Tomco write-back",
-      updated_at: new Date(0).toISOString(),
-    },
-    { onConflict: "sf_id,entity" },
+  const synced = await writeSf(
+    { sObject: "Opportunity", recordId: opp.id, fields: { SyncedQuoteId: quote.id } },
+    { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, deferCacheInvalidation: true, priorValues: { SyncedQuoteId: null } },
   );
-  if (mapErr) {
-    return {
-      ...out,
-      action: "failed",
-      sfId: oppRes.id,
-      error:
-        `Salesforce has the sale but the link did not save here (${mapErr.message}). ` +
-        `FIX THIS BEFORE THE NEXT IMPORT — without it, tonight's run inserts a duplicate deal.`,
-    };
-  }
-  out.steps.push("linked in the import map (epoch-stamped)");
+  out.steps.push(
+    synced.ok
+      ? "quote synced — the org creates the work order from here"
+      : `🔴 quote NOT synced (${synced.error}) — no work order will be created and this sale will read as $0 in the canonical total until it is`,
+  );
 
   // ── read back ────────────────────────────────────────────────────────────
   await new Promise((r) => setTimeout(r, 6000));
@@ -625,7 +789,7 @@ export async function createNew(
     AccountId: string | null;
   }>(
     ctx,
-    `SELECT Name, StageName, Corporate_Name__c, Quote_Subtotal__c, SyncedQuoteId, AccountId FROM Opportunity WHERE Id = '${oppRes.id}'`,
+    `SELECT Name, StageName, Corporate_Name__c, Quote_Subtotal__c, SyncedQuoteId, AccountId FROM Opportunity WHERE Id = '${assertSalesforceId(opp.id)}'`,
   );
   out.checks.push({ name: "stage is Closed Won", ok: after?.StageName === "Closed Won", detail: after?.StageName ?? "unknown" });
   out.checks.push({
@@ -640,8 +804,8 @@ export async function createNew(
   });
   out.checks.push({
     name: "carries the job's name, not a generated one",
-    ok: (after as unknown as { Name?: string })?.Name === deal.title.slice(0, 120),
-    detail: (after as unknown as { Name?: string })?.Name ?? "unknown",
+    ok: after?.Name === wanted,
+    detail: after?.Name ?? "unknown",
   });
   out.checks.push({
     name: "hangs off an account",
@@ -649,25 +813,16 @@ export async function createNew(
     detail: after?.AccountId ?? "ORPHAN — appears on no GC's page",
   });
   // Exactly one record carries this deal's id. The guard against the retry.
-  const dupes = await ctx.conn.query(
-    `SELECT COUNT(Id) n FROM Opportunity WHERE UniqueExternalId__c = '${deal.id}'`,
-  );
+  const dupes = await ctx.conn.query(`SELECT COUNT(Id) n FROM Opportunity WHERE UniqueExternalId__c = '${extId}'`);
   const n = Number((dupes.records?.[0] as { n?: number })?.n ?? 0);
   out.checks.push({ name: "exactly one record for this deal", ok: n === 1, detail: `${n} found` });
 
   /*
-   * THE QUOTE IS SYNCED, AND A WORK ORDER FOLLOWED.
-   *
-   * Checked rather than assumed because the first four records this function
-   * created were missing both, and nothing said so — they read as four clean
-   * successes with a green tick on every other check. The work order is what
-   * populates the canonical total and what a change order attaches to, so its
-   * absence is a defect, not a detail.
-   *
-   * The work order is created by the org's own automation, which is not
-   * instant. Reported as a separate check rather than folded into the sync one,
-   * so "we asked and it has not appeared yet" reads differently from "we never
-   * asked".
+   * THE QUOTE IS SYNCED, AND A WORK ORDER FOLLOWED. Checked rather than assumed
+   * because the first four records this function created were missing both,
+   * and nothing said so. The work order is created by the org's own
+   * automation, which is not instant — reported separately so "not yet"
+   * reads differently from "never asked".
    */
   out.checks.push({
     name: "quote is synced to the opportunity",
@@ -678,7 +833,7 @@ export async function createNew(
   });
   const wo = await soqlOne<{ WorkOrderNumber: string; Status: string }>(
     ctx,
-    `SELECT WorkOrderNumber, Status FROM WorkOrder WHERE Opportunity__c = '${oppRes.id}' AND Status != 'Canceled' LIMIT 1`,
+    `SELECT WorkOrderNumber, Status FROM WorkOrder WHERE Opportunity__c = '${assertSalesforceId(opp.id)}' AND Status != 'Canceled' LIMIT 1`,
   );
   out.checks.push({
     name: "a work order exists for it",

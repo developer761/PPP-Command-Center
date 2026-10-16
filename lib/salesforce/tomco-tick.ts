@@ -1,7 +1,17 @@
 import "server-only";
 
 import { getSalesforceClient, isSalesforceConfigured } from "@/lib/salesforce/client";
-import { claimPending, markDone, markFailed, markHeld, markVerifyFailed, peekPending, type QueueEntry } from "@/lib/salesforce/tomco-queue";
+import {
+  claimPending,
+  eventHoldHasExpired,
+  markDone,
+  markFailed,
+  markHeld,
+  markVerifyFailed,
+  nudgeChangeOrdersWaitingOnSale,
+  peekPending,
+  type QueueEntry,
+} from "@/lib/salesforce/tomco-queue";
 import { decideWriteBack } from "@/lib/salesforce/tomco-decide";
 import {
   isSoldStatus,
@@ -10,7 +20,7 @@ import {
   loadSoldDeal,
   type SfCandidate,
 } from "@/lib/salesforce/tomco-pairing";
-import { createNew, updateExisting } from "@/lib/salesforce/tomco-writeback";
+import { CREATED_LINK_NOTE, createNew, updateExisting } from "@/lib/salesforce/tomco-writeback";
 import { CO_MAP_ENTITY, ROLLUP_TITLE, syncChangeOrder } from "@/lib/salesforce/tomco-changeorder";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { assertSalesforceId, soqlString } from "@/lib/salesforce/soql";
@@ -77,15 +87,74 @@ function admin() {
   });
 }
 
-/** The Salesforce opportunity this deal is linked to, if any. */
-async function pairedSfIdFor(opportunityId: string): Promise<string | null> {
-  const { data } = await admin()
+/**
+ * The Salesforce opportunity this deal is linked to, if any.
+ *
+ * 🔴 A FAILED READ THROWS; IT IS NEVER "NOT LINKED" (F23 b).
+ *
+ * This dropped `error`, so a Supabase blip read as `null` — "Salesforce has
+ * never had this deal" — and the tick took the INSERT path for a deal that was
+ * already a Closed Won sale over there. For one imported from Salesforce the
+ * external-id lookup cannot catch it (the importer never stamped one), so the
+ * result was a second Closed Won opportunity in Katie's total. A throw is
+ * caught per entry, spends an attempt, and writes nothing.
+ *
+ * `maybeSingle` also errors on two link rows for one deal — which is a real
+ * ambiguity, and refusing on it is right.
+ */
+export async function pairedLinkFor(opportunityId: string): Promise<{ sfId: string; notes: string | null } | null> {
+  const { data, error } = await admin()
     .from("commercial_import_map")
-    .select("sf_id")
+    .select("sf_id, notes")
     .eq("entity", "deal")
     .eq("row_id", opportunityId)
     .maybeSingle();
-  return (data as { sf_id?: string } | null)?.sf_id ?? null;
+  if (error) throw new Error(`could not read this deal's Salesforce link (${error.message}) — nothing written`);
+  const row = data as { sf_id?: string; notes?: string | null } | null;
+  return row?.sf_id ? { sfId: row.sf_id, notes: row.notes ?? null } : null;
+}
+
+/**
+ * Hold an entry, on the right clock, and tell a person when one is needed.
+ *
+ * See `markHeld` for the two kinds. An event-hold that has waited past
+ * `EVENT_HOLD_MAX_MS` is turned into a person-hold here: whatever it was
+ * waiting for is not coming on its own.
+ */
+async function holdEntry(
+  ctx: { apply: boolean },
+  entry: QueueEntry,
+  label: string,
+  why: string,
+  waitsFor: "event" | "person",
+): Promise<string> {
+  let reason = why;
+  let kind = waitsFor;
+  if (kind === "event" && eventHoldHasExpired(entry.queuedAt)) {
+    kind = "person";
+    reason = `Still waiting after a day, so a person is needed: ${why}`;
+  }
+  if (!ctx.apply) return reason;
+  await markHeld(entry.id, reason, { attemptsBeforeClaim: entry.attempts, waitsFor: kind });
+  if (kind === "person") {
+    /*
+     * ONE alert per hold. A person-hold is parked — never re-claimed on a
+     * timer — so this runs once, when it is parked, and again only if a
+     * person re-checks it and the reason still stands.
+     */
+    void import("@/lib/commercial/slack-notify")
+      .then(({ postCommercialSlack }) =>
+        postCommercialSlack({
+          text: `*Tomco write-back needs a person* — ${label}`,
+          context: reason.slice(0, 600),
+          url: "/dashboard/settings/writeback/tomco",
+          urlLabel: "Open the review screen",
+          tone: "needs_action",
+        }),
+      )
+      .catch(() => {});
+  }
+  return reason;
 }
 
 /**
@@ -201,7 +270,13 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
        * error IS an attempt, so it counts against the budget.
        */
       const message = err instanceof Error ? err.message : String(err);
-      if (opts.apply) await markFailed(entry.id, entry.attempts, message);
+      if (opts.apply) {
+        try {
+          await markFailed(entry.id, entry.attempts, message);
+        } catch (markErr) {
+          console.warn(`[tomco-tick] ${markErr instanceof Error ? markErr.message : String(markErr)}`);
+        }
+      }
       out.outcomes.push({ entryId: entry.id, kind: entry.kind, label: entry.opportunityId, result: "failed", detail: message });
       out.failed++;
     }
@@ -240,8 +315,8 @@ async function runChangeOrder(
     return { ...base, result: "failed", detail: r.error ?? r.why };
   }
   if (r.action === "held") {
-    if (ctx.apply) await markHeld(entry.id, r.why, { attemptsBeforeClaim: entry.attempts });
-    return { ...base, result: "held", detail: r.why };
+    const why = await holdEntry(ctx, entry, r.label, r.why, r.waitsFor ?? "person");
+    return { ...base, result: "held", detail: why };
   }
   if (failedChecks.length > 0) {
     /*
@@ -280,8 +355,27 @@ async function runSale(
 ): Promise<TickOutcome> {
   const loaded = await loadSoldDeal(entry.opportunityId);
   if (!loaded) {
-    if (ctx.apply) await markDone(entry.id, "the deal was deleted here", { readAt });
-    return { entryId: entry.id, kind: entry.kind, label: entry.opportunityId, result: "nothing", detail: "the deal was deleted here" };
+    /*
+     * 🔴 DELETED HERE IS NOT "NOTHING TO DO" WHEN SALESFORCE HAS THE SALE (F24).
+     *
+     * This marked the entry done — "the deal was deleted here" — and that was
+     * the last anyone heard of it. The Salesforce opportunity stayed Closed Won
+     * in Katie's total, its change orders stayed Approved, and nothing on
+     * either side said the job had gone. Deleting or reversing a sale in
+     * Tomco's org is not a decision the sync makes unattended (the same rule as
+     * a sale reversed here, below), so it is HELD for a person, who is told.
+     * Nothing is written to Salesforce on this path, ever.
+     */
+    const link = await pairedLinkFor(entry.opportunityId);
+    if (!link) {
+      if (ctx.apply) await markDone(entry.id, "the deal was deleted here, and Salesforce never had it", { readAt });
+      return { entryId: entry.id, kind: entry.kind, label: entry.opportunityId, result: "nothing", detail: "the deal was deleted here, and Salesforce never had it" };
+    }
+    const why =
+      `This deal was deleted here, but Salesforce still holds it (${link.sfId}). The sync never deletes or reverses ` +
+      `a sale in Tomco's org on its own — somebody decides what should happen to it there. Restoring the deal here releases this.`;
+    const detail = await holdEntry(ctx, entry, `deleted deal ${entry.opportunityId.slice(0, 8)}`, why, "person");
+    return { entryId: entry.id, kind: entry.kind, label: entry.opportunityId, result: "held", detail };
   }
   const base = { entryId: entry.id, kind: entry.kind, label: loaded.deal.title };
 
@@ -302,20 +396,21 @@ async function runSale(
      * stages, is not a decision this system makes unattended. HELD, with the
      * figures named, so a person does it deliberately.
      */
-    const pairedSfId = await pairedSfIdFor(entry.opportunityId);
-    if (!pairedSfId) {
+    const link = await pairedLinkFor(entry.opportunityId);
+    if (!link) {
       if (ctx.apply) await markDone(entry.id, "no longer a sold deal here, and Salesforce never had it", { readAt });
       return { ...base, result: "nothing", detail: "no longer a sold deal here, and Salesforce never had it" };
     }
     const why =
-      `This deal is no longer sold here, but Salesforce still holds it as a sale (${pairedSfId}). ` +
+      `This deal is no longer sold here, but Salesforce still holds it as a sale (${link.sfId}). ` +
       `Reversing a Closed Won opportunity in Tomco's org is not something the sync will do on its own — ` +
       `somebody has to decide what should happen to it over there.`;
-    if (ctx.apply) await markHeld(entry.id, why, { attemptsBeforeClaim: entry.attempts });
-    return { ...base, result: "held", detail: why };
+    const detail = await holdEntry(ctx, entry, base.label, why, "person");
+    return { ...base, result: "held", detail };
   }
 
-  const pairedSfId = await pairedSfIdFor(entry.opportunityId);
+  const link = await pairedLinkFor(entry.opportunityId);
+  const pairedSfId = link?.sfId ?? null;
   const plan = decideWriteBack({
     deal: loaded.deal,
     pairedSfId,
@@ -331,13 +426,16 @@ async function runSale(
      * that turns a hold into an insert.
      */
     if (resolved.get(loaded.deal.id)?.decision !== "new") {
-      if (ctx.apply) await markHeld(entry.id, plan.why, { attemptsBeforeClaim: entry.attempts });
-      return { ...base, result: "held", detail: plan.why };
+      // The pairing screen's two answers call `releaseHold`, which un-parks it.
+      const detail = await holdEntry(ctx, entry, base.label, plan.why, "person");
+      return { ...base, result: "held", detail };
     }
   }
 
   if (plan.action === "update") {
-    const r = await updateExisting(ctx, loaded.deal, plan.sfId);
+    const r = await updateExisting(ctx, loaded.deal, plan.sfId, {
+      builtByWriteBack: String(link?.notes ?? "").startsWith(CREATED_LINK_NOTE),
+    });
     return finishDeal(ctx, entry, base, r, readAt);
   }
 
@@ -357,9 +455,9 @@ async function runSale(
       const why =
         r.records.length > 1
           ? `${r.records.length} Salesforce accounts are named "${loaded.deal.accountName}" — a person has to say which`
-          : `no Salesforce account named "${loaded.deal.accountName}" — it has to exist there first`;
-      if (ctx.apply) await markHeld(entry.id, why, { attemptsBeforeClaim: entry.attempts });
-      return { ...base, result: "held", detail: why };
+          : `no Salesforce account named "${loaded.deal.accountName}" — it has to exist there first; re-check it here once it does`;
+      const detail = await holdEntry(ctx, entry, base.label, why, "person");
+      return { ...base, result: "held", detail };
     }
   }
 
@@ -520,6 +618,55 @@ export async function sweepForMissedWriteBacks(): Promise<SweepSummary> {
   }
 
   /*
+   * ── deleted deals Salesforce still holds (F24) ───────────────────────────
+   *
+   * The deal-delete hook queues these, but it is best-effort like every hook
+   * here, and the loop above reads `deleted_at IS NULL` only. So a deletion
+   * whose queue insert failed would leave a live Closed Won sale in Tomco's
+   * org with nothing here that ever looks at it again. Queued so the tick can
+   * HOLD it for a person — the tick never writes to Salesforce on that path.
+   */
+  {
+    const linkedDealIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb
+        .from("commercial_import_map")
+        .select("row_id")
+        .eq("entity", "deal")
+        .order("sf_id")
+        .range(from, from + 999);
+      if (error) {
+        out.errors.push(`deal links: ${error.message}`);
+        out.ok = false;
+        break;
+      }
+      for (const r of data ?? []) linkedDealIds.add((r as { row_id: string }).row_id);
+      if ((data ?? []).length < 1000) break;
+    }
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb
+        .from("commercial_opportunities")
+        .select("id, deleted_at")
+        .not("deleted_at", "is", null)
+        .order("id")
+        .range(from, from + 999);
+      if (error) {
+        out.errors.push(`deleted deals: ${error.message}`);
+        out.ok = false;
+        break;
+      }
+      for (const r of data ?? []) {
+        const d = r as { id: string; deleted_at: string };
+        if (!linkedDealIds.has(d.id)) continue;
+        if (!needs(latestSale, d.id, d.deleted_at)) continue;
+        const q = await queueForWriteBack({ kind: "sale", opportunityId: d.id, actingUserId: null });
+        if (q.ok && !q.already) out.queuedSales++;
+      }
+      if ((data ?? []).length < 1000) break;
+    }
+  }
+
+  /*
    * ── change orders ──────────────────────────────────────────────────────
    *
    * 🔴 NOT JUST THE APPROVED ONES.
@@ -612,6 +759,10 @@ async function finishDeal(
   r: { action: string; error?: string; checks: Array<{ name: string; ok: boolean; detail: string }>; steps: string[] },
   readAt: string,
 ): Promise<TickOutcome> {
+  if (r.action === "held") {
+    const detail = await holdEntry(ctx, entry, base.label, r.error ?? "a person has to look", "person");
+    return { ...base, result: "held", detail };
+  }
   if (r.action === "failed") {
     // Same as the change-order branch: a failure that already wrote something
     // leaves a mark the next tick's "skipped" cannot wipe.
@@ -636,12 +787,17 @@ async function finishDeal(
     return { ...base, result: "failed", detail };
   }
   const detail = r.steps.length ? r.steps.join(" · ") : r.action;
-  if (ctx.apply) await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000), { verified: r.checks.length > 0, readAt });
+  if (ctx.apply) {
+    await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000), { verified: r.checks.length > 0, readAt });
+    // The sale is in: anything waiting on it can go now, not in an hour.
+    await nudgeChangeOrdersWaitingOnSale(entry.opportunityId);
+  }
   /*
    * `skipped` is what `updateExisting` returns for a deal Salesforce already
    * has as Closed Won at the right value — the 93-of-94 case. Finished, and
    * NOT counted as a write: a summary that calls 93 skips 93 writes is the one
    * that reported "21 would be written" when the answer was three.
    */
-  return { ...base, result: r.action === "skipped" ? "nothing" : "written", detail };
+  // `adopted` re-linked a record Salesforce already had — a local write only.
+  return { ...base, result: r.action === "skipped" || r.action === "adopted" ? "nothing" : "written", detail };
 }

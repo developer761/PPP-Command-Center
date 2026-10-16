@@ -811,6 +811,22 @@ export async function softDeleteCommercialOpportunity(
   // and unarchive — one routine, no fourth copy of the rule to drift.
   await syncProjectForOpportunity(id);
 
+  /*
+   * 🔴 TELL THE TOMCO WRITE-BACK (F24) — so it HOLDS, never so it writes.
+   *
+   * A sold deal deleted here used to leave its Salesforce opportunity Closed
+   * Won and its change orders Approved, with nothing on either side saying the
+   * job had gone: the queue only ever heard about status changes. This puts one
+   * entry in line; the tick sees the deal is deleted and, if Salesforce has it,
+   * parks the entry for a person and alerts the channel. It writes nothing to
+   * Salesforce on that path. Never throws (`queueForWriteBack`), and the nightly
+   * sweep picks up any deletion whose queue insert failed.
+   */
+  {
+    const { queueForWriteBack } = await import("@/lib/salesforce/tomco-queue");
+    await queueForWriteBack({ kind: "sale", opportunityId: id, actingUserId: deletedByUserId ?? null });
+  }
+
   await logDelete("commercial_opportunities", id, before, deletedByUserId);
   void after; // logDelete captures the row
   return { ok: true };
@@ -908,6 +924,16 @@ export async function restoreCommercialOpportunity(
 
   // …and un-tombstone the project, so Undo is symmetric with the delete above.
   await syncProjectForOpportunity(id);
+
+  /*
+   * The delete parked this deal's write-back entries for a person ("deleted
+   * here, but Salesforce still holds it"). Restoring IS that person's answer,
+   * so they are released and the next tick decides them as a live deal again.
+   */
+  {
+    const { releaseHold } = await import("@/lib/salesforce/tomco-queue");
+    await releaseHold(id);
+  }
 
   await logUpdate("commercial_opportunities", id, before, after, restoredByUserId);
   return { ok: true };

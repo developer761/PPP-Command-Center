@@ -4,7 +4,7 @@ import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js
 
 import { getSalesforceClient } from "@/lib/salesforce/client";
 import { assertSalesforceId } from "@/lib/salesforce/soql";
-import { writeSf } from "@/lib/salesforce/writeback";
+import { logSfCreate, writeSf } from "@/lib/salesforce/writeback";
 
 /**
  * A change order approved (or reversed) in the Commercial Command Center, put
@@ -123,6 +123,12 @@ export type ChangeOrderSyncOutcome = {
   steps: string[];
   checks: Array<{ name: string; ok: boolean; detail: string }>;
   error?: string;
+  /**
+   * For `held`: what it is waiting for. `event` clears on its own (the sale
+   * reaching Salesforce, the org making a work order) and is re-checked on the
+   * back-off; `person` is parked until somebody acts. See `markHeld`.
+   */
+  waitsFor?: "event" | "person";
 };
 
 type Ctx = {
@@ -148,6 +154,8 @@ export type LocalChangeOrder = {
   /** TRUE when Salesforce should be counting this money. */
   shouldCount: boolean;
   dealTitle: string;
+  /** The deal itself has been deleted here. */
+  dealDeleted: boolean;
 };
 
 /**
@@ -186,6 +194,155 @@ export function changeOrderNeedsWrite(
   return cents(sf.costChange) !== Math.round(local.amountCents);
 }
 
+/** What the write-back puts in `Notes__c` for a change order — and so what identifies one it made. */
+export function changeOrderNotes(local: { title: string | null; description: string | null }): string | null {
+  return [local.title, local.description].filter(Boolean).join(" — ").slice(0, 2000) || null;
+}
+
+export type SfChangeOrderRow = {
+  Id: string;
+  Name: string;
+  CostChange__c: number | null;
+  Status__c: string | null;
+  Notes__c?: string | null;
+};
+
+export type UnlinkedPlan =
+  | { kind: "recover"; sf: SfChangeOrderRow; why: string }
+  | { kind: "adopt"; sf: SfChangeOrderRow; why: string }
+  | { kind: "create"; why: string }
+  | { kind: "nothing"; why: string }
+  | { kind: "hold"; why: string };
+
+/**
+ * A change order with no link row: is it already in Salesforce, and if so
+ * which record — or is it genuinely new?
+ *
+ * PURE, because each of its wrong answers creates a second ChangeOrder__c for
+ * one piece of work, doubles `TotalChangeOrder__c`, and nothing in Salesforce
+ * refuses it (the object has no unique external id). The I/O around it THROWS
+ * on any failed read before this runs (F23 c), so "nothing found" here always
+ * means nothing exists, never "the read failed".
+ *
+ * THE ORDER IS THE RULE:
+ *
+ *  1. RECOVER a record this write-back already made for THIS change order —
+ *     found by the id its own queue history recorded, or by the exact
+ *     `Notes__c` it sends. A lost link row used to fall through to "create",
+ *     and with a person's force-new marker still standing (F23 d) it did so on
+ *     every loss. This is checked before anything else, the marker included.
+ *  2. Never adopt a record already linked to another change order here.
+ *  3. Never turn a record Tomco's org DENIED back on.
+ *  4. Adopt the one record at this amount; hold on two or more.
+ *  5. Nothing to create for a change order reversed here.
+ *  6. 🔴 HOLD when Salesforce has approved change-order money on this job that
+ *     nobody here stands for. That is what VCA West Islip was: the migrated
+ *     rollup row standing for CO-32409 was deleted while its work was
+ *     re-entered as itemised change orders, and the next push created
+ *     CO-32669 on top of CO-32409 — $14,625 counted twice. Whether a new
+ *     change order is ADDITIONAL to that money or the same work itemised is
+ *     not a question an amount can answer.
+ *  7. Otherwise create.
+ *
+ * A person's "it is a genuine second one" (`personSaysItIsNew`) lifts 4 and 6,
+ * never 1–3.
+ */
+export function planUnlinkedChangeOrder(input: {
+  local: { id: string; amountCents: number; shouldCount: boolean; title: string | null; description: string | null };
+  /** Every ChangeOrder__c on the deal's live work orders. */
+  sfCos: SfChangeOrderRow[];
+  /** sf_id → row_id, for every link row naming one of `sfCos`. */
+  claimedBy: Map<string, string>;
+  /** Salesforce ids this change order's own queue history says the write-back created. */
+  createdForThis: Set<string>;
+  personSaysItIsNew: boolean;
+  /** Live, approved migrated rollup rows on this deal — they stand for Salesforce records. */
+  liveRollupCents: number;
+}): UnlinkedPlan {
+  const { local, sfCos, claimedBy } = input;
+  const amount = Math.round(local.amountCents);
+  const free = (x: SfChangeOrderRow) => !claimedBy.has(x.Id) || claimedBy.get(x.Id) === local.id;
+  const usd = (c: number) => (c / 100).toFixed(2);
+
+  // 1 ── ours, lost ──────────────────────────────────────────────────────────
+  const notes = changeOrderNotes(local);
+  const ours = sfCos.filter((x) => input.createdForThis.has(x.Id) || (!!notes && (x.Notes__c ?? null) === notes));
+  const oursFree = ours.filter(free);
+  if (oursFree.length === 1) {
+    return { kind: "recover", sf: oursFree[0], why: `the write-back already created ${oursFree[0].Name} for this change order; its link here had been lost` };
+  }
+  if (ours.length > 1 || (ours.length === 1 && oursFree.length === 0)) {
+    return {
+      kind: "hold",
+      why:
+        ours.length > 1
+          ? `${ours.length} Salesforce change orders (${ours.map((x) => x.Name).join(", ")}) look like the ones the write-back made for this — a person says which is it`
+          : `${ours[0].Name} looks like the record the write-back made for this change order, but it is linked to another one here — a person looks`,
+    };
+  }
+
+  // 2/3/4 ── an existing record at this amount ───────────────────────────────
+  const allSameAmount = sfCos.filter((x) => cents(x.CostChange__c) === amount);
+  const takenAlready = allSameAmount.filter((x) => !free(x));
+  const sameAmount = allSameAmount.filter(free);
+  const denied = sameAmount.filter((x) => !salesforceCounts(x.Status__c));
+  if (local.shouldCount && denied.length > 0 && sameAmount.length === denied.length) {
+    return {
+      kind: "hold",
+      why:
+        `Salesforce has a change order on this job at ${usd(amount)} that its own org has ` +
+        `${denied[0].Status__c} (${denied[0].Name}). Turning that back on is not a decision this can make.`,
+    };
+  }
+  if (!input.personSaysItIsNew && sameAmount.length === 0 && takenAlready.length > 0) {
+    return {
+      kind: "hold",
+      why:
+        `Salesforce has ${takenAlready.length} change order(s) on this job at ${usd(amount)}, ` +
+        `and every one is already linked to a different change order here. This may be a genuine second one at the same ` +
+        `amount — a person confirms before a second record is created.`,
+    };
+  }
+  if (!input.personSaysItIsNew && sameAmount.length > 1) {
+    return {
+      kind: "hold",
+      why: `${sameAmount.length} Salesforce change orders on this job are already at ${usd(amount)} — a person has to say which, if any, is this one`,
+    };
+  }
+  if (!input.personSaysItIsNew && sameAmount.length === 1) {
+    return { kind: "adopt", sf: sameAmount[0], why: `already in Salesforce as ${sameAmount[0].Name}` };
+  }
+
+  // 5 ── reversed here, never there ─────────────────────────────────────────
+  if (!local.shouldCount) return { kind: "nothing", why: "declined or deleted here, and Salesforce never had it" };
+
+  // 6 ── Salesforce money nobody here stands for ────────────────────────────
+  if (!input.personSaysItIsNew) {
+    const unclaimed = sfCos.filter((x) => !claimedBy.has(x.Id) && salesforceCounts(x.Status__c));
+    const unclaimedCents = unclaimed.reduce((n, x) => n + (cents(x.CostChange__c) ?? 0), 0);
+    if (unclaimedCents > Math.round(input.liveRollupCents)) {
+      return {
+        kind: "hold",
+        why:
+          `Salesforce already holds ${usd(unclaimedCents)} of approved change orders on this job ` +
+          `(${unclaimed.map((x) => `${x.Name} ${usd(cents(x.CostChange__c) ?? 0)}`).join(", ")}) that no change order here stands for` +
+          `${input.liveRollupCents > 0 ? ` beyond the ${usd(Math.round(input.liveRollupCents))} migrated rollup` : ""}. ` +
+          `Is this change order additional to them, or the same work itemised? If additional, a person confirms and it is added; ` +
+          `if it is the same work, the Salesforce one has to be denied there instead — otherwise the job is counted twice.`,
+      };
+    }
+  }
+
+  // 7 ──────────────────────────────────────────────────────────────────────
+  return { kind: "create", why: "new — nothing in Salesforce matches it" };
+}
+
+/** Throw on a refused read: a dropped error reads as "no rows", and "no rows" here means "create". */
+function must<T>(r: { data: T | null; error: { message: string } | null }, what: string): T | null {
+  if (r.error) throw new Error(`could not read ${what} (${r.error.message}) — nothing written`);
+  return r.data;
+}
+
 /** Read one change order, the way this module needs it. */
 export async function loadLocalChangeOrder(id: string): Promise<LocalChangeOrder | null> {
   const sb = admin();
@@ -206,11 +363,12 @@ export async function loadLocalChangeOrder(id: string): Promise<LocalChangeOrder
     status: string;
     deleted_at: string | null;
   };
-  const { data: deal } = await sb
+  const { data: deal, error: dealErr } = await sb
     .from("commercial_opportunities")
-    .select("title")
+    .select("title, deleted_at")
     .eq("id", row.opportunity_id)
     .maybeSingle();
+  if (dealErr) throw new Error(`change order ${id}'s deal: ${dealErr.message}`);
   return {
     id: row.id,
     opportunityId: row.opportunity_id,
@@ -222,6 +380,7 @@ export async function loadLocalChangeOrder(id: string): Promise<LocalChangeOrder
     // Both reach here through the same queue entry and the same reversal.
     shouldCount: !row.deleted_at && row.status === "approved",
     dealTitle: String((deal as { title?: string } | null)?.title ?? "a deal"),
+    dealDeleted: !deal || !!(deal as { deleted_at?: string | null }).deleted_at,
   };
 }
 
@@ -258,14 +417,31 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
 
   const sb = admin();
 
-  // Is it already linked to a Salesforce record?
-  const { data: linkRow } = await sb
-    .from("commercial_import_map")
-    .select("sf_id")
-    .eq("entity", CO_MAP_ENTITY)
-    .eq("row_id", local.id)
-    .maybeSingle();
+  // Is it already linked to a Salesforce record? A failed read THROWS (F23 c):
+  // read as "not linked", it sends a pushed change order down the create path.
+  const linkRow = must(
+    await sb.from("commercial_import_map").select("sf_id").eq("entity", CO_MAP_ENTITY).eq("row_id", local.id).maybeSingle(),
+    "this change order's Salesforce link",
+  );
   const linkedSfId = (linkRow as { sf_id?: string } | null)?.sf_id ?? null;
+
+  /*
+   * 🔴 THE DEAL WAS DELETED HERE (F24). Whatever Salesforce holds for this
+   * change order stays exactly as it is until a person decides — the sync
+   * never denies, edits or creates change orders for a job that has gone.
+   * Before this, a deleted deal's linked change orders were re-asserted as
+   * Approved by any sweep that touched them.
+   */
+  if (local.dealDeleted) {
+    if (!linkedSfId) return { ...out, action: "nothing", why: "the deal was deleted here, and Salesforce never had this change order" };
+    return {
+      ...out,
+      action: "held",
+      waitsFor: "person",
+      sfId: linkedSfId,
+      why: `The deal was deleted here, but Salesforce still holds this change order (${linkedSfId}). Nothing is written — somebody decides what happens to it there.`,
+    };
+  }
 
   const desired = desiredSalesforceStatus(local);
 
@@ -286,6 +462,7 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
       return {
         ...out,
         action: "held",
+        waitsFor: "person",
         sfId: linkedSfId,
         why: `linked to Salesforce record ${linkedSfId}, which this user can no longer read`,
       };
@@ -347,22 +524,18 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
    * draft of the plan said "unmapped means new"; acting on that would have
    * doubled every one of them. So the test is what Salesforce actually holds.
    */
-  const { data: dealLink } = await sb
-    .from("commercial_import_map")
-    .select("sf_id")
-    .eq("entity", "deal")
-    .eq("row_id", local.opportunityId)
-    .maybeSingle();
+  const dealLink = must(
+    await sb.from("commercial_import_map").select("sf_id").eq("entity", "deal").eq("row_id", local.opportunityId).maybeSingle(),
+    "the deal's Salesforce link",
+  );
   const sfOppId = (dealLink as { sf_id?: string } | null)?.sf_id ?? null;
   if (!sfOppId) {
     /*
-     * The sale has not reached Salesforce yet. HELD, not failed: `markHeld`
-     * does not count an attempt, so this entry waits in the queue and the
-     * tick that follows the sale's own write-back picks it up. That is the
-     * self-healing order — a change order approved on a brand-new deal lands
-     * a minute after the deal does.
+     * The sale has not reached Salesforce yet. HELD on the EVENT clock: the
+     * tick that writes the sale nudges this entry the moment it lands, so a
+     * change order approved on a brand-new deal follows it within the minute.
      */
-    return { ...out, action: "held", why: "the deal is not in Salesforce yet — this will follow it in" };
+    return { ...out, action: "held", waitsFor: "event", why: "the deal is not in Salesforce yet — this will follow it in" };
   }
 
   const wos = await ctx.conn.query(
@@ -371,163 +544,162 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
   if (!wos.records.length) {
     /*
      * `ChangeOrder__c.WorkOrder__c` is required AND create-only, and this user
-     * cannot create a Tomco WorkOrder — its record type reads available=false.
-     * So there is nowhere to put it, and no amount of retrying changes that.
+     * cannot create a Tomco WorkOrder. The org makes one from a synced quote,
+     * with a lag — an event to wait for, for a day at most.
      */
-    return { ...out, action: "held", why: "no live work order in Salesforce to attach it to" };
+    return { ...out, action: "held", waitsFor: "event", why: "no live work order in Salesforce to attach it to" };
   }
-  const woIds = (wos.records as Array<{ Id: string; WorkOrderNumber: string }>).map((w) => w.Id);
+  const woList = wos.records as Array<{ Id: string; WorkOrderNumber: string }>;
+  const woIds = woList.map((w) => assertSalesforceId(w.Id, "work order id"));
   const existing = await ctx.conn.query(
-    `SELECT Id, Name, CostChange__c, Status__c FROM ChangeOrder__c WHERE WorkOrder__c IN ('${woIds.join("','")}')`,
+    `SELECT Id, Name, CostChange__c, Status__c, Notes__c FROM ChangeOrder__c WHERE WorkOrder__c IN ('${woIds.join("','")}')`,
   );
+  const sfCos = (existing.records ?? []) as SfChangeOrderRow[];
+
   /*
-   * 🔴 NEVER ADOPT A RECORD THAT IS ALREADY SOMEBODY ELSE'S.
+   * WHO ALREADY OWNS THESE RECORDS HERE — read for these ids only.
    *
-   * Matching on amount alone stole links. Two approved change orders on one
-   * deal for the same amount is a live pattern here, and Salesforce holding one
-   * record at that amount is the normal case: the first Command Center change
-   * order adopted it, and then the second adopted it too — the map upserts on
-   * `(sf_id, entity)`, so the second quietly overwrote the first's `row_id`.
-   * The first lost its link, the second's money was never written to Salesforce
-   * at all, and both entries reported "adopted" and were marked done. The next
-   * sweep then re-queued the one that had lost its link, it stole the record
-   * back, and the two ping-ponged for ever, each run reporting success.
-   *
-   * The sale side has had this guard from the start ("refuse to steal a link").
-   * This is the same rule for change orders.
+   * 🔴 F23 c. This read the WHOLE change-order entity of the import map, with
+   * no paging (PostgREST stops at 1,000 rows without a word) and `error`
+   * dropped — so a failed or truncated read made every record look unclaimed,
+   * and the anti-steal guard it feeds was off exactly when it was needed.
+   * Scoped to the records on this job, the read is a few rows and cannot be
+   * truncated; and it throws.
    */
-  const { data: claimedRows } = await sb
-    .from("commercial_import_map")
-    .select("sf_id, row_id")
-    .eq("entity", CO_MAP_ENTITY);
-  const claimedBySomeoneElse = new Map(
-    ((claimedRows ?? []) as Array<{ sf_id: string; row_id: string }>)
-      .filter((r) => r.row_id !== local.id)
-      .map((r) => [r.sf_id, r.row_id]),
+  const claimedBy = new Map<string, string>();
+  if (sfCos.length > 0) {
+    const rows =
+      must(
+        await sb.from("commercial_import_map").select("sf_id, row_id").eq("entity", CO_MAP_ENTITY).in("sf_id", sfCos.map((x) => x.Id)),
+        "the change-order links on this job",
+      ) ?? [];
+    for (const r of rows as Array<{ sf_id: string; row_id: string }>) claimedBy.set(r.sf_id, r.row_id);
+  }
+
+  /*
+   * THIS CHANGE ORDER'S OWN HISTORY: every Salesforce id the write-back
+   * recorded against it — in an outcome ("created a09… on 00268849"), an
+   * error, or a failed read-back. If the link row is lost, this is how the
+   * record it made is found again instead of a second being created.
+   */
+  const createdForThis = new Set<string>();
+  if (sfCos.length > 0) {
+    const hist =
+      must(
+        await sb
+          .from("commercial_tomco_writeback_queue")
+          .select("outcome, last_error, verify_failed_reason")
+          .eq("change_order_id", local.id)
+          .limit(500),
+        "this change order's write-back history",
+      ) ?? [];
+    const onThisJob = new Set(sfCos.map((x) => x.Id));
+    for (const h of hist as Array<{ outcome: string | null; last_error: string | null; verify_failed_reason: string | null }>) {
+      for (const t of `${h.outcome ?? ""} ${h.last_error ?? ""} ${h.verify_failed_reason ?? ""}`.match(/\b[a-zA-Z0-9]{15,18}\b/g) ?? []) {
+        if (onThisJob.has(t)) createdForThis.add(t);
+      }
+    }
+  }
+
+  /*
+   * Has a person already said "yes, it is a genuine second one"? Then the
+   * amount and unclaimed-money holds are lifted — never the recovery above.
+   */
+  const forced = must(
+    await sb.from("commercial_import_map").select("row_id").eq("entity", CO_FORCE_NEW_ENTITY).eq("row_id", local.id).maybeSingle(),
+    "a person's second-change-order decision",
   );
 
-  const allSameAmount = (existing.records as Array<{ Id: string; Name: string; CostChange__c: number | null; Status__c: string | null }>)
-    .filter((x) => cents(x.CostChange__c) === Math.round(local.amountCents));
-  const takenAlready = allSameAmount.filter((x) => claimedBySomeoneElse.has(x.Id));
-  const sameAmount = allSameAmount.filter((x) => !claimedBySomeoneElse.has(x.Id));
+  const siblings =
+    must(
+      await sb.from("commercial_change_orders").select("amount_cents, title, status, deleted_at").eq("opportunity_id", local.opportunityId),
+      "this deal's change orders",
+    ) ?? [];
+  const liveRollupCents = (siblings as Array<{ amount_cents: number; title: string | null; status: string; deleted_at: string | null }>)
+    .filter((r) => !r.deleted_at && r.status === "approved" && ROLLUP_TITLE.test(String(r.title ?? "").trim()))
+    .reduce((n, r) => n + Number(r.amount_cents ?? 0), 0);
 
-  /*
-   * AND NEVER TURN A DENIED RECORD BACK ON.
-   *
-   * A Salesforce change order at this amount that Tomco's own org has DENIED is
-   * not evidence that this is the same change order — it is evidence somebody
-   * over there rejected one. Adopting it and flipping it to Approved would
-   * re-enable money their org deliberately refused, and attribute it to a
-   * different scope. A person decides.
-   */
-  const deniedAtThisAmount = sameAmount.filter((x) => !salesforceCounts(x.Status__c));
-  if (local.shouldCount && deniedAtThisAmount.length > 0 && sameAmount.length === deniedAtThisAmount.length) {
-    return {
-      ...out,
-      action: "held",
-      why:
-        `Salesforce has a change order on this job at ${dollars(local.amountCents).toFixed(2)} that its own org has ` +
-        `${deniedAtThisAmount[0].Status__c} (${deniedAtThisAmount[0].Name}). Turning that back on is not a decision this can make.`,
-    };
-  }
+  const plan = planUnlinkedChangeOrder({
+    local: { id: local.id, amountCents: local.amountCents, shouldCount: local.shouldCount, title: local.title, description: local.description },
+    sfCos,
+    claimedBy,
+    createdForThis,
+    personSaysItIsNew: !!forced,
+    liveRollupCents,
+  });
 
-  /*
-   * Has a person already said "yes, it is a genuine second one"? Then stop
-   * holding and create it. Checked before the hold below, which is the only
-   * thing that makes that hold escapable.
-   */
-  const { data: forced } = await sb
-    .from("commercial_import_map")
-    .select("row_id")
-    .eq("entity", CO_FORCE_NEW_ENTITY)
-    .eq("row_id", local.id)
-    .maybeSingle();
-  const personSaysItIsNew = !!forced;
+  if (plan.kind === "hold") return { ...out, action: "held", waitsFor: "person", why: plan.why };
+  if (plan.kind === "nothing") return { ...out, action: "nothing", why: plan.why };
 
-  if (!personSaysItIsNew && sameAmount.length === 0 && takenAlready.length > 0) {
-    /*
-     * Every candidate at this amount belongs to another Command Center change
-     * order. Creating a second record is the RIGHT answer — this is genuinely a
-     * second change order for the same amount — but it is exactly the shape of
-     * a duplicate, so a person confirms rather than the machine assuming.
-     */
-    return {
-      ...out,
-      action: "held",
-      why:
-        `Salesforce has ${takenAlready.length} change order(s) on this job at ${dollars(local.amountCents).toFixed(2)}, ` +
-        `and every one is already linked to a different change order here. This may be a genuine second one at the same ` +
-        `amount — a person confirms before a second record is created.`,
-    };
-  }
-
-  if (!personSaysItIsNew && sameAmount.length > 1) {
-    /*
-     * No key can tell "entered twice" from "two genuine change orders for the
-     * same amount", and that case is live in this data. A person decides.
-     */
-    return {
-      ...out,
-      action: "held",
-      why: `${sameAmount.length} Salesforce change orders on this job are already at ${dollars(local.amountCents).toFixed(2)} — a person has to say which, if any, is this one`,
-    };
-  }
-
-  if (!personSaysItIsNew && sameAmount.length === 1) {
-    // ADOPT: Salesforce already has it. Link the two, then make the status agree.
-    const sf = sameAmount[0];
+  if (plan.kind === "recover" || plan.kind === "adopt") {
+    // Salesforce already has it. Link the two, then let the LINKED path make
+    // the status and the amount agree — one place decides that, not two.
+    const sf = plan.sf;
     out.sfId = sf.Id;
     if (!ctx.apply) {
-      return { ...out, action: "adopted", sfId: sf.Id, why: `already in Salesforce as ${sf.Name} (${sf.Status__c}) — would link, not create` };
+      return { ...out, action: "adopted", sfId: sf.Id, why: `${plan.why} — would link, not create` };
     }
-    const linked = await linkChangeOrder(local.id, sf.Id, "adopted: already in Salesforce when the write-back found it");
-    if (!linked.ok) return { ...out, action: "failed", sfId: sf.Id, why: "adopt", error: linked.error };
-    out.steps.push(`linked to ${sf.Name}`);
-    if (changeOrderNeedsWrite({ status: sf.Status__c, costChange: sf.CostChange__c }, local)) {
-      const res = await writeSf(
-        { sObject: "ChangeOrder__c", recordId: sf.Id, fields: { Status__c: desired } },
-        { source: "tomco_writeback", triggeredByUserId: ctx.actorUserId, priorValues: { Status__c: sf.Status__c } },
-      );
-      if (!res.ok) return { ...out, action: "failed", sfId: sf.Id, why: "adopted, then could not set the status", error: res.error };
-      out.steps.push(`${sf.Status__c ?? "unset"} → ${desired}`);
-    }
-    return { ...out, action: "adopted", sfId: sf.Id, why: `already in Salesforce as ${sf.Name}`, checks: await readBack(ctx, sf.Id, local) };
+    const linked = await linkChangeOrder(
+      local.id,
+      sf.Id,
+      plan.kind === "recover" ? "recovered: the write-back's own record, re-linked after the link was lost" : "adopted: already in Salesforce when the write-back found it",
+    );
+    if (!linked.ok) return { ...out, action: "failed", sfId: sf.Id, why: plan.kind, error: linked.error };
+    const again = await syncChangeOrder(ctx, changeOrderId);
+    return {
+      ...again,
+      action: again.action === "nothing" ? "adopted" : again.action,
+      why: `${plan.why}; ${again.why}`,
+      steps: [`linked to ${sf.Name}`, ...again.steps],
+    };
   }
 
-  /*
-   * Genuinely new. And if it is already reversed here, there is nothing to
-   * create — creating a Denied record would only put a row in Katie's org that
-   * means nothing to anybody.
-   */
-  if (!local.shouldCount) {
-    return { ...out, action: "nothing", why: "declined or deleted here, and Salesforce never had it" };
-  }
+  // ── genuinely new ────────────────────────────────────────────────────────
   if (!ctx.apply) {
-    return { ...out, action: "created", why: `would create on ${wos.records[0].WorkOrderNumber}` };
+    return { ...out, action: "created", why: `would create on ${woList[0].WorkOrderNumber}` };
   }
-  const res = await ctx.conn.sobject("ChangeOrder__c").create({
+  const fields = {
     WorkOrder__c: woIds[0],
     CostChange__c: dollars(local.amountCents),
     Status__c: APPROVED_STATUS,
     ReasonForChange__c: CHANGE_ORDER_REASON,
-    Notes__c: [local.title, local.description].filter(Boolean).join(" — ").slice(0, 2000) || null,
+    Notes__c: changeOrderNotes(local),
+  };
+  /*
+   * Made ONCE — not through `writeSf`, whose transport retry would repeat a
+   * create that may already have landed — and recorded in `sf_writes_audit`,
+   * which never saw a single one of these before (F38).
+   */
+  const t0 = Date.now();
+  let res: { success?: boolean; id?: string; errors?: unknown };
+  try {
+    res = (await ctx.conn.sobject("ChangeOrder__c").create(fields)) as typeof res;
+  } catch (e) {
+    res = { success: false, errors: [e instanceof Error ? e.message : String(e)] };
+  }
+  await logSfCreate({
+    sObject: "ChangeOrder__c",
+    recordId: res.success && res.id ? res.id : null,
+    fields,
+    source: "tomco_writeback",
+    triggeredByUserId: ctx.actorUserId,
+    succeeded: !!(res.success && res.id),
+    error: res.success ? null : JSON.stringify(res.errors ?? res),
+    durationMs: Date.now() - t0,
   });
-  if (!res.success) {
-    return { ...out, action: "failed", why: "create", error: JSON.stringify((res as { errors?: unknown }).errors ?? res) };
+  if (!res.success || !res.id) {
+    return { ...out, action: "failed", why: "create", error: JSON.stringify(res.errors ?? res) };
   }
   out.sfId = res.id;
-  out.steps.push(`created ${res.id} on ${wos.records[0].WorkOrderNumber}`);
+  out.steps.push(`created ${res.id} on ${woList[0].WorkOrderNumber}`);
 
   /*
    * 🔴 THE LINK, OR THE NEXT IMPORT DOUBLE-COUNTS IT.
    *
    * Salesforce's `TotalChangeOrder__c` on that work order just went up by this
-   * amount, and `stageChangeOrders` carries that total into the migrated
-   * CO-001 row. Without this link the importer cannot tell which part of the
-   * total it already holds as a real change order, so it would fold this money
-   * in a second time. Green Leaf was in exactly that state on 2026-10-15 —
-   * $18,800 in Salesforce against an $18,250 rollup row and a $550 change
-   * order. The importer subtracts linked rows; this is what makes it able to.
+   * amount, and the importer subtracts linked rows from the per-job total it
+   * carries — this link is what lets it. If the link fails, the error names the
+   * record, so this entry's own history can find it again (rule 1 above).
    */
   const linked = await linkChangeOrder(local.id, res.id, "created by the Tomco write-back");
   if (!linked.ok) {
@@ -537,11 +709,32 @@ export async function syncChangeOrder(ctx: Ctx, changeOrderId: string): Promise<
       why: "created, but the link did not save",
       error:
         `Salesforce has the change order (${res.id}) but the link did not save here (${linked.error}). ` +
-        `FIX THIS BEFORE THE NEXT IMPORT — without it, tonight's run counts this money twice.`,
+        `The retry finds ${res.id} in this entry's history and re-links it rather than creating a second.`,
     };
   }
   out.steps.push("linked in the import map");
-  return { ...out, action: "created", why: `created on ${wos.records[0].WorkOrderNumber}`, checks: await readBack(ctx, res.id, local) };
+
+  /*
+   * 🔴 AND THE "IT IS A SECOND ONE" MARKER IS SPENT (F23 d).
+   *
+   * It was never cleared, so it outlived the create it authorised: a later lost
+   * link skipped every hold and created the change order again, up to three
+   * times. A person's answer was about ONE record.
+   */
+  if (forced) {
+    const { error: clearErr } = await sb
+      .from("commercial_import_map")
+      .delete()
+      .eq("entity", CO_FORCE_NEW_ENTITY)
+      .eq("row_id", local.id);
+    out.steps.push(clearErr ? `⚠ the second-change-order marker could not be cleared (${clearErr.message})` : "second-change-order marker spent");
+  }
+  return {
+    ...out,
+    action: "created",
+    why: `created ${res.id} on ${woList[0].WorkOrderNumber}`,
+    checks: await readBack(ctx, res.id, local),
+  };
 }
 
 /**

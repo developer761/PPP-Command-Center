@@ -191,7 +191,9 @@ export default async function TomcoWritebackPage({
    * everything else about it reads as a success.
    */
   const unverified = queue.filter((q) => q.verifyFailedAt && !q.stalled);
-  const lastDone = queue.find((q) => q.doneAt)?.doneAt ?? null;
+  // The newest finish, not the first row that has one: the list leads with
+  // pending and unverified entries, which can be any age.
+  const lastDone = queue.reduce<string | null>((m, q) => (q.doneAt && (!m || q.doneAt > m) ? q.doneAt : m), null);
 
   try {
     [deals, candidates, resolved] = await Promise.all([
@@ -298,8 +300,14 @@ export default async function TomcoWritebackPage({
                 </div>
               ))}
             </div>
-            {/* The failures first: they are the only rows that need acting on. */}
-            {[...stalled, ...unverified, ...heldInQueue, ...waiting].slice(0, 14).map((q) => (
+            {/*
+              The failures first: they are the only rows that need acting on.
+              EVERY one of them — this list used to stop at 14 rows of a
+              40-row read, so an unverified write could sit off the screen
+              with a tile reading zero. Only the "waiting" rows, which need
+              nobody, are capped.
+            */}
+            {[...stalled, ...unverified.filter((q) => !q.heldReason), ...heldInQueue, ...waiting.slice(0, 25)].map((q) => (
               <div key={q.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-ppp-charcoal-100 px-4 py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <span className="text-[13.5px] font-semibold text-ppp-charcoal">{q.label}</span>
@@ -330,7 +338,7 @@ export default async function TomcoWritebackPage({
                   <span className="font-mono text-[11px] tabular-nums text-ppp-charcoal-400">
                     {q.queuedAt.slice(0, 16).replace("T", " ")}
                   </span>
-                  {!q.doneAt && q.kind === "change_order" && q.changeOrderId && /second change order|already linked to a different/i.test(q.heldReason ?? "") && (
+                  {!q.doneAt && q.kind === "change_order" && q.changeOrderId && /second change order|already linked to a different|additional to them/i.test(q.heldReason ?? "") && (
                     <form action={allowSecondCoAction}>
                       <input type="hidden" name="change_order_id" value={q.changeOrderId} />
                       <button
@@ -352,9 +360,31 @@ export default async function TomcoWritebackPage({
                       </button>
                     </form>
                   )}
+                  {/*
+                    A hold that waits for a person is parked — nothing re-checks
+                    it on a timer any more — so the person needs the way to say
+                    "done, look again". If the reason still stands, the next
+                    tick parks it again with the same words.
+                  */}
+                  {q.waitingForPerson && (
+                    <form action={rearmAction}>
+                      <input type="hidden" name="entry_id" value={q.id} />
+                      <button
+                        type="submit"
+                        className="min-h-[44px] rounded-lg border border-ppp-charcoal-300 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ppp-charcoal-700 hover:bg-ppp-charcoal-50"
+                      >
+                        Re-check
+                      </button>
+                    </form>
+                  )}
                 </div>
               </div>
             ))}
+            {waiting.length > 25 && (
+              <p className="border-b border-ppp-charcoal-100 px-4 py-2 text-[12px] text-ppp-charcoal-500">
+                and {waiting.length - 25} more waiting — they go within the minute and need nobody.
+              </p>
+            )}
             {queue.length === 0 && (
               <p className="px-4 py-3 text-[13px] text-ppp-charcoal-500">
                 Nothing in the queue. Everything sold here is already in Salesforce.
