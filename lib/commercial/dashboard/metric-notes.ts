@@ -89,7 +89,7 @@ export function dashboardMetricNotes(rangeLabel: string): Record<MetricKey, Metr
     },
     billed: {
       scope: "today",
-      text: `${T} Billed to date on those active jobs, before tax (invoices + AIA). "% collected" = paid ÷ invoiced.`,
+      text: `${T} Billed to date on those active jobs, BEFORE tax (invoices + AIA). The "% collected" underneath is measured against the INVOICED total, which includes tax — a different, larger number, named on the line so the percentage is not read as a share of the figure above it.`,
     },
     leftToBill: { scope: "today", text: `${T} Contract minus billed, per active job (never below zero).` },
     openActiveJobs: {

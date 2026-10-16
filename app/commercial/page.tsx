@@ -874,7 +874,21 @@ export default async function CommercialDashboardPage({
                   production.overBilledCents > 0
                     ? `${formatCentsCompact(production.overBilledCents)} over on ${production.overBilledProjects} ${production.overBilledProjects === 1 ? "job" : "jobs"}`
                     : production.invoicedCents > 0
-                      ? `${Math.round((production.paidCents / production.invoicedCents) * 100)}% collected`
+                      ? /*
+                         * NAME THE DENOMINATOR. The value above is
+                         * `billedContractCents` — BEFORE tax — and this
+                         * percentage divides by `invoicedCents`, which
+                         * includes it. So "Billed $1.4M · 63% collected" was a
+                         * percentage of a number the reader could not see, and
+                         * "billed" and "invoiced" meaning without-tax and
+                         * with-tax is not a distinction anybody catches.
+                         *
+                         * Katie flagged the mixed basis in her spec and the ⓘ
+                         * discloses it, but a disclosure one click away does
+                         * not stop the figure being misread at a glance. Now
+                         * the sub-line carries its own denominator.
+                         */
+                        `${Math.round((production.paidCents / production.invoicedCents) * 100)}% of ${formatCentsCompact(production.invoicedCents)} invoiced`
                       : "pre-tax contract billed"
                 }
                 tone={production.overBilledCents > 0 ? "amber" : "emerald"}
