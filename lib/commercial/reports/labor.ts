@@ -345,8 +345,13 @@ export async function getLaborReport(range: {
   if (orphanOppIds.length > 0) {
     const { data: orphanOpps } = await sb
       .from("commercial_opportunities")
-      .select("id, title, client_name, title_override, title_override_mode, property_street, account_id")
-      .in("id", orphanOppIds);
+      .select("id, title, client_name, title_override, title_override_mode, property_street, account_id, account:commercial_accounts!inner(deleted_at)")
+      .in("id", orphanOppIds)
+      // A payout on a deleted deal stays in the payout TOTAL and the by-crew
+      // list — the cash really went out — but it gets no job row naming a
+      // deal nobody can open.
+      .is("deleted_at", null)
+      .is("account.deleted_at", null);
     const { data: orphanAccts } = await sb
       .from("commercial_accounts")
       .select("id, company_name")

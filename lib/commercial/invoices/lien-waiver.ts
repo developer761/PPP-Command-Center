@@ -126,11 +126,17 @@ export async function attachInvoiceLienWaiver(input: {
   if (!uploaded.ok) return uploaded;
 
   const sb = commercialDb();
-  const { error } = await sb
+  // Guarded + row-checked: an invoice deleted in another tab between the scope
+  // read and this write matched zero rows, and the waiver was reported "on
+  // file" while attached to nothing.
+  const { data: linked, error } = await sb
     .from("commercial_invoices")
     .update({ lien_waiver_document_id: uploaded.document.id })
-    .eq("id", input.invoiceId);
-  if (error) {
+    .eq("id", input.invoiceId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error || !linked) {
     // Don't leave the freshly-uploaded doc orphaned in Documents if the link
     // failed — retire it (best-effort) before surfacing the error.
     await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
@@ -140,7 +146,7 @@ export async function attachInvoiceLienWaiver(input: {
     // nobody discovers until a GC asks for the waiver.
     console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
   });
-    return { ok: false, error: error.message };
+    return { ok: false, error: error ? error.message : "This invoice was deleted — the lien waiver was not attached." };
   }
 
   // Replace: retire the previous waiver doc so the Documents tab isn't cluttered
@@ -162,8 +168,15 @@ export async function removeInvoiceLienWaiver(invoiceId: string, actorUserId: st
   const inv = await fetchInvoiceScope(invoiceId);
   if (!inv) return { ok: false, error: "Invoice not found." };
   const sb = commercialDb();
-  const { error } = await sb.from("commercial_invoices").update({ lien_waiver_document_id: null }).eq("id", invoiceId);
+  const { data: unlinked, error } = await sb
+    .from("commercial_invoices")
+    .update({ lien_waiver_document_id: null })
+    .eq("id", invoiceId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!unlinked) return { ok: false, error: "This invoice was deleted — nothing was removed." };
   if (inv.lien_waiver_document_id) {
     await softDeleteDocument(inv.lien_waiver_document_id, actorUserId).catch((e) => {
     // Was `.catch(() => {})`. The link row is already gone, so this is not a

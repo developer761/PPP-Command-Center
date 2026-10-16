@@ -35,6 +35,10 @@ async function fetchPaymentScope(paymentId: string, opts?: { forWrite?: boolean 
     .from("commercial_invoices")
     .select("opportunity_id, invoice_number, status")
     .eq("id", p.invoice_id)
+    // A payment row has no deleted_at of its own (it is hard-deleted); it dies
+    // with its invoice. Without this, a waiver could be filed against a payment
+    // on a DELETED invoice and read as "on file" for an invoice nobody can see.
+    .is("deleted_at", null)
     .maybeSingle();
   if (!inv) return null;
   const i = inv as { opportunity_id: string; invoice_number: string; status: string };
@@ -81,13 +85,17 @@ export async function attachPaymentLienWaiver(input: {
   if (!uploaded.ok) return uploaded;
 
   const sb = commercialDb();
-  const { error } = await sb
+  // Row-checked: a payment removed in another tab matched zero rows, and the
+  // waiver was reported "on file" while attached to nothing.
+  const { data: linked, error } = await sb
     .from("commercial_invoice_payments")
     .update({ lien_waiver_document_id: uploaded.document.id })
-    .eq("id", input.paymentId);
-  if (error) {
+    .eq("id", input.paymentId)
+    .select("id")
+    .maybeSingle();
+  if (error || !linked) {
     await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
-    return { ok: false, error: error.message };
+    return { ok: false, error: error ? error.message : "This payment was removed — the lien waiver was not attached." };
   }
   // Replace semantics: retire the prior waiver on this payment.
   if (scope.lien_waiver_document_id && scope.lien_waiver_document_id !== uploaded.document.id) {
@@ -100,11 +108,14 @@ export async function removePaymentLienWaiver(paymentId: string, actorUserId: st
   const scope = await fetchPaymentScope(paymentId);
   if (!scope) return { ok: false, error: "Payment not found." };
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: unlinked, error } = await sb
     .from("commercial_invoice_payments")
     .update({ lien_waiver_document_id: null })
-    .eq("id", paymentId);
+    .eq("id", paymentId)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!unlinked) return { ok: false, error: "This payment was removed — nothing was removed." };
   if (scope.lien_waiver_document_id) {
     await softDeleteDocument(scope.lien_waiver_document_id, actorUserId).catch(() => {});
   }

@@ -110,9 +110,14 @@ export async function POST(
     .from("commercial_opportunities")
     .select("status, sub_status")
     .eq("id", opp_id)
+    .is("deleted_at", null)
     .maybeSingle();
   const prior = priorOpp as { status: string; sub_status: string | null } | null;
-  const priorStatus = prior?.status ?? null;
+  // A deleted deal (a stale board in another tab) is not a deal to move. The
+  // status change itself refuses it, but the same-column no-op below answered
+  // `ok: true` and the Lost/Proposal checks answered as if it were live.
+  if (!prior) return NextResponse.json({ error: "opportunity_not_found" }, { status: 404 });
+  const priorStatus = prior.status;
 
   // Dropping a card on the column it's ALREADY in is a no-op, not a
   // rewrite. Each column has one canonical target tuple, so without this

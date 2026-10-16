@@ -32,6 +32,9 @@ export type LienWaiverTarget = "invoice" | "milestone" | "payment" | "aia";
 
 type TargetRow = {
   table: string;
+  /** False for commercial_invoice_payments, which is hard-deleted and has no
+   *  deleted_at column — filtering on it there is a 42703, not an empty set. */
+  softDeletes: boolean;
   /** The deal this row belongs to — the scope a document must match. */
   opportunityId: string;
   previousDocumentId: string | null;
@@ -53,7 +56,7 @@ async function resolveTarget(
       .maybeSingle();
     const row = data as { opportunity_id: string; lien_waiver_document_id: string | null } | null;
     return row
-      ? { table: "commercial_invoices", opportunityId: row.opportunity_id, previousDocumentId: row.lien_waiver_document_id }
+      ? { table: "commercial_invoices", softDeletes: true, opportunityId: row.opportunity_id, previousDocumentId: row.lien_waiver_document_id }
       : null;
   }
 
@@ -66,18 +69,23 @@ async function resolveTarget(
       .maybeSingle();
     const row = data as { opportunity_id: string; lien_waiver_document_id: string | null } | null;
     return row
-      ? { table: "commercial_aia_applications", opportunityId: row.opportunity_id, previousDocumentId: row.lien_waiver_document_id }
+      ? { table: "commercial_aia_applications", softDeletes: true, opportunityId: row.opportunity_id, previousDocumentId: row.lien_waiver_document_id }
       : null;
   }
 
   // Milestones and payments hang off an invoice, so the deal comes from there.
-  const table = target === "milestone" ? "commercial_invoice_milestones" : "commercial_invoice_payments";
-  const { data } = await sb
+  // Milestones soft-delete; payments are hard-deleted and have NO deleted_at.
+  // This used to select and filter `deleted_at` on both — on payments that is
+  // a 42703 error, `data` came back null, and every payment waiver filed
+  // through the large-file path was refused as "That record no longer exists."
+  const softDeletes = target === "milestone";
+  const table = softDeletes ? "commercial_invoice_milestones" : "commercial_invoice_payments";
+  let q = sb
     .from(table)
-    .select("id, invoice_id, lien_waiver_document_id, deleted_at")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
+    .select("id, invoice_id, lien_waiver_document_id")
+    .eq("id", id);
+  if (softDeletes) q = q.is("deleted_at", null);
+  const { data } = await q.maybeSingle();
   const row = data as { invoice_id: string; lien_waiver_document_id: string | null } | null;
   if (!row) return null;
 
@@ -90,7 +98,7 @@ async function resolveTarget(
   const invoice = inv as { opportunity_id: string } | null;
   if (!invoice) return null;
 
-  return { table, opportunityId: invoice.opportunity_id, previousDocumentId: row.lien_waiver_document_id };
+  return { table, softDeletes, opportunityId: invoice.opportunity_id, previousDocumentId: row.lien_waiver_document_id };
 }
 
 export async function linkLienWaiverDocument(input: {
@@ -122,11 +130,17 @@ export async function linkLienWaiverDocument(input: {
   }
 
   const before = { lien_waiver_document_id: targetRow.previousDocumentId };
-  const { error } = await sb
+  // Guarded + row-checked: a record deleted in another tab since resolveTarget
+  // matched zero rows, and the waiver read "on file" — with an audit row and
+  // the previous waiver retired — while attached to nothing.
+  let link = sb
     .from(targetRow.table)
     .update({ lien_waiver_document_id: doc.id })
     .eq("id", input.id);
+  if (targetRow.softDeletes) link = link.is("deleted_at", null);
+  const { data: linked, error } = await link.select("id").maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!linked) return { ok: false, error: "That record was deleted — the lien waiver was not filed." };
 
   await logUpdate(
     targetRow.table,

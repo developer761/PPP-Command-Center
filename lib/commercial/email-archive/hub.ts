@@ -68,14 +68,17 @@ export async function getEmailHub(limit = 400): Promise<EmailHub> {
         }>(() =>
           sb
             .from("commercial_opportunities")
-            .select("id, account_id, title, client_name, title_override, title_override_mode, property_street")
+            .select("id, account_id, title, client_name, title_override, title_override_mode, property_street, account:commercial_accounts!inner(deleted_at)")
             .in("id", oppIds)
+            .is("deleted_at", null)
+            .is("account.deleted_at", null)
             .order("id", { ascending: true })
         )
       : Promise.resolve([]),
     sb
       .from("commercial_accounts")
       .select("id, company_name")
+      .is("deleted_at", null)
       .then((r) => (r.data ?? []) as { id: string; company_name: string | null }[]),
   ]);
   const acctName = new Map(accounts.map((a) => [a.id, a.company_name ?? "—"]));
@@ -117,7 +120,11 @@ export async function getEmailHub(limit = 400): Promise<EmailHub> {
     ),
   ];
 
+  // Only mail filed against a LIVE deal or account. A deleted parent used to
+  // keep its mail here under its old name, linking to a page that 404s (an
+  // account) or opens read-only behind a "deleted" banner (a deal).
   const hub: HubEmail[] = emails
+    .filter((e) => (e.source_kind === "opp" ? oppName.has(e.source_id) : acctName.has(e.source_id)))
     .map((e) => ({
       ...e,
       contextName:

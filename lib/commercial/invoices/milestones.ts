@@ -501,11 +501,16 @@ export async function attachMilestoneLienWaiver(input: {
   if (!uploaded.ok) return uploaded;
 
   const sb = commercialDb();
-  const { error } = await sb
+  // Guarded + row-checked: a milestone deleted in another tab matched zero
+  // rows, and the waiver was reported "on file" while attached to nothing.
+  const { data: linked, error } = await sb
     .from("commercial_invoice_milestones")
     .update({ lien_waiver_document_id: uploaded.document.id, updated_at: new Date().toISOString() })
-    .eq("id", input.milestoneId);
-  if (error) {
+    .eq("id", input.milestoneId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error || !linked) {
     await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
     // Was `.catch(() => {})`. The link row is already gone, so this is not a
     // failure the user can act on — but a document that quietly survives as an
@@ -513,7 +518,7 @@ export async function attachMilestoneLienWaiver(input: {
     // nobody discovers until a GC asks for the waiver.
     console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
   });
-    return { ok: false, error: error.message };
+    return { ok: false, error: error ? error.message : "This milestone was deleted — the lien waiver was not attached." };
   }
   if (scope.lien_waiver_document_id && scope.lien_waiver_document_id !== uploaded.document.id) {
     await softDeleteDocument(scope.lien_waiver_document_id, input.actorUserId).catch((e) => {
@@ -534,11 +539,15 @@ export async function removeMilestoneLienWaiver(
   const scope = await fetchMilestoneScope(milestoneId);
   if (!scope) return { ok: false, error: "Milestone not found." };
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: unlinked, error } = await sb
     .from("commercial_invoice_milestones")
     .update({ lien_waiver_document_id: null, updated_at: new Date().toISOString() })
-    .eq("id", milestoneId);
+    .eq("id", milestoneId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!unlinked) return { ok: false, error: "This milestone was deleted — nothing was removed." };
   if (scope.lien_waiver_document_id) {
     await softDeleteDocument(scope.lien_waiver_document_id, actorUserId).catch((e) => {
     // Was `.catch(() => {})`. The link row is already gone, so this is not a

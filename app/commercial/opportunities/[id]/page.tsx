@@ -298,7 +298,7 @@ export async function generateMetadata({ params }: { params: PP }) {
     const { data } = await sb
       .from("commercial_opportunities")
       .select(
-        "title, title_override, title_override_mode, client_name, property_street, account_id",
+        "title, title_override, title_override_mode, client_name, property_street, account_id, deleted_at",
       )
       .eq("id", id)
       .maybeSingle();
@@ -312,7 +312,10 @@ export async function generateMetadata({ params }: { params: PP }) {
         .maybeSingle();
       accountName = acct?.company_name ?? null;
     }
-    return { title: jobDisplayName(data, accountName) || "Opportunity" };
+    const name = jobDisplayName(data, accountName) || "Opportunity";
+    // A deleted deal still opens (read-mostly, with a banner — Karan
+    // 2026-07-08), so the tab says so too rather than reading like a live job.
+    return { title: data.deleted_at ? `Deleted · ${name}` : name };
   } catch {
     return { title: "Opportunity" };
   }

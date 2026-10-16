@@ -101,6 +101,8 @@ export async function generateMetadata({ params }: { params: PP }) {
       .from("commercial_accounts")
       .select("company_name")
       .eq("id", id)
+      // A deleted account 404s below; its name must not survive in the tab.
+      .is("deleted_at", null)
       .maybeSingle();
     return { title: data?.company_name || "Account" };
   } catch {

@@ -88,8 +88,12 @@ export async function getArApplicationRows(): Promise<ArApplicationRow[]> {
   }>(() =>
     sb
       .from("commercial_opportunities")
-      .select("id, account_id, title, client_name, title_override, title_override_mode, property_street")
+      // Live deals under a live account only — a deleted deal, or one whose
+      // account was deleted, is gone from the app and must be gone from here.
+      .select("id, account_id, title, client_name, title_override, title_override_mode, property_street, account:commercial_accounts!inner(deleted_at)")
       .in("id", oppIds)
+      .is("deleted_at", null)
+      .is("account.deleted_at", null)
       .order("id", { ascending: true })
   );
   const { data: accounts } = await sb

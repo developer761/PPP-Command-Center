@@ -71,11 +71,16 @@ export async function attachAiaLienWaiver(input: {
   if (!uploaded.ok) return uploaded;
 
   const sb = commercialDb();
-  const { error } = await sb
+  // Guarded + row-checked: an application deleted in another tab matched zero
+  // rows, and the waiver was reported "on file" while attached to nothing.
+  const { data: linked, error } = await sb
     .from("commercial_aia_applications")
     .update({ lien_waiver_document_id: uploaded.document.id })
-    .eq("id", input.applicationId);
-  if (error) {
+    .eq("id", input.applicationId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error || !linked) {
     // Don't strand the freshly-uploaded file in Documents when the link fails.
     await softDeleteDocument(uploaded.document.id, input.actorUserId).catch((e) => {
     // Was `.catch(() => {})`. The link row is already gone, so this is not a
@@ -84,7 +89,7 @@ export async function attachAiaLienWaiver(input: {
     // nobody discovers until a GC asks for the waiver.
     console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
   });
-    return { ok: false, error: error.message };
+    return { ok: false, error: error ? error.message : "This application was deleted — the lien waiver was not attached." };
   }
 
   // Replacing: retire the previous one so the Documents tab doesn't collect
@@ -110,11 +115,15 @@ export async function removeAiaLienWaiver(
   if (!app) return { ok: false, error: "Application not found." };
   if (!app.lien_waiver_document_id) return { ok: true, value: null };
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: unlinked, error } = await sb
     .from("commercial_aia_applications")
     .update({ lien_waiver_document_id: null })
-    .eq("id", applicationId);
+    .eq("id", applicationId)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!unlinked) return { ok: false, error: "This application was deleted — nothing was removed." };
   await softDeleteDocument(app.lien_waiver_document_id, actorUserId).catch((e) => {
     // Was `.catch(() => {})`. The link row is already gone, so this is not a
     // failure the user can act on — but a document that quietly survives as an

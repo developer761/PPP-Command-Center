@@ -704,12 +704,27 @@ export async function voidSignatureRequest(input: {
   return { ok: true };
 }
 
+/**
+ * Point a request at its signed contract and/or audit trail. Returns whether
+ * the link actually landed: it used to return void and only log, so a failed
+ * or zero-row write left a completed request with no signed document or hash
+ * while the caller recorded "stored it with Document ID …" in the trail.
+ */
 export async function setSignatureDocuments(
   requestId: string,
   patch: { signed_document_id?: string; signed_sha256?: string; audit_document_id?: string }
-): Promise<void> {
-  const { error } = await commercialDb().from(REQUESTS).update(patch).eq("id", requestId);
-  if (error) console.error(`[esign] couldn't link documents to request ${requestId}: ${error.message}`);
+): Promise<boolean> {
+  const { data, error } = await commercialDb()
+    .from(REQUESTS)
+    .update(patch)
+    .eq("id", requestId)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    console.error(`[esign] couldn't link documents to request ${requestId}: ${error ? error.message : "no such request"}`);
+    return false;
+  }
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

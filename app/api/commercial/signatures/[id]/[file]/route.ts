@@ -39,6 +39,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Same rule as the Documents download route: a deleted deal does not leak
+  // its files — here the signed contract and the signer's audit trail — to
+  // anyone who still holds the request id.
+  const req = await getSignatureRequest(id);
+  if (!req) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const { data: liveOpp } = await commercialDb()
+    .from("commercial_opportunities")
+    .select("id")
+    .eq("id", req.opportunity_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!liveOpp) return NextResponse.json({ error: "parent_gone" }, { status: 404 });
+
   let bytes: Buffer | null = null;
   let name = "";
   if (file === "audit") {
@@ -47,8 +60,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     bytes = built.bytes;
     name = `${sanitizeFileName(`${proposalLabel(built.proposal)} ${built.proposal.header_json.project_name ?? ""}`)}-audit-trail.pdf`;
   } else {
-    const req = await getSignatureRequest(id);
-    if (!req?.signed_document_id) return NextResponse.json({ error: "not_signed_yet" }, { status: 404 });
+    if (!req.signed_document_id) return NextResponse.json({ error: "not_signed_yet" }, { status: 404 });
     const proposal = await getProposalForSigning(req.proposal_id);
     bytes = await downloadDocumentBytes(req.signed_document_id);
     name = `${sanitizeFileName(`${proposal ? proposalLabel(proposal) : "proposal"} ${proposal?.header_json.project_name ?? ""}`)}-signed.pdf`;

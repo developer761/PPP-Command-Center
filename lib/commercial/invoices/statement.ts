@@ -138,7 +138,12 @@ export async function getOpenInvoiceStatementForAccount(
     const balance = Math.max(0, inv.balance_cents);
     if (balance <= 0) continue;
 
+    // `opps` is live deals under a live account only, so a miss here is an
+    // invoice on a DELETED deal. It used to print as "Deleted deal" and count
+    // toward the total we email the GC; the receivables report and AR aging
+    // both drop it. Same rule here.
     const opp = oppById.get(inv.opportunity_id);
+    if (!opp) continue;
     const daysPastDue = inv.due_at ? arDaysPastDue(inv.due_at, now) : null;
     const status = deriveInvoiceStatus(inv);
     // Overdue for AGING uses ET CALENDAR days off the injected `now` (same rule as
@@ -150,7 +155,7 @@ export async function getOpenInvoiceStatementForAccount(
     rows.push({
       invoiceId: inv.id,
       invoiceNumber: inv.invoice_number,
-      dealName: opp ? derivedOppName(opp, null) : "Deleted deal",
+      dealName: derivedOppName(opp, null),
       issuedAt: inv.issued_at ?? null,
       dueAt: inv.due_at,
       totalCents: inv.total_cents,

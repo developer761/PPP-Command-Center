@@ -1,6 +1,6 @@
 import "server-only";
 
-import { bumpDocumentVersion, uploadDocument, getDocument } from "@/lib/commercial/documents/db";
+import { bumpDocumentVersion, uploadDocument, getDocument, softDeleteDocument } from "@/lib/commercial/documents/db";
 import { sanitizeFileName } from "@/lib/commercial/accounts/documents";
 import { companyAddressLines, getOperatingCompany, type OperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getBrandLogoBuffer, getBrandSignatureBuffer } from "@/lib/commercial/operating-company/assets";
@@ -150,7 +150,12 @@ export async function fileAuditTrail(requestId: string): Promise<string | null> 
     console.error(`[esign] audit trail NOT filed for request ${requestId}: ${res.error}`);
     return null;
   }
-  await setSignatureDocuments(requestId, { audit_document_id: res.document.id });
+  if (!(await setSignatureDocuments(requestId, { audit_document_id: res.document.id }))) {
+    // The PDF is filed on the deal and still goes out with the signed copy;
+    // only the request's pointer to it is missing, so the next refresh files a
+    // new copy rather than a new version. Said loudly, not swallowed.
+    console.error(`[esign] audit trail ${res.document.id} filed but NOT linked to request ${requestId}`);
+  }
   return res.document.id;
 }
 
@@ -434,7 +439,14 @@ export async function finalizeCompletedRequest(
       console.error(`[esign] signed contract NOT filed for ${requestId}: ${up.error}`);
       return false;
     }
-    await setSignatureDocuments(requestId, { signed_document_id: up.document.id, signed_sha256: signedSha });
+    if (!(await setSignatureDocuments(requestId, { signed_document_id: up.document.id, signed_sha256: signedSha }))) {
+      // Unlinked, the request still reads "no signed document", so a retry
+      // builds another. Retire this copy so the retry doesn't leave a twin,
+      // and don't record a COMPLETE event naming a document the request
+      // doesn't hold.
+      await softDeleteDocument(up.document.id, filer(request)).catch(() => {});
+      return false;
+    }
     await recordSignatureEvent(requestId, {
       type: "COMPLETE",
       details: `Created the signed document (proposal + signature page) and stored it with Document ID ${up.document.id}. Its SHA-256 is the Unique ID above.`,
