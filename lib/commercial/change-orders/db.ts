@@ -718,7 +718,8 @@ async function tickChangeOrderOn(
     }
     const actualSum = (lineRows ?? []).reduce((s, r) => s + Number((r as { subtotal_cents: number }).subtotal_cents ?? 0), 0);
     if (actualSum < 0) {
-      await removeTickedChangeOrder(invoiceId, co.id, userId);
+      const stuck = await removeTickedChangeOrder(invoiceId, co.id, userId);
+      if (stuck) return { ok: false, error: `Another credit was applied to this invoice at the same moment, so this one doesn't fit. ${stuck}` };
       if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
       return { ok: true, invoice: null, createdDraft: false, warning: "Another credit was applied to this invoice at the same moment — adding this one would take it below $0, so it wasn't added. Put it on a bigger invoice." };
     }
@@ -737,7 +738,10 @@ async function tickChangeOrderOn(
   const { data: claimed, error: claimErr } = await claim.select("id").maybeSingle();
   if (claimErr || !claimed) {
     // Lost the race — peel the line/milestone back off + drop an auto-draft.
-    await removeTickedChangeOrder(invoiceId, co.id, userId);
+    // The draft is kept when the peel failed: it is where the stray charge is,
+    // and the message tells them to remove it.
+    const stuck = await removeTickedChangeOrder(invoiceId, co.id, userId);
+    if (stuck) return { ok: false, error: `This change order was just billed elsewhere. ${stuck}` };
     if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
     return { ok: false, error: "This change order was just billed elsewhere — refresh to see it." };
   }
@@ -767,12 +771,20 @@ async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Pr
   // Milestone variant → deleteMilestone re-tags any payments to invoice-level,
   // clears the CO's invoiced_invoice_id, and drops the paired line (never-reject:
   // may leave a credit + warns).
-  const { data: ms } = await sb
+  //
+  // THE CLAIM IS CLEARED ONLY ONCE THE CHARGE IS CONFIRMED GONE. Every read and
+  // write here used to go unread: a failed lookup came back as "no line", a
+  // failed delete or re-total was ignored, and then the claim was cleared
+  // regardless — so the charge stayed on this invoice while the CO read as
+  // un-billed and the Change Orders tool offered to bill it a second time.
+  const { data: ms, error: msErr } = await sb
     .from("commercial_invoice_milestones")
     .select("id")
     .eq("change_order_id", co.id)
     .is("deleted_at", null)
     .maybeSingle();
+  if (msErr) return { ok: false, error: "Couldn't read this change order's charge on the invoice, so nothing was changed. Please try again." };
+  let retotalError: string | null = null;
   if (ms) {
     const res = await deleteMilestone((ms as { id: string }).id, userId);
     if (!res.ok) return { ok: false, error: res.error };
@@ -782,22 +794,40 @@ async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Pr
     // lines carry no per-line payment, but removing the charge can leave the
     // invoice overpaid (invoice-level payment now exceeds the lower total) →
     // credit + warn.
-    const { data: line } = await sb
+    const { data: line, error: lineErr } = await sb
       .from("commercial_invoice_line_items")
       .select("id")
       .eq("change_order_id", co.id)
       .eq("invoice_id", invoiceId)
       .maybeSingle();
+    if (lineErr) return { ok: false, error: "Couldn't read this change order's charge on the invoice, so nothing was changed. Please try again." };
     if (line) {
-      await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
-      await recomputeSubtotal(invoiceId);
+      const { error: delErr } = await sb
+        .from("commercial_invoice_line_items")
+        .delete()
+        .eq("id", (line as { id: string }).id);
+      if (delErr) {
+        return { ok: false, error: "Couldn't take the change order off the invoice — it is still billed there. Please try again." };
+      }
+      // The charge IS gone now, so the claim must still be released below —
+      // keeping it would strand the CO as billed with nothing behind it.
+      const retotal = await recomputeSubtotal(invoiceId);
+      if (!retotal.ok) retotalError = retotal.error;
       const inv = await getCommercialInvoice(invoiceId);
       if (inv && (inv.balance_cents as number) < 0) warning = "Removing that change order left the invoice showing a credit.";
     }
-    await sb
+    const { error: claimErr } = await sb
       .from("commercial_change_orders")
       .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
-      .eq("id", co.id);
+      .eq("id", co.id)
+      .eq("invoiced_invoice_id", invoiceId);
+    if (claimErr) {
+      return {
+        ok: false,
+        error:
+          "The change order came off the invoice, but it still shows as billed. Reload; if it still reads as billed, tick it off again to free it.",
+      };
+    }
     await logUpdate("commercial_change_orders", co.id, { invoiced_invoice_id: co.invoiced_invoice_id }, { invoiced_invoice_id: null }, userId);
   }
 
@@ -812,6 +842,12 @@ async function tickChangeOrderOff(co: CommercialChangeOrder, userId: string): Pr
   // orphan cluttering the deal + global invoice lists.
   await retireEmptyAutoDraft(sb, invoiceId);
 
+  if (retotalError) {
+    return {
+      ok: false,
+      error: `The change order came off the invoice, but the invoice total couldn't be re-added — it may be out of date. Reload the invoice and check it before sending. (${retotalError})`,
+    };
+  }
   return { ok: true, invoice: null, createdDraft: false, warning };
 }
 
@@ -831,32 +867,51 @@ async function retireEmptyAutoDraft(sb: ReturnType<typeof commercialDb>, invoice
 }
 
 /** Rollback helper: peel a just-added CO line or milestone off an invoice
- *  (used when the CAS claim loses). Best-effort. */
-async function removeTickedChangeOrder(invoiceId: string, coId: string, userId: string): Promise<void> {
+ *  (used when the CAS claim loses, or a credit would take the invoice below
+ *  $0). Returns null when the charge is gone, else what the user has to fix.
+ *
+ *  This used to be "best-effort" and return nothing: `deleteMilestone` RETURNS
+ *  `{ ok:false }`, so its `.catch()` caught nothing, and the line delete was
+ *  never read. When it failed after a lost claim, the CO sat on THIS invoice as
+ *  well as on the winner's — billed twice — while the user was told only that
+ *  it had been "billed elsewhere". */
+async function removeTickedChangeOrder(invoiceId: string, coId: string, userId: string): Promise<string | null> {
   const sb = commercialDb();
-  const { data: ms } = await sb
+  const inv = await getCommercialInvoice(invoiceId);
+  const left = `The change order was added to ${inv?.invoice_number ?? "this invoice"} and couldn't be taken back off. Remove it from that invoice before sending, or it will be billed twice.`;
+  const { data: ms, error: msErr } = await sb
     .from("commercial_invoice_milestones")
     .select("id")
     .eq("change_order_id", coId)
     .eq("invoice_id", invoiceId)
     .is("deleted_at", null)
     .maybeSingle();
+  if (msErr) return left;
   if (ms) {
     // Rollback of a LOST claim — we never owned the CO's invoiced_invoice_id, so
     // don't clear it (would stomp the winner). D5.
-    await deleteMilestone((ms as { id: string }).id, userId, { skipCoClaimClear: true }).catch(() => {});
-    return;
+    const res = await deleteMilestone((ms as { id: string }).id, userId, { skipCoClaimClear: true });
+    return res.ok ? null : `${left} (${res.error})`;
   }
-  const { data: line } = await sb
+  const { data: line, error: lineErr } = await sb
     .from("commercial_invoice_line_items")
     .select("id")
     .eq("change_order_id", coId)
     .eq("invoice_id", invoiceId)
     .maybeSingle();
+  if (lineErr) return left;
   if (line) {
-    await sb.from("commercial_invoice_line_items").delete().eq("id", (line as { id: string }).id);
-    await recomputeSubtotal(invoiceId).catch(() => {});
+    const { error: delErr } = await sb
+      .from("commercial_invoice_line_items")
+      .delete()
+      .eq("id", (line as { id: string }).id);
+    if (delErr) return left;
+    const retotal = await recomputeSubtotal(invoiceId);
+    if (!retotal.ok) {
+      return `The change order was taken back off ${inv?.invoice_number ?? "the invoice"}, but its total couldn't be re-added and may be out of date. Reload it and check before sending.`;
+    }
   }
+  return null;
 }
 
 /** Soft-delete a CO. A CO billed on a live invoice is blocked. */

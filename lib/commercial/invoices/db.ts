@@ -1310,15 +1310,18 @@ export async function addPayment(
     .select("*")
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // An insert that hands back no row and no error recorded nothing we can see
+  // — and the over-collection guard below keys on that row's id, so without it
+  // the guard was skipped and the call reported success unverified.
+  if (!insertedPayment)
+    return { ok: false, error: "The payment didn't save. Please try again." };
   // Audit trail — a recorded payment must leave a record with the amount + actor.
-  if (insertedPayment) {
-    await logInsert(
-      "commercial_invoice_payments",
-      (insertedPayment as { id: string }).id,
-      insertedPayment,
-      input.recorded_by_user_id,
-    );
-  }
+  await logInsert(
+    "commercial_invoice_payments",
+    (insertedPayment as { id: string }).id,
+    insertedPayment,
+    input.recorded_by_user_id,
+  );
   let appliedAmount = cappedAmount;
   // The DB trigger `trg_recompute_paid_cents` should auto-update
   // paid_cents (which feeds the generated balance_cents column) + flip
@@ -1350,14 +1353,45 @@ export async function addPayment(
   //     can over-collect one milestone while the invoice balance is still
   //     positive (other milestones unpaid), which the invoice-level check
   //     alone would miss (audit Finding 2).
-  const pid = (insertedPayment as { id: string } | null)?.id ?? null;
-  if (pid && after) {
-    const total = after.total_cents as number;
-    const { data: allPays } = await sb
+  //
+  // EVERY READ AND WRITE IN THIS GUARD IS CHECKED. supabase RESOLVES with
+  // `{ error }` instead of throwing, and each of these used to go unread: a
+  // failed read of the invoice or of `allPays` skipped the guard or fed it
+  // `[]`, so it allowed everything (fail-open); a failed trim or back-out left
+  // the over-collecting row live while the user was told it had been capped,
+  // or that nothing was recorded. That is the duplicate-cash path.
+  const pid = (insertedPayment as { id: string }).id;
+  const backOut = async (): Promise<boolean> => {
+    const { data: gone, error: goneErr } = await sb
       .from("commercial_invoice_payments")
-      .select("id, amount_cents, created_at, milestone_id")
-      .eq("invoice_id", invoice_id);
-    const rows = (allPays ?? []) as Array<{
+      .delete()
+      .eq("id", pid)
+      .select("id");
+    return !goneErr && (gone ?? []).length > 0;
+  };
+  const STUCK =
+    " It could not be taken back off, so it IS on the invoice now — open the payments list, check for a duplicate and remove it before recording anything else.";
+  const { data: allPays, error: allPaysErr } = after
+    ? await sb
+        .from("commercial_invoice_payments")
+        .select("id, amount_cents, created_at, milestone_id")
+        .eq("invoice_id", invoice_id)
+    : { data: null, error: null };
+  if (!after || allPaysErr || !allPays) {
+    return (await backOut())
+      ? {
+          ok: false,
+          error:
+            "Couldn't check this payment against the invoice's other payments, so it was not recorded. Please try again.",
+        }
+      : {
+          ok: false,
+          error: `Couldn't check this payment against the invoice's other payments.${STUCK}`,
+        };
+  }
+  {
+    const total = after.total_cents as number;
+    const rows = allPays as Array<{
       id: string;
       amount_cents: number;
       created_at: string;
@@ -1380,12 +1414,33 @@ export async function addPayment(
     appliedAmount = Math.min(cappedAmount, allowedInvoice, allowedMilestone);
     if (appliedAmount < cappedAmount) {
       if (appliedAmount <= 0) {
-        await sb.from("commercial_invoice_payments").delete().eq("id", pid);
+        if (!(await backOut())) {
+          return {
+            ok: false,
+            error: `${milestone_id ? "That milestone" : "This invoice"} was paid in full by another payment a moment ago.${STUCK}`,
+          };
+        }
       } else {
-        await sb
+        const { data: trimmed, error: trimErr } = await sb
           .from("commercial_invoice_payments")
           .update({ amount_cents: appliedAmount })
-          .eq("id", pid);
+          .eq("id", pid)
+          .select("id");
+        if (trimErr || (trimmed ?? []).length === 0) {
+          // Keeping the full amount over-collects by exactly the part another
+          // payment already covered. Take it off rather than report a cap
+          // that never happened.
+          return (await backOut())
+            ? {
+                ok: false,
+                error:
+                  "Another payment landed a moment ago and this one couldn't be reduced to fit, so it was not recorded. Reload and try again.",
+              }
+            : {
+                ok: false,
+                error: `Another payment landed a moment ago and this one couldn't be reduced to fit.${STUCK}`,
+              };
+        }
       }
       const { data: reAfter } = await sb
         .from("commercial_invoices")

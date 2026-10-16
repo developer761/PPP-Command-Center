@@ -355,8 +355,39 @@ export async function updateMilestone(
     const liPatch: Record<string, unknown> = {};
     if (patch.name !== undefined) liPatch.description = (update.name as string).slice(0, 500);
     if (update.amount_cents !== undefined) liPatch.unit_price_cents = update.amount_cents;
-    await sb.from("commercial_invoice_line_items").update(liPatch).eq("id", existing.line_item_id);
-    await recomputeSubtotal(existing.invoice_id);
+    // Both writes CHECKED. Unread, a failed line write left the milestone at
+    // the new amount and the charge the customer is billed at the old one —
+    // the schedule and the invoice total disagreeing — while this said "saved".
+    const { data: liRows, error: liErr } = await sb
+      .from("commercial_invoice_line_items")
+      .update(liPatch)
+      .eq("id", existing.line_item_id)
+      .select("id");
+    if (liErr || (liRows ?? []).length === 0) {
+      // Put the milestone back so the two still agree, then say so.
+      const revert: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (update.name !== undefined) revert.name = existing.name;
+      if (update.amount_cents !== undefined) revert.amount_cents = existing.amount_cents;
+      const { data: reverted, error: revertErr } = await sb
+        .from("commercial_invoice_milestones")
+        .update(revert)
+        .eq("id", id)
+        .select("id");
+      return revertErr || (reverted ?? []).length === 0
+        ? {
+            ok: false,
+            error:
+              "The milestone saved but its charge on the invoice didn't, so the two now disagree. Edit the milestone again to bring them back in line.",
+          }
+        : { ok: false, error: "Couldn't update the invoice charge for this milestone, so nothing was changed. Please try again." };
+    }
+    const retotal = await recomputeSubtotal(existing.invoice_id);
+    if (!retotal.ok) {
+      return {
+        ok: false,
+        error: `The milestone was saved, but the invoice total couldn't be re-added — it may be out of date. Save the milestone again to re-total it. (${retotal.error})`,
+      };
+    }
   }
   return {
     ok: true,
@@ -388,24 +419,42 @@ export async function deleteMilestone(
   // that leaves the invoice overpaid, it reads as a credit — a heads-up, not a
   // block. Also frees a CO so it can be re-billed (audit #7).
   const paid = (await getMilestonePaidMap(existing.invoice_id)).get(id) ?? 0;
-  if (paid > 0) {
-    await sb.from("commercial_invoice_payments").update({ milestone_id: null }).eq("milestone_id", id);
+  //
+  // EVERY STEP IS CHECKED, AND THE CHANGE ORDER IS FREED LAST. The order used
+  // to be retag → free the CO → hide the milestone → drop the charge, none of
+  // it read. A failed retag stranded the cash on a hidden milestone; and since
+  // the CO was freed FIRST, any later failure left its charge on this invoice
+  // with the CO reading un-billed — so the Change Orders tool offered to bill
+  // it again. Now the CO is released only once its charge is confirmed gone.
+  //
+  // The retag runs whether or not `paid` says there is anything to move: the
+  // paid map answers "nothing" on a failed read, and trusting that would hide
+  // real cash on a milestone nobody can see. On no rows it is a no-op.
+  {
+    const { error: retagErr } = await sb
+      .from("commercial_invoice_payments")
+      .update({ milestone_id: null })
+      .eq("milestone_id", id);
+    if (retagErr) {
+      return {
+        ok: false,
+        error: "Couldn't move this milestone's payments onto the invoice, so nothing was removed. Please try again.",
+      };
+    }
   }
-  // Clear the CO's claim — but scoped to THIS invoice so a lost-race rollback
-  // can't stomp the winner's claim (audit D5). Skippable entirely for that path.
-  if (existing.change_order_id && !opts?.skipCoClaimClear) {
-    await sb
-      .from("commercial_change_orders")
-      .update({ invoiced_invoice_id: null })
-      .eq("id", existing.change_order_id)
-      .eq("invoiced_invoice_id", existing.invoice_id);
-  }
-  const { error } = await sb
+  const { data: hidden, error } = await sb
     .from("commercial_invoice_milestones")
     .update({ deleted_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id");
   if (error) return { ok: false, error: error.message };
-  let teardownWarning: string | null = null;
+  if ((hidden ?? []).length === 0) {
+    return { ok: false, error: "This milestone was already removed. Reload to see the invoice as it is now." };
+  }
+  const chargeLeft =
+    "The milestone was removed, but its charge is still on the invoice. Remove that line from the invoice before sending it.";
+  let retotalError: string | null = null;
   if (existing.line_item_id) {
     // Drop the paired charge. A CHANGE-ORDER milestone's line carries
     // change_order_id, which removeLineItem normally blocks (audit D3) — that
@@ -418,21 +467,32 @@ export async function deleteMilestone(
       allowChangeOrderLine: true,
     });
     if (!rm.ok) {
-      // Both of these RETURN their failure. Dropped, the milestone is gone
-      // while its charge stays on the invoice, and the user is told it went.
-      const { error: lineErr } = await sb
+      // removeLineItem can fail AFTER its delete (on the re-total), so this
+      // delete matching nothing means the line is already gone, not a failure.
+      const { error: delErr } = await sb
         .from("commercial_invoice_line_items")
         .delete()
         .eq("id", existing.line_item_id)
         .eq("invoice_id", existing.invoice_id);
-      const re = lineErr ? null : await recomputeSubtotal(existing.invoice_id);
-      if (lineErr || !re?.ok) {
-        console.error(
-          `[commercial/invoices] removeMilestone: line ${existing.line_item_id} teardown failed on invoice ${existing.invoice_id}: ${lineErr?.message ?? (re && !re.ok ? re.error : "unknown")}`,
-        );
-        teardownWarning =
-          "The milestone was removed, but its amount may still be on the invoice total. Reload and check the total before sending.";
-      }
+      if (delErr) return { ok: false, error: chargeLeft };
+      const retotal = await recomputeSubtotal(existing.invoice_id);
+      if (!retotal.ok) retotalError = retotal.error;
+    }
+  }
+  // Clear the CO's claim — scoped to THIS invoice so a lost-race rollback can't
+  // stomp the winner's claim (audit D5). Skippable entirely for that path.
+  if (existing.change_order_id && !opts?.skipCoClaimClear) {
+    const { error: claimErr } = await sb
+      .from("commercial_change_orders")
+      .update({ invoiced_invoice_id: null })
+      .eq("id", existing.change_order_id)
+      .eq("invoiced_invoice_id", existing.invoice_id);
+    if (claimErr) {
+      return {
+        ok: false,
+        error:
+          "The change order came off the invoice, but it still shows as billed here. Reload; if it still reads as billed, tick it off again to free it.",
+      };
     }
   }
   if (existing.lien_waiver_document_id) {
@@ -444,16 +504,16 @@ export async function deleteMilestone(
     console.error("[commercial] document soft-delete failed:", e instanceof Error ? e.message : String(e));
   });
   }
+  if (retotalError) {
+    return {
+      ok: false,
+      error: `The milestone and its charge were removed, but the invoice total couldn't be re-added — it may be out of date. Reload the invoice and check it before sending. (${retotalError})`,
+    };
+  }
   return {
     ok: true,
     value: null,
-    warning:
-      [
-        paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : null,
-        teardownWarning,
-      ]
-        .filter(Boolean)
-        .join(" ") || undefined,
+    warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
   };
 }
 

@@ -230,28 +230,76 @@ export async function recordAiaPayment(
    * past the certificate trims — rather than both backing out symmetrically
    * and losing money that did arrive.
    */
+  /*
+   * EVERY WRITE IN THIS GUARD IS CHECKED, because this is where duplicate cash
+   * gets taken back out. supabase RESOLVES with `{ error }` rather than
+   * throwing, so an unread result is a write that may not have happened. Each
+   * of these used to be unread: a failed back-out left the second cheque live
+   * while the screen said nothing had landed; a failed trim kept the whole
+   * amount and then reported success; and the live-rows read went through
+   * `listAiaPayments`, which answers `[]` on an error — so the guard saw an
+   * empty certificate, allowed everything, and failed open.
+   */
   if (room != null) {
-    const live = await listAiaPayments(input.application_id);
+    const backOut = async (): Promise<boolean> => {
+      const { data: gone, error: goneErr } = await sb
+        .from("commercial_aia_payments")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .is("deleted_at", null)
+        .select("id")
+        .maybeSingle();
+      return !goneErr && !!gone;
+    };
+    const STUCK =
+      " It could not be taken back off, so it IS on the certificate now — open the payments list, check for a duplicate and delete it before anything else is recorded.";
+    const { data: liveRows, error: liveErr } = await sb
+      .from("commercial_aia_payments")
+      .select("*")
+      .eq("application_id", input.application_id)
+      .is("deleted_at", null)
+      .order("paid_at", { ascending: true });
+    if (liveErr || !liveRows) {
+      return (await backOut())
+        ? {
+            ok: false,
+            error:
+              "Couldn't confirm this payment against the certificate's other payments, so it was not recorded. Please try again.",
+          }
+        : {
+            ok: false,
+            error: `Couldn't confirm this payment against the certificate's other payments.${STUCK}`,
+          };
+    }
+    const live = liveRows as AiaPayment[];
     const allowed = Math.max(0, due - sumPaymentsBeforeStable(live, row.id));
     if (allowed < Number(row.amount_cents)) {
       if (allowed <= 0) {
-        await sb
-          .from("commercial_aia_payments")
-          .update({ deleted_at: new Date().toISOString() })
-          .eq("id", row.id);
         return {
           ok: false,
-          error:
-            "Somebody recorded a payment against this certificate a moment ago and it is now paid in full. Reload and record the rest on the next application.",
+          error: (await backOut())
+            ? "Somebody recorded a payment against this certificate a moment ago and it is now paid in full. Reload and record the rest on the next application."
+            : `Somebody recorded a payment against this certificate a moment ago and it is now paid in full.${STUCK}`,
         };
       }
-      const { data: trimmed } = await sb
+      const { data: trimmed, error: trimErr } = await sb
         .from("commercial_aia_payments")
         .update({ amount_cents: allowed })
         .eq("id", row.id)
+        .is("deleted_at", null)
         .select("*")
         .maybeSingle();
-      if (trimmed) row = trimmed as AiaPayment;
+      if (trimErr || !trimmed) {
+        // Keeping the full amount would over-collect the certificate by the
+        // part another payment already covered. Take it off instead.
+        return {
+          ok: false,
+          error: (await backOut())
+            ? "Another payment landed on this certificate a moment ago and this one couldn't be reduced to fit, so it was not recorded. Reload and try again."
+            : `Another payment landed on this certificate a moment ago and this one couldn't be reduced to fit.${STUCK}`,
+        };
+      }
+      row = trimmed as AiaPayment;
     }
   }
 
