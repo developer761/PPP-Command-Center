@@ -317,6 +317,7 @@ export type RejectReason =
   | "commitment_in_free_text"
   | "out_of_scope_work"
   | "quoted_a_price"
+  | "recorded_a_decline_as_acceptance"
   | "pursued_after_a_decline"
   | "discarded_work_we_cover"
   | "transferred_a_text_only_customer"
@@ -2356,6 +2357,36 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * owns that judgement, because telling a decline from a park is the thing
    * it exists to do, and a second definition would drift from the first.
    */
+  /**
+   * …AND NEVER RECORD A DECLINE AS AN ACCEPTANCE.
+   *
+   * Found 2026-10-15 while probing the NURTURE track, which has five
+   * scenarios to the new-lead track's sixty-six. `accepted` was legal after
+   * every form of decline, so a customer who wrote "we went with someone
+   * else" could receive:
+   *
+   *   "That's great to hear! I'll let the office know so they can get
+   *    started."
+   *
+   * Two harms, and the second is the quieter one. The message reads as
+   * though nobody listened. And the conversation is recorded as ACCEPTED
+   * when it is lost — the same failure outcomeForExit was written to stop,
+   * where "every exit wrote success" made a bot that drives people away look
+   * like a bot that books.
+   *
+   * Separate from pursued_after_a_decline because accepting is not chasing:
+   * chasing is rude, this is wrong in the record as well as in the message.
+   * The warm close stays open — `lost` and `bailout` are what this state is
+   * for.
+   */
+  if (a.intent === "accepted" && declinesTheWork(ctx.customerText)) {
+    return {
+      ok: false, reason: "recorded_a_decline_as_acceptance",
+      detail: "they said they are not going ahead, so this both answers as if they had "
+        + "agreed and books the outcome as accepted. Close it as lost (A17)",
+    };
+  }
+
   if (PURSUES_THE_JOB.has(a.intent) && declinesTheWork(ctx.customerText)) {
     return {
       ok: false, reason: "pursued_after_a_decline",

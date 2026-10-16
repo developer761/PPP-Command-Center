@@ -736,6 +736,47 @@ if (unreachable.length) {
 }
 
 /**
+ * THE NURTURE TRACK, WHICH HAD FIVE SCENARIOS TO THE NEW LEAD TRACK'S SIXTY-SIX.
+ *
+ * The quote has already gone out and the job is to get a decision. It is a
+ * whole second conversation type, and a past bug had every AM conversation
+ * running the NEW LEAD prompt — so thin coverage here has cost before.
+ *
+ * Probing it on 2026-10-15 found `accepted` legal after every form of
+ * decline: "we went with someone else" could be answered "That's great to
+ * hear! I'll let the office know so they can get started", and the
+ * conversation recorded as accepted rather than lost.
+ */
+console.log("");
+let nurtureStuck = 0;
+for (const [label, text] of [
+  ["accepts the quote", "yes let's go ahead with it"],
+  ["declines the quote", "we went with someone else"],
+  ["asks about the price", "is there any flexibility on that price?"],
+  ["asks when work can start", "when could you start?"],
+  ["needs to think", "we need to think about it for a week"],
+  ["asks what's included", "does that include the ceilings?"],
+  ["goes quiet then returns", "sorry for the delay, still interested"],
+  ["wants to change the scope", "can you redo it for just the kitchen?"],
+  ["asks for the quote again", "can you resend the quote?"],
+  ["asks to speak to someone", "can someone call me about it?"],
+]) {
+  const w = waysThrough({ name: label, text, track: "nurture" });
+  const sayable = w.open.filter((i) => { try { return !!w.say(i); } catch { return false; } });
+  if (!sayable.length) { nurtureStuck++; console.log(`     NOTHING CAN BE SAID in nurture: ${label}`); }
+}
+ok("every nurture situation leaves something the bot can say", nurtureStuck === 0,
+   "10 situations a customer who already has a quote can be in");
+
+/** And a decline is never answered as though they had agreed. */
+{
+  const w = waysThrough({ name: "nurture decline", text: "we went with someone else", track: "nurture" });
+  ok("a declined quote cannot be recorded as accepted",
+     !w.open.includes("accepted"),
+     w.open.includes("accepted") ? "accepted is still open" : "accepted correctly refused");
+}
+
+/**
  * EVERY STATE STILL HAS A LEGAL MOVE.
  *
  * Eleven new refusal reasons were added to validateAction over two days —
