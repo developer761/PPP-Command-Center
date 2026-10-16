@@ -62,25 +62,6 @@ function importedPaths(): Set<string> {
 }
 
 describe("no component is stranded", () => {
-  /*
-   * THIRTY SECONDS, DELIBERATELY.
-   *
-   * This reads and parses every .ts/.tsx under app/, components/, lib/ and
-   * __tests__/ — about 3,000 files — because an import specifier sitting in a
-   * COMMENT would invent a phantom importer and hide a stranded component, so
-   * the comments have to come off first, and that means a real parse.
-   *
-   * At vitest's 5,000 ms default it measured 5,152 ms under a full parallel
-   * run and passed in isolation: a test that fails on how busy the machine is,
-   * which is worse than a slow one. On 2026-10-16 exactly that shape was read
-   * as another session editing the tree, and three real timeouts went
-   * unexplained for an afternoon.
-   *
-   * The budget is loose on purpose. It is not here to catch a slow walk; it is
-   * here so an infinite one still ends.
-   */
-  const WHOLE_TREE_WALK_MS = 30_000;
-
   it("every component under components/ is imported by something", () => {
     const imported = importedPaths();
     const stranded = walk("components")
@@ -93,7 +74,7 @@ describe("no component is stranded", () => {
       `\nNothing imports these:\n${unexpected.join("\n")}\n\n` +
         `Delete them, or add an entry to KEPT saying why they stay.\n`
     ).toEqual([]);
-  }, WHOLE_TREE_WALK_MS);
+  });
 
   it("the KEPT list only shrinks", () => {
     // A stale exemption is worse than none: it says "this was considered and

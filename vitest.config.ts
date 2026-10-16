@@ -42,6 +42,34 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    /**
+     * THIRTY SECONDS, NOT VITEST'S FIVE.
+     *
+     * Rule 1 above is still true of the logic tests, but this suite has grown
+     * a second kind: ~20 STRUCTURAL tests that read every .ts/.tsx under app/,
+     * lib/, components/ and __tests__/ — up to 3,000 files — and strip the
+     * comments out of each before asserting on it, because an import
+     * specifier or a function name sitting in a docblock would otherwise read
+     * as the real thing and turn the assertion green for the wrong reason.
+     * That is a genuine parse, it is the point, and it does not fit in five
+     * seconds when a dozen workers are doing it at once.
+     *
+     * At the default, `no-stranded-components` measured 5,152 ms in a full run
+     * and passed in isolation: a red that tracks how busy the machine is. On
+     * 2026-10-16 three of these timed out together, the pattern was read as
+     * another session editing the shared tree, and the real cause — the
+     * comment stripper walking `getChildren()`, 2,195 ms on top of a 308 ms
+     * parse — went unexamined for an afternoon. Patching the three that
+     * happened to fail was whack-a-mole; seventeen more carried the same
+     * latent flake.
+     *
+     * Raising this costs a passing suite nothing: a timeout only decides how
+     * long a HUNG test runs before it gives up. It is set loose on purpose —
+     * it is here to end an infinite loop, not to time a slow walk. Anything
+     * that genuinely wants to catch a slow walk should measure it, not infer
+     * it from a wall clock shared with every other worker.
+     */
+    testTimeout: 30_000,
     include: ["__tests__/**/*.test.ts"],
     exclude: ["node_modules/**", ".next/**", "e2e/**", "__tests__/__stubs__/**"],
     coverage: {

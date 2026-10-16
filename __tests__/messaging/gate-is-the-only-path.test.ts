@@ -43,16 +43,6 @@ function walk(dir: string, out: string[] = []): string[] {
 const IMPORTS_TRANSPORT = /from\s+["'](?:@\/lib\/messaging\/transport|\.\/transport|\.\.\/transport)["']/;
 
 describe("the gate is the only path to the carrier", () => {
-  /*
-   * THIRTY SECONDS. These tests parse every file under ROOTS to strip
-   * comments before grepping — an import sitting in a comment would read as a
-   * real one. At vitest's 5,000 ms default this failed on how busy the
-   * machine was rather than on the code: it timed out in a full parallel run
-   * on 2026-10-16 and passed alone, which is the worst kind of red. The
-   * budget is here to end an infinite walk, not to time a slow one.
-   */
-  const WHOLE_TREE_WALK_MS = 30_000;
-
   const files = ROOTS.flatMap((r) => walk(r));
 
   it("scanned a meaningful number of files", () => {
@@ -66,7 +56,7 @@ describe("the gate is the only path to the carrier", () => {
       return IMPORTS_TRANSPORT.test(stripComments(readFileSync(f, "utf8")));
     });
     expect(offenders).toEqual([]);
-  }, WHOLE_TREE_WALK_MS);
+  });
 
   it("gate.ts is the only place that calls .send() on a transport", () => {
     const offenders = files.filter((f) => {
@@ -75,7 +65,7 @@ describe("the gate is the only path to the carrier", () => {
       return /\btransport\s*\.\s*send\s*\(/.test(src);
     });
     expect(offenders).toEqual([]);
-  }, WHOLE_TREE_WALK_MS);
+  });
 
   it("gatedSend is the module's only exported way to send", () => {
     const src = stripComments(readFileSync("lib/messaging/gate.ts", "utf8"));
