@@ -93,7 +93,12 @@ export default async function IntegrationsPage({
     }
     try {
       const { loadSalesforceSnapshot } = await import("@/lib/salesforce/queries");
-      const snap = await loadSalesforceSnapshot();
+      /**
+       * revenueFieldUsed only — a single string. The full snapshot is 8.1MB
+       * and ~3.2s to read from the shared cache (22s if the instance is cold);
+       * thin carries every field this reads. Measured 2026-10-15.
+       */
+      const snap = await loadSalesforceSnapshot({ thin: true });
       revenueFieldUsed = snap.revenueFieldUsed;
     } catch {
       // non-fatal

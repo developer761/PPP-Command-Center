@@ -129,3 +129,56 @@ describe("the warm cron pulls Salesforce once", () => {
     expect(cron).not.toMatch(/materials: true, forceRebuild: true/);
   });
 });
+
+describe("the warm actually finishes writing before it reports success", () => {
+  /**
+   * Measured 2026-10-15, with per-step timing added for the purpose:
+   *
+   *   shared-cache write "snapshot-v6": 6.1MB gz → 8.1MB b64 ·
+   *     serialize 1636ms · encode 4ms · upload 52560ms
+   *
+   * The base64 everyone suspects costs four milliseconds. It is the upload.
+   *
+   * And the write was fire-and-forget: warmAllSnapshots logged "complete" at
+   * 22:20:47 while that write did not land until 22:21:23 — 36 seconds after
+   * the function said it was done. A serverless function that has returned
+   * can be killed, so the cron could report success and leave the cache
+   * empty, which is the "COLD START — no shared cache" seen hours after a
+   * good warm.
+   *
+   * A user request still must not wait on it. Only the cron awaits.
+   */
+  const queries = readFileSync(
+    join(__dirname, "..", "..", "lib/salesforce/queries.ts"),
+    "utf8"
+  );
+
+  it("awaits the shared write when asked to", () => {
+    expect(queries).toMatch(/if \(opts\?\.awaitSharedWrite\) \{\s*\n\s*await writeSharedSnapshot\(cacheKey, snapshot\);/);
+  });
+
+  it("still does NOT make a normal request wait", () => {
+    // The else branch has to stay fire-and-forget.
+    expect(queries).toMatch(/\} else \{\s*\n\s*void writeSharedSnapshot\(cacheKey, snapshot\);/);
+  });
+
+  it("the cron opts in", () => {
+    expect(queries).toMatch(/loadSalesforceSnapshot\(\{ forceRebuild: true, awaitSharedWrite: true \}\)/);
+  });
+
+  it("the cron has time for the writes it now waits on", () => {
+    // ~22s fetch + ~68s of uploads. 60s would kill it mid-write, which is
+    // the exact failure this change exists to prevent.
+    const cron = readFileSync(
+      join(__dirname, "..", "..", "app/api/cron/warm-snapshot/route.ts"),
+      "utf8"
+    );
+    const m = /export const maxDuration = (\d+)/.exec(cron);
+    expect(m).toBeTruthy();
+    expect(Number(m![1])).toBeGreaterThanOrEqual(180);
+  });
+
+  it("logs each step, so the next regression is measurable not guessable", () => {
+    expect(queries).toMatch(/serialize \$\{msSerialize\}ms · encode \$\{msEncode\}ms · upload \$\{msUpload\}ms/);
+  });
+});

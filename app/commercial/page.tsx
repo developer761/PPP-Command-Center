@@ -389,8 +389,33 @@ export default async function CommercialDashboardPage({
   // the same reads — no extra queries — and ranked by money at risk.
   const oppById = new Map(opps.map((o) => [o.id, o]));
   const nameOf = (o: CommercialOpportunity) => derivedOppName(o, accountNameById.get(o.account_id) ?? "");
+  /*
+   * OVERDUE AIA BELONGS ON THE CHASE LIST TOO.
+   *
+   * "Owed to us" counts overdue AIA; this list did not, so the tile said chase
+   * $X and the list of whom to chase was short. It stopped being academic on
+   * 2026-10-15: once AR aging stopped dating back-entered certificates from the
+   * day they were typed, $29,275.70 of genuinely overdue AIA appeared that
+   * nobody would have been told to collect.
+   *
+   * Taken from the receivables report — the same single definition the tile
+   * reads — rather than computed again here, which is how the two drifted
+   * apart in the first place. Retention is excluded: it is held to close-out,
+   * not late, and `daysOut` is null on those rows.
+   */
+  const overdueAia = receivables.rows.filter((r) => r.kind === "aia" && (r.daysOut ?? 0) > 0);
   const worklistItems = buildWorklist({
-    overdueInvoices: overdueInvoices.map((i) => ({
+    overdueInvoices: [
+      ...overdueAia.map((r) => ({
+        id: r.sourceId,
+        number: r.reference,
+        accountId: r.accountId,
+        accountName: r.accountName,
+        balanceCents: Math.max(0, r.openCents),
+        daysLate: r.daysOut ?? 0,
+        href: r.href,
+      })),
+      ...overdueInvoices.map((i) => ({
       id: i.id,
       number: i.invoice_number,
       accountId: i.account_id,
@@ -400,7 +425,8 @@ export default async function CommercialDashboardPage({
         "Unassigned account",
       balanceCents: Math.max(0, i.balance_cents),
       daysLate: daysPastDue(i.due_at, nowMs),
-    })),
+      })),
+    ],
     // Work that is finished and still not billed. Scoped to `billing` — a job
     // mid-production legitimately has money left to bill and putting it here
     // would fill the list with things nobody can act on today.

@@ -28,7 +28,9 @@ export async function GET(request: Request) {
   if (scope) sp.scope = scope;
 
   try {
-    const bundle = await loadDashboardData(sp);
+    const bundle = await loadDashboardData(sp, { thin: true });
+  // THIN: this index reads accounts, reps and workOrders only, all of which
+  // the thin snapshot carries. The full one is 8.1MB and ~3.2s to read.
     if (!bundle.snapshot) {
       return NextResponse.json({ reps: [], accounts: [], workOrders: [] });
     }

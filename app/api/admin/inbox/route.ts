@@ -66,7 +66,13 @@ export async function GET(request: Request) {
         summary: { unread: 0, returned: 0, scopeNote: "no_sf_user_mapping" },
       });
     }
-    const snapshot = await loadSalesforceSnapshot();
+    /**
+     * workOrders only — Mail lists message threads against a WO number. The
+     * full snapshot is 8.1MB and ~3.2s to read from the shared cache (22s if
+     * the instance is cold); thin carries every field this reads. Measured
+     * 2026-10-15.
+     */
+    const snapshot = await loadSalesforceSnapshot({ thin: true });
     scopedWoIds = new Set(
       snapshot.workOrders
         .filter((w) => w.ownerId === viewer.effectiveUserId)
@@ -353,7 +359,8 @@ export async function POST(request: Request) {
     if (!linkedWo) {
       return NextResponse.json({ error: "message_not_found" }, { status: 404 });
     }
-    const snapshot = await loadSalesforceSnapshot();
+    // THIN: an ownership check against workOrders, which thin carries.
+    const snapshot = await loadSalesforceSnapshot({ thin: true });
     const ownsWo = snapshot.workOrders.some(
       (w) => w.id === linkedWo && w.ownerId === viewer.effectiveUserId
     );

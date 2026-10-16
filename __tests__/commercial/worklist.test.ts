@@ -47,7 +47,10 @@ describe("chasing is per GC, not per invoice", () => {
     expect(items[0].cents).toBe(60_000);
     // The oldest one is what makes the row urgent, not the average.
     expect(items[0].daysLate).toBe(90);
-    expect(items[0].why).toContain("3 invoices");
+    // "documents", not "invoices": an overdue AIA application is one of these
+    // too now, and calling it an invoice would send somebody looking for an
+    // invoice that does not exist.
+    expect(items[0].why).toContain("3 documents");
     // Several invoices → the filtered list, which is where you work a GC down.
     expect(items[0].href).toContain("view=receivables");
     expect(items[0].href).toContain("gc=a1");
@@ -56,7 +59,60 @@ describe("chasing is per GC, not per invoice", () => {
   it("a GC with one invoice opens that invoice", () => {
     const items = buildWorklist({ ...EMPTY, overdueInvoices: [invoice(9, "a2", 5_000, 3)] });
     expect(items[0].href).toBe("/commercial/invoices/i9");
-    expect(items[0].why).toContain("one invoice");
+    expect(items[0].why).toContain("one document");
+  });
+
+  /*
+   * OVERDUE AIA BELONGS HERE, and did not used to.
+   *
+   * "Owed to us" counted overdue AIA while this list did not, so the tile said
+   * chase $X and the list of whom to chase was short. It stopped being academic
+   * on 2026-10-15: once AR aging stopped dating back-entered certificates from
+   * the day they were typed, $29,275.70 of genuinely overdue AIA appeared that
+   * nobody would have been told to collect.
+   */
+  it("an overdue AIA application is chased, and opens the application", () => {
+    const items = buildWorklist({
+      ...EMPTY,
+      overdueInvoices: [
+        {
+          id: "app-7",
+          number: "AIA#3",
+          accountId: "a1",
+          accountName: "LMJ Management",
+          balanceCents: 27_460_82,
+          daysLate: 120,
+          href: "/commercial/opportunities/opp-1?tab=aia&app=app-7",
+        },
+      ],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].cents).toBe(27_460_82);
+    // Its own link — an AIA application does not live under /commercial/invoices.
+    expect(items[0].href).toBe("/commercial/opportunities/opp-1?tab=aia&app=app-7");
+  });
+
+  it("an AIA application and an invoice for one GC become one row", () => {
+    const items = buildWorklist({
+      ...EMPTY,
+      overdueInvoices: [
+        invoice(1, "a1", 10_000, 30),
+        {
+          id: "app-7",
+          number: "AIA#3",
+          accountId: "a1",
+          accountName: "LMJ Management",
+          balanceCents: 20_000,
+          daysLate: 120,
+          href: "/commercial/opportunities/opp-1?tab=aia&app=app-7",
+        },
+      ],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0].cents).toBe(30_000);
+    expect(items[0].daysLate).toBe(120);
+    // Two documents → the filtered receivables list, not either document.
+    expect(items[0].href).toContain("view=receivables");
   });
 
   it("keeps GCs apart", () => {

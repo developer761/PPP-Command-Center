@@ -107,7 +107,12 @@ export async function GET(request: Request) {
   // Optional SF enrichment for canonical name / BM-retailer flag.
   const accountById = new Map<string, { name: string; type: string | null; isBMRetailer: boolean }>();
   try {
-    const snapshot = await loadSalesforceSnapshot();
+    /**
+     * accounts only. The full snapshot is 8.1MB and ~3.2s to read from the
+     * shared cache (22s if the instance is cold); thin carries every field
+     * this reads. Measured 2026-10-15.
+     */
+    const snapshot = await loadSalesforceSnapshot({ thin: true });
     for (const a of snapshot.accounts) {
       accountById.set(a.id, { name: a.name, type: a.type, isBMRetailer: a.isBMRetailer });
     }
