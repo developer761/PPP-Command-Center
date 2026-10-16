@@ -711,6 +711,38 @@ export async function softDeleteCommercialOpportunity(
           kinds: PROPOSAL_ACTION_KINDS_ON_DELETE,
         });
       }
+
+      /*
+       * 🔴 AND TOMBSTONE THE PROPOSALS THEMSELVES.
+       *
+       * This block read the proposals only to clear their to-dos and then left
+       * the rows live — so a deleted deal kept a live proposal carrying a
+       * contract figure. Invoices, purchases, jobs and the project are all
+       * cascaded below; proposals were the one child that was not.
+       *
+       * Measured 2026-10-16: 5 proposals with `deleted_at IS NULL` whose
+       * opportunity is deleted, $122,567.40 by final price. Two sat in
+       * `pending_approval` — an approval workflow for a deal that no longer
+       * exists — and two belonged to an account that had been deleted as well.
+       *
+       * Reproduced it live while removing a test deal: the deal went, its
+       * $5,000 approved proposal stayed.
+       *
+       * Not currently reaching a money total (the proposals board filters both
+       * parents), which is exactly why it went unnoticed — it is an unexploded
+       * total, not an exploded one. `restoreCommercialOpportunity`'s ±2s
+       * cascade window covers these the same way it covers the invoices.
+       */
+      const { error: propDelErr } = await sb
+        .from("commercial_proposals")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("opportunity_id", id)
+        .is("deleted_at", null);
+      if (propDelErr) {
+        console.warn(
+          `[opportunities] could not tombstone proposals for deleted deal ${id}: ${propDelErr.message}`,
+        );
+      }
     }
   }
 
@@ -835,6 +867,16 @@ export async function restoreCommercialOpportunity(
   // Cascade restore matching invoices.
   await sb
     .from("commercial_invoices")
+    .update({ deleted_at: null })
+    .eq("opportunity_id", id)
+    .gte("deleted_at", cascadeWindowStart)
+    .lte("deleted_at", cascadeWindowEnd);
+
+  // …and the proposals. The delete now tombstones these (it used to leave
+  // them live), so an undo that restored the deal and left its proposal
+  // deleted would be the same asymmetry pointing the other way.
+  await sb
+    .from("commercial_proposals")
     .update({ deleted_at: null })
     .eq("opportunity_id", id)
     .gte("deleted_at", cascadeWindowStart)
