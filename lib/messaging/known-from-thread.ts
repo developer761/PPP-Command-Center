@@ -1,4 +1,4 @@
-import { scopeAndStage } from "./scope";
+import { scopeAndStage, scopeFromCustomer } from "./scope";
 import { addressFromCustomer } from "./address";
 import { emailFromCustomer } from "./email-from-customer";
 import { normalizeInbound } from "./inbound-normalize";
@@ -120,6 +120,55 @@ export function knownFromThread(input: {
         break;
       }
     }
+  }
+
+  /**
+   * A SCOPE WE STORED FROM THEIR OWN WORDS IS STILL THEIRS NEXT TURN —
+   * found 2026-10-16 replaying Kate's corpus, on 43% of first texts.
+   *
+   * scheduler-db writes a customer-typed scope to inquiry_scope so the next
+   * turn does not have to find it again. On that next turn it came back as
+   * `onFile`, resolveScope called it "record", and scopeFromCustomer went
+   * false for the rest of the conversation. Two rules turn on that flag and
+   * both broke:
+   *
+   *   A3   "project details" counts as collected only via scopeFromCustomer,
+   *        so `success` was refused as details_never_collected — and the one
+   *        satisfier left was confirm_scope
+   *   A9   which refuses confirm_scope only while scopeFromCustomer is true,
+   *        so the bot was then free, and forced, to read their own sentence
+   *        back at them
+   *
+   *   customer  "Hi, I need the outside of my house painted, 2 story colonial"
+   *   ...address, email, "Monday morning works"
+   *   BOT       success refused: details_never_collected
+   *
+   * The lead who describes the job in message one could never be booked.
+   * The simulator and the scenario engine re-read the whole thread with no
+   * row, so they kept calling it "customer" and stayed green.
+   *
+   * THE PROVENANCE IS IN THE THREAD, so no column is needed to keep it. What
+   * we store is exactly scopeFromCustomer() of one of their messages; if the
+   * value on file is that, they said it in this conversation, which is the
+   * EVENT A3 asks for. A lead-form scope matches no message they typed, so it
+   * stays "record" and still owes its confirm_scope — the distinction
+   * scopeFromCustomer exists to keep. If a customer happens to type the lead
+   * form's words verbatim, they have said it to us, and the same rule holds.
+   *
+   * This needs every customer message, not just the latest, which is why
+   * live-turn.ts now passes the whole thread as `messages` says it should.
+   *
+   * The stage floor follows, for the same reason it does on the turn they
+   * typed it: the step is done. Without it a conversation that deferred a
+   * price question (no flow intent) sat at stage 0 once the scope was on the
+   * row, and confirm_address was refused out_of_order.
+   */
+  if (scope.from === "record" && scope.scope) {
+    const same = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    const onFileScope = same(scope.scope);
+    const theyTypedIt = messages.some((m) =>
+      same(scopeFromCustomer(normalizeInbound(m.body, m.mediaCount ?? 0).text)) === onFileScope);
+    if (theyTypedIt) scope = { ...scope, from: "customer", stage: Math.max(scope.stage, 1) };
   }
 
   // The address can have arrived at ANY point. The live path gets that for

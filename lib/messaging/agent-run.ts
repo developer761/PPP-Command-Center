@@ -629,6 +629,19 @@ export async function runAgentTurn(
   // Reactions, emoji and photos become words before the model sees them.
   // Hatch cannot read any of these, which is why a thumbs-up derails it.
   const inbound = normalizeInbound(inboundRaw, opts.mediaCount ?? 0);
+  /**
+   * NOTHING HAS ARRIVED SINCE OUR LAST MESSAGE — a stall follow-up or a park
+   * re-open, which scheduler-db (live-turn.ts) now passes with an empty
+   * inbound and the whole thread as history. Until 2026-10-16 those turns
+   * were handed the customer's OLD message as though they had just sent it.
+   *
+   * Three places have to know, or the old bug comes back in another shape:
+   * the prompt must not say "The customer has just sent: The customer sent an
+   * empty message.", the language must not be read off that English
+   * narration, and the zip floor must not fire — "No problem. We at least
+   * need the zip code" concedes to a refusal, and silence is not one.
+   */
+  const nothingNew = inbound.kind === "empty";
 
   // A30: "match the language they wrote in and KEEP MATCHING IT. Do not
   // switch back to English on the next turn." Read from every customer
@@ -647,7 +660,7 @@ export async function runAgentTurn(
   // English customer's thumbs-up. The language is the customer's own words.
   const language = conversationLanguage([
     ...history.filter((t) => t.role === "customer").map((t) => t.text),
-    inbound.text,
+    ...(nothingNew ? [] : [inbound.text]),
   ]);
   /**
    * THE CUSTOMER'S OWN WORDS, FOR THE RULES THAT JUDGE WHAT THEY SAID.
@@ -761,9 +774,9 @@ export async function runAgentTurn(
       + `No sign-off, and nothing that reads as an ending.\n`
     : "";
 
-  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}${followUpLine}The customer has just sent:
-${quoteCustomer(inbound.description)}
-${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
+  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n` : ""}${stageLine}${followUpLine}${nothingNew
+    ? "Nothing new has arrived from the customer since your last message above.\n"
+    : `The customer has just sent:\n${quoteCustomer(inbound.description)}\n`}${reaction.guidance ? `\nHow to treat that: ${reaction.guidance}` : ""}
 
 Choose the next action.`;
 
@@ -1160,7 +1173,9 @@ Choose the next action.`;
        */
       addressAskedBefore: !kf.address
         && (opts.priorIntents ?? []).includes("ask_address")
-        && !asksSomething(ownWords),
+        && !asksSomething(ownWords)
+        // Silence is not a refusal. See nothingNew.
+        && !nothingNew,
       /**
        * A4: and the same for availability. Read from what the customer just
        * said, because that is where an answer to an availability question

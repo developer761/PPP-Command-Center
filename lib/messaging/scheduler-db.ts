@@ -20,7 +20,7 @@ import { resumeCallingIfSpent } from "./stalled-db";
 import { customerZone } from "./customer-clock";
 import { stageFromIntents } from "./agent-output";
 import { bumpStage, priorIntentsFor } from "./stage";
-import { knownFromThread } from "./known-from-thread";
+import { liveTurnInputs, type LiveRow, type LiveMessage } from "./live-turn";
 import { serviceZipCheck } from "./service-zip";
 import { recordOutbound } from "./outbound";
 import { resolveServices } from "./services";
@@ -334,10 +334,6 @@ export function schedulerDeps(): SchedulerDeps {
       const { data: msgs } = await sb.from("sms_messages")
         .select("id, direction, body, created_at, media_count")
         .eq("conversation_id", conv.id).order("created_at");
-      const history = (msgs ?? []).map((m) => ({
-        role: (m.direction === "inbound" ? "customer" : "assistant") as "customer" | "assistant",
-        text: m.body,
-      }));
       const lastInbound = [...(msgs ?? [])].reverse().find((m) => m.direction === "inbound");
       if (!lastInbound) return { kind: "skipped" as const, reason: "nothing to reply to" };
 
@@ -457,20 +453,19 @@ export function schedulerDeps(): SchedulerDeps {
       // these two answered "what do we hold" separately and drifted apart
       // four times in a day, every time with the sandbox knowing less.
       //
-      // The conversation row already remembers anything found on an earlier
-      // turn, so the latest inbound is the only message this has to read.
-      const resolved = knownFromThread({
-        onFile: {
-          inquiryScope: (conv as { inquiry_scope?: string | null }).inquiry_scope,
-          address: (conv as { customer_address?: string | null }).customer_address,
-          email: (conv as { customer_email?: string | null }).customer_email,
-        },
-        messages: [{
-          body: lastInbound.body,
-          mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
-        }],
-        stage: stage0,
+      // It reads the WHOLE thread now, not only the latest inbound. The row
+      // remembers what an earlier turn found but not that the customer said
+      // it, and treating our own stored copy of their words as the lead
+      // form's made the best leads unbookable. See live-turn.ts.
+      const turn = liveTurnInputs({
+        row: conv as LiveRow,
+        msgs: (msgs ?? []) as LiveMessage[],
+        stage0,
+        // See live-turn.ts: the newest message is ours, so nothing is "just sent".
+        speaksAfterUs: isStallFollowUp,
       });
+      if (!turn) return { kind: "skipped" as const, reason: "nothing to reply to" };
+      const resolved = turn.resolved;
       const stage = resolved.stage;
 
       // Persisted so the next turn does not have to find it again, and so the
@@ -554,7 +549,7 @@ export function schedulerDeps(): SchedulerDeps {
         ? await serviceZipCheck(sb, (conv as { customer_zip?: string | null }).customer_zip!)
         : null;
 
-      const res = await runAgentTurn(cfg.cfg, history.slice(0, -1), lastInbound.body, {
+      const res = await runAgentTurn(cfg.cfg, turn.history, turn.inboundBody, {
         hardNos: cfg.hardNos,
         classARules,
         workspaceFaqs,
@@ -681,7 +676,7 @@ export function schedulerDeps(): SchedulerDeps {
         // A26: acknowledge the photo they just sent. Read from the message
         // rather than the webhook because the turn runs seconds later, in a
         // different process, from the row.
-        mediaCount: (lastInbound as { media_count?: number }).media_count ?? 0,
+        mediaCount: turn.mediaCount,
       });
 
       if (!res.ok) {

@@ -26,6 +26,9 @@ import { addressesInThread, secondPropertyOutstanding } from "../lib/messaging/m
 import { jobRoute } from "../lib/messaging/offsite.ts";
 import { isAvailabilityStandOff } from "../lib/messaging/availability-ask.ts";
 import { coveredPhrase } from "../lib/messaging/agent-run.ts";
+import { persistedRow } from "../lib/messaging/live-turn.ts";
+import { retractsAvailability } from "../lib/messaging/availability.ts";
+import { requestedTime } from "../lib/messaging/appointment-time.ts";
 
 /** Rapport the model plausibly writes, including the shapes that broke things. */
 export const RAPPORTS = [
@@ -140,11 +143,44 @@ export function waysThrough(scenario) {
     ...history.map((h) => ({ body: h })),
     { body: text, mediaCount },
   ];
+  /**
+   * THE ROW, REPLAYED TURN BY TURN, as production builds it — 2026-10-16.
+   *
+   * This read the scope off the whole thread with no row each time, which
+   * production has never done: a live turn reads what earlier turns STORED
+   * on the conversation (live-turn.ts persistedRow is the same guarded write
+   * draftReply makes). The two answers differed in exactly the place that
+   * mattered. Here a scope typed in message one was "customer" for ever;
+   * live, it came back off the row as "record" from message two, and the lead
+   * who described the job could never be booked. 43% of Kate's first texts,
+   * and every check here green, because this harness was looking at a thread
+   * production never sees.
+   *
+   * The email is on the row too now. It was never passed as onFile here, so
+   * a scenario's known.email reached the renderer but not the derivation.
+   */
+  const stage0 = stageFromIntents(priorIntents);
+  let row = {
+    inquiry_scope: known.inquiryScope ?? null,
+    customer_address: known.address ?? null,
+    customer_email: known.email ?? null,
+  };
+  for (let i = 1; i < messages.length; i++) {
+    row = persistedRow(row, knownFromThread({
+      onFile: { inquiryScope: row.inquiry_scope, address: row.customer_address, email: row.customer_email },
+      messages: messages.slice(0, i),
+      stage: stage0,
+    }));
+  }
   const derived = knownFromThread({
-    onFile: { inquiryScope: known.inquiryScope, address: known.address },
+    onFile: { inquiryScope: row.inquiry_scope, address: row.customer_address, email: row.customer_email },
     messages,
-    stage: stageFromIntents(priorIntents),
+    stage: stage0,
   });
+  /** Production: `priorIntents[priorIntents.length - 1]` (scheduler-db). */
+  const lastIntent = scenario.lastIntent ?? priorIntents[priorIntents.length - 1] ?? undefined;
+  /** What WE said, oldest first. Only the scenario knows; empty otherwise. */
+  const botMessages = scenario.botMessages ?? [];
   const language = conversationLanguage(messages.map((m) => m.body));
   // EXACTLY WHAT agent-run PASSES. The rules read the customer's own words,
   // not the description, because a reaction quotes our sentence back — and a
@@ -209,7 +245,20 @@ export function waysThrough(scenario) {
      * description quotes our own question back, so a thumbs-up on "What days
      * work best for you this week?" read as a DAY supplied.
      */
-    availabilityGap: availabilityGapAcross(customerSaid),
+    availabilityGap: availabilityGapAcross(customerSaid, {
+      justAskedForAvailability: lastIntent === "ask_availability",
+    }),
+    /**
+     * FOUR MORE THE VALIDATOR GETS IN PRODUCTION, added 2026-10-16 with the
+     * row replay above. Each was undefined here, and every rule written
+     * `if (ctx.x && ...)` skipped instead of running: A2's coverage guard
+     * (serviceArea), the negative-reaction repeat guard (lastIntent and
+     * negativeReaction), and the bare "yes" that IS availability when it
+     * answers our availability question (justAskedForAvailability, above).
+     */
+    serviceArea: scenario.serviceArea ?? null,
+    lastIntent,
+    negativeReaction: inbound.reaction?.sentiment === "negative",
     /**
      * A FOURTH FIELD agent-run PASSES AND THIS DID NOT (agent-run.ts:531).
      *
@@ -239,7 +288,8 @@ export function waysThrough(scenario) {
     photos: mediaCount,
     known: {
       address: derived.address, scope: derived.inquiryScope,
-      phone: known.phone, email: known.email, zip: known.zip, state: known.state,
+      phone: known.phone, email: derived.email ?? known.email, zip: known.zip, state: known.state,
+      name: known.name,
     },
     customerText: ownWords,
     /**
@@ -271,8 +321,9 @@ export function waysThrough(scenario) {
      * Liked the message: "<our question>"`. ownWords is empty there, because
      * they said nothing, which is what this rule needs to know.
      */
-    availabilityGap: availabilityGap(ownWords),
-    offsiteReason: offsiteReasonFor(ownWords),
+    // agent-run: a retraction names the day it withdraws, so it is not a day supplied.
+    availabilityGap: retractsAvailability(ownWords) ? "both" : availabilityGap(ownWords),
+    offsiteReason: offsiteReasonFor(ownWords, language),
     covers: coveredPhrase(COVER_SERVICES, language === "es" ? "es" : "en"),
     language,
     now: HARNESS_NOW,
@@ -282,6 +333,20 @@ export function waysThrough(scenario) {
     customerMessages: history,
     availabilityStandOff: isAvailabilityStandOff(customerSaid),
     flowStage: track === "new_lead" ? derived.stage : undefined,
+    /**
+     * THE RENDERER FIELDS agent-run PASSES AND THIS DID NOT, added 2026-10-16:
+     * the track (nurture renders differently), our own past messages (Parity
+     * 7's say-it-once cap reads them), and A25's callback as scheduler-db
+     * supplies it: the row's unreachable_start_hour, never this message's —
+     * production always passes a callback object, so agent-run's
+     * statedConstraint fallback is the simulator's path, not the live one.
+     */
+    track,
+    botMessages,
+    callback: {
+      unreachableStartHour: known.unreachableStartHour ?? null,
+      requestedHour: requestedTime(ownWords)?.hour ?? null,
+    },
   });
 
   /**
