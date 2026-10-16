@@ -21,6 +21,7 @@ import { assertMessagingAccess } from "./auth";
 import { getProfileByUserId } from "@/lib/auth/profile";
 import { isTakeoverReason, stateOnRelease, type TakeoverReason } from "./handoff";
 import { queueTurnIfUnanswered } from "./turn-queue";
+import { agentLabel } from "./staff-copy";
 
 export type HandoffResult =
   | { ok: true; holder: string }
@@ -89,7 +90,7 @@ export async function claimConversation(input: {
   }
   return {
     ok: false,
-    error: `${now.owning_agent ?? "Somebody"} took this one first.`,
+    error: `${agentLabel(now.owning_agent) ?? "Somebody"} took this one first.`,
     heldBy: now.owning_agent ?? undefined,
   };
 }
@@ -146,7 +147,7 @@ export async function releaseConversation(input: {
   if (!now.owning_user_id) return { ok: true, holder: "" }; // already handed back
   return {
     ok: false,
-    error: `${now.owning_agent ?? "Somebody else"} is holding this one, so it is not yours to hand back.`,
+    error: `${agentLabel(now.owning_agent) ?? "Somebody else"} is holding this one, so it is not yours to hand back.`,
     heldBy: now.owning_agent ?? undefined,
   };
 }

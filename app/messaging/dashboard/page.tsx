@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 const isRange = (v: unknown): v is ReportRange =>
   v === "7d" || v === "30d" || v === "90d";
 
+/** Thousands separators, every count on the page. */
+const n = (x: number) => x.toLocaleString("en-US");
+
 const RANGES: { key: ReportRange; label: string }[] = [
   { key: "7d", label: "7 days" },
   { key: "30d", label: "30 days" },
@@ -61,21 +64,29 @@ export default async function MessagingDashboard({
   };
 
   const blockers = [
-    { done: ready.activeWorkspaces > 0, label: `${ready.activeWorkspaces} workspaces live`, detail: "NY, NJ and Florida — one timezone." },
-    { done: ready.missingNumbers === 0, label: ready.missingNumbers === 0 ? "Every live workspace has a number" : `${ready.missingNumbers} live workspace(s) with no number`, detail: "Without one it cannot send from the local area code the customer replies to." },
+    { done: ready.activeWorkspaces > 0, label: `${n(ready.activeWorkspaces)} workspaces live`, detail: "NY, NJ and Florida — one timezone." },
+    { done: ready.missingNumbers === 0, label: ready.missingNumbers === 0 ? "Every live workspace has a number" : `${n(ready.missingNumbers)} live ${ready.missingNumbers === 1 ? "workspace has" : "workspaces have"} no number`, detail: "Without one it cannot send from the local area code the customer replies to." },
     {
-      done: ready.optOuts > 0,
+      // Done only once Hatch's list is in as well. Salesforce's alone ticked
+      // this while the opt-outs page said Hatch's export was outstanding.
+      done: ready.optOuts > 0 && ready.optOutsFromHatch > 0,
       // Says WHICH of each, because 24,288 of these are email addresses and
       // "numbers suppressed" is not what a reader takes from that.
-      label: ready.optOuts > 0
-        ? `${ready.optOutPhones} numbers and ${ready.optOutEmails} addresses suppressed`
-        : "Opt-out list not imported",
-      detail: "Hard gate on the first send. Somebody who told Hatch or Salesforce to stop has told PPP to stop.",
+      label: ready.optOuts === 0
+        ? "Opt-out list not imported"
+        : ready.optOutsFromHatch > 0
+          ? `${n(ready.optOutPhones)} numbers and ${n(ready.optOutEmails)} email addresses suppressed`
+          : `Hatch's opt-out list not imported yet`,
+      detail: ready.optOuts > 0 && ready.optOutsFromHatch === 0
+        ? `${n(ready.optOutPhones)} numbers and ${n(ready.optOutEmails)} email addresses from Salesforce are suppressed, but people who told Hatch to stop are not on the list until its export is loaded.`
+        : "Checked before every send. Somebody who told Hatch or Salesforce to stop has told PPP to stop.",
     },
     { done: transport.live, label: transport.live ? "Carrier connected — messages are being delivered" : "Carrier not delivering", detail: transport.why },
-    { done: true, label: "Inbound replies can be received", detail: "POST /api/webhooks/sms-inbound, SNS-signature verified. Point the End User Messaging topic at it once the numbers exist." },
-    { done: ready.cronSecret, label: ready.cronSecret ? "Scheduler authenticated" : "CRON_SECRET not set", detail: "The tick refuses to run without it rather than running open." },
-    { done: ready.activeCampaigns > 0, label: ready.activeCampaigns > 0 ? `${ready.activeCampaigns} campaigns active` : "No campaigns active", detail: "Imported from Hatch, then editable under Automations." },
+    // Plain words. The endpoint and its signature check are for whoever wires
+    // the carrier up, and they are in the code beside the route.
+    { done: true, label: "Inbound replies can be received", detail: "Replies are accepted and checked as coming from the carrier. Connecting the numbers to it is part of switching the carrier on." },
+    { done: ready.cronSecret, label: ready.cronSecret ? "Scheduler is set up" : "Scheduler is not set up", detail: ready.cronSecret ? "Scheduled messages and follow-ups go out on time." : "Scheduled messages will not go out until the scheduler's key is set in the hosting settings." },
+    { done: ready.activeCampaigns > 0, label: ready.activeCampaigns > 0 ? `${n(ready.activeCampaigns)} campaigns active` : "No campaigns active", detail: "Imported from Hatch, then editable under Automations." },
   ];
   const remaining = blockers.filter((b) => !b.done).length;
 
@@ -120,7 +131,7 @@ export default async function MessagingDashboard({
       <nav className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
         <Link href={href({ ws: undefined })}
           className={[
-            "shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium flex items-center touch-manipulation",
+            "shrink-0 min-h-[44px] px-3 rounded-lg text-[12.5px] font-medium flex items-center touch-manipulation",
             !workspaceId ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
           ].join(" ")}>
           All
@@ -128,7 +139,7 @@ export default async function MessagingDashboard({
         {workspaces.map((w) => (
           <Link key={w.id} href={href({ ws: w.id })}
             className={[
-              "shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
+              "shrink-0 min-h-[44px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
               workspaceId === w.id ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
             ].join(" ")}>
             {w.name}
@@ -187,8 +198,8 @@ export default async function MessagingDashboard({
                   <tr key={`${a.agent}-${a.workspace}`}>
                     <td className="px-3 py-2.5 font-medium text-ppp-charcoal whitespace-nowrap">{a.agent}</td>
                     <td className="px-3 py-2.5 text-ppp-charcoal-600 whitespace-nowrap">{a.workspace}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{a.active}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{a.completed}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{n(a.active)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{n(a.completed)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{a.successPct}%</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{a.dropOffPct}%</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{a.takeOverPct}%</td>
@@ -224,7 +235,7 @@ export default async function MessagingDashboard({
                 {r.people.map((h) => (
                   <tr key={h.name}>
                     <td className="px-3 py-2.5 font-medium text-ppp-charcoal">{h.name}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{h.conversations}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{n(h.conversations)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{h.successPct}%</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{humanSeconds(h.medianHandleSeconds)}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{humanSeconds(h.medianResponseSeconds)}</td>

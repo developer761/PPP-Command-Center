@@ -108,5 +108,15 @@ export function summarise(rows: OptOutRate[]): { needsAttention: number; headlin
       headline: `${watch.length} number${watch.length === 1 ? "" : "s"} above ${formatRate(WATCH_RATE)}: ${watch.map((w) => w.name).join(", ")}.`,
     };
   }
+  // "Inside the normal range" over a list of "0 of 0 people" claimed a
+  // measurement nobody had made. With nothing to judge, say that instead.
+  if (rows.every((r) => r.verdict === "quiet")) {
+    return {
+      needsAttention: 0,
+      headline: rows.every((r) => r.peopleTexted === 0)
+        ? "No data yet: nobody has been texted in this period."
+        : `Not enough data yet: no number has texted ${MIN_PEOPLE} people in this period.`,
+    };
+  }
   return { needsAttention: 0, headline: "Every number is inside the normal range." };
 }

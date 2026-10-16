@@ -24,6 +24,7 @@ export function messagingDb() {
 
 
 import { selectAll, selectAllIn } from "./paging";
+import { agentLabel, isBotAgentKey } from "./staff-copy";
 // Re-exported so the many existing callers keep their import.
 export { selectAll, selectAllIn } from "./paging";
 
@@ -189,7 +190,7 @@ export async function suppressionCounts(
 
 export async function readinessChecks() {
   const sb = messagingDb();
-  const [{ count: optOutPhones }, { count: optOutEmails }, { count: workspaces }, { count: campaigns }, { data: numbered }] = await Promise.all([
+  const [{ count: optOutPhones }, { count: optOutEmails }, { count: workspaces }, { count: campaigns }, { data: numbered }, { count: optOutsFromHatch }] = await Promise.all([
     /**
      * ACTIVE suppressions, counted the way the GATE counts them.
      *
@@ -210,6 +211,11 @@ export async function readinessChecks() {
     sb.from("sms_sub_accounts").select("*", { count: "exact", head: true }).eq("is_active", true),
     sb.from("sms_campaigns").select("*", { count: "exact", head: true }).eq("is_active", true),
     sb.from("sms_sub_accounts").select("phone_e164").eq("is_active", true),
+    // Whether Hatch's own list is in. Salesforce's pull is a floor (see
+    // /messaging/settings/opt-outs): 31,601 rows from it alone ticked the
+    // launch check while that page said Hatch's export was outstanding.
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .eq("source", "hatch_import").is("opted_in_at", null),
   ]);
   const missingNumbers = (numbered ?? []).filter((w) => !w.phone_e164).length;
   /**
@@ -232,6 +238,7 @@ export async function readinessChecks() {
     optOuts: (optOutPhones ?? 0) + (optOutEmails ?? 0),
     optOutPhones: optOutPhones ?? 0,
     optOutEmails: optOutEmails ?? 0,
+    optOutsFromHatch: optOutsFromHatch ?? 0,
     activeWorkspaces: workspaces ?? 0,
     activeCampaigns: campaigns ?? 0,
     missingNumbers,
@@ -666,6 +673,8 @@ export type BoardCard = {
   state: string;
   outcome: string | null;
   last_message_at: string | null;
+  /** The fallback for a card's age when no message time is stored. */
+  created_at: string;
   preview: string | null;
   direction: string | null;
 };
@@ -694,14 +703,15 @@ export async function loadBoard(workspaceId?: string) {
     const q = sb.from("sms_conversations").select("id", { count: "exact", head: true });
     return workspaceId ? q.eq("workspace_id", workspaceId) : q;
   };
-  const [inboxRes, followupRes, soldRes] = await Promise.all([
+  const [allRes, inboxRes, followupRes, soldRes] = await Promise.all([
+    counting(),
     counting().neq("state", "ended"),
     counting().eq("state", "ended").eq("outcome", "schedule_follow_up"),
     counting().eq("state", "ended").eq("outcome", "success"),
   ]);
   let q = sb
     .from("sms_conversations")
-    .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at")
+    .select("id, customer_phone, customer_name, state, outcome, owning_agent, last_message_at, created_at")
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .limit(200);
   if (workspaceId) q = q.eq("workspace_id", workspaceId);
@@ -727,6 +737,7 @@ export async function loadBoard(workspaceId?: string) {
     const card: BoardCard = {
       id: r.id, customer_phone: r.customer_phone, customer_name: r.customer_name,
       owning_agent: r.owning_agent, state: r.state, outcome: r.outcome, last_message_at: r.last_message_at,
+      created_at: r.created_at,
       preview: newest.get(r.id)?.body ?? null,
       direction: newest.get(r.id)?.direction ?? null,
     };
@@ -745,7 +756,15 @@ export async function loadBoard(workspaceId?: string) {
     // Not derivable. The column says so on the page.
     field: columns.field.length,
   };
-  return { columns, counts };
+  /**
+   * Conversations on no column at all: ended as lost, discarded, bailed out,
+   * area not serviced, phone pricing. The list view counts them and the board
+   * does not, so without saying so "Total 10" over a board of 7 reads as three
+   * conversations gone missing.
+   */
+  const total = allRes.count ?? 0;
+  const offBoard = Math.max(0, total - counts.inbox - counts.followup - counts.sold);
+  return { columns, counts, total, offBoard };
 }
 
 /* ─────────────────────── human agent stats ───────────────────────── */
@@ -828,7 +847,7 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
   const prevFrom = new Date(now.getTime() - days * 2 * 86400_000);
 
   const select =
-    "id, state, outcome, qualification_stage, takeover_reason, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, campaign_version_id, sms_sub_accounts(name), sms_campaign_versions(sms_campaigns(name))";
+    "id, state, outcome, qualification_stage, takeover_reason, owning_agent, created_at, ended_at, first_outbound_at, first_inbound_at, last_message_at, campaign_version_id, sms_sub_accounts(name), sms_campaign_versions(sms_campaigns(name))";
 
   // Paged: this is two reporting windows' worth of conversations, and at real
   // lead volume sixty days is well past a thousand. A truncated numerator and
@@ -858,7 +877,14 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
       ...r,
       workspace_name: ws?.name ?? "—",
       trigger: cv?.sms_campaigns?.name ?? null,
-    } as ConversationRow & { id: string; last_message_at: string | null; trigger: string | null };
+      // Which of the bot's agents ran it. owning_agent was never selected, so
+      // agentPerformance fell back to "Emily" for every row. A person's name
+      // there means somebody took it over, and the AI agents table is about
+      // the bot, so that row stays the bot's.
+      agent: isBotAgentKey(r.owning_agent as string | null)
+        ? agentLabel(r.owning_agent as string, { workflow: true })
+        : null,
+    } as ConversationRow & { id: string; last_message_at: string | null; trigger: string | null; agent: string | null };
   });
 
   const current = all.filter((r) => new Date(r.created_at) >= from);
@@ -893,7 +919,10 @@ export async function loadReporting(range: ReportRange = "30d", workspaceId?: st
     for (const c of all) {
       const msgs = byConv.get(c.id) ?? [];
       const people = new Set(
-        msgs.filter((m) => m.direction === "outbound" && m.sent_by_agent).map((m) => m.sent_by_agent!)
+        // People only. A bot's workflow key in sent_by_agent is not somebody
+        // who replied, and listed it as a person beside the staff.
+        msgs.filter((m) => m.direction === "outbound" && m.sent_by_agent && !isBotAgentKey(m.sent_by_agent))
+          .map((m) => m.sent_by_agent!)
       );
       for (const name of people) {
         // Time from the customer's last message to this person's first reply

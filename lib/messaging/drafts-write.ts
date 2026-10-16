@@ -25,6 +25,7 @@ import { toE164 } from "./phone";
 import { bumpStage } from "./stage";
 import { recordOutbound } from "./outbound";
 import { reportWarn } from "@/lib/observability";
+import { agentLabel } from "./staff-copy";
 
 /**
  * How long somebody may hold a draft before it goes back in the queue.
@@ -237,7 +238,7 @@ export async function sendDraft(input: { draftId: string; body: string }): Promi
     await release(null);
     return {
       ok: false,
-      error: `${conv.owning_agent ?? "Somebody else"} has taken this conversation over, so this reply is theirs to send or drop.`,
+      error: `${agentLabel(conv.owning_agent) ?? "Somebody else"} has taken this conversation over, so this reply is theirs to send or drop.`,
     };
   }
   if (conv.state === "ended") {

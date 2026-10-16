@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { sendDraft, rejectDraft } from "@/lib/messaging/drafts-write";
 import { isStale, reviewReasonText, refusalText, wasEdited, type DraftForReview } from "@/lib/messaging/drafts";
+import { intentPhrase } from "@/lib/messaging/staff-copy";
 
 type Msg = { direction: "inbound" | "outbound"; body: string; createdAt: string };
 
@@ -132,8 +133,8 @@ export default function DraftReview({
           <p className="mt-0.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
             {reviewReasonText(draft.reviewReason)}
             {draft.intent && (
-              <> It is trying to <span className="font-mono text-[11px]">{draft.intent}</span>
-              {draft.confidence !== null && <>, {Math.round(draft.confidence * 100)}% sure</>}.</>
+              <> It is trying to {intentPhrase(draft.intent)}
+              {draft.confidence !== null && <> ({Math.round(draft.confidence * 100)}% sure)</>}.</>
             )}
           </p>
         </div>

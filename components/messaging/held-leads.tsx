@@ -16,6 +16,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { releaseHeldLeads, heldLeads } from "@/lib/messaging/lead-redrive-write";
 import type { HeldSummary } from "@/lib/messaging/lead-redrive-write";
+import { plainHoldReason } from "@/lib/messaging/staff-copy";
 
 /** Above this many, a release asks twice. */
 const CONFIRM_ABOVE = 25;
@@ -136,7 +137,7 @@ export function HeldLeads({ summary: initial }: { summary: HeldSummary }) {
           <li key={h.why} className="px-4 py-2 flex items-baseline gap-3 text-[12.5px]">
             <span className="font-mono text-ppp-charcoal-400 tabular-nums w-10 shrink-0">{h.count}</span>
             <span className="text-ppp-charcoal-600">
-              {h.why}
+              {plainHoldReason(h.why)}
               {h.oldestDays !== undefined && (
                 <span className="text-ppp-charcoal-400">
                   {" "}· oldest {h.oldestDays} day{h.oldestDays === 1 ? "" : "s"}

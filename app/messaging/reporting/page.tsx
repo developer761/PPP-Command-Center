@@ -73,7 +73,7 @@ export default async function ReportingConsole({
         <nav className="inline-flex rounded-lg bg-ppp-charcoal-100 p-0.5" aria-label="Date range">
           {RANGES.map((v) => (
             <Link key={v} href={q({ range: v })}
-              className={["min-h-[34px] px-3 flex items-center rounded-[6px] text-[12.5px] font-medium touch-manipulation",
+              className={["min-h-[44px] px-3 flex items-center rounded-[6px] text-[12.5px] font-medium touch-manipulation",
                 v === range ? "bg-white text-ppp-charcoal shadow-sm" : "text-ppp-charcoal-500"].join(" ")}>
               {v === "7d" ? "7 days" : v === "30d" ? "30 days" : "90 days"}
             </Link>
@@ -125,7 +125,7 @@ export default async function ReportingConsole({
                 </span>
               </div>
               <p className="mt-0.5 text-[11.5px] text-ppp-charcoal-500 leading-snug">
-                {o.optOuts} of {o.peopleTexted} people. {o.note}
+                {o.peopleTexted > 0 && <>{o.optOuts.toLocaleString()} of {o.peopleTexted.toLocaleString()} people. </>}{o.note}
               </p>
             </li>
           ))}
@@ -278,7 +278,7 @@ export default async function ReportingConsole({
                   {TAKEOVER_LABEL[t.reason] ?? t.reason}
                 </span>
                 <span className="shrink-0 text-[13px] tabular-nums text-ppp-charcoal-500">
-                  {t.count} · {t.pct}%
+                  {t.count.toLocaleString()} · {t.pct}%
                 </span>
               </li>
             ))}
@@ -398,7 +398,7 @@ export default async function ReportingConsole({
           <ul className="divide-y divide-ppp-charcoal-100">
             {issues.map((i) => (
               <li key={i.label} className="px-4 py-3 flex gap-3">
-                <span className="shrink-0 text-[15px] font-bold text-ppp-orange-700 tabular-nums">{i.n}</span>
+                <span className="shrink-0 text-[15px] font-bold text-ppp-orange-700 tabular-nums">{i.n.toLocaleString()}</span>
                 <div className="min-w-0">
                   <p className="text-[13px] font-medium text-ppp-charcoal">{i.label}</p>
                   <p className="mt-0.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">{i.hint}</p>

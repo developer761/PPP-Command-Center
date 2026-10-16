@@ -65,7 +65,7 @@ describe("decideIntake — a lead with no usable phone is triage, not a routing 
     const d = decideIntake({ sfRecordId: "00Q4", phone: "555-1234", state: "NY" }, ctx);
     if (d.action === "triage") {
       expect(d.reason).toBe("no_contactable_phone");
-      expect(d.detail).toContain("7-digit");
+      expect(d.detail).toContain("7 digits");
       expect(d.detail).not.toContain("555-1234");
       expect(d.detail).not.toMatch(/\d{4,}/);
     } else throw new Error("expected triage");
@@ -81,7 +81,13 @@ describe("decideIntake — a lead with no usable phone is triage, not a routing 
     const out = describeUntextableNumber("+44 7700 9");
     expect(out).toMatch(/country code/i);
     expect(out).not.toMatch(/7700/);
-    expect(out).toMatch(/7-digit/);
+    expect(out).toMatch(/7 digits/);
+  });
+
+  it("does not call ten digits the wrong length, and says one digit in English", () => {
+    expect(describeUntextableNumber("(055) 123-4567")).toBe("10 digits, but not a valid US number");
+    expect(describeUntextableNumber("12345678")).toBe("8 digits, where a US number has 10");
+    expect(describeUntextableNumber("1")).toBe("1 digit, where a US number has 10");
   });
 
   it("never lets a long digit run into the reason, whatever arrives", () => {

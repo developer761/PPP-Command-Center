@@ -13,6 +13,7 @@
  */
 import { toE164, type E164 } from "./phone";
 import { routeLead, type RoutableWorkspace } from "./routing";
+import { untextableDigits } from "./staff-copy";
 
 export type IncomingLead = {
   sfRecordId: string;
@@ -91,8 +92,10 @@ export type IntakeContext = {
 export function describeUntextableNumber(raw: string | null | undefined): string {
   const digits = (raw ?? "").replace(/\D/g, "");
   if (!digits) return "no phone on the record";
-  const plus = /^\s*\+/.test(raw ?? "") ? ", given with a country code" : "";
-  return `a ${digits.length}-digit number${plus}, which is not one we can text`;
+  // "a 10-digit number, which is not one we can text" was wrong on its face
+  // (ten digits is what a US number has) and "a 8-digit" was not English. The
+  // count is still the whole diagnosis; untextableDigits says it correctly.
+  return untextableDigits(digits.length, /^\s*\+/.test(raw ?? ""));
 }
 
 export function decideIntake(lead: IncomingLead, ctx: IntakeContext): IntakeDecision {

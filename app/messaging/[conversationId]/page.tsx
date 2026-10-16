@@ -9,6 +9,7 @@ import { ThreadTeach } from "@/components/messaging/thread-teach";
 import { ThreadComposer } from "@/components/messaging/thread-composer";
 import { transportChoice } from "@/lib/messaging/transport-config";
 import type { AuthoredTurn } from "@/lib/messaging/authoring";
+import { agentLabel, isBotAgentKey } from "@/lib/messaging/staff-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,9 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
   // the badge said the first one for both, because nothing ever set an owner.
   const me = await assertMessagingAccess();
   const isMine = c.owning_user_id === me;
+  // The person holding it. A bot's workflow key ("lead_nurture") is not a
+  // person, and "lead_nurture has it" read as though somebody had.
+  const holder = isBotAgentKey(c.owning_agent) ? null : c.owning_agent;
   const turns: AuthoredTurn[] = messages
     .filter((m) => m.body?.trim())
     .map((m) => ({ who: m.direction === "inbound" ? "customer" as const : "agent" as const, text: m.body }));
@@ -80,8 +84,8 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
                 ? "AI working"
                 : isMine
                   ? "You have it"
-                  : c.owning_agent
-                    ? `${c.owning_agent} has it`
+                  : holder
+                    ? `${holder} has it`
                     : "Needs a person"}
           </span>
           {/* Why this send is lawful, surfaced rather than buried. The lead
@@ -95,7 +99,7 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
       <HandoffBar
         conversationId={c.id}
         state={c.state}
-        holderName={c.owning_agent}
+        holderName={holder}
         isMine={isMine}
         takeoverAt={c.takeover_at}
         botReason={c.takeover_reason}
@@ -123,7 +127,7 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
                   <p className="whitespace-pre-wrap break-words">{m.body}</p>
                   <p className={`mt-1.5 text-[10px] font-mono ${out ? "text-white/60" : "text-ppp-charcoal-400"}`}>
                     {when(m.created_at)}
-                    {m.sent_by_agent ? ` · ${m.sent_by_agent}` : ""}
+                    {m.sent_by_agent ? ` · ${agentLabel(m.sent_by_agent)}` : ""}
                     {m.channel === "email" ? " · email" : ""}
                   </p>
                 </div>
@@ -141,7 +145,7 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
         conversationId={c.id}
         ended={ended}
         heldByOther={!!c.owning_user_id && !isMine}
-        holderName={c.owning_agent}
+        holderName={holder}
       />
 
       {/* WHETHER SENDING IS ON IS A RUNTIME FACT, and this screen asserted it

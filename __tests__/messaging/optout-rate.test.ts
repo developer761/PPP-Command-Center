@@ -151,3 +151,15 @@ describe("reading every row, not the first thousand", () => {
     ).rejects.toThrow(/200,000 rows/);
   });
 });
+
+describe("a period with nothing to judge", () => {
+  const blank = (name: string, people: number, outs: number) =>
+    ({ workspaceId: name, name, peopleTexted: people, optOuts: outs });
+  it("says there is no data rather than that everything is normal", () => {
+    const none = summarise(rank([blank("A", 0, 0), blank("B", 0, 0)]));
+    expect(none.headline).toMatch(/no data yet/i);
+    expect(none.headline).not.toMatch(/normal range/i);
+    const few = summarise(rank([blank("A", 3, 0), blank("B", 0, 0)]));
+    expect(few.headline).toMatch(/not enough data/i);
+  });
+});

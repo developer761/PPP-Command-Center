@@ -29,6 +29,7 @@ import { gateDeps } from "./gate-deps";
 import { toE164 } from "./phone";
 import { queueTurnIfUnanswered } from "./turn-queue";
 import { recordOutbound } from "./outbound";
+import { agentLabel } from "./staff-copy";
 
 export type HumanReplyResult =
   | { ok: true; body: string }
@@ -62,7 +63,7 @@ export async function sendHumanReply(input: {
   if (conv.owning_user_id && conv.owning_user_id !== userId) {
     return {
       ok: false,
-      error: `${conv.owning_agent ?? "Somebody else"} has taken this conversation over, so it is theirs to answer.`,
+      error: `${agentLabel(conv.owning_agent) ?? "Somebody else"} has taken this conversation over, so it is theirs to answer.`,
     };
   }
   if (conv.state === "ended") {

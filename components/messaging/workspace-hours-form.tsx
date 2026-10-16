@@ -272,13 +272,17 @@ export default function WorkspaceHoursForm({
         </div>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {([[30, 90, "30s–1½ min"], [60, 180, "1–3 min"], [120, 300, "2–5 min"], [0, 0, "Off"]] as const)
+          {/* Labelled by describeDelay, so a preset and the line under it
+              say the same wait the same way ("30s–1½ min" sat above
+              "Waits 30s–1 min 30s"). */}
+          {([[30, 90], [60, 180], [120, 300], [0, 0]] as const)
+            .map(([lo, hi]) => [lo, hi, lo === 0 && hi === 0 ? "Off" : describeDelay({ minSeconds: lo, maxSeconds: hi }).replace(/^Waits /, "")] as const)
             .map(([lo, hi, label]) => (
               <button key={label} type="button"
                 onClick={() => { setDelayMin(String(lo)); setDelayMax(String(hi)); }}
                 aria-pressed={Number(delayMin) === lo && Number(delayMax) === hi}
                 className={[
-                  "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+                  "min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
                   Number(delayMin) === lo && Number(delayMax) === hi
                     ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                     : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",

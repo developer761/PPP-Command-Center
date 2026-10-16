@@ -154,12 +154,17 @@ export default function MessagingSidebar({
           href="/messaging"
           onClick={onNavigate}
           className={[
-            "flex items-center justify-between gap-2 rounded-lg px-2.5 min-h-[40px] text-[13px] touch-manipulation",
+            "flex items-center justify-between gap-2 rounded-lg px-2.5 min-h-[44px] text-[13px] touch-manipulation",
             !activeWs ? "bg-ppp-charcoal-50 font-semibold text-ppp-charcoal" : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50",
           ].join(" ")}
         >
+          {/* A count of WORKSPACES, said so. A bare "16" beside "All
+              workspaces" read as sixteen conversations, next to a board that
+              showed seven. */}
           All workspaces
-          <span className="text-[11px] font-mono text-ppp-charcoal-400">{workspaces.length}</span>
+          <span className="text-[11px] text-ppp-charcoal-400 tabular-nums">
+            {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}
+          </span>
         </Link>
 
         {[...byRegion.entries()].map(([region, list]) => {
@@ -206,7 +211,7 @@ export default function MessagingSidebar({
                     href={`/messaging?ws=${w.id}`}
                     onClick={onNavigate}
                     className={[
-                      "group flex items-center gap-2 rounded-lg pl-2 pr-2.5 min-h-[40px] text-[13px] touch-manipulation transition-colors",
+                      "group flex items-center gap-2 rounded-lg pl-2 pr-2.5 min-h-[44px] text-[13px] touch-manipulation transition-colors",
                       on ? "bg-ppp-orange-50 text-ppp-orange-700 font-semibold" : "text-ppp-charcoal-600 hover:bg-ppp-charcoal-50",
                     ].join(" ")}
                   >

@@ -4,6 +4,7 @@ import {
   END_STATES, type BoardColumnKey, type BoardCard,
 } from "@/lib/messaging/db";
 import { formatUs, type E164 } from "@/lib/messaging/phone";
+import { agentLabel, isBotAgentKey, BOT_LABEL } from "@/lib/messaging/staff-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function ConversationsBoard({
     isList ? loadReport({ workspaceId, outcome: sp.outcome, page: Number(sp.page) || 1 }) : Promise.resolve(null),
   ]);
   // The cards are the most recent 200; the counts are the real totals.
-  const { columns, counts } = board;
+  const { columns, counts, offBoard } = board;
   const ws = workspaces.find((w) => w.id === workspaceId);
   const wsQ = workspaceId ? `&ws=${workspaceId}` : "";
   const href = (c: BoardColumnKey) => `/messaging?col=${c}${wsQ}`;
@@ -65,7 +66,7 @@ export default async function ConversationsBoard({
               return (
                 <Link key={v} href={`/messaging?view=${v}${wsQ}`}
                   className={[
-                    "min-h-[34px] px-3 flex items-center rounded-[6px] text-[12.5px] font-medium touch-manipulation",
+                    "min-h-[44px] px-3 flex items-center rounded-[6px] text-[12.5px] font-medium touch-manipulation",
                     on ? "bg-white text-ppp-charcoal shadow-sm" : "text-ppp-charcoal-500",
                   ].join(" ")}>
                   {label}
@@ -81,7 +82,7 @@ export default async function ConversationsBoard({
               return (
                 <Link key={c.key} href={href(c.key)} aria-current={on ? "page" : undefined}
                   className={[
-                    "shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 min-h-[38px] text-[13px] font-medium touch-manipulation",
+                    "shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 min-h-[44px] text-[13px] font-medium touch-manipulation",
                     on ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
                   ].join(" ")}>
                   <span className="whitespace-nowrap">{c.label}</span>
@@ -99,18 +100,21 @@ export default async function ConversationsBoard({
         <div className="px-4 py-4 pb-safe">
           <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="text-[11px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Total conversations</span>
-            <span className="text-[20px] font-bold text-ppp-charcoal tabular-nums leading-none">{report.total}</span>
+            <span className="text-[20px] font-bold text-ppp-charcoal tabular-nums leading-none">{report.total.toLocaleString()}</span>
+            {/* Every conversation, however it ended. The board shows only the
+                ones in its four columns, so the two totals differ on purpose. */}
+            <span className="text-[12px] text-ppp-charcoal-500">however they ended, including ones not on the board</span>
           </div>
 
           <nav aria-label="Filter by disposition" className="-mx-4 px-4 mb-3 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Link href={`/messaging?view=list${wsQ}`}
-              className={["shrink-0 rounded-full px-3 min-h-[34px] flex items-center text-[12.5px] font-medium touch-manipulation",
+              className={["shrink-0 rounded-full px-3 min-h-[44px] flex items-center text-[12.5px] font-medium touch-manipulation",
                 !sp.outcome ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600"].join(" ")}>
               All
             </Link>
             {END_STATES.map((e) => (
               <Link key={e.key} href={`/messaging?view=list&outcome=${e.key}${wsQ}`}
-                className={["shrink-0 whitespace-nowrap rounded-full px-3 min-h-[34px] flex items-center text-[12.5px] font-medium touch-manipulation",
+                className={["shrink-0 whitespace-nowrap rounded-full px-3 min-h-[44px] flex items-center text-[12.5px] font-medium touch-manipulation",
                   sp.outcome === e.key ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600"].join(" ")}>
                 {e.label}
               </Link>
@@ -134,14 +138,23 @@ export default async function ConversationsBoard({
                       <span className="font-semibold text-ppp-charcoal truncate min-w-0">
                         {r.customer_name || formatUs(r.customer_phone as E164)}
                       </span>
+                      {/* How long ago, as on the board. The duration sat here and
+                          read "—" whenever it could not be worked out, which
+                          looked like a missing timestamp. */}
                       <span className="shrink-0 text-[11px] font-mono text-ppp-charcoal-400">
-                        {humanDuration(r.durationMins)}
+                        {ago(r.last_message_at ?? r.started_at)}
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-ppp-charcoal-500">
                       <span className="truncate">{r.workspace_name}</span>
                       <span className="text-ppp-charcoal-300">·</span>
-                      <span>{r.agent ?? "Not assigned"}</span>
+                      <span>{agentLabel(r.agent) ?? "Not assigned"}</span>
+                      {r.durationMins !== null && (
+                        <>
+                          <span className="text-ppp-charcoal-300">·</span>
+                          <span>lasted {humanDuration(r.durationMins)}</span>
+                        </>
+                      )}
                       {r.outcome && (
                         <span className="ml-auto shrink-0 rounded-full bg-ppp-charcoal-50 px-2 py-0.5 text-[11px] font-medium text-ppp-charcoal-600 capitalize">
                           {r.outcome.replace(/_/g, " ")}
@@ -168,6 +181,14 @@ export default async function ConversationsBoard({
         <div className="lg:hidden">
           <Column col={BOARD_COLUMNS.find((c) => c.key === active)!} cards={columns[active]} total={counts[active]} />
         </div>
+        {offBoard > 0 && (
+          <p className="mb-3 text-[12px] text-ppp-charcoal-500 leading-relaxed">
+            {offBoard.toLocaleString()} more {offBoard === 1 ? "conversation" : "conversations"} ended
+            another way (lost, discarded, area not covered and the like) and
+            {offBoard === 1 ? " is" : " are"} not on any column.{" "}
+            <Link href={`/messaging?view=list${wsQ}`} className="underline underline-offset-2">See them in the list</Link>.
+          </p>
+        )}
         {/* Desktop: all four, as Hatch shows them. */}
         <div className="hidden lg:grid lg:grid-cols-4 lg:gap-3 lg:items-start">
           {BOARD_COLUMNS.map((c) => (
@@ -218,11 +239,10 @@ function Column({
         // Better an honest empty column than one that looks populated and is
         // quietly wrong about which conversations belong in it.
         <div className="rounded-xl border border-dashed border-ppp-charcoal-200 bg-white/60 px-4 py-4 text-center">
-          <p className="text-[12.5px] font-medium text-ppp-charcoal-600">Not wired up yet</p>
+          <p className="text-[12.5px] font-medium text-ppp-charcoal-600">Not in use yet</p>
           <p className="mt-1 text-[12px] text-ppp-charcoal-500 leading-relaxed">
-            This one is about the estimator, not the customer. PPP has not said
-            what puts a conversation in or out of it, so it is left empty rather
-            than filled with a guess.
+            This will hold conversations waiting on an update from the
+            estimator. Nothing is sorted into it yet.
           </p>
         </div>
       )}
@@ -242,7 +262,7 @@ function Column({
                 <span className="font-semibold text-ppp-charcoal truncate min-w-0">
                   {c.customer_name || formatUs(c.customer_phone as E164)}
                 </span>
-                <span className="shrink-0 text-[11px] font-mono text-ppp-charcoal-400">{ago(c.last_message_at)}</span>
+                <span className="shrink-0 text-[11px] font-mono text-ppp-charcoal-400">{ago(c.last_message_at ?? c.created_at)}</span>
               </div>
               {c.preview && (
                 // Two lines. A phone card that grows with the message stops
@@ -259,18 +279,18 @@ function Column({
                     the ones the bot is correctly working — which reads as a
                     pile of neglected leads. An unowned conversation is only
                     waiting on somebody when it is in human_active. */}
-                <span className={[
-                  "truncate",
-                  !c.owning_agent && c.state === "human_active" ? "font-semibold text-ppp-orange-700" : "",
-                ].join(" ")}>
-                  {c.owning_agent
-                    ? c.owning_agent
-                    : c.state === "human_active"
-                      ? "Needs a person"
-                      : c.state === "ended"
-                        ? "Closed"
-                        : "Emily"}
-                </span>
+                {/* A bot's workflow key ("lead_nurture") is not a person, so it
+                    reads as the bot; and a conversation in human_active held
+                    only by a key is one nobody has picked up. */}
+                {(() => {
+                  const person = isBotAgentKey(c.owning_agent) ? null : c.owning_agent;
+                  const waiting = !person && c.state === "human_active";
+                  return (
+                    <span className={["truncate", waiting ? "font-semibold text-ppp-orange-700" : ""].join(" ")}>
+                      {person ?? (waiting ? "Needs a person" : c.state === "ended" ? "Closed" : BOT_LABEL)}
+                    </span>
+                  );
+                })()}
               </div>
             </Link>
           </li>
