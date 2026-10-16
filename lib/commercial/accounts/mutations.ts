@@ -164,11 +164,15 @@ export async function softDeleteCommercialAccount(
   // has any invoice with money on it. That money is real — the deal
   // history stays with the account; if the user really wants it gone,
   // they must void the invoices first.
-  const { data: invoiceRows } = await sb
+  const { data: invoiceRows, error: invoiceErr } = await sb
     .from("commercial_invoices")
     .select("id, paid_cents")
     .eq("account_id", id)
     .is("deleted_at", null);
+  // A failed read is not "no paid invoices" — it is the guard failing open.
+  if (invoiceErr || !invoiceRows) {
+    return { ok: false, error: "Couldn't check this account's invoices, so nothing was deleted. Please try again." };
+  }
   const invoices = (invoiceRows ?? []) as { id: string; paid_cents: number }[];
   const paidInvoices = invoices.filter((i) => (i.paid_cents ?? 0) > 0);
   if (paidInvoices.length > 0) {
@@ -179,15 +183,6 @@ export async function softDeleteCommercialAccount(
     };
   }
 
-  const { error } = await sb
-    .from("commercial_accounts")
-    .update({
-      deleted_at: new Date().toISOString(),
-      updated_by_user_id: deletedByUserId ?? null,
-    })
-    .eq("id", id);
-  if (error) return { ok: false, error: error.message };
-
   // Cascade: an account is the top-level container — deleting it means the whole
   // relationship is gone, so its DEALS must go too. Otherwise the deals only
   // disappear from the pipeline (which filters on account.deleted_at) but linger
@@ -195,25 +190,71 @@ export async function softDeleteCommercialAccount(
   // reports, AR, and the global Invoices list — showing stale revenue for a
   // company that no longer exists. Soft-deleting each deal in turn cascades that
   // deal's unpaid invoices + Field Ops work orders, so this one loop cleans
-  // deals + invoices + jobs across the whole platform. The account-level paid-
-  // invoice guard above already ran, so no per-deal delete can be blocked here.
+  // deals + invoices + jobs across the whole platform.
+  //
+  // THE DEALS GO FIRST, AND THE ACCOUNT ONLY IF ALL OF THEM WENT. This used to
+  // delete the account and then run the deals through
+  // `softDeleteCommercialOpportunity(...).catch(() => undefined)` — but that
+  // function RETURNS `{ ok:false }`, so the catch caught nothing, and the
+  // account reported deleted with live deals (and their invoices) left under
+  // it. The account-level paid-invoice guard above does not cover every block:
+  // a deal's own guard reads by `opportunity_id`, and a read or write can fail.
   // Dynamic import breaks the account ↔ opportunity module cycle.
-  try {
-    const { data: deals } = await sb
+  const { data: deals, error: dealsErr } = await sb
+    .from("commercial_opportunities")
+    .select("id, title")
+    .eq("account_id", id)
+    .is("deleted_at", null);
+  if (dealsErr || !deals) {
+    return { ok: false, error: "Couldn't read this account's deals, so nothing was deleted. Please try again." };
+  }
+  const dealRows = deals as { id: string; title: string | null }[];
+  if (dealRows.length > 0) {
+    const { softDeleteCommercialOpportunity } = await import("@/lib/commercial/opportunities/mutations");
+    const failures: string[] = [];
+    for (const deal of dealRows) {
+      let res: { ok: true } | { ok: false; error: string };
+      try {
+        res = await softDeleteCommercialOpportunity(deal.id, deletedByUserId);
+      } catch (err) {
+        res = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+      if (!res.ok) failures.push(`${deal.title?.trim() || "Untitled deal"} (${res.error})`);
+    }
+    // Re-read rather than trust the tally: what matters is whether any live
+    // deal is still under this account, whoever deleted the others.
+    const { data: still, error: stillErr } = await sb
       .from("commercial_opportunities")
       .select("id")
       .eq("account_id", id)
       .is("deleted_at", null);
-    const dealIds = ((deals ?? []) as { id: string }[]).map((d) => d.id);
-    if (dealIds.length > 0) {
-      const { softDeleteCommercialOpportunity } = await import("@/lib/commercial/opportunities/mutations");
-      for (const dealId of dealIds) {
-        await softDeleteCommercialOpportunity(dealId, deletedByUserId).catch(() => undefined);
-      }
+    const left = stillErr || !still ? null : still.length;
+    if (left === null || left > 0) {
+      const gone = left === null ? dealRows.length - failures.length : dealRows.length - left;
+      const shown = failures.slice(0, 3).join("; ");
+      return {
+        ok: false,
+        error:
+          `The account was NOT deleted — ${left === null ? "its deals couldn't be re-checked" : `${left} of its ${dealRows.length} deal${dealRows.length === 1 ? "" : "s"} couldn't be deleted`}` +
+          `${shown ? `: ${shown}${failures.length > 3 ? "…" : ""}` : ""}.` +
+          `${gone > 0 ? ` ${gone} other deal${gone === 1 ? " was" : "s were"} deleted.` : ""}` +
+          " Sort those out and delete the account again.",
+        blockingCount: left ?? undefined,
+      };
     }
-  } catch (err) {
-    console.warn("[accounts] deal cascade delete failed:", err);
   }
+
+  const { data: gone, error } = await sb
+    .from("commercial_accounts")
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_by_user_id: deletedByUserId ?? null,
+    })
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if ((gone ?? []).length === 0) return { ok: false, error: "This account was already deleted." };
 
   // Belt-and-braces: tear down any Field Ops work order tied straight to the
   // ACCOUNT (a one-off with no deal) — the deal cascade above already handles
