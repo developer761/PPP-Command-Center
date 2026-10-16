@@ -422,6 +422,60 @@ try {
       : `${sfInvByDeal.size} deal(s) with one`,
   );
   /*
+   * A RECEIPT MARY FILED MUST BE ATTACHED TO SOMETHING.
+   *
+   * `attachPurchaseReceipt` uploads the document, then links it with an
+   * UPDATE. PostgREST returns `error === null` when an update matches no rows,
+   * and the function checked only `error` — so if the purchase had been
+   * deleted or edited in another tab, the file was stored, the link was never
+   * written, and she was told it saved. The purchase usually still showed an
+   * older receipt, so there was no signal at all.
+   *
+   * 25 documents, $31,071.17 of named amounts, were stranded that way before
+   * the guard landed (2026-10-16). The function now fails loudly and tidies up
+   * the upload; this watches the outcome, because the bug was invisible in
+   * exactly the place a person would look.
+   */
+  {
+    const docs = (
+      await pageAll("commercial_documents", "id,notes,deleted_at", ["id"])
+    ).filter((d) => !d.deleted_at && String(d.notes ?? "").startsWith("Receipt — "));
+    const purchases = await pageAll(
+      "commercial_project_purchases",
+      "id,receipt_document_id,deleted_at",
+      ["id"],
+    );
+    const linked = new Set(
+      purchases.filter((p) => !p.deleted_at && p.receipt_document_id).map((p) => p.receipt_document_id),
+    );
+    const orphans = docs.filter((d) => !linked.has(d.id));
+    let named = 0;
+    for (const d of orphans) {
+      const m = /\(([\d.]+)\)\s*$/.exec(String(d.notes ?? ""));
+      if (m) named += Math.round(Number(m[1]) * 100);
+    }
+    check(
+      "there are filed receipts to check",
+      docs.length > 0,
+      `${docs.length} receipt document(s)`,
+    );
+    /*
+     * BASELINE, not zero. The 25 pre-existing orphans are real files Mary
+     * uploaded and real costs that still need a receipt against them — they
+     * are a cleanup for a person, not something a script should fail on
+     * forever. What must never happen again is the number GROWING.
+     */
+    const KNOWN_ORPHANED_RECEIPTS = 25;
+    check(
+      "no receipt has been filed against nothing since the guard landed",
+      orphans.length <= KNOWN_ORPHANED_RECEIPTS,
+      orphans.length > KNOWN_ORPHANED_RECEIPTS
+        ? `${orphans.length} orphaned (was ${KNOWN_ORPHANED_RECEIPTS}) — ${money(named)} named`
+        : `${orphans.length} orphaned, ${money(named)} named — awaiting a person, not growing`,
+    );
+  }
+
+  /*
    * 🔴 THE STATEMENT WE SEND A GC MUST NOT EXCEED THE LIST WE CHASE.
    *
    * `isSalesforceCarryoverInvoice` has excluded the migrated `SF-####`

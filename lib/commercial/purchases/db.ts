@@ -547,15 +547,52 @@ export async function attachPurchaseReceipt(input: {
   if (!uploaded.ok) return uploaded;
 
   const sb = commercialDb();
-  const { error } = await sb
+  /*
+   * 🔴 A ZERO-ROW UPDATE IS NOT AN ERROR, AND THIS REPORTED SUCCESS FOR ONE.
+   *
+   * This checked `error` alone. PostgREST returns `error === null` when an
+   * update matches NOTHING, so if the purchase had been deleted or edited in
+   * another tab, the document was uploaded, the link was never written, and
+   * Mary was told the receipt saved. The file stays live, attached to nothing.
+   *
+   * She gets no signal at all, because the purchase usually still shows an
+   * OLDER receipt — so the screen looks right.
+   *
+   * Measured on the live book 2026-10-16: 54 orphaned live receipt documents,
+   * 25 of them carrying the note THIS function writes — "Receipt — Sherwin
+   * Williams (4550.10)", "Receipt — Aboffs (1234.58)" — $31,071.17 named
+   * across them, every one uploaded by Mary.
+   *
+   * `updatePurchase` sixty lines up already does this correctly, on the same
+   * table, with the same concurrency case spelled out. This is that, plus the
+   * audit row the attach never wrote: across ~900 attachments the audit log
+   * holds ZERO update rows for a receipt link, which is why the orphans cannot
+   * be told apart after the fact.
+   */
+  const { data: linked, error } = await sb
     .from("commercial_project_purchases")
     .update({ receipt_document_id: uploaded.document.id, updated_at: new Date().toISOString() })
     .eq("id", input.purchaseId)
-    .is("deleted_at", null);
-  if (error) {
+    .is("deleted_at", null)
+    .select(COLS)
+    .maybeSingle();
+  if (error || !linked) {
+    // Don't strand the upload: it belongs to nothing now.
     await softDeleteDocument(uploaded.document.id, input.actorUserId).catch(() => {});
-    return { ok: false, error: error.message };
+    return {
+      ok: false,
+      error: error
+        ? error.message
+        : "This purchase changed in another tab — reload and attach the receipt again.",
+    };
   }
+  await logUpdate(
+    "commercial_project_purchases",
+    input.purchaseId,
+    purchase,
+    linked as CommercialProjectPurchase,
+    input.actorUserId,
+  );
   if (purchase.receipt_document_id && purchase.receipt_document_id !== uploaded.document.id) {
     await softDeleteDocument(purchase.receipt_document_id, input.actorUserId).catch(() => {});
   }
@@ -566,12 +603,25 @@ export async function removePurchaseReceipt(purchaseId: string, actorUserId: str
   const purchase = await getPurchase(purchaseId);
   if (!purchase) return { ok: false, error: "Purchase not found." };
   const sb = commercialDb();
-  const { error } = await sb
+  // Same rule as the attach above: a zero-row update is not success.
+  const { data: cleared, error } = await sb
     .from("commercial_project_purchases")
     .update({ receipt_document_id: null, updated_at: new Date().toISOString() })
     .eq("id", purchaseId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select(COLS)
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!cleared) {
+    return { ok: false, error: "This purchase changed in another tab — reload and try again." };
+  }
+  await logUpdate(
+    "commercial_project_purchases",
+    purchaseId,
+    purchase,
+    cleared as CommercialProjectPurchase,
+    actorUserId,
+  );
   if (purchase.receipt_document_id) {
     await softDeleteDocument(purchase.receipt_document_id, actorUserId).catch(() => {});
   }
