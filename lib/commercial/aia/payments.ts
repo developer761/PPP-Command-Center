@@ -265,8 +265,25 @@ export async function recordAiaPayment(
   };
 }
 
+/**
+ * 🔴 `applicationId` IS NOT OPTIONAL CONTEXT — IT IS THE AUTHORISATION.
+ *
+ * The caller checks `ownsAiaContext(accountId, dealId, appId)`, which walks
+ * account → deal → application. Then this deleted by `paymentId` ALONE. The one
+ * id that selects the row being destroyed was the one id nothing validated: a
+ * hand-crafted POST carrying a triple the caller legitimately holds plus any
+ * other job's `payment_id` soft-deleted a payment on an unrelated customer's
+ * certificate — and `syncApplicationStatusToPayments` then quietly demoted that
+ * job's status from paid.
+ *
+ * These are POST endpoints reachable with ids typed by hand; the caller's own
+ * docblock says so. Scoping the write to the application the caller proved it
+ * owns is what makes the check mean anything. This is the shape
+ * `deleteAiaLineItem(id, applicationId, …)` already uses — copied, not invented.
+ */
 export async function deleteAiaPayment(
   paymentId: string,
+  applicationId: string,
   actorUserId: string,
 ): Promise<Result<{ application_id: string }>> {
   const sb = commercialDb();
@@ -274,6 +291,7 @@ export async function deleteAiaPayment(
     .from("commercial_aia_payments")
     .select("*")
     .eq("id", paymentId)
+    .eq("application_id", applicationId)
     .is("deleted_at", null)
     .maybeSingle();
   if (!before) return { ok: false, error: "payment_not_found" };
@@ -281,6 +299,7 @@ export async function deleteAiaPayment(
     .from("commercial_aia_payments")
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", paymentId)
+    .eq("application_id", applicationId)
     .is("deleted_at", null);
   if (error) return { ok: false, error: error.message };
   // Soft delete, logged — the same rule the invoice ledger now follows after a

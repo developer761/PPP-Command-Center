@@ -3,6 +3,7 @@ import { loadDashboardData } from "@/lib/data-source";
 import { deriveOpenMaterialsWorkOrders } from "@/lib/salesforce/materials";
 import { getMaterialsPageAuxData } from "@/lib/materials-page-data";
 import { requireAnalyticsAccess } from "@/lib/auth/require-analytics";
+import { deriveOverviewData, readPeriod } from "@/lib/dashboard/overview-data";
 
 // Force dynamic rendering so SF data refreshes per page load (subject to the
 // 5-min server-side snapshot cache inside lib/salesforce/queries.ts).
@@ -45,5 +46,22 @@ export default async function DashboardPage({
     }
   }
 
-  return <DashboardView bundle={bundle} formSummary={formSummary} />;
+  /**
+   * Derive here, on the server, and send the browser the ANSWERS.
+   *
+   * <DashboardView> is a "use client" component. Passing it `bundle` meant
+   * React serialized the entire Salesforce snapshot into the HTML so it
+   * could hydrate — 63.8MB and 12.5 seconds on a phone, measured against
+   * production 2026-10-16, against a 200ms time to first byte. The server
+   * was never the slow part.
+   *
+   * `period` and `region` come off the URL, which the view already keeps in
+   * sync, so a filter change was re-rendering this page regardless. It was
+   * just re-sending 64MB each time.
+   */
+  const { snapshot, ...meta } = bundle;
+  const period = readPeriod(sp.period);
+  const data = snapshot ? deriveOverviewData(snapshot, period) : null;
+
+  return <DashboardView bundle={meta} data={data} formSummary={formSummary} />;
 }

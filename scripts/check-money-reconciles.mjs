@@ -421,6 +421,162 @@ try {
       ? doubleBilled.slice(0, 3).map(([, l]) => l.map((i) => i.invoice_number).join("+")).join(" · ")
       : `${sfInvByDeal.size} deal(s) with one`,
   );
+  /*
+   * A RECEIPT MARY FILED MUST BE ATTACHED TO SOMETHING.
+   *
+   * `attachPurchaseReceipt` uploads the document, then links it with an
+   * UPDATE. PostgREST returns `error === null` when an update matches no rows,
+   * and the function checked only `error` — so if the purchase had been
+   * deleted or edited in another tab, the file was stored, the link was never
+   * written, and she was told it saved. The purchase usually still showed an
+   * older receipt, so there was no signal at all.
+   *
+   * 25 documents, $31,071.17 of named amounts, were stranded that way before
+   * the guard landed (2026-10-16). The function now fails loudly and tidies up
+   * the upload; this watches the outcome, because the bug was invisible in
+   * exactly the place a person would look.
+   */
+  {
+    const docs = (
+      await pageAll("commercial_documents", "id,notes,deleted_at", ["id"])
+    ).filter((d) => !d.deleted_at && String(d.notes ?? "").startsWith("Receipt — "));
+    const purchases = await pageAll(
+      "commercial_project_purchases",
+      "id,receipt_document_id,deleted_at",
+      ["id"],
+    );
+    const linked = new Set(
+      purchases.filter((p) => !p.deleted_at && p.receipt_document_id).map((p) => p.receipt_document_id),
+    );
+    const orphans = docs.filter((d) => !linked.has(d.id));
+    let named = 0;
+    for (const d of orphans) {
+      const m = /\(([\d.]+)\)\s*$/.exec(String(d.notes ?? ""));
+      if (m) named += Math.round(Number(m[1]) * 100);
+    }
+    check(
+      "there are filed receipts to check",
+      docs.length > 0,
+      `${docs.length} receipt document(s)`,
+    );
+    /*
+     * BASELINE, not zero. The 25 pre-existing orphans are real files Mary
+     * uploaded and real costs that still need a receipt against them — they
+     * are a cleanup for a person, not something a script should fail on
+     * forever. What must never happen again is the number GROWING.
+     */
+    const KNOWN_ORPHANED_RECEIPTS = 25;
+    check(
+      "no receipt has been filed against nothing since the guard landed",
+      orphans.length <= KNOWN_ORPHANED_RECEIPTS,
+      orphans.length > KNOWN_ORPHANED_RECEIPTS
+        ? `${orphans.length} orphaned (was ${KNOWN_ORPHANED_RECEIPTS}) — ${money(named)} named`
+        : `${orphans.length} orphaned, ${money(named)} named — awaiting a person, not growing`,
+    );
+  }
+
+  /*
+   * 🔴 THE STATEMENT WE SEND A GC MUST NOT EXCEED THE LIST WE CHASE.
+   *
+   * `isSalesforceCarryoverInvoice` has excluded the migrated `SF-####`
+   * placeholder from receivables and AR aging since 2026-10-15, because once a
+   * job's real billing is in as issued G702s the two are the same money. It was
+   * applied on NEITHER customer-facing surface. Measured 2026-10-16: the
+   * statement for LMJ Management read $372,962.39 and our own aging read
+   * $361,412.40 — we were asking a GC for $11,549.99 they had already paid, on
+   * a job whose certificates read billed and collected in full.
+   *
+   * The wrong number being the HIGHER one, and the one addressed to the
+   * customer, is why this is an identity and not a note.
+   */
+  {
+    const { getOpenInvoiceStatementForAccount } = await import(
+      "../lib/commercial/invoices/statement.ts"
+    );
+    const worse = [];
+    let checked = 0;
+    for (const row of aging.rows) {
+      const st = await getOpenInvoiceStatementForAccount(row.accountId);
+      checked += 1;
+      if (st.totalOutstandingCents !== row.total) {
+        worse.push(
+          `${row.accountName}: statement ${money(st.totalOutstandingCents)} vs chased ${money(row.total)}`,
+        );
+      }
+    }
+    check(
+      "there are GCs with a statement to compare",
+      checked > 0,
+      `${checked} account(s)`,
+    );
+    check(
+      "the statement a GC receives bills exactly what we chase",
+      worse.length === 0,
+      worse.length ? worse.slice(0, 4).join(" · ") : `${checked} account(s) tie`,
+    );
+  }
+
+  /*
+   * NO CERTIFICATE ASKS A GENERAL CONTRACTOR FOR A NEGATIVE PAYMENT.
+   *
+   * G702 line 8 is the figure a GC's accounts payable department pays. A
+   * negative one is not a small presentational problem: it is a demand for
+   * money back on a document we send out, and a GC's AP system rejects it.
+   *
+   * Stephanie, 2026-10-16, on the LMJ Cipla expansion: retainage was being
+   * recomputed on ALL completed work every period, so the application after a
+   * retainage release re-withheld five percent of the whole contract and line
+   * 8 came out at MINUS $3,431.36. Fixed by `lineRetainableCents`; held here,
+   * against the live rows, through the same `resolveG702` the certificate and
+   * the Excel both call.
+   *
+   * 5a + 5b is the same guard one line down: the export writes 5a and then 5b
+   * as the REMAINDER of line 5, so a 5a computed off a different base than
+   * line 5 prints a negative 5b on the sheet.
+   */
+  {
+    const { resolveG702, listAiaLineItemsWithRelease } = await import("../lib/commercial/aia/db.ts");
+    const { lineRetainableCompletedCents } = await import("../lib/commercial/aia/constants.ts");
+    const apps = (
+      await pageAll(
+        "commercial_aia_applications",
+        "id,opportunity_id,application_number,status,retainage_pct,deleted_at",
+        ["id"],
+      )
+    ).filter((a) => !a.deleted_at);
+    const negatives = [];
+    const splits = [];
+    for (const a of apps) {
+      const g = await resolveG702(a.id);
+      if (!g) continue;
+      if (g.currentPaymentDueCents < 0) {
+        negatives.push(`#${a.application_number} ${money(g.currentPaymentDueCents)}`);
+      }
+      const lines = await listAiaLineItemsWithRelease(a);
+      const pct = Math.min(100, Math.max(0, Number(a.retainage_pct) || 0));
+      const ret5a = Math.round(
+        (lines.reduce((n, l) => n + lineRetainableCompletedCents(l), 0) * pct) / 100,
+      );
+      if (ret5a < 0 || g.retainageCents - ret5a < 0) {
+        splits.push(`#${a.application_number} ${money(ret5a)}/${money(g.retainageCents - ret5a)}`);
+      }
+    }
+    check(
+      "there are payment applications to check",
+      apps.length > 0,
+      `${apps.length} live application(s)`,
+    );
+    check(
+      "no payment application certifies a NEGATIVE amount due",
+      negatives.length === 0,
+      negatives.length ? negatives.slice(0, 5).join(" · ") : `${apps.length} checked, all ≥ $0.00`,
+    );
+    check(
+      "the G702's 5a/5b retainage split never inverts",
+      splits.length === 0,
+      splits.length ? splits.slice(0, 5).join(" · ") : `${apps.length} checked`,
+    );
+  }
 } catch (err) {
   failures++;
   console.log(`  FAIL  the check itself threw — ${err?.message ?? err}`);

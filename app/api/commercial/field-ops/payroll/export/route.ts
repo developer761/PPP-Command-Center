@@ -11,10 +11,31 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/commercial/field-ops/payroll/export?from=YYYY-MM-DD&to=YYYY-MM-DD
- * Streams the approved-time payroll CSV (W-2 only, reg/OT split). Admin-gated.
+ * POST /api/commercial/field-ops/payroll/export — locks approved hours and
+ * streams the CSV. GET with `?mode=redownload` re-issues an already-exported
+ * period and changes nothing. Admin / account-manager gated.
+ *
+ * 🔴 THE LOCKING PATH IS A POST BECAUSE A GET THAT LOCKS PAYROLL IS A LINK
+ * THAT LOCKS PAYROLL.
+ *
+ * `exportPayroll` inserts a `commercial_pay_periods` row and flips every
+ * approved `commercial_time_entries` row in range to `exported` — terminal;
+ * approve, question, override and delete all refuse an exported row
+ * afterwards, so undoing it needs database access. The default range snaps
+ * outward to three whole Mon–Sun weeks.
+ *
+ * This was a GET guarded by `confirm=1`, and the reasoning written beside it
+ * was about ACCIDENTS — "a prefetch, a middle-click, a back-forward restore, a
+ * pasted link". That guard does nothing against a crafted link, because
+ * `confirm=1` is in the attacker's URL and Supabase's session cookie is
+ * SameSite=Lax, which IS sent on a top-level cross-site GET navigation. One
+ * link opened by Mary or an admin locked three weeks of somebody's pay,
+ * irreversibly, and minted a pay period.
+ *
+ * Lax cookies are NOT sent on a cross-site POST, so moving the write to POST
+ * closes it. The page already submits a <form>; only the method changed.
  */
-export async function GET(request: Request) {
+async function handleExport(request: Request, method: "GET" | "POST") {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -72,7 +93,8 @@ export async function GET(request: Request) {
    * only a deliberate press can lock anything; everything else gets told what
    * it was about to do. The re-download path is read-only and unaffected.
    */
-  if (!redownload && searchParams.get("confirm") !== "1") {
+  if (!redownload && method !== "POST") {
+    // A GET can never lock. Send them back to the page to press the button.
     const back = new URL("/commercial/field-ops/payroll", request.url);
     back.searchParams.set("from", from);
     back.searchParams.set("to", to);
@@ -98,4 +120,15 @@ export async function GET(request: Request) {
 
   // Shared helper: consistent headers AND the UTF-8 BOM Excel needs.
   return csvResponse(csv, `Payroll_${from}_to_${to}.csv`, "Payroll", `${from} to ${to}`);
+}
+
+/** Locks the hours and streams the CSV. POST only — see handleExport. */
+export async function POST(request: Request) {
+  return handleExport(request, "POST");
+}
+
+/** Read-only: `?mode=redownload` re-issues an already-exported period. Any
+ *  other GET is bounced back to the page, so a link can never lock payroll. */
+export async function GET(request: Request) {
+  return handleExport(request, "GET");
 }

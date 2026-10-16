@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * "use client" must be the first statement in the file.
@@ -53,7 +54,14 @@ describe('"use client" placement', () => {
     const offenders: string[] = [];
     for (const f of files) {
       const src = readFileSync(f, "utf8");
-      if (!/["']use client["']/.test(src)) continue;
+      // Strip comments BEFORE asking whether the file has the directive.
+      // Raw source said yes to any file that merely MENTIONS "use client"
+      // in prose: on 2026-10-16 a docblock in app/dashboard/page.tsx
+      // explaining why the snapshot must not be handed to a "use client"
+      // component turned this green check red, on a file that correctly has
+      // no directive at all. Sixth time a test in this suite has read a
+      // comment as code — see __tests__/helpers/strip-comments.ts.
+      if (!/["']use client["']/.test(stripComments(src))) continue;
       if (!/^["']use client["']/.test(firstStatement(src))) offenders.push(f);
     }
     expect(offenders).toEqual([]);
@@ -65,5 +73,14 @@ describe('"use client" placement', () => {
     expect(/^["']use client["']/.test(firstStatement(bad))).toBe(false);
     const good = '"use client";\n\nimport x from "y";\n';
     expect(/^["']use client["']/.test(firstStatement(good))).toBe(true);
+  });
+
+  it("does not treat a file that only MENTIONS the directive as having one", () => {
+    // The 2026-10-16 false positive, pinned. A server component whose
+    // docblock discusses "use client" has no directive and must be skipped,
+    // not reported as a misplaced one.
+    const prose = '/** Passing this to a "use client" component is the bug. */\nexport default function P() {}\n';
+    expect(/["']use client["']/.test(prose)).toBe(true);
+    expect(/["']use client["']/.test(stripComments(prose))).toBe(false);
   });
 });

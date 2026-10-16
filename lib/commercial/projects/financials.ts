@@ -65,6 +65,8 @@ export type ProjectFinancials = {
 };
 
 type InvRow = {
+  invoice_number: string | null;
+  opportunity_id: string | null;
   status: string;
   total_cents: number;
   subtotal_cents: number;
@@ -80,7 +82,9 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     fieldOpsLaborForOpp(oppId),
     sb
       .from("commercial_invoices")
-      .select("status, total_cents, subtotal_cents, paid_cents, balance_cents")
+      // `invoice_number` + `opportunity_id` so the carry-over guard can run —
+      // see the fold below and lib/commercial/invoices/carryover.ts.
+      .select("invoice_number, opportunity_id, status, total_cents, subtotal_cents, paid_cents, balance_cents")
       .eq("opportunity_id", oppId)
       .is("deleted_at", null),
     // AIA is a SEPARATE billing ledger — a job billed via G702/G703 writes no
@@ -92,6 +96,26 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
 
   const hasContract = contractCents > 0;
 
+  /*
+   * THE MIGRATED SALESFORCE INVOICE IS THE SAME MONEY AS THE CERTIFICATES.
+   *
+   * This fold is `invoices + AIA`, and its own comment called that "additive
+   * ... a deal that used both is the double-bill the CO-picker warns about, not
+   * something to net". That is right for two genuine bills and wrong for the
+   * one case the importer creates: an `SF-####` placeholder carrying a work
+   * order's balance on a job now billed through G702. On LMJ Cipla it reported
+   * invoiced $187,754.18 against an $88,627.09 contract — 212% — and collected
+   * $176,204.19, because the same five cheques sit on both ledgers.
+   *
+   * `receivables.ts` and `ar-aging.ts` have excluded it since 2026-10-15. The
+   * deal P&L, the portfolio, Account 360 and the GC's own statement did not.
+   */
+  const { isSupersededByAia } = await import("@/lib/commercial/invoices/carryover");
+  const supersededByAia = aia.hasAia
+    ? (r: { invoice_number?: string | null; opportunity_id?: string | null }) =>
+        isSupersededByAia(r, new Set([oppId]))
+    : () => false;
+
   let invoicedCents = 0;
   let billedPreTaxCents = 0;
   let collectedCents = 0;
@@ -102,6 +126,8 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     // Issued only — a draft isn't billed; a void doesn't count (mirrors the
     // account rollup + listProjects).
     if (r.status === "draft" || r.status === "void") continue;
+    // The carry-over placeholder and this job's certificates are one bill.
+    if (supersededByAia(r)) continue;
     invoicedCents += Number(r.total_cents ?? 0);
     billedPreTaxCents += Number(r.subtotal_cents ?? 0);
     collectedCents += Number(r.paid_cents ?? 0);

@@ -42,6 +42,9 @@ export type AttentionInput = {
   sentProposalCount: number;
   /** Signed off internally but not yet in front of the GC. */
   approvedNotSentCount?: number;
+  /** A work order that has been SENT to the crew. A draft is not one: four
+   *  live jobs carried 170 logged hours behind an empty unsent draft, and this
+   *  flag was what silenced "No work order yet" on all of them. */
   hasWorkOrder: boolean;
   hasBilling: boolean;
   /** ET calendar dates. Drive the grace periods below. */
@@ -508,8 +511,8 @@ export function attentionFor(i: AttentionInput): Attention[] {
   if (won && !i.hasWorkOrder && past(GRACE_DAYS.work_order)) {
     out.push({
       key: "no_work_order",
-      title: "No work order yet",
-      consequence: "The crew has nothing describing the scope, and nothing reaches the schedule.",
+      title: "No work order sent",
+      consequence: "The crew has nothing describing the scope, and nothing reaches the schedule. A draft sheet is not one — it has to be sent.",
       href: `/commercial/opportunities/${i.oppId}?tab=project&sub=work-order`,
       tone: "warn",
     });

@@ -15,7 +15,7 @@ import PageHeader from "@/components/page-header";
 import { PERIOD_LABELS, type Period } from "@/lib/mock-data";
 import { periodRange } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
-import type { LiveDashboardBundle } from "@/lib/data-source";
+import type { MapData } from "@/lib/dashboard/map-data";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -23,7 +23,12 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["this-month", "last-month", "30d", "90d", "this-year", "last-year", "12m", "lifetime"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
-type Props = { bundle: LiveDashboardBundle };
+type Props = {
+  /** Points + the sandbox flag, projected server-side. Null on mock data.
+   *  The bundle itself is not passed: this page reads none of its other
+   *  fields, and the snapshot it used to carry cost 35.1MB. */
+  data: MapData | null;
+};
 
 type PopupData = {
   lat: number;
@@ -36,49 +41,44 @@ type PopupData = {
   id: string;
 };
 
-export default function MapView({ bundle }: Props) {
+export default function MapView({ data }: Props) {
   const [period, setPeriod] = useState<Period>("lifetime");
   const [popup, setPopup] = useState<PopupData | null>(null);
   const [cursor, setCursor] = useState<"auto" | "pointer">("auto");
   const mapRef = useRef<MapRef | null>(null);
-  const { snapshot } = bundle;
 
   // Build GeoJSON FeatureCollection from WORK ORDERS, filtered by the chosen
   // period. Bug fix: previously the period dropdown was decoration only —
   // every selection showed the same dataset. Now we filter WOs by closeDate
   // matching the periodRange().
   const geojson = useMemo(() => {
-    if (!snapshot) return { type: "FeatureCollection" as const, features: [] };
+    if (!data) return { type: "FeatureCollection" as const, features: [] };
     const { start, end } = periodRange(period);
-    const features = snapshot.workOrders
-      .filter((w) => {
-        if (typeof w.latitude !== "number" || typeof w.longitude !== "number") return false;
-        if (w.latitude === 0 || w.longitude === 0) return false;
-        // Exclude zero AND negative amounts — credits/refunds shouldn't
-        // appear as job markers (they have no physical job site to plot).
-        if (w.amount <= 0) return false;
-        if (!w.closeDate) return false;
-        const closed = new Date(w.closeDate + "T00:00:00Z");
-        if (closed < start || closed >= end) return false;
-        return true;
+    // The plottable-point projection (geocoded, positive amount, has a close
+    // date) happens on the server now — see lib/dashboard/map-data.ts. Only
+    // the period window is applied here, so the dropdown stays instant.
+    const features = data.points
+      .filter((p) => {
+        const closed = new Date(p.closeDate + "T00:00:00Z");
+        return closed >= start && closed < end;
       })
-      .map((w) => ({
+      .map((p) => ({
         type: "Feature" as const,
         geometry: {
           type: "Point" as const,
-          coordinates: [w.longitude as number, w.latitude as number],
+          coordinates: [p.lng, p.lat],
         },
         properties: {
-          id: w.id,
-          amount: w.amount,
-          account: w.accountName ?? "",
-          status: w.status ?? "",
-          rep: w.ownerName ?? "",
-          wo: w.workOrderNumber ?? "",
+          id: p.id,
+          amount: p.amount,
+          account: p.account,
+          status: p.status,
+          rep: p.rep,
+          wo: p.wo,
         },
       }));
     return { type: "FeatureCollection" as const, features };
-  }, [snapshot, period]);
+  }, [data, period]);
 
   const pointCount = geojson.features.length;
   const totalRevenue = useMemo(
@@ -108,7 +108,7 @@ export default function MapView({ bundle }: Props) {
     );
   }
 
-  if (!snapshot) {
+  if (!data) {
     return (
       <div className="animate-fade-up space-y-6">
         <PageHeader title="Map" subtitle="Geographic distribution of jobs across PPP's footprint" />
@@ -138,7 +138,7 @@ export default function MapView({ bundle }: Props) {
         }
       />
 
-      {snapshot.isSandbox && (
+      {data.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Sandbox data.</strong> Production map will populate with thousands of geo-located jobs.
         </div>

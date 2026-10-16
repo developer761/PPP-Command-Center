@@ -13,38 +13,41 @@
  *   - Top discounters + top GP contributors tables
  *
  * DATA SOURCES:
- *   - bundle.snapshot — full SF snapshot
- *   - deriveFinancials(snapshot, period) — pure derive (memoized per-snapshot)
+ *   - `data.byPeriod` — every period's financials, derived on the SERVER by
+ *     lib/dashboard/financials-data.ts. Null when running on mock data.
  *
- * Period change = instant client-side recompute via the memoized derive;
- * no SF round-trip on filter changes.
+ * The snapshot does not come here. It used to, and because this is a "use
+ * client" component React serialized all of it into the HTML: 63.6MB and
+ * 12.0 seconds on a phone, measured against production 2026-10-16. Period
+ * change is still instant — it is a lookup in the prebuilt map, so there is
+ * still no round-trip on filter changes.
  */
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import FilterDropdown from "@/components/filter-dropdown";
 import PageHeader from "@/components/page-header";
 import { PERIOD_LABELS, type Period } from "@/lib/mock-data";
-import { deriveFinancials } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
+import type { FinancialsData } from "@/lib/dashboard/financials-data";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["this-month", "last-month", "30d", "90d", "this-year", "last-year", "12m", "lifetime"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
-type Props = { bundle: LiveDashboardBundle };
+type Props = {
+  bundle: Omit<LiveDashboardBundle, "snapshot">;
+  data: FinancialsData | null;
+};
 
-export default function FinancialsView({ bundle }: Props) {
+export default function FinancialsView({ bundle, data }: Props) {
   const [period, setPeriod] = useState<Period>("this-month");
-  const { snapshot, viewer } = bundle;
+  const { viewer } = bundle;
   // Hide cross-rep leaderboards when scoped to one rep (collapses to self).
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
-  const fin = useMemo(
-    () => (snapshot ? deriveFinancials(snapshot, period) : null),
-    [snapshot, period]
-  );
+  const fin = data ? data.byPeriod[period] ?? null : null;
 
   if (!fin) {
     return (
@@ -76,7 +79,7 @@ export default function FinancialsView({ bundle }: Props) {
         }
       />
 
-      {snapshot?.isSandbox && (
+      {data?.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Sandbox data.</strong> Production financials will surface here once OAuth flips.
         </div>

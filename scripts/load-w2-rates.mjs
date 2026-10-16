@@ -40,6 +40,27 @@ import { createClient } from "@supabase/supabase-js";
 
 const COMMIT = process.argv.includes("--commit");
 /**
+ * 🔴 THE WARNING AT THE BOTTOM OF THIS SCRIPT FIRES AFTER THE DAMAGE.
+ *
+ * It reads "once these people are W-2, labor payouts must STOP being recorded
+ * against them, or every job they touch is costed twice", and points at
+ * `getW2Readiness()` — which has ZERO callers anywhere in the platform and has
+ * therefore never been looked at. By the time it prints, the rates are written.
+ *
+ * Job cost is `purchases + fieldOpsLabor`. Pricing an hour from the rate card
+ * when a payout already covers it charges the same work twice, and both halves
+ * look entirely real. Measured on the live book 2026-10-16: 14,637 hours read
+ * as "unrated" across 81 deals, and 14,589 of them (99.7%) already carry labor
+ * payouts naming the same nine people — $515,972.72 of them. Writing rates
+ * effective from the first work date would add roughly $458,326 (or $508,742
+ * at the measured 1.11 burden) of cost that is already on those jobs.
+ *
+ * So the check happens BEFORE the first write, it refuses rather than warns,
+ * and the override has to be typed out. `--no-rates` is unaffected: it is the
+ * mode that was always correct under the Gusto flow, and it writes no rate.
+ */
+const PAYOUTS_STOPPED = process.argv.includes("--payouts-have-stopped");
+/**
  * Flip people to W-2 WITHOUT loading a cost rate.
  *
  * This is the right mode for the Gusto flow, and the default would be wrong.
@@ -149,6 +170,70 @@ console.log(
 );
 if (!NO_RATES) console.log(`Rates effective from ${EFFECTIVE_FROM}.\n`);
 
+/*
+ * PRE-FLIGHT: REFUSE TO PRICE HOURS A PAYOUT ALREADY COVERS.
+ *
+ * Runs before the first write. `--no-rates` skips it — that mode writes no
+ * rate and is the one that is always safe.
+ */
+if (COMMIT && !NO_RATES && !PAYOUTS_STOPPED) {
+  const names = Object.keys(RATES);
+  const { data: payouts, error: payErr } = await sb
+    .from("commercial_project_purchases")
+    .select("vendor, description, amount_cents, purchased_at, deleted_at, category")
+    .in("category", ["labor", "employee_labor"])
+    .gte("purchased_at", EFFECTIVE_FROM)
+    .is("deleted_at", null);
+  if (payErr) {
+    // A failed read is NOT "no overlap". Refuse rather than guess — the thing
+    // being guarded is a six-figure double charge.
+    console.error(`\n✗ Could not check for existing labor payouts: ${payErr.message}`);
+    console.error("  Refusing to write rates without that answer.");
+    process.exit(1);
+  }
+  const hit = new Map();
+  for (const row of payouts ?? []) {
+    const hay = `${row.vendor ?? ""} ${row.description ?? ""}`.toLowerCase();
+    for (const n of names) {
+      // The roster names are "Tomco Labor - Greg" etc; match the person part.
+      const person = n.split("-").pop().trim().toLowerCase();
+      if (person.length < 3) continue;
+      if (!hay.includes(person)) continue;
+      const cur = hit.get(n) ?? { rows: 0, cents: 0 };
+      cur.rows += 1;
+      cur.cents += Math.round(Number(row.amount_cents) || 0);
+      hit.set(n, cur);
+      break;
+    }
+  }
+  if (hit.size > 0) {
+    const total = [...hit.values()].reduce((a, b) => a + b.cents, 0);
+    console.error(
+      `\n🔴 REFUSING TO WRITE RATES — these people are already being paid through labor payouts.\n`,
+    );
+    for (const [n, v] of [...hit.entries()].sort((a, b) => b[1].cents - a[1].cents)) {
+      console.error(`   ${n.padEnd(28)} ${v.rows.toString().padStart(4)} payout(s)  ${money(v.cents)}`);
+    }
+    console.error(
+      `\n   ${money(total)} on or after ${EFFECTIVE_FROM}.\n\n` +
+        `   Job cost is purchases + (W-2 hours x rate). Loading a rate prices the\n` +
+        `   same work a second time and BOTH halves look real — the margin on every\n` +
+        `   job these people touched drops by roughly that amount, and nothing on\n` +
+        `   screen says why.\n\n` +
+        `   This check used to be a sentence printed AFTER the write, pointing at\n` +
+        `   getW2Readiness(), which has never had a caller.\n\n` +
+        `   What to do:\n` +
+        `     --no-rates                 flip to W-2 and leave cost as the payouts (the\n` +
+        `                                right mode under the Gusto flow)\n` +
+        `     --effective-from=<later>   start rates from the day payouts stop\n` +
+        `     --payouts-have-stopped     you have confirmed no payout covers these\n` +
+        `                                people from ${EFFECTIVE_FROM} onward\n`,
+    );
+    process.exit(1);
+  }
+  console.log(`✓ no labor payouts name these people on or after ${EFFECTIVE_FROM}.\n`);
+}
+
 let flipped = 0;
 let rated = 0;
 const missing = [];
@@ -217,7 +302,10 @@ console.log(
   `\n⚠ AND THE OTHER HALF: once these people are W-2, labor payouts must STOP\n` +
     `  being recorded against them, or every job they touch is costed twice —\n` +
     `  once from hours × rate and once from the payment to the labor company.\n` +
-    `  getW2Readiness() reports that overlap; check it after this runs.`,
+    `  The pre-flight above now REFUSES rather than leaving you to check:\n` +
+    `  it reads the payouts before the first write and exits non-zero if any\n` +
+    `  name these people in the window. (This line used to point at\n` +
+    `  getW2Readiness(), which has never had a caller anywhere.)`,
 );
 
 if (!COMMIT) console.log("\nDry run. Re-run with --commit to write.");

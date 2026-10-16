@@ -26,6 +26,28 @@ export function csvEscape(value: unknown): string {
       : typeof value === "number" || typeof value === "boolean"
       ? String(value)
       : JSON.stringify(value);
-  const s = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  /*
+   * 🔴 A NEGATIVE NUMBER IS NOT A FORMULA, AND QUOTING IT BREAKS THE SUM.
+   *
+   * The injection guard matched a leading `-`, which `-113060.78` also starts
+   * with, so every negative money figure went out as the text `'-113060.78`.
+   * Measured on the live October ledger: 124 of 129 data rows plus the MONEY
+   * OUT and NET totals. `=SUM(E:E)` in Excel then silently skips all of them
+   * and returns the money-IN side only.
+   *
+   * That defeats the stated purpose of the file. transactions-export.ts says
+   * so in as many words: "Money out prints negative, so a spreadsheet SUM over
+   * the column is the net." It isn't, and the accountant gets a column that
+   * looks fine, totals wrong, and gives no sign of either.
+   *
+   * Same damage on Margin and Margin % in job-costs, jobs and geography.
+   *
+   * So a plain decimal number is exempt. `-` followed by anything else is
+   * still prefixed: `=cmd|'/c calc'!A1` and `-1+1` are untouched, because
+   * neither matches a bare number. The guard keeps its whole job; it stops
+   * taking the accountant's arithmetic with it.
+   */
+  const isPlainNumber = /^-?\d+(\.\d+)?$/.test(raw);
+  const s = !isPlainNumber && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${s.replace(/"/g, '""')}"`;
 }

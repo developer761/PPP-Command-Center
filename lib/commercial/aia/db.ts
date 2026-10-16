@@ -15,6 +15,8 @@ import {
   aiaBilledCollectedFrom,
   aiaCollectedWithPayments,
   lineCompletedStoredCents,
+  applyReleasedRetainage,
+  lineRetainageCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
   isAiaTaxLine,
@@ -112,14 +114,36 @@ export async function listAiaApplications(opportunityId: string): Promise<AiaApp
  * the Projects list use, so the deal page, the list and the PDF a GC receives
  * cannot disagree. Latest = highest application_number regardless of status,
  * matching the Projects list exactly. (A draft therefore counts. That is
- * arguably generous — the GC hasn't seen it — but one platform-wide number
- * beats two defensible ones.)
+ * arguably generous — the GC hasn't seen it.)
+ *
+ * ⚠ IT IS NOT THE SAME BASIS AS `aiaBillingRollup`, which takes the latest
+ * ISSUED application, and the old comment here claiming "one platform-wide
+ * number beats two defensible ones" was simply wrong: there are two. This one
+ * and the Projects list count drafts; the rollup, and therefore the retention
+ * figure on Receivables, Accounting, the GC statement and the dashboard, do
+ * not. Measured 2026-10-16 the whole gap is $50.00 across the book — Cipla's
+ * draft Application 6 — and it closes the moment that draft is submitted.
+ *
+ * Both readings are defensible on their own surface (a deal page can
+ * reasonably show what the next certificate will hold), so this is left as is
+ * rather than quietly moved; but it is a divergence, not an identity, and
+ * deciding which one "Retainage held" should mean is a question for Katie.
  */
 export async function retainageHeldForOpportunity(opportunityId: string): Promise<number> {
   const apps = await listAiaApplications(opportunityId);
   if (apps.length === 0) return 0;
   const latest = apps.reduce((a, b) => (b.application_number > a.application_number ? b : a));
-  const lines = await listAiaLineItems(latest.id);
+  /*
+   * WITH the release baseline. Going through `computeG702` is not enough on
+   * its own: raw lines carry no `retainage_released_cents`, so the shared
+   * function re-withholds the full percentage on work an earlier release
+   * already let go — $4,431.36 against the certificate's $50.00 on Cipla.
+   *
+   * This feeds the deal page's retainage chip, its KPI tile, the attention
+   * card, project home and deal analytics — five surfaces, on a page that also
+   * renders `aiaBillingRollup`'s (correct) figure a few inches away.
+   */
+  const lines = await listAiaLineItemsWithRelease(latest);
   if (lines.length === 0) return 0;
   const { computeG702 } = await import("./constants");
   return computeG702({
@@ -238,7 +262,9 @@ export async function createAiaApplication(
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || (opp as { deleted_at: string | null }).deleted_at) {
-    return { ok: false, error: "opportunity_not_found" };
+    // Sentence-ised here, not left as a token: `result.error` is pushed
+    // straight into the page's rose banner by the caller.
+    return { ok: false, error: "That job could not be found — it may have been deleted. Go back to the deal and try again." };
   }
   const row = opp as {
     account_id: string;
@@ -268,6 +294,54 @@ export async function createAiaApplication(
     : typeof input.retainage_pct === "number" && input.retainage_pct >= 0 && input.retainage_pct <= 100
       ? input.retainage_pct
       : DEFAULT_RETAINAGE_PCT;
+
+  /**
+   * A RELEASE NEEDS SOMETHING TO RELEASE — and that, not "one per job", is the
+   * rule (migration 20261016120000).
+   *
+   * Migration 162 enforced at most one release per deal, on the reasoning that
+   * a second would certify $0. Stephanie, 2026-10-16: Cipla needed THREE —
+   * billed in full, released, then a change order arrived, was billed, retained
+   * and released, twice over. "This is kind of something that happens often and
+   * we have to be able to record in real time."
+   *
+   * So the index is gone and the real condition is checked here, where it can
+   * be said in words instead of failing as a duplicate-key error. Zero held is
+   * the only state that makes a release a certificate for nothing.
+   */
+  if (isRelease) {
+    // One being prepared at a time. The insert below is backstopped by a
+    // partial unique index on (opportunity_id) WHERE is_retainage_release AND
+    // status = 'draft' — the race this read cannot close — but checking here
+    // lets the screen say what happened instead of showing a duplicate key.
+    const { data: openRelease } = await sb
+      .from("commercial_aia_applications")
+      .select("application_number")
+      .eq("opportunity_id", input.opportunity_id)
+      .eq("is_retainage_release", true)
+      .eq("status", "draft")
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (openRelease) {
+      return {
+        ok: false,
+        error: `Application No. ${(openRelease as { application_number: number }).application_number} is already a retainage release in draft. Finish or delete it before raising another.`,
+      };
+    }
+    const held = (await aiaBillingRollup(input.opportunity_id)).retainageHeldCents;
+    if (held <= 0) {
+      return {
+        ok: false,
+        // No causal clause: this is equally reached on a 0%-retainage contract
+        // and on a job with nothing issued yet, where asserting "the last
+        // application already released it" describes a release that never
+        // happened.
+        error:
+          "There is no retainage held on this job to release. Bill the new work on an ordinary application first; its retainage can be released after that.",
+      };
+    }
+  }
 
   let seedWarning: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -362,8 +436,48 @@ export async function createAiaApplication(
       // caller cannot see. The warning rides alongside so the screen can say so.
       return { ok: true, value: appRow, warning: seedWarning };
     }
-    if (error && (error as { code?: string }).code === "23505") continue;
-    return { ok: false, error: error?.message ?? "insert_failed" };
+    if (error && (error as { code?: string }).code === "23505") {
+      /*
+       * A duplicate here is normally the application NUMBER racing another
+       * tab, and the retry takes the next free one. But until migration
+       * 20261016120000 is applied, the one-release-per-job index from 162 also
+       * lands here — and retrying with a different number can never satisfy an
+       * index keyed on `opportunity_id` alone. Retrying would just produce the
+       * same error twice and then report it in Postgres' words.
+       */
+      const msg = `${error.message ?? ""} ${(error as { details?: string }).details ?? ""}`;
+      if (/one_draft_release/i.test(msg)) {
+        // Two tabs, or a double-click, both past the read above.
+        return {
+          ok: false,
+          error: "A retainage release is already in draft on this job. Open it rather than raising another.",
+        };
+      }
+      if (/retainage_release/i.test(msg)) {
+        /*
+         * The operator is a billing person, not a DBA. The migration id goes to
+         * the server log, where somebody who can act on it will find it; the
+         * screen gets a sentence she can act on — which here means telling
+         * somebody, and knowing nothing is lost.
+         */
+        console.error(
+          "[aia] a second retainage release was refused by the database — migration " +
+            "20261016120000 (a job can release retainage more than once) has not been applied"
+        );
+        return {
+          ok: false,
+          error:
+            "This job already has a retainage release, and the system isn't set up yet to allow a second one. Let Karan know — nothing is lost, and the work you've already billed is unaffected.",
+        };
+      }
+      continue;
+    }
+    return {
+      ok: false,
+      error: error?.message
+        ? `The application couldn't be created: ${error.message}`
+        : "The application couldn't be created — please try again.",
+    };
   }
   return { ok: false, error: "Couldn't assign an application number — please try again." };
 }
@@ -1348,11 +1462,67 @@ export async function deleteAiaLineItem(id: string, applicationId: string, actor
  * PAID application's Total Earned Less Retainage — line 6). Depth-guarded so a
  * corrupt chain can't recurse forever.
  */
+/**
+ * An application's G703 lines with `retainage_released_cents` stamped on from
+ * whichever earlier application RELEASED the retainage.
+ *
+ * Exported because the certificate and the Excel the GC receives have to agree
+ * line for line: `resolveG702` computes line 5 from these, and the G703 export
+ * prints its retainage column from them. Reading the baseline in one of the two
+ * is how the cover sheet and the continuation sheet stop footing.
+ *
+ * The baseline is the most recent ISSUED (submitted/paid) `is_retainage_release`
+ * application BELOW this one's number. Issued only: a release still in draft has
+ * released nothing, and letting a draft reach back would restate certificates
+ * already sent. Returns the lines unchanged when there is no release, which is
+ * every job that has not reached close-out.
+ */
+export async function listAiaLineItemsWithRelease(
+  app: Pick<AiaApplication, "id" | "opportunity_id" | "application_number">
+): Promise<AiaLineItem[]> {
+  const lines = await listAiaLineItems(app.id);
+  const sb = commercialDb();
+  /*
+   * 🔴 THE ERROR MUST NOT BE SWALLOWED HERE.
+   *
+   * On a failed read `data` is null, `!release` is true, and this returns the
+   * lines unstamped — which means every released line is retained IN FULL and
+   * the certificate goes straight back to Stephanie's bug: line 5 at 5% of the
+   * whole contract, line 8 negative. Silently, with nothing on screen and
+   * nothing in the log. An auditor saw exactly those figures once on a pass
+   * issuing ~700 requests and could not reproduce it in 800 further attempts.
+   *
+   * `commercialDb()` builds a fresh client per call and does not retry, so a
+   * transient failure is a real possibility rather than a theoretical one.
+   * There is no safe fallback — both branches are wrong if the read failed —
+   * so it is raised, and the caller shows an error instead of a wrong
+   * certificate. A document the GC pays from is the wrong place to guess.
+   */
+  const { data: release, error: releaseErr } = await sb
+    .from("commercial_aia_applications")
+    .select("id")
+    .eq("opportunity_id", app.opportunity_id)
+    .eq("is_retainage_release", true)
+    .lt("application_number", app.application_number)
+    .in("status", ["submitted", "paid"])
+    .is("deleted_at", null)
+    .order("application_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (releaseErr) {
+    throw new Error(
+      `Could not read this job's retainage releases, so the retainage on this certificate cannot be trusted: ${releaseErr.message}`
+    );
+  }
+  if (!release) return lines;
+  return applyReleasedRetainage(lines, await listAiaLineItems((release as { id: string }).id));
+}
+
 export async function resolveG702(applicationId: string, _depth = 0): Promise<AiaG702 | null> {
   const app = await getAiaApplication(applicationId);
   if (!app) return null;
   const [lines, netCO, ladder] = await Promise.all([
-    listAiaLineItems(applicationId),
+    listAiaLineItemsWithRelease(app),
     netApprovedChangeOrderCents(app.opportunity_id),
     contractLadderInputs(app.opportunity_id),
   ]);
@@ -1767,12 +1937,13 @@ export async function aiaBillingRollupBulk(
     application_number: number;
     status: string;
     retainage_pct: number;
+    is_retainage_release: boolean;
     frozen_at: string | null;
     period_to: string | null;
   }>(() =>
     sb
       .from("commercial_aia_applications")
-      .select("id, opportunity_id, application_number, status, retainage_pct, frozen_at, period_to")
+      .select("id, opportunity_id, application_number, status, retainage_pct, is_retainage_release, frozen_at, period_to")
       .in("opportunity_id", ids)
       .is("deleted_at", null)
       .order("id", { ascending: true })
@@ -1857,32 +2028,82 @@ export async function aiaBillingRollupBulk(
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
 
-  const lines = await paginateAll<{
+  /**
+   * Retainage already released, per wanted app — the SAME baseline the
+   * certificate reads (`listAiaLineItemsWithRelease`). Without it this bulk
+   * twin re-withholds retainage on released work while the printed G702 does
+   * not, and every report built on it (AR aging, the GC's statement,
+   * receivables, Account 360) disagrees with the document that was sent. On
+   * LMJ Cipla that gap is $4,381.36 — see `lineRetainableCents`.
+   */
+  const releaseAppByApp = new Map<string, string>();
+  {
+    const releasesByOpp = new Map<string, App[]>();
+    for (const a of apps) {
+      if (!a.is_retainage_release) continue;
+      if (a.status !== "submitted" && a.status !== "paid") continue;
+      const arr = releasesByOpp.get(a.opportunity_id) ?? [];
+      arr.push(a);
+      releasesByOpp.set(a.opportunity_id, arr);
+    }
+    for (const want of [...latestIssued.values(), ...latestPaid.values(), ...baselineAppByOpp.values()]) {
+      let rel: App | null = null;
+      for (const a of releasesByOpp.get(want.opportunity_id) ?? []) {
+        if (a.application_number >= want.application_number) continue;
+        if (!rel || a.application_number > rel.application_number) rel = a;
+      }
+      if (rel) releaseAppByApp.set(want.id, rel.id);
+    }
+  }
+  const lineAppIds = [...new Set([...wantedAppIds, ...releaseAppByApp.values()])];
+
+  type BulkLine = {
     application_id: string;
+    position: number;
+    item_no: string | null;
+    description: string;
+    change_order_id: string | null;
     scheduled_value_cents: number;
     from_previous_cents: number;
     this_period_cents: number;
     materials_stored_cents: number;
-  }>(() =>
+  };
+  const lines = await paginateAll<BulkLine>(() =>
     sb
       .from("commercial_aia_line_items")
-      .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
-      .in("application_id", wantedAppIds)
+      .select(
+        "application_id, position, item_no, description, change_order_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents"
+      )
+      .in("application_id", lineAppIds)
       .order("id", { ascending: true })
   );
 
+  const linesByApp = new Map<string, BulkLine[]>();
+  for (const l of lines) {
+    const arr = linesByApp.get(l.application_id) ?? [];
+    arr.push(l);
+    linesByApp.set(l.application_id, arr);
+  }
+
   const completedByApp = new Map<string, number>();
   const retainageByApp = new Map<string, number>();
-  for (const l of lines) {
-    const done = lineCompletedStoredCents(l);
-    completedByApp.set(l.application_id, (completedByApp.get(l.application_id) ?? 0) + done);
-    // Retainage summed PER LINE at the app's rate — the same way computeG702 and
-    // the G703 sheet do it, so rounding lands on the same penny.
-    const pct = pctByApp.get(l.application_id) ?? 0;
-    retainageByApp.set(
-      l.application_id,
-      (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100)
+  for (const appId of wantedAppIds) {
+    const relId = releaseAppByApp.get(appId);
+    const own = applyReleasedRetainage(
+      linesByApp.get(appId) ?? [],
+      relId ? linesByApp.get(relId) : null
     );
+    const pct = pctByApp.get(appId) ?? 0;
+    let done = 0;
+    let ret = 0;
+    for (const l of own) {
+      done += lineCompletedStoredCents(l);
+      // Retainage summed PER LINE at the app's rate — the same way computeG702
+      // and the G703 sheet do it, so rounding lands on the same penny.
+      ret += lineRetainageCents(l, pct);
+    }
+    completedByApp.set(appId, done);
+    retainageByApp.set(appId, ret);
   }
 
   for (const [oppId, issued] of latestIssued) {

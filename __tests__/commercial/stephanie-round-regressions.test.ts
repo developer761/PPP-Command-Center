@@ -218,11 +218,32 @@ describe("her note: we need to bill for the retainage, they pay it separately", 
     expect(release.balanceToFinishCents).toBe(0);
   });
 
-  it("one release per job — a second would certify nothing", () => {
-    const sql = readFileSync("supabase/migrations/162_aia_retainage_release.sql", "utf8");
-    expect(sql).toContain("CREATE UNIQUE INDEX");
-    expect(sql).toContain("WHERE is_retainage_release");
-  });
+  /*
+   * TWO TESTS USED TO SIT HERE AND NEITHER COULD FAIL. Removed 2026-10-16.
+   *
+   * The first read migration 162's frozen text to assert "one release per job"
+   * — and went on passing after that rule was dropped, because nothing rewrites
+   * a migration. I replaced it the same day with one that read the NEW
+   * migration's frozen text, which has exactly the same defect: an append-only
+   * file cannot regress, and the file says nothing about whether it was ever
+   * applied. Delete the CREATE UNIQUE INDEX from it and the assertion stays
+   * green, because the index name also appears in the drop-set exclusion.
+   *
+   * The second asserted that two sentences appear somewhere in
+   * lib/commercial/aia/db.ts. An audit deleted BOTH guard blocks outright,
+   * leaving the message text behind in a comment. 30 of 30 passed.
+   *
+   * Both rules ARE covered, by the layer that can actually see them:
+   * `npm run check:retainage` (scripts/check-retainage-release-flow.mjs) walks
+   * a throwaway job through bill → release → refuse → change order → release
+   * against the real database and asserts the exact refusal wording. It has
+   * been proven to go red — removing the retainage rule fails it on four steps,
+   * including "the certificate does not ask the GC for a NEGATIVE payment".
+   *
+   * A source-text grep in this layer would only re-create the green lie. See
+   * __tests__/helpers/strip-comments.ts, whose docblock lists the five other
+   * tests this has already burned.
+   */
 
   it("the release forces 0% rather than trusting the caller", () => {
     const db = readFileSync("lib/commercial/aia/db.ts", "utf8");

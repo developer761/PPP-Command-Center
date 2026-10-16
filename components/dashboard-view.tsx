@@ -15,14 +15,18 @@
  *   - Recent activity feed (last-N-hours rollup)
  *   - Trend chart + region rollup table
  *
- * DATA SOURCES (all passed as props by page.tsx via `loadDashboardData`):
- *   - bundle.snapshot — the full SF snapshot, already viewer-scoped
+ * DATA SOURCES (all passed as props by page.tsx):
+ *   - `data` — the DERIVED numbers, computed on the server by
+ *     lib/dashboard/overview-data.ts. Null when running on mock data.
  *   - bundle.viewer — admin vs rep distinction drives which cards show
  *   - Period + region filter state — URL-synced so links + back button work
  *
- * Derived shapes read from `lib/salesforce/derive.ts` — every derive
- * there is memoized per-snapshot, so flipping period/region is instant
- * after the first compute.
+ * The raw Salesforce snapshot does NOT come here. It used to, and because
+ * this is a "use client" component React serialized all of it into the HTML:
+ * 63.8MB and 12.5 seconds on a phone, measured against production on
+ * 2026-10-16. Region filtering is still instant client-side — it runs off
+ * `data.reps`, ~26 rows — and the funnel's period selector reads a
+ * precomputed map, so neither needs a round trip.
  */
 
 import Link from "next/link";
@@ -48,20 +52,16 @@ import {
   type Period,
   type RegionFilter,
 } from "@/lib/mock-data";
-import {
-  deriveCompanyTrend,
-  derivePeriodDelta,
-  derivePipelineAtRisk,
-  deriveRepsForPeriod,
-  deriveTopPerformer,
-  deriveTodaySnapshot,
-  deriveMonthForecast,
-  deriveTopCustomers,
-  deriveQuoteToCashVelocity,
-  deriveRepMomentum,
-  deriveRealFunnel,
-} from "@/lib/salesforce/derive";
+// The eleven derive* functions that used to be imported here now run on the
+// server in lib/dashboard/overview-data.ts. Dropping them takes their code
+// out of the client bundle too, on top of the payload they were there to chew
+// through.
 import type { LiveDashboardBundle } from "@/lib/data-source";
+import {
+  OVERVIEW_PERIODS,
+  OVERVIEW_DEFAULT_PERIOD,
+  type OverviewData,
+} from "@/lib/dashboard/overview-data";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   [
@@ -83,7 +83,12 @@ function sign(n: number) {
 }
 
 type Props = {
-  bundle: LiveDashboardBundle;
+  /** Everything from the bundle EXCEPT the snapshot. The snapshot stays on
+   *  the server now — see lib/dashboard/overview-data.ts for the 63.8MB
+   *  reason. */
+  bundle: Omit<LiveDashboardBundle, "snapshot">;
+  /** The derived numbers, computed server-side. Null on mock data. */
+  data: OverviewData | null;
   /** Customer-form pipeline summary across all visible WOs — sent / opened /
    *  submitted / expired counts. Drives the new "Color Forms" home card so
    *  Alex sees "did Mrs. Smith pick her colors?" without navigating to
@@ -97,7 +102,7 @@ type Props = {
   };
 };
 
-export default function DashboardView({ bundle, formSummary }: Props) {
+export default function DashboardView({ bundle, data, formSummary }: Props) {
   // Both `period` and `region` filters are URL-persisted (with localStorage
   // as a fallback when navigating in from a clean URL). Karan: filters should
   // survive clicking into a customer + hitting back, since the dashboard is
@@ -109,15 +114,14 @@ export default function DashboardView({ bundle, formSummary }: Props) {
 
   // Default to "This Month" when no URL/storage value — PPP's day-to-day
   // mental model is month-by-month, SF reports default to similar windows.
-  const ALLOWED_PERIODS: Period[] = [
-    "lifetime", "this-month", "last-month", "this-year", "last-year",
-    "7d", "30d", "90d", "6m", "12m", "ytd",
-  ];
+  // The list is imported, not restated: the server precomputes one funnel
+  // per period, so a period this selector can reach but the server never
+  // built would render an empty funnel with no error.
   const isValidPeriod = (v: string | null): v is Period =>
-    v !== null && (ALLOWED_PERIODS as string[]).includes(v);
+    v !== null && (OVERVIEW_PERIODS as string[]).includes(v);
 
   const [period, setPeriodState] = useState<Period>(() =>
-    isValidPeriod(urlPeriod) ? urlPeriod : "this-month"
+    isValidPeriod(urlPeriod) ? urlPeriod : OVERVIEW_DEFAULT_PERIOD
   );
   const [region, setRegionState] = useState<RegionFilter>(() => urlRegion ?? "all");
 
@@ -134,7 +138,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
       // Only restore each filter if the URL didn't already set it.
       if (!urlPeriod) {
         const savedPeriod = window.localStorage.getItem("dashboard_period");
-        if (savedPeriod && isValidPeriod(savedPeriod) && savedPeriod !== "this-month") {
+        if (savedPeriod && isValidPeriod(savedPeriod) && savedPeriod !== OVERVIEW_DEFAULT_PERIOD) {
           setPeriodState(savedPeriod);
           next.period = savedPeriod;
         }
@@ -171,7 +175,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
       // ignore
     }
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "this-month") params.delete("period");
+    if (next === OVERVIEW_DEFAULT_PERIOD) params.delete("period");
     else params.set("period", next);
     const qs = params.toString();
     router.replace(qs ? `/dashboard?${qs}` : "/dashboard", { scroll: false });
@@ -198,19 +202,26 @@ export default function DashboardView({ bundle, formSummary }: Props) {
 
   const dataSource = bundle.source;
   const dataSourceReason = bundle.reason;
-  const snapshot = bundle.snapshot;
   const viewer = bundle.viewer;
+  /**
+   * `data` is non-null exactly when we are on live Salesforce numbers. It
+   * replaces the old `snapshot` truthiness check everywhere below. The
+   * snapshot itself no longer crosses the wire — page.tsx derives these on
+   * the server, because serializing it into the HTML cost 63.8MB and 12.5
+   * seconds on a phone. See lib/dashboard/overview-data.ts.
+   */
+  const isLive = !!data;
 
   // When the viewer is scoped to a single rep, any "top X across the team" or
   // "vs team avg" card is comparing the rep to themselves — misleading. Hide
   // those cards rather than render a 1-row leaderboard with the rep's name.
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
-  // Reps for the active period — recomputes from snapshot when SF is live.
-  const reps = useMemo(() => {
-    if (snapshot) return deriveRepsForPeriod(snapshot, period);
-    return mockReps;
-  }, [snapshot, period]);
+  // Reps for the active period. ~26 rows, derived server-side and shipped
+  // deliberately: it is what keeps the REGION filter instant, since the
+  // view, the region options and the weighted company KPIs below are all
+  // pure functions of it.
+  const reps = useMemo(() => data?.reps ?? mockReps, [data]);
 
   // Region options derived from the actual rep set (live or mock).
   const REGION_OPTIONS = useMemo(() => getRegionOptionsFor(reps), [reps]);
@@ -222,24 +233,15 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   );
 
   // Override the trendline series with live data when available.
-  const trendSeries = useMemo(() => {
-    if (snapshot) {
-      const live = deriveCompanyTrend(snapshot, period);
-      return live.series;
-    }
-    return view.series;
-  }, [snapshot, period, view.series]);
+  const trendSeries = data?.trendSeries ?? view.series;
 
   // Override the revenue KPI with live period delta.
-  const revenueKpi = useMemo(() => {
-    if (snapshot) return derivePeriodDelta(snapshot, period);
-    return view.kpis.revenueSold;
-  }, [snapshot, period, view.kpis.revenueSold]);
+  const revenueKpi = data?.revenueKpi ?? view.kpis.revenueSold;
 
   // Derive live close-rate / avg-ticket / open-quotes from the rep set when on
   // live SF data. Otherwise fall back to the mock view's KPIs.
   const liveKpis = useMemo(() => {
-    if (!snapshot) return null;
+    if (!isLive) return null;
     // Canonical rep universe only (FPRC §B) — admins/office staff would
     // otherwise dilute the company averages. Mock reps (isFieldStandard
     // undefined) are treated as field. ALSO honor the Region filter so the
@@ -267,36 +269,29 @@ export default function DashboardView({ bundle, formSummary }: Props) {
       avgTicket: +avgTicket.toFixed(1),
       openPipelineK,
     };
-  }, [snapshot, reps, region]);
+  }, [isLive, reps, region]);
 
   // Company Conversion Rate = Leads → Opps over the trailing 365d (Katie
   // 2026-05-29). Aggregate counts ride along in the snapshot; null hides the
   // card when there's no lead data.
-  const conversionRate =
-    snapshot && snapshot.leadStats && snapshot.leadStats.total > 0
-      ? (snapshot.leadStats.converted / snapshot.leadStats.total) * 100
-      : null;
+  const conversionRate = data?.conversionRate ?? null;
 
-  // Top performer — fall back to mock ONLY when no snapshot at all.
-  // When on live data with zero activity, return null so the UI can render
-  // an honest empty state (no fake names).
-  const topPerformer = useMemo(() => {
-    if (snapshot) return deriveTopPerformer(snapshot, period);
-    return mockTopPerformer;
-  }, [snapshot, period]);
+  // Top performer — fall back to mock ONLY when there is no live data at
+  // all. On live data with zero activity this stays null so the UI can
+  // render an honest empty state (no fake names).
+  const topPerformer = data ? data.topPerformer : mockTopPerformer;
 
   // Pipeline at risk (live or mock).
-  const pipelineAtRisk = useMemo(() => {
-    if (snapshot) return derivePipelineAtRisk(snapshot) ?? mockPipelineAtRisk;
-    return mockPipelineAtRisk;
-  }, [snapshot]);
+  const pipelineAtRisk = data
+    ? data.pipelineAtRisk ?? mockPipelineAtRisk
+    : mockPipelineAtRisk;
 
   // ─── CEO-impressing live snapshots ───
   // Today, month-end forecast, top customers, quote-to-cash velocity.
-  const todaySnap = useMemo(() => snapshot ? deriveTodaySnapshot(snapshot) : null, [snapshot]);
-  const forecast = useMemo(() => snapshot ? deriveMonthForecast(snapshot) : null, [snapshot]);
-  const topCustomers = useMemo(() => snapshot ? deriveTopCustomers(snapshot, 8) : [], [snapshot]);
-  const velocity = useMemo(() => snapshot ? deriveQuoteToCashVelocity(snapshot) : null, [snapshot]);
+  const todaySnap = data?.todaySnap ?? null;
+  const forecast = data?.forecast ?? null;
+  const topCustomers = data?.topCustomers ?? [];
+  const velocity = data?.velocity ?? null;
 
   // ─── Customer Pulse: high-LTV customers we haven't worked with in 12+
   // months. Surfaces re-engagement opportunities (PPP's repeat-customer
@@ -305,85 +300,29 @@ export default function DashboardView({ bundle, formSummary }: Props) {
   // Honors the region filter so when Alex narrows to "Nassau," he sees
   // Nassau's dormant customers, not Suffolk's. Hidden entirely when no
   // candidates.
-  const customerPulse = useMemo(() => {
-    if (!snapshot) return [];
-    const TWELVE_MONTHS_MS = 365 * 86_400_000;
-    const now = Date.now();
-    type PulseRow = {
-      id: string;
-      name: string;
-      lifetimeRevenue: number;
-      monthsSince: number;
-      lastWorkOrderCompleted: string;
-    };
-    const candidates: PulseRow[] = [];
-    for (const a of snapshot.accounts) {
-      if (a.totalLifetimeRevenue <= 0) continue;
-      if (!a.lastWorkOrderCompleted) continue;
-      // Region filter — when Alex narrows to a region, Pulse should reflect
-      // that scope. Accounts without a region tag are excluded from a
-      // filtered view (we can't confidently place them).
-      if (region !== "all" && a.region !== region) continue;
-      const last = new Date(a.lastWorkOrderCompleted).getTime();
-      if (isNaN(last)) continue;
-      const ageMs = now - last;
-      if (ageMs < TWELVE_MONTHS_MS) continue;
-      candidates.push({
-        id: a.id,
-        name: a.name,
-        lifetimeRevenue: a.totalLifetimeRevenue,
-        monthsSince: Math.round(ageMs / (30 * 86_400_000)),
-        lastWorkOrderCompleted: a.lastWorkOrderCompleted,
-      });
-    }
-    return candidates
-      .sort((a, b) => b.lifetimeRevenue - a.lifetimeRevenue)
-      .slice(0, 5);
-  }, [snapshot, region]);
+  // Every region's top five, precomputed — so this re-scopes the instant
+  // the dropdown moves, like every other card, instead of waiting for the
+  // URL-synced round trip. The loop it replaced walked every account in the
+  // snapshot, which is why the snapshot had to be in the browser at all.
+  const customerPulse = data?.customerPulseByRegion[region] ?? [];
 
-  // Hot reps this week — top 3 with biggest week-over-week jump.
-  const hotReps = useMemo(() => {
-    if (!snapshot) return [];
-    const momentum = deriveRepMomentum(snapshot);
-    const ownerNameLookup = new Map<string, string>();
-    for (const r of snapshot.reps) ownerNameLookup.set(r.id, r.name);
-    for (const w of snapshot.workOrders) {
-      if (w.ownerId && w.ownerName) ownerNameLookup.set(w.ownerId, w.ownerName);
-    }
-    return Array.from(momentum.entries())
-      // Require meaningful revenue (≥ $1K this week) so we don't surface
-      // a "$0.001K trending +infinity%" mirage when a tiny deal closes.
-      .filter(([, m]) => m.thisWeek >= 1000)
-      .map(([ownerId, m]) => ({
-        id: ownerId,
-        name: ownerNameLookup.get(ownerId) ?? "(unknown)",
-        thisWeekK: Math.round(m.thisWeek / 1000),
-        deltaPct: m.deltaPct,
-      }))
-      .sort((a, b) => b.thisWeekK - a.thisWeekK)
-      .slice(0, 5);
-  }, [snapshot]);
+  // Hot reps this week — top 5 with the biggest week-over-week jump.
+  const hotReps = data?.hotReps ?? [];
 
   // Pipeline funnel — prefer real funnel from Quote data when on live snapshot.
   // Falls back to mock-style approximation when running on demo data.
-  const funnel = useMemo(() => {
-    if (snapshot) {
-      const effPeriod = funnelPeriod === "page" ? period : funnelPeriod;
-      const real = deriveRealFunnel(snapshot, effPeriod);
-      // Conform to existing pipelineFunnel shape: { stage, count, value }[].
-      return real.map((s) => ({ stage: s.stage, count: s.count, value: s.value }));
-    }
-    if (funnelPeriod === "page") return view.pipelineFunnel;
-    return getFunnelForPeriod(funnelPeriod, region, reps);
-  }, [snapshot, funnelPeriod, period, view.pipelineFunnel, region, reps]);
-
   const effectiveFunnelPeriod: Period = funnelPeriod === "page" ? period : funnelPeriod;
 
-  const liveAndEmpty =
-    !!snapshot &&
-    (snapshot.reps?.length ?? 0) === 0 &&
-    (snapshot.workOrders?.length ?? 0) === 0 &&
-    (snapshot.opportunities?.length ?? 0) === 0;
+  // The funnel's own period selector is the one control NOT mirrored in the
+  // URL, so the server precomputes every period's funnel (11 × ~4 stages)
+  // and switching stays instant without a navigation.
+  const funnel = useMemo(() => {
+    if (data) return data.funnelByPeriod[effectiveFunnelPeriod] ?? [];
+    if (funnelPeriod === "page") return view.pipelineFunnel;
+    return getFunnelForPeriod(funnelPeriod, region, reps);
+  }, [data, effectiveFunnelPeriod, funnelPeriod, view.pipelineFunnel, region, reps]);
+
+  const liveAndEmpty = !!data && data.isEmpty;
 
   return (
     <div className="space-y-8 sm:space-y-10 animate-fade-up">
@@ -413,14 +352,14 @@ export default function DashboardView({ bundle, formSummary }: Props) {
         }
       />
 
-      {snapshot?.isSandbox && (
+      {data?.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Connected to PPP Salesforce SANDBOX.</strong> Numbers reflect ~50 test
           opportunities and ~13 work orders in the sandbox — not the production data
           you see in PPP reports. To pull real revenue/reps, Katie needs to grant
           production OAuth access (or recreate the Connected App in production).
-          {snapshot.workOrders.length > 0 && (
-            <> Currently showing {snapshot.workOrders.length} work orders.</>
+          {data.workOrderCount > 0 && (
+            <> Currently showing {data.workOrderCount} work orders.</>
           )}
         </div>
       )}
@@ -682,9 +621,9 @@ export default function DashboardView({ bundle, formSummary }: Props) {
             // Region-scoped revenue (from the filtered reps) when a region is
             // selected, so this card agrees with the other three; company-wide
             // period-delta otherwise.
-            value={fmtMoneyK(snapshot && region !== "all" && liveKpis ? liveKpis.totalRevenue : revenueKpi.value)}
+            value={fmtMoneyK(isLive && region !== "all" && liveKpis ? liveKpis.totalRevenue : revenueKpi.value)}
             change={
-              snapshot && region !== "all"
+              isLive && region !== "all"
                 // Region-scoped: show a neutral descriptor parallel to the other
                 // cards ("Sold ÷ Opps", "Per deal with revenue", …) rather than
                 // restating the region (already in the page subtitle). A true
@@ -692,7 +631,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
                 ? "Sold this period"
                 : period === "lifetime" ? "All time" : `${sign(revenueKpi.change)}% vs prior`
             }
-            trend={snapshot && region !== "all" ? "flat" : period === "lifetime" ? "flat" : revenueKpi.trend}
+            trend={isLive && region !== "all" ? "flat" : period === "lifetime" ? "flat" : revenueKpi.trend}
             accent="blue"
             hint="Total revenue from work orders that closed in the selected period. Compared to the same window one period earlier."
           />
@@ -932,7 +871,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
               <p className="text-xs text-ppp-charcoal-500 mt-1">
                 Per-stage activity · {PERIOD_LABELS[effectiveFunnelPeriod].toLowerCase()}
               </p>
-              {snapshot && (
+              {isLive && (
                 <p className="text-[10px] text-ppp-charcoal-400 mt-1 italic">
                   Period totals only — not cohort conversion (Opps won this month may have been quoted earlier)
                 </p>
@@ -987,7 +926,7 @@ export default function DashboardView({ bundle, formSummary }: Props) {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    {nextDrop !== null && !snapshot && (
+                    {nextDrop !== null && !isLive && (
                       <div className="text-[11px] text-ppp-charcoal-500 mt-1">
                         {nextDrop}% drop-off to next stage
                       </div>

@@ -126,6 +126,13 @@ export function AiaApplicationDetail({
   // Credit lines count toward the total — a deductive change order is a real
   // negative line, and dropping it here would report drift that isn't there.
   const sovTotalCents = lines.reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
+  // Stamped by listAiaLineItemsWithRelease — the SAME figures line 5 is
+  // computed from, not a second derivation off the totals.
+  const retainageReleasedCents = lines.reduce(
+    (s, l) => s + Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0),
+    0
+  );
+
   const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
   const hasDrift = Math.abs(sovDriftCents) > 1;
   /*
@@ -240,8 +247,15 @@ export function AiaApplicationDetail({
             Application No. {application.application_number} —{" "}
             {/* The release is a different document in substance: retainage at
                 0%, payment due = the amount held. Calling it "Certificate
-                (G702)" like every other one hides that from whoever opens it. */}
-            {application.is_retainage_release ? "Final Payment · Retainage Release (G702)" : "Certificate (G702)"}
+                (G702)" like every other one hides that from whoever opens it.
+
+                NOT "Final Payment" any more. A job can release retainage more
+                than once — a change order approved after a release is billed,
+                retained and released again, which on Stephanie's Cipla job
+                happened three times — and two certificates on one job both
+                titled "Final Payment" is wrong on whichever turns out not to
+                be last. "Retainage Release" is true of every one of them. */}
+            {application.is_retainage_release ? "Retainage Release (G702)" : "Certificate (G702)"}
           </h2>
           {pct != null && <span className="text-[11px] font-semibold text-ppp-charcoal-500">{pct}% complete</span>}
         </div>
@@ -260,6 +274,44 @@ export function AiaApplicationDetail({
             <G702Line n="9" label="Balance to Finish (incl. retainage)" cents={g702.balanceToFinishCents} />
           </div>
         </div>
+        {/* WHY LINE 5 IS NOT THE HEADLINE PERCENTAGE OF LINE 4.
+            Once a release has gone out, retainage is withheld only on work it
+            did not cover — a change order billed afterwards, typically. Line 5
+            then reads (say) $50.00 next to a label saying 5%, on a job whose
+            completed total is $88,627.09, and nothing on the sheet accounted
+            for the difference. Stephanie's Cipla job is exactly this shape. */}
+        {retainageReleasedCents > 0 && Number(application.retainage_pct) > 0 && (
+          /*
+           * WORD ORDER MATTERS HERE, because the figure is WORK, not cash.
+           *
+           * `retainage_released_cents` holds completed work whose retainage has
+           * been released — on Cipla, $87,627.09. The retainage actually
+           * released on it was ~$4,381. Written as "$87,627.09 ... was already
+           * released", in a paragraph about retainage, a billing person reads
+           * that as the money that went out: a twentyfold overstatement. So the
+           * sentence says retainage was released ON that amount of work.
+           *
+           * Styled to match the frozen-figures note on the AIA tool, which is
+           * the sibling explanation of the same kind, rather than inventing a
+           * fourth variant. And it leads with the line number: at phone width
+           * the two-column grid collapses, so line 5 is several rows above and
+           * off-screen by the time this is read.
+           *
+           * SINGULAR, and it stays singular however many releases a job has
+           * had. `applyReleasedRetainage` reads its baseline from exactly ONE
+           * application — the most recent issued release, whose sheet already
+           * carries forward everything earlier releases covered. A first pass
+           * here pluralised on the number of released LINES, which on Cipla
+           * made one release application read as "across earlier applications".
+           */
+          <p className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
+            Line 5 — retainage is held on new work only. It was already released on{" "}
+            {formatCentsFull(retainageReleasedCents)} of the completed total on an earlier
+            application, so the {Number(application.retainage_pct)}% applies to the{" "}
+            {formatCentsFull(Math.max(0, g702.totalCompletedStoredCents - retainageReleasedCents))}{" "}
+            billed since.
+          </p>
+        )}
         {/* Status controls.
             Stephanie 2026-08-17: "When I choose paid on an invoice or AIA, what
             amount is applied? They always pay less retainage and when I pay all
@@ -309,8 +361,8 @@ export function AiaApplicationDetail({
               <>
                 {" "}— already net of{" "}
                 <strong className="tabular-nums">{formatCentsFull(g702.retainageCents)}</strong> retainage.
-                Paying it in full is correct; the retainage stays held until it is billed on the
-                final payment application.
+                Paying it in full is correct; the retainage stays held until it is billed on a
+                retainage release.
               </>
             ) : application.is_retainage_release ? (
               <> — this IS the retainage release, so nothing is held back.</>
@@ -334,8 +386,14 @@ export function AiaApplicationDetail({
             downloadHref={lienWaiver ? `/api/commercial/documents/${lienWaiver.id}/download` : null}
             fileName={lienWaiver?.file_name ?? null}
             title={
+              /* NOT "Final lien waiver". A final waiver is a different
+                 instrument from a partial one and GCs treat it as such — it
+                 gives up claim on the whole job. A release that is followed by
+                 another change order was never the final one, and the platform
+                 cannot know at signing time which release will be last. Name
+                 the document by what it covers. */
               application.is_retainage_release
-                ? "Final lien waiver"
+                ? `Lien waiver — retainage release (Application No. ${application.application_number})`
                 : `Lien waiver — Application No. ${application.application_number}`
             }
             compact

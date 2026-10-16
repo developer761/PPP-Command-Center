@@ -15,11 +15,15 @@
  *   - Rep cards grid — each links to `/dashboard/rep/[id]`
  *
  * DATA SOURCES:
- *   - bundle.repsForPeriod — pre-computed in loadDashboardData via
- *     deriveRepsForPeriod (memoized per-snapshot)
- *   - bundle.snapshot — for derivePeriodDelta (company total) + region list
+ *   - `data` — reps per period, per-rep account stats, momentum and the
+ *     company revenue total, all derived on the SERVER by
+ *     lib/dashboard/rep-index-data.ts. Null on mock data.
  *
- * Period change = instant client-side recompute; no SF round-trip.
+ * The snapshot does not come here. It used to, and because this is a "use
+ * client" component React serialized all of it into the HTML: 63.7MB and
+ * 6.4 seconds on a phone, measured against production 2026-10-16. Period
+ * change, search, region filter and sorting are all still instant — they
+ * read prebuilt maps and a 26-row rep list, so none of them round-trips.
  */
 
 import Link from "next/link";
@@ -32,14 +36,12 @@ import {
   type Period,
   type Rep,
 } from "@/lib/mock-data";
-import {
-  deriveRepsForPeriod,
-  deriveRepAccountStats,
-  derivePeriodDelta,
-  deriveRepMomentum,
-} from "@/lib/salesforce/derive";
+// The four derive* functions this used to import now run on the server in
+// lib/dashboard/rep-index-data.ts, which also keeps them out of the client
+// bundle.
 import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
+import type { RepIndexData } from "@/lib/dashboard/rep-index-data";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   [
@@ -67,10 +69,13 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 type Props = {
-  bundle: LiveDashboardBundle;
+  bundle: Omit<LiveDashboardBundle, "snapshot">;
+  /** Derived server-side — see lib/dashboard/rep-index-data.ts for the
+   *  63.7MB reason. Null on mock data. */
+  data: RepIndexData | null;
 };
 
-export default function RepIndexView({ bundle }: Props) {
+export default function RepIndexView({ bundle, data }: Props) {
   // Default matches PPP's day-to-day mental model.
   const [period, setPeriod] = useState<Period>("this-month");
   const [search, setSearch] = useState("");
@@ -78,34 +83,27 @@ export default function RepIndexView({ bundle }: Props) {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [regionFilter, setRegionFilter] = useState<string>("all");
 
-  const { source, reason, snapshot } = bundle;
+  const { source, reason } = bundle;
 
-  const reps = useMemo(() => {
-    if (snapshot) {
-      // Rep Profiles page shows only PPP's field team (Katie 2026-05-29) —
-      // profiles *Standard.Field / *Experience / *Wallpapers / *Tomco + Michael
-      // Zilberman, flagged via isFieldStandard on the snapshot. Non-field users
-      // (admins / other managers / office) are filtered out here. Mock reps
-      // have isFieldStandard=undefined → kept.
-      return deriveRepsForPeriod(snapshot, period).filter((r) => r.isFieldStandard !== false);
-    }
-    return mockReps;
-  }, [snapshot, period]);
+  // Field-team filtering and the per-period derive both happen on the
+  // server now — the whole snapshot used to cross the wire so this could
+  // run in the browser.
+  const reps = useMemo(
+    () => (data ? data.repsByPeriod[period] ?? [] : mockReps),
+    [data, period]
+  );
 
-  // Per-rep account stats — only computed when on live data.
-  const accountStatsByRep = useMemo(() => {
-    if (!snapshot) return new Map();
-    const map = new Map<string, ReturnType<typeof deriveRepAccountStats>>();
-    for (const r of reps) {
-      map.set(r.id, deriveRepAccountStats(snapshot, r.id));
-    }
-    return map;
-  }, [snapshot, reps]);
+  // Rebuilt as Maps so the `.get()` call sites below are unchanged. 26
+  // entries — the cost is nil, and it keeps the wire format a plain object.
+  const accountStatsByRep = useMemo(
+    () => new Map(Object.entries(data?.accountStatsByRep ?? {})),
+    [data]
+  );
 
   // Week-over-week momentum — drives "hot streak" indicator per card.
   const momentumByRep = useMemo(
-    () => (snapshot ? deriveRepMomentum(snapshot) : new Map()),
-    [snapshot]
+    () => new Map(Object.entries(data?.momentumByRep ?? {})),
+    [data]
   );
 
   // Region options derived from live rep data.
@@ -132,10 +130,7 @@ export default function RepIndexView({ bundle }: Props) {
   // the deed). Karan 2026-06-08: "team revenue is 495K but total is 535K,
   // confusing" — adding the company-wide figure inline so the gap is
   // self-explained instead of forcing comparison against the home dashboard.
-  const companyRevenue = useMemo(() => {
-    if (!snapshot) return null;
-    return derivePeriodDelta(snapshot, period).value; // in $K
-  }, [snapshot, period]);
+  const companyRevenue = data ? data.companyRevenueByPeriod[period] ?? null : null;
 
   const searchLower = search.trim().toLowerCase();
   const sorted = useMemo(() => {
@@ -220,7 +215,7 @@ export default function RepIndexView({ bundle }: Props) {
         }
       />
 
-      {snapshot?.isSandbox && (
+      {data?.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Sandbox data.</strong> Production reps will appear once Katie grants access.
         </div>
@@ -387,7 +382,7 @@ function RepCard({
   inactive,
 }: {
   rep: Rep;
-  stats?: ReturnType<typeof deriveRepAccountStats>;
+  stats?: RepIndexData["accountStatsByRep"][string];
   momentum?: { thisWeek: number; priorWeek: number; deltaPct: number };
   teamShare: number;
   inactive: boolean;

@@ -6,7 +6,7 @@
  * latest AIA application's status + % complete. Service-role only.
  */
 import { commercialDb } from "@/lib/commercial/db";
-import { lineCompletedStoredCents, aiaCollectedWithPayments } from "@/lib/commercial/aia/constants";
+import { lineCompletedStoredCents, aiaCollectedWithPayments, applyReleasedRetainage, lineRetainageCents } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
 import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, aiaDueAtFrom, type ContractProposalRow } from "@/lib/commercial/aia/constants";
@@ -170,11 +170,12 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const invData__p = paginateAll<{ opportunity_id: string; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
+  const invData__p = paginateAll<{ opportunity_id: string; invoice_number: string | null; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
     () =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents")
+        // `invoice_number` for the carry-over guard in the fold below.
+        .select("opportunity_id, invoice_number, status, subtotal_cents, total_cents, paid_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -200,14 +201,14 @@ export async function listProjects(opts: {
         .order("id", { ascending: true })
   );
   const submittalCounts__p = listSubmittalCountByOpp(oppIds);
-  const appData__p = paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null }>(
+  const appData__p = paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null }>(
     () =>
       sb
         .from("commercial_aia_applications")
         // frozen_at / period_to: WHEN the application was issued, which is the
         // only thing that can say whether the money on it is late. Without them
         // an AIA-billed job could only ever be counted as current.
-        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, frozen_at, period_to")
+        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, is_retainage_release, frozen_at, period_to")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -238,35 +239,6 @@ export async function listProjects(opts: {
   // (contract − invoiced) + "outstanding" (invoiced − paid) so billing
   // actually moves the numbers — the old rollup ignored invoices entirely. ──
   const invData = await invData__p;
-  // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
-  // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
-  // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
-  // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
-  // `invoiced`/`paid` are WITH tax (AR — what the GC owes/paid). `billedPreTax`
-  // is Σ subtotal (pre-tax): the contract is a pre-tax number (proposal total +
-  // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
-  // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
-  // "over-billed" (2026-08 money audit #1).
-  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; openBalance: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
-  for (const inv of invData) {
-    if (inv.status === "void") continue;
-    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
-    if (inv.status === "draft") {
-      e.draftCount += 1;
-      e.draftedCents += Number(inv.total_cents);
-    } else {
-      e.invoiced += Number(inv.total_cents);
-      e.billedPreTax += Number(inv.subtotal_cents);
-      e.paid += Number(inv.paid_cents);
-      // TRUE open balance = Σ per-invoice max(0, total − paid). Clamping PER
-      // invoice (not netting Σinvoiced − Σpaid) so a credit/overpaid/deduct
-      // invoice can't mask another's real open balance — one "Outstanding"
-      // definition everywhere (matches the account rollup's splitOpenBalance).
-      e.openBalance += Math.max(0, Number(inv.total_cents) - Number(inv.paid_cents));
-      e.invoiceCount += 1;
-    }
-    invByOpp.set(inv.opportunity_id, e);
-  }
 
   // ── Batch: project costs per opp (Phase 2). One grouped query; only live
   // purchases (costBreakdownByOpp filters deleted_at IS NULL — audit C2). ──
@@ -321,7 +293,7 @@ export async function listProjects(opts: {
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
   const appData = await appData__p;
-  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; frozen_at: string | null; period_to: string | null };
+  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null };
   const latestAppByOpp = new Map<string, AppRow>();
   // Latest ISSUED (submitted/paid) app → AIA billed; latest PAID app → AIA
   // collected. Separate from `latestAppByOpp` (which drives the contract base and
@@ -340,6 +312,55 @@ export async function listProjects(opts: {
       const pd = latestPaidByOpp.get(a.opportunity_id);
       if (!pd || a.application_number > pd.application_number) latestPaidByOpp.set(a.opportunity_id, a);
     }
+  }
+
+  // Moved below the AIA application scan: the carry-over guard needs to know
+  // which deals have an ISSUED certificate, and that set is built from appData.
+  // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
+  // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
+  // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
+  // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
+  // `invoiced`/`paid` are WITH tax (AR — what the GC owes/paid). `billedPreTax`
+  // is Σ subtotal (pre-tax): the contract is a pre-tax number (proposal total +
+  // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
+  // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
+  // "over-billed" (2026-08 money audit #1).
+  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; openBalance: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
+  /*
+   * The `SF-####` placeholder and this job's certificates are ONE bill.
+   *
+   * `latestIssuedByOpp` is already built above and holds exactly the deals with
+   * an issued AIA application, so the guard costs no extra query. Without it
+   * LMJ Cipla reported $187,754.18 billed on an $88,627.09 contract — 212%,
+   * "OVER-BILLED", on the deal header and in the dashboard's over-billing
+   * total — because the importer's invoice and the G702s carry the same five
+   * cheques. See lib/commercial/invoices/carryover.ts.
+   */
+  const supersededOpps = new Set(latestIssuedByOpp.keys());
+  for (const inv of invData) {
+    if (inv.status === "void") continue;
+    if (
+      supersededOpps.has(inv.opportunity_id) &&
+      /^SF-\d+$/.test((inv.invoice_number ?? "").trim())
+    ) {
+      continue;
+    }
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    if (inv.status === "draft") {
+      e.draftCount += 1;
+      e.draftedCents += Number(inv.total_cents);
+    } else {
+      e.invoiced += Number(inv.total_cents);
+      e.billedPreTax += Number(inv.subtotal_cents);
+      e.paid += Number(inv.paid_cents);
+      // TRUE open balance = Σ per-invoice max(0, total − paid). Clamping PER
+      // invoice (not netting Σinvoiced − Σpaid) so a credit/overpaid/deduct
+      // invoice can't mask another's real open balance — one "Outstanding"
+      // definition everywhere (matches the account rollup's splitOpenBalance).
+      e.openBalance += Math.max(0, Number(inv.total_cents) - Number(inv.paid_cents));
+      e.invoiceCount += 1;
+    }
+    invByOpp.set(inv.opportunity_id, e);
   }
 
   /**
@@ -403,24 +424,73 @@ export async function listProjects(opts: {
   for (const a of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values(), ...baselineAppByOpp.values()]) {
     pctByApp.set(a.id, Math.min(100, Math.max(0, a.retainage_pct)));
   }
-  if (latestAppIds.length > 0) {
-    const liData = await paginateAll<{
+  /**
+   * Retainage already released, per app — the SAME baseline the certificate
+   * reads (`listAiaLineItemsWithRelease`). A portfolio row that re-withholds
+   * retainage on released work contradicts the G702 that was sent to the GC;
+   * on LMJ Cipla that is $4,381.36 of difference. See `lineRetainableCents`.
+   */
+  const releaseAppByApp = new Map<string, string>();
+  {
+    // Indexed by deal, so this stays linear however many applications the book
+    // of business carries.
+    const releasesByOpp = new Map<string, AppRow[]>();
+    for (const a of appData) {
+      if (!a.is_retainage_release) continue;
+      if (a.status !== "submitted" && a.status !== "paid") continue;
+      const arr = releasesByOpp.get(a.opportunity_id) ?? [];
+      arr.push(a);
+      releasesByOpp.set(a.opportunity_id, arr);
+    }
+    for (const want of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values(), ...baselineAppByOpp.values()]) {
+      let rel: AppRow | null = null;
+      for (const a of releasesByOpp.get(want.opportunity_id) ?? []) {
+        if (a.application_number >= want.application_number) continue;
+        if (!rel || a.application_number > rel.application_number) rel = a;
+      }
+      if (rel) releaseAppByApp.set(want.id, rel.id);
+    }
+  }
+  const lineAppIds = [...new Set([...latestAppIds, ...releaseAppByApp.values()])];
+  if (lineAppIds.length > 0) {
+    type ProjLine = {
       application_id: string;
+      position: number;
+      description: string;
       scheduled_value_cents: number;
       from_previous_cents: number;
       this_period_cents: number;
       materials_stored_cents: number;
       change_order_id: string | null;
       item_no: string | null;
-    }>(
+    };
+    const liData = await paginateAll<ProjLine>(
       () =>
         sb
           .from("commercial_aia_line_items")
-          .select("application_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents, change_order_id, item_no")
-          .in("application_id", latestAppIds)
+          .select("application_id, position, description, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents, change_order_id, item_no")
+          .in("application_id", lineAppIds)
           .order("id", { ascending: true })
     );
+    const linesByApp = new Map<string, ProjLine[]>();
     for (const l of liData) {
+      const arr = linesByApp.get(l.application_id) ?? [];
+      arr.push(l);
+      linesByApp.set(l.application_id, arr);
+    }
+    // Retainage is folded per APPLICATION (below), because an already-released
+    // line has to be matched against the release sheet before its rate applies.
+    for (const appId of latestAppIds) {
+      const relId = releaseAppByApp.get(appId);
+      const own = applyReleasedRetainage(linesByApp.get(appId) ?? [], relId ? linesByApp.get(relId) : null);
+      const pct = pctByApp.get(appId) ?? 0;
+      let ret = 0;
+      for (const l of own) ret += lineRetainageCents(l, pct);
+      retainageByApp.set(appId, ret);
+    }
+    const wanted = new Set(latestAppIds);
+    for (const l of liData) {
+      if (!wanted.has(l.application_id)) continue;
       // The SHARED rule, not a re-implementation. This clamped every column at
       // zero, which silently discards a billed DEDUCTIVE (credit) line — so a
       // job with one reported a different % complete and different retainage
@@ -437,8 +507,6 @@ export async function listProjects(opts: {
       if (!isAiaChangeOrderLine(l)) {
         sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
       }
-      const pct = pctByApp.get(l.application_id) ?? 0;
-      retainageByApp.set(l.application_id, (retainageByApp.get(l.application_id) ?? 0) + Math.round((done * pct) / 100));
     }
   }
 

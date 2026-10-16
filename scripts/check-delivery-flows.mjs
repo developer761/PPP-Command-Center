@@ -349,9 +349,46 @@ try {
       check("line 3 = line 1 + line 2 (+ tax)",
         g.contractSumToDateCents === g.originalContractCents + g.netChangeOrdersCents + g.salesTaxCents,
         `${g.contractSumToDateCents}`);
-      check("line 5 is the retainage percentage of line 4",
-        g.retainageCents === Math.round(g.totalCompletedStoredCents * 0.1),
-        `${g.retainageCents} of ${g.totalCompletedStoredCents}`);
+      /*
+       * PER LINE, off the RETAINABLE base — not 10% of line 4.
+       *
+       * This asserted `retainageCents === round(line4 × 0.1)`, which is the
+       * rule as it stood before 2026-10-16 and is now wrong in two ways: line
+       * 5 sums per-line rounding (which differs from rounding the total once
+       * there is more than one line), and work whose retainage an earlier
+       * release let go is not withheld again. It passed only because this
+       * synthetic flow has one application with one line and no release — it
+       * would have gone green straight through a real regression, and red the
+       * moment the flow grew a release step.
+       */
+      const { listAiaLineItemsWithRelease } = await import("../lib/commercial/aia/db.ts");
+      const g703 = await listAiaLineItemsWithRelease(app.value);
+      /*
+       * AN INDEPENDENT ORACLE, computed from the RAW COLUMNS.
+       *
+       * The first version of this used `lineRetainageCents` — the same
+       * function `computeG702` reduces over — so both sides of the comparison
+       * were the same call and a wrong result was wrong identically on each.
+       * A tautology dressed as a check, which is the exact trap AGENTS.md
+       * warns about and which this line replaced a different instance of.
+       *
+       * So: 10% of (completed − already released), per line, summed, using
+       * nothing but arithmetic on the stored columns.
+       */
+      const expected = g703.reduce((n, l) => {
+        const credit = Math.round(l.scheduled_value_cents) < 0;
+        const fit = (v) => (credit ? Math.min(0, v) : Math.max(0, v));
+        const earned =
+          fit(Math.round(l.from_previous_cents)) +
+          fit(Math.round(l.this_period_cents)) +
+          fit(Math.round(l.materials_stored_cents));
+        const released = Math.round(l.retainage_released_cents ?? 0);
+        const rel = earned < 0 ? Math.min(0, Math.max(earned, released)) : Math.max(0, Math.min(earned, released));
+        return n + Math.round(((earned - rel) * 10) / 100);
+      }, 0);
+      check("line 5 is 10% of what each line has earned and not had released",
+        g.retainageCents === expected,
+        `${g.retainageCents} vs ${expected} across ${g703.length} line(s) of ${g.totalCompletedStoredCents}`);
       check("line 6 = line 4 − line 5",
         g.totalEarnedLessRetainageCents === g.totalCompletedStoredCents - g.retainageCents,
         String(g.totalEarnedLessRetainageCents));

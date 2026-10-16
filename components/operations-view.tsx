@@ -14,35 +14,39 @@
  *   - Top GP-margin WOs (profitability outliers)
  *
  * DATA SOURCES:
- *   - bundle.snapshot — full SF snapshot (uses thin mode at the page level)
- *   - deriveOperations(snapshot, period) — pure derive, memoized per-snapshot
+ *   - `data.byPeriod` — every period's operations rollup, derived on the
+ *     SERVER by lib/dashboard/operations-data.ts. Null on mock data.
  *
- * Period change = instant client-side recompute; no SF round-trip.
+ * The snapshot does not come here. The page reads it in THIN mode, which
+ * cut what the server fetches but not what the page sends: React serialized
+ * it into the HTML for this "use client" component at 35.1MB and 4.7s on a
+ * phone (production, 2026-10-16). Period change is still instant — a lookup
+ * in the prebuilt map, no round-trip.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import FilterDropdown from "@/components/filter-dropdown";
 import PageHeader from "@/components/page-header";
 import { PERIOD_LABELS, type Period } from "@/lib/mock-data";
-import { deriveOperations } from "@/lib/salesforce/derive";
 import { fmtMoneyK } from "@/lib/format";
 import type { LiveDashboardBundle } from "@/lib/data-source";
+import type { OperationsData } from "@/lib/dashboard/operations-data";
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = (
   ["this-month", "last-month", "30d", "90d", "this-year", "last-year", "12m", "lifetime"] as Period[]
 ).map((v) => ({ value: v, label: PERIOD_LABELS[v] }));
 
-type Props = { bundle: LiveDashboardBundle };
+type Props = {
+  bundle: Omit<LiveDashboardBundle, "snapshot">;
+  data: OperationsData | null;
+};
 
-export default function OperationsView({ bundle }: Props) {
+export default function OperationsView({ bundle, data }: Props) {
   const [period, setPeriod] = useState<Period>("this-month");
-  const { snapshot, viewer } = bundle;
+  const { viewer } = bundle;
   const repScopedToSelf = viewer?.scope === "my" && !!viewer.effectiveUserId;
 
-  const ops = useMemo(
-    () => (snapshot ? deriveOperations(snapshot, period) : null),
-    [snapshot, period]
-  );
+  const ops = data ? data.byPeriod[period] ?? null : null;
 
   if (!ops) {
     return (
@@ -74,7 +78,7 @@ export default function OperationsView({ bundle }: Props) {
         }
       />
 
-      {snapshot?.isSandbox && (
+      {data?.isSandbox && (
         <div className="rounded-lg border border-ppp-orange-100 bg-ppp-orange-50 text-ppp-orange-700 text-xs sm:text-sm px-4 py-3">
           <strong>Sandbox data.</strong> Production ops data will surface here once OAuth flips.
         </div>

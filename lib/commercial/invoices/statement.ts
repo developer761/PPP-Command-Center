@@ -13,6 +13,8 @@ import "server-only";
 import { listCommercialInvoices } from "./db";
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "./constants";
+import { isSupersededByAia } from "./carryover";
+import { aiaDueAtFrom } from "@/lib/commercial/aia/constants";
 import { daysPastDue as arDaysPastDue } from "@/lib/commercial/reports/ar-aging";
 import { safeNowMs } from "@/lib/commercial/now";
 
@@ -100,7 +102,35 @@ export async function getOpenInvoiceStatementForAccount(
   };
   let totalOutstandingCents = 0;
 
+  /*
+   * 🔴 THE CARRY-OVER GUARD HAS TO RUN ON THE DOCUMENT THAT LEAVES THE BUILDING.
+   *
+   * `isSalesforceCarryoverInvoice` exists because once a job's real billing is
+   * in the platform as an issued AIA application, the migrated `SF-####`
+   * placeholder and the certificate are the same money twice. Its own docblock
+   * says it is "applied by getReceivablesReport and getArAging" — both of which
+   * are INTERNAL. It was applied on neither customer-facing surface.
+   *
+   * Measured 2026-10-16 on LMJ Management & Construction: the statement we
+   * email reads $372,962.39 and our own AR aging reads $361,412.40. The
+   * difference is exactly SF-00268177, $11,549.99, on the Cipla job — a job
+   * whose AIA ledger reads billed $87,627.09, collected $87,627.09, due $0.00.
+   * Billed and paid in full through its certificates, and we were asking the GC
+   * for it again.
+   *
+   * This is the $94,000 shape — one question, two internally-consistent answers
+   * — except the wrong one is addressed to the customer. So the rollups are
+   * resolved BEFORE the invoice loop now, purely so the loop can see which
+   * deals bill through AIA.
+   */
+  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
+  const liveOpps = opps.filter((o) => !o.deleted_at);
+  const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
+  const billsViaAia = new Set(rollups.keys());
+
   for (const inv of invoices) {
+    // Same rule, same helper, as the receivables report and AR aging.
+    if (isSupersededByAia(inv, billsViaAia)) continue;
     // OPEN = still owed. Exclude draft (not billed yet), void, and anything with
     // no positive balance (paid / credit). Clamp each balance at 0 so an
     // overpaid invoice can't shrink the total (matches the AR-KPI rule).
@@ -150,9 +180,6 @@ export async function getOpenInvoiceStatementForAccount(
   // Batched — the first cut called `aiaBillingRollup` (several queries) plus
   // `listAiaApplications` once per opportunity, in sequence.
   let retainageHeldCents = 0;
-  const { aiaBillingRollupBulk } = await import("@/lib/commercial/aia/db");
-  const liveOpps = opps.filter((o) => !o.deleted_at);
-  const rollups = await aiaBillingRollupBulk(liveOpps.map((o) => o.id));
   const oppRowById = new Map(liveOpps.map((o) => [o.id, o] as const));
   for (const [oppId, roll] of rollups) {
     retainageHeldCents += roll.retainageHeldCents;
@@ -160,11 +187,28 @@ export async function getOpenInvoiceStatementForAccount(
     const opp = oppRowById.get(oppId);
     if (!opp) continue;
 
-    const issuedAt =
-      roll.latestIssuedFrozenAt ??
-      (roll.latestIssuedPeriodTo ? `${roll.latestIssuedPeriodTo}T16:00:00Z` : null);
-    const dueAt = issuedAt
-      ? new Date(new Date(issuedAt).getTime() + DEFAULT_DUE_DAYS * 86_400_000).toISOString()
+    /*
+     * THE SHARED LADDER, not a fourth copy of it.
+     *
+     * This preferred `frozen_at` outright. `aiaDueAtFrom` → `aiaIssuedAtFrom`
+     * carries the back-dating correction Katie asked for on 2026-10-15: Mary
+     * back-entered each job's history when Tomco moved over, so 25 of 41 issued
+     * applications were frozen more than 30 days after the period they bill,
+     * and dating them by frozen_at makes old money look new. Water Lilies App
+     * 3, $15,175.71, read 27 days overdue on the aging report and "not yet due"
+     * on the statement we hand the GC — a 39-day disagreement about the same
+     * receivable. `aiaDueAtFrom`'s own docblock says "ONE definition. This
+     * ladder was written out three times"; this was the fourth and the stale one.
+     */
+    const dueAt = aiaDueAtFrom(
+      roll.latestIssuedFrozenAt,
+      roll.latestIssuedPeriodTo,
+      DEFAULT_DUE_DAYS
+    );
+    // Shown on the statement as the date the certificate went out. Same ladder,
+    // minus the terms, so the two dates on a row can never disagree.
+    const issuedAt = dueAt
+      ? new Date(new Date(dueAt).getTime() - DEFAULT_DUE_DAYS * 86_400_000).toISOString()
       : null;
     const aiaDaysPastDue = dueAt ? arDaysPastDue(dueAt, now) : null;
     const isOverdue = aiaDaysPastDue != null && aiaDaysPastDue > 0;

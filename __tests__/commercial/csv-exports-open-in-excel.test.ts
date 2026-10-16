@@ -75,9 +75,43 @@ describe("csvEscape stays hardened", () => {
   // These were fixed once; pinning them so a "tidy-up" can't undo it.
   it("neutralises a formula", () => {
     expect(csvEscape("=cmd|'/c calc'!A1")).toBe(`"'=cmd|'/c calc'!A1"`);
-    expect(csvEscape("+1")).toBe(`"'+1"`);
-    expect(csvEscape("-2")).toBe(`"'-2"`);
     expect(csvEscape("@x")).toBe(`"'@x"`);
+    expect(csvEscape("\tx")).toBe(`"'\tx"`);
+    // Still a formula: a sign followed by anything that is not just a number.
+    expect(csvEscape("-1+1")).toBe(`"'-1+1"`);
+    expect(csvEscape("+A1")).toBe(`"'+A1"`);
+    expect(csvEscape("-cmd")).toBe(`"'-cmd"`);
+    /*
+     * A LEADING `+` STAYS NEUTRALISED, deliberately. Excel turns `+1` typed
+     * into a cell into the formula `=1`, and nothing this platform formats
+     * ever emits a leading plus — money is `-x` or bare `x`. So exempting it
+     * would buy nothing and give the injection guard a hole.
+     */
+    expect(csvEscape("+1")).toBe(`"'+1"`);
+  });
+
+  /*
+   * THIS TEST USED TO ASSERT THE BUG.
+   *
+   * It pinned `csvEscape("-2")` as `"'-2"` and `csvEscape("+1")` as `"'+1"`,
+   * on the reasoning that a leading sign is a formula. A negative number is
+   * not a formula, and prefixing it makes Excel read it as TEXT.
+   *
+   * Live October ledger: 124 of 129 data rows, plus the MONEY OUT and NET
+   * totals, went out as `'-113060.78`. `=SUM(E:E)` skipped every one and
+   * returned the money-IN side only — on the file the accountant files from,
+   * whose own export module says "Money out prints negative, so a spreadsheet
+   * SUM over the column is the net."
+   *
+   * So the rule is: a plain decimal number is data; everything else that
+   * starts with a formula character is still neutralised, as above.
+   */
+  it("leaves a number alone, so the accountant's SUM works", () => {
+    expect(csvEscape("-113060.78")).toBe(`"-113060.78"`);
+    expect(csvEscape("-2")).toBe(`"-2"`);
+    expect(csvEscape(-113060.78)).toBe(`"-113060.78"`);
+    expect(csvEscape(0)).toBe(`"0"`);
+    expect(csvEscape("41.2")).toBe(`"41.2"`);
   });
 
   it("quotes a carriage return, which would otherwise split the row", () => {

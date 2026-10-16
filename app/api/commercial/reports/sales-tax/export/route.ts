@@ -3,7 +3,7 @@ import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard"
 import { getSalesTaxReport } from "@/lib/commercial/reports/sales-tax";
 import { csvEscape as csv } from "@/lib/commercial/csv";
 import { etTodayIso } from "@/lib/date-et";
-import { ACTIVITY_PRESETS, ACTIVITY_DEFAULT, activityRange, resolvePreset } from "@/lib/commercial/reports/presets";
+import { ACTIVITY_PRESETS, LEDGER_DEFAULT, activityRange, resolvePreset } from "@/lib/commercial/reports/presets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,23 @@ export async function GET(req: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const sp = req.nextUrl.searchParams;
-  const period = resolvePreset(sp.get("tp") ?? undefined, ACTIVITY_PRESETS, ACTIVITY_DEFAULT);
+  /*
+   * 🔴 THE SAME DEFAULT AS THE SCREEN THAT LINKS HERE.
+   *
+   * This fell back to ACTIVITY_DEFAULT ("all") while the Accounting page runs
+   * on LEDGER_DEFAULT ("this month") and — correctly — omits `tp` from the URL
+   * when it is at its own default. So "Export for filing" from a screen
+   * showing ONE MONTH produced a file covering everything.
+   *
+   * Measured 2026-10-16. Sales tax: screen 1 invoice / $0.00; file 74 invoices
+   * / $9,267.15 spanning Aug 2025 to Oct 2026. Ledger: screen 129 rows / net
+   * -$59,245.58; file 1,977 rows / net +$369,496.40 — the sign flips. This is
+   * the file that goes to the accountant to file from.
+   *
+   * The Accounting page is the only caller of this route (grepped), so there
+   * is no second consumer relying on "all".
+   */
+  const period = resolvePreset(sp.get("tp") ?? undefined, ACTIVITY_PRESETS, LEDGER_DEFAULT);
   const range = activityRange(period);
   // The same narrowing the screen is showing, or the file and the screen
   // disagree — the trap this route's siblings already name.

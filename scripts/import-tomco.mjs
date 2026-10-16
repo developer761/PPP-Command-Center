@@ -1366,6 +1366,8 @@ async function stagePayments() {
    */
   const existingByDeal = new Map();
   const dealOfInvoice = new Map();
+  /** Invoices a PERSON soft-deleted here. See the refusal in the payment loop. */
+  const deletedInvoices = new Set();
   {
     let from = 0;
     for (;;) {
@@ -1377,7 +1379,10 @@ async function stagePayments() {
       if (error) throw new Error(`invoices: ${error.message}`);
       // A payment on a DELETED invoice is not money any more — the platform
       // stops counting it with its parent — so it must not block an adoption.
-      for (const i of data ?? []) if (!i.deleted_at) dealOfInvoice.set(i.id, i.opportunity_id);
+      for (const i of data ?? []) {
+        if (i.deleted_at) deletedInvoices.add(i.id);
+        else dealOfInvoice.set(i.id, i.opportunity_id);
+      }
       if (!data || data.length < 1000) break;
       from += data.length;
     }
@@ -1440,6 +1445,30 @@ async function stagePayments() {
     if ((t.RecordType?.DeveloperName ?? "") !== "Payment_In") continue;
     const invoiceId = mapped("invoice", t.WorkOrder__c);
     if (!invoiceId) { r.skipped.push(`payment ${t.Name}: no invoice for its work order`); continue; }
+    /*
+     * 🔴 A PERSON DELETED THIS INVOICE. DO NOT PUT MONEY BACK ON IT.
+     *
+     * `mapped()` reads commercial_import_map, which still holds the link after
+     * a soft delete — so this attached Salesforce payments to invoices
+     * somebody here had already removed, DAYS after they removed them.
+     *
+     * Measured on the live book 2026-10-16: five payments, $208,608.93, each
+     * created after its invoice was deleted — $75,129.18 onto SF-00287819 six
+     * days later, $21,375.00 onto SF-00292951 ten days later. 34 payment rows
+     * totalling $956,616.89 now sit on soft-deleted invoices. The read side
+     * was taught to ignore them; the write side kept making more.
+     *
+     * Deleting an invoice here is a decision, the same as editing one, and the
+     * importer already respects edits (`editedHere`). It has to respect this
+     * too — and loudly, because the Salesforce row is still real and somebody
+     * needs to reconcile the two.
+     */
+    if (deletedInvoices.has(invoiceId)) {
+      r.skipped.push(
+        `payment ${t.Name} (${money(cents(t.Amount__c))}): its invoice was deleted here — not re-attaching`,
+      );
+      continue;
+    }
 
     /*
      * A ROW A PERSON RECORDED IS NEVER WRITTEN TO. Checked by PROVENANCE, every
