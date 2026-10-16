@@ -105,6 +105,16 @@ describe("mayCreateRevision has no caller", () => {
    *
    * When somebody does wire it up, this test fails and should be deleted.
    */
+  /*
+   * THIRTY SECONDS. This parses every file under app/, lib/ and components/
+   * to strip comments before grepping — a mention of `mayCreateRevision` in
+   * a docblock would read as a caller and turn this green for the wrong
+   * reason. At vitest's 5,000 ms default it timed out in a full parallel run
+   * on 2026-10-16 and passed alone: a red that tracks how busy the machine
+   * is. The budget ends an infinite walk; it does not time a slow one.
+   */
+  const WHOLE_TREE_WALK_MS = 30_000;
+
   it("is still uncalled — delete this test on the day that changes", () => {
     const roots = ["app", "lib", "components"];
     const hits: string[] = [];
@@ -127,5 +137,5 @@ describe("mayCreateRevision has no caller", () => {
       "mayCreateRevision now HAS callers — good. Delete this test and let the " +
         "assertions above stand as real coverage:\n" + hits.join("\n")
     ).toEqual([]);
-  });
+  }, WHOLE_TREE_WALK_MS);
 });
