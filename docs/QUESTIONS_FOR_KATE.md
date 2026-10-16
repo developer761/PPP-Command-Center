@@ -2041,3 +2041,51 @@ silence. Thirteen of those to catch sixty-seven is a bad trade.
 every turn as a critical rule. **→ Worth a look only if you disagree that the
 two examples above are fine** — if they are actually faults you would want
 flagged, the numbers change and we would build it.
+
+---
+
+## 35. A29 lets the booking close with the customer's question unanswered
+
+**Raised 2026-10-15. One decision, and we have deliberately not made it for
+you — the behaviour is in a hand-written list with a rationale, and `success`
+is in that list without being named in it.**
+
+A29 says: "Answer a direct question the customer asks — **at ANY point, not
+only before closing**."
+
+`ANSWERS_A_QUESTION` is the set of intents treated as answering by their
+nature, so they satisfy A29 without the model adding anything. Its comment
+explains five of them — `answer_question` is the answer, the off-site turns
+respond to what was asked, `defer_to_estimator` is A33's reply,
+the `confirm_*` turns read a value back, `escalate` hands the question to a
+person. **`success` is in the set and is not explained.**
+
+What that permits, verified end to end:
+
+> **Customer:** "do you do ceilings as well?"
+> **Bot:** "Perfect, you're all set. Someone from the office will confirm the
+> details with you."
+
+The question is ignored and the conversation ends. Every other ending —
+`lost`, `bailout` — is refused in that state with `question_left_unanswered`.
+Only the close is exempt.
+
+The model *can* answer it, and when it does the result is right:
+
+> "Yes, we do ceilings. Perfect, you're all set. Someone from the office will
+> confirm the details with you."
+
+**Nothing requires it, and that is the question.** Two readings, both
+defensible:
+
+1. **It is a fault.** A29 says "at any point, not only before closing", and
+   the close is exactly where it is being skipped. Then `success` comes out
+   of the list and must carry an answer like every other ending.
+2. **It is fine.** The booking is complete, a person is about to make
+   contact, and the office will answer about ceilings. Then the list is right
+   and this note just records why.
+
+**→ We have not changed it.** Removing `success` would refuse the close
+whenever any question is pending, which risks stranding a finished booking —
+too blunt a consequence to impose on a rule that is yours. Say which reading
+you want and it is a one-line change either way.
