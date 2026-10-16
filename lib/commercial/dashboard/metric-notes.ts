@@ -34,7 +34,7 @@ export function dashboardMetricNotes(rangeLabel: string): Record<MetricKey, Metr
     // ── Are we making money? ──
     grossRevenue: {
       scope: "range",
-      text: `${R} Everything billed in the period, before sales tax: invoices by the date they were sent (drafts and voids excluded), plus AIA applications by the billing period each covers, counting the work each application added. Includes retention (it is earned, just held). Covers every job, open or closed; archived deals and account-level invoices are excluded.`,
+      text: `${R} Everything billed in the period, before sales tax: invoices by the date they were sent (drafts and voids excluded), plus AIA applications by the billing period each covers, counting the work each application added. Includes retention (it is earned, just held). Covers every job, open or closed; archived deals and account-level invoices are excluded. One caveat on the older jobs: an invoice carried over from Salesforce is dated by the day its JOB STARTED, because Salesforce sent a contract figure per work order and no billing dates — so on a job billed in stages, all of it lands at the start. Tomco's jobs run 4 days at the median, so this rarely moves a month; four jobs run long enough to cross a fiscal year.`,
     },
     jobCosts: {
       scope: "range",
