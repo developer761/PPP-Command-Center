@@ -2,7 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { deriveInvoiceStatus, isSalesforceCarryoverInvoice } from "@/lib/commercial/invoices/constants";
+import { deriveInvoiceStatus, invoiceDueAtFrom, isSalesforceCarryoverInvoice } from "@/lib/commercial/invoices/constants";
 
 /**
  * AR Aging report (R4) — every OPEN invoice's balance bucketed by how far past
@@ -174,7 +174,15 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
     // Same rule as the Receivables report: once a job's AIA history is in, a
     // migrated Salesforce carry-over invoice on it is the same money again.
     if (isSalesforceCarryoverInvoice(inv) && inv.opportunity_id && billsViaAia.has(inv.opportunity_id)) continue;
-    const days = daysPastDue(inv.due_at, nowMs);
+    /*
+     * A SENT INVOICE WITH NO DUE DATE STILL AGES, from the day it went out
+     * plus the standard terms. Six live invoices carried no due date on
+     * 2026-10-15 and four of them — $31,107.14 — had a perfectly good issue
+     * date; Station Yards' $17,757.14 went out on 9/17 and read as current.
+     * See `invoiceDueAtFrom`. AIA has always had this ladder.
+     */
+    const effectiveDueAt = invoiceDueAtFrom(inv.due_at, inv.issued_at ?? inv.sent_at);
+    const days = daysPastDue(effectiveDueAt, nowMs);
     const bucket = bucketOf(days);
     const bal = inv.balance_cents;
     ageWeightSum += bal * Math.max(0, days);
@@ -197,7 +205,10 @@ export async function getArAging(nowMs = Date.now()): Promise<ArAging> {
 
     totals[bucket] += bal;
     totals.total += bal;
-    if (!inv.due_at) { noDueDateCents += bal; noDueDateCount += 1; }
+    // Genuinely undated — nothing to reckon from, not merely missing a due
+    // date. After the ladder above this is only the handful that arrived with
+    // no issue date either ($170 across two rows on 2026-10-15).
+    if (!effectiveDueAt) { noDueDateCents += bal; noDueDateCount += 1; }
   }
 
   // Same aggregation for the AIA applications collected above — one row per GC

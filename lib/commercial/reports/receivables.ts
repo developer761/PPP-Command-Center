@@ -6,6 +6,7 @@ import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, isSalesforceCarryoverInvoice, ty
 import { listCommercialOpportunities, derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";
 import { aiaDueAtFrom, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
+import { invoiceDueAtFrom } from "@/lib/commercial/invoices/constants";
 import { daysPastDue } from "./ar-aging";
 import { etDateOf } from "@/lib/date-et";
 import { safeNowMs } from "@/lib/commercial/now";
@@ -290,7 +291,16 @@ export async function getReceivablesReport(
       reference: [inv.invoice_number, issued ? `sent ${fmtRefDate(issued)}` : null].filter(Boolean).join(" · "),
       note: inv.notes?.trim() || null,
       issuedIso: issued,
-      daysOut: !inv.due_at ? null : daysPastDue(inv.due_at, nowMs),
+      /*
+       * A sent invoice with no due date still ages, from the day it went out
+       * plus the standard terms — the same ladder AIA has always had. See
+       * `invoiceDueAtFrom`. Null stays null only when there is genuinely no
+       * date to reckon from, which is what the undated note below counts.
+       */
+      daysOut: (() => {
+        const due = invoiceDueAtFrom(inv.due_at, inv.issued_at ?? inv.sent_at);
+        return due ? daysPastDue(due, nowMs) : null;
+      })(),
       href: `/commercial/invoices/${inv.id}`,
       billingHref: inv.opportunity_id
         ? `/commercial/opportunities/${inv.opportunity_id}?tab=invoices`

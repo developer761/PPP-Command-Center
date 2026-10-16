@@ -80,6 +80,40 @@ export const BILLABLE_INVOICE_STATUSES: ReadonlySet<InvoiceStatus> = new Set([
 export const DEFAULT_PAYMENT_TERMS = "Net 30";
 export const DEFAULT_DUE_DAYS = 30;
 
+/**
+ * When an invoice falls due — from its own due date, or from the day it went
+ * out plus the standard terms.
+ *
+ * 🔴 WITHOUT THE FALLBACK, A SENT INVOICE CAN NEVER BE LATE.
+ *
+ * `daysPastDue(null)` is 0 and 0 buckets as Current, so an invoice with no due
+ * date sits in Current for ever however long ago it was sent. Measured on
+ * 2026-10-15: six live billable invoices carried no due date, $31,277.14 —
+ * and FOUR of them, $31,107.14 of it, had a perfectly good issue or sent date.
+ * Station Yards' $17,757.14 went out on 9/17 and read as current a month later.
+ *
+ * The Accounting page explained the gap as Salesforce sending terms but no
+ * invoice date. That is true of exactly two rows, worth $170 between them.
+ * Three of the four are invoices raised in this platform, not migrated at all.
+ *
+ * AIA has had this ladder from the start (`aiaDueAtFrom`); invoices never got
+ * one, which is why the same money ages on one surface and not the other.
+ *
+ * Returns null only when there is genuinely no date to reckon from — unknown,
+ * never "today", and `noDueDateCents` still counts those honestly.
+ */
+export function invoiceDueAtFrom(
+  dueAt: string | null | undefined,
+  issuedAt: string | null | undefined,
+  dueDays: number = DEFAULT_DUE_DAYS,
+): string | null {
+  if (dueAt) return dueAt;
+  if (!issuedAt) return null;
+  const issued = Date.parse(issuedAt);
+  if (!Number.isFinite(issued)) return null;
+  return new Date(issued + dueDays * 86_400_000).toISOString();
+}
+
 /** Grace period before we flip a sent invoice to "overdue" on read.
  *  Currently 0 = the day due_at passes. Bump if customers complain
  *  about aggressive labeling. */

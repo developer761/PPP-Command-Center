@@ -22,6 +22,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_CENTS, parseDollarsToCents } from "@/lib/commercial/invoices/format";
 import { AIA_BACKDATED_AFTER_DAYS, aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
+import { invoiceDueAtFrom } from "@/lib/commercial/invoices/constants";
 
 describe("the money parser keeps the sign", () => {
   it("reads a credit as a negative number of cents", () => {
@@ -173,5 +174,47 @@ describe("a back-entered certificate ages from when it was billed", () => {
     // the rule must not fire.
     const early = "2026-02-20T14:00:00.000Z";
     expect(aiaIssuedAtFrom(early, PERIOD)).toBe(early);
+  });
+});
+
+describe("a sent invoice with no due date still ages", () => {
+  /*
+   * `daysPastDue(null)` is 0 and 0 buckets as Current, so an invoice with no
+   * due date sat in Current for ever however long ago it went out. Measured on
+   * 2026-10-15: six live billable invoices carried no due date, $31,277.14 —
+   * and FOUR of them, $31,107.14, had a perfectly good issue date. Station
+   * Yards' $17,757.14 went out on 9/17 and read as current a month later.
+   *
+   * The Accounting page blamed Salesforce sending terms but no invoice date.
+   * That is true of exactly two rows, $170 between them; three of the four are
+   * invoices raised in this platform and never migrated at all.
+   *
+   * AIA has had this ladder from the start. Invoices never got one, which is
+   * why the same money aged on one surface and not the other.
+   */
+  const DUE_DAYS = 30;
+
+  it("uses the invoice's own due date when it has one", () => {
+    expect(invoiceDueAtFrom("2026-11-01T00:00:00.000Z", "2026-09-17T00:00:00.000Z", DUE_DAYS))
+      .toBe("2026-11-01T00:00:00.000Z");
+  });
+
+  it("falls back to the day it went out plus the terms", () => {
+    // Station Yards: sent 9/17, so due 10/17 — not 'never'.
+    expect(invoiceDueAtFrom(null, "2026-09-17T00:00:00.000Z", DUE_DAYS))
+      .toBe("2026-10-17T00:00:00.000Z");
+  });
+
+  it("returns null only when there is genuinely nothing to reckon from", () => {
+    // The two real Salesforce carry-overs, $170 between them. Unknown must
+    // stay unknown — `noDueDateCents` counts these honestly rather than
+    // inventing a date of 'today'.
+    expect(invoiceDueAtFrom(null, null, DUE_DAYS)).toBeNull();
+    expect(invoiceDueAtFrom(null, undefined, DUE_DAYS)).toBeNull();
+    expect(invoiceDueAtFrom(null, "not a date", DUE_DAYS)).toBeNull();
+  });
+
+  it("defaults to the standard terms when none are passed", () => {
+    expect(invoiceDueAtFrom(null, "2026-09-17T00:00:00.000Z")).toBe("2026-10-17T00:00:00.000Z");
   });
 });
