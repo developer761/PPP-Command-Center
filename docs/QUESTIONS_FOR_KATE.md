@@ -2089,3 +2089,34 @@ defensible:
 whenever any question is pending, which risks stranding a finished booking —
 too blunt a consequence to impose on a rule that is yours. Say which reading
 you want and it is a one-line change either way.
+
+---
+
+## 36. A7 without its reason escalates instead of offering — safe, but it costs the automation
+
+**Raised 2026-10-15. Not a defect, and not a question so much as a number
+somebody should decide is acceptable.**
+
+A7 mandates the reason: the off-site offer has to say WHY we are departing
+from the normal route — "since you're not able to be at the property". The
+renderer enforces that literally: with no reason supplied it produces an
+EMPTY message.
+
+That is handled safely. An empty render sets `saysNothing`, the turn
+escalates, and a person picks it up — no empty text is ever sent, which we
+verified rather than assumed.
+
+**The cost is that the offer never gets made.** A customer who qualifies for
+a remote quote — cannot meet for two weeks, wants a price only, free only
+outside our hours — gets handed to a person instead of being offered the
+quick quote the rule exists to give them. The automation stops exactly where
+A7 was written to help.
+
+The validator cannot currently catch it earlier, because the reason is a
+RENDER input and not part of the validation context. Adding it there would
+let the model be told "A7 needs the qualifying reason" and retry, instead of
+rendering nothing and escalating.
+
+**→ Nothing is broken and nothing is urgent.** Worth knowing because if A7
+escalations look high once this is live, this is the reason, and the fix is
+known. Flagged now rather than discovered from a report later.
