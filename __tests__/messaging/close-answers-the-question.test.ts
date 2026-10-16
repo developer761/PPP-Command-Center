@@ -28,9 +28,19 @@ const held = {
   email: "a@b.com",
   name: "Dana",
 };
+/**
+ * `accepted` NEEDS A YES, since 2026-10-16 (accepted_without_agreement): a
+ * nurture customer who only asks "do you do ceilings as well?" has not
+ * accepted anything. So on that close the customer says yes AND asks, which
+ * is the case this file is about — the best-case customer who agrees and
+ * asks one last thing.
+ */
 const close = (intent: string, track: "new_lead" | "nurture", customerText: string, freeText = "") => ({
   action: { intent, freeText, confidence: 0.9 },
-  ctx: { known: held, flowStage: 4, track, customerText },
+  ctx: {
+    known: held, flowStage: 4, track,
+    customerText: intent === "accepted" ? `Yes, let's go ahead. ${customerText}` : customerText,
+  },
 });
 
 describe("a close does not swallow the customer's question", () => {

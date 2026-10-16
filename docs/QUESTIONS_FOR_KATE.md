@@ -2204,3 +2204,39 @@ rendering nothing and escalating.
 **→ Nothing is broken and nothing is urgent.** Worth knowing because if A7
 escalations look high once this is live, this is the reason, and the fix is
 known. Flagged now rather than discovered from a report later.
+
+---
+
+## 37. Two defaults shipped 2026-10-16: a silent "Transferred", and Spanish visit hours
+
+**Raised 2026-10-16. Both shipped with a default; neither blocks anything.**
+
+**1. "Transferred" now sends nothing, like "Escalate".** The Iteration 1 spec's
+Human takeover section says the bot "sends nothing on the way out — no
+sign-off, no handover line. No visible seam." Escalate was made silent for
+that in September. Transferred is the same hand-off under another name and was
+still sending:
+
+> "I'm passing you over to our office now. They'll take it from here."
+
+It also went to customers who asked to be emailed, by text, which is the
+channel they had just asked us not to use. The conversation still lands in
+the "Needs a person" queue exactly as an escalation does.
+
+**→ Tell us if you want a line on Transferred.** If the office would rather
+the customer hear something, say what, and whether it should differ for an
+email-only customer.
+
+**2. The visit-hours replies in Spanish are ours.** A Spanish speaker who named
+a time was answered in English ("I'll check the calendar for that time.", "Our
+earliest visit is usually 10 AM…"). They are now:
+
+| Situation | What it says |
+|---|---|
+| A time inside the visit day | Voy a revisar el calendario para esa hora. |
+| Too early | Normalmente la primera visita es a las 10:00, pero puedo preguntar por algo más temprano o un sábado. Qué le queda mejor? |
+| Too late | Normalmente la última visita es a las 17:00, pero puedo preguntar por algo más tarde o un sábado. Qué le queda mejor? |
+
+Same standing as item 28's seven sentences. **→ Nothing is blocked.** If Mac or
+Jasmine would word them differently, it is two strings in
+`lib/messaging/appointment-time.ts`.

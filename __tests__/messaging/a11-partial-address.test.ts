@@ -21,7 +21,9 @@ import { validateAction } from "@/lib/messaging/agent-output";
  * A prompt instruction the model can decline is precisely what this file
  * replaces with a refusal.
  */
-const act = (intent: string) => ({ intent, freeText: "", confidence: 0.95, reasoning: "" });
+// answer_question carries an answer: its freeText is the whole message, and an
+// empty one is refused (answer_dropped_by_style, 2026-10-16).
+const act = (intent: string) => ({ intent, freeText: intent === "answer_question" ? "Yes, we do that." : "", confidence: 0.95, reasoning: "" });
 
 describe("a half address cannot be walked past", () => {
   it.each(["ask_contact", "ask_availability", "success"])(

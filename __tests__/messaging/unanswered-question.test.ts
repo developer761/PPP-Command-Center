@@ -65,7 +65,9 @@ describe("A29: a direct question is never left unanswered", () => {
 
   it("allows an intent that answers by its nature", () => {
     for (const intent of ["answer_question", "defer_to_estimator", "escalate", "confirm_address"]) {
-      expect(ask(intent, { ...asked, knownFields: { address: true } }).ok, intent).toBe(true);
+      // answer_question needs its answer written: the freeText is the message.
+      const said = intent === "answer_question" ? "Yes, we do those." : undefined;
+      expect(ask(intent, { ...asked, knownFields: { address: true } }, said).ok, intent).toBe(true);
     }
   });
 

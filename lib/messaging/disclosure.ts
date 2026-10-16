@@ -163,9 +163,31 @@ const OPENS_WITH_A_GREETING =
   /^[\s\u00a1\u00bf]*(?:hi there|hi|hey|hello|good morning|good afternoon|good evening|hola|buenos d[íi]as|buenas tardes|buenas noches|buenas|saludos)\b[\s!.,\u00a1]*/i;
 
 export function applyDisclosure(move: DisclosureMove, reply: string, es = false): string {
-  if (move === "answer") return es ? DISCLOSURE_IN_HOURS_ES : DISCLOSURE_IN_HOURS;
-  // Truthful, and with no offer of a person there is nobody to honour.
-  if (move === "answer_out_of_hours") return es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
+  /**
+   * THE ANSWER REPLACES THE IN-HOURS LINE, NOT THE WHOLE MESSAGE. 2026-10-16
+   *
+   * Until today nothing reached these two branches with a real reply:
+   * agent-run skipped disclosure for bot_suspected altogether, so out of
+   * hours a customer asking "is this a bot?" was sent the IN-hours template,
+   * "Would you prefer to speak with a member of our team?", at an hour when
+   * there is no team to speak to. A46's card: out of hours "there is nobody
+   * to connect them to, and a promise with no owner is worse than none".
+   *
+   * Now it is reached, and the reply it receives is the rendered
+   * bot_suspected message, which can carry more than the line: the photo
+   * thanks, and on a first contact "Reply STOP to opt out.", a TCPA
+   * requirement that must not be swapped away with the wording. So where the
+   * reply holds the in-hours line, only that line is exchanged. Anything else
+   * gets the bare line, exactly as before.
+   */
+  if (move === "answer" || move === "answer_out_of_hours") {
+    const inHours = es ? DISCLOSURE_IN_HOURS_ES : DISCLOSURE_IN_HOURS;
+    // Truthful, and with no offer of a person there is nobody to honour.
+    const line = move === "answer"
+      ? inHours
+      : (es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS);
+    return reply.includes(inHours) ? reply.replace(inHours, line) : line;
+  }
   if (move === "prefix") {
     const line = es ? DISCLOSURE_OUT_OF_HOURS_ES : DISCLOSURE_OUT_OF_HOURS;
     /**

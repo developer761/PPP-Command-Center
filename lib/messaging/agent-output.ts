@@ -22,7 +22,7 @@ import type { JobRoute } from "./offsite";
 import { parkKind, isAsk, conversationWasDeferred, threadIsBlockedOnEvent } from "./parking";
 import { isAvailabilityStandOff } from "./availability-ask";
 import { secondPropertyOutstanding, threadMentionsSecondProperty } from "./multi-property";
-import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
+import { requestedTime, slotVerdict, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { statedChannelPreference } from "./channel-preference";
 import { declinesTheWork } from "./parking";
 import { scopeFromCustomer as scopeSaidNow } from "./scope";
@@ -345,7 +345,9 @@ export type RejectReason =
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected" // closing a two-property job having collected one
   | "availability_already_given"  // asking a fourth time for what Kate says we have
-  | "wrong_number_not_bailout";   // a stranger told us we have the wrong number
+  | "wrong_number_not_bailout"    // a stranger told us we have the wrong number
+  | "accepted_without_agreement"  // a close on a customer who has not said yes
+  | "answer_dropped_by_style";    // the freeText WAS the message, and a style rule removed it
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -1197,6 +1199,61 @@ export const ANSWERS_A_QUESTION = new Set<string>([
 export const CLOSES = new Set<string>(["success", "accepted"]);
 
 /**
+ * STILL DECIDING. Read by the two closes, 2026-10-16.
+ *
+ * About the DECISION, not about a field. "Not sure what time" is a missing
+ * window and parking's business; "not sure yet", "another quote", "think it
+ * over", "talk to my husband first" are a customer who has not said yes.
+ * Each phrase here was chosen because it has no reading in which the work is
+ * agreed.
+ */
+const HESITATES = new RegExp(
+  [
+    String.raw`\b(?:another|other|more|a\s+second|second|a\s+couple\s+(?:of\s+)?(?:other\s+)?)\s+(?:quotes?|estimates?|bids?|opinions?|prices?)\b`,
+    String.raw`\bshop(?:ping)?\s+around\b|\bcompar(?:e|ing)\s+(?:quotes|prices|estimates|bids)\b`,
+    String.raw`\bthink\s+(?:about\s+it|it\s+over|on\s+it)\b|\bneed\s+(?:some\s+)?time\s+to\s+(?:think|decide)\b|\bsleep\s+on\s+it\b`,
+    String.raw`\bnot\s+(?:sure|ready|certain)\s+(?:yet|if|whether|about\s+(?:it|this|going))\b|\bnot\s+(?:sure|ready)\s*[,.!]?\s*$`,
+    String.raw`\bhaven['’]?t\s+decided\b|\bstill\s+(?:deciding|thinking)\b|\bundecided\b`,
+    String.raw`\b(?:talk|check|speak|discuss\s+it|run\s+it\s+by)\b[^.?!]{0,20}\b(?:my|our)\s+(?:wife|husband|spouse|partner)\b[^.?!]{0,12}\bfirst\b`,
+    String.raw`\b(?:my|our)\s+(?:wife|husband|spouse|partner)\s+(?:wants|needs|has|would\s+like)\s+to\s+(?:think|decide|look|get|see|check|compare)\b`,
+    // Spanish
+    String.raw`\b(?:otra|otras|m[áa]s)\s+cotizaci(?:[óo]n|ones)\b|\botros?\s+presupuestos?\b`,
+    String.raw`\b(?:lo\s+)?(?:voy\s+a|vamos\s+a|tengo\s+que)\s+pensar(?:lo)?\b|\bno\s+(?:estoy|estamos)\s+segur[oa]s?\b|\btodav[íi]a\s+no\s+(?:s[ée]|decid\w+)\b`,
+  ].join("|"),
+  "i",
+);
+
+export function hesitatesOverTheJob(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  return !!t && HESITATES.test(t);
+}
+
+/**
+ * SAID YES TO THE QUOTE. What `accepted` needs before it may book the outcome.
+ *
+ * Opens on a plain yes, or says go ahead in so many words anywhere in the
+ * message. A hedge anywhere in the message wins over either: "yes, but my
+ * husband wants to get another quote first" is not an acceptance.
+ */
+const SAYS_GO_AHEAD = new RegExp(
+  [
+    String.raw`^\s*(?:yes|yeah|yep|yup|sure|absolutely|definitely|sounds\s+(?:good|great)|deal|s[íi]|claro|perfecto|de\s+acuerdo|dale|vale)\b`,
+    String.raw`\b(?:let['’]?s|lets)\s+(?:do\s+(?:it|this)|go(?:\s+ahead)?|get\s+(?:it|this|started|going|scheduled|booked)|move\s+forward|book)\b`,
+    String.raw`\bgo\s+ahead\b|\bmove\s+forward\b|\bmoving\s+forward\b(?<!not\s+moving\s+forward)|\bwe\s+accept\b|\baccept(?:ed)?\s+(?:the|your)\s+(?:quote|estimate|proposal|bid)\b`,
+    String.raw`\b(?:book|schedule)\s+(?:us|me|it)\b|\bwe['’]?(?:d|\s+would)\s+like\s+to\s+(?:go|proceed|move|book|get\s+started)\b|\bready\s+to\s+(?:go|start|book|proceed)\b|\bwe['’]?re\s+in\b|\bcount\s+us\s+in\b`,
+    String.raw`\b(?:that|this|it|the\s+(?:quote|price|estimate|proposal))\s+(?:works|is\s+fine|looks\s+good)\b|\bplease\s+proceed\b`,
+    String.raw`\b(?:adelante|sigamos|hag[áa]moslo|aceptamos|acepto)\b`,
+  ].join("|"),
+  "i",
+);
+
+export function agreesToGoAhead(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  if (!t || hesitatesOverTheJob(t) || declinesTheWork(t)) return false;
+  return SAYS_GO_AHEAD.test(t);
+}
+
+/**
  * Did the customer actually ask something?
  *
  * A question mark is the reliable signal and nearly everyone uses one. The
@@ -1231,9 +1288,13 @@ const BARE_QUESTION =
  * template that already opens with exactly that. The customer received
  * "Entendido, gracias. Entendido, gracias." — the "Got it. Got it." bug,
  * untranslated.
+ *
+ * "Con gusto" and "claro que sí" joined 2026-10-16: they are "happy to help"
+ * and "of course", which were already here in English, and without them the
+ * Spanish half of render.ts's duplicate-opener guard had nothing to match.
  */
 export const BARE_ACKNOWLEDGEMENT =
-  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies|entendido|perfecto|gracias|muchas gracias|de acuerdo|claro|por supuesto|excelente|muy bien|est[\u00e1a] bien|sin problema|listo|vale|anotado|disculpe|disculpas|lo siento)[\s,.!]*)+$/i;
+  /^(?:(?:got it|perfect|great|thanks|thank you|understood|no problem|no worries|sounds good|okay|ok|sure thing|for sure|sure|absolutely|of course|will do|noted|happy to help|sorry(?: about that)?|apologies|my apologies|entendido|perfecto|gracias|muchas gracias|de acuerdo|claro|por supuesto|excelente|muy bien|est[\u00e1a] bien|sin problema|listo|vale|anotado|disculpe|disculpas|lo siento|con (?:mucho )?gusto|claro que s[\u00edi]|encantad[oa])[\s,.!]*)+$/i;
 
 /**
  * RAPPORT THAT DOES NOTHING BUT SAY THE PHOTO ARRIVED.
@@ -1467,7 +1528,24 @@ const CLAIMS_TO_BE_HUMAN = new RegExp(
   + "|" + /\bof\s+course\s+i\s*(?:'m|’m|\s+am)\s+(?:real|human|a\s+person)\b/.source
   // Spanish, first person
   + "|" + /\b(?:soy|habla)\s+(?:una?\s+)?(?:persona(?:\s+real)?|humano?|agente\s+real)\b/.source
-  + "|" + /\bno\s+soy\s+(?:un\s+)?(?:bot|robot|m[aá]quina|inteligencia)\b/.source,
+  + "|" + /\bno\s+soy\s+(?:un\s+)?(?:bot|robot|m[aá]quina|inteligencia)\b/.source
+  /**
+   * A STAFF JOB TITLE IS THE SAME CLAIM IN A UNIFORM. 2026-10-16
+   *
+   * "This is Emily, I'm the office coordinator" claims no humanity in so many
+   * words, and every branch above let it through. It is the claim anyway: an
+   * office coordinator is a person on PPP's payroll, and a customer told that
+   * has been told they are talking to one. A46's card says the bot "never
+   * claims to be a person, in any state", and naming itself into a human
+   * role is how the corpus's own example did it: "this is Emily, the team's
+   * assistant".
+   *
+   * First person and a STAFF title only. "The office coordinator will call
+   * you" is true and must go out, and "I'm an AI assistant" is the approved
+   * disclosure, so neither "assistant" nor a third person subject is here.
+   */
+  + "|" + /\b(?:i\s*(?:'m|’m|\s+am)|this\s+is\s+(?:\w+,?\s+)?(?:i\s*(?:'m|’m|\s+am)\s+)?)\s*(?:the|your|an?|our|one\s+of\s+(?:the|our))\s+(?:\w+\s+){0,2}?(?:coordinator|receptionist|secretary|scheduler|manager|estimator|dispatcher|office\s+(?:admin|administrator|staff|lead)|admin(?:istrator)?|rep(?:resentative)?|team\s+member|staff(?:\s+member)?|employee|owner|painter|project\s+manager)s?\b/.source
+  + "|" + /\bsoy\s+(?:la|el|una?|su)\s+(?:\w+\s+){0,2}?(?:coordinador[a]?|recepcionista|secretari[ao]|gerente|encargad[ao]|estimador[a]?|representante|emplead[ao]|due[ñn][ao])\b/.source,
   "i",
 );
 
@@ -2484,6 +2562,64 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     };
   }
 
+  /**
+   * …AND NOT AN UNDECIDED CUSTOMER EITHER. ACCEPTED NEEDS A YES. 2026-10-16
+   *
+   * The guard above refuses `accepted` on a decline, and that was the only
+   * thing it was refused on. Between "yes" and "no" sits the commonest
+   * nurture reply there is, and it was legal:
+   *
+   *   customer  "Not sure yet, my husband wants to get another quote"
+   *   bot       "Wonderful, I'll pass this straight to the office and they'll
+   *              be in touch to get you on the schedule."
+   *
+   * The same two harms as a decline recorded as an acceptance: a customer
+   * who said they are still deciding is told they are booked, and the record
+   * says ACCEPTED for somebody shopping around.
+   *
+   * `success` is guarded by EVIDENCE — A3's details and A4's availability
+   * have to be in the thread before it may close. `accepted` had no evidence
+   * requirement at all, so this gives it the one it needs: the customer has
+   * to have said yes in this message, and must not be hedging in it. A
+   * refusal costs one retry, and the remedy names the intent that fits.
+   *
+   * NOT ONCE THE BOOKING IS CONFIRMED. The yes was given on the turn that
+   * closed it; "I'm all set, thank you" afterwards is thanks (see
+   * afterBookingConfirmed above), and asking it to say yes a second time
+   * would refuse the very case that carve-out was written for.
+   */
+  if (a.intent === "accepted" && !afterBookingConfirmed && !agreesToGoAhead(ctx.customerText)) {
+    return {
+      ok: false, reason: "accepted_without_agreement",
+      detail: hesitatesOverTheJob(ctx.customerText)
+        ? "they are still deciding, so this tells them they are booked when they are not. "
+          + "Acknowledge it and leave the door open instead, nurture_check_in or "
+          + "schedule_follow_up, without pressing them"
+        : "nothing in their message says yes to the quote, and accepted books the "
+          + "outcome as agreed. Use it only once they have plainly said to go ahead",
+    };
+  }
+
+  /**
+   * THE SIBLING: `success` IS NOT A CLOSE ON SOMEBODY STILL DECIDING.
+   *
+   * success has its evidence guards, and a hedging customer can satisfy
+   * every one of them: the address, the contact and the availability are
+   * all in the thread, and then "honestly let me think about it, we're
+   * getting another quote first". A close there sends "Perfect, you're all
+   * set" to a customer who just said they are not. Narrower than the
+   * accepted rule on purpose: success follows answers like "Wednesday
+   * afternoon", which say no "yes", so only an explicit hedge refuses it.
+   */
+  if (a.intent === "success" && hesitatesOverTheJob(ctx.customerText)) {
+    return {
+      ok: false, reason: "accepted_without_agreement",
+      detail: "they said they are still deciding, so a close tells them they are booked "
+        + "when they are not. Leave the door open instead, schedule_follow_up, without "
+        + "pressing them",
+    };
+  }
+
   if (PURSUES_THE_JOB.has(a.intent) && declined) {
     return {
       ok: false, reason: "pursued_after_a_decline",
@@ -3032,14 +3168,73 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * are removed and the rest of the sentence is still read, so "around 2500 at
    * 2pm" still loses its rapport for the 2500.
    */
+  /**
+   * …AND SO DOES THE CALLBACK HOUR THE CUSTOMER NAMED. 2026-10-16
+   *
+   * A25's echo carve-out above lets "Of course, 2pm works." past the time
+   * check because the hour is theirs. This backstop then dropped it for the
+   * digit, so on answer_question — where that sentence is the whole reply —
+   * the confirmation A25 requires was allowed and never sent. It surfaced
+   * once a dropped answer_question began refusing instead of passing empty:
+   * two correct rules with no legal move between them. The same narrow
+   * excuse as a verified time: only the hour they named, and only on a call.
+   */
+  const callbackHourTheyNamed = statedChannelPreference(ctx.customerText ?? "") === "phone"
+    ? requestedTime(ctx.customerText)?.hour ?? null
+    : null;
   if (rapport) {
-    const unexplained = hasVerifiedSlot(ctx, "times")
+    const timeIsExcused = hasVerifiedSlot(ctx, "times")
+      || (callbackHourTheyNamed !== null && namesHour(rapport, callbackHourTheyNamed));
+    const unexplained = timeIsExcused
       ? rapport.replace(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi, " ")
       : rapport;
     if (NUMBER_IN_RAPPORT.test(unexplained)) {
       droppedRapport = "it contains a number, and every number a customer sees comes from a template";
       rapport = undefined;
     }
+  }
+
+  /**
+   * DROPPING THE RAPPORT IS ONLY SAFE WHEN THERE IS A TEMPLATE UNDER IT.
+   *
+   * Every comment on the two drops above makes the same argument: "the
+   * template still carries the message, the conversation still moves". For
+   * answer_question and msg_liked_loved there is no template — SAYS is [""]
+   * — so the freeText IS the message, and dropping it deleted the turn while
+   * reporting it fine. Found 2026-10-16:
+   *
+   *   customer  "can you match the existing color?"
+   *   model     answer_question + "Yes, we can color-match."
+   *   here      hyphenated compound -> rapport dropped -> ok: true
+   *   render    ""
+   *   agent-run saysNothing -> escalate, and the retry never ran
+   *
+   * ok: true was the bug. The retry in agent-run runs only on a refusal, so a
+   * fault the model could fix in one rewording went straight to a person. So
+   * here, and only here, a style drop REFUSES, with the reason and the fix,
+   * and the model gets its one more attempt. Everywhere a template carries
+   * the turn it stays a drop, exactly as before.
+   *
+   * msg_liked_loved is excluded from the refusal: it is silent by design
+   * (SILENT_INTENTS), so an empty render there is the intended outcome and
+   * not a lost message.
+   */
+  /*
+   * And an answer_question with no freeText at all is the same empty message
+   * reached without a drop, so it is refused the same way rather than left
+   * to escalate as "rendered nothing".
+   */
+  if (!rapport && a.intent === "answer_question") {
+    return {
+      ok: false, reason: "answer_dropped_by_style",
+      detail: droppedRapport
+        ? `your answer is the whole message on answer_question, and it was dropped because `
+          + `${droppedRapport}. Keep the answer and fix only that: plain words instead of a `
+          + `hyphenated compound, a comma or full stop instead of a dash or semicolon, no `
+          + `parentheses or ellipsis, no digits (A23)`
+        : `answer_question sends only your own sentence, and there is none. Write the answer `
+          + `in one short sentence, or choose the intent whose template answers them`,
+    };
   }
 
   // A29: A DIRECT QUESTION IS NEVER LEFT UNANSWERED.
@@ -3075,8 +3270,23 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * which is how "Can you come Tuesday at 2?" ended up with the bot asking for
    * an address and nothing else, the shape A29 exists to catch.
    */
-  const templateAnswersTheTime =
-    TIME_IS_ACKNOWLEDGED_BY.has(a.intent) && !!requestedTime(ctx.customerText);
+  /**
+   * ── WHICH TEMPLATE, AND WHICH TIME ── 2026-10-16
+   *
+   * Two halves of this disagreed with the renderer. The collecting turns
+   * lead with the calendar line ONLY for a time inside the visit day; for
+   * 7am or 8pm render adds nothing, so the guard was counting an answer that
+   * never went out. And the availability turns, which answer every requested
+   * time with replyToRequestedTime's own reply ("Our earliest visit is
+   * usually 10 AM…"), were missing, so "puede venir a las 8pm?" on
+   * ask_availability was refused for leaving a question the template
+   * answers. The test is now what render does, per intent.
+   */
+  const theirTime = requestedTime(ctx.customerText);
+  const templateAnswersTheTime = !!theirTime && (
+    (TIME_IS_ACKNOWLEDGED_BY.has(a.intent) && slotVerdict(theirTime) === "in_hours")
+    || a.intent === "ask_availability" || a.intent === "checking_availability"
+  );
   /**
    * AND "YES" IS A WHOLE ANSWER TO A YES/NO QUESTION.
    *

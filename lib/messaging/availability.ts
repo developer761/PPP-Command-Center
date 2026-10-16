@@ -290,8 +290,38 @@ export function availabilityGap(
  * availability, at the cost of missing a bare "that no longer works" with no
  * day in it. Of the two, re-asking somebody who objected to a quote is worse.
  */
-const RETRACTS =
-  /\b(?:wo|does|do|did|will|ca|could)n'?t\s+(?:work|happen|make\s+it)\b|\b(?:will\s+not|does\s+not|cannot)\s+work\b|\bno\s+longer\s+(?:works?|good|available|able)\b|\b(?:is|are|ai)?n'?t\s+going\s+to\s+work\b|\bnot\s+going\s+to\s+work\b|\bsomething\s+came\s+up\b|\b(?:need|have|has|got)\s+to\s+(?:resched|move|change|push)\w*\b|\bchanged\s+my\s+mind\b|\b(?:scratch|cancel|forget)\s+that\b|\bya\s+no\s+(?:puedo|podr[ée]|me\s+sirve|funciona|va)\b|\bno\s+(?:me\s+)?(?:sirve|funciona|va\s+a\s+funcionar)\b|\bsurgi[óo]\s+algo\b|\btengo\s+que\s+(?:cambiar|reprogramar|mover)\b|\bcambi[ée]\s+de\s+opini[óo]n\b|\bmejor\s+otro\s+d[íi]a\b/i;
+/**
+ * "NEED TO MOVE" IS ONLY A RETRACTION WHEN THE THING MOVED IS THE VISIT.
+ *
+ * Found 2026-10-16. "Tuesday morning works. Do we need to move the furniture
+ * ourselves?" carries a day, a window and "need to move", so the bare verb
+ * read it as withdrawing the very availability it had just given. The gap
+ * reopened, the success close was refused for availability it had in hand,
+ * and the customer's question about furniture became a reason to ask them
+ * for a day again.
+ *
+ * Painting customers move things constantly: furniture, the car, the dog,
+ * a couch away from the wall. So move, change and push now need an object
+ * that is the appointment: "it", "that", "the appointment", "the day", a day
+ * name, "back", "to another day". Reschedule needs nothing, because it has
+ * no other meaning. The Spanish twin is narrowed the same way, since "tengo
+ * que mover los muebles" is the same sentence.
+ */
+const A_DAY_NAME = String.raw`(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)(?:day)?|today|tomorrow|tmrw|next\s+week|this\s+week`;
+const MOVES_THE_APPOINTMENT = String.raw`\b(?:need|have|has|got)\s+to\s+(?:resched\w*|(?:move|change|push)(?:\s+(?:it|that|this|things|(?:the|my|our)\s+(?:appointment|appt|visit|estimate|meeting|day|date|time))\b|\s+(?:back|out)\b|\s+(?:it\s+)?(?:to|until)\s+(?:another|a\s+different|next|later|${A_DAY_NAME})\b|\s+(?:${A_DAY_NAME})\b))`;
+const A_DAY_NAME_ES = String.raw`lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo|hoy|ma[ñn]ana`;
+const MOVES_THE_APPOINTMENT_ES = String.raw`\btengo\s+que\s+(?:reprogramar\w*|(?:cambiar|mover)(?:la|lo)\b|(?:cambiar|mover)\s+(?:la\s+(?:cita|visita|fecha|hora)|el\s+(?:d[íi]a|horario|${A_DAY_NAME_ES})|(?:${A_DAY_NAME_ES}))\b)`;
+
+const RETRACTS = new RegExp(
+  [
+    String.raw`\b(?:wo|does|do|did|will|ca|could)n'?t\s+(?:work|happen|make\s+it)\b|\b(?:will\s+not|does\s+not|cannot)\s+work\b|\bno\s+longer\s+(?:works?|good|available|able)\b|\b(?:is|are|ai)?n'?t\s+going\s+to\s+work\b|\bnot\s+going\s+to\s+work\b|\bsomething\s+came\s+up\b`,
+    MOVES_THE_APPOINTMENT,
+    String.raw`\bchanged\s+my\s+mind\b|\b(?:scratch|cancel|forget)\s+that\b|\bya\s+no\s+(?:puedo|podr[ée]|me\s+sirve|funciona|va)\b|\bno\s+(?:me\s+)?(?:sirve|funciona|va\s+a\s+funcionar)\b|\bsurgi[óo]\s+algo\b`,
+    MOVES_THE_APPOINTMENT_ES,
+    String.raw`\bcambi[ée]\s+de\s+opini[óo]n\b|\bmejor\s+otro\s+d[íi]a\b`,
+  ].join("|"),
+  "i",
+);
 
 /** A retraction only counts where there is something in it to retract. */
 export function retractsAvailability(text: string | null | undefined): boolean {

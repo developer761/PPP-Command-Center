@@ -47,7 +47,7 @@ function clockHour(hour: number, es: boolean): string {
   const h = hour % 12 === 0 ? 12 : hour % 12;
   return `${h}${suffix}`;
 }
-import { replyToRequestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
+import { replyToRequestedTime, TIME_IS_ACKNOWLEDGED_BY, CHECKING_THE_CALENDAR_ES } from "./appointment-time";
 import { weekToOffer, askAvailability, askAvailabilityEs } from "./availability-ask";
 import { returningCustomerDecliningInThread, returningCustomerReply, returningCustomerReplyEs, alreadyAskedToConfirm } from "./returning-customer";
 import { askSecondPropertyAddress, askSecondPropertyAddressEs } from "./multi-property";
@@ -104,6 +104,31 @@ export const SILENT_INTENTS: ReadonlySet<Intent> = new Set<Intent>([
    * from the bot announcing a person.
    */
   "escalate",
+  /**
+   * TRANSFERRED IS THE SAME HAND-OFF, AND IT WAS STILL SAYING THE LINE.
+   *
+   * Found 2026-10-16. escalate went silent on 2026-09-26 against the spec
+   * text quoted above; its twin kept rendering "I'm passing you over to our
+   * office now. They'll take it from here." in both languages. Both intents
+   * do the same thing — a person takes the thread over — and the spec's
+   * Human takeover section (docs/ITERATION_1_BUILD_SPEC_2026_09_25.md) is
+   * not worded per intent: "The bot sends nothing on the way out — no
+   * sign-off, no handover line. No visible seam."
+   *
+   * It also went to the customer least able to use it. transferred is how
+   * an email_only customer leaves the bot (the validator keeps that route
+   * open on purpose: we cannot send email), and the one message they then
+   * got from us was a TEXT, on the channel they had just asked us not to
+   * use, announcing a person who would contact them some other way.
+   *
+   * Nothing is lost by the silence. An empty render with a non-silent
+   * intent is what agent-run escalates on; silent, the reply is empty and
+   * scheduler-db's "renders nothing" branch hands the conversation to a
+   * person — the same door escalate uses, which IS the ping. Kate's call in
+   * the end (docs/QUESTIONS_FOR_KATE.md item 37); this is the default shipped
+   * while she decides.
+   */
+  "transferred",
 ]);
 
 /**
@@ -532,8 +557,14 @@ const BARE_GREETING =
  * on 2026-09-27. longestSharedRun did not catch it either: "That's great" is
  * two words and the echo threshold is four.
  */
+/**
+ * AND THE SPANISH OPENERS OUR OWN TEMPLATES USE, 2026-10-16. "Con gusto le
+ * ayudo." and "Claro que sí." open three Spanish templates, and neither was
+ * on this list, so "Con gusto." from the model went out in front of "Con
+ * gusto le ayudo." — the "Happy to help. Happy to help." bug, translated.
+ */
 const OPENS_WITH_ACKNOWLEDGEMENT =
-  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help|entendido|perfecto|gracias|muchas gracias|excelente|muy bien|de acuerdo|claro|por supuesto|listo|sin problema|disculpe|lo siento)\b/i;
+  /^(?:(?:that|this)(?:'|’)?s\s+|that is\s+|this is\s+)?(?:got it|perfect|great|wonderful|excellent|fantastic|thanks|thank you|understood|no problem|sounds good|okay|ok|sure|absolutely|of course|apologies|sorry|good news|happy to help|entendido|perfecto|gracias|muchas gracias|excelente|muy bien|de acuerdo|claro|por supuesto|listo|sin problema|disculpe|lo siento|con (?:mucho )?gusto|claro que s[\u00edi]|encantad[oa]|con placer)\b/i;
 
 /**
  * True when the rapport adds nothing the template is not already saying.
@@ -957,9 +988,16 @@ const ASK_ADDRESS_REFUSED = [ASK_ZIP_WITH_REASON];
  * So the branches swap: here the phone quote is the plan, not the fallback,
  * and no appointment is mentioned because none can happen. Still names no time
  * (A15) and still promises no price (A1).
+ *
+ * NO EM DASH, 2026-10-16. The first variant read "That's no problem — we can
+ * do this over the phone", the A23 breach the style check refuses in the
+ * model's own rapport, shipped from a template no check read. language.test's
+ * syntax-tree sweep looked for inverted punctuation only;
+ * templates-have-no-dashes.test.ts now reads every customer copy file for
+ * dashes the same way.
  */
 const PHONE_PRICING_NO_ADDRESS = [
-  "That's no problem — we can do this over the phone instead. One of our estimators will call you to go through the details and get you a price.",
+  "That's no problem. We can do this over the phone instead. One of our estimators will call you to go through the details and get you a price.",
   "Not a problem at all. We'll price it over the phone instead, and an estimator will reach out to go through the details with you.",
 ];
 
@@ -1148,9 +1186,8 @@ export function scopeForReadback(scope: string | null | undefined): string {
 /** Shared with the A29 guard — see TIME_IS_ACKNOWLEDGED_BY. */
 const ACKNOWLEDGES_A_TIME = TIME_IS_ACKNOWLEDGED_BY;
 
-/** MINE, NOT KATE'S — an unapproved translation, like A46's Spanish. See
- *  docs/QUESTIONS_FOR_KATE.md item 9. */
-const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
+// CHECKING_THE_CALENDAR_ES moved to appointment-time.ts on 2026-10-16, beside
+// the English line and the two Spanish visit-hours lines it now ships with.
 
 /**
  * A THIRD ASK, AFTER THEY HAVE TWICE ASKED US.
@@ -1370,7 +1407,50 @@ function nextFlowAsk(input: RenderInput): string | null {
   return sentences.reverse().find((s) => s.includes("?"))?.trim() ?? null;
 }
 
+/**
+ * THE SAME SENTENCE IS NEVER SENT TWICE IN ONE MESSAGE.
+ *
+ * Found 2026-10-16, in both languages, on the commonest opening turn:
+ *
+ *   "Happy to help. Happy to help. What's the project you're looking to
+ *    get done?"
+ *   "Con gusto. Con gusto le ayudo. Cuál es el proyecto que quiere
+ *    realizar?"
+ *
+ * Each had a guard and each guard had a hole. The English one was dropped by
+ * rapportIsRedundant and then put back by the answerIsOwed carve-out, because
+ * the customer had asked "can you help me?" and a dropped answer is the A29
+ * breach that carve-out exists to prevent. But a sentence the template is
+ * about to say word for word was never the answer: the template says it, so
+ * keeping the copy answers nothing and repeats everything. The Spanish one
+ * was never caught at all, because OPENS_WITH_ACKNOWLEDGEMENT knew "claro" and
+ * "perfecto" but not "con gusto".
+ *
+ * Both holes are closed where they are. This is the backstop over the WHOLE
+ * message, applied once at the outermost return, because an early return,
+ * keepingTheAnswer, the photo line and the calendar lead each assemble a
+ * message from pieces, and a guard written inside one assembly has never
+ * covered the others. A sentence that matches an earlier one, ignoring case
+ * and punctuation, goes; the first copy stays where it was.
+ */
+export function withoutRepeatedSentences(text: string): string {
+  if (!text) return text;
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const sentence of text.split(/(?<=[.?!])\s+/)) {
+    const key = sentence.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    kept.push(sentence);
+  }
+  return kept.join(" ").trim();
+}
+
 export function renderMessage(input: RenderInput): string {
+  return withoutRepeatedSentences(renderMessageParts(input));
+}
+
+function renderMessageParts(input: RenderInput): string {
   /**
    * Two reasons to drop a trailing question about days, and they are the same
    * defect seen twice: a rule enforced per-INTENT, walked round by another
@@ -1773,7 +1853,12 @@ function renderBody(input: RenderInput, variantOffset = 0): string {
   }
 
   if (input.intent === "ask_availability" || input.intent === "checking_availability") {
-    const timed = replyToRequestedTime(input.customerText);
+    /**
+     * IN THE CUSTOMER'S LANGUAGE. This was the twin that never got Spanish:
+     * the calendar line on the collecting turns did, this one returned the
+     * English reply to "el martes 3pm". See replyToRequestedTime.
+     */
+    const timed = replyToRequestedTime(input.customerText, es ? "es" : "en");
     if (timed) return keepingTheAnswer(timed.reply);
   }
 
@@ -2049,7 +2134,17 @@ function renderBody(input: RenderInput, variantOffset = 0): string {
     // The redundancy rule keeps its whole job whenever nothing is owed. When
     // something is, two acknowledgements stacked is a much smaller fault than
     // ignoring a customer who asked us a direct question.
-    && !(rapportIsRedundant(rapport, pick) && !answerIsOwed)
+    //
+    // ── BUT A PLEASANTRY IS NOT AN ANSWER, OWED OR NOT ── 2026-10-16
+    //
+    // The carve-out kept "Happy to help." in front of a template opening
+    // "Happy to help." because the customer had asked "can you help me?", and
+    // the customer got the sentence twice. A bare acknowledgement was never
+    // anybody's answer — the A29 guard in agent-output already refuses to
+    // count one as an answer (saysSomething) — so the carve-out has nothing
+    // to protect when that is all the rapport is.
+    && !(rapportIsRedundant(rapport, pick)
+      && (!answerIsOwed || BARE_ACKNOWLEDGEMENT.test(rapport.trim())))
     /**
      * A30 — AND IT HAS TO BE IN THE CUSTOMER'S LANGUAGE.
      *

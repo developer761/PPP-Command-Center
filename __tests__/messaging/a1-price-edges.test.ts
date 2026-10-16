@@ -63,8 +63,20 @@ describe("A1 — a money word near a number that is not money", () => {
     "The estimate includes 2 coats.",
     "Price it for 1200 square feet.",
     "Your quote will be ready soon.",
-  ])("allows %j", (t) => {
-    expect(V(t).ok).toBe(true);
+  ])("is not refused as a price: %j", (t) => {
+    /**
+     * WHAT THIS ASSERTS CHANGED ON 2026-10-16, and the rule it pins did not.
+     *
+     * It used to say `ok: true`. Five of these carry a digit, and on
+     * answer_question the numeric backstop drops a sentence with a digit in
+     * it — so `ok: true` meant "allowed, and the whole message deleted",
+     * which rendered nothing and handed the turn to a person. A dropped
+     * answer_question now refuses with a remedy (answer_dropped_by_style), so
+     * the model can retry. The A1 claim is the one this test exists for: a
+     * count or a house number is not a PRICE.
+     */
+    const v = V(t);
+    expect(v.ok ? "ok" : v.reason).not.toBe("quoted_a_price");
   });
 
   /** Every money-shaped form is still caught. */

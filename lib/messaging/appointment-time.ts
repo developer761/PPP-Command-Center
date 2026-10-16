@@ -118,10 +118,31 @@ export function requestedTime(text: string | null | undefined): RequestedTime | 
   //
   // It SCANS rather than giving up on the first address, because "at 12
   // Marchmont Ave, can you come at 3?" contains both and the 3 is real.
-  const bareRe = /\b(?:at|around|by)\s+(\d{1,2})\b(?!\s*(?:rooms?|beds?|baths?|cars?|doors?|windows?|sq|square|feet|ft|\d))/g;
+  /**
+   * ── AND "BY" IS HOW PEOPLE WRITE A MEASUREMENT ──────────────────────────
+   *
+   * Found 2026-10-16: "it's an 18.5 by 9.5 wall" read as 9am. Two holes, one
+   * on each side of the number:
+   *
+   *   AFTER   `\b` sits between "9" and ".5", so "9.5" was the hour 9 with a
+   *           stray decimal. A number followed by a decimal point and a digit
+   *           is a quantity, never a clock reading.
+   *   BEFORE  "by" between two numbers is a dimension: "12 by 14", "18.5 by
+   *           9.5", "10 ft by 12". No customer writes "the 18 by 3" meaning
+   *           three o'clock.
+   *
+   * It mattered beyond the parse. agent-output's A29 guard counts a requested
+   * time as something the collecting turns answer (TIME_IS_ACKNOWLEDGED_BY),
+   * so a customer asking "how much for an 18.5 by 9.5 wall?" was treated as
+   * answered by "I'll check the calendar for that time." and the price
+   * question went unanswered.
+   */
+  const bareRe = /\b(?:at|around|by)\s+(\d{1,2})\b(?![.,]\d)(?!\s*(?:rooms?|beds?|baths?|cars?|doors?|windows?|sq|square|feet|ft|foot|inch(?:es)?|'|"|\d))/g;
+  const DIMENSION_BEFORE = /\d(?:[.,]\d+)?\s*(?:ft|feet|foot|'|in|inch(?:es)?|"|m|meters?)?\s*$/;
   for (let bare = bareRe.exec(t); bare; bare = bareRe.exec(t)) {
     const h = Number(bare[1]);
     if (h < 1 || h > 12) continue;
+    if (/^by\b/.test(bare[0]) && DIMENSION_BEFORE.test(t.slice(0, bare.index))) continue;
     if (startsAStreetAddress(t, bare.index + bare[0].indexOf(bare[1]))) continue;
     const morning = /\b(?:in the )?morning\b|\bam\b/.test(t);
     const evening = /\b(?:in the )?(?:afternoon|evening)\b|\bpm\b/.test(t);
@@ -175,12 +196,48 @@ export function slotVerdict(t: RequestedTime): SlotVerdict {
  * reply that repeats the time back reads as agreement, and A15 forbids
  * agreeing to a slot nobody checked.
  */
+/**
+ * A30 — THE SAME THREE LINES IN SPANISH.
+ *
+ * Found 2026-10-16: render.ts used this function in two places and only one
+ * of them knew about Spanish. The calendar line on the collecting turns had a
+ * Spanish twin; the availability turn returned `reply` straight, so a Spanish
+ * speaker writing "el martes 3pm" got "I'll check the calendar for that
+ * time." and one asking for 7am got the whole English visit hours paragraph.
+ * A30's card names exactly that: "Do not switch back to English."
+ *
+ * The language is a parameter HERE rather than a branch at each call site,
+ * because a branch at each call site is how one of the two came to have it
+ * and the other not.
+ *
+ * MINE, NOT KATE'S. Unapproved translations, the same standing as the
+ * calendar line already had (docs/QUESTIONS_FOR_KATE.md item 37). The hour is
+ * written on a 24 hour clock, which is how render.ts's clockHour already
+ * writes an hour in Spanish.
+ */
+export const CHECKING_THE_CALENDAR_ES = "Voy a revisar el calendario para esa hora.";
+
 export function replyToRequestedTime(
-  text: string | null | undefined
+  text: string | null | undefined,
+  language: "en" | "es" | null = null,
 ): { verdict: SlotVerdict; reply: string } | null {
   const t = requestedTime(text);
   if (!t) return null;
   const verdict = slotVerdict(t);
+
+  if (language === "es") {
+    if (verdict === "in_hours") return { verdict, reply: CHECKING_THE_CALENDAR_ES };
+    if (verdict === "too_early") {
+      return {
+        verdict,
+        reply: `Normalmente la primera visita es a las ${FIRST_SLOT_HOUR}:00, pero puedo preguntar por algo más temprano o un sábado. Qué le queda mejor?`,
+      };
+    }
+    return {
+      verdict,
+      reply: `Normalmente la última visita es a las ${LAST_SLOT_HOUR}:00, pero puedo preguntar por algo más tarde o un sábado. Qué le queda mejor?`,
+    };
+  }
 
   if (verdict === "in_hours") {
     // Holds the moment without promising it. The flow carries on after.

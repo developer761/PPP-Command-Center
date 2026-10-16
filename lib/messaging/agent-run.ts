@@ -1272,18 +1272,29 @@ Choose the next action.`;
      * A46 — the out-of-hours disclosure, on the FIRST reply only.
      *
      * Prefixed to the message already being sent rather than sent on its own,
-     * so it contributes no ask of its own (A22). `bot_suspected` is handled
-     * by its own template and needs nothing here — the approved in-hours
-     * string IS that template.
+     * so it contributes no ask of its own (A22). `bot_suspected` renders the
+     * approved in-hours string as its template; out of hours that line is
+     * swapped, see below.
      *
      * Whether we are out of hours is the CUSTOMER's question, not the
      * workspace's: opts.outOfHours is resolved by the caller against their
      * own callable window. Absent, nothing is prefixed, which is the quiet
      * direction to fail in.
      */
-    if (v.action.intent !== "bot_suspected") {
+    /**
+     * AND bot_suspected GOES THROUGH IT TOO. 2026-10-16
+     *
+     * It was skipped here on the reasoning "the approved in-hours string IS
+     * that template", which is true in hours and only in hours. Out of hours
+     * the answer_out_of_hours branch of disclosureMove existed, was tested,
+     * and was never reached, so "is this a bot?" at 11pm was offered "a
+     * member of our team" who had gone home. askedIfBot now says what it
+     * means, and applyDisclosure swaps the in-hours line for the out-of-hours
+     * one inside the rendered message.
+     */
+    {
       const move = disclosureMove({
-        askedIfBot: false,
+        askedIfBot: v.action.intent === "bot_suspected",
         outOfHours: opts.outOfHours ?? false,
         alreadyDisclosed: alreadyDisclosed(
           history.filter((t) => t.role === "assistant").map((t) => t.text)
