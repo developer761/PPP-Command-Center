@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSalesforceAuthorizationUrl } from "@/lib/salesforce/client";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminProfile } from "@/lib/auth/roles";
+import { isAdminEmail } from "@/lib/auth/admin";
+import { mintOAuthNonce, PROD_STATE_COOKIE, PROD_STATE_PREFIX } from "@/lib/salesforce/oauth-state";
 
 /**
  * Kick off the Salesforce OAuth dance.
  *
- * GATED: only signed-in PPP users can hit this route (middleware enforces auth +
- * domain). We additionally check here that the user is signed in before bouncing
- * to Salesforce, as belt-and-suspenders.
+ * GATED: admins only — the login it starts replaces the org-wide credential
+ * every snapshot read and Tomco write-back uses. The same gate as the
+ * Integrations page that links here; the callback repeats it.
  *
  * Flow:
  *   1. User visits /api/auth/salesforce/login (must be signed in via Google SSO)
@@ -28,12 +32,20 @@ export async function GET(request: Request) {
     loginUrl.searchParams.set("error", "must_be_signed_in");
     return NextResponse.redirect(loginUrl);
   }
+  const profile = await getProfileByUserId(user.id);
+  if (!isAdminProfile(profile, isAdminEmail(user.email))) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
 
   // The callback URL must match what's registered in the Connected App.
   // Derive from the request origin so it works for both localhost dev + the live URL.
   const { origin } = new URL(request.url);
   const redirectUri = `${origin}/api/auth/salesforce/callback`;
 
-  const authorizeUrl = getSalesforceAuthorizationUrl(redirectUri);
-  return NextResponse.redirect(authorizeUrl);
+  // The nonce rides both the httpOnly cookie and `state`; the callback stores
+  // nothing unless they agree, so a ?code= minted anywhere else is refused.
+  const nonce = mintOAuthNonce();
+  const res = NextResponse.redirect(getSalesforceAuthorizationUrl(redirectUri, `${PROD_STATE_PREFIX}${nonce}`));
+  res.cookies.set(PROD_STATE_COOKIE, nonce, { httpOnly: true, sameSite: "lax", secure: origin.startsWith("https:"), path: "/", maxAge: 600 });
+  return res;
 }

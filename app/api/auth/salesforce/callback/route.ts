@@ -4,7 +4,10 @@ import {
   exchangeCodeForTokens,
   storeSalesforceCredentials,
 } from "@/lib/salesforce/client";
-import { isAllowedToSignIn } from "@/lib/auth/admin";
+import { isAdminEmail } from "@/lib/auth/admin";
+import { getProfileByUserId } from "@/lib/auth/profile";
+import { isAdminProfile } from "@/lib/auth/roles";
+import { oauthStateMatches, PROD_STATE_COOKIE, PROD_STATE_PREFIX, readCookie } from "@/lib/salesforce/oauth-state";
 import { finishSandboxSignIn, SANDBOX_STATE_PREFIX } from "@/lib/salesforce/sandbox-callback";
 
 /**
@@ -13,6 +16,11 @@ import { finishSandboxSignIn, SANDBOX_STATE_PREFIX } from "@/lib/salesforce/sand
  *
  * On success → redirect to /dashboard/integrations w/ a success banner.
  * On failure → redirect to /dashboard/integrations w/ an error banner.
+ *
+ * Stores nothing unless the requester is an ADMIN (the gate on the
+ * Integrations page and the login route) and `state` matches the nonce cookie
+ * the login route set — otherwise any PPP-domain session, or a crafted
+ * ?code= link opened by one, could replace the org-wide Salesforce credential.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -26,27 +34,33 @@ export async function GET(request: Request) {
 
   const code = searchParams.get("code");
   const errorParam = searchParams.get("error");
+  const fail = (reason: string) => {
+    const res = NextResponse.redirect(`${origin}/dashboard/integrations?sf_error=${encodeURIComponent(reason)}`);
+    res.cookies.delete(PROD_STATE_COOKIE);
+    return res;
+  };
 
   // Salesforce sends ?error=... when the user denies authorization.
-  if (errorParam) {
-    return NextResponse.redirect(
-      `${origin}/dashboard/integrations?sf_error=${encodeURIComponent(errorParam)}`
-    );
-  }
+  if (errorParam) return fail(errorParam);
+  if (!code) return fail("no_code");
 
-  if (!code) {
-    return NextResponse.redirect(
-      `${origin}/dashboard/integrations?sf_error=no_code`
-    );
-  }
-
-  // Confirm the requester is still a signed-in PPP user before storing tokens.
+  // Confirm the requester is a signed-in ADMIN before storing tokens.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user || !user.email || !isAllowedToSignIn(user.email)) {
-    return NextResponse.redirect(`${origin}/?error=domain_not_allowed`);
+  if (!user || !user.email) {
+    return NextResponse.redirect(`${origin}/?error=must_be_signed_in`);
+  }
+  const profile = await getProfileByUserId(user.id);
+  if (!isAdminProfile(profile, isAdminEmail(user.email))) {
+    return NextResponse.redirect(`${origin}/dashboard`);
+  }
+
+  // The sign-in must have started here, in this browser.
+  const cookieNonce = readCookie(request.headers.get("cookie"), PROD_STATE_COOKIE);
+  if (!oauthStateMatches(searchParams.get("state"), PROD_STATE_PREFIX, cookieNonce)) {
+    return fail("state_mismatch");
   }
 
   const redirectUri = `${origin}/api/auth/salesforce/callback`;
@@ -63,12 +77,10 @@ export async function GET(request: Request) {
     // the URL so we don't leak jsforce stack traces / internal endpoints to
     // anyone watching the browser history.
     console.error("[sf-callback] token exchange failed:", err);
-    return NextResponse.redirect(
-      `${origin}/dashboard/integrations?sf_error=connection_failed`
-    );
+    return fail("connection_failed");
   }
 
-  return NextResponse.redirect(
-    `${origin}/dashboard/integrations?sf_connected=1`
-  );
+  const res = NextResponse.redirect(`${origin}/dashboard/integrations?sf_connected=1`);
+  res.cookies.delete(PROD_STATE_COOKIE);
+  return res;
 }

@@ -379,7 +379,7 @@ export async function GET() {
       if (!process.env.CRON_SECRET?.trim()) {
         return {
           status: "fail",
-          message: "CRON_SECRET not set — cron route will 500 on every fire",
+          message: "CRON_SECRET not set — every cron route refuses to run, so nothing scheduled fires",
           fix: "Add CRON_SECRET (any long random string) to Vercel env vars",
         };
       }

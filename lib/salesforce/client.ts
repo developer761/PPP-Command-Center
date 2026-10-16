@@ -75,10 +75,13 @@ function getSupabaseServiceClient() {
  * the OpenID Connect scope enabled, and we can fetch user identity via the API
  * after authentication anyway.
  */
-export function getSalesforceAuthorizationUrl(redirectUri: string): string {
+export function getSalesforceAuthorizationUrl(redirectUri: string, state: string): string {
   assertSalesforceOAuthEnv();
   const params = new URLSearchParams({
     response_type: "code",
+    // Echoed back to the callback, which refuses to store tokens unless it
+    // matches the nonce cookie the login route set (lib/salesforce/oauth-state.ts).
+    state,
     client_id: process.env.SF_CONSUMER_KEY!,
     redirect_uri: redirectUri,
     scope: "api refresh_token",

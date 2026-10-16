@@ -7,6 +7,7 @@ import { runCustomNotificationRules } from "@/lib/commercial/cron/custom-notific
 import { runDebriefOverdueReminder } from "@/lib/commercial/cron/debrief-overdue";
 import { runAlexDigests } from "@/lib/commercial/reports/alex-digest";
 import { reportError, reportWarn } from "@/lib/observability";
+import { cronRequestAuthorized } from "@/lib/cron-auth";
 
 /**
  * Commercial daily cron — fires the three "what's drifting?" reminders.
@@ -44,14 +45,15 @@ export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET;
+  // 503, not 500: an unset secret is configuration, not a crash, and a 500 is
+  // what this route reserves for "every job failed" (see the note above).
   if (!secret) {
     return NextResponse.json(
       { ok: false, error: "cron_secret_not_configured" },
-      { status: 500 }
+      { status: 503 }
     );
   }
-  const authHeader = request.headers.get("authorization") ?? "";
-  if (authHeader !== `Bearer ${secret}`) {
+  if (!cronRequestAuthorized(request.headers.get("authorization"), secret)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

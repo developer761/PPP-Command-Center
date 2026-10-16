@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runWriteBackTick } from "@/lib/salesforce/tomco-tick";
+import { cronRequestAuthorized } from "@/lib/cron-auth";
 
 /**
  * The Tomco write-back tick. Every minute (`vercel.json`, `* * * * *`).
@@ -34,8 +35,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!cronRequestAuthorized(request.headers.get("authorization"), process.env.CRON_SECRET)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   try {

@@ -19,6 +19,8 @@ type SearchParams = Promise<{ sf_connected?: string; sf_error?: string; sf_cache
 const ERROR_COPY: Record<string, string> = {
   no_code: "Salesforce didn't return an authorization code. Please try again.",
   access_denied: "You denied Salesforce permission. Click 'Connect Salesforce' to try again.",
+  state_mismatch: "That Salesforce sign-in didn't start from this page (or took over 10 minutes), so nothing was stored. Click 'Connect Salesforce' to start again.",
+  connection_failed: "Salesforce accepted the sign-in but the token exchange failed, so nothing was stored. Please try again.",
 };
 
 function pretty(reason: string | undefined) {

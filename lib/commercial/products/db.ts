@@ -8,6 +8,7 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
+import { ilikeQuoted } from "@/lib/commercial/search";
 
 export type CommercialProduct = {
   id: string;
@@ -374,6 +375,21 @@ export type ListProductsFilters = {
   includeInactive?: boolean;
 };
 
+/**
+ * The `.or()` filter for the product search box.
+ *
+ * F.6: search also matches variation_label so typing "Seal & Poly" finds the
+ * variation row directly. Each term goes through ilikeQuoted: escaping only the
+ * LIKE wildcards left the PostgREST grammar live, so a comma in the box
+ * ("Primer, Exterior") split the value into a condition of its own — PostgREST
+ * 400'd, listProducts swallowed it, and the picker showed "no products" for a
+ * product that exists. Quoted, commas, parentheses and dots are all just text.
+ */
+export function productSearchFilter(q: string): string {
+  const term = ilikeQuoted(q.trim());
+  return `sku.ilike.${term},name.ilike.${term},variation_label.ilike.${term}`;
+}
+
 export async function listProducts(
   filters: ListProductsFilters = {}
 ): Promise<CommercialProduct[]> {
@@ -385,16 +401,7 @@ export async function listProducts(
   if (!filters.includeInactive) query = query.eq("is_active", true);
   if (filters.category) query = query.eq("category", filters.category);
   if (filters.surface_area) query = query.eq("surface_area", filters.surface_area);
-  if (filters.q?.trim()) {
-    const q = filters.q.trim();
-    // Escape LIKE wildcards + backslash (same pattern as palette-search).
-    // F.6: search also matches variation_label so typing "Seal & Poly"
-    // finds the variation row directly.
-    const safe = q.replace(/[\\%_]/g, "\\$&");
-    query = query.or(
-      `sku.ilike.%${safe}%,name.ilike.%${safe}%,variation_label.ilike.%${safe}%`
-    );
-  }
+  if (filters.q?.trim()) query = query.or(productSearchFilter(filters.q));
   const { data, error } = await query.order("name", { ascending: true }).limit(500);
   if (error) return [];
   return (data ?? []) as CommercialProduct[];

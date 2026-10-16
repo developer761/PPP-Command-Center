@@ -5,6 +5,7 @@ import { getProfileByUserId } from "@/lib/auth/profile";
 import { isAdminEmail } from "@/lib/auth/admin";
 import { sendCustomerFormInvite, sendCustomerFormConfirmation } from "@/lib/email/resend";
 import { buildReceiptRooms } from "@/lib/customer-form/receipt-lines";
+import { EMAIL_TEST_PARAMS, emailTestConfirmPage } from "@/lib/email/email-test-page";
 
 
 /**
@@ -21,10 +22,19 @@ export const dynamic = "force-dynamic";
  * to the supplied address — using the CURRENT customer_form_templates
  * config so admin can verify their template edits actually took effect.
  *
- *   GET /api/admin/email-test?to=karan@example.com
+ *   POST /api/admin/email-test?to=karan@example.com
  *      Optional: ?name=Jane%20Doe  &wo=00012345
  *      Optional: ?kind=confirmation  — preview the submission RECEIPT
  *                (Kate 2026-10-01) instead of the invite. Default: invite.
+ *
+ * Sending is POST only: it mails real, branded email to any address. As a
+ * GET, an admin's SameSite=Lax session cookie rode along on a top-level link
+ * click, so one link anywhere could make PPP's sender mail whoever it named. A
+ * cross-site POST carries no Lax cookie, and a foreign Origin is refused.
+ *
+ * GET still answers the same URL — Karan keeps it as a bookmark — but it only
+ * renders an admin-only confirm page with the parameters filled in and a
+ * "Send test email" button that POSTs them. It sends nothing itself.
  *
  * Previously this sent a hardcoded "Resend wired" plain message and did
  * NOT go through the template system — admin would edit templates,
@@ -38,21 +48,48 @@ export const dynamic = "force-dynamic";
  * is also a placeholder token (TEST_TOKEN_NOT_REAL) so clicking it lands
  * on the standard "not found" error state.
  */
-export async function GET(request: Request) {
+/** The signed-in admin, or the Response that refuses everyone else. */
+async function requireAdminUser(): Promise<{ email: string | undefined } | Response> {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data?.user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-
   const profile = await getProfileByUserId(data.user.id);
-  const isAdmin = isAdminProfile(profile, isAdminEmail(data.user.email));
-  if (!isAdmin) {
+  if (!isAdminProfile(profile, isAdminEmail(data.user.email))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  return { email: data.user.email };
+}
 
+export async function GET(request: Request) {
+  const admin = await requireAdminUser();
+  if (admin instanceof Response) return admin;
+  return new NextResponse(emailTestConfirmPage(new URL(request.url).searchParams), {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
+export async function POST(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) {
+    return NextResponse.json({ error: "cross_origin" }, { status: 403 });
+  }
+
+  const admin = await requireAdminUser();
+  if (admin instanceof Response) return admin;
+
+  // The query string (scripted callers), overlaid by the confirm page's form.
   const url = new URL(request.url);
-  const to = url.searchParams.get("to");
+  const params = new URLSearchParams(url.searchParams);
+  if ((request.headers.get("content-type") ?? "").includes("application/x-www-form-urlencoded")) {
+    const form = await request.formData();
+    for (const k of EMAIL_TEST_PARAMS) {
+      const val = form.get(k);
+      if (typeof val === "string") params.set(k, val.trim());
+    }
+  }
+  const to = params.get("to");
   // Require a TLD on the email — matches the regex used by every other
   // admin send route (customer-form/create, supplier-order/send,
   // supplier-settings). Without the TLD requirement, `?to=foo@bar` was
@@ -61,11 +98,11 @@ export async function GET(request: Request) {
   if (!to || !/^[a-z0-9._+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(to)) {
     return NextResponse.json({
       error: "missing_or_invalid_to",
-      hint: "Add ?to=your@email.com to the URL",
+      hint: "Fill in To on the confirm page, or add ?to=your@email.com to the POST URL",
     }, { status: 400 });
   }
-  const fakeName = url.searchParams.get("name") || "Test Customer";
-  const fakeWoNumber = url.searchParams.get("wo") || "00099999-TEST";
+  const fakeName = params.get("name") || "Test Customer";
+  const fakeWoNumber = params.get("wo") || "00099999-TEST";
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")
     || new URL(request.url).origin;
   const fakeFormUrl = `${baseUrl}/select/TEST_TOKEN_NOT_REAL`;
@@ -86,7 +123,7 @@ export async function GET(request: Request) {
   // 2026-10-01) needs this just as much as the invite did: it is only sent
   // by a real form submission, so without a test path the only way to see
   // one was to submit somebody's live work order.
-  const kind = (url.searchParams.get("kind") || "invite").toLowerCase();
+  const kind = (params.get("kind") || "invite").toLowerCase();
   if (kind !== "invite" && kind !== "confirmation") {
     return NextResponse.json({
       error: "unknown_kind",
@@ -147,7 +184,7 @@ export async function GET(request: Request) {
       });
 
   return NextResponse.json({
-    triggeredBy: data.user.email,
+    triggeredBy: admin.email,
     kind,
     to,
     fromAddress,
