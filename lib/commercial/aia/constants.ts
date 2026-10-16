@@ -30,7 +30,126 @@ export type AiaLineInput = {
   /** Optional so existing callers compile unchanged. Only the SALES TAX row
    *  needs to be identifiable here — see isAiaTaxLine and computeG702. */
   item_no?: string | null;
+  /**
+   * Work on THIS line whose retainage has ALREADY BEEN RELEASED, and so must
+   * not be withheld a second time. Set by `applyReleasedRetainage`; absent
+   * (the default) means nothing has been released and the math is unchanged.
+   */
+  retainage_released_cents?: number;
 };
+
+/**
+ * 🔴 RETAINAGE IS WITHHELD ONCE. RELEASED WORK IS NOT RE-RETAINED.
+ *
+ * Stephanie, 2026-10-16, on LMJ Cipla — the job she calls "a billing
+ * nightmare": billed in full, billed the retainage, got paid in full. Then a
+ * change order arrived, so it had to be billed plus its retainage. Twice more.
+ *
+ *     "I am trying to record it in Command and it is pulling details from the
+ *      paid retainage AIA and giving me negative numbers."
+ *
+ * Her Application 6 measured on the live row: $1,000 of new change-order work
+ * on top of $87,627.09 already billed, retained AND released. Line 5 came back
+ * $4,431.36 — five percent of the WHOLE contract, for the second time — so
+ * line 6 landed $3,431.36 BELOW the previous certificate and line 8, the
+ * figure the GC pays, read MINUS $3,431.36. On a document we send out.
+ *
+ * The rule is the one she wrote out herself: "$1000 CO, 5% ret, $950 due and
+ * $50 ret, $50 balance to finish". Retainage applies to work not yet released,
+ * which after a release application is the NEW work only.
+ *
+ * Carried PER LINE rather than as one total because G702 line 5 has to tie to
+ * the G703's retainage column line for line (see computeG702), and because the
+ * release is itself per line: a job can release on the base scope and still be
+ * holding retainage on a change order billed after it.
+ *
+ * Clamped to the line's own sign and magnitude so a credit line still earns its
+ * negative retainage downward, and so a stale or mismatched baseline can never
+ * push a line's retainage past zero in the wrong direction.
+ */
+function releasedOn(l: AiaLineInput, earned: number): number {
+  const rel = Math.round(l.retainage_released_cents ?? 0);
+  if (rel === 0) return 0;
+  return earned < 0 ? Math.min(0, Math.max(earned, rel)) : Math.max(0, Math.min(earned, rel));
+}
+
+/** Completed-and-stored on this line that retainage may still be withheld on. */
+export function lineRetainableCents(l: AiaLineInput): number {
+  const earned = lineCompletedStoredCents(l);
+  return earned - releasedOn(l, earned);
+}
+
+/** Retainage on one G703 line — the per-line rounding G702 line 5 sums. */
+export function lineRetainageCents(l: AiaLineInput, pct: number): number {
+  const p = Math.min(100, Math.max(0, pct));
+  return Math.round((lineRetainableCents(l) * p) / 100);
+}
+
+/**
+ * The COMPLETED (G703 columns D + E) half of the retainable base, for the
+ * G702's 5a/5b split. Released work is the oldest work on the line, so it
+ * comes off completed before it comes off materials stored.
+ */
+export function lineRetainableCompletedCents(l: AiaLineInput): number {
+  const de = Math.round(l.from_previous_cents) + Math.round(l.this_period_cents);
+  return de - releasedOn(l, de);
+}
+
+/** The columns that identify one G703 line across a deal's applications. */
+export type AiaLineIdentity = {
+  item_no?: string | null;
+  description?: string | null;
+  change_order_id?: string | null;
+  position?: number | null;
+};
+
+/**
+ * A G703 line's identity across applications. `seedAiaScheduleOfValues` copies
+ * `item_no`, `description` and `change_order_id` verbatim when it carries a
+ * sheet forward, so these tie a line to its earlier self; `position` is the
+ * last resort for a hand-added row with neither.
+ */
+export function aiaLineIdentityKey(l: AiaLineIdentity): string {
+  if (l.change_order_id) return `co:${l.change_order_id}`;
+  const no = (l.item_no ?? "").trim();
+  if (no) return `no:${no.toLowerCase()}`;
+  const d = (l.description ?? "").trim();
+  if (d) return `d:${d.toLowerCase()}`;
+  return `p:${l.position ?? ""}`;
+}
+
+/**
+ * Stamp `retainage_released_cents` on each line from the schedule of the
+ * application that RELEASED retainage (`is_retainage_release`, which forces
+ * its rate to 0 — that zero IS the release, so everything completed through it
+ * came out from under retainage).
+ *
+ * Lines the release sheet does not carry — a change order added after it, which
+ * is the whole point of Stephanie's case — get nothing, and are retained in
+ * full. Returns new objects; the inputs are untouched.
+ */
+export function applyReleasedRetainage<T extends AiaLineInput & AiaLineIdentity>(
+  lines: T[],
+  releaseLines: readonly (AiaLineInput & AiaLineIdentity)[] | null | undefined
+): T[] {
+  if (!releaseLines || releaseLines.length === 0) return lines;
+  const pool = new Map<string, number>();
+  for (const r of releaseLines) {
+    const k = aiaLineIdentityKey(r);
+    pool.set(k, (pool.get(k) ?? 0) + lineCompletedStoredCents(r));
+  }
+  return lines.map((l) => {
+    const k = aiaLineIdentityKey(l);
+    const available = pool.get(k);
+    if (available === undefined || available === 0) return l;
+    // Two lines sharing a key split the released amount rather than each
+    // claiming all of it.
+    const earned = lineCompletedStoredCents(l);
+    const take = earned < 0 ? Math.min(0, Math.max(earned, available)) : Math.max(0, Math.min(earned, available));
+    pool.set(k, available - take);
+    return { ...l, retainage_released_cents: take };
+  });
+}
 
 /** The computed G702 certificate summary (all cents). */
 export type AiaG702 = {
@@ -137,10 +256,12 @@ export function computeG702({
   // way the G703 continuation sheet's retainage column totals — so the two
   // sheets always tie to the penny. (Rounding the total instead of per-line
   // drifts by ~N/2 cents and a GC's AP system can reject the mismatch.)
-  const retainage = lines.reduce(
-    (sum, l) => sum + Math.round((lineCompletedStoredCents(l) * pct) / 100),
-    0
-  );
+  //
+  // Per-line is also what lets a job hold retainage on a change order billed
+  // AFTER a release while holding none on the scope the release covered — see
+  // `lineRetainableCents` for why that is not a refinement but the difference
+  // between line 8 and minus line 8.
+  const retainage = lines.reduce((sum, l) => sum + lineRetainageCents(l, pct), 0);
   const totalEarnedLessRetainage = totalCompletedStored - retainage;
   const currentPaymentDue = totalEarnedLessRetainage - previousCertificatesCents;
   const balanceToFinish = contractSumToDate - totalEarnedLessRetainage;

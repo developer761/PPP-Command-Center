@@ -5,7 +5,7 @@ import { assertCommercialAccess, denyCrewApi } from "@/lib/commercial/auth";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import { getCommercialOpportunity, derivedOppName } from "@/lib/commercial/opportunities/db";
-import { getAiaApplication, listAiaLineItems, resolveG702, reconcileDraftChangeOrderRows } from "@/lib/commercial/aia/db";
+import { getAiaApplication, listAiaLineItemsWithRelease, resolveG702, reconcileDraftChangeOrderRows } from "@/lib/commercial/aia/db";
 import { buildAiaWorkbookBuffer } from "@/lib/commercial/aia/export";
 import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { approvedChangeOrdersForAia } from "@/lib/commercial/change-orders/db";
@@ -40,7 +40,9 @@ export async function GET(
 
   const [opp, lines, g702] = await Promise.all([
     getCommercialOpportunity(application.opportunity_id),
-    listAiaLineItems(applicationId),
+    // WITH the release baseline — the G703's retainage column has to print the
+    // same per-line figures G702 line 5 sums. See listAiaLineItemsWithRelease.
+    listAiaLineItemsWithRelease(application),
     resolveG702(applicationId),
   ]);
   if (!opp || !g702) return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -25,7 +25,12 @@
  */
 import ExcelJS from "exceljs";
 import type { AiaApplication, AiaLineItem } from "./db";
-import { lineCompletedStoredCents, type AiaG702 } from "./constants";
+import {
+  lineCompletedStoredCents,
+  lineRetainableCompletedCents,
+  lineRetainageCents,
+  type AiaG702,
+} from "./constants";
 import { aiaTemplateBuffer } from "./template/template-b64";
 
 const MONEY = '#,##0.00;(#,##0.00)';
@@ -37,6 +42,9 @@ const SHEET_G702 = "Loan G-702";
 const SHEET_G703 = "G-703 Total Hard Cost ";
 
 /** The template's line-item slots and its grand-total row. */
+/** The blank spacer row on her G702 between line 9 and CHANGE ORDER SUMMARY,
+ *  used only to explain a retainage figure the header rate cannot account for. */
+const RELEASE_NOTE_CELL = "A43";
 const FIRST_LINE_ROW = 13;
 const LAST_LINE_ROW = 34;
 const TOTALS_ROW = 35;
@@ -169,7 +177,10 @@ export async function buildAiaWorkbookBuffer(input: {
   // 5a is retainage on completed work (G703 columns D+E); 5b is the remainder,
   // so 5a + 5b is exactly line 5 and the sheet foots however the split falls.
   g.getCell("B30").value = pct;
-  const completedDE = lines.reduce((n, l) => n + l.from_previous_cents + l.this_period_cents, 0);
+  // Retainable, not completed: once a release application has gone out, the
+  // work it released is not withheld again, and 5a has to come off the same
+  // base G702 line 5 does or 5b (its remainder) goes NEGATIVE on the sheet.
+  const completedDE = lines.reduce((n, l) => n + lineRetainableCompletedCents(l), 0);
   const ret5a = Math.round((completedDE * pct) / 100);
   money("D30", ret5a);
   money("D32", g702.retainageCents - ret5a);
@@ -284,6 +295,34 @@ export async function buildAiaWorkbookBuffer(input: {
   }
   s.getCell("J10").value = pct / 100;
 
+  /*
+   * SAY SO WHEN COLUMN J IS NOT pct × COLUMN G.
+   *
+   * Once an earlier application released the retainage, this sheet withholds
+   * only on work that release did not cover — so the rate in the header is the
+   * contract's rate and the column beneath it is $0.00 on every released line.
+   * Right, and baffling to a GC's accounts payable clerk reading one against
+   * the other with nothing on the page to account for it.
+   *
+   * Written on the G702, in the blank spacer row between line 9 and the CHANGE
+   * ORDER SUMMARY (row 43 of her form, empty across A–J), rather than onto the
+   * G703: the continuation sheet's 22 line slots are hers and inserting a row
+   * would push its totals off the form. Not wrapped and not merged — at 8pt it
+   * runs across the empty cells to its right, which is what her layout does
+   * everywhere else, and a merge would change the print area.
+   */
+  const releasedCents = lines.reduce(
+    (n, l) => n + Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0),
+    0
+  );
+  if (releasedCents > 0 && pct > 0) {
+    const note = g.getCell(RELEASE_NOTE_CELL);
+    note.value =
+      `Retainage withheld on new work only — ${d(releasedCents).toLocaleString("en-US", { style: "currency", currency: "USD" })} ` +
+      `released on an earlier application; ${pct}% applies to the balance billed since.`;
+    note.font = { ...(note.font ?? {}), italic: true, size: 8 };
+  }
+
   // Her form has 22 slots. More than that is rare now that the schedule is one
   // contract line plus change orders, but silently dropping a line from a
   // customer document is not something to leave to luck — grow the sheet.
@@ -295,7 +334,9 @@ export async function buildAiaWorkbookBuffer(input: {
   let totC = 0, totD = 0, totE = 0, totF = 0, totG = 0, totJ = 0;
   for (const l of lines) {
     const completed = lineCompletedStoredCents(l);
-    const ret = Math.round((completed * pct) / 100);
+    // The SHARED per-line rule — this column is what G702 line 5 sums, so it
+    // has to honour an earlier release exactly as line 5 does.
+    const ret = lineRetainageCents(l, pct);
     s.getCell(`A${row}`).value = l.item_no ?? "";
     s.getCell(`B${row}`).value = l.description;
     money(`C${row}`, l.scheduled_value_cents, s);

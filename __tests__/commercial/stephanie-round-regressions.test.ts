@@ -218,10 +218,37 @@ describe("her note: we need to bill for the retainage, they pay it separately", 
     expect(release.balanceToFinishCents).toBe(0);
   });
 
-  it("one release per job — a second would certify nothing", () => {
-    const sql = readFileSync("supabase/migrations/162_aia_retainage_release.sql", "utf8");
-    expect(sql).toContain("CREATE UNIQUE INDEX");
-    expect(sql).toContain("WHERE is_retainage_release");
+  /*
+   * REVERSED 2026-10-16. This read:
+   *
+   *   it("one release per job — a second would certify nothing")
+   *
+   * and it passed by reading migration 162's frozen text, so it went on
+   * passing after the rule it names was dropped — a green test asserting the
+   * opposite of what the platform does.
+   *
+   * Stephanie, on the LMJ Cipla expansion: "there was a total of 3 retainage
+   * AIA's... this is kind of something that happens often and we have to be
+   * able to record in real time." A second release certifies nothing only when
+   * nothing is held, and that is now the condition enforced.
+   */
+  it("a job may release retainage more than once — the one-per-job index is dropped", () => {
+    const sql = readFileSync(
+      "supabase/migrations/20261016120000_a_job_can_release_retainage_more_than_once.sql",
+      "utf8",
+    );
+    // Dropped by LOOKUP, not by a name Postgres may never have assigned.
+    expect(sql).toContain("pg_index");
+    expect(sql).toMatch(/DROP INDEX IF EXISTS|DROP CONSTRAINT/);
+    // The backstop that replaces it: at most one release IN DRAFT.
+    expect(sql).toContain("commercial_aia_one_draft_release_per_opp");
+    expect(sql).toMatch(/status = 'draft'/);
+  });
+
+  it("a release with nothing held is refused, in words rather than as a duplicate key", () => {
+    const db = readFileSync("lib/commercial/aia/db.ts", "utf8");
+    expect(db).toContain("There is no retainage held on this job to release");
+    expect(db).toContain("already a retainage release in draft");
   });
 
   it("the release forces 0% rather than trusting the caller", () => {

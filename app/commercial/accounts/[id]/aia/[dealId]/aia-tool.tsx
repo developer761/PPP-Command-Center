@@ -21,7 +21,7 @@ import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
 import {
   listAiaApplications,
   getAiaApplication,
-  listAiaLineItems,
+  listAiaLineItemsWithRelease,
   createAiaApplication,
   updateAiaApplication,
   deleteAiaApplication,
@@ -171,10 +171,12 @@ async function billRetainageAction(formData: FormData) {
     created_by_user_id: userId,
   });
   if (!result.ok) {
-    // The unique index is the backstop for a double-click or two people at
-    // once; say what happened rather than surfacing a Postgres error.
-    const msg = /one_retainage_release|duplicate key/i.test(result.error)
-      ? "The retainage has already been billed on this job."
+    /* `createAiaApplication` now writes these in words — "already a retainage
+       release in draft", "no retainage held to release" — so there is nothing
+       to translate. The one case it cannot phrase is a raw duplicate key from
+       the one-draft-release index reaching here unmatched. */
+    const msg = /duplicate key/i.test(result.error)
+      ? "A retainage release is already in draft on this job. Open it rather than raising another."
       : result.error;
     redirect(`${base(id, dealId, origin, from)}&error=${encodeURIComponent(msg)}${backQ(back)}`);
   }
@@ -378,7 +380,9 @@ async function autoFileAiaApplication(accountId: string, dealId: string, appId: 
     if (!application) return;
     const [opp, lines, g702, account] = await Promise.all([
       getCommercialOpportunity(dealId),
-      listAiaLineItems(appId),
+      // Same release-aware lines the download route uses, so the filed copy
+      // and the downloaded copy cannot disagree on the retainage column.
+      listAiaLineItemsWithRelease(application),
       resolveG702(appId),
       getCommercialAccount(accountId),
     ]);
@@ -659,7 +663,9 @@ export async function AiaTool({
           }
           const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
           const [lines, g702, lienWaiver, payments] = await Promise.all([
-            listAiaLineItems(selectedAppId),
+            // Release-aware, so the sheet can say WHY line 5 is not the
+            // headline percentage of line 4 once a release has gone out.
+            listAiaLineItemsWithRelease(application),
             resolveG702(selectedAppId),
             // Stephanie 2026-08-20: "Add lien waiver option to AIA billing just
             // as it is under the invoicing."
@@ -919,9 +925,17 @@ async function AiaApplicationList({
   const awaitingPayment = applications.filter((a) => a.status === "submitted");
   const fullyBilled =
     contractToDateCents != null && contractToDateCents > 0 && completedToDateCents >= contractToDateCents;
-  // The retainage release (Application for Final Payment). One per job — see
-  // the unique index in migration 162.
-  const releaseApp = applications.find((a) => a.is_retainage_release) ?? null;
+  // The LATEST retainage release (Application for Final Payment). A job can
+  // have several: a change order approved after a release gets billed, retained
+  // and released again — Stephanie's Cipla job needed three. The one-per-job
+  // index from migration 162 is gone (see 20261016120000); what gates the
+  // control now is whether there is anything held, which is the real rule.
+  const releaseApp =
+    [...applications].filter((a) => a.is_retainage_release)
+      .sort((a, b) => b.application_number - a.application_number)[0] ?? null;
+  // Declared before `nextStep`, which keys off it: what is HELD is the rule
+  // for whether a release is the next move, not whether one has happened.
+  const retainageHeldCents = billing?.retainageHeldCents ?? 0;
   const nextStep: { text: string; tone: "todo" | "active" | "done" } =
     applications.length === 0
       ? { text: "Start Application No. 1 for the first billing period.", tone: "todo" }
@@ -929,16 +943,18 @@ async function AiaApplicationList({
       ? { text: `Application No. ${draftApp.application_number} is still a draft — enter this period's work, then submit it to the GC.`, tone: "active" }
       : awaitingPayment.length > 0
       ? { text: `${awaitingPayment.length === 1 ? `Application No. ${awaitingPayment[0].application_number} is` : `${awaitingPayment.length} applications are`} with the GC. Record the payment when it arrives.`, tone: "active" }
-      : fullyBilled && !releaseApp
+      : fullyBilled && retainageHeldCents > 0
       // This used to read "Retainage is released at close-out" — describing
       // something the platform could not do. There is a button for it now.
+      // Keyed on what is HELD, not on whether a release exists: after a change
+      // order is billed on top of an earlier release there is retainage held
+      // again, and that needs a release of its own.
       ? { text: "Fully billed. The retainage is still held — bill it when the GC is ready to release it.", tone: "todo" }
       : fullyBilled
       ? { text: "Fully billed and the retainage has been billed. Nothing further to requisition.", tone: "done" }
       : { text: "Everything so far is paid. Start the next application when the period closes.", tone: "todo" };
 
   const billedCents = billing?.billedCents ?? completedToDateCents;
-  const retainageHeldCents = billing?.retainageHeldCents ?? 0;
   const dueNowCents = billing?.dueNowCents ?? 0;
   const leftToBillCents =
     contractToDateCents != null ? Math.max(0, contractToDateCents - billedCents) : null;
@@ -999,12 +1015,14 @@ async function AiaApplicationList({
           <AiaSummaryTile
             label="Retainage held"
             value={formatCentsFull(retainageHeldCents)}
-            tone={retainageHeldCents > 0 && !releaseApp ? "rose" : "neutral"}
+            tone={retainageHeldCents > 0 ? "rose" : "neutral"}
             hint={
               retainageHeldCents <= 0
-                ? "none held"
+                ? releaseApp
+                  ? `released on Application No. ${releaseApp.application_number}`
+                  : "none held"
                 : releaseApp
-                  ? `billed on Application No. ${releaseApp.application_number}`
+                  ? `held since Application No. ${releaseApp.application_number} — earned, not yet billed`
                   : "earned, not yet billed"
             }
           />
@@ -1186,12 +1204,13 @@ async function AiaApplicationList({
         {/* Bill the retainage — Stephanie 2026-08-17: "they always pay it
             separately and months after the job is finished."
 
-            Only once there IS retainage held and it hasn't been released, so
-            this is absent on a job with no retainage and disappears the moment
-            it is billed. It is a separate control rather than a checkbox on
-            the form above because it takes no inputs: the period is today and
-            the percentage is necessarily zero. */}
-        {retainageHeldCents > 0 && !releaseApp && (
+            Shown whenever there IS retainage held, so it is absent on a job
+            with no retainage and disappears the moment it is billed — and
+            comes BACK when a change order billed after an earlier release
+            puts retainage back on the job. It is a separate control rather
+            than a checkbox on the form above because it takes no inputs: the
+            period is today and the percentage is necessarily zero. */}
+        {retainageHeldCents > 0 && (
           <form action={billRetainageAction} className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />

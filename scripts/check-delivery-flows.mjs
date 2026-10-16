@@ -349,9 +349,25 @@ try {
       check("line 3 = line 1 + line 2 (+ tax)",
         g.contractSumToDateCents === g.originalContractCents + g.netChangeOrdersCents + g.salesTaxCents,
         `${g.contractSumToDateCents}`);
-      check("line 5 is the retainage percentage of line 4",
-        g.retainageCents === Math.round(g.totalCompletedStoredCents * 0.1),
-        `${g.retainageCents} of ${g.totalCompletedStoredCents}`);
+      /*
+       * PER LINE, off the RETAINABLE base — not 10% of line 4.
+       *
+       * This asserted `retainageCents === round(line4 × 0.1)`, which is the
+       * rule as it stood before 2026-10-16 and is now wrong in two ways: line
+       * 5 sums per-line rounding (which differs from rounding the total once
+       * there is more than one line), and work whose retainage an earlier
+       * release let go is not withheld again. It passed only because this
+       * synthetic flow has one application with one line and no release — it
+       * would have gone green straight through a real regression, and red the
+       * moment the flow grew a release step.
+       */
+      const { listAiaLineItemsWithRelease } = await import("../lib/commercial/aia/db.ts");
+      const { lineRetainageCents } = await import("../lib/commercial/aia/constants.ts");
+      const g703 = await listAiaLineItemsWithRelease(app.value);
+      const perLine = g703.reduce((n, l) => n + lineRetainageCents(l, 10), 0);
+      check("line 5 is the sum of the G703's per-line retainage",
+        g.retainageCents === perLine,
+        `${g.retainageCents} vs ${perLine} across ${g703.length} line(s) of ${g.totalCompletedStoredCents}`);
       check("line 6 = line 4 − line 5",
         g.totalEarnedLessRetainageCents === g.totalCompletedStoredCents - g.retainageCents,
         String(g.totalEarnedLessRetainageCents));

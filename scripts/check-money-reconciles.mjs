@@ -421,6 +421,67 @@ try {
       ? doubleBilled.slice(0, 3).map(([, l]) => l.map((i) => i.invoice_number).join("+")).join(" · ")
       : `${sfInvByDeal.size} deal(s) with one`,
   );
+  /*
+   * NO CERTIFICATE ASKS A GENERAL CONTRACTOR FOR A NEGATIVE PAYMENT.
+   *
+   * G702 line 8 is the figure a GC's accounts payable department pays. A
+   * negative one is not a small presentational problem: it is a demand for
+   * money back on a document we send out, and a GC's AP system rejects it.
+   *
+   * Stephanie, 2026-10-16, on the LMJ Cipla expansion: retainage was being
+   * recomputed on ALL completed work every period, so the application after a
+   * retainage release re-withheld five percent of the whole contract and line
+   * 8 came out at MINUS $3,431.36. Fixed by `lineRetainableCents`; held here,
+   * against the live rows, through the same `resolveG702` the certificate and
+   * the Excel both call.
+   *
+   * 5a + 5b is the same guard one line down: the export writes 5a and then 5b
+   * as the REMAINDER of line 5, so a 5a computed off a different base than
+   * line 5 prints a negative 5b on the sheet.
+   */
+  {
+    const { resolveG702, listAiaLineItemsWithRelease } = await import("../lib/commercial/aia/db.ts");
+    const { lineRetainableCompletedCents } = await import("../lib/commercial/aia/constants.ts");
+    const apps = (
+      await pageAll(
+        "commercial_aia_applications",
+        "id,opportunity_id,application_number,status,retainage_pct,deleted_at",
+        ["id"],
+      )
+    ).filter((a) => !a.deleted_at);
+    const negatives = [];
+    const splits = [];
+    for (const a of apps) {
+      const g = await resolveG702(a.id);
+      if (!g) continue;
+      if (g.currentPaymentDueCents < 0) {
+        negatives.push(`#${a.application_number} ${money(g.currentPaymentDueCents)}`);
+      }
+      const lines = await listAiaLineItemsWithRelease(a);
+      const pct = Math.min(100, Math.max(0, Number(a.retainage_pct) || 0));
+      const ret5a = Math.round(
+        (lines.reduce((n, l) => n + lineRetainableCompletedCents(l), 0) * pct) / 100,
+      );
+      if (ret5a < 0 || g.retainageCents - ret5a < 0) {
+        splits.push(`#${a.application_number} ${money(ret5a)}/${money(g.retainageCents - ret5a)}`);
+      }
+    }
+    check(
+      "there are payment applications to check",
+      apps.length > 0,
+      `${apps.length} live application(s)`,
+    );
+    check(
+      "no payment application certifies a NEGATIVE amount due",
+      negatives.length === 0,
+      negatives.length ? negatives.slice(0, 5).join(" · ") : `${apps.length} checked, all ≥ $0.00`,
+    );
+    check(
+      "the G702's 5a/5b retainage split never inverts",
+      splits.length === 0,
+      splits.length ? splits.slice(0, 5).join(" · ") : `${apps.length} checked`,
+    );
+  }
 } catch (err) {
   failures++;
   console.log(`  FAIL  the check itself threw — ${err?.message ?? err}`);
