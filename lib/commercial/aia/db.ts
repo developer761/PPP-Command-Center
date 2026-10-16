@@ -16,6 +16,8 @@ import {
   aiaCollectedWithPayments,
   lineCompletedStoredCents,
   applyReleasedRetainage,
+  pickReleaseApplication,
+  type AiaReleaseCandidate,
   lineRetainageCents,
   pickContractBaseCents,
   isAiaChangeOrderLine,
@@ -1596,24 +1598,30 @@ export async function listAiaLineItemsWithRelease(
    * so it is raised, and the caller shows an error instead of a wrong
    * certificate. A document the GC pays from is the wrong place to guess.
    */
-  const { data: release, error: releaseErr } = await sb
+  /*
+   * The query FETCHES; `pickReleaseApplication` CHOOSES. The choosing used to
+   * live in the `.lt()` / `.in()` / order / limit chain here, and a second copy
+   * of the same sentence lived as a JS loop in `aiaBillingRollupBulk` — the two
+   * sides of every number on this platform, maintained apart. Only `deleted_at`
+   * stays in SQL; a deleted row is not a candidate at all.
+   */
+  const { data: releases, error: releaseErr } = await sb
     .from("commercial_aia_applications")
-    .select("id")
+    .select("id, application_number, status, is_retainage_release")
     .eq("opportunity_id", app.opportunity_id)
     .eq("is_retainage_release", true)
-    .lt("application_number", app.application_number)
-    .in("status", ["submitted", "paid"])
-    .is("deleted_at", null)
-    .order("application_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .is("deleted_at", null);
   if (releaseErr) {
     throw new Error(
       `Could not read this job's retainage releases, so the retainage on this certificate cannot be trusted: ${releaseErr.message}`
     );
   }
+  const release = pickReleaseApplication(
+    (releases ?? []) as AiaReleaseCandidate[],
+    app.application_number
+  );
   if (!release) return lines;
-  return applyReleasedRetainage(lines, await listAiaLineItems((release as { id: string }).id));
+  return applyReleasedRetainage(lines, await listAiaLineItems(release.id));
 }
 
 export async function resolveG702(applicationId: string, _depth = 0): Promise<AiaG702 | null> {
@@ -2139,17 +2147,14 @@ export async function aiaBillingRollupBulk(
     const releasesByOpp = new Map<string, App[]>();
     for (const a of apps) {
       if (!a.is_retainage_release) continue;
-      if (a.status !== "submitted" && a.status !== "paid") continue;
       const arr = releasesByOpp.get(a.opportunity_id) ?? [];
       arr.push(a);
       releasesByOpp.set(a.opportunity_id, arr);
     }
     for (const want of [...latestIssued.values(), ...latestPaid.values(), ...baselineAppByOpp.values()]) {
-      let rel: App | null = null;
-      for (const a of releasesByOpp.get(want.opportunity_id) ?? []) {
-        if (a.application_number >= want.application_number) continue;
-        if (!rel || a.application_number > rel.application_number) rel = a;
-      }
+      // The SAME function the certificate uses, not a second reading of the
+      // same rule. `apps` is already `deleted_at is null`.
+      const rel = pickReleaseApplication(releasesByOpp.get(want.opportunity_id) ?? [], want.application_number);
       if (rel) releaseAppByApp.set(want.id, rel.id);
     }
   }

@@ -118,6 +118,60 @@ export function aiaLineIdentityKey(l: AiaLineIdentity): string {
   return `p:${l.position ?? ""}`;
 }
 
+/** The fields the release rule below reads off an application row. */
+export type AiaReleaseCandidate = {
+  id: string;
+  application_number: number;
+  status: string;
+  is_retainage_release: boolean;
+};
+
+/**
+ * WHICH release application a certificate reads its baseline from.
+ *
+ * ONE rule, because there were two and they were separately maintained.
+ * `listAiaLineItemsWithRelease` expressed it as a Postgres query —
+ * `is_retainage_release`, `.lt(application_number)`, status in
+ * (submitted, paid), `deleted_at is null`, order desc, limit 1 — and
+ * `aiaBillingRollupBulk` re-expressed the same sentence as a JS loop over rows
+ * it had already fetched. They agreed on 2026-10-16 when both were read
+ * side by side. Nothing made them agree.
+ *
+ * That matters more than it sounds: the SQL one prints the G702 the GC pays
+ * from, the JS one feeds AR aging, the emailed statement, receivables, Account
+ * 360, the deal page and the assistant. A clause added to one and not the other
+ * is a platform that disagrees with its own paperwork, and on LMJ Cipla the
+ * cost of getting the baseline wrong is $4,381.36.
+ *
+ * So the selection lives here, in the pure module both sides already import,
+ * and the query's job shrinks to FETCHING the candidates. Deleted rows are
+ * still excluded in SQL — that is a storage concern and both callers do it.
+ *
+ * A tie on `application_number` cannot happen while the partial unique index
+ * holds, but `limit 1` answered it arbitrarily and a loop answered it by
+ * insertion order. Lowest `id` wins, so the two can no longer differ even in
+ * the case that should not arise.
+ */
+export function pickReleaseApplication<T extends AiaReleaseCandidate>(
+  candidates: readonly T[],
+  beforeApplicationNumber: number
+): T | null {
+  let best: T | null = null;
+  for (const c of candidates) {
+    if (!c.is_retainage_release) continue;
+    if (c.status !== "submitted" && c.status !== "paid") continue;
+    if (c.application_number >= beforeApplicationNumber) continue;
+    if (
+      !best ||
+      c.application_number > best.application_number ||
+      (c.application_number === best.application_number && c.id < best.id)
+    ) {
+      best = c;
+    }
+  }
+  return best;
+}
+
 /**
  * Stamp `retainage_released_cents` on each line from the schedule of the
  * application that RELEASED retainage (`is_retainage_release`, which forces
