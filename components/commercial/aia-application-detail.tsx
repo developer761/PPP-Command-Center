@@ -132,11 +132,7 @@ export function AiaApplicationDetail({
     (s, l) => s + Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0),
     0
   );
-  // Several releases per job is the whole premise of the 2026-10-16 change
-  // (Cipla needed three), so "an earlier application" is not always singular.
-  const releasedLineCount = lines.filter(
-    (l) => Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0) !== 0
-  ).length;
+
   const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
   const hasDrift = Math.abs(sovDriftCents) > 1;
   /*
@@ -300,12 +296,18 @@ export function AiaApplicationDetail({
            * fourth variant. And it leads with the line number: at phone width
            * the two-column grid collapses, so line 5 is several rows above and
            * off-screen by the time this is read.
+           *
+           * SINGULAR, and it stays singular however many releases a job has
+           * had. `applyReleasedRetainage` reads its baseline from exactly ONE
+           * application — the most recent issued release, whose sheet already
+           * carries forward everything earlier releases covered. A first pass
+           * here pluralised on the number of released LINES, which on Cipla
+           * made one release application read as "across earlier applications".
            */
           <p className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
             Line 5 — retainage is held on new work only. It was already released on{" "}
-            {formatCentsFull(retainageReleasedCents)} of the completed total
-            {releasedLineCount > 1 ? " across earlier applications" : " on an earlier application"},
-            so the {Number(application.retainage_pct)}% applies to the{" "}
+            {formatCentsFull(retainageReleasedCents)} of the completed total on an earlier
+            application, so the {Number(application.retainage_pct)}% applies to the{" "}
             {formatCentsFull(Math.max(0, g702.totalCompletedStoredCents - retainageReleasedCents))}{" "}
             billed since.
           </p>
