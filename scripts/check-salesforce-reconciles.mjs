@@ -157,7 +157,7 @@ try {
     const ours = (Number(d.accepted_contract_cents ?? 0) + Number(coByOpp.get(d.id) ?? 0)) / 100;
     const theirs = Number(o.QuotedSubtotalWithChangeOrder__c ?? 0);
     if (Math.abs(ours - theirs) < 0.005) agree++;
-    else differ.push({ ours, theirs, name: o.Name, stage: o.StageName });
+    else differ.push({ ours, theirs, name: o.Name, stage: o.StageName, oppId: d.id });
   }
   const linked = agree + differ.length;
   check(
@@ -174,15 +174,30 @@ try {
   /*
    * TWO, and each is a real gap with an owner — not a difference to tolerate.
    *
-   *  · VCA West Islip, $14,625. Salesforce holds THREE approved change orders
-   *    (CO-32409 $14,625, CO-32668 $2,250, CO-32669 $20,375 = $37,250). We hold
-   *    two, $22,625 — because the migrated rollup row that stood for the
-   *    $14,625 was deleted here on 2026-10-16 and the two real change orders
-   *    entered in its place. The write-back correctly refused to reverse it
-   *    ("a migrated rollup row, not a real change order"), so Salesforce still
-   *    has it and we no longer do. The amounts do not match, so this is not a
-   *    clean replacement: STEPHANIE has to say whether CO-32409 is separate
-   *    work or was superseded.
+   *  · VCA West Islip, $14,625 — SETTLED 2026-10-16: ours is MISSING a change
+   *    order, Salesforce is right. Salesforce holds three approved
+   *    ChangeOrder__c on WorkOrder 00268849 (TotalChangeOrder__c $37,250 on a
+   *    $45,750 base = the $83,000 it reports). We hold two, $22,625.
+   *
+   *    CO-32668 ($2,250, Doctors Office WC) and CO-32669 ($20,375,
+   *    Wallcovering / Sprinkler Room / Window Trim) were both CREATED IN
+   *    SALESFORCE ON 2026-10-16 BY OUR OWN WRITE-BACK — they are new October
+   *    work, entered here and pushed there. CO-32409 ($14,625, "Scope change")
+   *    was created in Salesforce on 2026-08-18, two months earlier, and shares
+   *    no scope with either. So the October pair did not supersede it; the
+   *    amounts never matched because they were never the same work.
+   *
+   *    What stood for CO-32409 here was the migration rollup row, and it was
+   *    deleted on 2026-10-16 while the October pair was being entered.
+   *    `syncChangeOrder` refuses to reverse a rollup — correctly, it never
+   *    pushed one — so Salesforce kept the money and we stopped counting it.
+   *    Nothing was lost in Salesforce and nothing here needs undoing; a
+   *    $14,625 change order has to be RE-ENTERED on this deal to match the
+   *    work Salesforce has had approved since August. That is a write to a
+   *    live deal, so STEPHANIE confirms the work is still live and enters it.
+   *
+   *    The three certificates on this job are frozen at the $45,750 base, so
+   *    nothing already billed is wrong.
    *
    *  · AIREF Building #1, $3,613. Salesforce's QUOTE LINE agrees with us
    *    exactly at $283,082, there is no ChangeOrder__c behind the difference,
@@ -199,11 +214,43 @@ try {
       ? `${differ.length} differ (was ${KNOWN_DEAL_DIFFERENCES})`
       : `${agree} of ${linked} agree to the cent · ${differ.length} known differences`,
   );
+  /*
+   * SAY WHY, NOT JUST HOW MUCH.
+   *
+   * A bare delta costs an hour to chase. VCA West Islip read
+   * "Δ -$14,625.00" and the cause was three queries away: a migrated rollup
+   * row for exactly that amount had been deleted here the same day, while
+   * somebody entered the two real change orders that were approved in
+   * October. `syncChangeOrder` refuses to reverse a rollup — correctly, it
+   * never pushed it — so Salesforce kept the money and we stopped counting
+   * it. The rollup was the ONLY thing standing for Salesforce's CO-32409,
+   * approved there on 2026-08-18.
+   *
+   * That trap is still armed on every other migrated deal: 16 rollup rows,
+   * $127,942.68. When the next one goes, this line names the cause on the
+   * day it happens instead of leaving a number nobody can explain.
+   */
+  const deletedRollupsByOpp = new Map();
+  for (const c of cos) {
+    if (!c.deleted_at) continue;
+    if (!ROLLUP_TITLE.test(String(c.title ?? "").trim())) continue;
+    const arr = deletedRollupsByOpp.get(c.opportunity_id) ?? [];
+    arr.push(c);
+    deletedRollupsByOpp.set(c.opportunity_id, arr);
+  }
   for (const d of differ.sort((a, b) => Math.abs(b.ours - b.theirs) - Math.abs(a.ours - a.theirs))) {
     console.log(
       `        ours ${dollars(d.ours).padStart(13)}  SF ${dollars(d.theirs).padStart(13)}` +
         `  Δ ${dollars(d.ours - d.theirs).padStart(12)}  ${String(d.name).slice(0, 38)}`,
     );
+    for (const r of deletedRollupsByOpp.get(d.oppId) ?? []) {
+      const explains = Math.abs(Number(r.amount_cents) / 100 - (d.theirs - d.ours)) < 0.005;
+      console.log(
+        `             ↳ a rollup row of ${money(r.amount_cents)} was deleted here on ` +
+          `${String(r.deleted_at).slice(0, 10)}; Salesforce still counts it` +
+          `${explains ? " — this is the whole difference" : ""}`,
+      );
+    }
   }
 
   // ── Change orders ────────────────────────────────────────────────────────
