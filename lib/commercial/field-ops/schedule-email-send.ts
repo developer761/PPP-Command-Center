@@ -632,10 +632,33 @@ async function scheduleReminder(
     // actually-sent time anywhere) so resetClockReminder can tell a nudge that
     // has already fired (can't double-send → safe to clear) from one still pending
     // (audit round 11).
-    await commercialDb()
+    const { data: stamped, error: stampErr } = await commercialDb()
       .from("commercial_schedule_email_log")
       .update({ resend_message_id: sent.id ?? null, sent_at: fireAt })
-      .eq("id", claimId);
+      .eq("id", claimId)
+      .select("id")
+      .maybeSingle();
+    if (stampErr || !stamped) {
+      // The send is queued at Resend but nothing here knows its id, so a
+      // later start-time change can't cancel it and the painter gets a nudge
+      // for the wrong time. Zero rows means a reset deleted the claim while
+      // this was in flight — the shift moved, so this one is wrong already.
+      // Cancel it now, while the id is still in hand.
+      console.error(
+        `[schedule-email] ${kind} reminder for ${employeeId} on ${workDate} queued but its id was not stored: ${stampErr?.message ?? "claim row gone"}`,
+      );
+      if (sent.id) {
+        const { cancelScheduledEmail } = await import("@/lib/email/resend");
+        const cancelled = await cancelScheduledEmail(sent.id, "commercial");
+        if (cancelled) {
+          // Free OUR claim (by its id — a reset may already have let a newer
+          // claim in for the same slot) so the next pass queues a correct one.
+          if (stampErr) await commercialDb().from("commercial_schedule_email_log").delete().eq("id", claimId);
+        } else {
+          console.error(`[schedule-email] could not cancel orphaned reminder ${sent.id} — it will fire as queued.`);
+        }
+      }
+    }
   } else {
     // Scheduling failed — release the claim so a later run reschedules it.
     await releaseClaim(employeeId, workDate, kind);

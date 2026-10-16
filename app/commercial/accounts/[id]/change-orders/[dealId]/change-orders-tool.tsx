@@ -293,7 +293,14 @@ async function sendChangeOrderAction(formData: FormData) {
   });
   if (!res.ok) coRedirect(account_id, opp_id, { co_send_error: res.error }, back, origin, from);
   revalidateChangeOrderSurfaces(account_id, opp_id);
-  coRedirect(account_id, opp_id, { co_sent: res.to_email }, back, origin, from);
+  coRedirect(
+    account_id,
+    opp_id,
+    { co_sent: res.to_email, ...(res.warning ? { heads_up: res.warning } : {}) },
+    back,
+    origin,
+    from,
+  );
 }
 
 async function deleteChangeOrderAction(formData: FormData) {

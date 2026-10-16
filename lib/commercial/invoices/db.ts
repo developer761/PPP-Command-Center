@@ -746,16 +746,29 @@ export async function updateInvoiceCoreFields(
     .select(beforeCols)
     .eq("id", invoice_id)
     .maybeSingle();
-  const { error } = await sb
+  // Live invoices only, and read back what was stored. Without the
+  // `deleted_at` guard a stale tab edited a deleted invoice; without the row
+  // check a zero-row write reported "saved"; and the audit row recorded the
+  // PATCH as the after-state rather than the row as it now stands.
+  const { data: after, error } = await sb
     .from("commercial_invoices")
     .update(clean)
-    .eq("id", invoice_id);
+    .eq("id", invoice_id)
+    .is("deleted_at", null)
+    .select(beforeCols)
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!after) {
+    return {
+      ok: false,
+      error: "This invoice was deleted or could not be found, so nothing was saved. Reload to see it.",
+    };
+  }
   await logUpdate(
     "commercial_invoices",
     invoice_id,
     before,
-    clean,
+    after,
     actorUserId,
   );
   // A tax-rate change moves the GENERATED total/balance, so the paid/partial
@@ -763,7 +776,8 @@ export async function updateInvoiceCoreFields(
   // invoice left it reading "Paid" with real money outstanding, invisible to
   // both the overdue badge and the dunning cron.
   if (clean.tax_pct !== undefined) {
-    await reconcileInvoiceStatusToTotal(invoice_id);
+    const rec = await reconcileInvoiceStatusToTotal(invoice_id);
+    if (!rec.ok) return rec;
   }
   return { ok: true };
 }
@@ -1055,7 +1069,8 @@ export async function recomputeSubtotal(
       error: "Couldn't re-total the invoice — its total may be out of date. Please reload.",
     };
   }
-  await reconcileInvoiceStatusToTotal(invoice_id);
+  const rec = await reconcileInvoiceStatusToTotal(invoice_id);
+  if (!rec.ok) return rec;
   return { ok: true };
 }
 
@@ -1071,15 +1086,27 @@ export async function recomputeSubtotal(
  */
 export async function reconcileInvoiceStatusToTotal(
   invoice_id: string,
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const sb = commercialDb();
+  // The total HAS already moved by the time this runs, so a dropped failure
+  // here is the original bug again: a "Paid" pill over a real balance, which
+  // the dunning cron never chases. Both the read and the write are checked.
+  const failed = {
+    ok: false as const,
+    error:
+      "The invoice was updated, but its paid status couldn't be re-checked against the new total. Reload to see the current balance.",
+  };
   // Re-read the row so we see the GENERATED total_cents post-update.
-  const { data: after } = await sb
+  const { data: after, error: readErr } = await sb
     .from("commercial_invoices")
     .select("status, total_cents, paid_cents, paid_at")
     .eq("id", invoice_id)
     .maybeSingle();
-  if (!after) return;
+  if (readErr) {
+    console.error(`[commercial/invoices] reconcileInvoiceStatusToTotal: read failed for ${invoice_id}: ${readErr.message}`);
+    return failed;
+  }
+  if (!after) return { ok: true };
   const status = after.status as InvoiceStatus;
   const total = after.total_cents as number;
   const paid = after.paid_cents as number;
@@ -1087,7 +1114,7 @@ export async function reconcileInvoiceStatusToTotal(
   let nextPaidAt: string | null | undefined = undefined;
   // A draft isn't billed yet, and void is terminal — neither should be dragged
   // into a paid/partial state by a total change.
-  if (status === "void" || status === "draft") return;
+  if (status === "void" || status === "draft") return { ok: true };
   if (paid >= total && total > 0 && status !== "paid") {
     nextStatus = "paid";
     if (!after.paid_at) nextPaidAt = new Date().toISOString();
@@ -1108,8 +1135,23 @@ export async function reconcileInvoiceStatusToTotal(
       updated_at: new Date().toISOString(),
     };
     if (nextPaidAt !== undefined) patch.paid_at = nextPaidAt;
-    await sb.from("commercial_invoices").update(patch).eq("id", invoice_id);
+    // Conditional on the status this decision was made from: a payment landing
+    // in between has already re-decided it, and zero rows says so.
+    const { data: flipped, error: flipErr } = await sb
+      .from("commercial_invoices")
+      .update(patch)
+      .eq("id", invoice_id)
+      .eq("status", status)
+      .select("id")
+      .maybeSingle();
+    if (flipErr || !flipped) {
+      console.error(
+        `[commercial/invoices] reconcileInvoiceStatusToTotal: ${status} → ${nextStatus} did not land for ${invoice_id}: ${flipErr?.message ?? "no row matched"}`,
+      );
+      return failed;
+    }
   }
+  return { ok: true };
 }
 
 // ────────────── Payments ──────────────
@@ -1370,6 +1412,7 @@ export async function addPayment(
       };
     }
   }
+  let statusWarning: string | null = null;
   if (after) {
     const paid = (after as { paid_cents: number }).paid_cents;
     const total = (after as { total_cents: number }).total_cents;
@@ -1388,7 +1431,23 @@ export async function addPayment(
       // Stamp paid_at when force-flipping to paid so downstream reads
       // don't see paid=paid_at=null.
       if (expectedStatus === "paid") patch.paid_at = new Date().toISOString();
-      await sb.from("commercial_invoices").update(patch).eq("id", invoice_id);
+      // Checked. The payment row is already in, so this cannot fail the call —
+      // but a dropped failure left a fully-paid invoice reading "Partial" (or
+      // the reverse) with the user told nothing, so it rides out as a warning.
+      const { data: reconciled, error: reconcileErr } = await sb
+        .from("commercial_invoices")
+        .update(patch)
+        .eq("id", invoice_id)
+        .eq("status", currentStatus)
+        .select("id")
+        .maybeSingle();
+      if (reconcileErr || !reconciled) {
+        console.error(
+          `[commercial/invoices] recordPayment: status ${currentStatus} → ${expectedStatus} did not land for ${invoice_id}: ${reconcileErr?.message ?? "no row matched"}`,
+        );
+        statusWarning =
+          "The payment was recorded, but the invoice's status couldn't be updated to match. Reload to see the current balance.";
+      }
       // Re-fetch so the notification below sees the corrected state.
       const { data: reFetched } = await sb
         .from("commercial_invoices")
@@ -1466,9 +1525,15 @@ export async function addPayment(
     applied_cents: appliedAmount,
     requested_cents: input.amount_cents,
     capped: capped || appliedAmount < input.amount_cents,
-    warning: untaggedOnMilestoneInvoice
-      ? "Recorded on the invoice, but not tied to a milestone — the milestone bars won't reflect it."
-      : undefined,
+    warning:
+      [
+        untaggedOnMilestoneInvoice
+          ? "Recorded on the invoice, but not tied to a milestone — the milestone bars won't reflect it."
+          : null,
+        statusWarning,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
   };
 }
 

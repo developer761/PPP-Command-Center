@@ -47,7 +47,7 @@ import { PendingSubmitButton } from "@/components/commercial/pending-submit-butt
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
 
-export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; back?: string; /** Deal-tab the tool was opened from (overview/docs/activity), so the page back arrow returns there after a save. */ from?: string; /** Which of the deal's work orders to show (migration 123 allows several). */ wo?: string };
+export type WorkOrderSP = { error?: string; ok?: string; emailed?: string; emailfail?: string; filefail?: string; /** The status moved, but a follow-on step (the Field Ops job) did not — said in words. */ wo_warn?: string; back?: string; /** Deal-tab the tool was opened from (overview/docs/activity), so the page back arrow returns there after a save. */ from?: string; /** Which of the deal's work orders to show (migration 123 allows several). */ wo?: string };
 
 async function requireUser(): Promise<string> {
   const supabase = await createClient();
@@ -187,6 +187,8 @@ async function changeStatusAction(formData: FormData) {
     } else if (res.value.crew_email) {
       const sent = await emailWorkOrderToCrew(res.value.crew_email, filed.dealName, filed.pdf);
       if (sent) {
+        // The email has gone, so a failed stamp is logged inside rather than
+        // reported as a failed send.
         await markWorkOrderEmailed(woId);
         emailFlag = "&emailed=1";
       } else {
@@ -195,6 +197,15 @@ async function changeStatusAction(formData: FormData) {
     }
   }
   revalidateWO(id, dealId);
+  // A follow-on step failed (the WO never reached the Field Ops schedule, or a
+  // void left its job standing). Checked FIRST: both the green banner and the
+  // file-failed one say "it's schedulable there", which is then untrue.
+  if (res.warning) {
+    const warnText = fileFailed
+      ? `${res.warning} The PDF also couldn't be generated to file or email.`
+      : res.warning;
+    redirect(`${base(id, dealId, origin, woId, from)}&wo_warn=${encodeURIComponent(warnText)}${emailFlag}${backQ(back)}`);
+  }
   if (fileFailed) redirect(`${base(id, dealId, origin, woId, from)}&filefail=1${backQ(back)}`);
   redirect(`${base(id, dealId, origin, woId, from)}&ok=1${emailFlag}${backQ(back)}`);
 }
@@ -496,6 +507,12 @@ export async function WorkOrderTool({
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-[13px] text-emerald-800" role="status">
           Sent to Field Ops — it&rsquo;s now schedulable there, and the PDF was filed to this job&rsquo;s Documents
           {spv.emailed ? " and emailed to the foreman." : "."}
+        </div>
+      )}
+      {spv.wo_warn && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-[13px] text-amber-800" role="alert">
+          {flashMessage(spv.wo_warn)}
+          {spv.emailed ? " The PDF was emailed to the foreman." : ""}
         </div>
       )}
       {spv.filefail && (

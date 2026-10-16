@@ -42,11 +42,15 @@ export async function loadRates(employeeIds: string[]): Promise<Map<string, Rate
   const ids = [...new Set(employeeIds.filter(Boolean))];
   if (ids.length === 0) return out;
   const sb = commercialDb();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("commercial_employee_rates")
     .select("employee_id, cost_rate_cents, rate_type, effective_from, effective_to")
     .in("employee_id", ids)
     .order("effective_from", { ascending: false });
+  // THROWN, like paginateAll does for the entries beside it. A dropped error
+  // read as "nobody has a rate", every hour priced at $0, and the deal's
+  // margin went up by exactly its crew cost with nothing on screen to say so.
+  if (error) throw new Error(`[labor-cost] could not read cost rates: ${error.message}`);
   for (const r of (data ?? []) as RateRow[]) {
     const arr = out.get(r.employee_id) ?? [];
     arr.push(r);
@@ -132,10 +136,13 @@ export async function fieldOpsLaborByOpp(
   // soft-deleted jobs: their SETTLED (approved/exported) hours were still PAID,
   // so they must stay in the deal P&L — otherwise deleting a job silently zeroes
   // real crew cost while Payroll + Hours Log still count it (audit 2026-08).
-  const { data: jobRows } = await sb
+  const { data: jobRows, error: jobsErr } = await sb
     .from("commercial_jobs")
     .select("id, opportunity_id")
     .in("opportunity_id", ids);
+  // A failed read is not "no jobs": it is an unknown labor cost, and $0 is a
+  // confident wrong answer on a margin. Thrown, as paginateAll does below.
+  if (jobsErr) throw new Error(`[labor-cost] could not read the deals' jobs: ${jobsErr.message}`);
   const jobs = (jobRows ?? []) as { id: string; opportunity_id: string | null }[];
   if (jobs.length === 0) return out;
   const oppByJob = new Map<string, string>();
@@ -158,10 +165,12 @@ export async function fieldOpsLaborByOpp(
   // "Subcontract labor" purchase category (1099/subs). A sub/temp who clocks via
   // a magic link would otherwise be double-counted (here AND in that purchase
   // bucket) and diverge from payroll, which is also W-2-only (audit round 8).
-  const { data: w2Rows } = await sb
+  const { data: w2Rows, error: w2Err } = await sb
     .from("commercial_employees")
     .select("id, worker_type")
     .in("id", [...new Set(entries.map((e) => e.employee_id))]);
+  // Read failed → nobody is W-2 → every hour skipped → $0 crew cost.
+  if (w2Err) throw new Error(`[labor-cost] could not read worker types: ${w2Err.message}`);
   const w2 = new Set(((w2Rows ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
 
   const rates = await loadRates(entries.map((e) => e.employee_id));
@@ -269,10 +278,11 @@ export async function fieldOpsCrewDetailForOpp(
   const sb = commercialDb();
   const inAllocatedWeek = await allocatedWeekPredicate(sb);
   // Include soft-deleted jobs — their settled hours were paid (audit 2026-08).
-  const { data: jobRows } = await sb
+  const { data: jobRows, error: jobsErr } = await sb
     .from("commercial_jobs")
     .select("id")
     .eq("opportunity_id", oppId);
+  if (jobsErr) throw new Error(`[labor-cost] could not read the deal's jobs: ${jobsErr.message}`);
   const jobIds = ((jobRows ?? []) as { id: string }[]).map((j) => j.id);
   if (jobIds.length === 0) return { ...EMPTY_DETAIL, workers: [], days: [] };
 
@@ -305,10 +315,11 @@ export async function fieldOpsCrewDetailForOpp(
    * `costCents` stays W-2-only, and the two sit side by side without being
    * added.
    */
-  const { data: w2Rows } = await sb
+  const { data: w2Rows, error: w2Err } = await sb
     .from("commercial_employees")
     .select("id, worker_type")
     .in("id", [...new Set(entries.map((e) => e.employee_id))]);
+  if (w2Err) throw new Error(`[labor-cost] could not read worker types: ${w2Err.message}`);
   const w2 = new Set(((w2Rows ?? []) as { id: string; worker_type: string }[]).filter((r) => r.worker_type === "w2").map((r) => r.id));
 
   const rates = await loadRates(entries.map((e) => e.employee_id));

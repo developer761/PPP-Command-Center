@@ -669,13 +669,17 @@ export async function postPayrollWeek(
     .eq("payroll_period_id", week.periodId)
     .is("deleted_at", null);
   const priorRows = (prior ?? []) as Record<string, unknown>[];
-  const replaced = priorRows.length;
-  if (replaced > 0) {
-    const { error: delErr } = await sb
+  // What the soft-delete actually MATCHED, not what the read before it saw.
+  // `replaced` goes back to the screen as "replaced N", and the read and the
+  // write are two statements apart.
+  let replaced = 0;
+  if (priorRows.length > 0) {
+    const { data: removed, error: delErr } = await sb
       .from("commercial_project_purchases")
       .update({ deleted_at: new Date().toISOString() })
       .eq("payroll_period_id", week.periodId)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select("id");
     if (delErr)
       {
         await releaseClaim(sb, week.periodId, priorAllocatedAt);
@@ -687,8 +691,11 @@ export async function postPayrollWeek(
     // LOGGED. This is the operation that removes the most money at once, and
     // it was the only one on the page invisible to the audit log — so if a
     // week posted wrong there was no record of what the previous run held.
+    const removedIds = new Set(((removed ?? []) as { id: string }[]).map((r) => String(r.id)));
+    replaced = removedIds.size;
     for (const r of priorRows)
-      await logDelete("commercial_project_purchases", String(r.id), r, userId);
+      if (removedIds.has(String(r.id)))
+        await logDelete("commercial_project_purchases", String(r.id), r, userId);
   }
 
   // The account each job belongs to — a payout is filed against both.

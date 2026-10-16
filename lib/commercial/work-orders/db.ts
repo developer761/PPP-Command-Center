@@ -7,7 +7,7 @@ import {
   type WorkOrderStatus,
 } from "./constants";
 
-type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+type Result<T> = { ok: true; value: T; warning?: string } | { ok: false; error: string };
 
 export type WorkOrder = {
   id: string;
@@ -158,16 +158,39 @@ export async function createWorkOrder(input: {
   return { ok: true, value: wo };
 }
 
-/** Point a sent Work Order at its frozen PDF document (best-effort, no audit). */
-export async function setWorkOrderSnapshot(id: string, snapshot_document_id: string): Promise<void> {
+/** Point a sent Work Order at its frozen PDF document (best-effort, no audit).
+ *  Returns whether a row was actually stamped — supabase-js resolves on
+ *  failure, and a zero-row update is not a stamp. */
+export async function setWorkOrderSnapshot(id: string, snapshot_document_id: string): Promise<boolean> {
   const sb = commercialDb();
-  await sb.from("commercial_work_orders").update({ snapshot_document_id }).eq("id", id);
+  const { data, error } = await sb
+    .from("commercial_work_orders")
+    .update({ snapshot_document_id })
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    console.error(`[work-orders] snapshot stamp failed for WO ${id}: ${error?.message ?? "no row matched"}`);
+    return false;
+  }
+  return true;
 }
 
-/** Stamp when the crew was last emailed the PDF (best-effort, no audit). */
-export async function markWorkOrderEmailed(id: string): Promise<void> {
+/** Stamp when the crew was last emailed the PDF (best-effort, no audit).
+ *  Returns whether a row was actually stamped. */
+export async function markWorkOrderEmailed(id: string): Promise<boolean> {
   const sb = commercialDb();
-  await sb.from("commercial_work_orders").update({ crew_emailed_at: new Date().toISOString() }).eq("id", id);
+  const { data, error } = await sb
+    .from("commercial_work_orders")
+    .update({ crew_emailed_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    console.error(`[work-orders] crew-emailed stamp failed for WO ${id}: ${error?.message ?? "no row matched"}`);
+    return false;
+  }
+  return true;
 }
 
 export async function updateWorkOrder(
@@ -329,9 +352,18 @@ export async function changeWorkOrderStatus(
   // R10: when a WO is sent to the crew, make it schedulable in Field Ops (a
   // linked job appears on the Week Grid). Best-effort; dynamic import breaks the
   // field-ops <-> work-orders cycle.
+  //
+  // It RETURNS {ok:false} rather than throwing, and the result was dropped —
+  // so the tool's banner said "it's now schedulable there" over a work order
+  // that never reached the schedule. The send still stands; the caller is told.
+  let warning: string | undefined;
   if (to === "sent") {
     const { ensureJobForWorkOrder } = await import("@/lib/commercial/field-ops/jobs");
-    await ensureJobForWorkOrder(id, actorUserId);
+    const job = await ensureJobForWorkOrder(id, actorUserId);
+    if (!job.ok) {
+      console.error(`[work-orders] WO ${id} sent but no Field Ops job was created: ${job.error}`);
+      warning = "Sent, but it couldn't be put on the Field Ops schedule. Re-open it and send again, or add the job in Field Ops.";
+    }
   }
   // Voiding the WO must tear down its Field Ops twin — otherwise the crew stay
   // scheduled + get clock-in nudges for a cancelled work order, and a re-created
@@ -364,22 +396,30 @@ export async function changeWorkOrderStatus(
         const othersLive = ((siblings ?? []) as { id: string }[]).length > 0;
         if (!othersLive) {
           const { softDeleteJob } = await import("@/lib/commercial/field-ops/jobs");
-          await softDeleteJob((jobRow as { id: string }).id, actorUserId);
+          // {ok:false} is RETURNED, so the try/catch around this never saw it:
+          // a void whose crew stayed scheduled reported a clean void.
+          const torn = await softDeleteJob((jobRow as { id: string }).id, actorUserId);
+          if (!torn.ok) {
+            console.error(`[work-orders] void teardown for WO ${id}: ${torn.error}`);
+            warning = `Voided, but the Field Ops job wasn't fully torn down: ${torn.error}`;
+          }
         } else {
           // Hand the job to a surviving sheet so re-opening THAT one still
           // controls it, and so the link doesn't dangle at a voided row.
           const heir = ((siblings ?? []) as { id: string }[])[0];
-          await sb
+          const { error: heirErr } = await sb
             .from("commercial_jobs")
             .update({ work_order_id: heir.id, updated_at: new Date().toISOString() })
             .eq("id", (jobRow as { id: string }).id);
+          if (heirErr) console.error(`[work-orders] void of WO ${id}: job hand-off to WO ${heir.id} failed: ${heirErr.message}`);
         }
       }
     } catch (err) {
       console.warn("[work-orders] void teardown failed:", err);
+      warning = "Voided, but its Field Ops job couldn't be torn down. Check the schedule for crew still booked on it.";
     }
   }
-  return { ok: true, value: after };
+  return { ok: true, value: after, warning };
 }
 
 /** Cross-account index rows for the sidebar Work Orders queue. Returns the one

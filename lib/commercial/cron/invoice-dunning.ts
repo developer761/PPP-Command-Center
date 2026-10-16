@@ -83,6 +83,36 @@ function maskEmail(email: string): string {
  */
 const DUNNING_ENABLED = false;
 
+/**
+ * Claim one invoice for this run's reminder — the write that must land before
+ * any email goes.
+ *
+ * CONDITIONAL on the same predicate the run's query selected on. The old claim
+ * was a bare `update … eq(id)`: it "succeeded" against an invoice paid, voided
+ * or deleted since the read, and against one an overlapping run had already
+ * claimed, so both runs mailed the client. Zero rows is the guarantee working
+ * — somebody else owns this one, or it no longer qualifies — and is reported
+ * as `claimed: false` with no error, so the caller skips it quietly.
+ */
+export async function claimInvoiceForDunning(
+  sb: ReturnType<typeof commercialDb>,
+  invoiceId: string,
+  redunCutoffIso: string,
+): Promise<{ claimed: boolean; error?: string }> {
+  const { data, error } = await sb
+    .from("commercial_invoices")
+    .update({ last_dunning_at: new Date().toISOString() })
+    .eq("id", invoiceId)
+    .is("deleted_at", null)
+    .not("status", "in", "(void,paid,draft)")
+    .gt("balance_cents", 0)
+    .or(`last_dunning_at.is.null,last_dunning_at.lt.${redunCutoffIso}`)
+    .select("id")
+    .maybeSingle();
+  if (error) return { claimed: false, error: error.message };
+  return { claimed: !!data };
+}
+
 export async function runInvoiceDunningReminder(): Promise<Result> {
   const out: Result = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] };
   if (!DUNNING_ENABLED) {
@@ -194,12 +224,13 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
         // write fails — a failed mark skips the send this run (retried next
         // run) rather than risking a double-send. The opposite ordering could
         // email the client, then fail to mark, and re-email tomorrow.
-        const { error: markErr } = await sb
-          .from("commercial_invoices")
-          .update({ last_dunning_at: new Date().toISOString() })
-          .eq("id", r.id);
-        if (markErr) {
-          out.errors.push(`invoice ${r.id.slice(0, 8)}: dunning mark failed, skipping send: ${markErr.message}`);
+        const claim = await claimInvoiceForDunning(sb, r.id, redunCutoffIso);
+        if (!claim.claimed && claim.error) {
+          out.errors.push(`invoice ${r.id.slice(0, 8)}: dunning mark failed, skipping send: ${claim.error}`);
+          out.skipped += 1;
+          continue;
+        }
+        if (!claim.claimed) {
           out.skipped += 1;
           continue;
         }

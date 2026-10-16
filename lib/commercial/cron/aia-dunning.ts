@@ -114,6 +114,31 @@ function maskEmail(email: string): string {
  */
 const DUNNING_ENABLED = false;
 
+/**
+ * Claim one application for this run's reminder, before any email goes.
+ *
+ * Conditional on the marker this run READ: if it moved, another run claimed
+ * the application first, and the old unconditional write let both of them
+ * email the GC. Also still live and still issued. Zero rows is that guarantee
+ * doing its job — `claimed: false` with no error, and the caller skips it.
+ */
+export async function claimAiaForDunning(
+  sb: ReturnType<typeof commercialDb>,
+  appId: string,
+  readMarker: string | null,
+): Promise<{ claimed: boolean; error?: string }> {
+  let q = sb
+    .from("commercial_aia_applications")
+    .update({ last_dunning_at: new Date().toISOString() })
+    .eq("id", appId)
+    .is("deleted_at", null)
+    .in("status", ["submitted", "paid"]);
+  q = readMarker === null ? q.is("last_dunning_at", null) : q.eq("last_dunning_at", readMarker);
+  const { data, error } = await q.select("id").maybeSingle();
+  if (error) return { claimed: false, error: error.message };
+  return { claimed: !!data };
+}
+
 export async function runAiaDunningReminder(): Promise<Result> {
   const out: Result = { ok: true, found: 0, sent: 0, skipped: 0, errors: [] };
   if (!DUNNING_ENABLED) {
@@ -289,14 +314,19 @@ export async function runAiaDunningReminder(): Promise<Result> {
         // The opposite ordering could email the GC, fail to mark, and email
         // again tomorrow. A failed mark costs one day's reminder, not a
         // duplicate.
-        const { error: markErr } = await sb
-          .from("commercial_aia_applications")
-          .update({ last_dunning_at: new Date().toISOString() })
-          .eq("id", c.appId);
-        if (markErr) {
+        const claim = await claimAiaForDunning(
+          sb,
+          c.appId,
+          markerById.get(c.appId)?.last_dunning_at ?? null,
+        );
+        if (!claim.claimed && claim.error) {
           out.errors.push(
-            `aia app ${c.appId.slice(0, 8)}: dunning mark failed, skipping send: ${markErr.message}`
+            `aia app ${c.appId.slice(0, 8)}: dunning mark failed, skipping send: ${claim.error}`
           );
+          out.skipped += 1;
+          continue;
+        }
+        if (!claim.claimed) {
           out.skipped += 1;
           continue;
         }

@@ -706,7 +706,16 @@ async function tickChangeOrderOn(
   // stale subtotal + a broken Σ-invariant). Verify the actual line sum; if it's
   // negative, roll THIS credit back with a heads-up (never-reject).
   if (applied < 0) {
-    const { data: lineRows } = await sb.from("commercial_invoice_line_items").select("subtotal_cents").eq("invoice_id", invoiceId);
+    const { data: lineRows, error: sumErr } = await sb.from("commercial_invoice_line_items").select("subtotal_cents").eq("invoice_id", invoiceId);
+    // A failed read summed to $0 and passed the guard — failing OPEN on the one
+    // check that stops a credit taking the invoice below zero. Unverified is
+    // treated as unsafe: the credit comes back off.
+    if (sumErr) {
+      console.error(`[change-orders] credit re-check read failed on invoice ${invoiceId}: ${sumErr.message}`);
+      await removeTickedChangeOrder(invoiceId, co.id, userId);
+      if (createdDraft) await sb.from("commercial_invoices").update({ deleted_at: new Date().toISOString() }).eq("id", invoiceId);
+      return { ok: false, error: "Couldn't confirm the invoice total after adding this credit, so it wasn't added. Please try again." };
+    }
     const actualSum = (lineRows ?? []).reduce((s, r) => s + Number((r as { subtotal_cents: number }).subtotal_cents ?? 0), 0);
     if (actualSum < 0) {
       await removeTickedChangeOrder(invoiceId, co.id, userId);

@@ -426,12 +426,20 @@ export async function deleteCloseoutPackage(id: string, actorUserId: string): Pr
   if (before.status !== "draft") {
     return { ok: false, error: "Only a draft close-out package can be deleted. Void an issued one instead." };
   }
-  const { error } = await sb
+  const { data: deleted, error } = await sb
     .from("commercial_closeout_packages")
     .update({ voided_at: new Date().toISOString(), voided_by_user_id: actorUserId, void_reason: "deleted (draft)" })
     .eq("id", id)
-    .eq("status", "draft");
+    .eq("status", "draft")
+    .is("voided_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // Zero rows: issued or already removed between the read and this write. Not
+  // a delete, so none is logged and the caller is not told one happened.
+  if (!deleted) {
+    return { ok: false, error: "This close-out package just changed in another tab — it is no longer a draft. Reload to see it." };
+  }
   await logDelete("commercial_closeout_packages", id, before, actorUserId);
   return { ok: true, value: true };
 }

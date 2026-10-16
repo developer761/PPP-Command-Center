@@ -272,11 +272,19 @@ export default async function CreateProposalRoute({
     if (failed.length > 0) {
       // Land on the editor with a warning + preserve query state so
       // Alex sees exactly which items didn't copy.
-      const msg = `Copied ${parentItems.length - failed.length} of ${parentItems.length} line items forward. Failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}. Add the rest manually or delete this revision and retry.`;
+      const msg = `Copied ${parentItems.length - failed.length} of ${parentItems.length} line items forward. Failed: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}. Add the rest manually or delete this revision and retry.${result.warning ? ` ${result.warning}` : ""}`;
       redirect(
         `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(msg)}${backQs}`
       );
     }
+  }
+
+  // The previous revision could not be marked superseded — say so on the
+  // editor rather than land on "Proposal created" with two live revisions.
+  if (result.warning) {
+    redirect(
+      `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(result.warning)}${backQs}`
+    );
   }
 
   redirect(

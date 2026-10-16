@@ -560,11 +560,29 @@ export async function createAiaApplication(
             .filter((l) => !isAiaChangeOrderLine(l))
             .reduce((s, l) => s + Math.round(l.scheduled_value_cents), 0);
           if (baseSovTotal > 0 && baseSovTotal !== appRow.original_contract_cents) {
-            await sb
+            // Checked, and the in-memory row only moves when the stored one
+            // did. Assigning it unconditionally handed the caller a reconciled
+            // certificate while the database kept the defaulted contract —
+            // the exact line-1 ≠ Σ G703 mismatch this block exists to prevent.
+            const { data: snapped, error: snapErr } = await sb
               .from("commercial_aia_applications")
               .update({ original_contract_cents: baseSovTotal })
-              .eq("id", appRow.id);
-            appRow.original_contract_cents = baseSovTotal;
+              .eq("id", appRow.id)
+              .select("id")
+              .maybeSingle();
+            if (snapErr || !snapped) {
+              console.error(
+                `[aia] contract snap to schedule total failed for ${appRow.id}: ${snapErr?.message ?? "no row matched"}`,
+              );
+              seedWarning = [
+                seedWarning,
+                "The application was created, but its Original Contract Sum could not be matched to the schedule of values. Check line 1 against the schedule before issuing it.",
+              ]
+                .filter(Boolean)
+                .join(" ");
+            } else {
+              appRow.original_contract_cents = baseSovTotal;
+            }
           }
         }
       } catch (e) {
@@ -1447,12 +1465,17 @@ export async function deleteAiaApplication(id: string, userId: string): Promise<
     };
   }
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: deleted, error } = await sb
     .from("commercial_aia_applications")
     .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", id)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // Zero rows: another tab deleted it first. Logging a second delete would put
+  // a removal on the trail that this request never made.
+  if (!deleted) return { ok: false, error: "This application was already deleted. Reload to see the current list." };
   await logDelete("commercial_aia_applications", id, before, userId);
   return { ok: true, value: true };
 }

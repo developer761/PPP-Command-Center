@@ -418,10 +418,54 @@ async function advanceDealToEstimating(
   }
 }
 
+/**
+ * Mark a revision's parent superseded, and say so when that did not happen.
+ *
+ * `updateProposalStatus` RETURNS its failure, and both create paths dropped
+ * it — so a failed flip left the old revision reading live beside the new
+ * one, two proposals for one deal, with the user told it all went fine.
+ *
+ * A refusal is not always a failure: a won or lost parent is deliberately
+ * never superseded (the win is the contract), and a parent that is already
+ * superseded or deleted needs nothing. Those are read back from the row rather
+ * than inferred from the error's wording, and return no warning.
+ */
+async function supersedeParentProposal(
+  parentId: string,
+  actorUserId: string | null,
+): Promise<string | undefined> {
+  const res = await updateProposalStatus({
+    id: parentId,
+    to_status: "superseded",
+    acting_user_id: actorUserId,
+  });
+  if (res.ok) return undefined;
+  const { data } = await commercialDb()
+    .from("commercial_proposals")
+    .select("status, deleted_at")
+    .eq("id", parentId)
+    .maybeSingle();
+  const parent = data as { status: string; deleted_at: string | null } | null;
+  if (
+    parent &&
+    (parent.deleted_at ||
+      parent.status === "won" ||
+      parent.status === "lost" ||
+      parent.status === "superseded")
+  ) {
+    return undefined;
+  }
+  console.error(
+    `[commercial/proposals] revision created but parent ${parentId} was not superseded: ${res.error}`,
+  );
+  return "This revision was created, but the previous one couldn't be marked superseded, so it still reads as live. Mark it superseded before you send this one.";
+}
+
 export async function createProposal(
   input: CreateProposalInput,
 ): Promise<
-  { ok: true; proposal: CommercialProposal } | { ok: false; error: string }
+  | { ok: true; proposal: CommercialProposal; warning?: string }
+  | { ok: false; error: string }
 > {
   const sb = commercialDb();
   // F.1 post-audit fix: previously did SELECT max + INSERT which raced
@@ -467,12 +511,12 @@ export async function createProposal(
       proposal,
       input.created_by_user_id ?? null,
     );
+    let warning: string | undefined;
     if (input.parent_proposal_id) {
-      await updateProposalStatus({
-        id: input.parent_proposal_id,
-        to_status: "superseded",
-        acting_user_id: input.created_by_user_id ?? null,
-      });
+      warning = await supersedeParentProposal(
+        input.parent_proposal_id,
+        input.created_by_user_id ?? null,
+      );
       // Karan 2026-07-16 had this walk the deal BACK to (estimating,
       // estimating) whenever a revision bump created a fresh draft, so the
       // kanban wouldn't read "Proposal Sent" over a draft.
@@ -493,7 +537,7 @@ export async function createProposal(
       input.opportunity_id,
       input.created_by_user_id ?? null,
     );
-    return { ok: true, proposal };
+    return { ok: true, proposal, warning };
   }
 
   // Fallback path (RPC not installed on this env yet).
@@ -546,18 +590,17 @@ export async function createProposal(
     proposal,
     input.created_by_user_id ?? null,
   );
-  if (input.parent_proposal_id) {
-    await updateProposalStatus({
-      id: input.parent_proposal_id,
-      to_status: "superseded",
-      acting_user_id: input.created_by_user_id ?? null,
-    });
-  }
+  const warning = input.parent_proposal_id
+    ? await supersedeParentProposal(
+        input.parent_proposal_id,
+        input.created_by_user_id ?? null,
+      )
+    : undefined;
   await advanceDealToEstimating(
     input.opportunity_id,
     input.created_by_user_id ?? null,
   );
-  return { ok: true, proposal };
+  return { ok: true, proposal, warning };
 }
 
 export type UpdateProposalInput = {
@@ -994,15 +1037,27 @@ export async function softDeleteProposal(
       error: `Only draft proposals can be deleted. This one is ${beforeRow.status}. If you need to invalidate it, bump a new revision instead.`,
     };
   }
-  const { error } = await sb
+  const { data: deleted, error } = await sb
     .from("commercial_proposals")
     .update({
       deleted_at: new Date().toISOString(),
       updated_by_user_id: actorUserId,
     })
     .eq("id", id)
-    .eq("status", "draft"); // defense in depth against a status flip mid-request
+    .eq("status", "draft") // defense in depth against a status flip mid-request
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // Zero rows is the guard above doing its job — the proposal was sent or
+  // deleted between the read and this write. Not a delete, so no delete is
+  // logged and the caller is not told one happened.
+  if (!deleted) {
+    return {
+      ok: false,
+      error: "This proposal just changed in another tab — it is no longer a draft, or was already deleted. Reload to see it.",
+    };
+  }
   await logDelete("commercial_proposals", id, before, actorUserId);
   return { ok: true };
 }
@@ -1984,15 +2039,20 @@ export async function bulkDeleteProposalDraftsForAccount(
     return { ok: true, deletedCount: 0, skippedNonDraftCount: skipped };
   }
   const now = new Date().toISOString();
-  const { error: delError } = await sb
+  const { data: deletedRows, error: delError } = await sb
     .from("commercial_proposals")
     .update({ deleted_at: now, updated_by_user_id: actorUserId })
     .in("id", draftIds)
-    .eq("status", "draft"); // defense-in-depth against status flip mid-request
+    .eq("status", "draft") // defense-in-depth against status flip mid-request
+    .is("deleted_at", null)
+    .select("id");
   if (delError) return { ok: false, error: delError.message };
+  // Only the rows the update MATCHED were deleted. A draft sent mid-request is
+  // still live, so it is neither logged as deleted nor counted as one.
+  const deletedIds = ((deletedRows ?? []) as { id: string }[]).map((r) => r.id);
   // Best-effort audit log per row (don't fail the whole op if one fails).
   await Promise.all(
-    draftIds.map((id) =>
+    deletedIds.map((id) =>
       logDelete(
         "commercial_proposals",
         id,
@@ -2005,8 +2065,8 @@ export async function bulkDeleteProposalDraftsForAccount(
   );
   return {
     ok: true,
-    deletedCount: draftIds.length,
-    skippedNonDraftCount: skipped,
+    deletedCount: deletedIds.length,
+    skippedNonDraftCount: skipped + (draftIds.length - deletedIds.length),
   };
 }
 

@@ -405,6 +405,7 @@ export async function deleteMilestone(
     .update({ deleted_at: new Date().toISOString() })
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
+  let teardownWarning: string | null = null;
   if (existing.line_item_id) {
     // Drop the paired charge. A CHANGE-ORDER milestone's line carries
     // change_order_id, which removeLineItem normally blocks (audit D3) — that
@@ -417,12 +418,21 @@ export async function deleteMilestone(
       allowChangeOrderLine: true,
     });
     if (!rm.ok) {
-      await sb
+      // Both of these RETURN their failure. Dropped, the milestone is gone
+      // while its charge stays on the invoice, and the user is told it went.
+      const { error: lineErr } = await sb
         .from("commercial_invoice_line_items")
         .delete()
         .eq("id", existing.line_item_id)
         .eq("invoice_id", existing.invoice_id);
-      await recomputeSubtotal(existing.invoice_id);
+      const re = lineErr ? null : await recomputeSubtotal(existing.invoice_id);
+      if (lineErr || !re?.ok) {
+        console.error(
+          `[commercial/invoices] removeMilestone: line ${existing.line_item_id} teardown failed on invoice ${existing.invoice_id}: ${lineErr?.message ?? (re && !re.ok ? re.error : "unknown")}`,
+        );
+        teardownWarning =
+          "The milestone was removed, but its amount may still be on the invoice total. Reload and check the total before sending.";
+      }
     }
   }
   if (existing.lien_waiver_document_id) {
@@ -437,7 +447,13 @@ export async function deleteMilestone(
   return {
     ok: true,
     value: null,
-    warning: paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : undefined,
+    warning:
+      [
+        paid > 0 ? "That milestone had payments — the amount is kept on the invoice, which may now show a credit." : null,
+        teardownWarning,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
   };
 }
 

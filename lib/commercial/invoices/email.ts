@@ -217,21 +217,33 @@ export async function emailInvoiceToGc(input: EmailInvoiceInput): Promise<EmailI
     });
     if (!flip.ok) {
       console.warn(`[emailInvoiceToGc] sent email but status flip failed for ${input.invoice_id}: ${flip.error}`);
+      // The GC has the invoice, but this one still reads as a draft — out of
+      // AR, out of dunning, and editable. Not a failed send, but said.
+      warning = [
+        warning,
+        "The invoice was emailed, but it couldn't be marked as sent, so it still reads as a draft. Mark it sent by hand.",
+      ]
+        .filter(Boolean)
+        .join(" ");
     }
   } else {
     // Already live (issued on create, viewed, or part-paid). Don't touch the
     // status — a re-send must not drag a partial back to `sent` — just record
     // that an email went out, and backfill issued_at if it was never set.
     const nowIso = new Date().toISOString();
-    const { error: stampErr } = await commercialDb()
+    const { data: stamped, error: stampErr } = await commercialDb()
       .from("commercial_invoices")
       .update({
         sent_at: nowIso,
         ...(invoice.issued_at ? {} : { issued_at: nowIso }),
       })
-      .eq("id", input.invoice_id);
-    if (stampErr) {
-      console.warn(`[emailInvoiceToGc] sent email but could not stamp sent_at for ${input.invoice_id}: ${stampErr.message}`);
+      .eq("id", input.invoice_id)
+      .select("id")
+      .maybeSingle();
+    if (stampErr || !stamped) {
+      console.warn(
+        `[emailInvoiceToGc] sent email but could not stamp sent_at for ${input.invoice_id}: ${stampErr?.message ?? "no row matched"}`,
+      );
     }
     const { logStatusChange } = await import("./db");
     await logStatusChange(

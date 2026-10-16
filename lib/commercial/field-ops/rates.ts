@@ -58,12 +58,15 @@ export async function setCostRate(
   const today = etTodayIso();
 
   // A row already opened TODAY → update it in place (no zero-length windows).
-  const { data: todays } = await sb
+  const { data: todays, error: todaysErr } = await sb
     .from("commercial_employee_rates")
     .select("*")
     .eq("employee_id", employeeId)
     .eq("effective_from", today)
     .maybeSingle();
+  // A failed read looked like "no row today", and the insert below then
+  // stacked a second window on the same day.
+  if (todaysErr) return { ok: false, error: `Couldn't read the current cost rate, so nothing was saved: ${todaysErr.message}` };
   if (todays) {
     const before = todays;
     const { data: updated, error } = await sb
@@ -73,18 +76,25 @@ export async function setCostRate(
       .select("*")
       .maybeSingle();
     if (error) return { ok: false, error: error.message };
+    if (!updated) return { ok: false, error: "Today's cost rate changed in another tab — reload and set it again." };
     await logUpdate("commercial_employee_rates", (todays as { id: string }).id, before, updated, actorUserId);
     return { ok: true };
   }
 
   // Close the currently-open window (if any) at yesterday.
   const yesterday = new Date(new Date(`${today}T12:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10);
-  await sb
+  // CHECKED. If this fails and the insert below succeeds, two rates are open
+  // at once — and `rateOn` picks whichever sorts first, so a job's labor cost
+  // depends on row order rather than on the rate somebody set. Stop instead.
+  const { error: closeErr } = await sb
     .from("commercial_employee_rates")
     .update({ effective_to: yesterday })
     .eq("employee_id", employeeId)
     .is("effective_to", null)
     .lte("effective_from", today);
+  if (closeErr) {
+    return { ok: false, error: `Couldn't close the current cost rate, so the new one wasn't saved: ${closeErr.message}` };
+  }
 
   const { data: inserted, error } = await sb
     .from("commercial_employee_rates")

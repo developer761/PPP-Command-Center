@@ -52,7 +52,7 @@ export type EmailChangeOrderInput = {
 };
 
 export type EmailChangeOrderResult =
-  | { ok: true; to_email: string }
+  | { ok: true; to_email: string; warning?: string }
   | { ok: false; error: string };
 
 export async function emailChangeOrderToGc(
@@ -183,14 +183,23 @@ export async function emailChangeOrderToGc(
 
   // Stamp that it's out and awaiting an answer. Best-effort: the email has
   // already gone, so a failed stamp must not report the send as failed.
-  const { error: stampErr } = await sb
+  // A zero-row update is not a stamp either: the CO stays "not sent" and the
+  // awaiting-answer chase never starts, so the user is told.
+  const { data: stamped, error: stampErr } = await sb
     .from("commercial_change_orders")
     .update({ sent_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", input.change_order_id);
-  if (stampErr) {
+    .eq("id", input.change_order_id)
+    .select("id")
+    .maybeSingle();
+  if (stampErr || !stamped) {
     console.warn(
-      `[emailChangeOrderToGc] sent but sent_at stamp failed for ${input.change_order_id}: ${stampErr.message}`
+      `[emailChangeOrderToGc] sent but sent_at stamp failed for ${input.change_order_id}: ${stampErr?.message ?? "no row matched"}`
     );
+    return {
+      ok: true,
+      to_email: toEmail,
+      warning: "The change order was emailed, but it couldn't be marked as sent, so it may still read as not sent.",
+    };
   }
 
   return { ok: true, to_email: toEmail };

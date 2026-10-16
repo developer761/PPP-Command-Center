@@ -581,11 +581,17 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
   const before = await getJob(id);
   if (!before) return { ok: false, error: "Job not found." };
   const sb = commercialDb();
-  const { error } = await sb
+  const { data: deleted, error } = await sb
     .from("commercial_jobs")
     .update({ deleted_at: new Date().toISOString(), deleted_by_user_id: actorUserId })
-    .eq("id", id);
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  // Zero rows: somebody else deleted it first. Their teardown already ran, and
+  // a second delete on the audit trail is one this request never made.
+  if (!deleted) return { ok: false, error: "This work order was already deleted. Reload to see the current list." };
   // Cancel this job's FUTURE assignments so crew aren't scheduled/emailed for a
   // dead work order. Past assignments stay for history + approval variance; the
   // clocked time_entries are a separate table and are never touched.
@@ -595,12 +601,21 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
     .eq("job_id", id)
     .gte("work_date", todayEtIso())
     .neq("status", "cancelled");
-  await sb
+  const { error: cancelErr } = await sb
     .from("commercial_assignments")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
     .eq("job_id", id)
     .gte("work_date", todayEtIso())
     .neq("status", "cancelled");
+  // The job is gone either way; what a failure here leaves behind is crew
+  // still on the calendar — and still getting clock-in emails — for it. That
+  // is the one outcome this teardown exists to prevent, so it is not ok. The
+  // rest of the teardown still runs; the problem is reported at the end.
+  const problems: string[] = [];
+  if (cancelErr) {
+    console.error(`[field-ops] softDeleteJob: job ${id} deleted but its future shifts were NOT cancelled: ${cancelErr.message}`);
+    problems.push("its crew's future shifts couldn't be cancelled — they are still on the calendar");
+  }
   // Re-sync the queued clock-in nudges for those now-dead shifts — one per
   // distinct (employee, day). resync (not bare reset) so a crew member who still
   // has a surviving shift on ANOTHER job that day keeps a correctly-timed nudge
@@ -628,14 +643,29 @@ export async function softDeleteJob(id: string, actorUserId: string): Promise<{ 
       // Match the canonical reopen (changeWorkOrderStatus → draft): clear sent_at
       // AND the frozen snapshot, else the deal's WO tool shows a stale "Last sent"
       // line + wrong header date on a WO that is no longer sent (audit round 5).
-      await sb
+      const { data: reopened, error: reopenErr } = await sb
         .from("commercial_work_orders")
         .update({ status: "draft", sent_at: null, snapshot_document_id: null, updated_at: new Date().toISOString() })
-        .eq("id", before.work_order_id);
-      await logUpdate("commercial_work_orders", before.work_order_id, { status: "sent" }, { status: "draft", sent_at: null }, actorUserId);
+        .eq("id", before.work_order_id)
+        .eq("status", "sent")
+        .select("id")
+        .maybeSingle();
+      if (reopenErr || !reopened) {
+        // The sent-WO backfill will now bring this job straight back on the
+        // next page load, so the delete would not stick.
+        console.error(
+          `[field-ops] softDeleteJob: work order ${before.work_order_id} was not reopened to draft, so job ${id} may be recreated: ${reopenErr?.message ?? "no row matched"}`,
+        );
+        problems.push("its sent work order couldn't be reopened, so it may reappear on the next load");
+      } else {
+        await logUpdate("commercial_work_orders", before.work_order_id, { status: "sent" }, { status: "draft", sent_at: null }, actorUserId);
+      }
     }
   }
   await logDelete("commercial_jobs", id, before, actorUserId);
+  if (problems.length > 0) {
+    return { ok: false, error: `The work order was deleted, but ${problems.join(", and ")}. Check the schedule.` };
+  }
   return { ok: true };
 }
 
@@ -680,25 +710,37 @@ export async function cascadeRestoreJobsForOwner(
       .lte("deleted_at", to);
     const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
     if (ids.length === 0) return 0;
-    await sb
+    // The ids the restore actually MATCHED. Everything below — the shifts, the
+    // nudges, the audit rows, the count — keys off this, not off the read.
+    const { data: restoredRows, error: restoreErr } = await sb
       .from("commercial_jobs")
       .update({ deleted_at: null, deleted_by_user_id: null })
-      .in("id", ids);
+      .in("id", ids)
+      .not("deleted_at", "is", null)
+      .select("id");
+    if (restoreErr) {
+      console.error(`[field-ops] cascadeRestoreJobsForOwner: restore failed for ${col}=${val}: ${restoreErr.message}`);
+      return 0;
+    }
+    const restoredIds = ((restoredRows ?? []) as { id: string }[]).map((r) => r.id);
+    if (restoredIds.length === 0) return 0;
     // Put the crew back on the calendar. Only FUTURE shifts were cancelled, so
     // only future shifts come back — reviving a past cancelled shift would
     // invent labor that never happened.
-    const { data: revived } = await sb
-      .from("commercial_assignments")
-      .select("employee_id, work_date")
-      .in("job_id", ids)
-      .gte("work_date", todayEtIso())
-      .eq("status", "cancelled");
-    await sb
+    // One statement, and the nudges are re-queued for the shifts it actually
+    // revived — a separate read beforehand could name shifts the write missed.
+    const { data: revived, error: revivedErr } = await sb
       .from("commercial_assignments")
       .update({ status: "scheduled", updated_at: new Date().toISOString() })
-      .in("job_id", ids)
+      .in("job_id", restoredIds)
       .gte("work_date", todayEtIso())
-      .eq("status", "cancelled");
+      .eq("status", "cancelled")
+      .select("employee_id, work_date");
+    if (revivedErr) {
+      console.error(
+        `[field-ops] cascadeRestoreJobsForOwner: ${restoredIds.length} job(s) restored but their crew shifts were NOT put back: ${revivedErr.message}`,
+      );
+    }
     const pairs = new Set(
       ((revived ?? []) as Array<{ employee_id: string; work_date: string }>).map(
         (a) => `${a.employee_id}|${a.work_date}`
@@ -711,11 +753,12 @@ export async function cascadeRestoreJobsForOwner(
         await resyncClockReminder(emp, day).catch(() => undefined);
       }
     }
-    for (const id of ids) {
+    for (const id of restoredIds) {
       await logUpdate("commercial_jobs", id, { deleted_at: deletedAtIso }, { deleted_at: null }, actorUserId).catch(() => undefined);
     }
-    return ids.length;
-  } catch {
+    return restoredIds.length;
+  } catch (err) {
+    console.error("[field-ops] cascadeRestoreJobsForOwner failed:", err);
     return 0;
   }
 }
@@ -735,10 +778,19 @@ export async function cascadeDeleteJobsForOwner(
   const val = "opportunity_id" in match ? match.opportunity_id : match.account_id;
   const { data } = await sb.from("commercial_jobs").select("id").eq(col, val).is("deleted_at", null);
   const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  // Counted from what softDeleteJob REPORTED. It returns {ok:false} rather
+  // than throwing, so the old `.catch` saw nothing and every job read as torn
+  // down — including one whose crew was still on the calendar.
+  let torn = 0;
   for (const id of ids) {
-    await softDeleteJob(id, actorUserId).catch(() => undefined);
+    const res = await softDeleteJob(id, actorUserId).catch((e: unknown) => ({
+      ok: false as const,
+      error: e instanceof Error ? e.message : String(e),
+    }));
+    if (res.ok) torn += 1;
+    else console.error(`[field-ops] cascadeDeleteJobsForOwner: job ${id} (${col}=${val}) teardown failed: ${res.error}`);
   }
-  return ids.length;
+  return torn;
 }
 
 /** Self-healing sweep for ORPHANED work orders: a live Field Ops job whose
@@ -774,10 +826,16 @@ export async function cleanOrphanedJobs(actorUserId: string): Promise<number> {
     const orphans = jobs.filter(
       (j) => (j.opportunity_id && deadOpps.has(j.opportunity_id)) || (j.account_id && deadAccs.has(j.account_id))
     );
+    let cleaned = 0;
     for (const j of orphans) {
-      await softDeleteJob(j.id, actorUserId).catch(() => undefined);
+      const res = await softDeleteJob(j.id, actorUserId).catch((e: unknown) => ({
+        ok: false as const,
+        error: e instanceof Error ? e.message : String(e),
+      }));
+      if (res.ok) cleaned += 1;
+      else console.error(`[field-ops] cleanOrphanedJobs: job ${j.id} teardown failed: ${res.error}`);
     }
-    return orphans.length;
+    return cleaned;
   } catch (err) {
     console.warn("[field-ops] cleanOrphanedJobs failed:", err);
     return 0;

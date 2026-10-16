@@ -176,11 +176,12 @@ export async function releaseTickedChangeOrders(invoiceId: string): Promise<numb
     .eq("invoice_id", invoiceId)
     .not("change_order_id", "is", null)
     .is("deleted_at", null);
-  const { error: coErr } = await sb
+  const { data: freed, error: coErr } = await sb
     .from("commercial_change_orders")
     .update({ invoiced_invoice_id: null, updated_at: new Date().toISOString() })
     .in("id", [...coIds])
-    .eq("invoiced_invoice_id", invoiceId);
+    .eq("invoiced_invoice_id", invoiceId)
+    .select("id");
   if (lineErr || msErr || coErr) {
     console.error(
       `[commercial/invoices] releaseTickedChangeOrders: invoice ${invoiceId} — the change orders may still read as billed and refuse to be re-ticked:`,
@@ -191,9 +192,18 @@ export async function releaseTickedChangeOrders(invoiceId: string): Promise<numb
   }
   // Recompute the invoice subtotal off the REMAINING (base) lines so a voided /
   // soft-deleted invoice — and any later restore of it — doesn't carry a phantom
-  // CO charge (audit #2). recomputeSubtotal writes subtotal_cents unconditionally.
-  await recomputeSubtotal(invoiceId);
-  return coIds.size;
+  // CO charge (audit #2). It RETURNS its failure rather than throwing, so the
+  // result has to be read: a dropped one leaves the deleted invoice carrying
+  // the change-order charge, and an Undo brings that phantom back with it.
+  const re = await recomputeSubtotal(invoiceId);
+  if (!re.ok) {
+    console.error(
+      `[commercial/invoices] releaseTickedChangeOrders: invoice ${invoiceId} — change orders freed but the subtotal could not be re-totalled, so it may still include them: ${re.error}`,
+    );
+  }
+  // The rows the update actually matched. A CO another invoice had already
+  // re-claimed is (rightly) not touched, and must not be counted as freed.
+  return ((freed ?? []) as { id: string }[]).length;
 }
 
 /** Soft-delete an invoice. Karan 2026-07-07: opened up to any state so
