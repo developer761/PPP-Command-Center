@@ -7,7 +7,7 @@ import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, type JobCostR
 import { formatCentsCompact, formatCentsFull } from "@/lib/commercial/invoices/format";
 import { opportunityStatusLabelV2 } from "@/lib/commercial/opportunities/constants";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { billedTrendLastSixMonths } from "@/lib/commercial/reports/billed-trend";
 import { GroupedReport } from "@/components/commercial/grouped-report";
 import { JOB_COSTS_SPEC } from "@/lib/commercial/reports/tomco/job-costs-spec";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
@@ -53,7 +53,7 @@ export default async function JobCostsReportPage() {
   await requireReportAccess(user.id, user.email, "job-costs");
 
   // The whole-book invoice read has no dependency on the report — `allOppIds`
-  // below is passed to `monthlyBilledSeries`, not to the query, which takes an
+  // below is passed to `billedTrendLastSixMonths`, not to the query, which takes an
   // empty filter. Two whole-book reads that were queued one behind the other.
   const [report, invoices] = await Promise.all([
     getJobCostsReport(),
@@ -78,9 +78,10 @@ export default async function JobCostsReportPage() {
     .map((c) => ({ label: c.label, value: t.buckets[c.key], tone: BUCKET_TONE[c.key], valueLabel: formatCentsCompact(t.buckets[c.key]) }));
 
   // Monthly billed-revenue trend (line) across every deal in the report — the
-  // same pre-tax, ET-bucketed helper the dashboard uses, so it ties out.
-  const allOppIds = new Set(report.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
-  const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
+  // dashboard's fold, invoices AND AIA. It used the invoice-only series while
+  // claiming to tie out with the dashboard; see billed-trend.ts.
+  const allOppIds = report.groups.flatMap((g) => g.deals.map((d) => d.oppId));
+  const billingTrend = await billedTrendLastSixMonths(allOppIds, invoices);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 space-y-4">

@@ -47,7 +47,7 @@ export function dashboardMetricNotes(rangeLabel: string): Record<MetricKey, Metr
     },
     revenueChart: {
       scope: "range",
-      text: `${R} Billed revenue by month, same rules as Gross revenue (invoices by sent date + AIA by billing period, before tax). Shows at least the last 6 months for context. "This month" and "vs last" compare the current calendar month to date with all of last month.`,
+      text: `${R} Billed revenue by month, same rules as Gross revenue (invoices by sent date + AIA by billing period, before tax). Shows at least the last 6 months for context. "Month to date" is this calendar month so far; the arrow compares it with last month over the same days (1st to today's date), not with all of last month.`,
     },
     jobsInFlight: {
       scope: "today",

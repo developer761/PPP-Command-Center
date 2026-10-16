@@ -46,6 +46,7 @@ import {
   formatBidCents,
   type AccountOverview,
 } from "@/lib/commercial/accounts/overview";
+import { loadUserActivityByAccount } from "@/lib/commercial/accounts/user-activity";
 import { SELECT_CLS, SELECT_BG_STYLE, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { AccountAvatar } from "@/components/commercial/account-avatar";
 import { SearchableSelect } from "@/components/commercial/searchable-select";
@@ -182,7 +183,7 @@ export default async function CommercialAccountsPage({
   // pick a GC first. It was never rendered here, so those flows dead-ended
   // silently. Surface it as an amber "do this first" hint.
   const statusError = pickFirst(sp.status_error);
-  const [overviewsById, tagsByAccount, allTags, openOppsForBids] = await Promise.all([
+  const [overviewsById, tagsByAccount, allTags, openOppsForBids, userActivityByAccount] = await Promise.all([
     listAccountOverviews(accountsRaw.map((a) => a.id)),
     listTagsForAccounts(accountsRaw.map((a) => a.id)),
     listAllDistinctTags(),
@@ -191,6 +192,8 @@ export default async function CommercialAccountsPage({
     // page shows "Open bids: 3" next to "Bid range: —", the same contradiction
     // fixed on the account scorecard, one level up.
     listCommercialOpportunities({}),
+    // "Recently active" — user-made writes from the audit log.
+    loadUserActivityByAccount(RECENT_WINDOW_DAYS),
   ]);
   const openBidOppsByAccount = new Map<string, typeof openOppsForBids>();
   for (const o of openOppsForBids) {
@@ -279,18 +282,20 @@ export default async function CommercialAccountsPage({
   // 3: the KPI read "Recently active · 3 · in the last 7 days" on a book where
   // 75 accounts had been touched, and the card's own sentence said "3 accounts
   // touched" underneath a list of exactly 3.
+  //
+  // And counted from what PEOPLE did (`loadUserActivityByAccount`), not the
+  // overview's `last_activity_at`, which is a GREATEST() of `updated_at`
+  // columns that bulk backfills stamp too: on 2026-10-16 the tile read 82 of
+  // 84 accounts active this week after one run touched 79 accounts at once.
+  // User-made writes in the same window: 15.
   const recentlyActiveAll = accountsRaw
-    .map((a) => ({ account: a, ov: overviewsById.get(a.id) }))
-    .filter(({ ov }) => {
-      if (!ov) return false;
-      const days = daysAgoEt(ov.last_activity_at) ?? 0;
-      return Number.isFinite(days) && days <= RECENT_WINDOW_DAYS;
+    .map((a) => ({ account: a, at: userActivityByAccount.get(a.id) ?? null }))
+    .filter((x): x is { account: (typeof accountsRaw)[number]; at: string } => {
+      if (!x.at) return false;
+      const days = daysAgoEt(x.at);
+      return days !== null && Number.isFinite(days) && days <= RECENT_WINDOW_DAYS;
     })
-    .sort((x, y) => {
-      const xt = x.ov?.last_activity_at ?? "";
-      const yt = y.ov?.last_activity_at ?? "";
-      return yt.localeCompare(xt);
-    });
+    .sort((x, y) => y.at.localeCompare(x.at));
   const recentlyActive = recentlyActiveAll.slice(0, 3);
 
   // KPI strip. accountsRaw is FILTERED (search/rating/compliance), so
@@ -778,10 +783,8 @@ export default async function CommercialAccountsPage({
           </summary>
           <div className="px-4 pb-4 pt-1 border-t border-ppp-charcoal-100">
             <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {recentlyActive.map(({ account, ov }) => {
-                const days = ov
-                  ? daysAgoEt(ov.last_activity_at)
-                  : null;
+              {recentlyActive.map(({ account, at }) => {
+                const days = daysAgoEt(at);
                 const label =
                   days === null ? "—" : days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
                 return (

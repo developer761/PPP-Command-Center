@@ -15,7 +15,9 @@
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
-import { deriveInvoiceStatus, type InvoiceStatus } from "./constants";
+import { deriveInvoiceStatus, DEFAULT_DUE_DAYS, type InvoiceStatus } from "./constants";
+import { aiaDueAtFrom } from "@/lib/commercial/aia/constants";
+import { daysPastDue } from "@/lib/commercial/reports/ar-aging";
 
 export type AccountInvoiceRollup = {
   invoiced_cents: number;
@@ -32,7 +34,20 @@ export type AccountInvoiceRollup = {
    *  so they never hide a genuine open balance. */
   credit_cents: number;
   invoice_count: number;
+  /** Overdue DOCUMENTS — issued invoices past due PLUS AIA applications whose
+   *  due-now amount (G702 line 6 − collected) is past due. It was invoices
+   *  only, so LMJ's account page read "Overdue invoices 1 · $550" while the
+   *  dashboard chased $15,725.71 across two documents — the overdue AIA #3 on
+   *  Water Lilies Post Fire ($15,175.71, 27 days) simply wasn't looked at. */
   overdue_count: number;
+  /** Σ past-due open balance across those same documents. Same ladder as the
+   *  receivables report the dashboard's chase list reads (`aiaDueAtFrom`,
+   *  `DEFAULT_DUE_DAYS`), so the two can't disagree about one GC. Retainage
+   *  is never in it — it is held, not late. */
+  overdue_cents: number;
+  /** The AIA share of the two figures above, so a surface can name it. */
+  overdue_aia_count: number;
+  overdue_aia_cents: number;
   /** DRAFT invoices — not yet billed. Shown separately, never in Invoiced. */
   drafted_cents: number;
   draft_count: number;
@@ -75,6 +90,9 @@ const ZERO: AccountInvoiceRollup = {
   credit_cents: 0,
   invoice_count: 0,
   overdue_count: 0,
+  overdue_cents: 0,
+  overdue_aia_count: 0,
+  overdue_aia_cents: 0,
   drafted_cents: 0,
   draft_count: 0,
   aia_billed_cents: 0,
@@ -137,7 +155,8 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
   // invoice's real open balance (audit F3). open_balance == AR statement total.
   const { openBalance, credit } = splitOpenBalance(issued.map((r) => r.balance_cents));
   const drafted = drafts.reduce((s, r) => s + r.total_cents, 0);
-  const overdue = issued.filter((r) => deriveInvoiceStatus(r as unknown as { status: InvoiceStatus; due_at: string | null; balance_cents: number }) === "overdue").length;
+  const overdueRows = issued.filter((r) => deriveInvoiceStatus(r as unknown as { status: InvoiceStatus; due_at: string | null; balance_cents: number }) === "overdue");
+  const overdueInvoiceCents = overdueRows.reduce((s, r) => s + Math.max(0, r.balance_cents), 0);
 
   return {
     invoiced_cents: invoiced + aia.billedCents,
@@ -147,7 +166,10 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
     open_balance_cents: openBalance + aia.dueNowCents,
     credit_cents: credit,
     invoice_count: nonVoid.length,
-    overdue_count: overdue,
+    overdue_count: overdueRows.length + aia.overdueCount,
+    overdue_cents: overdueInvoiceCents + aia.overdueCents,
+    overdue_aia_count: aia.overdueCount,
+    overdue_aia_cents: aia.overdueCents,
     drafted_cents: drafted,
     draft_count: drafts.length,
     aia_billed_cents: aia.billedCents,
@@ -169,6 +191,8 @@ async function aiaRollupForAccount(account_id: string): Promise<{
   collectedCents: number;
   dueNowCents: number;
   retainageHeldCents: number;
+  overdueCents: number;
+  overdueCount: number;
   hasAia: boolean;
 }> {
   const sb = commercialDb();
@@ -190,6 +214,8 @@ async function aiaRollupForAccount(account_id: string): Promise<{
     collectedCents: 0,
     dueNowCents: 0,
     retainageHeldCents: 0,
+    overdueCents: 0,
+    overdueCount: 0,
     hasAia: false,
   };
   if (ids.length === 0) return zero;
@@ -202,8 +228,37 @@ async function aiaRollupForAccount(account_id: string): Promise<{
       collectedCents: acc.collectedCents + r.collectedCents,
       dueNowCents: acc.dueNowCents + r.dueNowCents,
       retainageHeldCents: acc.retainageHeldCents + r.retainageHeldCents,
+      overdueCents: acc.overdueCents,
+      overdueCount: acc.overdueCount,
       hasAia: true,
     };
   }
-  return acc;
+  const overdue = aiaOverdueFrom([...rollups.values()], Date.now());
+  return { ...acc, overdueCents: overdue.cents, overdueCount: overdue.count };
+}
+
+/**
+ * The past-due part of a GC's AIA billing — per job, the due-now amount
+ * (line 6 − collected, retainage excluded) when its latest issued
+ * application is past the standard terms.
+ *
+ * The SAME test the receivables report applies to build its `aia` rows (and
+ * so the dashboard's "What needs doing" chase list): due date from
+ * `aiaDueAtFrom(frozenAt, periodTo, DEFAULT_DUE_DAYS)`, late when
+ * `daysPastDue > 0`. Pure + exported so the rule is testable without a DB.
+ */
+export function aiaOverdueFrom(
+  rollups: { dueNowCents: number; latestIssuedFrozenAt: string | null; latestIssuedPeriodTo: string | null }[],
+  nowMs: number,
+): { cents: number; count: number } {
+  let cents = 0;
+  let count = 0;
+  for (const r of rollups) {
+    if (r.dueNowCents <= 0) continue;
+    const dueAt = aiaDueAtFrom(r.latestIssuedFrozenAt, r.latestIssuedPeriodTo, DEFAULT_DUE_DAYS);
+    if (!dueAt || daysPastDue(dueAt, nowMs) <= 0) continue;
+    cents += r.dueNowCents;
+    count += 1;
+  }
+  return { cents, count };
 }

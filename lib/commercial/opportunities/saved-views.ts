@@ -52,8 +52,13 @@ export const VIEW_OWNED_PARAMS = [
 export const SAVED_VIEWS = [
   {
     key: "all",
-    label: "All open",
-    hint: "Every live opportunity, newest activity first.",
+    // NOT "All open". This view is every live deal — bids, jobs in delivery
+    // and closed-out jobs alike — so on 2026-10-16 the page read "All open ·
+    // 152 opportunities · $5.6M" directly beside an "Open opportunities 52"
+    // tile (100 closed or in delivery). The tile's "open" is the platform
+    // definition (PRE_SALE_OPEN_STATUSES); the view's name was the lie.
+    label: "All opportunities",
+    hint: "Every live opportunity — open bids, jobs in delivery and closed — newest activity first.",
     params: {},
     group: "pipeline",
   },

@@ -30,7 +30,7 @@ import { CopyToClipboardButton } from "@/components/commercial/copy-to-clipboard
 import { getAccountOverview, relativeActivity, winRate, daysSinceIso, formatBidCents, type AccountOverview } from "@/lib/commercial/accounts/overview";
 import { getInvoiceRollupForAccount, splitOpenBalance, type AccountInvoiceRollup } from "@/lib/commercial/invoices/rollup";
 import { formatCentsCompact, formatCentsFull, fmtEtDate, parseDollarsToCents } from "@/lib/commercial/invoices/format";
-import { monthlyBilledSeries as monthlyBilledSeriesShared } from "@/lib/commercial/invoices/monthly";
+import { billedTrendLastSixMonths } from "@/lib/commercial/reports/billed-trend";
 import { listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProjects, summarizeProduction } from "@/lib/commercial/projects/db";
 import { ProjectCard } from "@/components/commercial/project-card";
@@ -46,7 +46,7 @@ import TrendChart from "@/components/trend-chart";
 import { DealInvoiceBuilder } from "@/components/commercial/deal-invoice-builder";
 import { resolveTaxForZip, thouToPct } from "@/lib/commercial/tax/constants";
 import { listTaxJurisdictions } from "@/lib/commercial/tax/db";
-import { deriveInvoiceStatus, invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
+import { invoiceStatusLabel, PAYMENT_METHODS } from "@/lib/commercial/invoices/constants";
 import { listCommercialOpportunities, oppStatusDisplayLabel, formatBidRange, formatOpportunityNumber, weightedPipelineCents, dealValueCents, derivedOppName, getCommercialOpportunity, OPPORTUNITY_STATUSES, OPPORTUNITY_SOURCES, opportunitySourceLabel, type CommercialOpportunity, type OpportunityStatus } from "@/lib/commercial/opportunities/db";
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
@@ -1308,10 +1308,6 @@ export async function DealNewInvoiceForm({ accountId, oppId, propertyZip, propos
   );
 }
 
-
-function monthlyBilledSeries(invoices: { status: string; created_at: string | null; subtotal_cents: number }[]): { label: string; value: number }[] {
-  return monthlyBilledSeriesShared(invoices, { months: 6, nowIso: new Date().toISOString() });
-}
 
 /** Deal P&L tab — ONE deal's complete financial picture, combined from every
  *  tool (contract = bid + approved COs, billed from invoices/AIA, collected,
@@ -5482,11 +5478,19 @@ async function AccountKpisTab({
   const activeRows = allAccountRows.filter((p) => p.opp.status !== "post_sale_closed");
   const production = summarizeProduction(activeRows);
   const openBidOpps = accountOpps.filter((o) => PRE_SALE_OPEN_STATUSES.includes(o.status));
-  const [accountInvoices, accountCosts, openProposalTotals] = await Promise.all([
-    listCommercialInvoices({ accountId }),
+  const accountInvoicesP = listCommercialInvoices({ accountId });
+  const [accountInvoices, accountCosts, openProposalTotals, acctRevenueMonthly] = await Promise.all([
+    accountInvoicesP,
     costBreakdownForOpps(pnlRows.map((p) => p.opp.id)),
     // Needs `openBidOpps` from the wave above, and nothing from its siblings.
     listCurrentProposalTotalByOpp(openBidOpps.map((o) => o.id)),
+    // BOTH LEDGERS, by month. The two "billed / month" charts on this tab
+    // were drawn from invoices alone, so on LMJ they topped out at $7K beside
+    // tiles reading $1.3M billed — $1.22M of it AIA, which no invoice row
+    // carries. `billedTrendLastSixMonths` is the dashboard's fold (invoices by sent
+    // date + each AIA application's added work by billing period, pre-tax),
+    // and over all time it equals Σ billedContractCents, the Gross tile above.
+    accountInvoicesP.then((inv) => billedTrendLastSixMonths(pnlRows.map((p) => p.opp.id), inv)),
   ]);
   // ── Account-wide P&L (all this GC's deals combined) — Gross = billed pre-tax,
   // Net = billed − costs. Same definitions as the deal P&L + Revenue page. ──
@@ -5514,7 +5518,6 @@ async function AccountKpisTab({
           : "emerald";
   const acctMarginDisplay =
     acctMarginPct === null ? "—" : acctMargin.overBudget ? "Over budget" : `${acctMarginPct}%`;
-  const acctRevenueMonthly = monthlyBilledSeries(accountInvoices);
   const acctCostSegments: DonutSegment[] = [
     ...PURCHASE_CATEGORIES.filter((c) => accountCosts[c] > 0).map((c) => ({
       label: PURCHASE_CATEGORY_META[c].label,
@@ -5585,10 +5588,12 @@ async function AccountKpisTab({
 
   // Overdue vs current split of the open balance, so the Collections donut can
   // label only the genuinely-overdue portion "Overdue" instead of the whole
-  // open balance (2026-08 UI/UX audit). Per-invoice clamped, issued-only.
-  const overdueBalanceCents = accountInvoices
-    .filter((i) => deriveInvoiceStatus(i) === "overdue")
-    .reduce((s, i) => s + Math.max(0, i.balance_cents), 0);
+  // open balance (2026-08 UI/UX audit). From the rollup, which counts overdue
+  // AIA applications as well as invoices: this read the invoice list alone, so
+  // LMJ showed "Overdue $550" while the dashboard chased $15,725.71 — and the
+  // open balance it is carved out of already included AIA due-now, so the
+  // overdue slice of it must too.
+  const overdueBalanceCents = rollup.overdue_cents;
   const currentOpenCents = Math.max(0, rollup.open_balance_cents - overdueBalanceCents);
 
   // What the Collections ring can draw: payment APPLIED inside invoices. It is
@@ -5600,8 +5605,8 @@ async function AccountKpisTab({
   const appliedCents = Math.max(0, rollup.paid_cents - rollup.credit_cents);
   const paidDiffersFromApplied = rollup.credit_cents > 0;
 
-  // Monthly billing trend ($K) — pre-tax, ET-bucketed, issued-only (shared
-  // helper). Same basis as the Profitability trend so a Collections "billed"
+  // Monthly billing trend ($K) — pre-tax, ET-bucketed, issued invoices AND AIA
+  // (the period-billing fold above). Same basis as the Profitability trend so a Collections "billed"
   // chart never disagrees with it over pass-through tax (money audit #6).
   const billedMonthly = acctRevenueMonthly;
   const billedTrendHasData = billedMonthly.some((p) => p.value > 0);
@@ -5714,8 +5719,21 @@ async function AccountKpisTab({
           />
           {/* A COUNT, where every other "Overdue" on the platform is dollars.
               The label carries the unit so the two can't be read as the same
-              number. */}
-          <MiniFig label="Overdue invoices" value={String(rollup.overdue_count)} tone={rollup.overdue_count > 0 ? "rose" : "neutral"} sub={rollup.overdue_count > 0 ? "past due" : "on track"} />
+              number. "Documents" is the dashboard's word: an overdue AIA
+              application counts, and it is not an invoice. The dollars sit
+              underneath so this and the chase list read the same figure. */}
+          <MiniFig
+            label="Overdue documents"
+            value={String(rollup.overdue_count)}
+            tone={rollup.overdue_count > 0 ? "rose" : "neutral"}
+            sub={
+              rollup.overdue_count === 0
+                ? "on track"
+                : rollup.overdue_aia_count > 0
+                ? `${formatCentsCompact(rollup.overdue_cents)} past due · ${rollup.overdue_aia_count} AIA`
+                : `${formatCentsCompact(rollup.overdue_cents)} past due`
+            }
+          />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center mt-4">
           <div className="lg:col-span-2 flex items-center justify-center">

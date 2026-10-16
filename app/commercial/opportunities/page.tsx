@@ -983,7 +983,7 @@ export default async function CommercialOpportunitiesPage({
     // the picker dropped the GC filter and went back to all 132 deals — the
     // eighth place this filter can fall out of, and the same audit-D4 class the
     // other seven were fixed for. `activeViewKey` and `filterChips` read it too,
-    // so the picker also stopped claiming "All open" while showing 35 of 132.
+    // so the picker also stopped claiming "All opportunities" while showing 35 of 132.
     account: accountKeys.length ? accountKeys.join(",") : undefined,
     oneoff: oneOffFilter ? "1" : undefined,
     status: stageKeys.length ? stageKeys.join(",") : undefined,

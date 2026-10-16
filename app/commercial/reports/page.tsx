@@ -6,7 +6,7 @@ import { getProfileByUserId, platformAccess } from "@/lib/auth/profile";
 import { getJobCostsReport, COST_BUCKET_COLUMNS, type CostBuckets, type JobCostsReport } from "@/lib/commercial/reports/job-costs";
 import { formatCentsCompact } from "@/lib/commercial/invoices/format";
 import { listCommercialInvoices } from "@/lib/commercial/invoices/db";
-import { monthlyBilledSeries } from "@/lib/commercial/invoices/monthly";
+import { billedTrendLastSixMonths } from "@/lib/commercial/reports/billed-trend";
 import { DonutChart, type DonutSegment, type ChartTone } from "@/components/commercial/charts";
 import TrendChart from "@/components/trend-chart";
 import { flashMessage } from "@/lib/commercial/flash";
@@ -470,10 +470,12 @@ type Snapshot = {
 async function loadSnapshot(jobCostsP: Promise<JobCostsReport>): Promise<Snapshot | null> {
   try {
     const jobCosts = await jobCostsP;
-    const allOppIds = new Set(jobCosts.groups.flatMap((g) => g.deals.map((d) => d.oppId)));
+    const allOppIds = jobCosts.groups.flatMap((g) => g.deals.map((d) => d.oppId));
     const invoices = await listCommercialInvoices({});
-    const billingTrend = monthlyBilledSeries(invoices, { months: 6, oppIds: allOppIds, nowIso: new Date().toISOString() });
-    // monthlyBilledSeries returns $K (cents / 100_000) for TrendChart's axis.
+    // Invoices AND AIA — the dashboard's fold. Invoice-only, this chart left
+    // out every G702 the company bills (see billed-trend.ts).
+    const billingTrend = await billedTrendLastSixMonths(allOppIds, invoices);
+    // Values are $K (cents / 100_000) for TrendChart's axis.
     const trendTotalCents = Math.round(billingTrend.reduce((n, p) => n + p.value, 0) * 100_000);
     const costSegments: DonutSegment[] = COST_BUCKET_COLUMNS
       .filter((c) => jobCosts.totals.buckets[c.key] > 0)

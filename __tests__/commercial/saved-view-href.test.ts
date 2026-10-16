@@ -53,7 +53,7 @@ describe("savedViewHref", () => {
     expect(() => savedViewHref("no_such_view")).toThrow(/Unknown saved view/);
   });
 
-  it("'All open' is the bare list — it owns no params", () => {
+  it("'All opportunities' is the bare list — it owns no params", () => {
     expect(savedViewHref("all")).toBe("/commercial/opportunities");
   });
 });

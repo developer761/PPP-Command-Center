@@ -214,11 +214,22 @@ export default async function CommercialDashboardPage({
   // The three PERIOD reads join it: billing, purchases and crew labor, each
   // limited to the picked window (`range` null = all time).
   const allProjectIds = allProjectRows.map((p) => p.opp.id);
-  const [currentProposalByOpp, byOpp, periodBilling, periodLaborByOpp] = await Promise.all([
+  /*
+   * LAST MONTH TO THE SAME DAY, for the chart's "This month … vs last".
+   *
+   * That delta divided October 1–16 by ALL of September: on 2026-10-16 it read
+   * "$202k ↓43%" ($201,795.00 against $355,404.97), a fall that was only the
+   * calendar — and it will read a fall on the 1st of every month. Every other
+   * delta on this page (Wins) compares to the same point of the prior period
+   * through `priorDashboardRange`; this now does the same.
+   */
+  const monthToDatePrior = priorDashboardRange("this_month", fyStartMonth, todayEt);
+  const [currentProposalByOpp, byOpp, periodBilling, periodLaborByOpp, priorMonthToDateBilling] = await Promise.all([
     listCurrentProposalByOpp(opps.map((o) => o.id)),
     costBreakdownByOpp(allProjectIds, range),
     loadPeriodBilling(allProjectIds, invoices, range),
     fieldOpsLaborByOpp(allProjectIds, range),
+    monthToDatePrior ? loadPeriodBilling(allProjectIds, invoices, monthToDatePrior) : Promise.resolve(null),
   ]);
   const proposalTotalByOpp = new Map(
     Array.from(currentProposalByOpp, ([id, p]) => [id, p.totalCents] as const)
@@ -591,7 +602,9 @@ export default async function CommercialDashboardPage({
     return `${yy}-${String(((m % 12) + 12) % 12 + 1).padStart(2, "0")}`;
   };
   const thisMonthBilledCents = periodBilling.monthly.get(monthKey(0)) ?? 0;
-  const lastMonthBilledCents = periodBilling.monthly.get(monthKey(-1)) ?? 0;
+  // Last month from its 1st to today's day-of-month — like for like with a
+  // month that is still running (see `monthToDatePrior` above).
+  const lastMonthBilledCents = priorMonthToDateBilling?.totalCents ?? 0;
   const momBilledDeltaPct =
     lastMonthBilledCents > 0
       ? Math.round(((thisMonthBilledCents - lastMonthBilledCents) / lastMonthBilledCents) * 100)
@@ -697,11 +710,14 @@ export default async function CommercialDashboardPage({
           <div className="flex items-baseline justify-between gap-2 mb-2 flex-wrap">
             <h3 className="text-[13px] font-bold text-ppp-charcoal inline-flex items-center gap-1.5">Revenue billed{info("revenueChart", "Revenue billed")}</h3>
             <div className="flex items-baseline gap-2 text-[11.5px] tabular-nums">
-              <span className="text-ppp-charcoal-500">This month <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
+              <span className="text-ppp-charcoal-500">Month to date <span className="font-bold text-ppp-charcoal">{formatCentsCompact(thisMonthBilledCents)}</span></span>
               {momBilledDeltaPct !== null && momBilledDeltaPct !== 0 && (
-                <span className={`inline-flex items-center gap-0.5 font-bold ${momBilledDeltaPct > 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                <span
+                  className={`inline-flex items-center gap-0.5 font-bold ${momBilledDeltaPct > 0 ? "text-emerald-700" : "text-rose-700"}`}
+                  title={monthToDatePrior ? `Against ${formatCentsCompact(lastMonthBilledCents)} billed ${monthToDatePrior.fromYmd} to ${monthToDatePrior.toYmd}` : undefined}
+                >
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={momBilledDeltaPct > 0 ? "" : "rotate-180"}><path d="M12 19V5 M5 12l7-7 7 7" /></svg>
-                  {Math.abs(momBilledDeltaPct)}% vs last
+                  {Math.abs(momBilledDeltaPct)}% vs same days last month
                 </span>
               )}
             </div>
