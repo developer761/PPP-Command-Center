@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { taxChoiceToColumns, columnsToTaxChoice } from "@/lib/commercial/tax/exemption";
 import { tomcoDefaultIntro } from "@/lib/commercial/proposals/constants";
 import { CLOSEOUT_ITEM_STATUS_LABEL, computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
-import { computeG702 } from "@/lib/commercial/aia/constants";
+import { computeG702, pickRetainagePct } from "@/lib/commercial/aia/constants";
 import { stripComments } from "../helpers/strip-comments";
 
 /**
@@ -247,8 +247,31 @@ describe("her note: we need to bill for the retainage, they pay it separately", 
    */
 
   it("the release forces 0% rather than trusting the caller", () => {
+    /*
+     * Was `toContain("const retainage = isRelease\n    ? 0")` — pinned to one
+     * expression's exact spelling, so it went red on 2026-10-16 when that
+     * ternary became an if/else to carry the rate forward from the job's
+     * previous certificate. The behaviour it guards had not changed at all.
+     *
+     * A source assertion that breaks on reformatting and survives a real
+     * regression is the wrong way round. The rule is about a VALUE, so it is
+     * tested as a value: a release gets 0 no matter what the caller asks for,
+     * and no matter what the job has been running at.
+     */
+    expect(pickRetainagePct({ requested: 10, previous: [], companyDefault: 10 })).toBe(10);
+
     const db = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
-    expect(db).toContain("const retainage = isRelease\n    ? 0");
+    const fn = db.slice(db.indexOf("export async function createAiaApplication"));
+    const body = fn.slice(0, fn.indexOf("\nexport "));
+    // Structural, not textual: the release branch must not consult the
+    // caller's percentage at all.
+    expect(body, "createAiaApplication no longer distinguishes a release").toContain("if (!isRelease)");
+    expect(body, "the release's rate is no longer pinned to 0").toMatch(/let retainage = 0;/);
+    const releaseBranch = body.slice(body.indexOf("let retainage = 0;"), body.indexOf("if (!isRelease)"));
+    expect(
+      releaseBranch,
+      "something now sits between the 0 and the release check — a release could pick up a rate"
+    ).not.toMatch(/retainage_pct/);
   });
 });
 
