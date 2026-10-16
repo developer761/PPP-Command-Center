@@ -642,7 +642,9 @@ function formatQty(q: number | string): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function formatDateLong(iso: string | undefined): string {
+/** Exported so the e-sign acceptance page prints the proposal date exactly as
+ *  the proposal it is attached to does. */
+export function formatDateLong(iso: string | undefined): string {
   if (!iso) return "";
   // date_iso is a bare YYYY-MM-DD string — parse as local calendar
   // date (no TZ shift) then format long.

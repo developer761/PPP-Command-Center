@@ -1,8 +1,8 @@
 import "server-only";
 
 import { listExclusions } from "@/lib/commercial/exclusions/db";
-import type { ExclusionKind } from "@/lib/commercial/exclusions/constants";
 import type { CommercialProposal } from "./db";
+import { mergeProposalExclusions, type ResolvedExclusion } from "./exclusion-merge";
 
 /**
  * Resolve a proposal's exclusion ids + custom lines into the ordered text list
@@ -17,8 +17,7 @@ import type { CommercialProposal } from "./db";
  * `activeOnly: false` on purpose: deactivating a library exclusion is not
  * deleting it, and a proposal already carrying one must keep printing it.
  */
-/** A resolved line plus which PDF section it belongs under (migration 164). */
-export type ResolvedExclusion = { text: string; kind: ExclusionKind };
+export type { ResolvedExclusion };
 
 export async function resolveProposalExclusionTexts(
   proposal: Pick<CommercialProposal, "id" | "exclusion_ids" | "custom_exclusions">
@@ -71,6 +70,7 @@ export async function resolveProposalExclusions(
     .filter(Boolean)
     .map((t) => ({ text: t.length > 500 ? t.slice(0, 500) + "…" : t, kind: "exclusion" as const }));
   // Custom lines print AFTER the library-resolved ones, in the order they were
-  // added.
-  return [...libraryTexts, ...customTexts];
+  // added — and a line already printed is not printed again (see
+  // mergeProposalExclusions).
+  return mergeProposalExclusions(libraryTexts, customTexts);
 }

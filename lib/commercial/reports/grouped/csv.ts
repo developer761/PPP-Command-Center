@@ -97,5 +97,12 @@ export function groupedReportCsv<R>(
     ].join(",")
   );
 
-  return out.join("\n");
+  /*
+   * CRLF, like every other export — and like the title block that is prepended
+   * to this one. It used to be "\n", so each of the five Accounting sheets
+   * opened with two CRLF lines and then switched to LF for the rest of the
+   * file: one document, two line endings, which is exactly what makes a
+   * hand-rolled splitter downstream keep a stray "\r" on some rows only.
+   */
+  return out.join("\r\n") + "\r\n";
 }

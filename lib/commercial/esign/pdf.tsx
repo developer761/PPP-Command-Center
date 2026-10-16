@@ -3,7 +3,7 @@ import "server-only";
 import { Document, Page, View, Text, Image, StyleSheet, Font, renderToBuffer } from "@react-pdf/renderer";
 import * as React from "react";
 import { PDFDocument } from "pdf-lib";
-import { transliterateToWinAnsi } from "@/lib/commercial/proposals/pdf";
+import { transliterateToWinAnsi, formatDateLong } from "@/lib/commercial/proposals/pdf";
 import { stampPageNumbers } from "@/lib/commercial/pdf/stamp-page-numbers";
 import { formatAuditTimestamp } from "./constants";
 
@@ -208,7 +208,11 @@ function SignaturePageDoc(input: SignaturePageInput) {
               {pdfText([input.proposalLabel, input.proposalNumber ? `No. ${input.proposalNumber}` : null].filter(Boolean).join(" · "))}
             </Text>
             <Text style={s.label}>Proposal date</Text>
-            <Text style={s.metaVal}>{pdfText(input.proposalDate) || "—"}</Text>
+            {/* `header_json.date_iso` is a bare YYYY-MM-DD. Printed raw it read
+                "2026-10-08" on the one page of the signed contract that
+                isn't the proposal, while the proposal pages in front of it say
+                "October 8, 2026". Same formatter, same words. */}
+            <Text style={s.metaVal}>{pdfText(formatDateLong(input.proposalDate ?? undefined)) || "—"}</Text>
           </View>
         </View>
 
