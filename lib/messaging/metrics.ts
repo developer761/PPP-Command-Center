@@ -282,7 +282,7 @@ export function workspaceHealth(rows: ConversationRow[]): WorkspaceHealth[] {
         // The same two sets the agent and human tables use. See SUCCESS_OUTCOMES.
         successPct: pct(completed.filter((r) => SUCCESS_OUTCOMES.has(r.outcome ?? "")).length, completed.length),
         dropOffPct: pct(completed.filter((r) => DROP_OFF_OUTCOMES.has(r.outcome ?? "")).length, completed.length),
-        takeOverPct: pct(rs.filter((r) => r.takeover_reason !== null).length, rs.length),
+        takeOverPct: pct(rs.filter(wasTakenOver).length, rs.length),
         medianFirstReplySeconds: median(
           rs.map((r) => secondsBetween(r.created_at, r.first_outbound_at)).filter((n): n is number => n !== null)
         ),
@@ -408,8 +408,19 @@ export function secondsBetween(a: string | null, b: string | null): number | nul
   if (!a || !b) return null;
   const x = new Date(a).getTime(), y = new Date(b).getTime();
   if (Number.isNaN(x) || Number.isNaN(y)) return null;
-  return Math.max(0, Math.round((y - x) / 1000));
+  const secs = Math.round((y - x) / 1000);
+  /**
+   * A little backwards is clock skew between writers; a lot backwards is a
+   * row whose timestamps are wrong, and it is not a measurement at all.
+   * Clamping every negative to 0 scored those rows as instant replies: on
+   * 2026-10-16 all ten conversations in production had created_at AFTER
+   * first_outbound_at and ended_at, and Reporting read "median 0s, 100%
+   * within target, 100% beating Hatch". Dropped, they read "not measured".
+   */
+  if (secs < -MAX_CLOCK_SKEW_SECONDS) return null;
+  return Math.max(0, secs);
 }
+const MAX_CLOCK_SKEW_SECONDS = 60;
 
 /** "45s", "4m", "2h 10m", "3d". A dashboard column has no room for more. */
 export function humanSeconds(s: number | null): string {
@@ -449,6 +460,20 @@ export type AgentRow = {
 
 const ACTIVE_STATES = new Set(["ai_active", "awaiting_customer", "human_active"]);
 
+/**
+ * Did a person take this conversation over? ONE definition for every screen.
+ *
+ * workspaceHealth (Reporting) used to count takeover_reason alone while
+ * agentPerformance (Dashboard) also counted a conversation a person is still
+ * holding. On 2026-10-16 NY NYC Leads and NY LI Nassau Leads read 100% take
+ * over on one screen and 0% on the other — human_active, no reason recorded.
+ * The wider reading is the right one: a conversation a person is holding is
+ * the clearest case of a take-over there is.
+ */
+export function wasTakenOver(r: Pick<ConversationRow, "takeover_reason" | "state"> & { tookOver?: boolean }): boolean {
+  return !!(r.tookOver || r.takeover_reason || r.state === "human_active");
+}
+
 export function agentPerformance(
   rows: (ConversationRow & { agent?: string | null; trigger?: string | null; tookOver?: boolean })[]
 ): AgentRow[] {
@@ -472,7 +497,7 @@ export function agentPerformance(
         dropOffPct: pct(done.filter((r) => r.outcome && DROP_OFF_OUTCOMES.has(r.outcome)).length, completed),
         // Take-over is counted across everything, not just completed: a
         // conversation a person is still holding is the clearest case of one.
-        takeOverPct: pct(list.filter((r) => r.tookOver || r.takeover_reason || r.state === "human_active").length, list.length),
+        takeOverPct: pct(list.filter(wasTakenOver).length, list.length),
         trigger: list.find((r) => r.trigger)?.trigger ?? null,
       };
     })

@@ -391,7 +391,8 @@ export default async function ReportingConsole({
         </div>
         {issues.length === 0 ? (
           <p className="px-4 py-3 text-[13px] text-ppp-charcoal-500">
-            Nothing stuck. {integrity.suppressedNumbers} number{integrity.suppressedNumbers === 1 ? "" : "s"} suppressed.
+            Nothing stuck. {integrity.suppressedNumbers.toLocaleString()} number{integrity.suppressedNumbers === 1 ? "" : "s"} and{" "}
+            {integrity.suppressedEmails.toLocaleString()} address{integrity.suppressedEmails === 1 ? "" : "es"} suppressed.
           </p>
         ) : (
           <ul className="divide-y divide-ppp-charcoal-100">

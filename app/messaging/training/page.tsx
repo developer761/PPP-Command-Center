@@ -37,11 +37,11 @@ export default async function TrainingPage() {
           title: "Import conversations from Hatch",
           why: "There is nothing to learn from yet. Paste an export and personal details are removed in your browser before anything is sent.",
         }
-      : s.byConduct.good < 10 && repairs.length > 0
+      : s.copies < 10 && repairs.length > 0
         ? {
             href: "/messaging/training/repair",
             title: `Fix a near-miss — ${repairs.length} waiting`,
-            why: `The bot can copy ${s.byConduct.good} conversation${s.byConduct.good === 1 ? "" : "s"} and avoid ${s.byConduct.bad}. These nearly went right, so rewriting the lines Emily got wrong turns each into an example worth copying.`,
+            why: `The bot can copy ${s.copies} conversation${s.copies === 1 ? "" : "s"} and avoid ${s.avoids}. These nearly went right, so rewriting the lines Emily got wrong turns each into an example worth copying.`,
           }
         : cov.ungraded > 0
           ? {
@@ -169,8 +169,8 @@ export default async function TrainingPage() {
         <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {([
             ["Conversations in total", s.total, "Everything imported or written by hand."],
-            ["The bot can copy", s.byConduct.good, "Good, cleaned up and signed off."],
-            ["The bot avoids", s.byConduct.bad, "Marked as handled badly. Used as warnings, never copied."],
+            ["The bot can copy", s.copies, "Good, cleaned up and signed off."],
+            ["The bot avoids", s.avoids, "Handled badly or only partly well, and cleaned up. Used as warnings, never copied."],
             ["Not usable yet", Math.max(0, s.total - s.usable), "Still need cleaning, judging or signing off."],
           ] as const).map(([label, n, why]) => (
             <div key={label}>

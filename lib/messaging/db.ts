@@ -10,7 +10,7 @@ import { createClient } from "@supabase/supabase-js";
  */
 import { resolveAgentConfig, stateOfWorkspace, type AgentConfigLayer } from "./agent-resolve";
 import type { WorkspaceOptOuts } from "./optout-rate";
-import type { CorpusExample } from "./retrieval";
+import { retrievalSummary, type CorpusExample } from "./retrieval";
 import type { Service, ServiceException } from "./services";
 
 export function messagingDb() {
@@ -596,9 +596,26 @@ export async function trainingStats() {
   );
   const usable = rows.filter((r) => r.approved && r.pii_scrubbed);
   const count = (pred: (r: (typeof rows)[number]) => boolean) => rows.filter(pred).length;
+  /**
+   * WHAT THE BOT ACTUALLY DRAWS ON, counted by retrieval's own predicate.
+   *
+   * byConduct.good is every row graded good — 225 on 2026-10-16 — and the
+   * Training page showed it as "The bot can copy". Retrieval only imitates
+   * good rows that are also approved and scrubbed: 8. The page overstated the
+   * corpus 28×, and the "fix a near-miss" card (good < 10) could never fire.
+   * Asking retrievalSummary instead of restating its filter keeps the screen
+   * and the prompt from drifting apart again.
+   */
+  const drawn = retrievalSummary(rows.map((r) => ({
+    conduct: r.conduct as CorpusExample["conduct"],
+    approved: r.approved,
+    piiScrubbed: r.pii_scrubbed,
+  })));
   return {
     total: rows.length,
     usable: usable.length,
+    copies: drawn.usableGood,
+    avoids: drawn.usableBad,
     needsScrub: count((r) => !r.pii_scrubbed),
     needsReview: count((r) => r.pii_scrubbed && !r.approved),
     byConduct: {
@@ -999,8 +1016,17 @@ export async function integrityChecks() {
   }
   const [{ count: unrouted }, { count: failedSends }, { count: staleClaims }, { count: numberless }] = results;
 
-  const { count: suppressed, error: supErr } = await sb.from("sms_opt_outs")
-    .select("*", { count: "exact", head: true }).is("opted_in_at", null);
+  // Numbers and addresses counted apart, the way the dashboard does. One count
+  // of every row rendered as "31,601 numbers suppressed" when 24,288 of them
+  // are email addresses — the mislabel the dashboard comment above describes
+  // fixing, which never reached this line.
+  const [phones, emails] = await Promise.all([
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("phone_e164", "is", null).is("opted_in_at", null),
+    sb.from("sms_opt_outs").select("*", { count: "exact", head: true })
+      .not("email", "is", null).is("opted_in_at", null),
+  ]);
+  const supErr = phones.error ?? emails.error;
   if (supErr) throw new Error(`could not count suppressions: ${supErr.message}`);
 
   return {
@@ -1008,7 +1034,8 @@ export async function integrityChecks() {
     failedSends: failedSends ?? 0,
     staleClaims: staleClaims ?? 0,
     activeWithoutNumber: numberless ?? 0,
-    suppressedNumbers: suppressed ?? 0,
+    suppressedNumbers: phones.count ?? 0,
+    suppressedEmails: emails.count ?? 0,
   };
 }
 

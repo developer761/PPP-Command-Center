@@ -269,7 +269,7 @@ export function selectExamples(
  * nothing under it.
  */
 /** What the bot is currently able to draw on, for a screen to state plainly. */
-export function retrievalSummary(corpus: CorpusExample[]): {
+export function retrievalSummary(corpus: Pick<CorpusExample, "conduct" | "approved" | "piiScrubbed">[]): {
   usableGood: number; usableBad: number; unscrubbed: number; unapprovedGood: number;
 } {
   const scrubbed = corpus.filter((e) => e.piiScrubbed);

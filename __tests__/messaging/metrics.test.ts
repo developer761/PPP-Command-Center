@@ -212,6 +212,9 @@ describe("helpers", () => {
   it("secondsBetween clamps skew and rejects rubbish", () => {
     expect(secondsBetween("2026-09-07T10:00:00Z", "2026-09-07T10:00:30Z")).toBe(30);
     expect(secondsBetween("2026-09-07T10:00:30Z", "2026-09-07T10:00:00Z")).toBe(0);
+    // Hours backwards is not skew. It is a broken row, and it must not score
+    // as an instant reply.
+    expect(secondsBetween("2026-09-01T21:22:00Z", "2026-09-01T18:00:00Z")).toBeNull();
     expect(secondsBetween("nope", "2026-09-07T10:00:00Z")).toBeNull();
     expect(secondsBetween(null, null)).toBeNull();
   });
@@ -422,5 +425,18 @@ describe("both screens answer 'success' the same way", () => {
     const agents = agentPerformance(rows)[0];
     expect(health.dropOffPct).toBe(agents.dropOffPct);
     expect(health.dropOffPct).toBe(66.7);
+  });
+});
+
+describe("take-over reads the same on every screen", () => {
+  // A person holding the conversation with no reason recorded: 100% on the
+  // Dashboard and 0% on Reporting until both asked the same question.
+  it("Reporting and the Dashboard agree on a held conversation", () => {
+    const rows = [
+      conv({ state: "human_active", takeover_reason: null, outcome: null, ended_at: null }),
+      conv({ state: "ended", takeover_reason: null }),
+    ];
+    expect(workspaceHealth(rows)[0].takeOverPct).toBe(50);
+    expect(agentPerformance(rows)[0].takeOverPct).toBe(50);
   });
 });
