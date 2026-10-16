@@ -8,9 +8,18 @@ type Props = {
   name: string | null;
   email: string;
   initial: string;
+  /** e.g. "12m ago" — when Salesforce was last pulled, from the topbar. */
+  syncedAgo?: string | null;
+  syncIsStale?: boolean;
 };
 
-export default function UserMenu({ name, email, initial }: Props) {
+export default function UserMenu({
+  name,
+  email,
+  initial,
+  syncedAgo = null,
+  syncIsStale = false,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -73,6 +82,33 @@ export default function UserMenu({ name, email, initial }: Props) {
             )}
             <div className="text-xs text-ppp-charcoal-500 truncate">{email}</div>
           </div>
+          {/* Salesforce freshness + the manual refresh, evicted from the
+              topbar on 2026-10-16 where a permanent green "Live" pill was
+              crowding a 390px phone and telling everyone the same thing on
+              every load. Here it costs no space, and it reads a real
+              timestamp — the snapshot's, not the page's. */}
+          {syncedAgo && (
+            <form action="/api/admin/sf-refresh-cache" method="POST">
+              <button
+                type="submit"
+                role="menuitem"
+                className="w-full text-left px-4 py-2.5 text-sm font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors flex items-center gap-2 min-h-[44px] sm:min-h-0 touch-manipulation"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${syncIsStale ? "bg-ppp-orange-600" : "bg-ppp-green"}`}
+                  aria-hidden
+                />
+                <span className="flex-1 min-w-0">
+                  Refresh from Salesforce
+                  <span
+                    className={`block text-xs font-normal truncate ${syncIsStale ? "text-ppp-orange-700" : "text-ppp-charcoal-500"}`}
+                  >
+                    Synced {syncedAgo}
+                  </span>
+                </span>
+              </button>
+            </form>
+          )}
           <Link
             href="/dashboard/account"
             role="menuitem"

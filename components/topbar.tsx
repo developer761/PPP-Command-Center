@@ -38,8 +38,21 @@ function formatAgo(seconds: number): string {
   const min = Math.floor(seconds / 60);
   if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
-  return `${hr}h ago`;
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  return days === 1 ? "yesterday" : `${days}d ago`;
 }
+
+/**
+ * Past this, the data is old enough that somebody should know.
+ *
+ * The warm cron runs every 20 minutes and the snapshot TTL is 60, so a
+ * healthy platform sits between 0 and ~20 minutes here. Ninety minutes
+ * means the cron has missed several runs AND no page load rebuilt the
+ * cache — the snapshot can still be served (serve-stale runs to 26h), it
+ * just must not be served under the word "Live" with a green pulse.
+ */
+const STALE_AFTER_MS = 90 * 60 * 1000;
 
 export default function Topbar({
   onOpenMenu,
@@ -48,7 +61,20 @@ export default function Topbar({
   switcherReps = [],
 }: Props) {
   const [now, setNow] = useState<Date | null>(null);
-  const [syncedAt] = useState<Date>(() => new Date());
+  /**
+   * When Salesforce was last pulled — NOT when this component mounted.
+   *
+   * It used to be `useState(() => new Date())`, i.e. mount time, which made
+   * the chip a clock rather than a sync indicator: it read "Live · synced
+   * just now" on every fresh load no matter how old the cache row behind
+   * the page was, and the serve-stale path lets that row reach 26 hours.
+   *
+   * Mount time stays as the fallback, because it is the correct answer in
+   * the one case the endpoint returns null: the shared cache row has been
+   * DELETED by a refresh, so the page we are sitting on was rendered from a
+   * live Salesforce pull a moment ago.
+   */
+  const [syncedAt, setSyncedAt] = useState<Date>(() => new Date());
 
   // Re-tick once per MINUTE, not per second. The greeting/date only ever
   // change at boundaries (noon, midnight) and the "synced 3m ago" string
@@ -58,6 +84,38 @@ export default function Topbar({
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
+  }, []);
+
+  /**
+   * Asked ONCE, on mount, and deliberately never polled.
+   *
+   * The numbers on this page were rendered from whatever snapshot was
+   * current when the server rendered it. If the cron rebuilt two minutes
+   * later, the data on screen did not get any newer — so a poll would walk
+   * the chip BACKWARDS toward "just now" while the page aged, which is the
+   * same lie in a new costume. Pinning it near render time and letting it
+   * count up is the honest reading. A refresh reloads the page, which
+   * remounts this and asks again.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/sf-sync-status");
+        if (!res.ok) return;
+        const json = (await res.json()) as { fetchedAt?: string | null };
+        if (cancelled || !json?.fetchedAt) return;
+        const at = new Date(json.fetchedAt);
+        if (Number.isNaN(at.getTime())) return;
+        setSyncedAt(at);
+      } catch {
+        // Keep the mount-time fallback. A chip that counts from page load is
+        // the old behavior, not a regression.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!now)
@@ -83,6 +141,9 @@ export default function Topbar({
   });
 
   const ago = Math.floor((now.getTime() - syncedAt.getTime()) / 1000);
+  // Before the status fetch resolves, syncedAt is mount time — so this is
+  // false, and the alarm can never flash on during a normal page load.
+  const isStale = now.getTime() - syncedAt.getTime() > STALE_AFTER_MS;
   // Drop the comma-name when we don't have a real first name (avoids the cold "Good morning, team").
   const greetingLine = user.firstName ? `${greeting}, ${user.firstName}` : greeting;
 
@@ -139,45 +200,34 @@ export default function Topbar({
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
         <ViewSwitcher reps={switcherReps} />
 
-        <form action="/api/admin/sf-refresh-cache" method="POST" className="hidden sm:block">
-          <button
-            type="submit"
-            className="flex items-center gap-2 px-3 py-1.5 bg-ppp-green-50 border border-ppp-green-100 rounded-full hover:bg-ppp-green-100 hover:border-ppp-green-100 transition-colors group min-h-[44px] sm:min-h-0 touch-manipulation"
-            title={`Synced ${formatAgo(ago)} · click to refresh from Salesforce`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" />
-            <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">
-              Live · synced {formatAgo(ago)}
-            </span>
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-ppp-green-700 opacity-50 group-hover:opacity-100 transition-opacity"
-              aria-hidden
+        {/* The sync control is an ALARM now, not furniture.
+            Karan on a 390px iPhone, 2026-10-16: "the top needs to be cleaner,
+            it's all so clustered, do we really need the sync button up there?"
+            — six controls were competing for that row and squeezing the search
+            box. A permanent green "Live" pill is the least useful of them:
+            it reported the same thing on every single load regardless of the
+            data behind it, so it carried no information at all. What it should
+            have been carrying is the one state worth interrupting someone for
+            — the warm cron has stopped and these figures are old — and that
+            now has the row to itself on the rare occasion it is true.
+            The everyday reading, plus the manual refresh, moved into the user
+            menu where they cost no space. */}
+        {isStale && (
+          <form action="/api/admin/sf-refresh-cache" method="POST">
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 h-11 sm:h-auto px-2.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-full bg-ppp-orange-50 border border-ppp-orange-100 hover:bg-ppp-orange-100 active:bg-ppp-orange-100 transition-colors touch-manipulation"
+              title={`Salesforce data is ${formatAgo(ago)} — tap to refresh`}
+              aria-label={`Salesforce data is ${formatAgo(ago)}. Tap to refresh.`}
             >
-              <path d="M21 12a9 9 0 1 1-3-6.7" />
-              <path d="M21 4v6h-6" />
-            </svg>
-          </button>
-        </form>
-
-        <form action="/api/admin/sf-refresh-cache" method="POST" className="sm:hidden">
-          <button
-            type="submit"
-            className="flex items-center justify-center gap-1 h-11 min-w-[60px] px-3 rounded-lg bg-ppp-green-50 border border-ppp-green-100 hover:bg-ppp-green-100 active:bg-ppp-green-100 transition-colors touch-manipulation"
-            title={`Synced ${formatAgo(ago)} · tap to refresh from Salesforce`}
-            aria-label={`Synced ${formatAgo(ago)}. Tap to refresh from Salesforce.`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-ppp-green animate-pulse" aria-hidden />
-            <span className="text-[11px] font-medium text-ppp-green-700 whitespace-nowrap">Sync</span>
-          </button>
-        </form>
+              <span className="h-1.5 w-1.5 rounded-full bg-ppp-orange-600" aria-hidden />
+              <span className="text-[11px] font-medium text-ppp-orange-700 whitespace-nowrap">
+                <span className="hidden sm:inline">Data {formatAgo(ago)} · refresh</span>
+                <span className="sm:hidden">{formatAgo(ago)}</span>
+              </span>
+            </button>
+          </form>
+        )}
 
         <NotificationBell />
 
@@ -185,6 +235,8 @@ export default function Topbar({
           name={user.fullName}
           email={user.email}
           initial={user.initial}
+          syncedAgo={formatAgo(ago)}
+          syncIsStale={isStale}
         />
       </div>
     </header>

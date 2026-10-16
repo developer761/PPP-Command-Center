@@ -1,6 +1,7 @@
 import { loadDashboardData } from "@/lib/data-source";
 import MapView from "@/components/map-view";
 import { requireAnalyticsAccess } from "@/lib/auth/require-analytics";
+import { deriveMapData } from "@/lib/dashboard/map-data";
 
 export const dynamic = "force-dynamic";
 
@@ -16,5 +17,9 @@ export default async function MapPage({ searchParams }: { searchParams: SP }) {
   // grep — no other snapshot fields are read. Same 60-75% cold-cache cut
   // we got on /dashboard/materials and /dashboard/operations. Audit 2026-06-08.
   const bundle = await loadDashboardData(sp, { thin: true });
-  return <MapView bundle={bundle} />;
+  // Project to plottable points here. Thin cut what the server FETCHES; it
+  // did nothing about what this page SENDS — every work order was serialized
+  // into the HTML for the client to build GeoJSON from. 35.1MB, 3.2s.
+  const data = bundle.snapshot ? deriveMapData(bundle.snapshot) : null;
+  return <MapView data={data} />;
 }

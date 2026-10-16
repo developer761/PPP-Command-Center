@@ -2741,6 +2741,53 @@ async function readSharedBlob<T>(key: string): Promise<T | null> {
 }
 
 /**
+ * The age of the Salesforce data, without reading the Salesforce data.
+ *
+ * The topbar's "Live · synced Nm ago" chip was, until 2026-10-16, this:
+ *
+ *     const [syncedAt] = useState<Date>(() => new Date());
+ *
+ * — the moment the React component mounted in the browser. It had never
+ * touched the snapshot. So a page served out of a 55-minute-old cache row,
+ * or off the serve-stale path up to 26 HOURS old, rendered "Live · synced
+ * just now" under a pulsing green dot; and a tab left open overnight read
+ * "synced 16h ago" when the cron had in fact rebuilt twenty minutes
+ * earlier. Both directions wrong, and the one state that matters — the
+ * warm cron has died and these numbers are old — was unreachable.
+ *
+ * This reads ONLY the timestamp columns. Never payload_gz, which is
+ * 3.6-8.1MB of base64 and the reason the chip could not afford the truth
+ * before. Both snapshots are written by the same warmAllSnapshots() run,
+ * so we report the OLDER of the two: the chip may never claim the data is
+ * fresher than it is.
+ *
+ * Returns null when there is no row at all, which is NOT the same as
+ * stale — clearSalesforceCache() DELETES these rows, so null is the normal
+ * state in the seconds after somebody hits refresh, and the next read is a
+ * live Salesforce pull. The caller treats null as "unknown", not "old".
+ */
+export async function readSnapshotAge(): Promise<{ fetchedAt: string | null }> {
+  try {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
+      return { fetchedAt: null };
+    }
+    const sb = snapshotCacheClient();
+    const { data, error } = await sb
+      .from("snapshot_cache")
+      .select("key, fetched_at")
+      .in("key", ["snapshot-v6", "snapshot-thin-v1"]);
+    if (error || !data?.length) return { fetchedAt: null };
+    const times = data
+      .map((r) => new Date(r.fetched_at as string).getTime())
+      .filter((t) => Number.isFinite(t));
+    if (!times.length) return { fetchedAt: null };
+    return { fetchedAt: new Date(Math.min(...times)).toISOString() };
+  } catch {
+    return { fetchedAt: null };
+  }
+}
+
+/**
  * The rep directory, from the slice when it is there and from the thin
  * snapshot when it is not. Sorted here so both paths agree.
  */
