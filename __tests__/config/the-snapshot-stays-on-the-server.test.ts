@@ -157,7 +157,7 @@ describe("the Salesforce snapshot does not cross into the browser", () => {
     const slim = props.slice(at, props.indexOf("openJobsSerialized =", at));
     expect(slim.length).toBeGreaterThan(100); // the slice measured something
     for (const field of [
-      "workOrders", "woLineItems", "opportunities", "quotes",
+      "workOrders", "woLineItems", "accounts", "opportunities", "quotes",
       "transactions", "reviews", "cases", "quotas", "subQuotas", "reps",
     ]) {
       expect(slim, `${field} is no longer stripped from the materials payload`)
@@ -171,6 +171,11 @@ describe("the Salesforce snapshot does not cross into the browser", () => {
       .not.toMatch(/snapshot[?.]?\.workOrders/);
     expect(view, "materials-view reads snapshot.woLineItems, which is now always empty")
       .not.toMatch(/snapshot[?.]?\.woLineItems/);
+    // accounts was the real bulk — 1,424KB of 4,530KB for two fields read.
+    expect(view, "materials-view reads snapshot.accounts, which is now always empty")
+      .not.toMatch(/snapshot[?.]?\.accounts/);
+    expect(view, "the projected directory is what the lookups must use")
+      .toContain("accountDirectory");
     // The diagnostic it used to compute now arrives as a prop.
     expect(view).toContain("snapshotDiagnostic");
   });

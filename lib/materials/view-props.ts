@@ -18,6 +18,7 @@ import {
   deriveSnapshotDiagnostic,
   type SnapshotDiagnostic,
 } from "@/lib/materials/snapshot-diagnostic";
+import type { AccountLite } from "@/lib/materials/account-lite";
 
 /**
  * Shared loader for the Materials Ordering surfaces. Both the browse list
@@ -36,6 +37,12 @@ export type MaterialsViewProps = {
   sqftOverrides: Record<string, number>;
   /** R4.9/R4.10: WO id → line item id → the customer's own per-surface picks. */
   retainedPicks: Record<string, Record<string, RetainedPick[]>>;
+  /** Every account reduced to the three fields the browser actually uses:
+   *  the supplier's name, and the customer's email for the send-form
+   *  prefill. The full SnapshotAccount carries ~25 (addresses, lifetime
+   *  revenue, opportunity counts) and there are 2,144 of them — measured at
+   *  1,424KB of a 4,530KB payload on 2026-10-16, for two fields. */
+  accountDirectory: AccountLite[];
   /** Admin-only diagnostic counts. Computed here so the two biggest arrays
    *  in the snapshot no longer have to reach the browser — see
    *  lib/materials/snapshot-diagnostic.ts. Null on mock / no snapshot. */
@@ -162,6 +169,7 @@ export async function loadMaterialsViewProps(
       sqftOverrides: {},
       retainedPicks: {},
       snapshotDiagnostic: bundle.snapshot ? deriveSnapshotDiagnostic(bundle.snapshot) : null,
+      accountDirectory: [],
     };
   }
 
@@ -222,11 +230,16 @@ export async function loadMaterialsViewProps(
   // and `paintColors` (JobDetail's color map). The open-job list it renders
   // comes from `openJobsSerialized`, derived above.
   //
-  // workOrders and woLineItems went too, on 2026-10-16. They were the two
-  // largest arrays left and their ONLY remaining consumer was the admin
-  // "Snapshot diagnostic" panel — six counts, now computed server-side, so
-  // every user had been paying megabytes for a box only admins can see.
-  // This page measured 4.5MB that day; it was the last one on the pattern.
+  // workOrders and woLineItems went on 2026-10-16, with the admin "Snapshot
+  // diagnostic" panel — their only remaining consumer — moved server-side.
+  // That saved 78KB. I had assumed they were the bulk and had not measured;
+  // they were not.
+  //
+  // Measuring the real payload found `accounts`: 2,144 full records,
+  // 1,424KB of 4,530KB, for the TWO fields the browser reads (a supplier's
+  // name and the customer's email). They now travel as `accountDirectory`,
+  // projected to {id, name, email}. What is left is `paintColors` plus the
+  // open-job board, which is the page.
   const slimBundle: LiveDashboardBundle = bundle.snapshot
     ? {
         ...bundle,
@@ -242,6 +255,7 @@ export async function loadMaterialsViewProps(
           reps: [],
           workOrders: [],
           woLineItems: [],
+          accounts: [],
         },
       }
     : bundle;
@@ -264,5 +278,8 @@ export async function loadMaterialsViewProps(
     // From the FULL snapshot, before slimming — the counts are the whole
     // point of the panel and must describe what Salesforce actually returned.
     snapshotDiagnostic: bundle.snapshot ? deriveSnapshotDiagnostic(bundle.snapshot) : null,
+    accountDirectory: bundle.snapshot
+      ? bundle.snapshot.accounts.map((a) => ({ id: a.id, name: a.name, email: a.email }))
+      : [],
   };
 }

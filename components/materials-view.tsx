@@ -67,14 +67,14 @@ import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK, fmtScheduleDate } from "@/lib/format";
 import {
   deserializeOpenJobs,
-  getSupplierName,
   type OpenWorkOrderForMaterials,
   type ResolvedWoli,
   type SerializedOpenWorkOrderForMaterials,
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
 import type { SnapshotDiagnostic } from "@/lib/materials/snapshot-diagnostic";
-import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queries";
+import type { AccountLite } from "@/lib/materials/account-lite";
+import type { SnapshotPaintColor } from "@/lib/salesforce/queries";
 import {
   estimateOrderGallons,
   summarizeOrder,
@@ -143,6 +143,10 @@ type Props = {
    *  which were the last two large arrays this page shipped to the
    *  browser, for a panel only admins can see. */
   snapshotDiagnostic?: SnapshotDiagnostic | null;
+  /** Accounts projected to {id, name, email} — the only fields read here.
+   *  The full records were 1,424KB of a 4,530KB payload (2,144 accounts ×
+   *  ~25 fields) as measured 2026-10-16. */
+  accountDirectory?: AccountLite[];
 };
 
 // Virtuoso list/item components — defined at module scope (not inside
@@ -176,7 +180,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides, retainedPicks = {}, snapshotDiagnostic = null }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides, retainedPicks = {}, snapshotDiagnostic = null, accountDirectory = [] }: Props) {
   const router = useRouter();
   const { snapshot, viewer } = bundle;
 
@@ -200,16 +204,14 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // both lookups O(1). Built here at the parent so the maps are stable
   // across JobDetail rerenders (key for the memo'd JobDetail below).
   const { accountByName, accountsById } = useMemo(() => {
-    const byName = new Map<string, SnapshotAccount>();
-    const byId = new Map<string, SnapshotAccount>();
-    if (snapshot?.accounts) {
-      for (const a of snapshot.accounts) {
-        byName.set(a.name, a);
-        byId.set(a.id, a);
-      }
+    const byName = new Map<string, AccountLite>();
+    const byId = new Map<string, AccountLite>();
+    for (const a of accountDirectory) {
+      byName.set(a.name, a);
+      byId.set(a.id, a);
     }
     return { accountByName: byName, accountsById: byId };
-  }, [snapshot]);
+  }, [accountDirectory]);
 
 
   // Counter bumped when the modal closes after a successful send — children
@@ -1555,8 +1557,8 @@ function JobDetailImpl({
    *  the form is in-flight (sent or opened) AND not yet submitted/expired. */
   formStatus: FormStatus | undefined;
   /** Parent-built indexes — O(1) account lookups instead of .find() per render. */
-  accountsById: Map<string, SnapshotAccount>;
-  accountByName: Map<string, SnapshotAccount>;
+  accountsById: Map<string, AccountLite>;
+  accountByName: Map<string, AccountLite>;
   /** Opens the Supplier Order Modal with a supplier pre-selected. `manual` is
    *  true when chosen via the store picker (vs auto-detected), so the builder
    *  includes all the WO's colors on that store's order. */
@@ -1638,11 +1640,20 @@ function JobDetailImpl({
     return Array.from(job.bySupplier.entries())
       .map(([mfgId, count]) => ({
         manufacturerId: mfgId,
-        name: getSupplierName(snapshot, mfgId === "unknown" ? null : mfgId),
+        // Was getSupplierName(snapshot, …), which did accounts.find(). The
+        // accounts array no longer reaches the browser — the parent-built
+        // index carries the same names at O(1).
+        name:
+          mfgId && mfgId !== "unknown"
+            ? accountsById.get(mfgId)?.name ?? "Unknown supplier"
+            : "Unknown supplier",
         count,
       }))
       .sort((a, b) => b.count - a.count);
-  }, [job, snapshot]);
+    // accountsById, not snapshot: the supplier names come from the index now,
+    // so depending on `snapshot` would have gone stale the moment the two
+    // diverged.
+  }, [job, accountsById]);
 
   // At-a-glance paint estimate for the whole WO (all colors, no supplier
   // filter) — so the worker sees the job size before opening the order modal.
