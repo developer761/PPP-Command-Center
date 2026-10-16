@@ -41,7 +41,7 @@ describe("account Collections counts overdue AIA, like the dashboard chase list"
 describe("billed / month charts include AIA", () => {
   // One invoice ($7k) and an AIA job whose applications added $100k in
   // September and $40k in October.
-  const invoices = [{ status: "sent", subtotal_cents: 700_000, issued_at: "2026-09-10T15:00:00Z", created_at: "2026-09-10T15:00:00Z", opportunity_id: "inv-job" }];
+  const invoices = [{ status: "sent", invoice_number: "INV-0001", subtotal_cents: 700_000, issued_at: "2026-09-10T15:00:00Z", created_at: "2026-09-10T15:00:00Z", opportunity_id: "inv-job" }];
   const apps = [
     { id: "a1", opportunity_id: "aia-job", application_number: 1, status: "paid", frozen_at: "2026-10-01T00:00:00Z", period_to: "2026-09-30" },
     { id: "a2", opportunity_id: "aia-job", application_number: 2, status: "submitted", frozen_at: "2026-10-16T00:00:00Z", period_to: "2026-10-16" },
