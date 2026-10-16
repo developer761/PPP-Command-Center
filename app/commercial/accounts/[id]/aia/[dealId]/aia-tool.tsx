@@ -22,6 +22,7 @@ import {
   listAiaApplications,
   getAiaApplication,
   listAiaLineItemsWithRelease,
+  aiaProvenance,
   createAiaApplication,
   updateAiaApplication,
   deleteAiaApplication,
@@ -665,7 +666,7 @@ export async function AiaTool({
             await reconcileDraftChangeOrderRows(selectedAppId);
           }
           const { listAiaPayments } = await import("@/lib/commercial/aia/payments");
-          const [lines, g702, lienWaiver, payments] = await Promise.all([
+          const [lines, g702, lienWaiver, payments, provenance] = await Promise.all([
             // Release-aware, so the sheet can say WHY line 5 is not the
             // headline percentage of line 4 once a release has gone out.
             listAiaLineItemsWithRelease(application),
@@ -674,6 +675,10 @@ export async function AiaTool({
             // as it is under the invoicing."
             getAiaLienWaiver(selectedAppId).catch(() => null),
             listAiaPayments(selectedAppId),
+            // Who made it and who issued it — so nobody has to ask again.
+            // Best-effort: a certificate must still render if the audit log or
+            // the profile lookup is unavailable.
+            aiaProvenance(application).catch(() => null),
           ]);
           return (
             <>
@@ -686,6 +691,7 @@ export async function AiaTool({
                 origin={variant}
                 lines={lines}
                 g702={g702!}
+                provenance={provenance}
                 basePath={b}
                 exportHref={`/api/commercial/aia/${selectedAppId}/export`}
                 lienWaiver={lienWaiver}

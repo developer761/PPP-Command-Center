@@ -4,12 +4,12 @@
  * page passes the resolved G702, the line items, and the server actions.
  */
 import Link from "next/link";
-import { formatCentsFull } from "@/lib/commercial/invoices/format";
+import { formatCentsFull, fmtEtDate } from "@/lib/commercial/invoices/format";
 import { INPUT_CLS } from "@/lib/commercial/form-classnames";
 import { LienWaiverUpload } from "@/components/commercial/lien-waiver-upload";
 import { AIA_STATUS_META, type AiaG702, type AiaApplicationStatus } from "@/lib/commercial/aia/constants";
 import { lineCompletedStoredCents } from "@/lib/commercial/aia/constants";
-import type { AiaApplication, AiaLineItem } from "@/lib/commercial/aia/db";
+import type { AiaApplication, AiaLineItem, AiaProvenance } from "@/lib/commercial/aia/db";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { AiaLineRow, type AiaLineSaveResult } from "@/components/commercial/aia-line-row";
 
@@ -68,6 +68,7 @@ export function AiaApplicationDetail({
   origin = "",
   lines,
   g702,
+  provenance,
   basePath,
   exportHref,
   editable,
@@ -90,6 +91,8 @@ export function AiaApplicationDetail({
   origin?: string;
   lines: AiaLineItem[];
   g702: AiaG702;
+  /** Who made this certificate and who issued it — see aiaProvenance. */
+  provenance?: AiaProvenance | null;
   basePath: string; // list URL (drop ?app)
   exportHref: string;
   /** Only a Draft is editable — an issued (submitted/paid) certificate is
@@ -259,6 +262,34 @@ export function AiaApplicationDetail({
           </h2>
           {pct != null && <span className="text-[11px] font-semibold text-ppp-charcoal-500">{pct}% complete</span>}
         </div>
+        {/* 🔴 WHO MADE THIS, ON THE SCREEN, SO NOBODY HAS TO ASK AGAIN.
+            Mary, 2026-10-16: "I see this submitted AIA#4 but it was not sent —
+            nor created by Stephanie or myself. Does CC generate this
+            automatically?" Every fact that answers her was already in the
+            database; none of it was here, so the only way to find out was for
+            somebody to query it by hand. */}
+        {provenance && (
+          <p className="-mt-1 mb-2 text-[11px] text-ppp-charcoal-500 leading-snug">
+            {provenance.fromImport ? (
+              <>Brought in from Salesforce — not created by anyone in Command Center.</>
+            ) : (
+              <>
+                Created
+                {provenance.createdBy ? <> by <strong className="font-semibold">{provenance.createdBy}</strong></> : null}
+                {provenance.createdAt ? ` ${fmtEtDate(provenance.createdAt)}` : null}
+                {provenance.issuedAt ? (
+                  <>
+                    {" · marked "}
+                    {AIA_STATUS_META[application.status]?.label.toLowerCase() ?? application.status}
+                    {provenance.issuedBy ? <> by <strong className="font-semibold">{provenance.issuedBy}</strong></> : null}
+                    {` ${fmtEtDate(provenance.issuedAt)}`}
+                  </>
+                ) : null}
+                .
+              </>
+            )}
+          </p>
+        )}
         <div className="grid sm:grid-cols-2 sm:gap-x-8">
           <div>
             <G702Line n="1" label="Original Contract Sum" cents={g702.originalContractCents} />
@@ -353,6 +384,22 @@ export function AiaApplicationDetail({
                 on the Accounting screen in the first place. */}
             <strong>Paid</strong> is set by the payments below, not by hand — record what the GC
             sends and the status follows.
+          </p>
+          {/* The sibling of the sentence above, and the one that was missing.
+              Katie 2026-10-16, relaying Mary: a certificate read "Submitted"
+              and nobody could tell whether it had gone anywhere.
+
+              This is not a new rule — it is the platform's rule, finally said
+              on the screen it applies to. Karan 2026-07-05 on invoices: "No
+              auto-email; Mark as sent flips status only." The staff Guide
+              (roles-delivery.ts) already teaches "Mark as sent to GC does not
+              email anybody... Download the PDF and send it yourself first, or
+              the GC is waiting on something that never arrived." Invoices use
+              the honest verb on the button. AIA got neither, which is why the
+              question had to be asked at all. */}
+          <p className="text-[11.5px] text-ppp-charcoal-700 mt-1">
+            <strong>Submitted</strong> records it here — it does not email the GC. Export the file
+            and send it yourself, or they are waiting on something that never arrived.
           </p>
           <p className="text-[11.5px] text-ppp-charcoal-700 mt-1">
             This application asks for{" "}

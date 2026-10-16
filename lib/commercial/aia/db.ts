@@ -155,6 +155,104 @@ export async function retainageHeldForOpportunity(opportunityId: string): Promis
   }).retainageCents;
 }
 
+/**
+ * WHO MADE THIS CERTIFICATE, AND WHO MARKED IT SUBMITTED.
+ *
+ * Mary, 2026-10-16, via Katie: "I see this submitted AIA#4 but it was not sent
+ * — nor created by Stephanie or myself. Does CC generate this automatically?"
+ *
+ * It does not — the only two things that create an application are buttons on
+ * the AIA screen. That one was Stephanie's, entered 28 September at 17:33 and
+ * marked submitted two minutes later, one of five she keyed in that evening
+ * putting the job's billing history in. Every fact needed to answer her was
+ * already in the database and none of it was on the screen, so the only way to
+ * find out was to ask someone to query it.
+ *
+ * Two deliberate omissions:
+ *
+ *  · There is NO "sent" here, because the platform cannot observe it. Nobody
+ *    emails an AIA application from this system — the operator downloads the
+ *    workbook and sends it themselves. A field stamped on export and labelled
+ *    "sent" would be the same defect as a work order reading "done" because a
+ *    row existed. What is not known is said, not guessed.
+ *
+ *  · The creator can legitimately be nobody. The Salesforce importer writes no
+ *    `created_by_user_id` and no audit row at all, which is precisely how an
+ *    unexplained record arises — so that case gets a sentence of its own
+ *    rather than a blank.
+ */
+export type AiaProvenance = {
+  /** Display name for whoever created it; null when nothing recorded one. */
+  createdBy: string | null;
+  createdAt: string | null;
+  /** Who last moved it OUT of draft, and when. Null while it is still a draft. */
+  issuedBy: string | null;
+  issuedAt: string | null;
+  /** True when there is no creator AND no audit history — i.e. the importer. */
+  fromImport: boolean;
+};
+
+export async function aiaProvenance(app: AiaApplication): Promise<AiaProvenance> {
+  const sb = commercialDb();
+  const ids = new Set<string>();
+  if (app.created_by_user_id) ids.add(app.created_by_user_id);
+
+  // The status change that issued it. Read the audit trail rather than
+  // `frozen_at` alone, because frozen_at says WHEN and never WHO.
+  const { data: log } = await sb
+    .from("commercial_audit_log")
+    .select("at, user_id, before_json, after_json")
+    .eq("table_name", "commercial_aia_applications")
+    .eq("row_id", app.id)
+    .eq("action", "update")
+    .order("at", { ascending: true });
+
+  let issuedBy: string | null = null;
+  let issuedAt: string | null = null;
+  for (const row of (log ?? []) as Array<{
+    at: string;
+    user_id: string | null;
+    before_json: { status?: string } | null;
+    after_json: { status?: string } | null;
+  }>) {
+    const from = row.before_json?.status;
+    const to = row.after_json?.status;
+    // The FIRST draft→issued move is the one that sent it out; a later
+    // submitted→paid is a different fact and does not overwrite it.
+    if (from === "draft" && to && to !== "draft") {
+      issuedAt = row.at;
+      issuedBy = row.user_id;
+      if (row.user_id) ids.add(row.user_id);
+      break;
+    }
+  }
+
+  const names = new Map<string, string>();
+  if (ids.size > 0) {
+    const { data: profs } = await sb
+      .from("profiles")
+      .select("user_id, full_name, email")
+      .in("user_id", [...ids]);
+    for (const pr of (profs ?? []) as Array<{ user_id: string; full_name: string | null; email: string | null }>) {
+      // A removed profile still has an id on the row; say the id rather than
+      // render a blank that reads as "nobody".
+      names.set(pr.user_id, (pr.full_name?.trim() || pr.email?.trim() || "a removed user"));
+    }
+  }
+  const nameOf = (id: string | null) =>
+    id ? names.get(id) ?? "a removed user" : null;
+
+  return {
+    createdBy: nameOf(app.created_by_user_id),
+    createdAt: app.created_at ?? null,
+    issuedBy: app.status === "draft" ? null : nameOf(issuedBy),
+    // Fall back to frozen_at: an application issued before the audit log
+    // covered this table has a freeze stamp and no row explaining it.
+    issuedAt: app.status === "draft" ? null : issuedAt ?? app.frozen_at ?? null,
+    fromImport: !app.created_by_user_id && (log ?? []).length === 0,
+  };
+}
+
 export async function getAiaApplication(id: string): Promise<AiaApplication | null> {
   const sb = commercialDb();
   const { data } = await sb
