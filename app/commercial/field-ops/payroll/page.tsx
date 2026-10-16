@@ -91,10 +91,14 @@ export default async function PayrollPage({ searchParams }: { searchParams: Prom
             access. The route now also refuses to lock without `confirm=1`, so
             a prefetch or a pasted URL cannot do it either. */}
         {rows.length > 0 ? (
-          <form method="get" action="/api/commercial/field-ops/payroll/export">
+          /* POST, not GET. The route LOCKS hours irreversibly, and a GET that
+             locks payroll is a link that locks payroll: the session cookie is
+             SameSite=Lax, which is sent on a top-level cross-site GET, so a
+             crafted link opened by an admin did it. Lax is NOT sent on a
+             cross-site POST. */
+          <form method="post" action="/api/commercial/field-ops/payroll/export">
             <input type="hidden" name="from" value={from} />
             <input type="hidden" name="to" value={to} />
-            <input type="hidden" name="confirm" value="1" />
             <ConfirmSubmitButton
               message={`Export and LOCK approved hours for ${fmtEtDate(periodStart)} – ${fmtEtDate(periodEnd)}? Locked hours cannot be edited, approved or deleted afterwards. Re-download re-issues the file without locking anything.`}
               className="inline-flex items-center px-4 rounded-lg text-[13px] font-semibold min-h-[44px] bg-cc-brand-600 text-white hover:bg-cc-brand-700"
