@@ -1,4 +1,5 @@
 import "server-only";
+import { afterResponse } from "@/lib/notifications/after-response";
 
 import { getProfileByUserId, logViewAs } from "@/lib/auth/profile";
 import { readProxyCookie } from "@/lib/auth/proxy";
@@ -112,15 +113,17 @@ export async function resolveViewer(
     const last = auditDedupe.get(seenKey) ?? 0;
     if (now - last > AUDIT_DEDUPE_WINDOW_MS) {
       auditDedupe.set(seenKey, now);
-      void logViewAs({
-        admin_user_id: user.id,
-        admin_email: profile.email,
-        target_sf_user_id: viewAsUserId,
-        target_label: null, // backfilled from snapshot.reps in a follow-up
-        path: requestMeta?.path ?? null,
-        user_agent: requestMeta?.userAgent ?? null,
-        ip_address: requestMeta?.ipAddress ?? null,
-      });
+      afterResponse("view-as audit row", () =>
+        logViewAs({
+          admin_user_id: user.id,
+          admin_email: profile.email,
+          target_sf_user_id: viewAsUserId,
+          target_label: null, // backfilled from snapshot.reps in a follow-up
+          path: requestMeta?.path ?? null,
+          user_agent: requestMeta?.userAgent ?? null,
+          ip_address: requestMeta?.ipAddress ?? null,
+        })
+      );
     }
   }
 

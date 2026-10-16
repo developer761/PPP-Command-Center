@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { notifySupplierReply } from "@/lib/notifications/supplier-reply";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
@@ -464,14 +465,20 @@ export async function POST(request: Request) {
    * reply lands twice. notifySupplierReply never throws.
    */
   if (!insertErr && kind === "supplier_reply" && linkedOrderId) {
-    void notifySupplierReply({
-      orderId: linkedOrderId,
-      workOrderId: linkedWorkOrderId,
-      fromEmail: fromEmail.toLowerCase(),
-      fromName,
-      subject,
-      bodyText,
-    });
+    /* afterResponse, not void: the 200 still goes back immediately — Resend
+       must not retry — but on Vercel a detached promise dies with the
+       response, so the bell and the email telling somebody a vendor replied
+       could simply never happen. */
+    afterResponse("vendor reply notification", () =>
+      notifySupplierReply({
+        orderId: linkedOrderId,
+        workOrderId: linkedWorkOrderId,
+        fromEmail: fromEmail.toLowerCase(),
+        fromName,
+        subject,
+        bodyText,
+      })
+    );
   }
 
   if (insertErr) {

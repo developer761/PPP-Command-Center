@@ -1,4 +1,5 @@
 import { MACHINE_NOTE_HEADINGS } from "@/lib/customer-form/machine-notes";
+import { afterResponse } from "@/lib/notifications/after-response";
 import { roomLabelFrom } from "@/lib/customer-form/room-label";
 import { sanitizeFinishes } from "@/lib/customer-form/finish-sanitize";
 import { NextResponse } from "next/server";
@@ -1111,38 +1112,55 @@ export async function POST(
       // Vercel, the receipt's one button became a dead relative href — the
       // only thing in the email the customer is asked to click.
       const base = (process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
-      void sendCustomerFormConfirmation({
-        to: recipient.email,
-        customerName: recipient.name ?? status.token.customer_name,
-        workOrderNumber: fresh.workOrderNumber,
-        formUrl: `${base}/select/${tokenFromUrl}`,
-        rooms,
-        globalNotes: receiptNotes,
-        isReedit,
-        colorDeadline: status.token.color_deadline ?? null,
-        // CC the estimator who sent the form, so a customer who hits reply
-        // reaches a person. Omitted before, so replies went nowhere.
-        senderEmail: senderIdentity?.email ?? null,
-        senderName: senderIdentity?.name ?? null,
-      })
-        .then((res) => {
-          // sendEmail RETURNS {ok:false}; it does not throw. The .catch below
-          // could never see a refused send — no log, no alert, and a customer
-          // with no confirmation that anybody received their colors.
-          if (!res?.ok) {
-            console.error(
-              `[customer-form] customer receipt NOT SENT for token ${tokenFromUrl.slice(0, 8)}… → ${recipient.email}: ${
-                (res as { error?: string } | null)?.error ?? "unknown"
-              }`
-            );
-          }
+      // Captured before the closure: the `if (recipient.email)` above does
+      // not narrow inside a callback, and tsc is right to say so.
+      const receiptTo = recipient.email;
+      /**
+       * KEPT ALIVE PAST THE RESPONSE, not merely detached.
+       *
+       * `void` meant the receipt was sent "later" — and on Vercel the
+       * instance is frozen the moment the response is written, so anything
+       * still awaiting is dropped with no error and no log. The customer's
+       * one confirmation that PPP received their colors could simply never
+       * be sent, intermittently, with nothing anywhere to say so.
+       *
+       * afterResponse registers the work with the request so it survives.
+       * The customer still gets their thank-you page immediately.
+       */
+      afterResponse("customer receipt email", () =>
+        sendCustomerFormConfirmation({
+          to: receiptTo,
+          customerName: recipient.name ?? status.token.customer_name,
+          workOrderNumber: fresh.workOrderNumber,
+          formUrl: `${base}/select/${tokenFromUrl}`,
+          rooms,
+          globalNotes: receiptNotes,
+          isReedit,
+          colorDeadline: status.token.color_deadline ?? null,
+          // CC the estimator who sent the form, so a customer who hits reply
+          // reaches a person. Omitted before, so replies went nowhere.
+          senderEmail: senderIdentity?.email ?? null,
+          senderName: senderIdentity?.name ?? null,
         })
-        .catch((err) => {
-          console.error(
-            `[customer-form] customer receipt threw for token ${tokenFromUrl.slice(0, 8)}…:`,
-            err instanceof Error ? err.message : err
-          );
-        });
+          .then((res) => {
+            // sendEmail RETURNS {ok:false}; it does not throw. The .catch below
+            // could never see a refused send — no log, no alert, and a customer
+            // with no confirmation that anybody received their colors.
+            if (!res?.ok) {
+              console.error(
+                `[customer-form] customer receipt NOT SENT for token ${tokenFromUrl.slice(0, 8)}… → ${recipient.email}: ${
+                  (res as { error?: string } | null)?.error ?? "unknown"
+                }`
+              );
+            }
+          })
+          .catch((err) => {
+            console.error(
+              `[customer-form] customer receipt threw for token ${tokenFromUrl.slice(0, 8)}…:`,
+              err instanceof Error ? err.message : err
+            );
+          })
+      );
     } else if (!recipient.email && !receiptIsEmpty(rooms, receiptNotes)) {
       // Worth a line: the colors landed, the customer just has nowhere to be
       // told about it. Silence here is what made the class invisible.

@@ -1,4 +1,5 @@
 import "server-only";
+import { afterResponse } from "@/lib/notifications/after-response";
 
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { alertMaterialsFailure } from "@/lib/alerts/materials-alerts";
@@ -264,12 +265,14 @@ export async function writeSf(
         // A failed alert must never turn a failed write into a thrown error.
       });
   } else {
-    void alertMaterialsFailure({
-      kind: "salesforce_write_rejected",
-      summary: `Salesforce refused to update ${attempt.sObject}. The hub shows this saved; Salesforce does not.`,
-      workOrder: ctx.workOrderNumber ?? null,
-      detail: failureDetail,
-    });
+    afterResponse("materials failure alert", () =>
+      alertMaterialsFailure({
+        kind: "salesforce_write_rejected",
+        summary: `Salesforce refused to update ${attempt.sObject}. The hub shows this saved; Salesforce does not.`,
+        workOrder: ctx.workOrderNumber ?? null,
+        detail: failureDetail,
+      })
+    );
   }
 
   return {
