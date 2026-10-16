@@ -86,7 +86,18 @@ const gallonsOf = (e: GallonEstimate) =>
   overrideTotal({ buckets: e.buckets, cans: e.cans, unit: e.unit }) * (e.unit === "qt" ? 0.25 : 1);
 
 describe("whatever the rules do, these must hold", () => {
-  it("1000 random jobs produce only finite, sane, orderable numbers", () => {
+  /**
+   * 15s, not the 5s default. This builds and estimates a thousand random
+   * jobs; alone it takes about 700ms, but on 2026-10-15 it timed out inside
+   * a full `npm run gates` run and refused a push that was otherwise fine.
+   *
+   * The failure said "Test timed out in 5000ms" — no invariant was
+   * violated — and it passed on its own eight times immediately after. A
+   * gate that fails for reasons unrelated to the change teaches people to
+   * re-run until green, which is how a real red gets waved through. The
+   * work here is genuine, so it gets room rather than fewer cases.
+   */
+  it("1000 random jobs produce only finite, sane, orderable numbers", { timeout: 15_000 }, () => {
     // Every assertion below lives inside `for (const e of out)`. If the
     // estimator returned nothing at all — for every seed — this test would
     // pass completely, having checked nothing. 9 of these seeds legitimately

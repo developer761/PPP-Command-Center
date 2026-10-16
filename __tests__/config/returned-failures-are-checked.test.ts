@@ -93,3 +93,66 @@ describe("a returned failure is looked at", () => {
     expect(read("lib/alerts/materials-alerts.ts")).toContain("Nobody was told about this failure");
   });
 });
+
+describe("a Supabase write result is looked at too", () => {
+  /**
+   * Same convention, bigger blast radius: supabase-js RESOLVES with
+   * `{ error }` and does not throw, so a try/catch around a write is not a
+   * check and a refused write is silent data loss.
+   *
+   * Found on 2026-10-15, worst first:
+   *
+   *   sf_writes_audit  the table Settings → Health counts to report "N
+   *                    customer-form writes landed in Salesforce". A silent
+   *                    hole there does not merely lose a row, it makes a
+   *                    monitoring surface wrong in the reassuring direction.
+   *   inbox heal       MY OWN code from the same day. The give-up after
+   *                    three attempts depends entirely on the counter write
+   *                    landing; unchecked, a repeatedly-failing update meant
+   *                    the cap never engaged and the retry was unbounded —
+   *                    the exact bug the counter was added to stop.
+   *   markSent         a refused update left a token looking never-sent
+   *                    while the form sat in the customer's inbox.
+   */
+  const WRITE_AS_STATEMENT =
+    /^[ \t]*await\s+(sb|supabase|db\(\))[\s\S]{0,160}?\.(insert|update|upsert|delete)\s*\(/m;
+
+  /**
+   * Deliberately unchecked, with a reason.
+   *
+   *   queries.ts  snapshot_cache upserts — a cache. A refused write costs
+   *               the next reader a rebuild and nothing else, and the
+   *               function already logs and swallows by design.
+   */
+  const ALLOWED_UNCHECKED = new Set<string>(["lib/salesforce/queries.ts"]);
+
+  const mine = [
+    "app/api/admin/inbox/route.ts",
+    "lib/salesforce/writeback.ts",
+    "lib/customer-form/tokens.ts",
+  ];
+
+  it("the writes fixed today bind their error", () => {
+    for (const f of mine) {
+      expect(read(f), `${f} has a write whose error goes nowhere`).not.toMatch(WRITE_AS_STATEMENT);
+    }
+  });
+
+  it("the heal's give-up cannot be defeated by a silent write", () => {
+    const src = read("app/api/admin/inbox/route.ts");
+    expect(src).toMatch(/const \{ error: markErr \} = await sb/);
+    expect(src).toMatch(/if \(markErr\)/);
+  });
+
+  it("the audit table Health counts says when it loses a row", () => {
+    const src = read("lib/salesforce/writeback.ts");
+    expect(src).toMatch(/const \{ error: auditErr \} = await sb\.from\("sf_writes_audit"\)/);
+    expect(src).toMatch(/if \(auditErr\)/);
+  });
+
+  it("the cache allowlist still describes something real", () => {
+    for (const f of ALLOWED_UNCHECKED) {
+      expect(read(f), `${f} no longer has an unchecked write — drop it`).toMatch(WRITE_AS_STATEMENT);
+    }
+  });
+});

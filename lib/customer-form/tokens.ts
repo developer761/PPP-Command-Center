@@ -234,7 +234,13 @@ export async function markSent(
   // column doesn't exist yet (migration 010 not run) the UPDATE silently
   // ignores the unknown key.
   if (resendMessageId) patch.resend_message_id_invite = resendMessageId;
-  await sb.from("customer_form_tokens").update(patch).eq("token", token);
+  // Supabase RETURNS { error }. Unchecked, a refused update left the token
+  // looking never-sent — the form is in the customer's inbox, the hub says
+  // it was never sent, and delivery events have no token to thread to.
+  const { error } = await sb.from("customer_form_tokens").update(patch).eq("token", token);
+  if (error) {
+    console.error(`[customer-form] could not stamp sent_at on token ${token.slice(0, 8)}…: ${error.message}`);
+  }
 }
 
 /**
@@ -246,7 +252,7 @@ export async function markOpened(
   meta?: { ip?: string | null; userAgent?: string | null }
 ): Promise<void> {
   const sb = adminClient();
-  await sb
+  const { error } = await sb
     .from("customer_form_tokens")
     .update({
       opened_at: new Date().toISOString(),
@@ -255,6 +261,11 @@ export async function markOpened(
     })
     .eq("token", token)
     .is("opened_at", null); // only set if not already opened
+  // Not fatal — but the Materials page prints "N opened" from this column,
+  // so a silent refusal understates it rather than showing nothing.
+  if (error) {
+    console.warn(`[customer-form] could not record open for token ${token.slice(0, 8)}…: ${error.message}`);
+  }
 }
 
 /**
@@ -336,10 +347,20 @@ export async function markResubmitted(
  */
 export async function markWoliSnapshotTime(token: string): Promise<void> {
   const sb = adminClient();
-  await sb
+  // Unchecked, a refused update left no render-time stamp, and the
+  // conflict check on submit then has nothing to compare against — the
+  // "your rep just updated this" warning is the thing that silently stops
+  // working, in the direction of not warning.
+  const { error } = await sb
     .from("customer_form_tokens")
     .update({ woli_snapshot_at: new Date().toISOString() })
     .eq("token", token);
+  if (error) {
+    console.warn(
+      `[customer-form] could not stamp woli_snapshot_at on token ${token.slice(0, 8)}… — ` +
+        `a mid-form Salesforce change will not be flagged on submit: ${error.message}`
+    );
+  }
 }
 
 /**

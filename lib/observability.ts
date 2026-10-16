@@ -1,4 +1,5 @@
 import "server-only";
+import { afterResponse } from "@/lib/notifications/after-response";
 
 /**
  * Observability — Slack-webhook alerting for production failures.
@@ -199,16 +200,28 @@ async function postToSlack(webhookUrl: string, payload: unknown): Promise<void> 
  * Use for: cron failures, webhook signature mismatches sustained,
  * total wipe-outs of a feature, send failures that block real users.
  */
+/**
+ * These stay synchronous on purpose — a caller reporting a failure should
+ * not have to await Slack. But `void report(...)` meant the report itself
+ * was detached, and on Vercel a detached promise dies with the response.
+ * The thing that tells us something broke could be the thing that silently
+ * does not happen, which is the worst possible member of that class.
+ *
+ * afterResponse keeps the signature (still returns void, still does not
+ * block) and keeps the work alive past the response. Outside a request —
+ * scripts, crons, tests — it falls back to a detached promise, which is
+ * exactly what this did before.
+ */
 export function reportError(input: ReportInput): void {
-  void report({ ...input, severity: "critical" });
+  afterResponse("report:critical", () => report({ ...input, severity: "critical" }));
 }
 
 export function reportWarn(input: ReportInput): void {
-  void report({ ...input, severity: input.severity ?? "warn" });
+  afterResponse("report:warn", () => report({ ...input, severity: input.severity ?? "warn" }));
 }
 
 export function reportInfo(input: ReportInput): void {
-  void report({ ...input, severity: "info" });
+  afterResponse("report:info", () => report({ ...input, severity: "info" }));
 }
 
 /** Shared dispatcher. Handles dedup, startup grace, console fallback,

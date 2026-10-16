@@ -296,7 +296,12 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
   };
 
   return (
-    <div className="relative flex-1 max-w-xl" ref={wrapperRef}>
+    /*
+     * `max-sm:static` when open, so the open panel below can position itself
+     * against the TOPBAR rather than against this box. On a phone this box is
+     * whatever the flex row has left over, which is the bug.
+     */
+    <div className={`relative flex-1 max-w-xl${open ? " max-sm:static" : ""}`} ref={wrapperRef}>
       {!open ? (
         <button
           type="button"
@@ -315,7 +320,28 @@ export default function GlobalSearch({ snapshot: initial = null }: Props) {
           </kbd>
         </button>
       ) : (
-        <div className="relative">
+        /*
+         * 🔴 ON A PHONE THE OPEN SEARCH OVERLAYS THE WHOLE TOPBAR.
+         *
+         * Karan, 2026-10-15, with a screenshot: "the search bar is very
+         * squished, you can't see the proposed results (on mobile)". The
+         * results panel is `left-0 right-0` on this box, and this box is
+         * `flex-1` in a row whose right cluster is `shrink-0` — so at 375px
+         * the hamburger and the rep/sync/bell/avatar cluster leave search
+         * about 100px, and both the input and the results inherit it. The
+         * results came out as a column of bare "ACCT" and "WO" badges with
+         * every name clipped off, and you could not read what you had typed.
+         *
+         * The topbar already carries a note from 2026-06-08 about the same
+         * squeeze — the greeting was hidden below `sm` to buy space. That
+         * bought some, and the cluster on the right then spent it. Anything
+         * that depends on leftover room in this row will keep breaking as
+         * controls are added, so the open state stops depending on it:
+         * absolute against the topbar (which is why it has `relative`), inset
+         * to the bar's own px-4, vertically centred on the row. The closed
+         * button is untouched, and `sm:` and up are exactly as before.
+         */
+        <div className="relative max-sm:absolute max-sm:inset-x-4 max-sm:top-1/2 max-sm:-translate-y-1/2 max-sm:z-40">
           <span className="absolute inset-y-0 left-3 flex items-center text-ppp-charcoal-300 pointer-events-none">
             <IconSearch />
           </span>

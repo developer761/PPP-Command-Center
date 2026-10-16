@@ -97,7 +97,9 @@ export default function Topbar({
          therefore ran underneath the status bar with nothing behind it.
          The padding puts the bar's own white under the clock; sticky keeps it
          there while the page moves. */
-      className="sticky top-0 z-30 bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3"
+      /* `relative` so the search can overlay this whole row on a phone — see
+         the open-state classes in global-search.tsx. */
+      className="relative sticky top-0 z-30 bg-white border-b border-ppp-charcoal-100 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center gap-3"
       style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
     >
       <div className="flex items-center gap-3 min-w-0 shrink-0">
