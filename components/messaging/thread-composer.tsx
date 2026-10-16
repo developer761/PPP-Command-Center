@@ -41,11 +41,13 @@ const REFUSAL_LABEL: Record<string, string> = {
   office_closed: "It is outside the hours PPP sends in, so this would not go out yet.",
 };
 
-export function ThreadComposer({ conversationId, ended, heldByOther, holderName }: {
+export function ThreadComposer({ conversationId, ended, heldByOther, holderName, sendingIsLive }: {
   conversationId: string;
   ended: boolean;
   heldByOther: boolean;
   holderName: string | null;
+  /** transportChoice().live, read by the page. Never assumed here. */
+  sendingIsLive: boolean;
 }) {
   const [body, setBody] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -250,8 +252,9 @@ export function ThreadComposer({ conversationId, ended, heldByOther, holderName 
       )}
 
       <p className="text-[11px] text-ppp-charcoal-400 leading-relaxed">
-        Goes through the same checks as everything else — the opt-out list, the
-        daily cap and this workspace&apos;s hours all still apply.
+        {sendingIsLive
+          ? "Goes to the customer's phone, through the same checks as everything else: the opt-out list, the daily cap and this workspace's hours all still apply."
+          : "The carrier is not connected yet, so nothing reaches the customer's phone. The same checks still run: the opt-out list, the daily cap and this workspace's hours."}
       </p>
     </section>
   );

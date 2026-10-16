@@ -115,7 +115,7 @@ export default function CampaignEditor({
               <button key={w.id} type="button" onClick={() => setPreviewWs(w.id)}
                 aria-pressed={w.id === previewWs}
                 className={[
-                  "shrink-0 min-h-[36px] px-3 rounded-lg text-[12px] font-medium whitespace-nowrap touch-manipulation",
+                  "shrink-0 min-h-[44px] px-3 rounded-lg text-[12px] font-medium whitespace-nowrap touch-manipulation",
                   w.id === previewWs ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
                 ].join(" ")}>
                 {w.name}
@@ -171,20 +171,29 @@ export default function CampaignEditor({
         </div>
         <ul className="divide-y divide-ppp-charcoal-100">
           {workflows.map((f) => (
-            <li key={f.id}>
-              <button type="button" onClick={() => void toggleFlow(f)} disabled={busy}
-                aria-pressed={f.isActive}
-                className="w-full min-h-[52px] px-4 flex items-center justify-between gap-3 touch-manipulation disabled:opacity-50">
-                <span className="text-[13px] text-ppp-charcoal truncate">
-                  {workspaces.find((w) => w.id === f.workspaceId)?.name ?? f.name}
-                </span>
-                <span className={[
-                  "shrink-0 h-6 w-10 rounded-full flex items-center px-0.5 transition-colors",
-                  f.isActive ? "bg-ppp-charcoal justify-end" : "bg-ppp-charcoal-200 justify-start",
-                ].join(" ")}>
-                  <span className="h-5 w-5 rounded-full bg-white" />
-                </span>
-              </button>
+            <li key={f.id} className="min-h-[52px] px-4 flex items-center justify-between gap-3">
+              {/* ONLY THE SWITCH IS THE CONTROL. The whole 52px row was the
+                  button, so a tap meant to scroll or to read a workspace name
+                  switched a live campaign on for that number. */}
+              {(() => {
+                const name = workspaces.find((w) => w.id === f.workspaceId)?.name ?? f.name;
+                return (
+                  <>
+                    <span id={`flow-${f.id}`} className="text-[13px] text-ppp-charcoal truncate">{name}</span>
+                    <button type="button" role="switch" aria-checked={f.isActive}
+                      aria-labelledby={`flow-${f.id}`}
+                      onClick={() => void toggleFlow(f)} disabled={busy}
+                      className="shrink-0 -mr-2 min-h-[44px] min-w-[56px] flex items-center justify-center touch-manipulation disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ppp-charcoal/30 rounded-full">
+                      <span aria-hidden className={[
+                        "h-6 w-10 rounded-full flex items-center px-0.5 transition-colors",
+                        f.isActive ? "bg-ppp-charcoal justify-end" : "bg-ppp-charcoal-200 justify-start",
+                      ].join(" ")}>
+                        <span className="h-5 w-5 rounded-full bg-white" />
+                      </span>
+                    </button>
+                  </>
+                );
+              })()}
             </li>
           ))}
         </ul>

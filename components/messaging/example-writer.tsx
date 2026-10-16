@@ -104,7 +104,7 @@ export default function ExampleWriter({ tags, initialTagKey }: { tags: Tag[]; in
                   <button key={t.key} type="button" onClick={() => toggle(t.key)}
                     aria-pressed={picked.includes(t.key)}
                     className={[
-                      "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation text-left",
+                      "min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation text-left",
                       picked.includes(t.key)
                         ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                         : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",
@@ -155,7 +155,7 @@ export default function ExampleWriter({ tags, initialTagKey }: { tags: Tag[]; in
                       onClick={() => setTurns((ts) => ts.map((x, n) => (n === i ? { ...x, who: w } : x)))}
                       aria-pressed={t.who === w}
                       className={[
-                        "min-h-[32px] px-2.5 rounded-lg text-[11.5px] font-semibold touch-manipulation",
+                        "min-h-[44px] px-2.5 rounded-lg text-[11.5px] font-semibold touch-manipulation",
                         t.who === w ? "bg-ppp-charcoal text-white" : "bg-ppp-charcoal-50 text-ppp-charcoal-500",
                       ].join(" ")}>
                       {w === "customer" ? "Customer" : "Emily"}
@@ -165,7 +165,7 @@ export default function ExampleWriter({ tags, initialTagKey }: { tags: Tag[]; in
                 {turns.length > 2 && (
                   <button type="button" onClick={() => removeTurn(i)}
                     aria-label={`Remove message ${i + 1}`}
-                    className="min-h-[32px] px-2 text-[12px] font-medium text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
+                    className="min-h-[44px] px-2 text-[12px] font-medium text-ppp-charcoal-400 hover:text-ppp-charcoal touch-manipulation min-h-[44px] sm:min-h-0">
                     Remove
                   </button>
                 )}

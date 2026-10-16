@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadThread } from "@/lib/messaging/db";
-import { formatUs, type E164 } from "@/lib/messaging/phone";
 import { activeTags } from "@/lib/messaging/authoring";
 import { HandoffBar } from "@/components/messaging/handoff-bar";
 import { assertMessagingAccess } from "@/lib/messaging/auth";
@@ -9,7 +8,7 @@ import { ThreadTeach } from "@/components/messaging/thread-teach";
 import { ThreadComposer } from "@/components/messaging/thread-composer";
 import { transportChoice } from "@/lib/messaging/transport-config";
 import type { AuthoredTurn } from "@/lib/messaging/authoring";
-import { agentLabel, isBotAgentKey } from "@/lib/messaging/staff-copy";
+import { agentLabel, isBotAgentKey, phoneForDisplay } from "@/lib/messaging/staff-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -64,12 +63,12 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
 
       <header className="mt-1 mb-4">
         <h1 className="text-xl font-bold text-ppp-charcoal truncate">
-          {c.customer_name || formatUs(c.customer_phone as E164)}
+          {c.customer_name || phoneForDisplay(c.customer_phone)}
         </h1>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ppp-charcoal-500">
           <span>{c.workspace_name}</span>
           <span className="text-ppp-charcoal-300">·</span>
-          <span className="font-mono">{formatUs(c.customer_phone as E164)}</span>
+          <span className="font-mono">{phoneForDisplay(c.customer_phone)}</span>
         </div>
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <span className={[
@@ -146,6 +145,7 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
         ended={ended}
         heldByOther={!!c.owning_user_id && !isMine}
         holderName={holder}
+        sendingIsLive={transportChoice().live}
       />
 
       {/* WHETHER SENDING IS ON IS A RUNTIME FACT, and this screen asserted it
@@ -159,7 +159,6 @@ export default async function Thread({ params }: { params: Promise<{ conversatio
         turns={turns}
         tags={tags.map((t) => ({ key: t.key, section: t.section, label: t.label }))}
         lastWasCustomer={lastWasCustomer}
-        sendingIsLive={transportChoice().live}
       />
     </main>
   );

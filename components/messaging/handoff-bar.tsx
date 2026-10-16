@@ -210,7 +210,7 @@ function ReasonPicker({
             onClick={() => setReason(r)}
             aria-pressed={reason === r}
             className={[
-              "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+              "min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
               reason === r
                 ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                 : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",

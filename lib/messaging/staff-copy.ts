@@ -49,6 +49,20 @@ export function agentLabel(name: string | null | undefined, opts: { workflow?: b
   return `${BOT_PERSONA}, ${job}`;
 }
 
+/* ─────────────────────────────── numbers ─────────────────────────────── */
+
+/**
+ * A customer's number for a screen. formatUs hands back whatever it cannot
+ * format, so a stored "+15550152" (seven digits after the +1) showed as
+ * though it were a number; it now says it is not one.
+ */
+export function phoneForDisplay(raw: string | null | undefined): string {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(raw ?? "");
+  if (m) return `(${m[1]}) ${m[2]}-${m[3]}`;
+  if (!raw?.trim()) return "No number";
+  return `${raw.trim()} (not a valid number)`;
+}
+
 /* ─────────────────────────── what it is doing ─────────────────────────── */
 
 const INTENT: Record<string, string> = {

@@ -103,7 +103,7 @@ export default async function Automations({
           {campaigns.map((c) => (
             <Link key={c.id} href={`/messaging/automations?c=${c.id}`}
               className={[
-                "shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
+                "shrink-0 min-h-[44px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
                 c.id === campaign.id ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
               ].join(" ")}>
               {c.name}

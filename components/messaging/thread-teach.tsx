@@ -20,8 +20,12 @@
  * ThreadComposer, whose Send calls gatedSend and really does reach a phone.
  * The dashboard and the review queue both read transportChoice() and say what
  * is actually happening; this screen would have gone on announcing that
- * sending was off from the morning PPP went live. The page passes the answer
- * in now.
+ * sending was off from the morning PPP went live. That line now lives in
+ * ThreadComposer, which is the thing that sends, so a thread states one
+ * state, once.
+ *
+ * Offset by the sidebar's width on desktop: fixed to left-0, it covered the
+ * workspace list.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,13 +37,10 @@ export function ThreadTeach({
   turns,
   tags,
   lastWasCustomer,
-  sendingIsLive,
 }: {
   turns: AuthoredTurn[];
   tags: Tag[];
   lastWasCustomer: boolean;
-  /** transportChoice().live, read by the page. Never assumed here. */
-  sendingIsLive: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -72,7 +73,7 @@ export function ThreadTeach({
 
   if (saved) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-ppp-charcoal-100 px-4 pt-3 pb-safe">
+      <div className="fixed bottom-0 left-0 lg:left-[268px] right-0 bg-white border-t border-ppp-charcoal-100 px-4 pt-3 pb-safe">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 pb-3">
           <p className="text-[13px] text-ppp-charcoal-700">
             Saved to training. The bot can use this from its next reply.
@@ -90,14 +91,16 @@ export function ThreadTeach({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-ppp-charcoal-100 px-4 pt-3 pb-safe">
+    <div className="fixed bottom-0 left-0 lg:left-[268px] right-0 bg-white border-t border-ppp-charcoal-100 px-4 pt-3 pb-safe">
       <div className="max-w-3xl mx-auto">
         {!open ? (
           <div className="flex items-center justify-between gap-3 pb-3">
+            {/* About teaching only. Whether a reply can be SENT is the
+                composer's to say, once, above: this line used to say
+                "Sending is off" under a composer that said the conversation
+                had ended, two states for one thread. */}
             <p className="text-[12px] text-ppp-charcoal-500 leading-snug">
-              {sendingIsLive
-                ? "Replies you send from here go to the customer's phone."
-                : "Sending is off until the carrier is connected."}
+              Show Emily a better reply. It is saved to training and never sent.
             </p>
             <button
               type="button"
@@ -146,7 +149,7 @@ export function ThreadTeach({
                     onClick={() => toggle(t.key)}
                     aria-pressed={on}
                     className={[
-                      "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+                      "min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
                       on
                         ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                         : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",

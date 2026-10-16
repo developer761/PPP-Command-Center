@@ -70,8 +70,15 @@ describe("no screen hardcodes what the carrier is doing", () => {
   it("the thread screen in particular reads it", () => {
     // The one that was wrong, pinned by name as well as by shape: it is the
     // most-visited screen and the only one sitting under a live composer.
+    //
+    // The line moved from ThreadTeach to ThreadComposer (2026-10-16), the
+    // component that sends, so an ended thread states one state rather than
+    // "cannot be replied to" above "Sending is off". Pinned where it is now,
+    // and the teach panel must not grow its own copy back.
+    const composer = code("components/messaging/thread-composer.tsx");
+    expect(composer).toMatch(/sendingIsLive/);
     const teach = code("components/messaging/thread-teach.tsx");
-    expect(teach).toMatch(/sendingIsLive/);
+    expect(teach).not.toMatch(/carrier|sending is (on|off)/i);
     const page = code("app/messaging/[conversationId]/page.tsx");
     expect(page).toMatch(/transportChoice\(\)/);
     expect(page).toMatch(/sendingIsLive=\{/);

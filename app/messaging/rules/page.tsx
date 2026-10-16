@@ -63,9 +63,13 @@ export default async function RulesPage() {
             >
               <div className="flex items-baseline gap-2.5">
                 <span className="font-mono text-[12px] font-semibold text-ppp-charcoal-500 shrink-0">{r.code}</span>
-                {r.severity === "critical" && (
-                  <span className="shrink-0 rounded-full bg-ppp-orange-50 px-2 py-0.5 text-[10px] font-semibold text-ppp-orange-700">
-                    critical
+                {/* The exception, not the default. 32 of the 37 live rules are
+                    critical in Kate's sheet (2026-10-16), so an orange
+                    "critical" on nearly every row said nothing; the five mild
+                    ones are what a reader cannot otherwise tell. */}
+                {r.severity === "mild" && (
+                  <span className="shrink-0 rounded-full bg-ppp-charcoal-100 px-2 py-0.5 text-[10px] font-semibold text-ppp-charcoal-600">
+                    mild
                   </span>
                 )}
                 {/* THE STATEMENT IS THE TITLE, because it is the rule.

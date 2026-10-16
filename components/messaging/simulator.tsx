@@ -375,7 +375,7 @@ export default function Simulator({
                   <button key={t.key} type="button" onClick={() => toggleTag(t.key)}
                     aria-pressed={on}
                     className={[
-                      "min-h-[36px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
+                      "min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium border touch-manipulation",
                       on
                         ? "bg-ppp-charcoal text-white border-ppp-charcoal"
                         : "bg-white text-ppp-charcoal-600 border-ppp-charcoal-200",
@@ -654,7 +654,7 @@ export default function Simulator({
                   {(["good", "acceptable", "wrong"] as const).map((v) => (
                     <button key={v} type="button" onClick={() => grade(i, { verdict: v })}
                       className={[
-                        "min-h-[30px] px-2 rounded-md text-[11px] font-medium touch-manipulation",
+                        "min-h-[44px] px-2 rounded-md text-[11px] font-medium touch-manipulation",
                         t.verdict === v
                           ? v === "wrong" ? "bg-ppp-orange-50 text-ppp-orange-700 ring-1 ring-ppp-orange-500" : "bg-ppp-charcoal text-white"
                           : "border border-ppp-charcoal-200 text-ppp-charcoal-500",
@@ -670,7 +670,7 @@ export default function Simulator({
                       looked impossible until you had guessed that. */}
                   {!t.showNote && t.verdictNote === undefined && (
                     <button type="button" onClick={() => grade(i, { showNote: true })}
-                      className="min-h-[30px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation min-h-[44px] sm:min-h-0">
+                      className="min-h-[44px] px-2 rounded-md text-[11px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation min-h-[44px] sm:min-h-0">
                       {t.verdict ? "+ say why" : "+ add a note"}
                     </button>
                   )}
@@ -805,7 +805,7 @@ export default function Simulator({
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
               placeholder={turns.length ? "Reply as the customer…" : "Text the business…"}
               disabled={busy}
-              className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[38px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b76ce]/30 disabled:bg-ppp-charcoal-50" />
+              className="flex-1 min-w-0 rounded-full border border-ppp-charcoal-200 px-3.5 min-h-[44px] text-base sm:text-[14px] placeholder:text-ppp-charcoal-400 focus:outline-none focus:ring-2 focus:ring-[#0b76ce]/30 disabled:bg-ppp-charcoal-50" />
             <button type="button" onClick={() => void send()} disabled={busy || (!draft.trim() && photos === 0)}
               aria-label="Send as the customer"
               className="shrink-0 h-[38px] w-[38px] rounded-full bg-[#0b76ce] text-white flex items-center justify-center touch-manipulation disabled:bg-ppp-charcoal-200 min-h-[44px] sm:min-h-0">

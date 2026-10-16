@@ -178,15 +178,15 @@ export default async function TrainingCoverage() {
                     a worklist. */}
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Link href={`/messaging/training/simulator?tag=${c.tag.key}`}
-                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
+                    className="inline-flex items-center min-h-[44px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
                     Try it in the simulator
                   </Link>
                   <Link href={`/messaging/training/write?tag=${c.tag.key}`}
-                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
+                    className="inline-flex items-center min-h-[44px] px-2.5 rounded-lg border border-ppp-charcoal-200 bg-white text-[12px] font-medium text-ppp-charcoal touch-manipulation">
                     Write one
                   </Link>
                   <Link href="/messaging/training/grade"
-                    className="inline-flex items-center min-h-[34px] px-2.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+                    className="inline-flex items-center min-h-[44px] px-2.5 rounded-lg text-[12px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
                     Grade imported
                   </Link>
                 </div>

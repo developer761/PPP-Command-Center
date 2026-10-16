@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ModalPortal from "@/components/modal-portal";
 import PlatformSwitcher from "@/components/platform-switcher";
 import type { Platform } from "@/lib/platform-cookie";
 import MessagingSidebar, { type SidebarWorkspace } from "./messaging-sidebar";
+import { useScrollLock } from "@/lib/commercial/use-scroll-lock";
+
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /**
  * Two-pane shell: a fixed rail on desktop, an off-canvas drawer below lg.
@@ -51,10 +55,10 @@ export default function MessagingChrome({
             onClick={() => setOpen(false)}
             className="lg:hidden fixed inset-0 z-40 bg-ppp-charcoal/40 backdrop-blur-sm min-h-[44px] sm:min-h-0 touch-manipulation"
           />
-          <aside className="lg:hidden fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] flex flex-col shadow-2xl">
+          <Drawer onClose={() => setOpen(false)}>
             <MessagingSidebar workspaces={workspaces} onNavigate={() => setOpen(false)} />
             <UserFooter initial={userInitial} accessible={accessible} />
-          </aside>
+          </Drawer>
         </ModalPortal>
       )}
 
@@ -88,6 +92,64 @@ export default function MessagingChrome({
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * The mobile drawer as a dialog.
+ *
+ * It was a bare <aside>: no Escape, no close button inside it, nothing to
+ * tell a screen reader a dialog had opened, and Tab walked straight out into
+ * the page hidden behind the backdrop. Focus goes in on open, stays in while
+ * open, and returns to the menu button on close.
+ */
+function Drawer({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  // Held in a ref so a parent re-render (a new arrow each time) does not
+  // re-run the effect, which would bounce focus out and back in.
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; }, [onClose]);
+  useScrollLock(true);
+
+  useEffect(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+    (focusables()[0] ?? panel).focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); close.current(); return; }
+      if (e.key !== "Tab") return;
+      const f = focusables();
+      if (f.length === 0) { e.preventDefault(); panel.focus(); return; }
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+        e.preventDefault(); last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
+  }, []);
+
+  return (
+    <aside ref={ref} role="dialog" aria-modal="true" aria-label="Workspaces" tabIndex={-1}
+      className="lg:hidden fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] flex flex-col bg-white shadow-2xl focus:outline-none">
+      {/* Over the sidebar's own 56px header, so the drawer keeps one header. */}
+      <button type="button" onClick={onClose} aria-label="Close menu"
+        className="absolute top-1.5 right-1.5 z-10 h-11 w-11 flex items-center justify-center rounded-lg bg-white text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
+          <path d="M18 6L6 18 M6 6l12 12" />
+        </svg>
+      </button>
+      {children}
+    </aside>
   );
 }
 

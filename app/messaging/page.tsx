@@ -4,7 +4,7 @@ import {
   END_STATES, type BoardColumnKey, type BoardCard,
 } from "@/lib/messaging/db";
 import { formatUs, type E164 } from "@/lib/messaging/phone";
-import { agentLabel, isBotAgentKey, BOT_LABEL } from "@/lib/messaging/staff-copy";
+import { agentLabel, isBotAgentKey, BOT_LABEL, phoneForDisplay } from "@/lib/messaging/staff-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -136,7 +136,7 @@ export default async function ConversationsBoard({
                     className="block rounded-xl border border-ppp-charcoal-100 bg-white px-3.5 py-3 hover:border-ppp-charcoal-200 active:bg-ppp-charcoal-50 touch-manipulation">
                     <div className="flex items-baseline justify-between gap-3">
                       <span className="font-semibold text-ppp-charcoal truncate min-w-0">
-                        {r.customer_name || formatUs(r.customer_phone as E164)}
+                        {r.customer_name || phoneForDisplay(r.customer_phone)}
                       </span>
                       {/* How long ago, as on the board. The duration sat here and
                           read "—" whenever it could not be worked out, which
@@ -260,7 +260,7 @@ function Column({
               className="block rounded-xl border border-ppp-charcoal-100 bg-white px-3.5 py-3 hover:border-ppp-charcoal-200 active:bg-ppp-charcoal-50 transition-colors touch-manipulation">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold text-ppp-charcoal truncate min-w-0">
-                  {c.customer_name || formatUs(c.customer_phone as E164)}
+                  {c.customer_name || phoneForDisplay(c.customer_phone)}
                 </span>
                 <span className="shrink-0 text-[11px] font-mono text-ppp-charcoal-400">{ago(c.last_message_at ?? c.created_at)}</span>
               </div>

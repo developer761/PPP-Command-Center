@@ -71,7 +71,7 @@ export default async function MessagingSettings({
         {rows.map((r) => (
           <Link key={r.id} href={`/messaging/settings?ws=${r.id}`}
             className={[
-              "shrink-0 min-h-[36px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
+              "shrink-0 min-h-[44px] px-3 rounded-lg text-[12.5px] font-medium flex items-center whitespace-nowrap touch-manipulation",
               open === r.id ? "bg-ppp-charcoal text-white" : "bg-white border border-ppp-charcoal-200 text-ppp-charcoal-600",
             ].join(" ")}>
             {r.name}

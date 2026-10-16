@@ -3,6 +3,18 @@ import { notFound } from "next/navigation";
 import { loadRuleDetail, EXAMPLES_PER_KIND, type RuleFinding, type RuleChangeEntry } from "@/lib/messaging/rules-db";
 import { describeChange } from "@/lib/messaging/rule-diff";
 import { assertMessagingAccess } from "@/lib/messaging/auth";
+import { sheetParagraphs } from "@/lib/messaging/training-display";
+
+/** Kate's sheet cell as paragraphs: "||" breaks, no sheet markers. */
+function SheetText({ text, className }: { text: string; className: string }) {
+  return (
+    <>
+      {sheetParagraphs(text).map((p, i) => (
+        <p key={i} className={`${className} ${i ? "mt-2" : "mt-1.5"} whitespace-pre-wrap`}>{p}</p>
+      ))}
+    </>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -90,12 +102,10 @@ export default async function RulePage({ params }: { params: Promise<{ code: str
       <header>
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[13px] font-semibold text-ppp-charcoal-500">{rule.code}</span>
-          {rule.severity && (
-            <span className={[
-              "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-              rule.severity === "critical" ? "bg-ppp-orange-50 text-ppp-orange-700" : "bg-ppp-charcoal-100 text-ppp-charcoal-600",
-            ].join(" ")}>
-              {rule.severity}
+          {/* Mild is the exception (5 of 37 live rules); see the rules list. */}
+          {rule.severity === "mild" && (
+            <span className="rounded-full bg-ppp-charcoal-100 px-2 py-0.5 text-[10px] font-semibold text-ppp-charcoal-600">
+              mild
             </span>
           )}
           {retired && (
@@ -141,7 +151,7 @@ export default async function RulePage({ params }: { params: Promise<{ code: str
       {rule.ruleCard && (
         <section className="rounded-xl border border-ppp-charcoal-100 bg-white px-4 py-3">
           <h2 className="text-[12px] font-semibold text-ppp-charcoal">The rule in detail</h2>
-          <p className="mt-1.5 text-[13px] text-ppp-charcoal leading-relaxed whitespace-pre-wrap">{rule.ruleCard}</p>
+          <SheetText text={rule.ruleCard} className="text-[13px] text-ppp-charcoal leading-relaxed" />
         </section>
       )}
 
@@ -170,7 +180,7 @@ export default async function RulePage({ params }: { params: Promise<{ code: str
                 be relevant to the rule-building period", so it sits as
                 background rather than being parsed into a timeline it was
                 never written to be. What happens from here is recorded below. */}
-            <p className="mt-1 text-[12.5px] text-ppp-charcoal-600 leading-relaxed whitespace-pre-wrap">{d.history}</p>
+            <SheetText text={d.history} className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed" />
           </>
         )}
       </section>
@@ -217,9 +227,7 @@ export default async function RulePage({ params }: { params: Promise<{ code: str
             Kate&apos;s rater guidance. Shown here and never given to the bot — it would
             teach it to argue with its own grader.
           </p>
-          <p className="mt-1.5 text-[12.5px] text-ppp-charcoal-600 leading-relaxed whitespace-pre-wrap">
-            {d.ratingGuidance}
-          </p>
+          <SheetText text={d.ratingGuidance} className="text-[12.5px] text-ppp-charcoal-600 leading-relaxed" />
         </section>
       )}
 

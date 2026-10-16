@@ -81,7 +81,8 @@ export function sheetParagraphs(text: string | null): string[] {
   return text
     .split(/\s*\|\|\s*/)
     .map((p) => p
-      .replace(/^[\s\p{Extended_Pictographic}️]+/u, "")
+      // Her markers open a paragraph and sometimes a sentence mid-cell.
+      .replace(/(^|\s)[\p{Extended_Pictographic}\uFE0F]+\s*/gu, "$1")
       // Provenance about our implementation, not about the rule.
       .replace(/(^|\s)Already in [^.]*tone_rules\.\s*/g, "$1")
       .replace(/\n{3,}/g, "\n\n")

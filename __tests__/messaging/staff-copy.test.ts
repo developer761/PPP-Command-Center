@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  isBotAgentKey, agentLabel, BOT_LABEL, intentPhrase, plainLeadReason, plainHoldReason, untextableDigits,
+  isBotAgentKey, agentLabel, BOT_LABEL, phoneForDisplay, intentPhrase, plainLeadReason, plainHoldReason, untextableDigits,
 } from "@/lib/messaging/staff-copy";
 
 describe("who is holding it", () => {
@@ -59,5 +59,13 @@ describe("why a lead is held", () => {
   it("counts digits in English", () => {
     expect(untextableDigits(1, false)).toBe("1 digit, where a US number has 10");
     expect(untextableDigits(7, true)).toMatch(/country code/);
+  });
+});
+
+describe("a customer's number", () => {
+  it("formats a US number and says when a stored one is not a number", () => {
+    expect(phoneForDisplay("+15163448418")).toBe("(516) 344-8418");
+    expect(phoneForDisplay("+15550152")).toBe("+15550152 (not a valid number)");
+    expect(phoneForDisplay(null)).toBe("No number");
   });
 });

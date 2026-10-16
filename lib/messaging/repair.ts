@@ -177,7 +177,8 @@ export function turnsOf(transcript: string): Turn[] {
     if (!isUnnumbered(t.speaker)) { t.turn = ++n; return; }
     t.label = contextLabel(t, turns[i + 1]);
   });
-  return turns.map(({ given: _g, ...t }) => t);
+  for (const t of turns) delete t.given;
+  return turns;
 }
 
 function contextLabel(t: { speaker: string }, next: { speaker: string } | undefined): string {

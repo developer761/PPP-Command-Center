@@ -46,6 +46,11 @@ describe("a rule's sheet text", () => {
       "Second note.",
     ]);
   });
+  it("drops a marker that opens a sentence mid-paragraph", () => {
+    expect(sheetParagraphs("First point.   \u26A0\uFE0F A DECLINE IS NOT ALWAYS WORDED AS ONE.")).toEqual([
+      "First point.   A DECLINE IS NOT ALWAYS WORDED AS ONE.",
+    ]);
+  });
   it("leaves plain text alone and empty text empty", () => {
     expect(sheetParagraphs("Clumsy wording.")).toEqual(["Clumsy wording."]);
     expect(sheetParagraphs(null)).toEqual([]);
