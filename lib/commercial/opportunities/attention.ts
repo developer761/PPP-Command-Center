@@ -155,6 +155,23 @@ export type NextStep = {
  * acts: building a proposal moves the deal on its own, so there is no button
  * for it.
  */
+/**
+ * Is a won job's money clear? Open invoice balance AND retainage both zero.
+ *
+ * `retainageCents` is null when its read FAILED. The deal page used to turn
+ * that into 0 — "nothing held" — and offer "Mark it completed" on a job with
+ * retainage still out. Unknown stays unknown (null) unless the open balance
+ * already proves money is outstanding.
+ */
+export function moneyClearFrom(
+  openInvoiceBalanceCents: number,
+  retainageCents: number | null,
+): boolean | null {
+  if (openInvoiceBalanceCents > 0) return false;
+  if (retainageCents === null) return null;
+  return retainageCents === 0;
+}
+
 export function nextStep(
   i: Pick<
     AttentionInput,
@@ -168,8 +185,9 @@ export function nextStep(
     /** Close-out package finished. Undefined = not loaded, which is not the
      *  same as "no" — see the submittalCount note. */
     closeoutComplete?: boolean;
-    /** Nothing outstanding: no open balance AND no retainage held. */
-    moneyClear?: boolean;
+    /** Nothing outstanding: no open balance AND no retainage held. `null` =
+     *  the money couldn't be read, which must never read as clear. */
+    moneyClear?: boolean | null;
     /** Latest proposal's id + status, so the button can point AT it. */
     proposal?: { id: string; status: string } | null;
     accountId?: string | null;
@@ -250,6 +268,15 @@ export function nextStep(
         move: { to: "post_sale_closed", sub: "closed" },
         href: `/commercial/opportunities/${oppId}?tab=info&focus=status&to=post_sale_closed#change-status`,
         why: "Closeout is done and nothing is outstanding.",
+      };
+    }
+    // Couldn't read the retainage. Offering "Mark it completed" here is what a
+    // swallowed read used to do — on a job with retainage still held.
+    if (i.closeoutComplete === true && i.moneyClear === null) {
+      return {
+        label: "Reload to check the money",
+        href: `/commercial/opportunities/${oppId}?tab=project&sub=invoices`,
+        why: "Closeout is done, but this job's retainage couldn't be loaded — so it can't be called paid up yet.",
       };
     }
     if (i.closeoutComplete === true && i.moneyClear === false) {

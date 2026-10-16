@@ -261,6 +261,7 @@ import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { AttentionBanner } from "@/components/commercial/attention-banner";
 import {
   attentionFor,
+  moneyClearFrom,
   nextStep,
   sensibleNextStatuses,
 } from "@/lib/commercial/opportunities/attention";
@@ -2346,7 +2347,16 @@ export default async function OpportunityDetailPage({
         // read "Paid in full" on an in-progress job with retainage held — the
         // third time this exact "didn't look, so reported a clean state"
         // mistake has come up in one strip.
-        retainageHeldForOpportunity(opp.id).catch(() => 0),
+        //
+        // STRICT, and null on failure — never 0. `.catch(() => 0)` here turned a
+        // failed read into "no retainage held", which the next-step card took
+        // as "money clear" and offered "Mark it completed" on a job with
+        // retainage still out. And the non-strict read answered [] on an error
+        // without throwing, so the catch was not even reached. null = unknown.
+        retainageHeldForOpportunity(opp.id, { strict: true }).catch((err) => {
+          console.error("[deal page] retainage read failed:", err instanceof Error ? err.message : String(err));
+          return null;
+        }),
         // Whether this job bills through AIA AT ALL, and by how much. The
         // delivery strip's AIA tile used to be fed the COMBINED billing figure,
         // so it announced "Fully billed" on jobs with no AIA applications
@@ -2439,13 +2449,16 @@ export default async function OpportunityDetailPage({
      * out" forever, and withheld "Mark it completed" with it. Nothing on the
      * screen said which invoice, because neither is money anyone owes.
      */
+    //
+    // null when the retainage read FAILED and nothing else already proves
+    // money is out: unknown is neither "clear" nor "still owed".
     moneyClear: pathIsWon
-      ? pathInvoices
-          .filter((inv) => receivableVerdict(inv.status as InvoiceStatus) === "invoice")
-          .reduce(
-            (n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0),
-            0,
-          ) === 0 && pathRetainageCents === 0
+      ? moneyClearFrom(
+          pathInvoices
+            .filter((inv) => receivableVerdict(inv.status as InvoiceStatus) === "invoice")
+            .reduce((n, inv) => n + Math.max(0, Number(inv.balance_cents) || 0), 0),
+          pathRetainageCents,
+        )
       : undefined,
     hasBilling: pathInvoices.length > 0,
     // Grace periods: a work order does not exist five minutes after a GC says
@@ -2916,7 +2929,7 @@ export default async function OpportunityDetailPage({
     billedCents: pathFin?.billedPreTaxCents ?? 0,
     collectedCents: pathFin?.collectedCents ?? 0,
     outstandingCents: openInvoiceCents,
-    retainageCents: pathRetainageCents,
+    retainageCents: pathRetainageCents ?? 0,
     costsCents: costsSoFar,
     marginCents: pathMargin?.cents ?? 0,
     marginPct: pathMargin?.pct ?? null,
@@ -2988,7 +3001,7 @@ export default async function OpportunityDetailPage({
           openInvoiceCents,
           overdueInvoice: overdueInvoiceForAttention,
           overdueAia: overdueAiaForAttention,
-          retainageCents: pathRetainageCents,
+          retainageCents: pathRetainageCents ?? 0,
           pendingCoCount,
           pendingCoCents: pathChangeOrders
             .filter((c) => c.status === "pending")
@@ -3712,6 +3725,20 @@ export default async function OpportunityDetailPage({
 
       {!isDeletedDeal && <AttentionBanner items={attentionItems} />}
 
+      {/* The retainage read FAILED. Every retainage figure below falls back to
+          $0, which on its own reads as "nothing held" — say it couldn't be
+          checked instead of letting the page imply the job is paid up. */}
+      {!isDeletedDeal && pathIsWon && pathRetainageCents === null && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800"
+        >
+          Couldn&rsquo;t load this job&rsquo;s retainage, so the retainage
+          figures on this page may read $0 when money is still held. Reload
+          before relying on them or marking the job completed.
+        </div>
+      )}
+
       {/* Page-level, above the tab bar, so the delivery tools are visible from
           whichever tab you happen to be on — the complaint was that standing
           on a job in delivery, none of them were on screen. */}
@@ -4009,7 +4036,7 @@ export default async function OpportunityDetailPage({
             invoicedWithTaxCents: pathFin.invoicedCents,
             collectedCents: pathFin.collectedCents,
             openBalanceCents: pathFin.openBalanceCents,
-            retainageCents: pathRetainageCents,
+            retainageCents: pathRetainageCents ?? 0,
             costsCents: pathFin.totalCostCents,
             crewLaborCents: pathFin.fieldOpsLaborCents,
             purchasesCents: pathFin.costs.total,
@@ -4254,7 +4281,16 @@ async function OpportunityInvoicesPanel({
     // Bill this Won opportunity when you're ready to collect" on a job that had
     // already billed six figures. That prompt is what made her raise a second,
     // duplicate invoice.
-    listAiaApplications(oppId).catch(() => []),
+    //
+    // STRICT, and null on failure. `.catch(() => [])` read a failed load as
+    // "no AIA billing", and the tab then offered "Create the first invoice" on
+    // a job already billed through AIA — the duplicate-invoice incident, back
+    // through the error path. (The plain read answered [] without throwing, so
+    // the catch was never even reached.)
+    listAiaApplications(oppId, { strict: true }).catch((err) => {
+      console.error("[deal invoices tab] AIA read failed:", err instanceof Error ? err.message : String(err));
+      return null;
+    }),
     aiaBillingRollupBulk([oppId])
       .then((m) => m.get(oppId) ?? null)
       .catch(() => null),
@@ -4262,7 +4298,8 @@ async function OpportunityInvoicesPanel({
   const contractToDateCents = contractBaseCents + netCoCents;
   // Issued applications only — a draft application is not a bill, exactly as a
   // draft invoice isn't.
-  const issuedAiaApps = aiaApps
+  const aiaUnknown = aiaApps === null;
+  const issuedAiaApps = (aiaApps ?? [])
     .filter((a) => a.status === "submitted" || a.status === "paid")
     .sort((a, b) => b.application_number - a.application_number);
   const hasAiaBilling = issuedAiaApps.length > 0;
@@ -4548,7 +4585,40 @@ async function OpportunityInvoicesPanel({
           </div>
         )}
 
-        {invoices.length === 0 ? (
+        {aiaUnknown && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800"
+          >
+            Couldn&rsquo;t check whether this job bills through AIA. If it does,
+            its payment applications are the bills &mdash; don&rsquo;t raise an
+            invoice on top until you&rsquo;ve reloaded and can see them.{" "}
+            <Link
+              href={`/commercial/opportunities/${oppId}?tab=aia`}
+              className="font-semibold underline"
+            >
+              Open AIA billing
+            </Link>
+          </div>
+        )}
+
+        {invoices.length === 0 && aiaUnknown ? (
+          <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
+            <div className="text-[13px] font-semibold text-ppp-charcoal">
+              No invoices on file &mdash; AIA billing not checked
+            </div>
+            <p className="mt-1 text-[12px] text-ppp-charcoal-500">
+              This job may already be billed through AIA. Reload before creating
+              an invoice, so it isn&rsquo;t billed twice.
+            </p>
+            <Link
+              href={`/commercial/opportunities/${oppId}?tab=invoices`}
+              className="inline-flex items-center justify-center gap-1.5 mt-3 px-3.5 py-2 rounded-lg border border-ppp-charcoal-200 text-ppp-charcoal-700 text-[12px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] touch-manipulation"
+            >
+              Reload
+            </Link>
+          </div>
+        ) : invoices.length === 0 ? (
           <div className="border border-dashed border-ppp-charcoal-200 rounded-lg px-4 py-6 text-center">
             <div className="text-[13px] font-semibold text-ppp-charcoal">
               {hasAiaBilling ? "No separate invoices" : "No invoices yet"}

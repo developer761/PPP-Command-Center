@@ -112,14 +112,26 @@ type Result<T> =
   | { ok: false; error: string };
 const COLS = "*";
 
-export async function listAiaApplications(opportunityId: string): Promise<AiaApplication[]> {
+/** `strict`: THROW on a failed read instead of answering `[]`. For a caller
+ *  that would otherwise read "no applications" as "nothing billed" — the deal
+ *  page's money-clear check and its Invoices tab, where an empty answer on a
+ *  read error told the user to raise an invoice on a job already billed. */
+export type AiaReadOpts = { strict?: boolean };
+
+export async function listAiaApplications(
+  opportunityId: string,
+  opts?: AiaReadOpts,
+): Promise<AiaApplication[]> {
   const sb = commercialDb();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("commercial_aia_applications")
     .select(COLS)
     .eq("opportunity_id", opportunityId)
     .is("deleted_at", null)
     .order("application_number", { ascending: true });
+  if (opts?.strict && (error || !data)) {
+    throw new Error(`AIA applications couldn't be read: ${error?.message ?? "no data"}`);
+  }
   return (data ?? []) as AiaApplication[];
 }
 
@@ -152,8 +164,11 @@ export async function listAiaApplications(opportunityId: string): Promise<AiaApp
  * and reports `dueNowCents` as the total MINUS retention; and the AR sheet
  * raises its retention line only against `isLatestIssued`.
  */
-export async function retainageHeldForOpportunity(opportunityId: string): Promise<number> {
-  const apps = await listAiaApplications(opportunityId);
+export async function retainageHeldForOpportunity(
+  opportunityId: string,
+  opts?: AiaReadOpts,
+): Promise<number> {
+  const apps = await listAiaApplications(opportunityId, opts);
   if (apps.length === 0) return 0;
   const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
   if (issued.length === 0) return 0;
@@ -168,7 +183,7 @@ export async function retainageHeldForOpportunity(opportunityId: string): Promis
    * card, project home and deal analytics — five surfaces, on a page that also
    * renders `aiaBillingRollup`'s (correct) figure a few inches away.
    */
-  const lines = await listAiaLineItemsWithRelease(latest);
+  const lines = await listAiaLineItemsWithRelease(latest, opts);
   if (lines.length === 0) return 0;
   const { computeG702 } = await import("./constants");
   return computeG702({
@@ -311,15 +326,21 @@ export async function getAiaApplication(id: string): Promise<AiaApplication | nu
  * she typed them. Both are needed: `created_at` can tie on a bulk seed insert,
  * where they all share a timestamp, and `id` is the final arbiter.
  */
-export async function listAiaLineItems(applicationId: string): Promise<AiaLineItem[]> {
+export async function listAiaLineItems(
+  applicationId: string,
+  opts?: AiaReadOpts,
+): Promise<AiaLineItem[]> {
   const sb = commercialDb();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("commercial_aia_line_items")
     .select(COLS)
     .eq("application_id", applicationId)
     .order("position", { ascending: true })
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
+  if (opts?.strict && (error || !data)) {
+    throw new Error(`AIA line items couldn't be read: ${error?.message ?? "no data"}`);
+  }
   return (data ?? []) as AiaLineItem[];
 }
 
@@ -1769,9 +1790,10 @@ export async function deleteAiaLineItem(id: string, applicationId: string, actor
  */
 export async function listAiaLineItemsWithRelease(
   app: Pick<AiaApplication, "id" | "opportunity_id" | "application_number"> &
-    Partial<Pick<AiaApplication, "status" | "release_baseline_app_id" | "release_baseline_pinned_at">>
+    Partial<Pick<AiaApplication, "status" | "release_baseline_app_id" | "release_baseline_pinned_at">>,
+  opts?: AiaReadOpts,
 ): Promise<AiaLineItem[]> {
-  const lines = await listAiaLineItems(app.id);
+  const lines = await listAiaLineItems(app.id, opts);
   const sb = commercialDb();
   /*
    * 🔴 THE ERROR MUST NOT BE SWALLOWED HERE.
