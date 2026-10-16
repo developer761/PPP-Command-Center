@@ -17,7 +17,7 @@
  * still posts to the server; only the field layout is reactive here.
  */
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { SearchableSelect, type SearchableOption } from "@/components/commercial/searchable-select";
 import {
   matchVendorByName,
@@ -29,10 +29,9 @@ import {
   type VendorStatus,
 } from "@/lib/commercial/vendors/constants";
 import { VENDOR_PICK_FIELDS } from "@/lib/commercial/vendors/purchase-pick";
-import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
+import { isLaborPaymentCategory, purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { DateField } from "@/components/commercial/date-field";
-import { shrinkImageUnder } from "@/lib/commercial/uploads/downscale-image";
-import { SAFE_MULTIPART_BYTES, multipartOversizeError } from "@/lib/commercial/uploads/size-limit";
+import { ReceiptFileInput } from "@/components/commercial/receipt-file-input";
 import Link from "next/link";
 import { INPUT_CLS, TEXTAREA_CLS, LABEL_CLS, SELECT_CLS, SELECT_BG_STYLE } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
@@ -144,7 +143,13 @@ export default function PurchaseForm({
   // name can never leave a stale id behind. The server re-resolves regardless.
   // Unique per form instance: the add form and an open edit form are on the
   // page together, and the picker scrolls its highlighted row into view by id.
-  const vendorFieldId = `pu-vendor-${useId()}`;
+  //
+  // Every other field id is per instance for the same reason: with fixed ids
+  // ("pu-amount"…) the edit form's labels pointed at the ADD form's inputs, so
+  // tapping "Amount" on the purchase being edited focused a different form.
+  const uid = useId();
+  const fid = (k: string) => `pu-${k}-${uid}`;
+  const vendorFieldId = fid("vendor");
   const initVendor = preserve?.vendor ?? purchase?.vendor ?? "";
   const [vendorText, setVendorText] = useState(initVendor);
   const [vendorNew, setVendorNew] = useState(!!preserve?.vendorNew);
@@ -196,47 +201,6 @@ export default function PurchaseForm({
     return opts;
   }, [vendors, category, isLabor, recentVendors, recentWorkers, directoryHasVendors, showAllVendors, vendorKind]);
 
-  // Receipt-photo handling. A phone snap is routinely over Vercel's ~4.5 MB
-  // multipart cap, which would 413 the whole cost entry (typed amount, vendor,
-  // hours and all) at the edge — the worst kind of loss for a field crew member
-  // (audit U1). Shrink an oversized image under the cap on the client; if it
-  // can't be shrunk (a big PDF, or HEIC we can't decode), reject the pick with a
-  // clear note and clear the input so the cost still saves without it.
-  const receiptRef = useRef<HTMLInputElement>(null);
-  const shrinkingRef = useRef(false);
-  const [receiptNote, setReceiptNote] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-
-  const onReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.currentTarget;
-    const f = input.files?.[0];
-    if (!f) { setReceiptNote(null); return; }
-    if (f.size <= SAFE_MULTIPART_BYTES) { setReceiptNote(null); return; }
-
-    setReceiptNote({ tone: "ok", text: "Optimizing photo…" });
-    shrinkingRef.current = true;
-    let shrunk = f;
-    try {
-      shrunk = await shrinkImageUnder(f, SAFE_MULTIPART_BYTES);
-    } finally {
-      shrinkingRef.current = false;
-    }
-
-    if (shrunk.size > SAFE_MULTIPART_BYTES) {
-      // Couldn't get it under the cap (non-image, or undecodable HEIC).
-      setReceiptNote({ tone: "err", text: multipartOversizeError(f, "here") ?? "That file is too large." });
-      input.value = "";
-      return;
-    }
-    if (shrunk !== f) {
-      const dt = new DataTransfer();
-      dt.items.add(shrunk);
-      input.files = dt.files;
-      setReceiptNote({ tone: "ok", text: `Photo optimized to ${(shrunk.size / 1024 / 1024).toFixed(1)} MB so it uploads reliably.` });
-    } else {
-      setReceiptNote(null);
-    }
-  };
-
   // Live $/hr hint (labor only) — purely informational, never posted.
   const amtNum = parseDollars(amount);
   const hrsNum = Number(hours);
@@ -245,14 +209,7 @@ export default function PurchaseForm({
   return (
     <form
       action={action}
-      onSubmit={(e) => {
-        // A tap that lands mid-optimization would post the original oversized
-        // photo and 413 — hold the submit until the shrink finishes.
-        if (shrinkingRef.current) {
-          e.preventDefault();
-          setReceiptNote({ tone: "ok", text: "One moment — still optimizing the photo. Tap Save again." });
-        }
-      }}
+      // The receipt picker holds the submit itself while a photo is shrinking.
       className="px-3.5 pb-3.5 pt-1 space-y-3"
       encType="multipart/form-data"
     >
@@ -264,9 +221,9 @@ export default function PurchaseForm({
       {purchase && <input type="hidden" name="purchase_id" value={purchase.id} />}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={LABEL_CLS} htmlFor="pu-category">Category</label>
+          <label className={LABEL_CLS} htmlFor={fid("category")}>Category</label>
           <select
-            id="pu-category"
+            id={fid("category")}
             name="category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -277,9 +234,14 @@ export default function PurchaseForm({
           </select>
         </div>
         <div>
-          <label className={LABEL_CLS} htmlFor="pu-amount">{isLabor ? "Subcontract labor cost" : "Amount"}</label>
+          <label className={LABEL_CLS} htmlFor={fid("amount")}>{/* The category's own name. This said "Subcontract labor cost" for both
+              labor categories, so Tomco's own crew — Employee labor, 94% of
+              payouts — was labelled as outside help on the form that files it. */}
+            {isLabor
+              ? `${categories.find(([v]) => v === category)?.[1] ?? purchaseCategoryLabel(category)} cost`
+              : "Amount"}</label>
           <input
-            id="pu-amount"
+            id={fid("amount")}
             name="amount"
             required
             inputMode="decimal"
@@ -363,19 +325,19 @@ export default function PurchaseForm({
             empty and this is an ordinary company purchase; put a name in and it
             joins the Reimbursements list until somebody marks it paid back. */}
         <div className="sm:col-span-2">
-          <label className={LABEL_CLS} htmlFor="pu-reimburse">
+          <label className={LABEL_CLS} htmlFor={fid("reimburse")}>
             Paid out of pocket by <span className="font-normal text-ppp-charcoal-400">(optional)</span>
           </label>
           <input
-            id="pu-reimburse"
+            id={fid("reimburse")}
             name="reimburse_to"
-            list="pu-reimburse-list"
+            list={fid("reimburse-list")}
             maxLength={120}
             defaultValue={preserve?.reimburseTo ?? purchase?.reimburse_to ?? ""}
             className={INPUT_CLS}
             placeholder="Leave empty if the company paid"
           />
-          <datalist id="pu-reimburse-list">
+          <datalist id={fid("reimburse-list")}>
             {recentWorkers.map((v) => (<option key={v} value={v} />))}
           </datalist>
           <p className="text-[11.5px] text-ppp-charcoal-500 mt-1">
@@ -385,9 +347,9 @@ export default function PurchaseForm({
         </div>
         {isLabor ? (
           <div>
-            <label className={LABEL_CLS} htmlFor="pu-hours">Hours <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+            <label className={LABEL_CLS} htmlFor={fid("hours")}>Hours <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
             <input
-              id="pu-hours"
+              id={fid("hours")}
               name="hours"
               inputMode="decimal"
               value={hours}
@@ -416,20 +378,12 @@ export default function PurchaseForm({
       )}
 
       <div>
-        <label className={LABEL_CLS} htmlFor="pu-desc">Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        <textarea id="pu-desc" name="description" maxLength={2000} rows={2} defaultValue={preserve?.desc ?? purchase?.description ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What this was for"} />
+        <label className={LABEL_CLS} htmlFor={fid("desc")}>Description <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+        <textarea id={fid("desc")} name="description" maxLength={2000} rows={2} defaultValue={preserve?.desc ?? purchase?.description ?? ""} className={TEXTAREA_CLS} placeholder={isLabor ? "Scope of work / notes" : "What this was for"} />
       </div>
       <div>
-        <label className={LABEL_CLS} htmlFor="pu-receipt">Receipt photo <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
-        {/* capture="environment" opens the camera straight away on a phone so a
-            field crew member can snap the receipt in one tap (2026-08 field
-            walk). HEIC/HEIF accepted so iPhone photos aren't greyed out. */}
-        <input ref={receiptRef} onChange={onReceiptChange} id="pu-receipt" name="receipt" type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" capture="environment" className="block w-full text-base sm:text-[13px] text-ppp-charcoal-600 file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-[13px] file:font-semibold file:bg-cc-brand-50 file:text-cc-brand-700 hover:file:bg-cc-brand-100 file:min-h-[44px]" />
-        {receiptNote && (
-          <p className={`text-[11px] mt-1 ${receiptNote.tone === "err" ? "text-rose-700" : "text-ppp-charcoal-500"}`} role={receiptNote.tone === "err" ? "alert" : "status"}>
-            {receiptNote.text}
-          </p>
-        )}
+        <label className={LABEL_CLS} htmlFor={fid("receipt")}>Receipt photo <span className="font-normal text-ppp-charcoal-400">(optional)</span></label>
+        <ReceiptFileInput id={fid("receipt")} />
         {purchase?.receipt_document_id && (
           <>
             <p className="text-[11px] text-emerald-700 mt-1">A receipt is on file — uploading a new one replaces it.</p>

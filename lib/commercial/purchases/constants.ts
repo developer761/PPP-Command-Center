@@ -6,6 +6,8 @@
  * These categories drive the per-category P&L breakdown + tones.
  */
 
+import { formatCentsFull } from "@/lib/commercial/invoices/format";
+
 export const PURCHASE_CATEGORIES = [
   "materials",
   "labor",
@@ -92,4 +94,18 @@ export const PURCHASE_CATEGORY_META: Record<
 
 export function purchaseCategoryLabel(c: string): string {
   return isPurchaseCategory(c) ? PURCHASE_CATEGORY_META[c].label : "Other";
+}
+
+/**
+ * How one purchase's amount reads in a cost list.
+ *
+ * A cost is money out, so it is shown with a minus. A vendor credit or a return
+ * is stored negative (Mary 2026-10-15), and the cost tool printed a literal "−"
+ * in front of `formatCentsFull`, which already carries the sign — so all
+ * sixteen live credits read "−-$153.87", a double negative that a reader can
+ * only take as a bigger cost. A credit says it is one.
+ */
+export function purchaseAmountLabel(cents: number): string {
+  if (!Number.isFinite(cents) || cents === 0) return formatCentsFull(0);
+  return cents < 0 ? `+${formatCentsFull(-cents)} credit` : `−${formatCentsFull(cents)}`;
 }

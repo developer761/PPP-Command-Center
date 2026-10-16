@@ -30,6 +30,7 @@ export function SelectWithOther({
   otherName,
   otherLabel,
   otherPlaceholder,
+  otherDefaultValue,
   selectClassName = SELECT_CLS,
   selectStyle = SELECT_BG_STYLE,
   inputClassName = INPUT_CLS,
@@ -44,6 +45,8 @@ export function SelectWithOther({
   otherName: string;
   otherLabel: string;
   otherPlaceholder: string;
+  /** What the typed box starts with — a refused save sending it back. */
+  otherDefaultValue?: string;
   /** Defaults to the platform's select styling — the OS chrome is dropped
    *  platform-wide, and a control that opts out of it is the one that looks
    *  broken. Only override for a genuinely different context. */
@@ -79,6 +82,7 @@ export function SelectWithOther({
           <input
             name={otherName}
             placeholder={otherPlaceholder}
+            defaultValue={otherDefaultValue}
             maxLength={120}
             autoFocus
             className={inputClassName}

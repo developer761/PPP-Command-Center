@@ -198,6 +198,17 @@ export async function resolvePurchaseVendor(input: {
   category: string;
   createIfNew: boolean;
   userId: string;
+  /**
+   * On an EDIT, the vendor text the purchase was saved with. Omit on an add.
+   *
+   * A vendor renamed in the directory ("Sherwin Williams" → "Sherwin-Williams
+   * #4412") leaves its old purchases saying the old name. The edit form keeps
+   * the link while the box still says what the row was saved with and posts
+   * the id — and this used to throw it away because the text no longer matched
+   * the directory's NEW name, so fixing a typo in the description of a linked
+   * purchase silently unlinked it and moved its spend to a free-text vendor.
+   */
+  savedVendorText?: string | null;
 }): Promise<{ vendor_id: string | null; vendor: string | null; created: boolean }> {
   const text = normalizeVendorName(input.vendorText) || null;
   try {
@@ -206,9 +217,16 @@ export async function resolvePurchaseVendor(input: {
       // The picked vendor only counts if the text still says it. The picker
       // always posts the name beside the id, but a stale form must not pin
       // "Home Depot" onto a purchase whose box now says "Lowe's" — or onto one
-      // whose box was cleared.
+      // whose box was cleared. "Still says it" is either the directory's name
+      // or, on an edit, the name the row was saved under before a rename.
       if (picked && vendorKey(picked.name) === vendorKey(text)) {
         return { vendor_id: picked.id, vendor: picked.name, created: false };
+      }
+      // A rename: the link stays and so does the text the row was saved with.
+      // Rewriting it to the new directory name is a naming decision, not this
+      // function's — Mary chose to keep Tomco's own names (2026-09-23).
+      if (picked && input.savedVendorText && vendorKey(input.savedVendorText) === vendorKey(text)) {
+        return { vendor_id: picked.id, vendor: text, created: false };
       }
     }
     if (!text) return { vendor_id: null, vendor: null, created: false };

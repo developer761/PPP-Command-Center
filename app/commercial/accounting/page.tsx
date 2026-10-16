@@ -21,7 +21,6 @@ import { ACTIVITY_PRESETS, LEDGER_DEFAULT, activityRange, resolvePreset, type Ac
 import { NavSelect, type NavChoice } from "@/components/commercial/nav-select";
 import { setReceivableNote } from "@/lib/commercial/reports/receivables";
 import { ReceivablesTable } from "@/components/commercial/receivables-table";
-import { isLaborPaymentCategory } from "@/lib/commercial/purchases/constants";
 import { SpendPeriodBar } from "@/components/commercial/spend-period-bar";
 import {
   filterToSpendPeriod, undatedCount, isSpendPeriod, type SpendPeriodKey,
@@ -41,6 +40,8 @@ import {
   getMoneyInRows,
   purchaseRows,
   laborPaymentRows,
+  purchaseGroupingIndex,
+  vendorOptions,
   PURCHASES_BY_VENDOR_SPEC,
   LABOR_PAYMENTS_SPEC,
   DEPOSIT_HISTORY_SPEC,
@@ -51,6 +52,8 @@ import {
   describeReceivableQuery,
 } from "@/lib/commercial/reports/receivables-filters";
 import { ExportCsvLink } from "@/components/commercial/export-csv-link";
+import { NavSearchSelect } from "@/components/commercial/nav-search-select";
+import { spendPreserveFromParams } from "@/lib/commercial/accounting/spend-preserve";
 import { sendReceivablesToAlex, receivablesRecipients } from "@/lib/commercial/reports/receivables-email";
 import { formatCentsFull, formatCentsCompact, fmtEtDate } from "@/lib/commercial/invoices/format";
 import type { ReceivableKind } from "@/lib/commercial/reports/receivables";
@@ -558,90 +561,24 @@ async function recordSpendAction(formData: FormData) {
   // POST a whole payroll week onto every job — while being unable to approve
   // a single hour.
   const user = await requireFinanceViewer();
-  const oppId = String(formData.get("opportunity_id") ?? "");
-  const cents = dollarsToCents(formData.get("amount"));
-  const isLabor = String(formData.get("kind") ?? "") === "labor";
-  const view = isLabor ? "labor-out" : "purchases";
-  /*
-   * ZERO is refused; NEGATIVE is a vendor credit or a return.
-   *
-   * Mary, 2026-10-15: *"This applies to a Vendor invoice credit? Return?"* This
-   * screen is where she enters vendor invoices, and `cents <= 0` meant she
-   * could not enter the credit for one. The AR line and the invoice payment
-   * above keep their `<= 0` — a negative payment or a negative receivable line
-   * is a different thing and not what this is for — but a COST is signed, and
-   * sixteen negative ones are already in the book from Salesforce.
-   *
-   * `dollarsToCents` already reads both "-128.40" and the accounting form
-   * "(128.40)", so either is accepted here.
-   */
-  if (!oppId || cents == null || cents === 0) {
-    redirect(`${BASE}?view=${view}&error=${encodeURIComponent("Pick a job and enter an amount. Use a minus sign, or brackets, for a vendor credit or a return.")}`);
-  }
-  const hoursRaw = String(formData.get("hours") ?? "").trim();
-  const { addPurchase } = await import("@/lib/commercial/purchases/db");
-  const res = await addPurchase({
-    opportunity_id: oppId,
-    // A labor payment now says WHOSE labor it was. Validated against the
-    // shared list rather than trusted: this writes a category straight into
-    // the row, and an unknown value would render as "Other" on every report.
-    category: isLabor
-      ? (isLaborPaymentCategory(String(formData.get("labor_category") ?? ""))
-          ? String(formData.get("labor_category"))
-          : "employee_labor")
-      : String(formData.get("category") ?? "materials"),
-    vendor: String(formData.get("vendor") ?? "") || null,
-    amount_cents: cents,
-    hours: isLabor && hoursRaw ? Number(hoursRaw) : null,
-    purchased_at: pickedDate(formData.get("purchased_at")),
-    // "Other" with nothing else recorded the word "Other" and threw away the
-    // only useful fact. There is no column for it and inventing one means a
-    // migration applied by hand on a live book, so the typed value is folded
-    // into the free-text field the row already has — which is the Reference
-    // column Mary reads in the list, so it is visible rather than buried.
-    description: joinOtherDetail(str(formData.get("category_other")), str(formData.get("description"))),
-    reimburse_to: String(formData.get("reimburse_to") ?? "") || null,
-    created_by_user_id: user.id,
-  });
-  if (!res.ok) {
-    revalidatePath(BASE);
-    redirect(`${BASE}?view=${view}&error=${encodeURIComponent(res.error)}`);
-  }
-
-  /**
-   * The receipt, attached here rather than on a second trip.
-   *
-   * Karan 2026-09-17: "where does she actually log a receipt currently? A bit
-   * confusing to input a receipt." He was right, and it was not a wording
-   * problem — this form had no receipt field at all. The only upload was on the
-   * job's Costs tool, so recording a purchase where Mary actually works meant
-   * saving it here, then finding the job, then opening Costs, then Edit, then
-   * attaching. Five steps to file a receipt, and nothing on this page said so.
-   *
-   * Best-effort, exactly as the Costs tool does it: a failed upload never loses
-   * the purchase, it says so and tells her where to add it.
-   */
-  let receiptFailed = false;
-  const file = formData.get("receipt");
-  if (!isLabor && file instanceof File && file.size > 0) {
-    const { attachPurchaseReceipt } = await import("@/lib/commercial/purchases/db");
-    const r = await attachPurchaseReceipt({
-      purchaseId: res.value.id,
-      file_name: file.name || "receipt.pdf",
-      mime_type: file.type || "application/octet-stream",
-      data: new Uint8Array(await file.arrayBuffer()),
-      actorUserId: user.id,
-    }).catch(() => ({ ok: false as const }));
-    receiptFailed = !r.ok;
-  }
-
+  // The write lives in lib/commercial/accounting/record-spend.ts — validation,
+  // the vendor-directory link, the purchase and its receipt — so it can be
+  // tested at the seam. This only turns the result into a redirect.
+  const { recordSpend } = await import("@/lib/commercial/accounting/record-spend");
+  const res = await recordSpend(formData, user.id);
   revalidatePath(BASE);
-  const done = isLabor
+  if (!res.ok) {
+    // What she typed rides back, so a refusal costs one correction rather
+    // than the whole entry.
+    const p = new URLSearchParams({ view: res.view, error: res.error, ...res.preserve });
+    redirect(`${BASE}?${p.toString()}`);
+  }
+  const done = res.isLabor
     ? "Labor payment recorded."
-    : receiptFailed
+    : res.receiptFailed
       ? "Purchase recorded, but the receipt didn't upload — add it from the job's Costs tool."
       : "Purchase recorded.";
-  redirect(`${BASE}?view=${view}&ok=${encodeURIComponent(done)}`);
+  redirect(`${BASE}?view=${res.view}&ok=${encodeURIComponent(done)}`);
 }
 
 /**
@@ -821,6 +758,31 @@ export default async function AccountingPage({
    */
   const periodHref = (v: View, k: SpendPeriodKey) =>
     `${BASE}?view=${v}&period=${k}#register`;
+
+  /*
+   * PURCHASES: GROUP BY + VENDOR.
+   *
+   * The tab's blurb has always said "Pick a vendor to get that vendor's own
+   * statement", and the spec has always declared four groupings — Vendor, Job,
+   * Job → Vendor (Stephanie's GC-waiver cut) and Month. The page passed neither,
+   * so it was stuck on Vendor with no picker, `vendorOptions()` had no caller,
+   * and the CSV ignored both. Same shape as the AR sheet's controls, and the
+   * same rule: the export carries them, or the file is not what the screen is.
+   */
+  const pGroup = purchaseGroupingIndex(pickFirst(sp.pgroup));
+  const pVendor = pickFirst(sp.pvendor)?.trim() || null;
+  const purchasesQs = (next: { period?: SpendPeriodKey; group?: number; vendor?: string | null } = {}) => {
+    const p = new URLSearchParams({ view: "purchases", period: next.period ?? period });
+    const g = next.group ?? pGroup;
+    const v = next.vendor !== undefined ? next.vendor : pVendor;
+    if (g !== 0) p.set("pgroup", String(g));
+    if (v) p.set("pvendor", v);
+    return p;
+  };
+  const purchasesHref = (next: Parameters<typeof purchasesQs>[0] = {}) =>
+    `${BASE}?${purchasesQs(next).toString()}#register`;
+  // A refused money-out entry comes back with what was typed (record-spend.ts).
+  const spendPreserve = spendPreserveFromParams((k) => pickFirst(sp[k]));
   const href = (v: View) => {
     if (v === "overview") return BASE;
     // The ledger carries its own filters back, so leaving it and returning
@@ -1028,6 +990,23 @@ export default async function AccountingPage({
         ).clearedCarryoverRows()
       : [];
   // `entry`, `spendRows` and `depositRows` are fetched in the wave above.
+  const purchaseRegister = spendRows
+    ? filterToSpendPeriod(purchaseRows(spendRows, pVendor ?? undefined), period)
+    : [];
+  const exportRowCount: number | null =
+    view === "receivables"
+      ? receivablesView?.rows.length ?? 0
+      : view === "purchases"
+        ? purchaseRegister.length
+        : view === "labor-out"
+          ? spendRows ? filterToSpendPeriod(laborPaymentRows(spendRows), period).length : 0
+          : view === "deposits"
+            ? depositRows ? filterToSpendPeriod(depositRows, period).length : 0
+            : view === "ar"
+              ? (arRowsFiltered ?? []).length
+              : view === "owed"
+                ? (owedRows ?? []).length
+                : null;
   const production = summarizeProduction(projects);
   // Work that is won and carries a DRAFT invoice — raised but never sent. A
   // project row exists only once a job is won, so no pre-sale bid can land here.
@@ -1152,15 +1131,27 @@ export default async function AccountingPage({
                             // shows 30 days.
                             view === "ar"
                             ? `/api/commercial/accounting/export?view=ar${arGroup !== 0 ? `&argroup=${arGroup}` : ""}${arPeriod !== "all" ? `&arperiod=${arPeriod}` : ""}`
-                            : // And the week window rides along for the same
-                              // reason: a CSV covering all time while the
-                              // screen shows one week is the exact trap the AR
-                              // comment above describes.
-                              `/api/commercial/accounting/export?view=${view}${period !== "all" ? `&period=${period}` : ""}`
+                            : view === "purchases"
+                              ? // Group-by and vendor ride along with the week.
+                                `/api/commercial/accounting/export?${(() => {
+                                  const p = purchasesQs();
+                                  if (period === "all") p.delete("period");
+                                  return p.toString();
+                                })()}`
+                              : // And the week window rides along for the same
+                                // reason: a CSV covering all time while the
+                                // screen shows one week is the exact trap the AR
+                                // comment above describes.
+                                `/api/commercial/accounting/export?view=${view}${period !== "all" ? `&period=${period}` : ""}`
                           : "/api/commercial/reports/receivables/export"
             }
             params={view === "receivables" ? receivableQueryParams(q) : undefined}
-            disabled={(view === "receivables" ? receivablesView?.rows.length ?? 0 : receivables.rows.length) === 0}
+            // The count of the tab being exported. It read the RECEIVABLES row
+            // count on every tab, so Export on Purchases or Labor payments was
+            // greyed out whenever receivables were empty, and live on an empty
+            // register whenever they were not. A tab whose rows this page does
+            // not hold is never disabled — its own endpoint says if it's empty.
+            disabled={exportRowCount === 0}
             disabledHint="Nothing to export in this view"
             label="Export"
           />
@@ -2668,7 +2659,12 @@ export default async function AccountingPage({
 
       {view === "purchases" && entry && (
         <div data-print-hide data-tour="accounting:record-purchase">
-          <RecordPurchaseForm action={recordSpendAction} jobs={entry.jobs} vendors={entry.vendors} />
+          <RecordPurchaseForm
+            action={recordSpendAction}
+            jobs={entry.jobs}
+            vendors={entry.vendors}
+            preserve={error ? spendPreserve : undefined}
+          />
         </div>
       )}
 
@@ -2677,14 +2673,61 @@ export default async function AccountingPage({
           <SectionHead title={PURCHASES_BY_VENDOR_SPEC.title} hint={PURCHASES_BY_VENDOR_SPEC.blurb ?? ""} />
         <SpendPeriodBar
           active={period}
-          hrefFor={(k) => periodHref("purchases", k)}
-          rowCount={filterToSpendPeriod(purchaseRows(spendRows), period).length}
-          undated={undatedCount(purchaseRows(spendRows))}
+          hrefFor={(k) => purchasesHref({ period: k })}
+          rowCount={purchaseRegister.length}
+          undated={undatedCount(purchaseRows(spendRows, pVendor ?? undefined))}
         />
         <GroupedReport
           spec={PURCHASES_BY_VENDOR_SPEC}
-          rows={filterToSpendPeriod(purchaseRows(spendRows), period)}
-          emptyHint="No purchases in this period."
+          rows={purchaseRegister}
+          groupingIndex={pGroup}
+          controls={
+            <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ppp-charcoal-400">Group by</span>
+                {PURCHASES_BY_VENDOR_SPEC.groupings.map((g, i) => (
+                  <Link
+                    key={g.map((l) => l.key).join(">")}
+                    href={purchasesHref({ group: i })}
+                    aria-current={i === pGroup ? "true" : undefined}
+                    className={`inline-flex items-center px-2.5 rounded-lg text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border transition-colors ${
+                      i === pGroup
+                        ? "bg-ppp-navy-900 text-white border-ppp-navy-900"
+                        : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
+                    }`}
+                  >
+                    {g.map((l) => l.label).join(" → ")}
+                  </Link>
+                ))}
+              </div>
+              <NavSearchSelect
+                label="Vendor"
+                value={pVendor ?? ""}
+                placeholder="All vendors — search to pick one"
+                ariaLabel="Show one vendor's purchases"
+                choices={[
+                  { value: "", label: "All vendors", href: purchasesHref({ vendor: null }) },
+                  // Every vendor ever bought from, not just this period's —
+                  // a statement for a vendor with nothing this month is still
+                  // a question with an answer ("nothing").
+                  ...vendorOptions(purchaseRows(spendRows)).map((o) => ({
+                    value: o.name,
+                    label: o.name,
+                    href: purchasesHref({ vendor: o.name }),
+                  })),
+                ]}
+              />
+              {pVendor && (
+                <Link
+                  href={purchasesHref({ vendor: null })}
+                  className="text-[12px] font-semibold text-cc-brand-700 hover:text-cc-brand-800 underline underline-offset-2 min-h-[44px] sm:min-h-[36px] inline-flex items-center"
+                >
+                  Clear vendor
+                </Link>
+              )}
+            </div>
+          }
+          emptyHint={pVendor ? `No purchases from ${pVendor} in this period.` : "No purchases in this period."}
         />
         </section>
       )}
@@ -2731,7 +2774,12 @@ export default async function AccountingPage({
 
       {view === "labor-out" && entry && (
         <div data-print-hide data-tour="accounting:record-labor">
-          <RecordLaborPaymentForm action={recordSpendAction} jobs={entry.jobs} payees={entry.payees} />
+          <RecordLaborPaymentForm
+            action={recordSpendAction}
+            jobs={entry.jobs}
+            payees={entry.payees}
+            preserve={error ? spendPreserve : undefined}
+          />
         </div>
       )}
 

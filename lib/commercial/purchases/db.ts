@@ -460,7 +460,13 @@ export async function updatePurchase(
     if (!Number.isFinite(a) || a === 0) {
       return { ok: false, error: "Enter an amount. Use a minus sign for a vendor credit or a return." };
     }
-    if (a < 0 && (patch.reimburse_to ?? before.reimburse_to)) {
+    // The name this row will have AFTER the patch. `??` here read a cleared
+    // name (null) as "not sent" and fell back to the saved one — so the one
+    // way to turn a reimbursed purchase into a credit, clear the name and
+    // enter the minus, was refused for still having the name it was clearing.
+    const effectiveReimburse =
+      patch.reimburse_to !== undefined ? patch.reimburse_to?.trim() || null : before.reimburse_to;
+    if (a < 0 && effectiveReimburse) {
       return {
         ok: false,
         error: "A credit cannot be a reimbursement — clear the name to pay back, or record the credit on its own.",

@@ -66,6 +66,10 @@ export async function getAccountingEntryOptions(): Promise<AccountingEntryOption
       .from("commercial_vendors")
       .select("id, name")
       .is("deleted_at", null)
+      // Active only, as the Costs tool's picker is. Deactivating a vendor is
+      // how Settings says "stop offering this one"; this list ignored it.
+      // Past purchases keep their link either way.
+      .eq("status", "active")
       .then((r) => (r.data ?? []) as { id: string; name: string | null }[]),
     paginateAll<{ vendor: string | null; category: string | null }>(() =>
       sb

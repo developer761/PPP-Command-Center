@@ -8,6 +8,7 @@ import {
   getMoneyInRows,
   purchaseRows,
   laborPaymentRows,
+  purchaseGroupingIndex,
   PURCHASES_BY_VENDOR_SPEC,
   LABOR_PAYMENTS_SPEC,
   DEPOSIT_HISTORY_SPEC,
@@ -139,12 +140,25 @@ export async function GET(req: NextRequest) {
     if (Number.isInteger(g) && g >= 0 && g < AR_APPLICATIONS_SPEC.groupings.length) groupingIndex = g;
   }
 
+  // Purchases carry a group-by and a vendor on screen (?pgroup / ?pvendor) and
+  // the file carries the same — a vendor's statement exported as every vendor,
+  // grouped differently from the page, is the trap the AR comment describes.
+  let title: string = sheet.title;
+  if (view === "purchases") {
+    groupingIndex = purchaseGroupingIndex(req.nextUrl.searchParams.get("pgroup"));
+    const vendor = req.nextUrl.searchParams.get("pvendor")?.trim();
+    if (vendor) {
+      exported = purchaseRows(exported, vendor);
+      title = `${sheet.title} — ${vendor}`;
+    }
+  }
+
   const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   return csvResponse(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     groupedReportCsv(sheet.spec as any, exported, groupingIndex),
     `${sheet.file}_${day}.csv`,
-    sheet.title,
+    title,
     periodLabel
   );
 }

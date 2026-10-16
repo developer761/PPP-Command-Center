@@ -31,6 +31,7 @@ import {
   listPurchasesForProject,
   addPurchase,
   updatePurchase,
+  getPurchase,
   deletePurchase,
   attachPurchaseReceipt,
   recentVendorsForAccount,
@@ -42,6 +43,7 @@ import {
   OFFERED_PURCHASE_CATEGORIES,
   PURCHASE_CATEGORY_META,
   purchaseCategoryLabel,
+  purchaseAmountLabel,
   isLaborPaymentCategory,
 } from "@/lib/commercial/purchases/constants";
 import { getDocumentsByIds } from "@/lib/commercial/documents/db";
@@ -370,12 +372,16 @@ async function updatePurchaseAction(formData: FormData) {
       from,
     );
   }
+  // The text this row was saved with, so a link to a vendor renamed since
+  // survives an edit that leaves the box alone (resolvePurchaseVendor).
+  const saved = await getPurchase(purchase_id);
   const v = await resolvePurchaseVendor({
     vendorId: vendorPick.id,
     vendorText: vendor,
     category,
     createIfNew: vendorPick.createNew,
     userId,
+    savedVendorText: saved && saved.opportunity_id === opp_id ? saved.vendor : null,
   });
   const res = await updatePurchase(
     purchase_id,
@@ -607,8 +613,21 @@ export async function ProjectCostsTool({
   // Revenue framing (Gross = billed, Net = billed − costs) — matches the Revenue page.
   const netProfitCents = fin.billedPreTaxCents - totalCostCents;
   const billedMarginPct = dm.pct;
+  /*
+   * A CATEGORY CAN NET BELOW ZERO now that credits are enterable: a $500 return
+   * against $300 of materials leaves Materials at -$200. Both views filtered on
+   * `> 0`, so such a category vanished from the chips and the donut while the
+   * total in the middle of the donut still counted it — the slices added up to
+   * more than the figure they surround, with nothing on screen to say why.
+   *
+   * The chips show every category that has anything in it. The donut cannot
+   * draw a negative slice, so it draws the positive ones and names the net
+   * credits underneath, which is what makes its centre figure add up.
+   */
+  const costCategoriesUsed = PURCHASE_CATEGORIES.filter((c) => fin.costs[c] !== 0);
+  const netCreditCategories = costCategoriesUsed.filter((c) => fin.costs[c] < 0);
   const costSegments: DonutSegment[] = [
-    ...PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => ({
+    ...costCategoriesUsed.filter((c) => fin.costs[c] > 0).map((c) => ({
       label: PURCHASE_CATEGORY_META[c].label,
       value: fin.costs[c],
       tone: COST_CATEGORY_TONE[c] ?? "neutral",
@@ -760,9 +779,9 @@ export async function ProjectCostsTool({
         )}
         {/* Per-category cost breakdown — where the money went (purchases + the
             auto crew-labor line). % is of TOTAL cost so the chips sum to 100. */}
-        {totalCostCents > 0 && (
+        {(costCategoriesUsed.length > 0 || crewLaborTotalCents > 0) && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {PURCHASE_CATEGORIES.filter((c) => fin.costs[c] > 0).map((c) => (
+            {costCategoriesUsed.map((c) => (
               <span
                 key={c}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-ppp-charcoal-100 bg-surface px-2.5 py-1 text-[11px]"
@@ -770,12 +789,20 @@ export async function ProjectCostsTool({
                 <span className="font-semibold text-ppp-charcoal-600">
                   {PURCHASE_CATEGORY_META[c].label}
                 </span>
-                <span className="tabular-nums font-bold text-ppp-charcoal">
-                  {formatCentsFull(fin.costs[c])}
+                <span
+                  className={`tabular-nums font-bold ${fin.costs[c] < 0 ? "text-emerald-700" : "text-ppp-charcoal"}`}
+                >
+                  {fin.costs[c] < 0
+                    ? purchaseAmountLabel(fin.costs[c]).replace(/^\+/, "")
+                    : formatCentsFull(fin.costs[c])}
                 </span>
-                <span className="text-ppp-charcoal-400 tabular-nums">
-                  {Math.round((fin.costs[c] / totalCostCents) * 100)}%
-                </span>
+                {/* A share of the total only means something for a cost, and
+                    only when there is a positive total to be a share of. */}
+                {fin.costs[c] > 0 && totalCostCents > 0 && (
+                  <span className="text-ppp-charcoal-400 tabular-nums">
+                    {Math.round((fin.costs[c] / totalCostCents) * 100)}%
+                  </span>
+                )}
               </span>
             ))}
             {crewLaborTotalCents > 0 && (
@@ -786,9 +813,11 @@ export async function ProjectCostsTool({
                 <span className="tabular-nums font-bold text-ppp-charcoal">
                   {formatCentsFull(crewLaborTotalCents)}
                 </span>
-                <span className="text-ppp-charcoal-400 tabular-nums">
-                  {Math.round((crewLaborTotalCents / totalCostCents) * 100)}%
-                </span>
+                {totalCostCents > 0 && (
+                  <span className="text-ppp-charcoal-400 tabular-nums">
+                    {Math.round((crewLaborTotalCents / totalCostCents) * 100)}%
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -797,7 +826,7 @@ export async function ProjectCostsTool({
 
       {/* ── Revenue & margin ── cost-by-category donut + billed-based margin gauge
           (Gross = billed, Net = billed − costs — matches the Revenue page). */}
-      {(totalCostCents > 0 || fin.billedPreTaxCents > 0) && (
+      {(totalCostCents > 0 || fin.billedPreTaxCents > 0 || netCreditCategories.length > 0) && (
         <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
           <h3 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
             <span
@@ -807,14 +836,38 @@ export async function ProjectCostsTool({
             Revenue &amp; margin
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
-            <div className="flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-2">
               {costSegments.length > 0 ? (
-                <DonutChart
-                  size={148}
-                  segments={costSegments}
-                  centerValue={formatCentsCompact(totalCostCents)}
-                  centerLabel="job costs"
-                />
+                <>
+                  <DonutChart
+                    size={148}
+                    segments={costSegments}
+                    centerValue={formatCentsCompact(totalCostCents)}
+                    centerLabel="job costs"
+                  />
+                  {netCreditCategories.length > 0 && (
+                    <p className="text-[11.5px] text-ppp-charcoal-500 text-center leading-snug max-w-[260px]">
+                      Net of credits:{" "}
+                      {netCreditCategories.map((c, i) => (
+                        <span key={c}>
+                          {i > 0 ? " · " : ""}
+                          {PURCHASE_CATEGORY_META[c].label}{" "}
+                          <span className="font-semibold text-emerald-700 tabular-nums">
+                            {purchaseAmountLabel(fin.costs[c])}
+                          </span>
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </>
+              ) : netCreditCategories.length > 0 ? (
+                <p className="text-[12px] text-ppp-charcoal-500 text-center">
+                  Only credits so far —{" "}
+                  {netCreditCategories
+                    .map((c) => `${PURCHASE_CATEGORY_META[c].label} ${purchaseAmountLabel(fin.costs[c])}`)
+                    .join(" · ")}
+                  .
+                </p>
               ) : (
                 <p className="text-[12px] text-ppp-charcoal-400 text-center">
                   No costs logged yet — add one below.
@@ -1250,9 +1303,10 @@ export async function ProjectCostsTool({
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <div
-                          className={`text-base font-bold tabular-nums text-ppp-charcoal`}
+                          className={`text-base font-bold tabular-nums ${pu.amount_cents < 0 ? "text-emerald-700" : "text-ppp-charcoal"}`}
                         >
-                          −{formatCentsFull(pu.amount_cents)}
+                          {/* A credit reads as a credit — see purchaseAmountLabel. */}
+                          {purchaseAmountLabel(pu.amount_cents)}
                         </div>
                         <div className="flex items-center gap-1">
                           <Link

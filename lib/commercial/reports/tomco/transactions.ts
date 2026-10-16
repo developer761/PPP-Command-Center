@@ -577,6 +577,17 @@ export const reimbursementRows = (rows: SpendRow[]) =>
     .filter((r) => !!r.reimburseTo)
     .sort((a, b) => (b.ymd ?? "").localeCompare(a.ymd ?? ""));
 
+/**
+ * Which of PURCHASES_BY_VENDOR_SPEC's groupings a `?pgroup=` asks for — the
+ * page and the CSV export both read it through here, so the file cannot be
+ * grouped differently from the screen it was exported from. Anything that is
+ * not a valid index is the first grouping (Vendor).
+ */
+export function purchaseGroupingIndex(raw: string | null | undefined): number {
+  const n = Number(raw ?? "0");
+  return Number.isInteger(n) && n >= 0 && n < PURCHASES_BY_VENDOR_SPEC.groupings.length ? n : 0;
+}
+
 /** Every distinct vendor, biggest spend first — the picker's options. */
 export function vendorOptions(
   rows: SpendRow[],
