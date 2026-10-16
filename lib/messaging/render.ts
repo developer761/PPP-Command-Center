@@ -1233,6 +1233,49 @@ function withoutATimingQuestion(body: string): string {
   return kept;
 }
 
+/**
+ * AND WHAT IS LEFT MUST NOT STILL BE ABOUT THE THING WE JUST STOPPED ASKING.
+ *
+ * Question 23 — the one case where a sentence that reads perfectly as a
+ * preamble reads wrong on its own. defer_to_estimator rotates three variants,
+ * and the third is
+ *
+ *   "Our office confirms the timing, so they'll lock that in with you.
+ *    What sort of days are easiest for you?"
+ *
+ * At stage 0 the days question is stripped as too early and the due ask takes
+ * its place, so a customer who asked how long painting a three-bedroom takes
+ * gets "Our office confirms the timing, so they'll lock that in with you.
+ * What are you looking to have painted?" — "they'll lock that in" says
+ * something is being booked, and nothing is. The sibling variants survive the
+ * removal intact: "The estimator will confirm that with you directly", "and
+ * they'll go through it with you". Only this one leans on the question that
+ * is no longer there.
+ *
+ * So the renderer does not PICK it. Kate wrote the line and it is right where
+ * it runs — at stage 3, where the days question stands — so the fix is which
+ * turn gets which wording, not her wording.
+ *
+ * Nouns, not the phrasing. Matching "lock that in" would test this template
+ * rather than the shape of the mistake, and the next variant anybody adds
+ * would walk straight past it.
+ */
+const PROMISES_TO_SCHEDULE =
+  /\b(?:timing|schedule[sd]?|scheduling|appointment|booking)\b/i;
+const PROMISES_TO_SCHEDULE_ES =
+  /(?<!\p{L})(?:horarios?|cita|agenda|coordinar(?:l[oa]s?)?|programar)(?!\p{L})/iu;
+
+function stillPromisesTiming(body: string): boolean {
+  return PROMISES_TO_SCHEDULE.test(body) || PROMISES_TO_SCHEDULE_ES.test(body);
+}
+
+/**
+ * How far the search above walks before giving up. No intent has more than
+ * four variants today; the loop stops on its own as soon as the rotation
+ * comes back round, so this is only a bound on a runaway, not a tuning knob.
+ */
+const MOST_VARIANTS = 8;
+
 /** Availability is the fourth leg, so it is due only once three are done. */
 const AVAILABILITY_STEP = 3;
 
@@ -1380,8 +1423,35 @@ export function renderMessage(input: RenderInput): string {
    * says comes next, so the flow is not skipped.
    */
   const stripTiming = (input.availabilityStandOff || tooEarlyToAskAboutDays) && !isCallbackQuestion;
-  const rendered = renderBody(input);
+  let rendered = renderBody(input);
   let body = stripTiming ? withoutATimingQuestion(rendered) : rendered;
+  /**
+   * A SIBLING THAT SURVIVES THE REMOVAL IS PREFERRED OVER ONE THAT DOES NOT.
+   *
+   * See PROMISES_TO_SCHEDULE. The rotation is by turn, so the offset walks
+   * the remaining variants in the same order a later turn would have reached
+   * them — the wording stays Kate's and only the turn it lands on moves.
+   *
+   * A sibling counts only if its own trailing question is stripped too.
+   * One that is returned unchanged either never asked about days — fine, but
+   * then it is a different answer to a different question — or was held back
+   * by the bare-acknowledgement guard, in which case swapping to it would
+   * ship the too-early question this whole branch exists to remove.
+   *
+   * Nothing suitable leaves the original in place, which is today's output:
+   * a slightly odd preamble beats an invented one.
+   */
+  if (stripTiming && body !== rendered && stillPromisesTiming(body)) {
+    for (let offset = 1; offset <= MOST_VARIANTS; offset++) {
+      const alt = renderBody(input, offset);
+      if (alt === rendered) break;
+      const altStripped = withoutATimingQuestion(alt);
+      if (altStripped === alt || stillPromisesTiming(altStripped)) continue;
+      rendered = alt;
+      body = altStripped;
+      break;
+    }
+  }
   if (stripTiming && tooEarlyToAskAboutDays && body !== rendered && body && !body.includes("?")) {
     const due = nextFlowAsk(input);
     /**
@@ -1416,7 +1486,15 @@ export function renderMessage(input: RenderInput): string {
   return tooManyAsks(withLead) ? body : withLead;
 }
 
-function renderBody(input: RenderInput): string {
+/**
+ * `variantOffset` shifts ONLY the template rotation, and only for the
+ * intent-keyed templates at the bottom of this function. renderMessage uses
+ * it to reach a sibling wording when the one this turn landed on does not
+ * survive having its trailing question removed; everything else about the
+ * turn — the openers, the callback branches, the availability week — is the
+ * turn's own and must not move with it.
+ */
+function renderBody(input: RenderInput, variantOffset = 0): string {
   /**
    * THE ANSWER HAS TO SURVIVE THE EARLY RETURNS TOO.
    *
@@ -1558,7 +1636,7 @@ function renderBody(input: RenderInput): string {
           : undefined)
         ?? (es ? SAYS_ES : SAYS)[input.intent]
         ?? [""];
-  let pick = variants[(input.turn ?? 0) % variants.length] ?? "";
+  let pick = variants[((input.turn ?? 0) + variantOffset) % variants.length] ?? "";
 
   // Substitute verified values. A template whose value is missing must not go
   // out with "{address}" in it — validateAction refuses that intent, but the
