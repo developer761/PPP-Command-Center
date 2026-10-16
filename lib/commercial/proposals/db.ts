@@ -686,10 +686,12 @@ export async function updateProposal(
   // R1b: the override drives total_cents (the contract number) — recompute when
   // it's set/cleared so AIA/invoicing/KPIs use the right number.
   if (input.final_price_override_cents !== undefined) {
-    await recomputeProposalTotal(proposal.id, input.updated_by_user_id ?? null);
-    const ov = input.final_price_override_cents;
-    proposal.total_cents =
-      ov != null ? Math.round(ov) : await proposalLineItemSumCents(proposal.id);
+    const retotal = await recomputeProposalTotal(proposal.id, input.updated_by_user_id ?? null);
+    if (!retotal.ok) {
+      await logUpdate("commercial_proposals", proposal.id, before, proposal, input.updated_by_user_id ?? null);
+      return { ok: false, error: `The final price was saved, but ${lowerFirst(retotal.error)}` };
+    }
+    proposal.total_cents = retotal.total_cents;
   }
   await logUpdate(
     "commercial_proposals",
@@ -2350,7 +2352,10 @@ export async function createLineItem(
   input: CreateLineItemInput,
   actorUserId: string | null,
 ): Promise<
-  { ok: true; item: CommercialProposalLineItem } | { ok: false; error: string }
+  /** `warning`: the line WAS added but the proposal total didn't move. A heads-
+   *  up rather than a failure, so nobody adds the same line a second time. */
+  | { ok: true; item: CommercialProposalLineItem; warning?: string }
+  | { ok: false; error: string }
 > {
   const draftGate = await assertProposalEditable(input.proposal_id, actorUserId);
   if (!draftGate.ok) return draftGate;
@@ -2529,8 +2534,16 @@ export async function createLineItem(
   if (error) return { ok: false, error: error.message };
   const item = data as CommercialProposalLineItem;
   await logInsert("commercial_proposal_line_items", item.id, item, actorUserId);
-  await recomputeProposalTotal(input.proposal_id, actorUserId);
+  const retotal = await recomputeProposalTotal(input.proposal_id, actorUserId);
+  if (!retotal.ok) {
+    return { ok: true, item, warning: `The line was added, but ${lowerFirst(retotal.error)}` };
+  }
   return { ok: true, item };
+}
+
+/** "The proposal total…" → "the proposal total…", to follow a "but". */
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 export type UpdateLineItemInput = {
@@ -2691,7 +2704,8 @@ export async function updateLineItem(
     item,
     actorUserId,
   );
-  await recomputeProposalTotal(item.proposal_id, actorUserId);
+  const retotal = await recomputeProposalTotal(item.proposal_id, actorUserId);
+  if (!retotal.ok) return { ok: false, error: `The line was saved, but ${lowerFirst(retotal.error)}` };
   return { ok: true, item };
 }
 
@@ -2797,9 +2811,9 @@ export async function setLineCustomerApproved(
    */
   const proposalId = (before as { proposal_id?: string | null } | null)?.proposal_id ?? null;
   if (proposalId) {
-    await recomputeProposalTotal(proposalId, actingUserId).catch((err) =>
-      console.warn("[proposals] recompute after customer-approved toggle failed:", err),
-    );
+    // A `.catch()` here caught nothing: the failure is RETURNED, not thrown.
+    const retotal = await recomputeProposalTotal(proposalId, actingUserId);
+    if (!retotal.ok) return { ok: false, error: `The answer was saved, but ${lowerFirst(retotal.error)}` };
   }
   return { ok: true };
 }
@@ -2827,10 +2841,11 @@ export async function deleteLineItem(
     .eq("id", id);
   if (error) return { ok: false, error: error.message };
   await logDelete("commercial_proposal_line_items", id, before, actorUserId);
-  await recomputeProposalTotal(
+  const retotal = await recomputeProposalTotal(
     (before as CommercialProposalLineItem).proposal_id,
     actorUserId,
   );
+  if (!retotal.ok) return { ok: false, error: `The line was removed, but ${lowerFirst(retotal.error)}` };
   return { ok: true };
 }
 
@@ -2884,12 +2899,16 @@ export async function getLineItem(
 
 /** The raw line-item sum (non-alternate rows, qty × unit_price). This is the
  *  number BEFORE any final-price override — used for the internal "override vs
- *  line items" delta. Hidden-price rows (show_price=false) still count. */
+ *  line items" delta. Hidden-price rows (show_price=false) still count.
+ *
+ *  NULL WHEN THE LINES COULDN'T BE READ. This returned `0` on a failed read,
+ *  and its one writer, `recomputeProposalTotal`, then stored $0 as the
+ *  contract number — a value indistinguishable from a real empty proposal. */
 export async function proposalLineItemSumCents(
   proposalId: string,
-): Promise<number> {
+): Promise<number | null> {
   const sb = commercialDb();
-  const { data: items } = await sb
+  const { data: items, error: itemsErr } = await sb
     .from("commercial_proposal_line_items")
     .select(
       // `is_deduct` and `line_total_override_cents` are NOT optional here — see
@@ -2897,6 +2916,7 @@ export async function proposalLineItemSumCents(
       "quantity, unit_price_cents, is_alternate, is_deduct, line_total_override_cents, customer_approved, customer_approved_at",
     )
     .eq("proposal_id", proposalId);
+  if (itemsErr || !items) return null;
   const rows =
     (items as Array<{
       quantity: number;
@@ -3048,13 +3068,20 @@ function utcDayOf(ms: number): string {
  *  set (R1b), else the non-alternate line-item sum. total_cents is the single
  *  contract number the AIA ladder + invoicing + KPIs consume, so the override
  *  MUST land here or those surfaces diverge (2026-08 money-audit #2). Called
- *  after any line-item mutation AND after the override is set/cleared. */
+ *  after any line-item mutation AND after the override is set/cleared.
+ *
+ *  RETURNS WHAT IT WROTE, OR WHY IT DIDN'T. It used to return `void` and read
+ *  none of its three queries: a failed line read summed to $0, a failed
+ *  proposal read dropped the override and fell back to the line sum, and a
+ *  failed write left the old total — and every line-item edit reported "saved"
+ *  over a contract number that had not moved. On a failed read it now writes
+ *  NOTHING, because a stale total is recoverable and a wrong one is not. */
 export async function recomputeProposalTotal(
   proposalId: string,
   actorUserId: string | null,
-): Promise<void> {
+): Promise<{ ok: true; total_cents: number } | { ok: false; error: string }> {
   const sb = commercialDb();
-  const [rawSum, { data: prop }] = await Promise.all([
+  const [rawSum, { data: prop, error: propErr }] = await Promise.all([
     proposalLineItemSumCents(proposalId),
     sb
       .from("commercial_proposals")
@@ -3062,17 +3089,27 @@ export async function recomputeProposalTotal(
       .eq("id", proposalId)
       .maybeSingle(),
   ]);
+  const failed = {
+    ok: false as const,
+    error:
+      "The proposal total couldn't be updated, so it may still show the old figure. Make any edit again to re-total it.",
+  };
+  if (propErr || !prop) return failed;
   const override =
-    (prop as { final_price_override_cents: number | null } | null)
-      ?.final_price_override_cents ?? null;
-  const total = override != null ? Number(override) : rawSum;
-  await sb
+    (prop as { final_price_override_cents: number | null })
+      .final_price_override_cents ?? null;
+  if (override == null && rawSum == null) return failed;
+  const total = override != null ? Number(override) : (rawSum as number);
+  const { data: wrote, error: writeErr } = await sb
     .from("commercial_proposals")
     .update({
       total_cents: total,
       updated_by_user_id: actorUserId,
     })
-    .eq("id", proposalId);
+    .eq("id", proposalId)
+    .select("id");
+  if (writeErr || (wrote ?? []).length === 0) return failed;
+  return { ok: true, total_cents: total };
 }
 
 // ────────────── Phase F.4: Send flow ──────────────

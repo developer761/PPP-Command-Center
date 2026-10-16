@@ -196,6 +196,7 @@ export default async function CreateProposalRoute({
     const parentItems = await listLineItemsForProposal(parentProposalId);
     const failed: string[] = [];
     const idRemap = new Map<string, string>();
+    let totalWarning: string | null = null;
     for (const item of parentItems) {
       const copyResult = await createLineItem(
         {
@@ -235,6 +236,9 @@ export default async function CreateProposalRoute({
       } else {
         // Old line id -> new line id, for the work-order remap below.
         idRemap.set(item.id, copyResult.item.id);
+        // Each copy re-totals the revision, so only the LAST one's answer is
+        // the total that stands.
+        totalWarning = copyResult.warning ?? null;
       }
     }
     // Re-point any work order's stored scope at the NEW line ids.
@@ -267,7 +271,14 @@ export default async function CreateProposalRoute({
         failed.push(
           `The final price / bid-set date didn't carry to this revision (${carried.error}). Set them again before sending.`
         );
+      } else if (finalPriceOverride != null) {
+        totalWarning = null; // the override re-totalled the revision itself
       }
+    }
+    if (failed.length === 0 && totalWarning) {
+      redirect(
+        `/commercial/accounts/${accountId}/deals/${dealId}/proposal/${result.proposal.id}?error=${encodeURIComponent(`All ${parentItems.length} line items copied forward. ${totalWarning}`)}${backQs}`
+      );
     }
     if (failed.length > 0) {
       // Land on the editor with a warning + preserve query state so

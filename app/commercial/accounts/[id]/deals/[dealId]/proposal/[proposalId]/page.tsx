@@ -878,6 +878,13 @@ async function addLineItemAction(formData: FormData) {
       proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.error)}`, proposalBack(formData))
     );
   }
+  // Added, but the contract total didn't move — say so instead of painting a
+  // stale total as if it were right.
+  if (result.warning) {
+    redirect(
+      proposalHref(accountId, dealId, proposalId, `?error=${encodeURIComponent(result.warning)}`, proposalBack(formData))
+    );
+  }
   // Karan 2026-08-13: "I'm adding an inclusion and it asked me to leave the
   // site and it's on the adding screen still. It makes me refresh then it comes
   // up to the total."
