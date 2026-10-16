@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { csvResponse, CSV_BOM, csvTitleBlock } from "@/lib/commercial/reports/export-guard";
 import { csvEscape } from "@/lib/commercial/csv";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Every CSV this platform produces has to open correctly in Excel on Windows.
@@ -54,7 +55,7 @@ describe("every CSV route goes through it", () => {
   // — that header now lives in the helper, so looking for it would find
   // nothing and quietly pass forever.
   const routes = walk(join(ROOT, "app", "api")).filter((f) =>
-    /\.csv["`]/.test(readFileSync(f, "utf8"))
+    /\.csv["`]/.test(stripComments(readFileSync(f, "utf8")))
   );
 
   it("finds the export routes", () => {
@@ -65,7 +66,7 @@ describe("every CSV route goes through it", () => {
     // A hand-rolled `new NextResponse(body, { headers: { "Content-Type":
     // "text/csv" ... } })` is how all eleven ended up without a BOM.
     const offenders = routes
-      .filter((f) => !readFileSync(f, "utf8").includes("csvResponse"))
+      .filter((f) => !stripComments(readFileSync(f, "utf8")).includes("csvResponse"))
       .map((f) => f.replace(`${ROOT}/`, ""));
     expect(offenders, "Use csvResponse from lib/commercial/reports/export-guard").toEqual([]);
   });

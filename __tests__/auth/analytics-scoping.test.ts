@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { capabilitiesFor, homeHrefFor, USER_ROLE_VALUES } from "@/lib/auth/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R4.1 — "the only tabs an account manager should see are the tabs under
@@ -65,7 +66,7 @@ describe("analytics routes are guarded server-side", () => {
     expect(shouldGuard.length).toBeGreaterThanOrEqual(5);
 
     const unguarded = shouldGuard
-      .filter((p) => !readFileSync(p, "utf8").includes("requireAnalyticsAccess()"))
+      .filter((p) => !stripComments(readFileSync(p, "utf8")).includes("requireAnalyticsAccess()"))
       .map((p) => p.replace(ROOT + "/", ""));
     expect(
       unguarded,

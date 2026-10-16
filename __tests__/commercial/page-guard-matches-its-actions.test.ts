@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A page's server ACTIONS must be gated at least as strongly as the page.
@@ -181,7 +182,7 @@ describe("a page's server actions are gated as strongly as the page", () => {
     let actionsChecked = 0;
 
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       const actions = serverActionBodies(src);
       if (actions.length === 0) continue;
 

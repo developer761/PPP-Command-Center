@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * `position: fixed` is relative to the viewport only while NO ancestor
@@ -65,7 +66,7 @@ const USES_PORTAL = /<ModalPortal[\s>]/;
 describe("full-screen overlays are portalled out of the page tree", () => {
   const offenders: Array<{ file: string; line: number }> = [];
   for (const file of files) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
     if (!OVERLAY.test(src)) continue;
     // The shell's own mobile-drawer scrim is a sibling of the page content, not
     // a descendant of a page shell, so it has no transformed ancestor.
@@ -87,12 +88,12 @@ describe("full-screen overlays are portalled out of the page tree", () => {
   it("still finds the overlays it is meant to be checking", () => {
     // Guards the guard: if the regex stops matching, the test above passes
     // vacuously and the bug walks straight back in for a fourth round.
-    const withOverlays = files.filter((f) => OVERLAY.test(readFileSync(f, "utf8")));
+    const withOverlays = files.filter((f) => OVERLAY.test(stripComments(readFileSync(f, "utf8"))));
     expect(withOverlays.length).toBeGreaterThanOrEqual(2);
 
     // And prove BOTH spellings are still reachable, so a future sweep that
     // converts every overlay to one form can't half-blind this guard.
-    const src = withOverlays.map((f) => readFileSync(f, "utf8"));
+    const src = withOverlays.map((f) => stripComments(readFileSync(f, "utf8")));
     expect(src.some((s) => /\bfixed\b[^"'`]*\binset-0\b/.test(s))).toBe(true);
     expect(src.some((s) => /\bfixed\b[^"'`]*\bh-dvh-full\b/.test(s))).toBe(true);
   });

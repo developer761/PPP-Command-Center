@@ -5,6 +5,7 @@ import {
   capabilitiesFor, normalizeRole, roleLabel, homeHrefFor,
   USER_ROLE_VALUES, USER_ROLES, type UserRole,
 } from "@/lib/auth/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate, 2026-09-01: "regional managers ... should essentially have the Sales
@@ -73,8 +74,7 @@ describe("the visibility rule lives in exactly one place", () => {
     // old role's DATA SCOPE — visible only by logging in as one.
     const files = ["lib/auth/viewer-server.ts", "components/dashboard-chrome.tsx"];
     for (const f of files) {
-      const src = readFileSync(join(ROOT, f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(readFileSync(join(ROOT, f), "utf8"));
       expect(src, `${f} re-derives the visibility rule`).not.toMatch(/isAdmin \|\| isAccountManager/);
       expect(src, `${f} should read the capability`).toMatch(/canSeeAllWorkOrders/);
     }
@@ -146,10 +146,10 @@ describe("field users can enter colors (Kate, 2026-09-01)", () => {
       }
       return out;
     };
-    const guarded = walk(dir).filter((f) => readFileSync(f, "utf8").includes("canEnterColors"));
+    const guarded = walk(dir).filter((f) => stripComments(readFileSync(f, "utf8")).includes("canEnterColors"));
     expect(guarded.length).toBeGreaterThanOrEqual(7);
     for (const f of guarded) {
-      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(readFileSync(f, "utf8"));
       expect(src, `${f} re-derives the color gate`).not.toMatch(/isAdmin \|\| isAccountManager/);
     }
   });

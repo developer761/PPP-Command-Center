@@ -63,6 +63,14 @@ const ALLOWED = new Map<string, string>([
       "explanation is still prose and has not decayed into a string literal.",
   ],
   [
+    "__tests__/config/strip-comments-is-honest.test.ts",
+    "Tests the stripper itself, so it must hold the file AS WRITTEN beside " +
+      "the stripped version and compare the two. Routing its reads through " +
+      "stripComments would make every assertion compare stripComments to " +
+      "itself and pass whatever the function did — which is exactly the " +
+      "defect that let two code-eating bugs live in that helper unnoticed.",
+  ],
+  [
     "__tests__/messaging/simulator-parity.test.ts",
     "Needs both readings of lib/messaging/simulator.ts and keeps them apart: " +
       "code() is stripped and must NOT claim the carrier answers HELP, raw() " +
@@ -104,11 +112,43 @@ function analyse(fileName: string, text: string): Offence[] {
     return out;
   };
 
-  /** Does this readFileSync name a SOURCE file? A dynamic path counts. */
+  /**
+   * Does this readFileSync name a SOURCE file?
+   *
+   * A literal path answers itself. A dynamic one — `readFileSync(join(ROOT,
+   * p))` inside a `walk()` — is resolved from the extension filter in an
+   * enclosing scope, climbing OUTWARDS until one offers evidence. The
+   * innermost arrow is usually too small to hold any:
+   *
+   *     .filter((f) => f.endsWith(".sql"))
+   *     .filter((f) => readFileSync(join(ROOT, "supabase/migrations", f), "utf8").includes(x))
+   *
+   * the arrow doing the reading names no extension at all, and the `.sql`
+   * that settles it sits a level up in the enclosing `it`.
+   *
+   * Only a scope naming a non-source extension and no source one is let
+   * through. Anything still ambiguous counts as source, so the default is to
+   * check rather than to skip.
+   */
   const readsSource = (call: ts.CallExpression): string | null => {
-    const strs = literalsIn(call).filter((s) => /\.[a-z0-9]+$/i.test(s) && s !== "utf8");
-    if (strs.length === 0) return "<dynamic>";
-    return strs.some((s) => SOURCE_EXT.test(s)) ? strs.join("|") : null;
+    const own = literalsIn(call).filter((s) => /\.[a-z0-9]+$/i.test(s) && s !== "utf8");
+    if (own.length) return own.some((s) => SOURCE_EXT.test(s)) ? own.join("|") : null;
+
+    let scope: ts.Node | undefined = call.parent;
+    while (scope) {
+      if (
+        ts.isFunctionDeclaration(scope) || ts.isArrowFunction(scope) ||
+        ts.isFunctionExpression(scope) || ts.isSourceFile(scope)
+      ) {
+        const near = literalsIn(scope);
+        const nonSource = near.some((s) => /\.(sql|css|json|md|csv|png|jpe?g|svg|txt)$/i.test(s));
+        const source = near.some((s) => SOURCE_EXT.test(s));
+        if (nonSource && !source) return null;
+        if (source) return "<dynamic>";
+      }
+      scope = scope.parent;
+    }
+    return "<dynamic>";
   };
 
   /** Non-null when `expr` derives from a readFileSync. */
@@ -130,7 +170,11 @@ function analyse(fileName: string, text: string): Offence[] {
         const path = readsSource(expr);
         return path ? { stripped: false, private: false, path } : null;
       }
-      if (name === "stripComments") {
+      // `stripSqlComments` is the same guarantee for a migration: a `-- why`
+      // line hides a missing statement exactly the way a docblock hides a
+      // missing guard, and a migration is append-only so that green never
+      // turns red on its own.
+      if (name === "stripComments" || name === "stripSqlComments") {
         const inner = expr.arguments[0] ? trace(expr.arguments[0]) : null;
         return { stripped: true, private: false, path: inner?.path ?? "?" };
       }

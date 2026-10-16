@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The gate is only a chokepoint while it is the ONLY path to the transport.
@@ -52,7 +53,7 @@ describe("the gate is the only path to the carrier", () => {
   it("no file outside the gate imports the transport", () => {
     const offenders = files.filter((f) => {
       if (ALLOWED.has(f) || f.startsWith(ALLOWED_DIR)) return false;
-      return IMPORTS_TRANSPORT.test(readFileSync(f, "utf8"));
+      return IMPORTS_TRANSPORT.test(stripComments(readFileSync(f, "utf8")));
     });
     expect(offenders).toEqual([]);
   });
@@ -60,14 +61,14 @@ describe("the gate is the only path to the carrier", () => {
   it("gate.ts is the only place that calls .send() on a transport", () => {
     const offenders = files.filter((f) => {
       if (ALLOWED.has(f) || f.startsWith(ALLOWED_DIR)) return false;
-      const src = readFileSync(f, "utf8");
+      const src = stripComments(readFileSync(f, "utf8"));
       return /\btransport\s*\.\s*send\s*\(/.test(src);
     });
     expect(offenders).toEqual([]);
   });
 
   it("gatedSend is the module's only exported way to send", () => {
-    const src = readFileSync("lib/messaging/gate.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/gate.ts", "utf8"));
     const exportedFns = [...src.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)].map((m) => m[1]);
     // Helpers may be exported for testing, but only one of them sends.
     expect(exportedFns).toContain("gatedSend");
@@ -93,7 +94,7 @@ describe("the gate is the only path to the carrier", () => {
     expect(scripts.length).toBeGreaterThan(10);
     const offenders: string[] = [];
     for (const f of scripts) {
-      const src = readFileSync(join("scripts", f), "utf8");
+      const src = stripComments(readFileSync(join("scripts", f), "utf8"));
       if (!/\bgatedSend\s*\(/.test(src)) continue;
       // Every call has to pass deps carrying a transport. Checked as "the file
       // never passes a bare gateDeps(sb)", which is the shape that resolves the

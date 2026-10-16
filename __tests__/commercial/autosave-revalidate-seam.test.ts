@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS, isBackgroundSave } from "@/lib/commercial/autosave-flag";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The autosave/revalidate seam.
@@ -25,7 +26,7 @@ import { AUTOSAVE_FLAG, AUTOSAVE_DEBOUNCE_MS, isBackgroundSave } from "@/lib/com
  */
 
 const ROOT = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 /** Every client wrapper that fires debounced background saves. */
 const WRAPPERS = [
@@ -52,7 +53,7 @@ function discoverAutosaveActions(): { file: string; action: string }[] {
       if (e.isDirectory()) {
         if (e.name !== "node_modules" && e.name !== ".next") walk(p);
       } else if (e.name.endsWith(".tsx")) {
-        const src = readFileSync(p, "utf8");
+        const src = stripComments(readFileSync(p, "utf8"));
         const re = /<Autosave(?:Proposal)?Form\b[^>]*?\saction=\{([A-Za-z0-9_$]+)\}/g;
         for (const m of src.matchAll(re)) {
           const rel = relative(ROOT, p);

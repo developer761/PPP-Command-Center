@@ -111,13 +111,30 @@ describe("the company-fact events are deliberately NOT gated", () => {
       const slackAt = code.indexOf("postCommercialSlack(");
       const gateAt = code.indexOf("if (recipients.length === 0) return");
       expect(slackAt, `${name}: no Slack post`).toBeGreaterThan(-1);
-      if (gateAt > -1) {
-        // THE REGRESSION, and it was live: invoice_created and
-        // payment_recorded both gated first, so an invoice on a deal with no
-        // assignee produced no bell, no email and no channel post. 130 of 132
-        // live deals have no assignee.
-        expect(slackAt, `${name}: Slack must post BEFORE the recipient gate`).toBeLessThan(gateAt);
-      }
+
+      // THE GUARD OWNS ITS PRECONDITION.
+      //
+      // This ordering check used to live inside `if (gateAt > -1)`. Reword
+      // the gate even trivially — `if (!recipients.length) return` — and
+      // `gateAt` goes to -1, the branch never runs, and the test passes
+      // having checked nothing. The regression it exists for would then be
+      // free to come back in the reworded form, which is the only form it
+      // could come back in.
+      //
+      // All four company-fact functions carry this gate today. If one
+      // legitimately stops having it, this fails with a message saying so
+      // and somebody decides on purpose.
+      expect(
+        gateAt,
+        `${name}: the recipient gate is gone or reworded — re-anchor this check rather ` +
+          `than letting it switch itself off`
+      ).toBeGreaterThan(-1);
+
+      // THE REGRESSION, and it was live: invoice_created and
+      // payment_recorded both gated first, so an invoice on a deal with no
+      // assignee produced no bell, no email and no channel post. 130 of 132
+      // live deals have no assignee.
+      expect(slackAt, `${name}: Slack must post BEFORE the recipient gate`).toBeLessThan(gateAt);
       // …and must not have picked up a self-assignment guard by copy-paste.
       expect(code, `${name}: should not be self-gated`).not.toContain("const selfAssigned =");
     });

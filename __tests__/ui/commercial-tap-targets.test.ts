@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Nothing you tap on a phone may be smaller than 44px.
@@ -142,7 +143,7 @@ function findings(): { all: Finding[]; elements: number; withClassName: number }
   let withClassName = 0;
   for (const file of ROOTS.flatMap((r) => walk(join(ROOT, r)))) {
     const rel = file.replace(ROOT + "/", "");
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
     for (const m of src.matchAll(/<(button|a|Link|summary)\b/g)) {
       const end = tagEnd(src, m.index!);
       if (end < 0) continue;

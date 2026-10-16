@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * No `<select>` on the Commercial platform may ship with the browser's own
@@ -52,7 +53,7 @@ describe("every Commercial <select> drops the OS chrome", () => {
   it("no bare native select", () => {
     const offenders: string[] = [];
     for (const f of files) {
-      const raw = readFileSync(f, "utf8");
+      const raw = stripComments(readFileSync(f, "utf8"));
       // Comments FIRST. Two of these files document the rule by writing
       // "no native <select>" in prose, and a scanner that counts prose finds
       // its loudest offenders among the people who already agreed with it.

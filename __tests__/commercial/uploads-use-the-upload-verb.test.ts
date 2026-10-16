@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The signed-upload endpoint is PUT. POST at the same path means something else.
@@ -35,7 +36,7 @@ const CLIENTS = [
 
 describe("browser upload transport", () => {
   for (const file of CLIENTS) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
 
     it(`${file} opens the signed URL with PUT`, () => {
       const opens = [...src.matchAll(/x\.open\("(\w+)"/g)].map((m) => m[1]);

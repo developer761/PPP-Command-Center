@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { safeNowMs } from "@/lib/commercial/now";
 import { readFileSync, readdirSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A bad "now" must not take a money page down.
@@ -41,7 +42,7 @@ describe("every report builder guards its now", () => {
     .concat(["lib/commercial/invoices/statement.ts"]);
 
   for (const file of files) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
     // Only files that actually take a caller-supplied clock.
     const takesNow = /\b(nowMs|now)\s*:?\s*(number\s*)?=\s*Date\.now\(\)/.test(src);
     const stamps = /new Date\((nowMs|now)\)\.toISOString\(\)/.test(src);

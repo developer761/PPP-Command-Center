@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A server action that validates an id it was never sent is a button that
@@ -42,7 +43,7 @@ function formBlocks(src: string): { index: number; body: string }[] {
 describe("every action-wired form posts the ids its action validates", () => {
   for (const panel of PANELS) {
     it(panel.file, () => {
-      const src = readFileSync(panel.file, "utf8");
+      const src = stripComments(readFileSync(panel.file, "utf8"));
       const forms = formBlocks(src);
       expect(forms.length, "no forms found — did the panel get restructured?").toBeGreaterThan(3);
 

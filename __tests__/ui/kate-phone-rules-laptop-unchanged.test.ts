@@ -20,27 +20,28 @@
  * 2026-10-08 before that was added.
  */
 /**
- * NOTE ON stripComments: it removes block comments FIRST and never tries to
- * match the `{ ... }` of a JSX comment.
+ * NOTE ON stripComments: the shared helper, not a local copy.
  *
- * The obvious pattern — /\{\s*\/\*[\s\S]*?\*\/\s*\}/ — is a trap. It
- * requires the closing `*\/` to be followed by `}`, so when the nearest one
- * is not, it keeps scanning for a later `*\/` that is and swallows every line
- * in between. Measured on components/order-builder-view.tsx: 118 characters
- * of real code gone, silently, which is how a source assertion passes for a
- * reason that has nothing to do with the code under test.
+ * A local one stood here and its own docblock explained why it refused to
+ * match the `{ … }` of a JSX comment: the obvious pattern
+ * /\{\s*\/\*[\s\S]*?\*\/\s*\}/ requires the closing `*\/` to be
+ * followed by `}`, so when the nearest one is not it scans on to a later one
+ * that is and swallows everything between. Measured on
+ * components/order-builder-view.tsx: 118 characters of real code gone,
+ * silently — a source assertion passing for a reason unrelated to the code
+ * under test.
+ *
+ * The shared helper no longer has that trap to avoid. It asks TypeScript's own
+ * parser for the comment ranges, so it knows a comment from a `//` inside a URL
+ * and handles JSX properly rather than by declining to try.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 const SRC = "components/order-builder-view.tsx";
 
-/** Comments quote the very class names these tests search for. */
-function stripComments(s: string): string {
-  return s
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-}
+
 
 const src = stripComments(readFileSync(SRC, "utf8"));
 
@@ -174,7 +175,7 @@ describe("Kate's phone rules do not move the laptop", () => {
   });
 
   it("starts collapsed, which is the whole request", () => {
-    const raw = readFileSync(SRC, "utf8");
+    const raw = stripComments(readFileSync(SRC, "utf8"));
     expect(raw).toMatch(/const \[sourceLinesOpen, setSourceLinesOpen\] = useState\(false\)/);
   });
 

@@ -148,3 +148,48 @@ function commentRanges(src: string): ts.CommentRange[] {
 
   return out;
 }
+
+/**
+ * The same job for SQL, where a comment starts with `--`.
+ *
+ * A migration's prose hides behaviour exactly the way a docblock does. A test
+ * asserting a migration `.includes("drop the old index")` passes on the line
+ *
+ *     -- drop the old index, it was replaced in 162
+ *
+ * long after the DROP itself is gone — and a migration is append-only, so that
+ * green can never turn red on its own. Three tests here read `.sql` and the
+ * JS stripper cannot help them: it knows `//` and `/* *␀/`, not `--`.
+ *
+ * Block comments are handled by `stripComments`, which SQL shares. Dollar-quoted
+ * bodies ($$ … $$) are left alone deliberately: a `--` inside a PL/pgSQL
+ * function body is still a comment, and removing it changes nothing a test
+ * asserts on, while trying to parse the quoting would be a second place to be
+ * wrong.
+ */
+export function stripSqlComments(src: string): string {
+  // NOT via stripComments: that one parses as TSX, and handing it SQL asks a
+  // TypeScript lexer to reason about `$$`, `::` and dollar-quoting. Block
+  // comments are the same in both languages and are cheap to remove directly.
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n\r]/g, ""))
+    // A `--` inside a single-quoted literal is NOT a comment. Walk the line and
+    // only cut at a `--` that is outside quotes — the naive /--.*$/ would eat
+    // half of `insert into t values ('a--b')`.
+    .split("\n")
+    .map((line) => {
+      let inQuote = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === "'") {
+          // '' inside a literal is an escaped quote, not a close.
+          if (inQuote && line[i + 1] === "'") { i++; continue; }
+          inQuote = !inQuote;
+        } else if (!inQuote && c === "-" && line[i + 1] === "-") {
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
+}

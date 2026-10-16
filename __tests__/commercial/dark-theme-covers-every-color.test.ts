@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Every color family the UI paints with must exist in the dark theme.
@@ -81,7 +82,7 @@ describe("the dark theme covers every color the UI paints with", () => {
   // Shared components count only when Commercial actually pulls them in, which
   // is checked by reference rather than assumed.
   const commercial = [...walk("app/commercial"), ...walk("components/commercial")];
-  const commercialSrc = commercial.map((f) => readFileSync(f, "utf8")).join("\n");
+  const commercialSrc = commercial.map((f) => stripComments(readFileSync(f, "utf8"))).join("\n");
   const sharedUsedByCommercial = walk("components").filter((f) => {
     if (f.startsWith("components/commercial/")) return false;
     const base = f.split("/").pop()!.replace(/\.tsx$/, "");
@@ -91,7 +92,7 @@ describe("the dark theme covers every color the UI paints with", () => {
   const used = new Map<string, string[]>();
 
   for (const f of files) {
-    const src = readFileSync(f, "utf8");
+    const src = stripComments(readFileSync(f, "utf8"));
     for (const m of src.matchAll(
       /\b(?:bg|text|border|ring|from|via|to|fill|stroke|divide|outline|shadow|accent)-([a-z]+)-\d{2,3}\b/g
     )) {
@@ -149,7 +150,7 @@ describe("destructive text is rose-700", () => {
 
   it("no text-rose-600 survives in Commercial", () => {
     const offenders = files.filter((f) =>
-      /(?<![a-z-])text-rose-600\b/.test(readFileSync(f, "utf8"))
+      /(?<![a-z-])text-rose-600\b/.test(stripComments(readFileSync(f, "utf8")))
     );
     expect(
       offenders,
@@ -161,7 +162,7 @@ describe("destructive text is rose-700", () => {
     // Guards the rule above from being over-applied by a future find/replace:
     // the solid fill passes, and this test should fail if someone "helpfully"
     // sweeps it too.
-    const usesFill = files.some((f) => /\bbg-rose-600\b/.test(readFileSync(f, "utf8")));
+    const usesFill = files.some((f) => /\bbg-rose-600\b/.test(stripComments(readFileSync(f, "utf8"))));
     expect(usesFill).toBe(true);
   });
 });

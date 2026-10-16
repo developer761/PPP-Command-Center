@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * EVERY form must post the ids its action refuses to run without.
@@ -114,7 +115,7 @@ describe("a form never submits into a guard it can't satisfy", () => {
   it("checks a meaningful number of surfaces", () => {
     // Guards the test itself: a refactor that changes how actions are declared
     // would otherwise make this file pass by finding nothing at all.
-    const total = files.reduce((n, f) => n + actionsIn(readFileSync(f, "utf8")).length, 0);
+    const total = files.reduce((n, f) => n + actionsIn(stripComments(readFileSync(f, "utf8"))).length, 0);
     expect(total, "found no guarded actions — has the action shape changed?").toBeGreaterThan(50);
   });
 
@@ -124,7 +125,7 @@ describe("a form never submits into a guard it can't satisfy", () => {
     // migration parser that reported fixed tables as broken, except silent.
     let pairs = 0;
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       for (const action of actionsIn(src)) pairs += formsFor(src, action.name).length;
     }
     expect(pairs, "no form/action pairs found — the scan is inspecting nothing").toBeGreaterThan(40);
@@ -133,7 +134,7 @@ describe("a form never submits into a guard it can't satisfy", () => {
   it("every same-file form posts what its action requires", () => {
     const offenders: string[] = [];
     for (const file of files) {
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       for (const action of actionsIn(src)) {
         for (const form of formsFor(src, action.name)) {
           const missing = action.required.filter((f) => !form.fields.has(f));

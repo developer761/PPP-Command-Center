@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { latestInboundIsAnswered } from "@/lib/messaging/handoff";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * FOUR DOORS OUT, AND ONLY ONE OF THEM KNEW IT WAS ANSWERING SOMEBODY.
@@ -43,9 +44,9 @@ describe("every path that answers a customer says so", () => {
 
   it.each(sites)("%s", (_label, re) => {
     const src = [
-      readFileSync("lib/messaging/scheduler-db.ts", "utf8"),
-      readFileSync("lib/messaging/drafts-write.ts", "utf8"),
-      readFileSync("lib/messaging/reply-write.ts", "utf8"),
+      stripComments(readFileSync("lib/messaging/scheduler-db.ts", "utf8")),
+      stripComments(readFileSync("lib/messaging/drafts-write.ts", "utf8")),
+      stripComments(readFileSync("lib/messaging/reply-write.ts", "utf8")),
     ].join("\n");
     expect(re.test(src)).toBe(true);
   });
@@ -65,14 +66,14 @@ describe("every path that answers a customer says so", () => {
     ["approving a draft", "lib/messaging/drafts-write.ts"],
     ["a person's own reply", "lib/messaging/reply-write.ts"],
   ])("%s also tells the gate WHEN the customer wrote", (_label, file) => {
-    const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const src = stripComments(readFileSync(file, "utf8"));
     expect(src, file).toMatch(/answersInboundAt:\s*latestInboundAt\(/);
   });
 
   it("no gatedSend in a reply path is left without the flag", () => {
     // The shape that was wrong, and it reads perfectly naturally.
     for (const f of ["lib/messaging/drafts-write.ts", "lib/messaging/reply-write.ts"]) {
-      const src = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      const src = stripComments(readFileSync(f, "utf8"));
       expect(src, f).not.toMatch(/agent: "human_re\w+" \}/);
     }
   });

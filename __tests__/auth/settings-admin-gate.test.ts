@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { capabilitiesFor, isAdminProfile, roleForProfile } from "@/lib/auth/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Who may open Settings, decided the same way in all three places.
@@ -23,7 +24,7 @@ import { capabilitiesFor, isAdminProfile, roleForProfile } from "@/lib/auth/role
  */
 
 const root = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(root, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(root, p), "utf8"));
 
 /**
  * Both call the SHARED derivation — deliberately, because the first version of
@@ -109,9 +110,7 @@ describe("every residential admin gate uses the shared derivation", () => {
         scanned++;
         // Comments are allowed to quote the old expression — roles.ts explains
         // it. Strip them, so the ban is on CODE.
-        const src = readFileSync(join(root, f), "utf8")
-          .replace(/\/\*[\s\S]*?\*\//g, " ")
-          .replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+        const src = stripComments(readFileSync(join(root, f), "utf8"));
         if (BAD.test(src)) offenders.push(f);
       }
     }

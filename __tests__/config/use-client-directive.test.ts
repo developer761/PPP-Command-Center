@@ -53,7 +53,7 @@ describe('"use client" placement', () => {
   it("has the directive as the first statement wherever it appears", () => {
     const offenders: string[] = [];
     for (const f of files) {
-      const src = readFileSync(f, "utf8");
+      const src = stripComments(readFileSync(f, "utf8"));
       // Strip comments BEFORE asking whether the file has the directive.
       // Raw source said yes to any file that merely MENTIONS "use client"
       // in prose: on 2026-10-16 a docblock in app/dashboard/page.tsx

@@ -7,6 +7,7 @@ import {
   fieldsFor,
   PROPOSAL_FIELD_GROUPS,
 } from "@/lib/commercial/proposals/form-fields";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Patch-only proposal saves.
@@ -79,7 +80,7 @@ describe("field declaration", () => {
 });
 
 describe("the save action guards every field it writes", () => {
-  const src = readFileSync(SAVE_ACTION_FILE, "utf8");
+  const src = stripComments(readFileSync(SAVE_ACTION_FILE, "utf8"));
   const call = (() => {
     const start = src.indexOf("const result = await updateProposal({");
     expect(start).toBeGreaterThan(-1);
@@ -116,7 +117,7 @@ describe("the save action guards every field it writes", () => {
 });
 
 describe("the editor renders Stephanie's section order", () => {
-  const src = readFileSync(SAVE_ACTION_FILE, "utf8");
+  const src = stripComments(readFileSync(SAVE_ACTION_FILE, "utf8"));
 
   it("sections appear in the requested sequence", () => {
     // Stephanie 2026-08-13: "After Intro Paragraph it should be Inclusions,
@@ -173,7 +174,7 @@ describe("the editor renders Stephanie's section order", () => {
 });
 
 describe("a declared field must actually be rendered by the form that declares it", () => {
-  const src = readFileSync(SAVE_ACTION_FILE, "utf8");
+  const src = stripComments(readFileSync(SAVE_ACTION_FILE, "utf8"));
 
   /** The body of each <AutosaveProposalForm>…</AutosaveProposalForm>. */
   function formBodies(): { groups: string[]; body: string }[] {
@@ -226,7 +227,7 @@ describe("a declared field must actually be rendered by the form that declares i
           const via = VIA_CHILD[field];
           if (via) {
             const mounted = new RegExp(`<${via.component}\\b`).test(body);
-            const childSrc = readFileSync(join(__dirname, "..", "..", via.file), "utf8");
+            const childSrc = stripComments(readFileSync(join(__dirname, "..", "..", via.file), "utf8"));
             // Matches both name="x" and name={`${prefix}x`}.
             const childRenders = new RegExp(`name=\\{?\`?[^"'\`]*["'\`]?\\}?`).test(childSrc)
               ? new RegExp(`${field}\`?\\}`).test(childSrc) || new RegExp(`name="${field}"`).test(childSrc)

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A revision keeps what the previous one said.
@@ -19,7 +20,7 @@ import { readFileSync } from "node:fs";
  * two lists have to match. Dropping either line compiles perfectly.
  */
 const ROUTE = "app/commercial/accounts/[id]/deals/[dealId]/proposal/new/page.tsx";
-const src = readFileSync(ROUTE, "utf8");
+const src = stripComments(readFileSync(ROUTE, "utf8"));
 
 describe("a revision inherits its parent's context", () => {
   it("captures the parent's header and estimator", () => {

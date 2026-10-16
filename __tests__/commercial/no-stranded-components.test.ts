@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A component nothing imports is a component nobody maintains.
@@ -46,7 +47,7 @@ function importedPaths(): Set<string> {
   const re = /from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']/g;
   for (const dir of ["app", "components", "lib", "__tests__"]) {
     for (const file of walk(dir)) {
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       for (const m of src.matchAll(re)) {
         const spec = m[1] ?? m[2];
         if (spec.startsWith("@/")) out.add(spec.slice(2));

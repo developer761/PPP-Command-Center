@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate 2026-09-01: she deactivated the real suppliers so Jason + Alex would see
@@ -62,14 +63,14 @@ describe("inactive suppliers are hidden from the order picker", () => {
   });
 
   it("the route really applies the is_active guard", () => {
-    const src = readFileSync(ROUTE, "utf8");
+    const src = stripComments(readFileSync(ROUTE, "utf8"));
     expect(src).toMatch(/if \(r\.is_active === false\) return false;/);
     expect(src).toMatch(/export const dynamic = "force-dynamic";/);
   });
 
   it("both callers ask for a fresh list", () => {
     for (const f of ["components/supplier-pick-list.tsx", "components/order-builder-view.tsx"]) {
-      const src = readFileSync(join(ROOT, f), "utf8");
+      const src = stripComments(readFileSync(join(ROOT, f), "utf8"));
       expect(src, f).toMatch(/fetch\("\/api\/suppliers\/active", \{ cache: "no-store" \}\)/);
     }
   });

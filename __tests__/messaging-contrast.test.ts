@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "./helpers/strip-comments";
 
 /**
  * White text on a colored background.
@@ -65,7 +66,7 @@ describe("white text clears WCAG AA", () => {
   it("every text-white pairing is legible", () => {
     const bad: string[] = [];
     for (const f of FILES) {
-      const src = fs.readFileSync(f, "utf8");
+      const src = stripComments(fs.readFileSync(f, "utf8"));
       // A class string is the unit that applies together. A line is not: the
       // two arms of a ternary sit on one line and never render at once, so
       // pairing by line reports failures that cannot happen on screen.
@@ -94,7 +95,7 @@ describe("white text clears WCAG AA", () => {
     // the whole ramp — ppp-orange-700 goes from #a83f12 to a light peach. Dark
     // is scoped to the commercial subtree. If messaging ever adopts a theme
     // root, this test is measuring the wrong colors and must learn both.
-    const themed = FILES.filter((f) => fs.readFileSync(f, "utf8").includes("data-theme"));
+    const themed = FILES.filter((f) => stripComments(fs.readFileSync(f, "utf8")).includes("data-theme"));
     expect(themed, "messaging now sets data-theme — this test checks light tokens only").toEqual([]);
   });
 

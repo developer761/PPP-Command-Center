@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Every notification the platform raises also reaches the channel — once.
@@ -42,7 +43,7 @@ const FILES = [
   "lib/notifications/insert.ts",
 ] as const;
 
-const SRC = FILES.map((f) => readFileSync(f, "utf8")).join("\n");
+const SRC = FILES.map((f) => stripComments(readFileSync(f, "utf8"))).join("\n");
 
 /**
  * Which functions are in scope, per file.
@@ -97,7 +98,7 @@ type Fn = { name: string; body: string; file: string };
 function eventFunctions(): Fn[] {
   const out: Fn[] = [];
   for (const file of FILES) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
     const re = /export async function (insert\w*Notifications?)\(/g;
     const hits = [...src.matchAll(re)];
     hits.forEach((m, i) => {

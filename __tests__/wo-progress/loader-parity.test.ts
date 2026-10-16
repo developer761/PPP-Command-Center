@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The drift guard for Kate round-3 #02.
@@ -25,7 +26,7 @@ import { join } from "node:path";
 const LOADERS = ["lib/wo-progress/derive.ts", "lib/materials-page-data.ts"];
 
 function read(rel: string): string {
-  return readFileSync(join(process.cwd(), rel), "utf8");
+  return stripComments(readFileSync(join(process.cwd(), rel), "utf8"));
 }
 
 /**

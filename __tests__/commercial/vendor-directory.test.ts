@@ -21,6 +21,7 @@ import {
 import { filterVendorList } from "@/lib/commercial/vendors/list-view";
 import { parseVendorForm } from "@/lib/commercial/vendors/input";
 import { readVendorPick, VENDOR_PICK_FIELDS } from "@/lib/commercial/vendors/purchase-pick";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Vendor directory (Katie 2026-09-15). Pure logic + the migration ARTIFACT:
@@ -161,7 +162,7 @@ function seedTuples(sql: string): string[][] {
 }
 
 describe("the migration's seed", () => {
-  const sql = readFileSync(MIGRATION, "utf8");
+  const sql = stripComments(readFileSync(MIGRATION, "utf8"));
   const tuples = seedTuples(sql);
   const col = (name: (typeof SEED_COLUMNS)[number]) => SEED_COLUMNS.indexOf(name);
   const names = tuples.map((t) => t[col("name")]);
@@ -217,7 +218,7 @@ describe("the migration's seed", () => {
 });
 
 describe("VENDOR_KINDS / VENDOR_STATUSES match the migration CHECK exactly", () => {
-  const code = readFileSync(MIGRATION, "utf8").replace(/--[^\n]*/g, "");
+  const code = stripComments(readFileSync(MIGRATION, "utf8")).replace(/--[^\n]*/g, "");
   const checkValues = (column: string) => {
     const m = new RegExp(`\\b${column}\\s+text[^,]*?check\\s*\\(\\s*${column}\\s+in\\s*\\(([^)]*)\\)`, "i").exec(code);
     expect(m, `no CHECK on ${column}`).not.toBeNull();
