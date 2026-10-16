@@ -159,6 +159,15 @@ export function lineRetainableCompletedCents(l: AiaLineInput): number {
 
 /** The columns that identify one G703 line across a deal's applications. */
 export type AiaLineIdentity = {
+  /** The row's own id. Only read as the ROOT of a chain — see `aiaLineRootId`. */
+  id?: string | null;
+  /**
+   * The line this one was carried forward from, as the root of the chain: the
+   * FIRST application's row, stamped by `seedAiaScheduleOfValues` from
+   * `prior.source_line_id ?? prior.id`. Null on rows seeded before the column
+   * existed, and absent entirely until its migration is applied.
+   */
+  source_line_id?: string | null;
   item_no?: string | null;
   description?: string | null;
   change_order_id?: string | null;
@@ -166,18 +175,49 @@ export type AiaLineIdentity = {
 };
 
 /**
- * A G703 line's identity across applications. `seedAiaScheduleOfValues` copies
- * `item_no`, `description` and `change_order_id` verbatim when it carries a
- * sheet forward, so these tie a line to its earlier self; `position` is the
- * last resort for a hand-added row with neither.
+ * `item_no` as a person means it, not as they happened to type it.
+ *
+ * The number is free text on the screen, so "1", "01", "1." and " 1 " are the
+ * same line to the operator and four different lines to an exact match — and a
+ * line that stops matching the release sheet loses the retainage that release
+ * already let go. Changing "1" to "01" on a carried-forward line put $4,025.00
+ * of retainage back on a line that should hold $575.00.
+ *
+ * Deliberately narrow: case, whitespace, a trailing full stop and leading
+ * zeros. Anything looser ("1A" is "1"?) is a guess that two lines are one, and
+ * a wrong guess pools two lines' released work into one.
+ */
+export function normaliseAiaItemNo(raw: string | null | undefined): string {
+  return (raw ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/\.+$/, "")
+    .replace(/^0+(?=\d)/, "");
+}
+
+/**
+ * A G703 line's identity across applications, from what it SAYS.
+ * `seedAiaScheduleOfValues` copies `item_no`, `description` and
+ * `change_order_id` verbatim when it carries a sheet forward, so these tie a
+ * line to its earlier self; `position` is the last resort for a hand-added row
+ * with neither. Everything here but the change order can be typed over, which
+ * is why `applyReleasedRetainage` tries `aiaLineRootId` first.
  */
 export function aiaLineIdentityKey(l: AiaLineIdentity): string {
   if (l.change_order_id) return `co:${l.change_order_id}`;
-  const no = (l.item_no ?? "").trim();
-  if (no) return `no:${no.toLowerCase()}`;
-  const d = (l.description ?? "").trim();
+  const no = normaliseAiaItemNo(l.item_no);
+  if (no) return `no:${no}`;
+  const d = (l.description ?? "").trim().replace(/\s+/g, " ");
   if (d) return `d:${d.toLowerCase()}`;
   return `p:${l.position ?? ""}`;
+}
+
+/**
+ * The identity nobody can type over: the first row of the chain this line was
+ * carried forward from, or the row itself when it starts one.
+ */
+export function aiaLineRootId(l: AiaLineIdentity): string | null {
+  return l.source_line_id || l.id || null;
 }
 
 /** The fields the release rule below reads off an application row. */
@@ -234,6 +274,81 @@ export function pickReleaseApplication<T extends AiaReleaseCandidate>(
   return best;
 }
 
+/** What an application carries about its OWN release baseline (migration
+ *  20261016200000). Both absent until that migration is applied. */
+export type AiaReleaseBaselinePin = {
+  status?: string | null;
+  application_number: number;
+  release_baseline_app_id?: string | null;
+  release_baseline_pinned_at?: string | null;
+};
+
+/**
+ * The release a certificate reads its baseline from — PINNED once it is issued.
+ *
+ * `pickReleaseApplication` chooses by application_number, and the number is
+ * the one field on an issued certificate that stays editable (it is how the GC
+ * files it). So renumbering a release past a certificate already paid moved
+ * that certificate's baseline: on LMJ Cipla, sliding release #5 above #6 takes
+ * #6's line 5 from $50.00 to $4,431.36 on a document the GC has paid.
+ *
+ * Issuing stamps the release the rule chose at that moment, and from then on
+ * the stamp answers, whatever the numbers do. A stamped null means "there was
+ * no release", which is why the timestamp, not the id, says it was pinned. A
+ * draft, or a certificate issued before the stamp existed, still goes through
+ * the rule — and `updateAiaApplication` refuses the renumber that would move
+ * one of those.
+ *
+ * The pinned release still has to be a live, issued release in `candidates`:
+ * a draft release has released nothing, and a deleted one is not a document.
+ */
+export function releaseBaselineFor<T extends AiaReleaseCandidate>(
+  app: AiaReleaseBaselinePin,
+  candidates: readonly T[]
+): T | null {
+  if (app.status && app.status !== "draft" && app.release_baseline_pinned_at) {
+    const id = app.release_baseline_app_id;
+    if (!id) return null;
+    return (
+      candidates.find(
+        (c) => c.id === id && c.is_retainage_release && (c.status === "submitted" || c.status === "paid")
+      ) ?? null
+    );
+  }
+  return pickReleaseApplication(candidates, app.application_number);
+}
+
+/**
+ * The ISSUED certificates whose release baseline would move if `appId` took
+ * `newNumber` — empty when the renumber is safe.
+ *
+ * The interim half of the F6 fix, and it stays useful after the pin lands: a
+ * certificate issued before the stamp existed has nothing pinned, so its
+ * baseline is still whatever the numbers say. Every live application on the
+ * deal goes in, releases and ordinary ones alike, because both directions
+ * break: a release slid ABOVE a paid certificate un-releases it, and a paid
+ * certificate slid BELOW a release loses the release it was issued against.
+ *
+ * Shifting a whole series in order (1,2,3 to 3,4,5, top first), which is what
+ * Stephanie asked renumbering for, keeps every release where it was relative
+ * to its certificates, and comes back empty.
+ */
+export function certificatesRestatedByRenumber<T extends AiaReleaseCandidate & AiaReleaseBaselinePin>(
+  apps: readonly T[],
+  appId: string,
+  newNumber: number
+): T[] {
+  const after = apps.map((a) => (a.id === appId ? { ...a, application_number: newNumber } : a));
+  const out: T[] = [];
+  apps.forEach((a, i) => {
+    if (a.status !== "submitted" && a.status !== "paid") return;
+    const was = releaseBaselineFor(a, apps)?.id ?? null;
+    const now = releaseBaselineFor(after[i], after)?.id ?? null;
+    if (was !== now) out.push(a);
+  });
+  return out;
+}
+
 /**
  * Stamp `retainage_released_cents` on each line from the schedule of the
  * application that RELEASED retainage (`is_retainage_release`, which forces
@@ -249,13 +364,29 @@ export function applyReleasedRetainage<T extends AiaLineInput & AiaLineIdentity>
   releaseLines: readonly (AiaLineInput & AiaLineIdentity)[] | null | undefined
 ): T[] {
   if (!releaseLines || releaseLines.length === 0) return lines;
+  /*
+   * MATCHED BY CHAIN FIRST, BY WHAT IT SAYS SECOND.
+   *
+   * A release line and a later line that share a root ARE the same line,
+   * whatever anyone has since typed into item_no or the description. Only
+   * lines with no shared root — everything seeded before `source_line_id`
+   * existed — fall back to `aiaLineIdentityKey`. A release line claimed by a
+   * root is out of the fallback pool, so a renamed line and a namesake can
+   * never both claim it.
+   */
+  const lineRoots = new Set(lines.map(aiaLineRootId).filter((x): x is string => !!x));
+  const sharedRoots = new Set<string>();
   const pool = new Map<string, number>();
   for (const r of releaseLines) {
-    const k = aiaLineIdentityKey(r);
+    const root = aiaLineRootId(r);
+    const shared = !!root && lineRoots.has(root);
+    if (shared) sharedRoots.add(root!);
+    const k = shared ? `root:${root}` : aiaLineIdentityKey(r);
     pool.set(k, (pool.get(k) ?? 0) + lineCompletedStoredCents(r));
   }
   return lines.map((l) => {
-    const k = aiaLineIdentityKey(l);
+    const root = aiaLineRootId(l);
+    const k = root && sharedRoots.has(root) ? `root:${root}` : aiaLineIdentityKey(l);
     const available = pool.get(k);
     if (available === undefined || available === 0) return l;
     // Two lines sharing a key split the released amount rather than each

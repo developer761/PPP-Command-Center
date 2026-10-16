@@ -9,7 +9,7 @@ import { commercialDb } from "@/lib/commercial/db";
 import { lineCompletedStoredCents, aiaCollectedWithPayments, applyReleasedRetainage, lineRetainageCents } from "@/lib/commercial/aia/constants";
 import { paginateAll } from "@/lib/commercial/paginate";
 import { POST_SALE_STATUSES } from "@/lib/commercial/opportunities/constants";
-import { pickContractBaseCents, isAiaChangeOrderLine, contractProposalCents, aiaDueAtFrom, type ContractProposalRow } from "@/lib/commercial/aia/constants";
+import { pickContractBaseCents, isAiaChangeOrderLine, isAiaTaxLine, releaseBaselineFor, contractProposalCents, aiaDueAtFrom, type ContractProposalRow } from "@/lib/commercial/aia/constants";
 import { listSubmittalCountByOpp } from "@/lib/commercial/opportunities/submittals";
 import { costBreakdownByOpp, emptyCostBreakdown, type CostBreakdown } from "@/lib/commercial/purchases/db";
 import { fieldOpsLaborByOpp } from "@/lib/commercial/field-ops/labor-cost";
@@ -202,14 +202,17 @@ export async function listProjects(opts: {
         .order("id", { ascending: true })
   );
   const submittalCounts__p = listSubmittalCountByOpp(oppIds);
-  const appData__p = paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null }>(
+  const appData__p = paginateAll<{ id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null; release_baseline_app_id?: string | null; release_baseline_pinned_at?: string | null }>(
     () =>
       sb
         .from("commercial_aia_applications")
         // frozen_at / period_to: WHEN the application was issued, which is the
         // only thing that can say whether the money on it is late. Without them
         // an AIA-billed job could only ever be counted as current.
-        .select("id, opportunity_id, application_number, status, original_contract_cents, original_contract_is_manual, retainage_pct, is_retainage_release, frozen_at, period_to")
+        //
+        // `*` so the release pin (migration 20261016200000) is read when it
+        // exists and absent when it does not; naming it would fail the listing.
+        .select("*")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -294,7 +297,7 @@ export async function listProjects(opts: {
   // pick the max application_number per opp in memory — a global DB sort + row
   // cap could otherwise starve a short project's only app and drop it. ──
   const appData = await appData__p;
-  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null };
+  type AppRow = { id: string; opportunity_id: string; application_number: number; status: string; original_contract_cents: number; original_contract_is_manual: boolean; retainage_pct: number; is_retainage_release: boolean; frozen_at: string | null; period_to: string | null; release_baseline_app_id?: string | null; release_baseline_pinned_at?: string | null };
   const latestAppByOpp = new Map<string, AppRow>();
   // Latest ISSUED (submitted/paid) app → AIA billed; latest PAID app → AIA
   // collected. Separate from `latestAppByOpp` (which drives the contract base and
@@ -433,23 +436,23 @@ export async function listProjects(opts: {
     const releasesByOpp = new Map<string, AppRow[]>();
     for (const a of appData) {
       if (!a.is_retainage_release) continue;
-      if (a.status !== "submitted" && a.status !== "paid") continue;
       const arr = releasesByOpp.get(a.opportunity_id) ?? [];
       arr.push(a);
       releasesByOpp.set(a.opportunity_id, arr);
     }
     for (const want of [...latestAppByOpp.values(), ...latestIssuedByOpp.values(), ...latestPaidByOpp.values(), ...baselineAppByOpp.values()]) {
-      let rel: AppRow | null = null;
-      for (const a of releasesByOpp.get(want.opportunity_id) ?? []) {
-        if (a.application_number >= want.application_number) continue;
-        if (!rel || a.application_number > rel.application_number) rel = a;
-      }
+      // The SHARED rule — the fourth copy of it lived here as a hand loop, with
+      // no tie-break and no pin, so the dashboard and Projects list could read
+      // a different baseline than the certificate the GC was sent.
+      const rel = releaseBaselineFor(want, releasesByOpp.get(want.opportunity_id) ?? []);
       if (rel) releaseAppByApp.set(want.id, rel.id);
     }
   }
   const lineAppIds = [...new Set([...latestAppIds, ...releaseAppByApp.values()])];
   if (lineAppIds.length > 0) {
     type ProjLine = {
+      id: string;
+      source_line_id?: string | null;
       application_id: string;
       position: number;
       description: string;
@@ -464,7 +467,9 @@ export async function listProjects(opts: {
       () =>
         sb
           .from("commercial_aia_line_items")
-          .select("application_id, position, description, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents, change_order_id, item_no")
+          // `*`: `id` + `source_line_id` are the chain the release matches on,
+          // and the second does not exist until migration 20261016200000.
+          .select("*")
           .in("application_id", lineAppIds)
           .order("id", { ascending: true })
     );
@@ -500,7 +505,9 @@ export async function listProjects(opts: {
       // 2, not line 1: counting it here too would fall back to a CO-inclusive
       // SOV and double-count every change order in contractToDate / margin on a
       // deal with no sent proposal (audit M2), exactly as it did on the G702.
-      if (!isAiaChangeOrderLine(l)) {
+      // Nor the legacy TAX row — it is tax, not contract, and the G702's own
+      // ladder (resolveG702) leaves it out for the same reason.
+      if (!isAiaChangeOrderLine(l) && !isAiaTaxLine(l)) {
         sovByApp.set(l.application_id, (sovByApp.get(l.application_id) ?? 0) + Math.round(l.scheduled_value_cents));
       }
     }

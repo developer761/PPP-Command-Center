@@ -318,4 +318,19 @@ describe("the AIA workbook a general contractor receives", () => {
     expect(v(g, "E40")).toBe(5_000); // line 8 = the retainage released
     expect(v(g, "E41")).toBe(0); // line 9 — nothing left
   });
+
+  it("refuses to build a workbook with a NaN in it, rather than printing one", async () => {
+    // A NaN anywhere upstream (a bad import, a null coerced by arithmetic) used
+    // to go straight into a cell of the document the GC pays from.
+    const lines = [line(1, "1", 100_000_00, 60_000_00, 10_000_00)];
+    await expect(
+      build(app(), lines, {
+        originalContractCents: Number.NaN,
+        netChangeOrdersCents: 0,
+        retainagePct: 5,
+        lines,
+        previousCertificatesCents: 0,
+      })
+    ).rejects.toThrow(/no valid amount/);
+  });
 });

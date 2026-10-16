@@ -80,6 +80,8 @@ const PCT = 5;
 let failures = 0;
 let accountId = null;
 let oppId = null;
+/** A second, TAXABLE job for the line-2 footing check (F10). */
+let oppId2 = null;
 const usd = (c) => `$${(Number(c) / 100).toFixed(2)}`;
 const check = (name, ok, detail = "") => {
   if (!ok) failures++;
@@ -414,6 +416,184 @@ try {
           ? `retainage_pct ${afterRelease.value.retainage_pct} (0 would mean releases stopped all withholding)`
           : afterRelease.error,
       );
+
+      /*
+       * ══ F7 · EDITING item_no KEEPS THE RELEASED RETAINAGE ════════════════
+       *
+       * The draft carries the base line forward from release App 4 as "1".
+       * The release sheet was matched on item_no, so "1" → "01" stopped it
+       * matching and re-withheld 5% of the whole released contract — on
+       * Cipla, $575.00 became $4,025.00. Re-read through resolveG702, the
+       * same function the certificate prints from.
+       */
+      const draftLines = await listAiaLineItemsWithRelease(draft.value);
+      const baseLine = draftLines.find((l) => (l.item_no ?? "").trim() === "1");
+      check("the draft carried the base line forward as \"1\"", !!baseLine, `${draftLines.length} line(s)`);
+      if (baseLine) {
+        const hasChain = Object.prototype.hasOwnProperty.call(baseLine, "source_line_id");
+        const renames = hasChain ? ["01", "BASE-A"] : ["01"];
+        // The WHOLE line, as the screen posts it: upsertAiaLineItem writes
+        // every column, so a bare { id, item_no } would zero the line and
+        // "pass" by having nothing left to retain.
+        const whole = (item_no) => ({
+          id: baseLine.id,
+          item_no,
+          description: baseLine.description,
+          scheduled_value_cents: baseLine.scheduled_value_cents,
+          from_previous_cents: baseLine.from_previous_cents,
+          this_period_cents: baseLine.this_period_cents,
+          materials_stored_cents: baseLine.materials_stored_cents,
+        });
+        check(
+          "the base line has released work on it, so a lost match would show",
+          baseLine.from_previous_cents > 0,
+          usd(baseLine.from_previous_cents),
+        );
+        for (const to of renames) {
+          const r = await upsertAiaLineItem(draft.value.id, whole(to));
+          const after = await resolveG702(draft.value.id);
+          check(
+            `renaming the base line "1" → "${to}" leaves the draft's retainage where it was`,
+            r.ok && after.retainageCents === dg.retainageCents,
+            r.ok ? `line 5 ${usd(after.retainageCents)} vs ${usd(dg.retainageCents)}` : r.error,
+          );
+        }
+        if (!hasChain) console.log("        (source_line_id not migrated yet — the free-text rename is covered once it is)");
+        await upsertAiaLineItem(draft.value.id, whole("1"));
+      }
+
+      /*
+       * ══ F6 · RENUMBERING A RELEASE DOES NOT RESTATE A SENT CERTIFICATE ══
+       *
+       * Which release a certificate counts from is chosen by number. Moving
+       * release App 2 above paid App 3 un-released App 3's contract work: its
+       * line 5 went from 5¢ (the CO's retainage) to $1.05 — on Cipla, $50.00
+       * to $4,431.36. Before the pin migration that renumber is REFUSED; after
+       * it the renumber goes through and App 3 simply keeps its baseline.
+       * Either way App 3's printed retainage must not move.
+       */
+      const { data: a3row } = await sb.from("commercial_aia_applications").select("*").eq("id", a3.value.id).maybeSingle();
+      const pinned = !!a3row && Object.prototype.hasOwnProperty.call(a3row, "release_baseline_pinned_at");
+      const g3before = (await resolveG702(a3.value.id)).retainageCents;
+      const moved = await updateAiaApplication(a2.value.id, { application_number: 20 }, ACTOR);
+      const g3after = (await resolveG702(a3.value.id)).retainageCents;
+      if (pinned) {
+        check("with the pin migrated, the release can be renumbered past paid App 3", moved.ok, moved.ok ? "" : moved.error);
+      } else {
+        check(
+          "without the pin, renumbering release App 2 past paid App 3 is REFUSED, in words",
+          !moved.ok && /retainage release/i.test(moved.error ?? "") && /No\. 3/.test(moved.error ?? ""),
+          moved.ok ? "it was allowed" : moved.error,
+        );
+      }
+      check(
+        "either way, paid App 3's retainage is exactly what the GC was sent",
+        g3after === g3before && g3after === 5,
+        `line 5 ${usd(g3before)} → ${usd(g3after)}`,
+      );
+      if (moved.ok) await updateAiaApplication(a2.value.id, { application_number: 2 }, ACTOR);
+
+      // Renumbering itself is Stephanie's feature and must keep working: a
+      // release moved past DRAFTS only restates nothing that was sent.
+      const pastDrafts = await updateAiaApplication(a4.value.id, { application_number: 30 }, ACTOR);
+      check("a release renumbered past drafts only is allowed", pastDrafts.ok, pastDrafts.ok ? "" : pastDrafts.error);
+      if (pastDrafts.ok) await updateAiaApplication(a4.value.id, { application_number: 4 }, ACTOR);
+    }
+  }
+
+  /*
+   * ══ F10 · ON A TAXABLE JOB, G702 LINE 2 FOOTS TO THE G703 ═════════════════
+   *
+   * Every G703 change-order row is one CO plus its own rounded tax. Line 2 was
+   * the SUM of the COs taxed once, so two COs whose tax rounds up each came out
+   * a cent apart from their own rows — enough for a GC's AP system to flag and
+   * to leave "left to bill" stuck at $0.01. The CO amount is searched for so
+   * that the drift EXISTS at whatever rate the test ZIP resolves to; without
+   * that the check could pass against the old code.
+   */
+  {
+    const { listTaxJurisdictions } = await import("../lib/commercial/tax/db.ts");
+    const { resolveTaxForZip } = await import("../lib/commercial/tax/constants.ts");
+    const juris = await listTaxJurisdictions({ activeOnly: true });
+    let zip = null;
+    let rate = 0;
+    for (const j of juris) {
+      for (const p of j.zip_prefixes ?? []) {
+        const z = String(p).replace(/\D/g, "").padEnd(5, "0").slice(0, 5);
+        const hit = resolveTaxForZip(z, juris);
+        if (hit && hit.rateThou > 0) { zip = z; rate = hit.rateThou; break; }
+      }
+      if (zip) break;
+    }
+    check("a taxable ZIP exists to test against", !!zip, zip ? `${zip} at ${rate / 1000}%` : "no active jurisdiction");
+    const tax = (c) => Math.round((c * rate) / 100_000);
+    let coCents = 0;
+    for (let c = 1; c <= 5_000 && zip; c++) {
+      if (2 * tax(c) !== tax(2 * c)) { coCents = c; break; }
+    }
+    check("a change-order amount exists whose tax drifts when rounded once", coCents > 0, usd(coCents));
+
+    if (zip && coCents > 0) {
+      const { data: opp2, error: opp2Err } = await sb
+        .from("commercial_opportunities")
+        .insert({
+          account_id: accountId,
+          title: MARK,
+          status: "in_progress",
+          sub_status: "wip_on_site",
+          accepted_contract_cents: CONTRACT,
+          property_zip: zip,
+          tax_exempt: false,
+        })
+        .select("id")
+        .maybeSingle();
+      if (opp2Err || !opp2) throw new Error(`could not create the taxable test opportunity: ${opp2Err?.message}`);
+      oppId2 = opp2.id;
+      const { reconcileDraftChangeOrderRows } = await import("../lib/commercial/aia/db.ts");
+
+      for (let i = 0; i < 2; i++) {
+        const c = await createChangeOrder({ opportunity_id: oppId2, title: MARK, amount_cents: coCents, created_by_user_id: ACTOR });
+        if (c.ok) await decideChangeOrder(c.value.id, "approved", ACTOR);
+        check(`taxable change order ${i + 1} is approved`, c.ok, c.ok ? "" : c.error);
+      }
+      const t1 = await createAiaApplication({
+        opportunity_id: oppId2,
+        original_contract_cents: CONTRACT,
+        retainage_pct: PCT,
+        period_to: "2026-07-31",
+        created_by_user_id: ACTOR,
+      });
+      check("a certificate can be raised on the taxable job", t1.ok, t1.ok ? "" : t1.error);
+      if (t1.ok) {
+        const rec = await reconcileDraftChangeOrderRows(t1.value.id);
+        check("its schedule reconciles, and says so", rec.ok, rec.ok ? "" : rec.error);
+        const have = await listAiaLineItemsWithRelease(t1.value);
+        if (!have.some((l) => !l.change_order_id)) {
+          await upsertAiaLineItem(t1.value.id, {
+            description: `${MARK} base`,
+            item_no: "1",
+            scheduled_value_cents: CONTRACT + tax(CONTRACT),
+          });
+        }
+        const rows = await listAiaLineItemsWithRelease(t1.value);
+        const coRows = rows.filter((l) => l.change_order_id);
+        const tg = await resolveG702(t1.value.id);
+        check(
+          "both change orders are on the G703, each carrying its own tax",
+          coRows.length === 2 && coRows.every((l) => l.scheduled_value_cents === coCents + tax(coCents)),
+          coRows.map((l) => usd(l.scheduled_value_cents)).join(" + "),
+        );
+        check(
+          "G702 line 2 is the sum of those rows, to the cent",
+          tg.netChangeOrdersCents === coRows.reduce((n, l) => n + l.scheduled_value_cents, 0),
+          `line 2 ${usd(tg.netChangeOrdersCents)}`,
+        );
+        check(
+          "and the certificate foots: line 3 equals the G703 total",
+          tg.sovVarianceCents === 0,
+          `variance ${usd(tg.sovVarianceCents)}`,
+        );
+      }
     }
   }
 } catch (err) {
@@ -426,17 +606,17 @@ try {
    * — PostgREST reports no rows affected. That is how a cleanup "passes" and
    * leaves a live opportunity on the book.
    */
-  if (oppId) {
+  for (const id of [oppId, oppId2].filter(Boolean)) {
     const appIds = (
-      (await sb.from("commercial_aia_applications").select("id").eq("opportunity_id", oppId)).data ?? []
+      (await sb.from("commercial_aia_applications").select("id").eq("opportunity_id", id)).data ?? []
     )
       .map((r) => r.id)
       .concat(["00000000-0000-0000-0000-000000000000"]);
     await sb.from("commercial_aia_line_items").delete().in("application_id", appIds);
-    await sb.from("commercial_aia_applications").delete().eq("opportunity_id", oppId);
-    await sb.from("commercial_change_orders").delete().eq("opportunity_id", oppId);
-    await sb.from("commercial_projects").delete().eq("opportunity_id", oppId);
-    await sb.from("commercial_opportunities").delete().eq("id", oppId);
+    await sb.from("commercial_aia_applications").delete().eq("opportunity_id", id);
+    await sb.from("commercial_change_orders").delete().eq("opportunity_id", id);
+    await sb.from("commercial_projects").delete().eq("opportunity_id", id);
+    await sb.from("commercial_opportunities").delete().eq("id", id);
   }
   if (accountId) await sb.from("commercial_accounts").delete().eq("id", accountId);
 

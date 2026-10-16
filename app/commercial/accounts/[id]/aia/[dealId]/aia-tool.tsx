@@ -299,7 +299,14 @@ async function setStatusAction(formData: FormData) {
   // any change order approved since it was seeded is on the G703 before it
   // freezes — otherwise the issued certificate is frozen already not footing
   // (audit F2). No-op if it's already issued.
-  if (status !== "draft") await reconcileDraftChangeOrderRows(appId);
+  if (status !== "draft") {
+    // CHECKED: issuing freezes whatever is on the schedule, so a tax refold
+    // that did not land would freeze the OLD figure onto the certificate.
+    const reconciled = await reconcileDraftChangeOrderRows(appId);
+    if (!reconciled.ok) {
+      redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(`${reconciled.error} It has not been issued — try again.`)}${backQ(back)}`);
+    }
+  }
   const result = await updateAiaApplication(appId, { status }, userId);
   if (!result.ok) redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   // Auto-file the G702/G703 workbook when the application is submitted to the GC

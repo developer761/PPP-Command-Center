@@ -54,7 +54,13 @@ const MAY_HOLD_BOTH = [
 describe("the contract rule has one definition", () => {
   const holders = [...walk("lib"), ...walk("app")].filter((f) => {
     const src = stripComments(readFileSync(f, "utf8"));
-    return src.includes("getEffectiveContractBaseCents") && src.includes("netApprovedChangeOrderCents");
+    // Either spelling of the change-order half: `approvedChangeOrdersForAia` is
+    // the per-CO list `netApprovedChangeOrderCents` sums, and the G702 now
+    // reads it directly so line 2 can tax each CO the way its G703 row does.
+    return (
+      src.includes("getEffectiveContractBaseCents") &&
+      (src.includes("netApprovedChangeOrderCents") || src.includes("approvedChangeOrdersForAia"))
+    );
   });
 
   it("found the call sites at all", () => {

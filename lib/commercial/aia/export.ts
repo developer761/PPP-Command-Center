@@ -129,6 +129,12 @@ export async function buildAiaWorkbookBuffer(input: {
   };
 
   const money = (cell: string, cents: number, sheet: ExcelJS.Worksheet = g) => {
+    // Nothing upstream guarantees a finite number, and a NaN or Infinity would
+    // go straight into the workbook the GC pays from. No document is better
+    // than a wrong one: fail the export, naming the cell.
+    if (!Number.isFinite(cents)) {
+      throw new Error(`AIA export: ${sheet.name}!${cell} has no valid amount (${String(cents)}), so the workbook was not built.`);
+    }
     const c = sheet.getCell(cell);
     c.value = d(cents);
     c.numFmt = MONEY;
@@ -343,7 +349,9 @@ export async function buildAiaWorkbookBuffer(input: {
    * exempt, so the factor is 1 today and nothing moves.
    */
   const rawNet = prev.add + prev.ded + now.add + now.ded;
-  const k = rawNet !== 0 ? g702.netChangeOrdersCents / rawNet : 1;
+  // `Number.isFinite` first: NaN !== 0 is true, so a NaN amount made k NaN and
+  // every cell in the block NaN with it.
+  const k = Number.isFinite(rawNet) && rawNet !== 0 ? g702.netChangeOrdersCents / rawNet : 1;
   const scaled = (n: number) => Math.round(n * k);
   const prevAdd = scaled(prev.add), prevDed = Math.abs(scaled(prev.ded));
   const nowAdd = scaled(now.add), nowDed = Math.abs(scaled(now.ded));

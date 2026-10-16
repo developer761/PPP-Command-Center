@@ -7,7 +7,7 @@
 import { commercialDb } from "@/lib/commercial/db";
 import { taxInclusiveCents } from "./tax-inline";
 import { logInsert, logUpdate, logDelete } from "@/lib/commercial/audit-log";
-import { netApprovedChangeOrderCents, listChangeOrders } from "@/lib/commercial/change-orders/db";
+import { approvedChangeOrdersForAia, listChangeOrders } from "@/lib/commercial/change-orders/db";
 import { listProposalsForOpp, listLineItemsForProposal } from "@/lib/commercial/proposals/db";
 import { paginateAll } from "@/lib/commercial/paginate";
 import {
@@ -17,6 +17,8 @@ import {
   lineCompletedStoredCents,
   applyReleasedRetainage,
   pickReleaseApplication,
+  releaseBaselineFor,
+  certificatesRestatedByRenumber,
   type AiaReleaseCandidate,
   lineRetainageCents,
   pickContractBaseCents,
@@ -59,6 +61,13 @@ export type AiaApplication = {
    *  retainage_pct is 0 on it, so G702 line 8 comes out as the retainage held.
    *  Migration 162. */
   is_retainage_release: boolean;
+  /**
+   * The release this certificate's retainage baseline was read from when it
+   * was ISSUED, and when that was stamped. Pinned so renumbering cannot move
+   * it — see `releaseBaselineFor`. Absent until migration 20261016200000.
+   */
+  release_baseline_app_id?: string | null;
+  release_baseline_pinned_at?: string | null;
   status: AiaApplicationStatus;
   notes: string | null;
   created_by_user_id: string | null;
@@ -78,6 +87,12 @@ export type AiaLineItem = {
    * order on a live certificate. The foreign key can't be typed over.
    */
   change_order_id: string | null;
+  /**
+   * The first row of the chain this line was carried forward from — an
+   * identity nobody can type over, which `item_no` and the description are
+   * not. Absent until migration 20261016200000; null on rows seeded before it.
+   */
+  source_line_id?: string | null;
   position: number;
   item_no: string | null;
   description: string;
@@ -677,8 +692,15 @@ async function seedAiaScheduleOfValues(
     if (prior) {
       const priorLines = await listAiaLineItems((prior as { id: string }).id);
       if (priorLines.length > 0) {
-        const rows = priorLines.map((l, i) => ({
+        const rows: Array<Record<string, unknown>> = priorLines.map((l, i) => ({
           application_id: app.id,
+          // WHICH LINE THIS IS, in a form nobody can type over. The release
+          // baseline matched carried-forward lines on item_no, so changing "1"
+          // to "01" on a later sheet dropped $3,450 of released retainage back
+          // under withholding. The ROOT of the chain, not the immediate parent,
+          // so every generation shares one id with the release sheet whichever
+          // application that was.
+          source_line_id: l.source_line_id ?? l.id,
           position: (i + 1) * 1000,
           item_no: l.item_no,
           description: l.description,
@@ -737,7 +759,15 @@ async function seedAiaScheduleOfValues(
           });
           carryNo += 1;
         }
-        const { error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows);
+        let { error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows);
+        // Migration 20261016200000 not applied yet: carry forward without the
+        // chain id. Matching then falls back to the normalised item_no, which
+        // is what every sheet before it relied on.
+        if (carryErr && /source_line_id/i.test(carryErr.message)) {
+          console.warn("[aia] commercial_aia_line_items has no source_line_id — run migration 20261016200000. Seeding without it.");
+          for (const r of rows) delete r.source_line_id;
+          ({ error: carryErr } = await sb.from("commercial_aia_line_items").insert(rows));
+        }
         if (carryErr) {
           console.error("[aia] carry-forward seed insert failed:", carryErr.message);
           return { ok: false, error: carryErr.message };
@@ -935,9 +965,11 @@ async function seedAiaScheduleOfValues(
  * row with billing is left for a human, since deleting it would drop money the
  * certificate already reported).
  */
-export async function reconcileDraftChangeOrderRows(applicationId: string): Promise<void> {
+export async function reconcileDraftChangeOrderRows(
+  applicationId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const app = await getAiaApplication(applicationId);
-  if (!app || app.status !== "draft") return;
+  if (!app || app.status !== "draft") return { ok: true };
   const [lines, cos] = await Promise.all([
     listAiaLineItems(applicationId),
     listChangeOrders(app.opportunity_id),
@@ -1102,17 +1134,20 @@ export async function reconcileDraftChangeOrderRows(applicationId: string): Prom
   // provided a cert later into the job if not after, we need the status to
   // change the values within the AIA." Same reconcile as the change orders, so
   // "they sent the cert" and "they approved a CO" both land the same way.
-  // Best-effort: a tax row that failed to update must not block the CO rows
-  // that just did.
+  // A tax row that failed to update must not undo the CO rows that just
+  // landed — but it is RETURNED, not swallowed: issuing runs this right before
+  // it freezes the certificate, and freezing a stale tax figure onto a document
+  // the GC receives is the failure this reconcile exists to prevent.
   try {
     const { reconcileAiaTaxRow } = await import("./sales-tax");
-    await reconcileAiaTaxRow(applicationId);
+    const taxed = await reconcileAiaTaxRow(applicationId);
+    if (!taxed.ok) return taxed;
   } catch (err) {
-    console.warn(
-      "[aia] tax-row reconcile failed:",
-      err instanceof Error ? err.message : err
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[aia] tax-row reconcile failed:", msg);
+    return { ok: false, error: `The sales tax on this certificate could not be brought up to date: ${msg}` };
   }
+  return { ok: true };
 }
 
 export async function updateAiaApplication(
@@ -1244,6 +1279,52 @@ export async function updateAiaApplication(
           error: `Application No. ${wanted} already exists on this job. Pick a different number, or renumber that one first.`,
         };
       }
+      /*
+       * 🔴 A NUMBER IS A LABEL — EXCEPT TO A RETAINAGE RELEASE.
+       *
+       * Which release a certificate counts its released retainage from is
+       * chosen by application_number. So moving a release above a certificate
+       * that was already sent, or a sent certificate below a release, silently
+       * restates that certificate's retainage. On LMJ Cipla, sliding release
+       * #5 above #6 took paid #6's line 5 from $50.00 to $4,431.36 with one
+       * form field.
+       *
+       * Issued certificates now pin their baseline (`releaseBaselineFor`),
+       * which blocks nothing. But anything issued before that column existed
+       * still reads the rule, so this refusal protects them, and it protects
+       * all of them until migration 20261016200000 is applied.
+       *
+       * NARROW ON PURPOSE. Renumbering is a feature Stephanie uses — her real
+       * 4→5 was nearly "restored" by mistake once. Only a RELEASE is checked,
+       * and only a move that would actually restate an issued certificate is
+       * refused; every other renumber goes through exactly as before.
+       */
+      const { data: siblings, error: sibErr } = !before.is_retainage_release
+        ? { data: [], error: null }
+        : await sbCheck
+        .from("commercial_aia_applications")
+        .select(COLS)
+        .eq("opportunity_id", before.opportunity_id)
+        .is("deleted_at", null);
+      if (sibErr) {
+        return {
+          ok: false,
+          error: `Could not check which certificates this renumber would affect, so the number was not changed: ${sibErr.message}`,
+        };
+      }
+      const restated = certificatesRestatedByRenumber((siblings ?? []) as AiaApplication[], id, wanted);
+      if (restated.length > 0) {
+        const named = restated
+          .map((a) => `No. ${a.application_number} (${a.status === "paid" ? "paid" : "sent"})`)
+          .join(", ");
+        return {
+          ok: false,
+          error:
+            `Moving this retainage release to No. ${wanted} would put it on the other side of ` +
+            `${restated.length === 1 ? "a certificate" : "certificates"} the GC already has (${named}), and their retainage would change. ` +
+            `Pick a number that keeps the release in the same place relative to them.`,
+        };
+      }
       next.application_number = wanted;
     }
   }
@@ -1309,6 +1390,24 @@ export async function updateAiaApplication(
       next.net_change_orders_frozen_cents = issued.netChangeOrdersCents;
       next.frozen_at = new Date().toISOString();
     }
+    // …and the release its retainage was just computed against, so a later
+    // renumber cannot move it. The same candidates and the same rule
+    // `listAiaLineItemsWithRelease` used for `resolveG702` a line above.
+    const { data: rels, error: relErr } = await commercialDb()
+      .from("commercial_aia_applications")
+      .select("id, application_number, status, is_retainage_release")
+      .eq("opportunity_id", before.opportunity_id)
+      .eq("is_retainage_release", true)
+      .is("deleted_at", null);
+    if (relErr) {
+      return {
+        ok: false,
+        error: `Could not read this job's retainage releases, so the certificate was not issued: ${relErr.message}`,
+      };
+    }
+    next.release_baseline_app_id =
+      pickReleaseApplication((rels ?? []) as AiaReleaseCandidate[], before.application_number)?.id ?? null;
+    next.release_baseline_pinned_at = new Date().toISOString();
   }
   // Reopening to draft releases it. The guard above already refuses this when a
   // later application carries it forward, so the only certificates that get here
@@ -1318,6 +1417,8 @@ export async function updateAiaApplication(
     next.contract_sum_frozen_cents = null;
     next.net_change_orders_frozen_cents = null;
     next.frozen_at = null;
+    next.release_baseline_app_id = null;
+    next.release_baseline_pinned_at = null;
   }
 
   // Only a CHANGED value counts as hand-typed.
@@ -1364,6 +1465,25 @@ export async function updateAiaApplication(
     .is("deleted_at", null)
     .select(COLS)
     .maybeSingle();
+  // Pre-migration-20261016200000: the release pin is the newest optional
+  // column, so it goes on its own first — dropping the 128/130 freeze along
+  // with it would un-freeze every certificate issued in the gap. Without the
+  // pin the renumber refusal above still protects issued certificates.
+  if (error && /release_baseline_app_id|release_baseline_pinned_at/i.test(error.message)) {
+    console.warn(
+      "[commercial/aia] applications table has no release_baseline columns — run migration 20261016200000. Writing without them."
+    );
+    delete next.release_baseline_app_id;
+    delete next.release_baseline_pinned_at;
+    ({ data: updated, error } = await sb
+      .from("commercial_aia_applications")
+      .update(next)
+      .eq("id", id)
+      .eq("status", before.status)
+      .is("deleted_at", null)
+      .select(COLS)
+      .maybeSingle());
+  }
   // Pre-migration-128/130 safety net, same reasoning as the opportunities
   // update: issuing an application writes the freeze columns, so a deploy that
   // lands ahead of the migration would fail every submit outright. Drop the new
@@ -1377,6 +1497,8 @@ export async function updateAiaApplication(
     delete next.net_change_orders_frozen_cents;
     delete next.frozen_at;
     delete next.original_contract_is_manual;
+    delete next.release_baseline_app_id;
+    delete next.release_baseline_pinned_at;
     ({ data: updated, error } = await sb
       .from("commercial_aia_applications")
       .update(next)
@@ -1646,7 +1768,8 @@ export async function deleteAiaLineItem(id: string, applicationId: string, actor
  * every job that has not reached close-out.
  */
 export async function listAiaLineItemsWithRelease(
-  app: Pick<AiaApplication, "id" | "opportunity_id" | "application_number">
+  app: Pick<AiaApplication, "id" | "opportunity_id" | "application_number"> &
+    Partial<Pick<AiaApplication, "status" | "release_baseline_app_id" | "release_baseline_pinned_at">>
 ): Promise<AiaLineItem[]> {
   const lines = await listAiaLineItems(app.id);
   const sb = commercialDb();
@@ -1684,10 +1807,9 @@ export async function listAiaLineItemsWithRelease(
       `Could not read this job's retainage releases, so the retainage on this certificate cannot be trusted: ${releaseErr.message}`
     );
   }
-  const release = pickReleaseApplication(
-    (releases ?? []) as AiaReleaseCandidate[],
-    app.application_number
-  );
+  // Pinned at issue, so a renumber cannot move an issued certificate's
+  // baseline; a draft (or a pre-pin certificate) reads the rule.
+  const release = releaseBaselineFor(app, (releases ?? []) as AiaReleaseCandidate[]);
   if (!release) return lines;
   return applyReleasedRetainage(lines, await listAiaLineItems(release.id));
 }
@@ -1695,11 +1817,12 @@ export async function listAiaLineItemsWithRelease(
 export async function resolveG702(applicationId: string, _depth = 0): Promise<AiaG702 | null> {
   const app = await getAiaApplication(applicationId);
   if (!app) return null;
-  const [lines, netCO, ladder] = await Promise.all([
+  const [lines, approvedCOs, ladder] = await Promise.all([
     listAiaLineItemsWithRelease(app),
-    netApprovedChangeOrderCents(app.opportunity_id),
+    approvedChangeOrdersForAia(app.opportunity_id),
     contractLadderInputs(app.opportunity_id),
   ]);
+  const netCO = approvedCOs.reduce((n, c) => n + c.amountCents, 0);
   const previousCertificatesCents = _depth > 100 ? 0 : await priorCertificateCents(app, _depth);
   // In AIA, the G703 scheduled-value column totals to the contract sum (G702
   // line 1). The contract base follows the SAME shared ladder the Projects card
@@ -1713,8 +1836,12 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
   // made a deal with no sent proposal fall back to (base + COs) for line 1 while
   // netCO added the COs AGAIN on line 2, so line 3 double-counted them on the
   // customer-facing G702 (audit M2).
+  //
+  // And not the legacy TAX row either: computeG702 adds that row into line 3
+  // as `salesTaxCents`, so letting it into line 1's fallback as well put the
+  // tax on the certificate twice on a job with no proposal behind it.
   const sovTotalCents = lines
-    .filter((l) => !isAiaChangeOrderLine(l))
+    .filter((l) => !isAiaChangeOrderLine(l) && !isAiaTaxLine(l))
     .reduce((sum, l) => sum + Math.round(l.scheduled_value_cents), 0);
 
   // A certificate that has been issued is a document the GC is holding a printed
@@ -1786,13 +1913,30 @@ export async function resolveG702(applicationId: string, _depth = 0): Promise<Ai
    * twice. Every live job is capital-improvement exempt, so taxOnCents
    * returns 0 and this changes nothing today.
    */
+  /*
+   * PER CHANGE ORDER, the way the rows are written — not once on the sum.
+   *
+   * Every G703 change-order row is `taxInclusiveCents` of ONE change order,
+   * rounded on its own. Taxing the net instead rounds once, so two $0.86 COs
+   * at 8.75% put $1.88 on the rows and $1.87 on line 2: a cent the sheet does
+   * not foot by, enough to trip the >1¢ AP warning and to leave "left to
+   * bill" stuck at $0.01. Taxing the net also gave a net-negative total no
+   * tax at all (`taxOnCents` returns 0 at or below zero) while each credit
+   * row carried its own.
+   *
+   * Same function, same base, same rounding as the seed and the reconcile, so
+   * a schedule in step with its change orders foots to the cent by
+   * construction. A schedule NOT in step — a CO missing from the rows — still
+   * shows as variance, which is the warning working.
+   */
   let line2Cents = netCO;
-  if (netCO !== 0 && !lines.some((l) => isAiaTaxLine(l))) {
-    const { taxOnCents } = await import("./tax-inline");
-    line2Cents += await taxOnCents({
-      opportunityId: app.opportunity_id,
-      baseCents: netCO,
-    });
+  if (approvedCOs.length > 0 && !lines.some((l) => isAiaTaxLine(l))) {
+    const perCo = await Promise.all(
+      approvedCOs.map((c) =>
+        taxInclusiveCents({ opportunityId: app.opportunity_id, baseCents: Math.round(c.amountCents) })
+      )
+    );
+    line2Cents = perCo.reduce((n, v) => n + v, 0);
   }
 
   return computeG702({
@@ -2114,10 +2258,15 @@ export async function aiaBillingRollupBulk(
     is_retainage_release: boolean;
     frozen_at: string | null;
     period_to: string | null;
+    release_baseline_app_id?: string | null;
+    release_baseline_pinned_at?: string | null;
   }>(() =>
     sb
       .from("commercial_aia_applications")
-      .select("id, opportunity_id, application_number, status, retainage_pct, is_retainage_release, frozen_at, period_to")
+      // `*` so the release pin is read when migration 20261016200000 is in and
+      // simply absent when it is not — naming the column would fail the whole
+      // rollup, and with it AR, the GC statement and receivables.
+      .select(COLS)
       .in("opportunity_id", ids)
       .is("deleted_at", null)
       .order("id", { ascending: true })
@@ -2222,13 +2371,15 @@ export async function aiaBillingRollupBulk(
     for (const want of [...latestIssued.values(), ...latestPaid.values(), ...baselineAppByOpp.values()]) {
       // The SAME function the certificate uses, not a second reading of the
       // same rule. `apps` is already `deleted_at is null`.
-      const rel = pickReleaseApplication(releasesByOpp.get(want.opportunity_id) ?? [], want.application_number);
+      const rel = releaseBaselineFor(want, releasesByOpp.get(want.opportunity_id) ?? []);
       if (rel) releaseAppByApp.set(want.id, rel.id);
     }
   }
   const lineAppIds = [...new Set([...wantedAppIds, ...releaseAppByApp.values()])];
 
   type BulkLine = {
+    id: string;
+    source_line_id?: string | null;
     application_id: string;
     position: number;
     item_no: string | null;
@@ -2242,9 +2393,11 @@ export async function aiaBillingRollupBulk(
   const lines = await paginateAll<BulkLine>(() =>
     sb
       .from("commercial_aia_line_items")
-      .select(
-        "application_id, position, item_no, description, change_order_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents"
-      )
+      // `*` for the same reason as the applications above: `id` and
+      // `source_line_id` are the chain the release is matched on, and the
+      // second may not exist yet. Without them this twin matched on item_no
+      // alone while the certificate matched on the chain.
+      .select(COLS)
       .in("application_id", lineAppIds)
       .order("id", { ascending: true })
   );

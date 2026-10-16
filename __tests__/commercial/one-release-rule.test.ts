@@ -91,7 +91,7 @@ describe("both money paths read that one rule", () => {
 
   it("the certificate path picks in JS, not in the query", () => {
     const body = bodyOf("listAiaLineItemsWithRelease");
-    expect(body).toContain("pickReleaseApplication(");
+    expect(body).toContain("releaseBaselineFor(");
     // The clauses that moved. Leaving one behind re-creates the second rule in
     // the place it was taken from, and it would agree right up until the
     // shared one changed.
@@ -105,7 +105,7 @@ describe("both money paths read that one rule", () => {
 
   it("the bulk path picks with the same function, over rows already fetched", () => {
     const body = bodyOf("aiaBillingRollupBulk");
-    expect(body).toContain("pickReleaseApplication(");
+    expect(body).toContain("releaseBaselineFor(");
     // It must not re-filter on its way in, or the shared rule is only half the
     // rule and the halves can drift again.
     expect(
@@ -123,5 +123,18 @@ describe("both money paths read that one rule", () => {
       src,
       "an application_number comparison next to is_retainage_release is the old rule growing back"
     ).not.toMatch(/is_retainage_release[\s\S]{0,200}application_number\s*[<>]=?\s/);
+  });
+
+  it("the Projects list and dashboard read it too — the fourth copy is gone", () => {
+    // projects/db.ts hand-rolled the same selection as a loop with no
+    // tie-break and no pin, feeding the dashboard tiles and the Projects list.
+    const proj = stripComments(
+      readFileSync(join(process.cwd(), "lib/commercial/projects/db.ts"), "utf8")
+    );
+    expect(proj).toContain("releaseBaselineFor(");
+    expect(
+      proj,
+      "a release-vs-certificate number comparison is back in projects/db.ts"
+    ).not.toMatch(/application_number\s*>=\s*want\.application_number/);
   });
 });

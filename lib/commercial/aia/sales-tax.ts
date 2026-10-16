@@ -52,20 +52,39 @@ export async function aiaSalesTaxCents(opts: {
  * cert" and "they approved a CO" both land the same way: reopen the draft, the
  * numbers are right.
  */
-export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
+/**
+ * Whether the tax on the schedule is now what the job's tax status says.
+ *
+ * RETURNED, not logged. Every write here used to be fire-and-forget behind a
+ * `Promise<void>`, and the issue path runs this immediately before freezing
+ * the certificate — so a refold that did not land froze the OLD tax-inclusive
+ * figure onto a document the GC receives, with "Submitted" on the screen. That
+ * is the "tax setting isn't sticking" Stephanie hit on 2026-09-24. A caller
+ * about to issue has to be able to refuse.
+ */
+export type AiaTaxReconcileResult = { ok: true } | { ok: false; error: string };
+const TAX_OK: AiaTaxReconcileResult = { ok: true };
+const taxFailed = (applicationId: string, what: string, detail: string): AiaTaxReconcileResult => {
+  console.error(`[aia-tax] ${applicationId} ${what}:`, detail);
+  return { ok: false, error: `The sales tax on this certificate could not be brought up to date (${what}): ${detail}` };
+};
+
+export async function reconcileAiaTaxRow(applicationId: string): Promise<AiaTaxReconcileResult> {
   const sb = commercialDb();
-  const { data: appRow } = await sb
+  const { data: appRow, error: appErr } = await sb
     .from("commercial_aia_applications")
     .select("id, opportunity_id, status")
     .eq("id", applicationId)
     .maybeSingle();
+  if (appErr) return taxFailed(applicationId, "reading the application failed", appErr.message);
   const app = appRow as { id: string; opportunity_id: string; status: string } | null;
-  if (!app || app.status !== "draft") return;
+  if (!app || app.status !== "draft") return TAX_OK;
 
-  const { data: lineRows } = await sb
+  const { data: lineRows, error: linesErr } = await sb
     .from("commercial_aia_line_items")
     .select("id, item_no, change_order_id, scheduled_value_cents, from_previous_cents, this_period_cents, materials_stored_cents")
     .eq("application_id", applicationId);
+  if (linesErr) return taxFailed(applicationId, "reading the schedule failed", linesErr.message);
   const lines =
     (lineRows as Array<{
       id: string;
@@ -118,8 +137,7 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     ).length,
   });
   if (mode === "refold") {
-    await refoldInlineTax(applicationId, app.opportunity_id);
-    return;
+    return await refoldInlineTax(applicationId, app.opportunity_id);
   }
 
   // ── From here down: a LEGACY row, or an ITEMIZED schedule. ──────────────
@@ -138,7 +156,7 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     // billed against it; a row carrying billed value is history on a
     // certificate the GC already holds, and zeroing it silently would make an
     // earlier application unexplainable.
-    if (!existing) return;
+    if (!existing) return TAX_OK;
     const billed =
       Math.round(existing.from_previous_cents) +
       Math.round(existing.this_period_cents) +
@@ -147,11 +165,11 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
       console.warn(
         `[aia-tax] ${applicationId} is now exempt but its tax row has ${billed} cents billed — left in place; credit it with a change order rather than deleting history.`
       );
-      return;
+      return TAX_OK;
     }
     const { error: delErr } = await sb.from("commercial_aia_line_items").delete().eq("id", existing.id);
-    if (delErr) console.error("[aia-tax] could not remove the tax row:", delErr.message);
-    return;
+    if (delErr) return taxFailed(applicationId, "removing the tax row failed", delErr.message);
+    return TAX_OK;
   }
 
   if (existing) {
@@ -159,7 +177,7 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
     // still maintained so an application already carrying one stays correct —
     // one live application has $437.50 billed against its tax row, which is
     // history on a certificate the GC may be holding.
-    if (Math.round(existing.scheduled_value_cents) === want.cents) return;
+    if (Math.round(existing.scheduled_value_cents) === want.cents) return TAX_OK;
     // CHECKED. This is the mechanism behind "the tax setting isn't sticking":
     // a rejected update left the certificate carrying the OLD tax-inclusive
     // value, silently, and the function returns void so nothing upstream could
@@ -168,9 +186,8 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
       .from("commercial_aia_line_items")
       .update({ scheduled_value_cents: want.cents, description: want.label })
       .eq("id", existing.id);
-    if (updErr)
-      console.error(`[aia-tax] ${applicationId} tax row update FAILED — the certificate still carries the old figure:`, updErr.message);
-    return;
+    if (updErr) return taxFailed(applicationId, "the tax row still carries the old figure", updErr.message);
+    return TAX_OK;
   }
 
   // No NEW tax row — Stephanie 2026-09-11: "Sales tax can't show as a separate
@@ -205,13 +222,13 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
       materials_stored_cents: 0,
       change_order_id: null,
     });
-    if (insErr)
-      console.error(`[aia-tax] ${applicationId} tax row insert FAILED — the certificate has no tax line:`, insErr.message);
-    return;
+    if (insErr) return taxFailed(applicationId, "the certificate has no tax line", insErr.message);
+    return TAX_OK;
   }
 
   // Nothing else to do: the folded shape returned above, and both remaining
   // shapes were handled by the row logic.
+  return TAX_OK;
 }
 
 /**
@@ -221,43 +238,59 @@ export async function reconcileAiaTaxRow(applicationId: string): Promise<void> {
  * Only for the ONE-contract-line shape. An itemized schedule (the rare job
  * where the GC asked for the breakdown) has no single authoritative pre-tax
  * base per row, so it keeps the separate tax row instead — see the caller.
+ *
+ * This is the DEFAULT path, and every write in it was unchecked: an update
+ * that errored, or matched no row, left the schedule on the old figure and
+ * reported nothing. Each one now has to come back with the row it changed.
  */
-async function refoldInlineTax(applicationId: string, opportunityId: string): Promise<void> {
+async function refoldInlineTax(applicationId: string, opportunityId: string): Promise<AiaTaxReconcileResult> {
   const sb = commercialDb();
   const { taxInclusiveCents } = await import("./tax-inline");
   const { listProposalsForOpp, listChangeOrders: listCOs } = await import("./refold-deps");
 
-  const { data: lineRows } = await sb
+  const { data: lineRows, error: readErr } = await sb
     .from("commercial_aia_line_items")
     .select("id, item_no, change_order_id, scheduled_value_cents")
     .eq("application_id", applicationId);
+  if (readErr) return taxFailed(applicationId, "reading the schedule failed", readErr.message);
   const lines = (lineRows ?? []) as Array<{
     id: string; item_no: string | null; change_order_id: string | null; scheduled_value_cents: number;
   }>;
-  if (lines.length === 0) return;
+  if (lines.length === 0) return TAX_OK;
+
+  /** One scheduled value, written and CONFIRMED — a row count of 0 is a miss. */
+  const write = async (lineId: string, cents: number, what: string): Promise<AiaTaxReconcileResult> => {
+    const { data, error } = await sb
+      .from("commercial_aia_line_items")
+      .update({ scheduled_value_cents: cents })
+      .eq("id", lineId)
+      .eq("application_id", applicationId)
+      .select("id");
+    if (error) return taxFailed(applicationId, what, error.message);
+    if (!data || data.length !== 1) return taxFailed(applicationId, what, "the line was not found to update");
+    return TAX_OK;
+  };
 
   const isCo = (l: { change_order_id: string | null; item_no: string | null }) =>
     !!l.change_order_id || /^CO-0*\d+$/i.test(l.item_no ?? "");
   const baseLines = lines.filter((l) => !isCo(l) && !isAiaTaxLine(l));
   // More than one base line means an itemized schedule — leave it to the row.
-  if (baseLines.length !== 1) return;
+  if (baseLines.length !== 1) return TAX_OK;
 
   const proposals = await listProposalsForOpp(opportunityId);
-  if (proposals.length === 0) return;
+  if (proposals.length === 0) return TAX_OK;
   const seed = proposals.find((p) => p.status === "won") ?? proposals[0];
   const want = await taxInclusiveCents({
     opportunityId,
     baseCents: Math.round(Number(seed.total_cents ?? 0)),
   });
   if (want > 0 && Math.round(baseLines[0].scheduled_value_cents) !== want) {
-    await sb
-      .from("commercial_aia_line_items")
-      .update({ scheduled_value_cents: want })
-      .eq("id", baseLines[0].id);
+    const r = await write(baseLines[0].id, want, "the contract line still carries the old tax");
+    if (!r.ok) return r;
   }
 
   const coLines = lines.filter(isCo);
-  if (coLines.length === 0) return;
+  if (coLines.length === 0) return TAX_OK;
   const cos = await listCOs(opportunityId);
   for (const l of coLines) {
     const co = cos.find((c) => c.id === l.change_order_id);
@@ -267,7 +300,9 @@ async function refoldInlineTax(applicationId: string, opportunityId: string): Pr
       baseCents: Math.round(Number(co.amount_cents)),
     });
     if (Math.round(l.scheduled_value_cents) !== target) {
-      await sb.from("commercial_aia_line_items").update({ scheduled_value_cents: target }).eq("id", l.id);
+      const r = await write(l.id, target, `change order ${co.co_number} still carries the old tax`);
+      if (!r.ok) return r;
     }
   }
+  return TAX_OK;
 }
