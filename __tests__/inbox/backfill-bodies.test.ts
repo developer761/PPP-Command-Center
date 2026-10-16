@@ -13,10 +13,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 const route = () => strip(read("app/api/admin/inbox/backfill-bodies/route.ts"));
 
 describe("the backfill", () => {
@@ -79,7 +80,7 @@ describe("the backfill", () => {
 describe("the Mail Hub repairs a missing body by itself", () => {
   const read2 = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
   const strip2 = (s: string) =>
-    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    stripComments(s);
   const api = () => strip2(read2("app/api/admin/inbox/route.ts"));
 
   it("fetches the body when a message has none", () => {

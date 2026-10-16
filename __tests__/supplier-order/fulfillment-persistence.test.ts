@@ -6,6 +6,7 @@ import {
   emptyFulfillmentState,
   fulfillmentIsEmpty,
 } from "@/lib/supplier-order/fulfillment-state";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R4.33 — fulfillment entries survive going back to the order and returning.
@@ -22,7 +23,7 @@ import {
 
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 const codeOnly = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  stripComments(s);
 
 describe("the two order routes write disjoint columns", () => {
   const build = codeOnly(read("app/api/admin/supplier-order/build/route.ts"));

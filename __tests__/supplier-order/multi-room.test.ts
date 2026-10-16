@@ -15,6 +15,7 @@ import {
   multiRoomLines,
   roomsNamedIn,
 } from "@/lib/supplier-order/multi-room";
+import { stripComments } from "../helpers/strip-comments";
 
 describe("rooms named in a real scope note", () => {
   /* ── Genuinely several rooms ──────────────────────────────────────── */
@@ -153,7 +154,7 @@ describe("which line items get the alert", () => {
  */
 describe("the alert actually reaches the order screen", () => {
   const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
-  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+  const strip = (s: string) => stripComments(s);
 
   it("renders the hits in the order builder", () => {
     const src = strip(read("components/order-builder-view.tsx"));

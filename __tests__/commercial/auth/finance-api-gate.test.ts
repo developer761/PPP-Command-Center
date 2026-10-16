@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { financeApiDenied } from "@/lib/commercial/auth";
+import { stripComments } from "../../helpers/strip-comments";
 
 /**
  * A MONEY route needs the money predicate, not the access predicate.
@@ -28,8 +29,6 @@ import { financeApiDenied } from "@/lib/commercial/auth";
  */
 
 const ROOT = process.cwd();
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 describe("financeApiDenied", () => {
   it("allows an admin", async () => {

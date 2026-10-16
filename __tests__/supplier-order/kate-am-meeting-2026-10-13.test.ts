@@ -4,10 +4,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 const builder = () => strip(read("components/order-builder-view.tsx"));
 
 describe("RED 1 — the accent alert stays off non-wall surfaces", () => {

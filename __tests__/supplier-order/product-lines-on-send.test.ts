@@ -15,10 +15,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+  stripComments(s);
 
 const ROUTE = "app/api/admin/supplier-order/send/route.ts";
 const CLIENT = "components/order-fulfillment-view.tsx";

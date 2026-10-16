@@ -5,7 +5,7 @@ import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
 const read = (p: string) => stripComments(readFileSync(join(root, p), "utf8"));
-const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+const strip = (s: string) => stripComments(s);
 
 /** Kate's "Paint Tool Mobile Modifications", 2026-10-07 — the cosmetic half. */
 

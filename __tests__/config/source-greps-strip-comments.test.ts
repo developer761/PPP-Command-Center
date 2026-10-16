@@ -10,7 +10,7 @@ import { join, relative } from "node:path";
  * assert something about the text. That is a legitimate technique — it is how
  * a DB-free suite checks a seam — but it has one failure mode that turns the
  * test into a lie: the string being matched can live in a COMMENT, and a
- * comment is not behaviour.
+ * comment is not behavior.
  *
  * The cost, measured in this repo:
  *
@@ -91,16 +91,18 @@ const PRIVATE_STRIPPER = /\\\/\\\*|\\\/\\\//;
 const GREP_MATCHERS = new Set(["toContain", "toMatch"]);
 const GREP_METHODS = new Set(["includes", "indexOf", "lastIndexOf", "match", "matchAll", "search"]);
 
-export type Offence = { line: number; kind: "UNSTRIPPED" | "PRIVATE"; detail: string };
+export type Offense = { line: number; kind: "UNSTRIPPED" | "PRIVATE"; detail: string };
 
-function analyse(fileName: string, text: string): Offence[] {
+function analyze(fileName: string, text: string): Offense[] {
   const sf = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   type Info = { stripped: boolean; private: boolean; path: string };
 
   const varInfo = new Map<string, Info>();
   const fnInfo = new Map<string, Info>();
-  const offences: Offence[] = [];
+  /** Local functions whose body runs a private comment stripper over a parameter. */
+  const paramStripperFns = new Set<string>();
+  const offenses: Offense[] = [];
 
   const literalsIn = (n: ts.Node): string[] => {
     const out: string[] = [];
@@ -181,6 +183,23 @@ function analyse(fileName: string, text: string): Offence[] {
       // A helper declared in this file: `const read = (p) => readFileSync(...)`
       if (ts.isIdentifier(callee) && fnInfo.has(callee.text)) return fnInfo.get(callee.text)!;
 
+      // A helper that takes the SOURCE as its argument and strips it itself:
+      //
+      //     function codeOnly(s: string) {
+      //       return s.replace(/\/\*[\s\S]*?\*␀/\/g, "").replace(…);
+      //     }
+      //     expect(codeOnly(src)).toContain("x");
+      //
+      // The private stripper is a parameter away from the read, so tracing
+      // only through the call chain missed it. Found 2026-10-16 in
+      // customer-form-a11y, which fed it a RAW read of a file full of URLs —
+      // the one combination where the old stripper deleted code.
+      if (ts.isIdentifier(callee) && paramStripperFns.has(callee.text)) {
+        const arg = expr.arguments[0] ? trace(expr.arguments[0]) : null;
+        if (arg) return { ...arg, private: !arg.stripped };
+        return null;
+      }
+
       if (ts.isPropertyAccessExpression(callee)) {
         // `await import("node:fs").then((fs) => fs.readFileSync(...))`
         if (name === "then") {
@@ -219,6 +238,47 @@ function analyse(fileName: string, text: string): Offence[] {
     return found;
   }
 
+  // Which local functions strip comments off a PARAMETER rather than off a
+  // read they perform themselves. Collected before tracing, because a call
+  // to one of them is what makes its argument an offense.
+  {
+    const note = (name: string | undefined, params: ts.NodeArray<ts.ParameterDeclaration>, body: ts.Node) => {
+      if (!name || params.length === 0) return;
+      const names = new Set(
+        params.filter((p) => ts.isIdentifier(p.name)).map((p) => (p.name as ts.Identifier).text)
+      );
+      let strips = false;
+      const look = (x: ts.Node) => {
+        if (strips) return;
+        if (
+          ts.isCallExpression(x) && ts.isPropertyAccessExpression(x.expression) &&
+          x.expression.name.text === "replace" &&
+          PRIVATE_STRIPPER.test(x.arguments[0]?.getText(sf) ?? "")
+        ) {
+          // …applied to something rooted at a parameter.
+          let root: ts.Node = x.expression.expression;
+          while (
+            ts.isCallExpression(root) ? (root = root.expression, true) :
+            ts.isPropertyAccessExpression(root) ? (root = root.expression, true) : false
+          ) { /* unwrap */ }
+          if (ts.isIdentifier(root) && names.has(root.text)) { strips = true; return; }
+        }
+        ts.forEachChild(x, look);
+      };
+      look(body);
+      if (strips) paramStripperFns.add(name);
+    };
+    const find = (n: ts.Node) => {
+      if (ts.isFunctionDeclaration(n) && n.name && n.body) note(n.name.text, n.parameters, n.body);
+      if (
+        ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer &&
+        (ts.isArrowFunction(n.initializer) || ts.isFunctionExpression(n.initializer))
+      ) note(n.name.text, n.initializer.parameters, n.initializer.body);
+      ts.forEachChild(n, find);
+    };
+    find(sf);
+  }
+
   // Bindings first — three passes so declaration order does not matter.
   for (let pass = 0; pass < 3; pass++) {
     const bind = (n: ts.Node) => {
@@ -247,9 +307,9 @@ function analyse(fileName: string, text: string): Offence[] {
 
   const flag = (n: ts.Node, info: Info | null, how: string) => {
     if (!info) return;
-    if (info.private) offences.push({ line: lineOf(n), kind: "PRIVATE", detail: `${how} on ${info.path}` });
+    if (info.private) offenses.push({ line: lineOf(n), kind: "PRIVATE", detail: `${how} on ${info.path}` });
     else if (!info.stripped)
-      offences.push({ line: lineOf(n), kind: "UNSTRIPPED", detail: `${how} on ${info.path}` });
+      offenses.push({ line: lineOf(n), kind: "UNSTRIPPED", detail: `${how} on ${info.path}` });
   };
 
   const unwrapExpect = (e: ts.Expression): ts.Expression | undefined => {
@@ -274,7 +334,7 @@ function analyse(fileName: string, text: string): Offence[] {
   };
   scan(sf);
 
-  return offences;
+  return offenses;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +370,14 @@ describe("the checker itself", () => {
        expect(src).toContain("thing");`,
     ],
     [
+      "a private stripper hidden behind a helper that takes the source",
+      `const src = readFileSync("lib/x.ts", "utf8");
+       function codeOnly(s: string) {
+         return s.replace(/\\/\\*[\\s\\S]*?\\*\\//g, "").replace(/^\\s*\\/\\/.*$/gm, "");
+       }
+       expect(codeOnly(src)).toContain("thing");`,
+    ],
+    [
       "a private comment stripper instead of the helper",
       `const src = readFileSync("lib/x.ts", "utf8")
          .replace(/\\/\\*[\\s\\S]*?\\*\\//g, "")
@@ -320,7 +388,7 @@ describe("the checker itself", () => {
 
   for (const [label, code] of BAD) {
     it(`flags ${label}`, () => {
-      expect(analyse("t.test.ts", code).length, code).toBeGreaterThan(0);
+      expect(analyze("t.test.ts", code).length, code).toBeGreaterThan(0);
     });
   }
 
@@ -350,7 +418,7 @@ describe("the checker itself", () => {
 
   for (const [label, code] of GOOD) {
     it(`passes ${label}`, () => {
-      expect(analyse("t.test.ts", code), code).toEqual([]);
+      expect(analyze("t.test.ts", code), code).toEqual([]);
     });
   }
 });
@@ -374,9 +442,9 @@ function allTests(): string[] {
 
 describe("every source grep strips comments first", () => {
   const files = allTests();
-  const found = new Map<string, Offence[]>();
+  const found = new Map<string, Offense[]>();
   for (const f of files) {
-    const hits = analyse(f, readFileSync(join(ROOT, f), "utf8"));
+    const hits = analyze(f, readFileSync(join(ROOT, f), "utf8"));
     if (hits.length) found.set(f, hits);
   }
 
@@ -388,7 +456,7 @@ describe("every source grep strips comments first", () => {
   });
 
   it("the checker still finds the shapes it is looking for", () => {
-    // Paired with the count above: if `analyse` silently stopped matching —
+    // Paired with the count above: if `analyze` silently stopped matching —
     // a TypeScript API change, a renamed matcher — every file would come
     // back clean and this file would become decoration. The allowlisted
     // files are known offenders, so at least that many must be detected.
@@ -407,10 +475,10 @@ describe("every source grep strips comments first", () => {
     expect(
       offenders,
       "These read a source file and match against the text without removing comments first.\n" +
-        "A comment is not behaviour: a test like this passes on a docblock that mentions the\n" +
+        "A comment is not behavior: a test like this passes on a docblock that mentions the\n" +
         "thing, long after the thing itself is gone.\n\n" +
         "Fix: wrap the read — `stripComments(readFileSync(p, \"utf8\"))`, importing from\n" +
-        "__tests__/helpers/strip-comments. Better still, where the behaviour is reachable\n" +
+        "__tests__/helpers/strip-comments. Better still, where the behavior is reachable\n" +
         "without a database, assert on a real value instead of on source text.\n\n" +
         "If matching the comment IS the point, add the file to ALLOWED in\n" +
         "__tests__/config/source-greps-strip-comments.test.ts with a reason.\n\n" +

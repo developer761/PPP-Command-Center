@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A CAPPED READ WITH NO SORT, AND AN UNCAPPED READ WITH NO PAGING.
@@ -27,9 +28,6 @@ import { readFileSync } from "node:fs";
  * Structural, because neither DB path has a test that drives it: what was
  * wrong is the QUERY, and that is what these assert.
  */
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-
 describe("a limited read says which rows it wants", () => {
   const src = () => stripComments(readFileSync("lib/messaging/exit-sweep.ts", "utf8"));
 

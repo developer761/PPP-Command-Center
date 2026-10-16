@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { stripComments } from "../helpers/strip-comments";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -31,10 +32,12 @@ function fieldsOf(source: string, typeName: string): string[] {
       if (depth === 0) { end = i; break; }
     }
   }
-  const body = source
-    .slice(open + 1, end)
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/.*$/gm, " ");
+  // Comments stripped through the shared helper rather than a private pair
+  // of regexes: the private spelling deleted the rest of any line holding
+  // `//`, so a field whose default or doc-link contained a URL took the
+  // fields after it with it, and this comparison silently compared two
+  // shortened lists.
+  const body = stripComments(source.slice(open + 1, end));
   // Only top-level keys: every field here is a primitive, so depth never grows.
   return [...body.matchAll(/(^|[;,{\s])([A-Za-z_][A-Za-z0-9_]*)\??\s*:/g)]
     .map((m) => m[2])

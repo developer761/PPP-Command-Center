@@ -67,7 +67,7 @@ describe("emailing an invoice", () => {
    * string. Not one of them would have failed; they would simply have
    * stopped checking the thing they were written for. Found 2026-10-16 when
    * stripping comments removed the landmark and the tests went red while the
-   * behaviour they guard was untouched.
+   * behavior they guard was untouched.
    *
    * So: anchor on the branch itself, and refuse to run if it has moved.
    */

@@ -23,7 +23,7 @@ import { stripComments } from "../helpers/strip-comments";
 const ROOT = join(__dirname, "..", "..");
 const sidebar = stripComments(readFileSync(join(ROOT, "components/messaging/messaging-sidebar.tsx"), "utf8"));
 const training = stripComments(readFileSync(join(ROOT, "app/messaging/training/page.tsx"), "utf8"));
-const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+const code = (s: string) => stripComments(s);
 
 describe("region groups collapse", () => {
   it("the header toggles, and says so to a screen reader", () => {

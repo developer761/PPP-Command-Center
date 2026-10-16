@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Several people on the CC, and several names in the Attention block.
@@ -17,7 +18,7 @@ import { readFileSync } from "node:fs";
  * has shipped a test that matched its own docblock.
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(s);
 
 /** The same split the sender uses: commas, semicolons or whitespace. */
 const parseCc = (raw: string) => [

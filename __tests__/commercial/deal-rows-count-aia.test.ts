@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Every money report counts AIA billing, including the two that live in
@@ -37,8 +38,6 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 const MODULE = "lib/commercial/reports/tomco/opportunities.ts";
 
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const src = stripComments(readFileSync(join(ROOT, MODULE), "utf8"));
 

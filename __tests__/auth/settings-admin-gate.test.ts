@@ -121,7 +121,7 @@ describe("every residential admin gate uses the shared derivation", () => {
 
   it("the three originally-fixed surfaces call it by name", () => {
     const strip = (s: string) =>
-      s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+      stripComments(s);
     expect(strip(read("app/dashboard/settings/page.tsx"))).toMatch(/isAdminProfile\(profile, isAdminEmail\(user\.email\)\)/);
     expect(strip(read("app/dashboard/settings/access/page.tsx"))).toMatch(/roleForProfile\(profile, isAdminEmail\(user\.email\)\)/);
     expect(strip(read("lib/auth/viewer-server.ts"))).toMatch(/roleForProfile\(profile, isAdminEmail\(profile\.email\)\)/);
@@ -140,7 +140,7 @@ describe("every residential admin gate uses the shared derivation", () => {
 });
 
 function strip2(s: string): string {
-  return s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+  return stripComments(s);
 }
 
 describe("the shared derivation itself", () => {

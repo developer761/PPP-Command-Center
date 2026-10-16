@@ -10,7 +10,7 @@ import { stripComments } from "../helpers/strip-comments";
  */
 const ROOT = process.cwd();
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
-const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const codeOnly = (s: string) => stripComments(s);
 
 describe("the aim is judged AFTER snapping, not before", () => {
   it("checks quality on the corrected aim", () => {

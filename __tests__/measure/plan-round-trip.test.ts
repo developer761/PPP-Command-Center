@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildFloorPlan, versusBoundingRectangle, type WallSegment } from "@/lib/measure/floor-plan";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The walked perimeter has to survive all the way to the gallon estimate,
@@ -14,7 +15,7 @@ import { buildFloorPlan, versusBoundingRectangle, type WallSegment } from "@/lib
  */
 const w = (lengthFt: number, turn: "right" | "left" = "right"): WallSegment => ({ lengthFt, turn });
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
-const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const codeOnly = (s: string) => stripComments(s);
 
 describe("a walked plan beats every rectangle approximation", () => {
   // U-shaped room: two inside corners. 30 across, then in and out twice.

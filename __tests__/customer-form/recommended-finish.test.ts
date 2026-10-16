@@ -110,13 +110,46 @@ describe("a recommendation is only ever a suggestion", () => {
     // line that cannot be mixed in Satin would be an order no store can fill,
     // so the caller walks the preference order — that is why this returns a
     // LIST and not one string.
+    // WHAT WAS WRONG HERE, 2026-10-16.
+    //
+    // The product key is "Aura Bath & Spa". This asked for "Aura Bath & Spa
+    // Matte", which matches NO product, so `finishOptionsFor` fell through
+    // to the generic list — and the generic list contains Satin. The one
+    // assertion then sat behind `if (sold.length > 0 && !sold.includes
+    // ("Satin"))`, which was therefore never true. It had never run once.
+    // The test read as proof that a recommendation yields to what a product
+    // is sold in, and proved nothing at all.
+    //
+    // Replaced with a pairing where the walk genuinely walks.
+    const prefs = recommendedFinishes("Trim", "Living Room", "interior");
+    const sold = finishOptionsFor(BASE_FINISHES, "Ultra Spec Exterior", "interior");
+
+    expect(prefs, "the guide's trim order is Semi-Gloss then Satin").toEqual(["Semi-Gloss", "Satin"]);
+    expect(sold, "Ultra Spec is not sold in Semi-Gloss").not.toContain("Semi-Gloss");
+    expect(sold, "…but it IS sold in the second choice").toContain("Satin");
+
+    // The point of returning a LIST: skip the finish that cannot be mixed
+    // and land on one that can, rather than ordering something no store can
+    // fill.
+    expect(prefs.find((f) => sold.includes(f))).toBe("Satin");
+  });
+
+  it("can run out of choices, and says so by returning nothing", () => {
+    // The case the test above used to pretend to cover. Aura Bath & Spa is
+    // sold in Matte alone, and the guide's bathroom-wall order is Satin then
+    // Eggshell — so NEITHER recommendation is stockable and the walk yields
+    // `undefined`.
+    //
+    // Pinned because it is a real pairing with no answer, and because the
+    // caller's behavior when the walk comes back empty is NOT covered
+    // anywhere in this suite. If that ever starts mattering — an order going
+    // out in a finish the line cannot be mixed in — this is the gap.
     const prefs = recommendedFinishes("Walls", "Bathroom", "interior");
-    const sold = finishOptionsFor(BASE_FINISHES, "Aura Bath & Spa Matte", "interior");
-    const firstAvailable = prefs.find((f) => sold.includes(f));
-    expect(prefs[0]).toBe("Satin");
-    if (sold.length > 0 && !sold.includes("Satin")) {
-      expect(firstAvailable).not.toBe("Satin");
-    }
+    const sold = finishOptionsFor(BASE_FINISHES, "Aura Bath & Spa", "interior");
+
+    expect(prefs).toEqual(["Satin", "Eggshell"]);
+    expect(sold).toEqual(["Matte"]);
+    expect(prefs.find((f) => sold.includes(f))).toBeUndefined();
   });
 
   it("always offers a second choice where the guide names one", () => {

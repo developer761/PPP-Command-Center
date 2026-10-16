@@ -23,10 +23,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 
 describe("the quoted product line is shown, not applied", () => {
   const view = () => strip(read("components/order-builder-view.tsx"));

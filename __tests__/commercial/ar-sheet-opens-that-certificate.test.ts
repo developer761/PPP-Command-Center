@@ -18,7 +18,7 @@ import { stripComments } from "../helpers/strip-comments";
  * single-certificate view.
  *
  * The href lives in a spec object, not in JSX, so this tests the spec directly:
- * the column's `href` function is the whole behaviour.
+ * the column's `href` function is the whole behavior.
  */
 
 const base: ArApplicationRow = {
@@ -65,7 +65,7 @@ describe("the AR sheet's Application column", () => {
   });
 
   it("uses a tab key the job page actually understands", () => {
-    // `?tab=…` only works because the job page normalises it. A tidy-up of
+    // `?tab=…` only works because the job page normalizes it. A tidy-up of
     // the tab keys turns every one of these links into Overview, and nothing
     // in the type system connects the two sides.
     //

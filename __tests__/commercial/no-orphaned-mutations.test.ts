@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * No commercial mutation may exist that nothing can invoke.
@@ -87,9 +88,6 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
  * not count as calling it. That is not hypothetical — the debrief docblock
  * described the bug in detail while nothing called the fix.
  */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
 
 describe("every commercial mutation is reachable", () => {
   const libFiles = sourceFiles(join(ROOT, "lib/commercial"));

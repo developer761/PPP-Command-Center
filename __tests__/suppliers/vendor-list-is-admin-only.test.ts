@@ -21,11 +21,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { isAdminProfile } from "@/lib/auth/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 
 function routeFiles(dir: string, out: string[] = []): string[] {
   const abs = join(root, dir);

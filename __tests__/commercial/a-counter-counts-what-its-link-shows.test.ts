@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * "Time to review 9 →" opened a page with one row on it.
@@ -31,7 +32,7 @@ import { join } from "node:path";
 const ROOT = process.cwd();
 
 const strip = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(src);
 
 const overview = strip(
   readFileSync(join(ROOT, "lib/commercial/field-ops/overview.ts"), "utf8"),

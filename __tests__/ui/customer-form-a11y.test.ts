@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The color form is the only PPP surface an outside member of the public uses,
@@ -27,9 +28,7 @@ const src = readFileSync(join(process.cwd(), "components/customer-form-view.tsx"
 
 /** Strip comments so an explanation of a rule can't satisfy the rule. */
 function codeOnly(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  return stripComments(source);
 }
 
 const code = codeOnly(src);

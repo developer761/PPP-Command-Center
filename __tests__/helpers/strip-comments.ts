@@ -8,7 +8,7 @@ import * as ts from "typescript";
  * `reply_to_email` test, a `precisionpaintingplus` ban, hub.ts, and the
  * draft-only-guard test, which went red the moment a docblock explaining WHY
  * the function is exempt from `assertProposalDraft` mentioned the guard by
- * name. A test that reads source text cannot tell prose from behaviour unless
+ * name. A test that reads source text cannot tell prose from behavior unless
  * the prose is removed first.
  *
  * Use this on every `readFileSync` a test then greps. It is deliberately the
@@ -47,6 +47,34 @@ import * as ts from "typescript";
  * string, a template, a regex literal or JSX — which is what a lexer is. So
  * this asks TypeScript's own parser, the one the compiler uses, instead of
  * guessing a fourth time.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY IT DOES NOT USE `getChildren()` — 2026-10-16, same day
+ * ---------------------------------------------------------------------------
+ *
+ * The first parser version walked `node.getChildren(sf)` to reach every token
+ * and asked each one for its leading and trailing trivia. Correct, and far too
+ * slow to live under a 5-second test timeout: `getChildren()` MATERIALISES the
+ * token nodes, which the parse itself never bothers to create. Measured over
+ * the 1,196 files under app/ + lib/ + components/ — the walk three suites here
+ * do on every run — the parse is 308 ms and the walk is 2,195 ms, and
+ * `revision-policy`, `gate-is-the-only-path` and `no-stranded-components` all
+ * timed out on it.
+ *
+ * So the AST is used only for its BOUNDARIES. `forEachChild` costs nothing
+ * extra — it is how the parser already stores its children — and the spans it
+ * does NOT cover are exactly the trivia and the punctuation it skips over
+ * (`,` `.` `]` `=>`). Inside one of those gaps a `/` cannot be division or a
+ * regex, because both are nodes in their own right, so two characters are
+ * enough to find a comment there. Total 470 ms for 1,814 files.
+ *
+ * Checked by running both versions over every .ts/.tsx in the repo and
+ * diffing the output: 1,813 byte-identical, and the one file that differed
+ * differed because the OLD one was wrong. A docblock sitting at the end of a
+ * file is attached by TypeScript as JSDoc to the EndOfFileToken, which makes
+ * that token's `getChildren()` non-empty — so the old walk recursed past it
+ * instead of treating it as a leaf, and left the prose in. That is the bug
+ * this whole helper exists to prevent, surviving inside the helper itself.
  *
  * A comment's characters are removed but its NEWLINES ARE KEPT, so the file
  * keeps its line structure. Both halves matter:
@@ -104,45 +132,76 @@ function excise(src: string, ranges: ts.CommentRange[]): string {
 }
 
 /**
- * Every comment in the file, found by walking the parsed token stream.
- *
- * Comments are trivia, and every comment is attached to some token — but to
- * WHICH SIDE of it depends on line breaks, and both sides must be asked.
- * TypeScript classifies a comment sharing a line with the code before it as
- * TRAILING trivia of that code, and `getLeadingCommentRanges` deliberately
- * returns nothing for it. Asking only for leading ranges therefore missed
- * every `const a = 1; // why` in the codebase — the single commonest comment
- * shape there is — and left `{/* … *␀/}` untouched for the same reason.
+ * Every comment in the file, found from the parsed node boundaries.
  *
  * Parsed as TSX so `{/* … *␀/}` inside JSX is understood as what it is. That
  * leaves `{}` behind where a JSX comment was, which is correct and is the
  * whole point: the parser removes the comment and nothing else.
+ *
+ * The walk covers the file exhaustively by construction. A node's `pos` is its
+ * FULL start — the end of the previous token, trivia included — so a parent's
+ * children tile it end to end apart from three kinds of hole, and each is
+ * swept:
+ *
+ *   · between two children, where `forEachChild` skipped a `.` or a `,`;
+ *   · after the last child, where the closing `)` `}` `]` `;` lives;
+ *   · the whole span of a childless node that is not a token, which is an
+ *     empty `catch { … }` or `{}` — braces and trivia, nothing else.
+ *
+ * A TOKEN's span is different: it is the literal text, and sweeping it would
+ * read the `//` in `"https://x"` as a comment — the exact bug the regex
+ * version had. So a token contributes only its leading trivia, up to
+ * `skipTrivia`. JsxText contributes nothing at all: it has no trivia, and a
+ * `//` in rendered copy is copy.
  */
 function commentRanges(src: string): ts.CommentRange[] {
-  const sf = ts.createSourceFile("source.tsx", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const sf = ts.createSourceFile("source.tsx", src, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX);
 
   const out: ts.CommentRange[] = [];
-  const seen = new Set<number>();
+
+  /** Find the comments in a span the parser left to punctuation and trivia. */
+  const sweep = (from: number, to: number): void => {
+    let i = from;
+    while (i < to - 1) {
+      if (src[i] === "/" && src[i + 1] === "/") {
+        let j = i + 2;
+        while (j < to && src[j] !== "\n" && src[j] !== "\r") j++;
+        out.push({ pos: i, end: j, kind: ts.SyntaxKind.SingleLineCommentTrivia, hasTrailingNewLine: false });
+        i = j;
+      } else if (src[i] === "/" && src[i + 1] === "*") {
+        // An unterminated block comment runs to the end of the gap rather
+        // than off the end of the file.
+        const close = src.indexOf("*/", i + 2);
+        const end = close === -1 ? to : Math.min(close + 2, to);
+        out.push({ pos: i, end, kind: ts.SyntaxKind.MultiLineCommentTrivia, hasTrailingNewLine: false });
+        i = end;
+      } else {
+        i++;
+      }
+    }
+  };
 
   const visit = (node: ts.Node): void => {
-    const children = node.getChildren(sf);
-    if (children.length > 0) {
-      for (const c of children) visit(c);
+    if (node.kind === ts.SyntaxKind.JsxText) return;
+    if (ts.isToken(node)) {
+      // `getStart` is `pos` advanced past the trivia. It is given `sf`
+      // explicitly because the parse carries no parent pointers to find it
+      // from — that is what makes the parse cheap.
+      sweep(node.pos, node.getStart(sf));
       return;
     }
-    // A token. JSX text carries no trivia — scanning it for comments would
-    // read a literal "//" in rendered copy as the start of one.
-    if (node.kind === ts.SyntaxKind.JsxText) return;
 
-    const ranges = [
-      ...(ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []),
-      ...(ts.getTrailingCommentRanges(src, node.getEnd()) ?? []),
-    ];
-    for (const r of ranges) {
-      if (seen.has(r.pos)) continue;
-      seen.add(r.pos);
-      out.push(r);
-    }
+    let cursor = node.pos;
+    let hasChild = false;
+    ts.forEachChild(node, (child) => {
+      hasChild = true;
+      if (child.pos > cursor) sweep(cursor, child.pos);
+      visit(child);
+      cursor = child.end;
+    });
+
+    if (!hasChild) sweep(node.pos, node.end);
+    else if (cursor < node.end) sweep(cursor, node.end);
   };
   visit(sf);
 
@@ -152,7 +211,7 @@ function commentRanges(src: string): ts.CommentRange[] {
 /**
  * The same job for SQL, where a comment starts with `--`.
  *
- * A migration's prose hides behaviour exactly the way a docblock does. A test
+ * A migration's prose hides behavior exactly the way a docblock does. A test
  * asserting a migration `.includes("drop the old index")` passes on the line
  *
  *     -- drop the old index, it was replaced in 162

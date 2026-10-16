@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { messagingAccessDenied } from "@/lib/messaging/auth";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Every messaging server action must check the caller.
@@ -32,7 +33,7 @@ function exportedActions(src: string): string[] {
 
 /** Source with comments removed — a comment naming the guard is not the guard. */
 function code(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  return stripComments(src);
 }
 
 describe("server actions cannot be called by someone without access", () => {

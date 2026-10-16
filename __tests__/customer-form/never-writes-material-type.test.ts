@@ -29,7 +29,7 @@ const FILES = [...walk(join(ROOT, "app")), ...walk(join(ROOT, "lib"))]
   .filter((f) => !f.includes("/commercial/") && !f.includes("commercial-"));
 
 /** Strip comments — the rule is explained in prose all over this codebase. */
-const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const codeOnly = (s: string) => stripComments(s);
 
 describe("MaterialType__c stays the estimator's answer", () => {
   it("no code path puts MaterialType__c in a Salesforce update payload", () => {

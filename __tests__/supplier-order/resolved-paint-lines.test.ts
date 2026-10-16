@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R5.3 — "On a job with interior and exterior work the entry form correctly
@@ -22,7 +23,7 @@ import { join } from "node:path";
 const builder = readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8");
 const view = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
 const codeOnly = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  stripComments(s);
 const B = codeOnly(builder);
 const V = codeOnly(view);
 

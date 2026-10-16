@@ -18,7 +18,7 @@ import { stripComments } from "../helpers/strip-comments";
 
 describe("resolveTaxExemption", () => {
   it("inherits the account when the job says nothing", () => {
-    // Today's behaviour, and the reason the column is nullable: every existing
+    // Today's behavior, and the reason the column is nullable: every existing
     // opportunity must keep billing exactly as it did.
     expect(resolveTaxExemption({ opportunityTaxExempt: null, accountTaxExempt: true })).toEqual({
       exempt: true,

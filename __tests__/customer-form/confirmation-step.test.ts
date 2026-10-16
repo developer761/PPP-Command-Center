@@ -16,7 +16,7 @@ import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => stripComments(readFileSync(join(process.cwd(), p), "utf8"));
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 const src = () => strip(read("components/customer-form-view.tsx"));
 
 describe("the confirmation step", () => {

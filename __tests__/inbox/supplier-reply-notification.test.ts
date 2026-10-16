@@ -15,7 +15,7 @@ import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => stripComments(readFileSync(join(process.cwd(), p), "utf8"));
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 
 describe("the preview line", () => {
   it("drops the quoted thread", () => {
@@ -158,7 +158,7 @@ describe("the bell can render it", () => {
 describe("an unreadable body is not an empty one", () => {
   const read2 = (p: string) => stripComments(readFileSync(join(process.cwd(), p), "utf8"));
   const strip2 = (s: string) =>
-    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    stripComments(s);
 
   it("the notification says it could not be loaded", () => {
     const s = strip2(read2("lib/notifications/supplier-reply.ts"));

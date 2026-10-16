@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A won deal needs a work order, or the crew's hours have nowhere to go.
@@ -21,7 +22,7 @@ import { readFileSync } from "node:fs";
  * are live work.
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(s);
 
 /** The rule both sides must agree on. */
 const isCurrentWork = (status: string, sub: string | null) =>

@@ -64,10 +64,12 @@ describe("toSalesforceMaterialType", () => {
   });
 
   it("NEVER returns a value outside the org's picklist — for any line, any scope", () => {
+    let mapped = 0;
     for (const line of PAINT_LINE_VALUES) {
       for (const ctx of [INTERIOR, EXTERIOR, UNKNOWN]) {
         const out = toSalesforceMaterialType(line, ctx);
         if (out !== null) {
+          mapped++;
           expect(
             SF_MATERIAL_TYPE_VALUES.has(out),
             `"${line}" mapped to "${out}", which Salesforce would reject`
@@ -75,5 +77,15 @@ describe("toSalesforceMaterialType", () => {
         }
       }
     }
+
+    // `null` is a real answer here — plenty of lines have no picklist
+    // equivalent — so the assertion above has to sit behind a check. That
+    // makes "everything mapped to null" indistinguishable from "every
+    // mapping is valid", and both are green. Count what was actually
+    // examined, so a mapper that quietly stopped mapping fails instead.
+    expect(
+      mapped,
+      "no paint line mapped to anything — the picklist mapper is returning null for everything"
+    ).toBeGreaterThan(5);
   });
 });

@@ -5,6 +5,7 @@ import {
   PROPOSAL_ACTION_KINDS,
   PROPOSAL_ACTION_KINDS_ON_DELETE,
 } from "@/lib/notifications/resolve-action-items";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Deleting a deal must not leave a to-do pointing at it.
@@ -38,7 +39,7 @@ import {
 
 const ROOT = process.cwd();
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(s);
 
 describe("the two proposal kind lists", () => {
   it("the SEND list leaves a countersignature to-do standing", () => {

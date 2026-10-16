@@ -31,7 +31,7 @@ const CONSUMERS = [
 ];
 
 function strip(src: string): string {
-  return src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  return stripComments(src);
 }
 
 describe("the notes control is never inside another clickable", () => {

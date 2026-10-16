@@ -128,7 +128,21 @@ describe("the commercial channel default", () => {
     const tomco = block.indexOf("TOMCO_DEFAULT_FROM ||");
     const pool = block.indexOf("COMMERCIAL_RESEND_FROM_ADDRESS");
     expect(tomco).toBeGreaterThan(-1);
-    if (pool > -1) expect(tomco, "the PPP pool is consulted first").toBeLessThan(pool);
+
+    // The ordering check used to sit inside `if (pool > -1)`. Rename that
+    // env var and the branch stops running — while the renamed var could
+    // perfectly well be read FIRST, which is the whole failure being
+    // guarded. A guard that a rename switches off is not a guard.
+    //
+    // If the stale PPP pool is ever deleted outright that is good news, and
+    // this line should be deleted with it, deliberately — not silently.
+    expect(
+      pool,
+      "COMMERCIAL_RESEND_FROM_ADDRESS is no longer in the sender chain. If it was removed " +
+        "on purpose, delete this assertion; if it was renamed, re-anchor it — the new name " +
+        "could be read before Tomco's and nothing here would notice."
+    ).toBeGreaterThan(-1);
+    expect(tomco, "the PPP pool is consulted first").toBeLessThan(pool);
   });
 
   it("still lets an explicit per-document sender win", () => {

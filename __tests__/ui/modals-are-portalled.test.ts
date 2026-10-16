@@ -59,7 +59,7 @@ const OVERLAY = /className=\{?["'`][^"'`]*\bfixed\b[^"'`]*(\binset-0\b|\bh-dvh-f
  *  satisfied it — so the guard passed against a deliberately un-portalled
  *  overlay. Check for the actual JSX element, in code only. */
 function codeOnly(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  return stripComments(src);
 }
 const USES_PORTAL = /<ModalPortal[\s>]/;
 

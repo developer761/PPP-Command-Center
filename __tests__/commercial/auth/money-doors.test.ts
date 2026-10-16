@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../../helpers/strip-comments";
 
 /**
  * A SECOND DOOR ONTO A GATED SCREEN NEEDS THE SAME LOCK.
@@ -32,8 +33,6 @@ import { join } from "node:path";
  */
 
 const ROOT = process.cwd();
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 const body = (p: string) => read(p).replace(/^import[\s\S]*?;$/gm, "");
 

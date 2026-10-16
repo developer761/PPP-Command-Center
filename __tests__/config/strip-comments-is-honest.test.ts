@@ -61,6 +61,19 @@ describe("stripComments removes comments", () => {
     const src = "/** Exempt from assertProposalDraft because … */\nexport function f() {}";
     expect(gone(src)).not.toContain("assertProposalDraft");
   });
+
+  it("a docblock at the very END of the file", () => {
+    // This one survived the first parser version for a structural reason:
+    // TypeScript attaches a trailing docblock as JSDoc to the EndOfFileToken,
+    // which makes that token's `getChildren()` non-empty — so a walk that
+    // treats "has children" as "not a leaf" recursed past it and never asked
+    // for its trivia. `reports-jobs.test.ts` ends with exactly this shape, a
+    // "WHAT THIS FILE CANNOT SEE" block, and it was still greppable.
+    const src = "export function f() {}\n\n/**\n * WHAT THIS FILE CANNOT SEE\n * — whether requireAdmin is called.\n */\n";
+    expect(gone(src)).not.toContain("CANNOT SEE");
+    expect(gone(src)).not.toContain("requireAdmin");
+    expect(gone(src)).toContain("export function f() {}");
+  });
 });
 
 describe("stripComments removes NOTHING else", () => {

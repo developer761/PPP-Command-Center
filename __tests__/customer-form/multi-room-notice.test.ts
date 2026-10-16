@@ -24,10 +24,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { roomSurfaceTemplate } from "@/lib/supplier-order/multi-room";
+import { stripComments } from "../helpers/strip-comments";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(s);
 
 describe("the template Kate specified", () => {
   it("matches the shape in her PDF", () => {
@@ -170,7 +171,7 @@ describe("an untouched template orders nothing", () => {
 describe("a multi-room line has no pickers for a customer", () => {
   const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
   const strip = (s: string) =>
-    s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    stripComments(s);
   const src = () => strip(read("components/customer-form-view.tsx"));
 
   it("hides the surface rows", () => {

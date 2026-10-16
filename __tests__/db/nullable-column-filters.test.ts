@@ -34,9 +34,7 @@ const NULLABLE_COLUMNS = ["kind"];
  *  very comment that documents the bug — a source-level check that can't tell
  *  code from prose reports the fix as the defect. */
 function codeOnly(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  return stripComments(src);
 }
 
 const FILES = [
