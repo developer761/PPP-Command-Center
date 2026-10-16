@@ -1894,7 +1894,7 @@ export default async function ProposalEditorPage({
               <ConfirmSubmitButton
                 message={`Send ${proposalRef(proposal)} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
                 pendingLabel="Requesting…"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-solid-600 text-white text-[13px] font-semibold hover:bg-amber-solid-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M9 12l2 2 4-4" />
@@ -1961,7 +1961,7 @@ export default async function ProposalEditorPage({
                     className={TEXTAREA_CLS}
                   />
                   <SubmitButton
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 min-h-[44px] sm:min-h-[40px]"
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-solid-600 text-white text-[13px] font-semibold hover:bg-amber-solid-700 min-h-[44px] sm:min-h-[40px]"
                   >
                     Send back for changes
                   </SubmitButton>
@@ -3277,7 +3277,7 @@ export default async function ProposalEditorPage({
             <ConfirmSubmitButton
               message={`Send ${proposalRef(proposal)} for approval? A designated approver must approve it before it can go to ${proposal.header_json.gc_company ?? "the GC"}. They'll be notified now.`}
               pendingLabel="Requesting…"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-solid-600 text-white text-[13px] font-semibold hover:bg-amber-solid-700 shadow-sm min-h-[44px] sm:min-h-[40px] disabled:opacity-50"
             >
               Send for approval
             </ConfirmSubmitButton>

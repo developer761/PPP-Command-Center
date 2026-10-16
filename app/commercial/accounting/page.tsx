@@ -1829,7 +1829,7 @@ export default async function AccountingPage({
               aria-pressed={txUndeposited}
               className={`inline-flex items-center px-3 rounded-lg text-[12.5px] font-semibold border transition-colors min-h-[44px] sm:min-h-[38px] touch-manipulation ${
                 txUndeposited
-                  ? "bg-amber-600 text-white border-amber-700"
+                  ? "bg-amber-solid-600 text-white border-amber-700"
                   : "bg-surface text-ppp-charcoal-600 border-ppp-charcoal-200 hover:bg-ppp-charcoal-50"
               }`}
             >

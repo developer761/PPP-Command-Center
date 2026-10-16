@@ -2095,7 +2095,7 @@ function ResponseRecorder({
     tone === "emerald"
       ? { card: "border-emerald-200 bg-emerald-50/40", btn: "bg-cc-brand-600 hover:bg-cc-brand-700 active:bg-cc-brand-800 shadow-cc-brand-600/30", dot: "bg-emerald-500" }
       : tone === "amber"
-      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-600 hover:bg-amber-800 active:bg-amber-900 shadow-amber-700/30", dot: "bg-amber-500" }
+      ? { card: "border-amber-200 bg-amber-50/40", btn: "bg-amber-solid-600 hover:bg-amber-solid-800 active:bg-amber-solid-900 shadow-amber-700/30", dot: "bg-amber-500" }
       : { card: "border-rose-200 bg-rose-50/40", btn: "bg-rose-600 hover:bg-rose-800 active:bg-rose-900 shadow-rose-700/30", dot: "bg-rose-500" };
 
   return (

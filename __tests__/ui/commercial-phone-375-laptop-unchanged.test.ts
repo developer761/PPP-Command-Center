@@ -22,7 +22,8 @@
  * and that is measured as numbers, not spelling: see the last block.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { stripComments } from "../helpers/strip-comments";
 
 const cache = new Map<string, string>();
@@ -247,12 +248,92 @@ describe("Action-needed CTA is AA under white in dark", () => {
     expect(f[0]).toMatch(/3\.88/);
   });
 
-  it("light is byte-for-byte Tailwind's amber, so the laptop in light is unchanged", () => {
-    const tw = readFileSync("node_modules/tailwindcss/theme.css", "utf8");
-    for (const step of ["600", "700"]) {
-      const stock = new RegExp(`--color-amber-${step}:\\s*([^;]+);`).exec(tw)?.[1].trim();
-      expect(stock, `tailwind amber-${step} not found`).toBeTruthy();
-      expect(LIGHT[`--color-amber-solid-${step}`]).toBe(stock);
+});
+
+/* ── The sweep: every white-on-amber fill, DARK ONLY ─────────────────────────
+ *
+ * Same move as "Send it →" for every amber button carrying white text. The
+ * swap `bg-amber-N` → `bg-amber-solid-N` is only safe because each
+ * amber-solid-N is, in LIGHT, Tailwind's own amber-N byte for byte — so light
+ * (and the laptop) cannot have moved. That equality is what these assert; a
+ * light value nudged even one digit fails here.
+ */
+
+const TW = readFileSync("node_modules/tailwindcss/theme.css", "utf8");
+const stockAmber = (step: string) =>
+  new RegExp(`--color-amber-${step}:\\s*([^;]+);`).exec(TW)?.[1].trim();
+
+/** Every amber-solid-N spelled anywhere in Commercial, with its file. */
+function solidUses(): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (const f of COMMERCIAL) {
+    for (const [, step] of src(f).matchAll(/bg-amber-solid-(\d+)/g)) out.push([f, step]);
+  }
+  return out;
+}
+
+const COMMERCIAL: string[] = [];
+function walk(d: string) {
+  for (const e of readdirSync(d)) {
+    const p = join(d, e);
+    if (statSync(p).isDirectory()) walk(p);
+    else if (p.endsWith(".tsx")) COMMERCIAL.push(p);
+  }
+}
+walk("app/commercial");
+walk("components/commercial");
+COMMERCIAL.push("components/commercial-chrome.tsx", "components/commercial-sidebar.tsx");
+
+/** Light-theme drift between an amber-solid step and Tailwind's amber step. */
+function lightDrift(light: Record<string, string>, steps: string[]): string[] {
+  return steps.filter((s) => light[`--color-amber-solid-${s}`] !== stockAmber(s))
+    .map((s) => `amber-solid-${s}: ${light[`--color-amber-solid-${s}`]} ≠ tailwind ${stockAmber(s)}`);
+}
+
+describe("amber-solid sweep: dark fixed, light byte-identical", () => {
+  const uses = solidUses();
+  const steps = [...new Set(uses.map(([, s]) => s))].sort();
+
+  it("is actually looking at the swapped buttons", () => {
+    // action bar + proposal ×3 + submittals + exclusion picker + calendar ×3
+    // + signature panel + accounting chip: seven files.
+    expect(new Set(uses.map(([f]) => f)).size).toBeGreaterThanOrEqual(7);
+    expect(steps).toEqual(["500", "600", "700", "800", "900"]);
+  });
+
+  it("every step used is, in LIGHT, exactly Tailwind's amber step", () => {
+    for (const s of steps) expect(stockAmber(s), `tailwind amber-${s} missing`).toBeTruthy();
+    expect(lightDrift(LIGHT, steps)).toEqual([]);
+  });
+
+  it("the light check CAN fail: one nudged digit is caught", () => {
+    const nudged = { ...LIGHT, "--color-amber-solid-600": "oklch(66.7% 0.179 58.318)" };
+    expect(lightDrift(nudged, steps)).toHaveLength(1);
+  });
+
+  it("every step used is AA under white in DARK", () => {
+    const bad = steps
+      .map((s) => [s, DARK[`--color-amber-solid-${s}`]] as const)
+      .filter(([, v]) => !v || !/^#[0-9a-f]{6}$/i.test(v) || contrast(v, "#ffffff") < 4.5)
+      .map(([s, v]) => `amber-solid-${s} dark=${v}`);
+    expect(bad).toEqual([]);
+  });
+
+  it("no class string pairs white text with a plain amber fill any more", () => {
+    const left: string[] = [];
+    for (const f of COMMERCIAL) {
+      const s = src(f);
+      for (const [, str] of s.matchAll(/["`]([^"`\n]*)["`]/g)) {
+        if (!/(?<![-\w:])text-white(?![-\w])/.test(str)) continue;
+        if (/(?<![-\w])(?:hover:|active:)?bg-amber-[4-9]00(?![-\w/])/.test(str)) left.push(`${f}: ${str.trim().slice(0, 90)}`);
+      }
     }
+    expect(left).toEqual([]);
+  });
+
+  it("the submittals tone button (its text-white is in a separate string) is swapped", () => {
+    const s = src("app/commercial/accounts/[id]/submittals/[dealId]/[sid]/page.tsx");
+    const btn = /tone === "amber"\s*\?\s*\{[^}]*btn: "([^"]*)"/.exec(s)?.[1];
+    expect(btn).toBe("bg-amber-solid-600 hover:bg-amber-solid-800 active:bg-amber-solid-900 shadow-amber-700/30");
   });
 });

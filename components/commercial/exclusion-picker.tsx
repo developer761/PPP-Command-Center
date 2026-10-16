@@ -509,7 +509,7 @@ export function ExclusionPicker({
               }
             }}
             disabled={!customDraft.trim()}
-            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
+            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-amber-solid-600 text-white hover:bg-amber-solid-700 transition-colors min-h-[44px] disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
           >
             + Add
           </button>

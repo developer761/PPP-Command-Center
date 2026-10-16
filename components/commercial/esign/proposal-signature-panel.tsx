@@ -264,7 +264,7 @@ function Step({ n, label, state, detail }: { n: number; label: string; state: "d
     state === "done"
       ? "bg-emerald-600 text-white"
       : state === "current"
-        ? "bg-amber-500 text-white ring-2 ring-amber-200"
+        ? "bg-amber-solid-500 text-white ring-2 ring-amber-200"
         : "bg-ppp-charcoal-200 text-ppp-charcoal-600";
   return (
     <li className="flex items-start gap-2.5 rounded-lg border border-ppp-charcoal-100 p-2.5">

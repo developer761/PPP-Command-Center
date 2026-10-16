@@ -902,7 +902,7 @@ function DayPanel({
         <div className="border-t border-ppp-charcoal-50 pt-4">
           <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-2">
             <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-solid-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Put someone on</button>
-            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Time off</button>
+            <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-solid-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Time off</button>
           </div>
           <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 leading-snug">
             {mode === "schedule"
@@ -988,7 +988,7 @@ function DayPanel({
                   <input name="hours" inputMode="decimal" placeholder="e.g. 4 for a half day" className={INPUT_CLS} /></label>
                 <label className="block"><span className={LABEL_CLS}>Note <span className="font-normal text-ppp-charcoal-400">(ops only — not shown to crew)</span></span>
                   <textarea name="note" rows={2} placeholder="Optional" className={INPUT_CLS} /></label>
-                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-500 text-white text-[13px] font-semibold hover:bg-amber-600 disabled:opacity-60 min-h-[44px]">{saving ? "Saving…" : "Save time off"}</button>
+                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-amber-solid-500 text-white text-[13px] font-semibold hover:bg-amber-solid-600 disabled:opacity-60 min-h-[44px]">{saving ? "Saving…" : "Save time off"}</button>
               </form>
             )
           )}
@@ -1176,7 +1176,7 @@ function PersonPanel({
                 <label className="block"><span className={LABEL_CLS}>Hours <span className="font-normal text-ppp-charcoal-400">(optional — blank = full day)</span></span>
                   <input value={offHours} onChange={(e) => setOffHours(e.target.value)} inputMode="decimal" placeholder="e.g. 4 for a half day" className={INPUT_CLS} /></label>
                 <div className="flex items-center gap-2">
-                  <button type="button" disabled={saving || !offType} onClick={() => { onTimeOff(person.employeeId, person.date, offType, offHours); setOffOpen(false); setOffType(""); setOffHours(""); }} className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-500 text-white text-[12.5px] font-semibold hover:bg-amber-600 disabled:opacity-50 min-h-[44px] touch-manipulation">Mark off</button>
+                  <button type="button" disabled={saving || !offType} onClick={() => { onTimeOff(person.employeeId, person.date, offType, offHours); setOffOpen(false); setOffType(""); setOffHours(""); }} className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-solid-500 text-white text-[12.5px] font-semibold hover:bg-amber-solid-600 disabled:opacity-50 min-h-[44px] touch-manipulation">Mark off</button>
                   <button type="button" onClick={() => { setOffOpen(false); setOffType(""); setOffHours(""); }} className="text-[12px] font-semibold text-ppp-charcoal-500 hover:text-ppp-charcoal min-h-[44px] px-2">Cancel</button>
                 </div>
                 <p className="text-[11px] text-amber-700/80 leading-snug">They stay on the calendar crossed out with the reason, and get emailed.</p>

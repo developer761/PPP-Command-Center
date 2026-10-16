@@ -134,12 +134,15 @@
      AA at rest and all but vanished on hover. The dark block below pins
      these dark enough for white (5.57 / 7.36).
 
-     LIGHT is deliberately Tailwind's own amber-600 / -700, byte for byte, so
+     LIGHT is deliberately Tailwind's own amber-500 to -900, byte for byte, so
      the laptop renders exactly as it did (Karan 10-09: "the laptop should
      stay exactly as is"). That value is 3.20:1 under white — still sub-AA in
      light, left OPEN on purpose as a brand/color call, not fixed here. */
+  --color-amber-solid-500: oklch(76.9% 0.188 70.08);
   --color-amber-solid-600: oklch(66.6% 0.179 58.318);
   --color-amber-solid-700: oklch(55.5% 0.163 48.998);
+  --color-amber-solid-800: oklch(47.3% 0.137 46.201);
+  --color-amber-solid-900: oklch(41.4% 0.112 45.904);
 
   /* Karan 2026-07-09 Phase A: navy accent added per post-meeting rewrite.
      Not replacing cc-brand red; used sparingly for structural elements —
@@ -428,9 +431,14 @@ body {
   --color-cc-solid-700: #0f5978;
 
   /* amber-solid DOES flip, but only to stay a dark fill: the muted gold of
-     this theme's amber ramp, taken dark enough for white (5.57 / 7.36). */
+     this theme's amber ramp, taken dark enough for white. Each step still
+     darkens so hover/active stay visible; white on every one clears AA:
+       500 5.11 · 600 5.57 · 700 7.36 · 800 8.78 · 900 10.51 */
+  --color-amber-solid-500: #88692e;
   --color-amber-solid-600: #7f6430;
   --color-amber-solid-700: #6b521f;
+  --color-amber-solid-800: #5e4719;
+  --color-amber-solid-900: #503c14;
 
   /* Per-customer color (opportunities/proposals group + kanban). Curated
      platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present
