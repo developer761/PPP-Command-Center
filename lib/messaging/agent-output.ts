@@ -1480,6 +1480,23 @@ export function withoutPhotoAckSentences(text: string | null | undefined): strin
     (/^\s*(?:thanks|thank you|gracias)\s*[,!]/i.test(m) ? "" : m));
 }
 
+/**
+ * Does this text name the given hour, in any of the ways a person writes it?
+ *
+ * Used only to recognise the customer's OWN callback hour coming back, so it
+ * is deliberately strict about the number and loose about the format.
+ */
+export function namesHour(text: string, hour: number): boolean {
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  const suffix = hour < 12 ? "am" : "pm";
+  const patterns = [
+    new RegExp(`\\b${h12}\\s*(?::00)?\\s*${suffix}\\b`, "i"),
+    new RegExp(`\\b${h12}\\s*o'?clock\\b`, "i"),
+    new RegExp(`\\b${hour}:00\\b`),
+  ];
+  return patterns.some((re) => re.test(text));
+}
+
 export function asksSomething(text: string | null | undefined): boolean {
   const t = (text ?? "").trim();
   if (!t) return false;
@@ -2822,7 +2839,40 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     }
     // A time is only allowed if the system supplied it. The model offering one
     // is how a customer ends up waiting for an estimator who was never booked.
-    if (TIME_COMMITMENT.test(text) && !hasVerifiedSlot(ctx, "times")) {
+    /**
+     * A25's HAPPY PATH, WHICH THIS RULE MADE IMPOSSIBLE.
+     *
+     * Open as question 15 since 2026-09-28 and settled 2026-10-16 from the
+     * two rule texts, which do not actually conflict:
+     *
+     *   A15  "Do NOT offer, confirm or suggest specific APPOINTMENT times"
+     *   A25  "captured a callback time inside business hours, CONFIRMED IT
+     *         BACK TO THE CUSTOMER, and handed the conversation to a human"
+     *
+     * An appointment is the estimator coming to the property. A callback is
+     * somebody ringing them. A25 REQUIRES confirming the second back, and
+     * this check refused any time at all, so the bot could not comply:
+     *
+     *   customer  "can you call me instead of texting? 2pm is good"
+     *   model     "Of course, 2pm works."     -> invented_availability
+     *
+     * and a good lead went to a person. Two correct rules with no legal move
+     * between them, which is this codebase's most expensive habit.
+     *
+     * NARROW ON BOTH HALVES. The customer must have asked for a CALL — a
+     * stated phone preference, not a visit — and the hour in the rapport
+     * must be the hour THEY named, read from their own message by the same
+     * requestedTime the renderer uses. Nothing is invented: the value comes
+     * from the customer. A time nobody asked for, or any time at all on an
+     * appointment request, is refused exactly as before.
+     */
+    const theirCallbackHour = statedChannelPreference(ctx.customerText ?? "") === "phone"
+      ? requestedTime(ctx.customerText)?.hour ?? null
+      : null;
+    const echoesTheirHour = theirCallbackHour !== null
+      && namesHour(text, theirCallbackHour);
+
+    if (TIME_COMMITMENT.test(text) && !hasVerifiedSlot(ctx, "times") && !echoesTheirHour) {
       const m = TIME_COMMITMENT.exec(text);
       /**
        * SAYS WHAT TO DO INSTEAD, because a refused turn now gets one more

@@ -868,7 +868,41 @@ leave it; say otherwise and it is a one-line change in the validator.
 
 ---
 
-## 15. "Call me at 2pm" escalates, because the model repeats the time back
+## 15. ~~"Call me at 2pm" escalates, because the model repeats the time back~~ — **ANSWERED FROM THE RULES THEMSELVES 2026-10-16, FIXED**
+
+**The two rules never conflicted. They are about different things, and
+reading them side by side settles it.**
+
+| | |
+|---|---|
+| **A15** | "Do NOT offer, confirm or suggest specific **APPOINTMENT** times" |
+| **A25** | "captured a callback time inside business hours, **CONFIRMED IT BACK TO THE CUSTOMER**, and handed the conversation to a human" |
+
+An appointment is the estimator coming to the property. A callback is
+somebody ringing them. **A25 positively requires confirming the second back**,
+and the `invented_availability` guard refused any time at all — so the bot
+could not comply with A25's own happy path. Two correct rules with no legal
+move between them, which is the failure this codebase produces most often.
+
+**Fixed, narrowly.** The guard now allows a time only when the customer
+asked for a CALL and the hour is the one THEY named, read out of their own
+message by the same function the renderer uses. Nothing is invented — the
+value comes from the customer. Verified in all four directions:
+
+- "Of course, 2pm works." after "call me… 2pm is good" → **allowed**
+- "Of course, 4pm works." → still refused, they never said 4pm
+- "Of course, 2pm works." after "can you **come** Tuesday at 2?" → still
+  refused, that is an appointment and we have no calendar
+- any time when none was requested → still refused
+
+Confirmed it was genuinely blocked before: the same message returned
+`invented_availability` with the carve-out disabled.
+
+**→ Nothing needed from you.** Recorded because this sat open for eighteen
+days as a judgement call, and it was not one — it was two rules that had
+never been read next to each other.
+
+<details><summary>the original question</summary>
 
 **OPEN — for Karan, not Kate.** Found in Chrome 2026-09-28 while testing the
 new A25 cadence. **Pre-existing, not caused by that change**, and every step
@@ -909,6 +943,8 @@ wiring chain pinning the narrow condition so a later edit cannot widen it.
 to do, so this is not an edge case — it is the middle of A25's happy path.
 
 ---
+
+</details>
 
 ## 16. A second property is asked for its availability as if it were the first
 
