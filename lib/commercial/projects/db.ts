@@ -170,11 +170,12 @@ export async function listProjects(opts: {
         .is("deleted_at", null)
         .order("id", { ascending: true })
   );
-  const invData__p = paginateAll<{ opportunity_id: string; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
+  const invData__p = paginateAll<{ opportunity_id: string; invoice_number: string | null; status: string; subtotal_cents: number; total_cents: number; paid_cents: number }>(
     () =>
       sb
         .from("commercial_invoices")
-        .select("opportunity_id, status, subtotal_cents, total_cents, paid_cents")
+        // `invoice_number` for the carry-over guard in the fold below.
+        .select("opportunity_id, invoice_number, status, subtotal_cents, total_cents, paid_cents")
         .in("opportunity_id", oppIds)
         .is("deleted_at", null)
         .order("id", { ascending: true })
@@ -238,35 +239,6 @@ export async function listProjects(opts: {
   // (contract − invoiced) + "outstanding" (invoiced − paid) so billing
   // actually moves the numbers — the old rollup ignored invoices entirely. ──
   const invData = await invData__p;
-  // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
-  // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
-  // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
-  // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
-  // `invoiced`/`paid` are WITH tax (AR — what the GC owes/paid). `billedPreTax`
-  // is Σ subtotal (pre-tax): the contract is a pre-tax number (proposal total +
-  // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
-  // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
-  // "over-billed" (2026-08 money audit #1).
-  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; openBalance: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
-  for (const inv of invData) {
-    if (inv.status === "void") continue;
-    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
-    if (inv.status === "draft") {
-      e.draftCount += 1;
-      e.draftedCents += Number(inv.total_cents);
-    } else {
-      e.invoiced += Number(inv.total_cents);
-      e.billedPreTax += Number(inv.subtotal_cents);
-      e.paid += Number(inv.paid_cents);
-      // TRUE open balance = Σ per-invoice max(0, total − paid). Clamping PER
-      // invoice (not netting Σinvoiced − Σpaid) so a credit/overpaid/deduct
-      // invoice can't mask another's real open balance — one "Outstanding"
-      // definition everywhere (matches the account rollup's splitOpenBalance).
-      e.openBalance += Math.max(0, Number(inv.total_cents) - Number(inv.paid_cents));
-      e.invoiceCount += 1;
-    }
-    invByOpp.set(inv.opportunity_id, e);
-  }
 
   // ── Batch: project costs per opp (Phase 2). One grouped query; only live
   // purchases (costBreakdownByOpp filters deleted_at IS NULL — audit C2). ──
@@ -340,6 +312,55 @@ export async function listProjects(opts: {
       const pd = latestPaidByOpp.get(a.opportunity_id);
       if (!pd || a.application_number > pd.application_number) latestPaidByOpp.set(a.opportunity_id, a);
     }
+  }
+
+  // Moved below the AIA application scan: the carry-over guard needs to know
+  // which deals have an ISSUED certificate, and that set is built from appData.
+  // "Invoiced" = ISSUED invoices only (sent/viewed/partial/overdue/paid) — a
+  // draft isn't billed to the GC yet, so it must NOT inflate billed / %-billed
+  // / left-to-bill (2026-07-29 audit: a $50k draft was flipping a job to "100%
+  // billed"). Drafts are tracked separately + shown as a "$X in N drafts" note.
+  // `invoiced`/`paid` are WITH tax (AR — what the GC owes/paid). `billedPreTax`
+  // is Σ subtotal (pre-tax): the contract is a pre-tax number (proposal total +
+  // pre-tax CO amounts), so left-to-bill / over-billed / %-of-contract MUST
+  // compare pre-tax against pre-tax — else an 8.875%-taxed full bill looks
+  // "over-billed" (2026-08 money audit #1).
+  const invByOpp = new Map<string, { invoiced: number; billedPreTax: number; paid: number; openBalance: number; invoiceCount: number; draftCount: number; draftedCents: number }>();
+  /*
+   * The `SF-####` placeholder and this job's certificates are ONE bill.
+   *
+   * `latestIssuedByOpp` is already built above and holds exactly the deals with
+   * an issued AIA application, so the guard costs no extra query. Without it
+   * LMJ Cipla reported $187,754.18 billed on an $88,627.09 contract — 212%,
+   * "OVER-BILLED", on the deal header and in the dashboard's over-billing
+   * total — because the importer's invoice and the G702s carry the same five
+   * cheques. See lib/commercial/invoices/carryover.ts.
+   */
+  const supersededOpps = new Set(latestIssuedByOpp.keys());
+  for (const inv of invData) {
+    if (inv.status === "void") continue;
+    if (
+      supersededOpps.has(inv.opportunity_id) &&
+      /^SF-\d+$/.test((inv.invoice_number ?? "").trim())
+    ) {
+      continue;
+    }
+    const e = invByOpp.get(inv.opportunity_id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
+    if (inv.status === "draft") {
+      e.draftCount += 1;
+      e.draftedCents += Number(inv.total_cents);
+    } else {
+      e.invoiced += Number(inv.total_cents);
+      e.billedPreTax += Number(inv.subtotal_cents);
+      e.paid += Number(inv.paid_cents);
+      // TRUE open balance = Σ per-invoice max(0, total − paid). Clamping PER
+      // invoice (not netting Σinvoiced − Σpaid) so a credit/overpaid/deduct
+      // invoice can't mask another's real open balance — one "Outstanding"
+      // definition everywhere (matches the account rollup's splitOpenBalance).
+      e.openBalance += Math.max(0, Number(inv.total_cents) - Number(inv.paid_cents));
+      e.invoiceCount += 1;
+    }
+    invByOpp.set(inv.opportunity_id, e);
   }
 
   /**

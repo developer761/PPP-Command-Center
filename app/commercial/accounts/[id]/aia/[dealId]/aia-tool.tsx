@@ -365,7 +365,10 @@ async function deletePaymentAction(formData: FormData) {
     redirect("/commercial/accounts");
   if (!(await ownsAiaContext(id, dealId, appId))) redirect("/commercial/accounts");
   const { deleteAiaPayment } = await import("@/lib/commercial/aia/payments");
-  const result = await deleteAiaPayment(paymentId, userId);
+  // `appId` is the authorisation, not context: ownsAiaContext proved the caller
+  // owns THIS application, so the delete must be scoped to it. Without that the
+  // payment id — the only id that selects the row — went unchecked.
+  const result = await deleteAiaPayment(paymentId, appId, userId);
   if (!result.ok)
     redirect(`${base(id, dealId, origin, from)}&app=${appId}&error=${encodeURIComponent(result.error)}${backQ(back)}`);
   revalidateAia(id, dealId);
@@ -933,14 +936,44 @@ async function AiaApplicationList({
   const releaseApp =
     [...applications].filter((a) => a.is_retainage_release)
       .sort((a, b) => b.application_number - a.application_number)[0] ?? null;
+  /*
+   * ISSUED releases only, for anything that SAYS retainage was released.
+   *
+   * `releaseApp` above is the latest release whatever its status, which is what
+   * the "is one already being prepared" check needs. But a release still in
+   * draft has released nothing, and a hint reading "released on Application No.
+   * 7" while No. 7 sits unsent is a straightforward lie about money.
+   */
+  const issuedReleaseApp =
+    [...applications].filter((a) => a.is_retainage_release && a.status !== "draft")
+      .sort((a, b) => b.application_number - a.application_number)[0] ?? null;
   // Declared before `nextStep`, which keys off it: what is HELD is the rule
   // for whether a release is the next move, not whether one has happened.
   const retainageHeldCents = billing?.retainageHeldCents ?? 0;
+  /*
+   * 🔴 A DRAFT RELEASE DOES NOT REDUCE "HELD", SO THE BUTTON WOULD NEVER STOP.
+   *
+   * `retainageHeldCents` is read off the latest ISSUED application
+   * (aiaBillingRollup), so starting a release does not move it. Gating the
+   * "Bill the retainage" control on `held > 0` alone therefore keeps offering
+   * it to somebody who already has one open — she confirms the dialog and
+   * `createAiaApplication` refuses with "already a retainage release in draft".
+   *
+   * The old gate (`!releaseApp`) covered this by accident, because it hid the
+   * control for ever after the first release. Allowing repeat releases removed
+   * that cover, so the condition has to be stated properly.
+   */
+  const releaseInDraft = releaseApp?.status === "draft" ? releaseApp : null;
   const nextStep: { text: string; tone: "todo" | "active" | "done" } =
     applications.length === 0
       ? { text: "Start Application No. 1 for the first billing period.", tone: "todo" }
       : draftApp
-      ? { text: `Application No. ${draftApp.application_number} is still a draft — enter this period's work, then submit it to the GC.`, tone: "active" }
+      /* A release has no "this period's work" — the schedule of values carries
+         forward untouched and line 5 is zero by construction. Telling her to
+         enter work on it is the one instruction that is actively wrong. */
+      ? draftApp.is_retainage_release
+        ? { text: `Application No. ${draftApp.application_number} is the retainage release, still a draft — send it to the GC.`, tone: "active" }
+        : { text: `Application No. ${draftApp.application_number} is still a draft — enter this period's work, then submit it to the GC.`, tone: "active" }
       : awaitingPayment.length > 0
       ? { text: `${awaitingPayment.length === 1 ? `Application No. ${awaitingPayment[0].application_number} is` : `${awaitingPayment.length} applications are`} with the GC. Record the payment when it arrives.`, tone: "active" }
       : fullyBilled && retainageHeldCents > 0
@@ -950,8 +983,12 @@ async function AiaApplicationList({
       // order is billed on top of an earlier release there is retainage held
       // again, and that needs a release of its own.
       ? { text: "Fully billed. The retainage is still held — bill it when the GC is ready to release it.", tone: "todo" }
-      : fullyBilled
+      // Only say the retainage was billed if there WAS some. This branch is
+      // equally true of a contract that never held any.
+      : fullyBilled && issuedReleaseApp
       ? { text: "Fully billed and the retainage has been billed. Nothing further to requisition.", tone: "done" }
+      : fullyBilled
+      ? { text: "Fully billed. Nothing further to requisition.", tone: "done" }
       : { text: "Everything so far is paid. Start the next application when the period closes.", tone: "todo" };
 
   const billedCents = billing?.billedCents ?? completedToDateCents;
@@ -1018,11 +1055,13 @@ async function AiaApplicationList({
             tone={retainageHeldCents > 0 ? "rose" : "neutral"}
             hint={
               retainageHeldCents <= 0
-                ? releaseApp
-                  ? `released on Application No. ${releaseApp.application_number}`
+                ? issuedReleaseApp
+                  ? `released on Application No. ${issuedReleaseApp.application_number}`
                   : "none held"
-                : releaseApp
-                  ? `held since Application No. ${releaseApp.application_number} — earned, not yet billed`
+                : issuedReleaseApp
+                  // "held SINCE No. 7" — No. 7 is the one that released it, and
+                  // what is held now was retained on the applications after it.
+                  ? `held on work billed since Application No. ${issuedReleaseApp.application_number}`
                   : "earned, not yet billed"
             }
           />
@@ -1210,7 +1249,28 @@ async function AiaApplicationList({
             puts retainage back on the job. It is a separate control rather
             than a checkbox on the form above because it takes no inputs: the
             period is today and the percentage is necessarily zero. */}
-        {retainageHeldCents > 0 && (
+        {retainageHeldCents > 0 && releaseInDraft && (
+          /* One is already open. Offering the button again guarantees a refusal
+             — `held` is read off the latest ISSUED application, so a draft
+             release never moves it. Point at the draft instead. */
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3.5">
+            <div className="text-[12.5px] font-semibold text-ppp-charcoal">
+              Retainage held: {formatCentsFull(retainageHeldCents)}
+            </div>
+            <p className="text-[11.5px] text-ppp-charcoal-700 mt-0.5">
+              Application No. {releaseInDraft.application_number} is your retainage release, still a
+              draft —{" "}
+              <Link
+                href={`${base(id, dealId, origin, from)}&app=${releaseInDraft.id}${backQ(back)}`}
+                className="font-semibold text-cc-brand-700 underline underline-offset-2"
+              >
+                open it to finish and send it
+              </Link>
+              .
+            </p>
+          </div>
+        )}
+        {retainageHeldCents > 0 && !releaseInDraft && (
           <form action={billRetainageAction} className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
             <input type="hidden" name="account_id" value={id} />
             <input type="hidden" name="opp_id" value={dealId} />
@@ -1222,14 +1282,20 @@ async function AiaApplicationList({
                 Retainage held: {formatCentsFull(retainageHeldCents)}
               </div>
               <p className="text-[11.5px] text-ppp-charcoal-600 mt-0.5">
-                Bills it as the Application for Final Payment — the schedule of values carries
-                forward, retainage drops to 0%, and the payment due comes out as the amount held.
+                Bills it as a retainage release — the schedule of values carries forward,
+                retainage drops to 0%, and the payment due comes out as the amount held.
               </p>
             </div>
             <ConfirmSubmitButton
-              message="Create the Application for Final Payment to bill the held retainage?"
+              message="Create a retainage release to bill the held retainage?"
               pendingLabel="Creating…"
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 text-white text-[12px] font-semibold hover:bg-amber-700 min-h-[44px] shrink-0"
+              /* NOT amber. White on amber-600 is 3.19:1 (AA needs 4.5), and in
+                 the dark ramp `--color-amber-700` is a light tan because
+                 -700/-800 are TEXT roles there — so the hover state fell to
+                 2.03:1 and the label all but vanished. This is a create action,
+                 not a warning; RUX reserves color-as-alarm for rose. Matches
+                 the "Create application" button thirty lines above. */
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-cc-brand-600 text-white text-[12px] font-semibold hover:bg-cc-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-600/40 focus-visible:ring-offset-1 min-h-[44px] shrink-0"
             >
               Bill the retainage
             </ConfirmSubmitButton>
@@ -1257,7 +1323,9 @@ function AiaSummaryTile({
   return (
     <div className={`rounded-lg border px-2.5 py-2 ${emphasize ? "border-cc-brand-300 bg-surface" : "border-ppp-charcoal-100 bg-surface/70"}`}>
       <div className="text-[9px] font-bold uppercase tracking-wider text-ppp-charcoal-500">{label}</div>
-      <div className={`font-condensed text-lg sm:text-xl font-black tabular-nums leading-none mt-0.5 ${valueCls}`}>{value}</div>
+      {/* text-base at phone width: at 375px these tiles get ~131px of content
+          width, and a seven-figure contract in tabular-nums overflows it. */}
+      <div className={`font-condensed text-base sm:text-xl font-black tabular-nums leading-none mt-0.5 truncate ${valueCls}`} title={value}>{value}</div>
       {hint && <div className="text-[10px] text-ppp-charcoal-500 mt-0.5">{hint}</div>}
     </div>
   );

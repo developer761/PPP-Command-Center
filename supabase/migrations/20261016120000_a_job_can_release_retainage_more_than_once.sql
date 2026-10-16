@@ -38,14 +38,16 @@
 -- its partial predicate, and drop whatever it is actually called.
 DO $$
 DECLARE
-  names text[];
-  idx   text;
-  cons  text;
+  -- OIDs, not names. See the pg_constraint lookup below for why.
+  oids oid[];
+  oid_ oid;
+  idx  text;
+  cons text;
 BEGIN
   -- Collected FIRST, then dropped: iterating a catalogue cursor while the loop
   -- body drops rows out from under it is how one of two matches gets skipped.
-  SELECT coalesce(array_agg(ic.relname), '{}'::text[])
-    INTO names
+  SELECT coalesce(array_agg(i.indexrelid), '{}'::oid[])
+    INTO oids
   FROM pg_index i
   JOIN pg_class  ic ON ic.oid = i.indexrelid
   JOIN pg_class  tc ON tc.oid = i.indrelid
@@ -61,12 +63,13 @@ BEGIN
     AND pg_get_expr(i.indpred, i.indrelid) NOT ILIKE '%status%'
     AND ic.relname <> 'commercial_aia_one_draft_release_per_opp';
 
-  IF array_length(names, 1) IS NULL THEN
+  IF array_length(oids, 1) IS NULL THEN
     RAISE NOTICE 'no one-release-per-job index found — nothing to drop';
   END IF;
 
-  FOREACH idx IN ARRAY names
+  FOREACH oid_ IN ARRAY oids
   LOOP
+    SELECT relname INTO idx FROM pg_class WHERE oid = oid_;
     -- An index that BACKS a constraint cannot be dropped directly ("cannot
     -- drop index ... because constraint ... requires it"), so drop the
     -- constraint where there is one and the index goes with it. This one was
@@ -76,10 +79,17 @@ BEGIN
     -- Reset first: SELECT INTO leaves the variable UNCHANGED when no row
     -- matches, so a second pass would reuse the first pass's constraint name.
     cons := NULL;
+    -- MATCHED ON THE INDEX'S OID, not its name. pg_class.relname is unique per
+    -- SCHEMA, not globally, so `WHERE ic2.relname = idx` can return a
+    -- constraint on another schema's table of the same name — and the DROP
+    -- CONSTRAINT below would then abort the whole migration with "constraint
+    -- ... of relation commercial_aia_applications does not exist". A non-STRICT
+    -- SELECT INTO does not even error on the multi-row case; it silently takes
+    -- an arbitrary row. This file argues for exactly that standard thirty lines
+    -- up and then failed to apply it to its own second lookup.
     SELECT con.conname INTO cons
     FROM pg_constraint con
-    JOIN pg_class ic2 ON ic2.oid = con.conindid
-    WHERE ic2.relname = idx;
+    WHERE con.conindid = oid_;
 
     IF cons IS NOT NULL THEN
       EXECUTE format('ALTER TABLE public.commercial_aia_applications DROP CONSTRAINT %I', cons);

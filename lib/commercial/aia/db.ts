@@ -262,7 +262,9 @@ export async function createAiaApplication(
     .eq("id", input.opportunity_id)
     .maybeSingle();
   if (!opp || (opp as { deleted_at: string | null }).deleted_at) {
-    return { ok: false, error: "opportunity_not_found" };
+    // Sentence-ised here, not left as a token: `result.error` is pushed
+    // straight into the page's rose banner by the caller.
+    return { ok: false, error: "That job could not be found — it may have been deleted. Go back to the deal and try again." };
   }
   const row = opp as {
     account_id: string;
@@ -331,8 +333,12 @@ export async function createAiaApplication(
     if (held <= 0) {
       return {
         ok: false,
+        // No causal clause: this is equally reached on a 0%-retainage contract
+        // and on a job with nothing issued yet, where asserting "the last
+        // application already released it" describes a release that never
+        // happened.
         error:
-          "There is no retainage held on this job to release — the last application already released it. Bill the new work on an ordinary application first; its retainage can be released after that.",
+          "There is no retainage held on this job to release. Bill the new work on an ordinary application first; its retainage can be released after that.",
       };
     }
   }
@@ -448,15 +454,30 @@ export async function createAiaApplication(
         };
       }
       if (/retainage_release/i.test(msg)) {
+        /*
+         * The operator is a billing person, not a DBA. The migration id goes to
+         * the server log, where somebody who can act on it will find it; the
+         * screen gets a sentence she can act on — which here means telling
+         * somebody, and knowing nothing is lost.
+         */
+        console.error(
+          "[aia] a second retainage release was refused by the database — migration " +
+            "20261016120000 (a job can release retainage more than once) has not been applied"
+        );
         return {
           ok: false,
           error:
-            "This job already has a retainage release, and the database still allows only one. Apply migration 20261016120000 (a job can release retainage more than once) and try again.",
+            "This job already has a retainage release, and the system isn't set up yet to allow a second one. Let Karan know — nothing is lost, and the work you've already billed is unaffected.",
         };
       }
       continue;
     }
-    return { ok: false, error: error?.message ?? "insert_failed" };
+    return {
+      ok: false,
+      error: error?.message
+        ? `The application couldn't be created: ${error.message}`
+        : "The application couldn't be created — please try again.",
+    };
   }
   return { ok: false, error: "Couldn't assign an application number — please try again." };
 }
@@ -1461,7 +1482,23 @@ export async function listAiaLineItemsWithRelease(
 ): Promise<AiaLineItem[]> {
   const lines = await listAiaLineItems(app.id);
   const sb = commercialDb();
-  const { data: release } = await sb
+  /*
+   * 🔴 THE ERROR MUST NOT BE SWALLOWED HERE.
+   *
+   * On a failed read `data` is null, `!release` is true, and this returns the
+   * lines unstamped — which means every released line is retained IN FULL and
+   * the certificate goes straight back to Stephanie's bug: line 5 at 5% of the
+   * whole contract, line 8 negative. Silently, with nothing on screen and
+   * nothing in the log. An auditor saw exactly those figures once on a pass
+   * issuing ~700 requests and could not reproduce it in 800 further attempts.
+   *
+   * `commercialDb()` builds a fresh client per call and does not retry, so a
+   * transient failure is a real possibility rather than a theoretical one.
+   * There is no safe fallback — both branches are wrong if the read failed —
+   * so it is raised, and the caller shows an error instead of a wrong
+   * certificate. A document the GC pays from is the wrong place to guess.
+   */
+  const { data: release, error: releaseErr } = await sb
     .from("commercial_aia_applications")
     .select("id")
     .eq("opportunity_id", app.opportunity_id)
@@ -1472,6 +1509,11 @@ export async function listAiaLineItemsWithRelease(
     .order("application_number", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (releaseErr) {
+    throw new Error(
+      `Could not read this job's retainage releases, so the retainage on this certificate cannot be trusted: ${releaseErr.message}`
+    );
+  }
   if (!release) return lines;
   return applyReleasedRetainage(lines, await listAiaLineItems((release as { id: string }).id));
 }

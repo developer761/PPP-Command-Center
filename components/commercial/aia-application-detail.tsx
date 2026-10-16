@@ -132,6 +132,11 @@ export function AiaApplicationDetail({
     (s, l) => s + Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0),
     0
   );
+  // Several releases per job is the whole premise of the 2026-10-16 change
+  // (Cipla needed three), so "an earlier application" is not always singular.
+  const releasedLineCount = lines.filter(
+    (l) => Math.round((l as { retainage_released_cents?: number }).retainage_released_cents ?? 0) !== 0
+  ).length;
   const sovDriftCents = g702.contractSumToDateCents - sovTotalCents;
   const hasDrift = Math.abs(sovDriftCents) > 1;
   /*
@@ -280,10 +285,27 @@ export function AiaApplicationDetail({
             completed total is $88,627.09, and nothing on the sheet accounted
             for the difference. Stephanie's Cipla job is exactly this shape. */}
         {retainageReleasedCents > 0 && Number(application.retainage_pct) > 0 && (
-          <p className="mt-2 text-[11.5px] text-ppp-charcoal-600 leading-relaxed">
-            Retainage is held on new work only — {formatCentsFull(retainageReleasedCents)} of the
-            completed total was already released on an earlier application, so the{" "}
-            {Number(application.retainage_pct)}% applies to the{" "}
+          /*
+           * WORD ORDER MATTERS HERE, because the figure is WORK, not cash.
+           *
+           * `retainage_released_cents` holds completed work whose retainage has
+           * been released — on Cipla, $87,627.09. The retainage actually
+           * released on it was ~$4,381. Written as "$87,627.09 ... was already
+           * released", in a paragraph about retainage, a billing person reads
+           * that as the money that went out: a twentyfold overstatement. So the
+           * sentence says retainage was released ON that amount of work.
+           *
+           * Styled to match the frozen-figures note on the AIA tool, which is
+           * the sibling explanation of the same kind, rather than inventing a
+           * fourth variant. And it leads with the line number: at phone width
+           * the two-column grid collapses, so line 5 is several rows above and
+           * off-screen by the time this is read.
+           */
+          <p className="mt-2 text-[11px] text-ppp-charcoal-500 leading-snug">
+            Line 5 — retainage is held on new work only. It was already released on{" "}
+            {formatCentsFull(retainageReleasedCents)} of the completed total
+            {releasedLineCount > 1 ? " across earlier applications" : " on an earlier application"},
+            so the {Number(application.retainage_pct)}% applies to the{" "}
             {formatCentsFull(Math.max(0, g702.totalCompletedStoredCents - retainageReleasedCents))}{" "}
             billed since.
           </p>

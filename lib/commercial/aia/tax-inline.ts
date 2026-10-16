@@ -58,7 +58,37 @@ export async function taxInclusiveCents(opts: {
   baseCents: number;
 }): Promise<number> {
   const base = Math.round(opts.baseCents);
-  if (!Number.isFinite(base) || base <= 0) return Math.max(0, base || 0);
+  if (!Number.isFinite(base)) return 0;
+  /*
+   * 🔴 A DEDUCTIVE CHANGE ORDER IS NEGATIVE, AND IT HAS TO STAY NEGATIVE.
+   *
+   * This returned `Math.max(0, base)` for any base ≤ 0, so a −$2,000 credit
+   * became a $0.00 scheduled value on the G703. All three callers in
+   * `aia/db.ts` (the seed, the App-1 seed, and reconcileDraftChangeOrderRows)
+   * carry a comment immediately above saying "NOT clamped at zero — a deduct CO
+   * is a real credit line", and the clamp two files away quietly made that
+   * false on every one of them.
+   *
+   * The consequence is the bug `lineCompletedStoredCents`' docblock says was
+   * fixed: line 2 subtracts the deduct, line 4 never does, so the job reports
+   * over 100% complete with a negative balance to finish and a final payment
+   * that still bills the descoped work. Simulated on Cipla App 6 with a −$2,000
+   * CO: line 9 −$1,950.00, 102.31% complete, sovVariance −$2,000.00. Worse, the
+   * operator cannot type the negative back in by hand — `clampCompletionToSign`
+   * reads "credit" off the row's own scheduled value, which the clamp has
+   * already made zero.
+   *
+   * No live exposure today: the one deductive CO in the book is on a deal with
+   * no AIA application. The first deduct on an AIA job hits it.
+   *
+   * Tax on a credit is a credit, so the sign carries through: taxOnCents is
+   * asked about the magnitude and the result is subtracted.
+   */
+  if (base === 0) return 0;
+  if (base < 0) {
+    const tax = await taxOnCents({ opportunityId: opts.opportunityId, baseCents: -base });
+    return base - tax;
+  }
   return base + (await taxOnCents({ opportunityId: opts.opportunityId, baseCents: base }));
 }
 

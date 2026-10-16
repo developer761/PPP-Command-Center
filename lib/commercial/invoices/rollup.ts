@@ -83,6 +83,8 @@ const ZERO: AccountInvoiceRollup = {
 };
 
 type InvoiceRow = {
+  invoice_number: string | null;
+  opportunity_id: string | null;
   status: InvoiceStatus;
   total_cents: number;
   paid_cents: number;
@@ -98,7 +100,8 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
   const rows = await paginateAll<InvoiceRow>(() =>
     sb
       .from("commercial_invoices")
-      .select("status, total_cents, paid_cents, balance_cents, due_at")
+      // `invoice_number` + `opportunity_id` for the carry-over guard below.
+      .select("invoice_number, opportunity_id, status, total_cents, paid_cents, balance_cents, due_at")
       .eq("account_id", account_id)
       .is("deleted_at", null)
       .order("id")
@@ -110,7 +113,21 @@ export async function getInvoiceRollupForAccount(account_id: string): Promise<Ac
   const aia = await aiaRollupForAccount(account_id);
   if (rows.length === 0 && !aia.hasAia) return ZERO;
 
-  const nonVoid = rows.filter((r) => r.status !== "void");
+  /*
+   * The `SF-####` placeholder and this GC's certificates are ONE bill.
+   *
+   * Account 360's "Open balance" is the figure an account manager quotes on the
+   * phone, and it read $372,962.39 for LMJ Management while the receivables
+   * list we actually chase read $361,412.40 — the difference being invoice
+   * SF-00268177 on a job billed and paid in full through its G702s. Same guard
+   * as receivables, AR aging, the deal P&L and the GC's statement; see
+   * lib/commercial/invoices/carryover.ts for why it is one helper now.
+   */
+  const { dealsBilledViaAia, isSupersededByAia } = await import("./carryover");
+  const billedViaAia = await dealsBilledViaAia(rows.map((r) => r.opportunity_id ?? ""));
+  const nonVoid = rows
+    .filter((r) => !isSupersededByAia(r, billedViaAia))
+    .filter((r) => r.status !== "void");
   const issued = nonVoid.filter((r) => r.status !== "draft");
   const drafts = nonVoid.filter((r) => r.status === "draft");
   const invoiced = issued.reduce((s, r) => s + r.total_cents, 0);

@@ -198,7 +198,8 @@ describe("retainage is withheld once — a release is not re-retained", () => {
     const ret5a = Math.round((completedDE * 5) / 100);
     expect(ret5a).toBe(0); // all completed work was released; this CO is stored
     expect(g.retainageCents - ret5a).toBe(50_00); // 5b, and it foots
-    expect(g.retainageCents - ret5a).toBeGreaterThanOrEqual(0);
+    // (A `toBeGreaterThanOrEqual(0)` stood here too and could never fail —
+    //  the line above already pins the identical expression to 50_00.)
   });
 });
 

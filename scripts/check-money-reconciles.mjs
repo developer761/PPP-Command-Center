@@ -422,6 +422,47 @@ try {
       : `${sfInvByDeal.size} deal(s) with one`,
   );
   /*
+   * 🔴 THE STATEMENT WE SEND A GC MUST NOT EXCEED THE LIST WE CHASE.
+   *
+   * `isSalesforceCarryoverInvoice` has excluded the migrated `SF-####`
+   * placeholder from receivables and AR aging since 2026-10-15, because once a
+   * job's real billing is in as issued G702s the two are the same money. It was
+   * applied on NEITHER customer-facing surface. Measured 2026-10-16: the
+   * statement for LMJ Management read $372,962.39 and our own aging read
+   * $361,412.40 — we were asking a GC for $11,549.99 they had already paid, on
+   * a job whose certificates read billed and collected in full.
+   *
+   * The wrong number being the HIGHER one, and the one addressed to the
+   * customer, is why this is an identity and not a note.
+   */
+  {
+    const { getOpenInvoiceStatementForAccount } = await import(
+      "../lib/commercial/invoices/statement.ts"
+    );
+    const worse = [];
+    let checked = 0;
+    for (const row of aging.rows) {
+      const st = await getOpenInvoiceStatementForAccount(row.accountId);
+      checked += 1;
+      if (st.totalOutstandingCents !== row.total) {
+        worse.push(
+          `${row.accountName}: statement ${money(st.totalOutstandingCents)} vs chased ${money(row.total)}`,
+        );
+      }
+    }
+    check(
+      "there are GCs with a statement to compare",
+      checked > 0,
+      `${checked} account(s)`,
+    );
+    check(
+      "the statement a GC receives bills exactly what we chase",
+      worse.length === 0,
+      worse.length ? worse.slice(0, 4).join(" · ") : `${checked} account(s) tie`,
+    );
+  }
+
+  /*
    * NO CERTIFICATE ASKS A GENERAL CONTRACTOR FOR A NEGATIVE PAYMENT.
    *
    * G702 line 8 is the figure a GC's accounts payable department pays. A

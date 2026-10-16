@@ -219,37 +219,31 @@ describe("her note: we need to bill for the retainage, they pay it separately", 
   });
 
   /*
-   * REVERSED 2026-10-16. This read:
+   * TWO TESTS USED TO SIT HERE AND NEITHER COULD FAIL. Removed 2026-10-16.
    *
-   *   it("one release per job — a second would certify nothing")
+   * The first read migration 162's frozen text to assert "one release per job"
+   * — and went on passing after that rule was dropped, because nothing rewrites
+   * a migration. I replaced it the same day with one that read the NEW
+   * migration's frozen text, which has exactly the same defect: an append-only
+   * file cannot regress, and the file says nothing about whether it was ever
+   * applied. Delete the CREATE UNIQUE INDEX from it and the assertion stays
+   * green, because the index name also appears in the drop-set exclusion.
    *
-   * and it passed by reading migration 162's frozen text, so it went on
-   * passing after the rule it names was dropped — a green test asserting the
-   * opposite of what the platform does.
+   * The second asserted that two sentences appear somewhere in
+   * lib/commercial/aia/db.ts. An audit deleted BOTH guard blocks outright,
+   * leaving the message text behind in a comment. 30 of 30 passed.
    *
-   * Stephanie, on the LMJ Cipla expansion: "there was a total of 3 retainage
-   * AIA's... this is kind of something that happens often and we have to be
-   * able to record in real time." A second release certifies nothing only when
-   * nothing is held, and that is now the condition enforced.
+   * Both rules ARE covered, by the layer that can actually see them:
+   * `npm run check:retainage` (scripts/check-retainage-release-flow.mjs) walks
+   * a throwaway job through bill → release → refuse → change order → release
+   * against the real database and asserts the exact refusal wording. It has
+   * been proven to go red — removing the retainage rule fails it on four steps,
+   * including "the certificate does not ask the GC for a NEGATIVE payment".
+   *
+   * A source-text grep in this layer would only re-create the green lie. See
+   * __tests__/helpers/strip-comments.ts, whose docblock lists the five other
+   * tests this has already burned.
    */
-  it("a job may release retainage more than once — the one-per-job index is dropped", () => {
-    const sql = readFileSync(
-      "supabase/migrations/20261016120000_a_job_can_release_retainage_more_than_once.sql",
-      "utf8",
-    );
-    // Dropped by LOOKUP, not by a name Postgres may never have assigned.
-    expect(sql).toContain("pg_index");
-    expect(sql).toMatch(/DROP INDEX IF EXISTS|DROP CONSTRAINT/);
-    // The backstop that replaces it: at most one release IN DRAFT.
-    expect(sql).toContain("commercial_aia_one_draft_release_per_opp");
-    expect(sql).toMatch(/status = 'draft'/);
-  });
-
-  it("a release with nothing held is refused, in words rather than as a duplicate key", () => {
-    const db = readFileSync("lib/commercial/aia/db.ts", "utf8");
-    expect(db).toContain("There is no retainage held on this job to release");
-    expect(db).toContain("already a retainage release in draft");
-  });
 
   it("the release forces 0% rather than trusting the caller", () => {
     const db = readFileSync("lib/commercial/aia/db.ts", "utf8");
