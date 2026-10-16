@@ -31,7 +31,10 @@ export default function RulePicker({
 
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return options;
+    // Retired rules are not offered. One already picked on a stored grade
+    // still shows as a chip above, so it can be removed.
+    const offered = options.filter((o) => !o.retired);
+    if (!s) return offered;
     const score = (o: RuleOption) => {
       const code = (o.code ?? "").toLowerCase();
       if (code && code === s) return 0;
@@ -40,7 +43,7 @@ export default function RulePicker({
       if (o.description.toLowerCase().includes(s)) return 3;
       return -1;
     };
-    return options
+    return offered
       .map((o) => [o, score(o)] as const)
       .filter(([, n]) => n >= 0)
       .sort((a, b) => a[1] - b[1])
@@ -49,6 +52,7 @@ export default function RulePicker({
 
   const typedCode = q.trim().toUpperCase();
   const canOfferAdd = /^[A-Z]{1,3}\d{1,3}$/.test(typedCode) && !options.some((o) => o.code === typedCode);
+  const typedRetired = options.some((o) => o.retired && o.code === typedCode);
 
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
@@ -126,7 +130,9 @@ export default function RulePicker({
         })}
         {results.length === 0 && !canOfferAdd && (
           <li className="px-3 py-3 text-[12.5px] text-ppp-charcoal-500">
-            Nothing matches. To add one of your codes, type the code itself, like A40.
+            {typedRetired
+              ? `${typedCode} is retired in your sheet, so it is not offered for grading.`
+              : "Nothing matches. To add one of your codes, type the code itself, like A40."}
           </li>
         )}
       </ul>

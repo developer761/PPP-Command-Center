@@ -46,7 +46,7 @@ export default async function TrainingPage() {
         : cov.ungraded > 0
           ? {
               href: "/messaging/training/grade",
-              title: `Grade ${cov.ungraded} conversation${cov.ungraded === 1 ? "" : "s"}`,
+              title: `Grade ${cov.ungraded.toLocaleString()} conversation${cov.ungraded === 1 ? "" : "s"}`,
               why: "Until somebody says whether each went well, the bot cannot tell them apart from the ones that went badly.",
             }
           : {
@@ -66,7 +66,7 @@ export default async function TrainingPage() {
       href: "/messaging/training/grade",
       title: "Grade conversations",
       blurb: "Read a real conversation, say whether it was handled well, and tick which rules it shows.",
-      meta: cov.ungraded > 0 ? `${cov.ungraded} waiting` : s.total === 0 ? "Nothing imported yet" : "All graded",
+      meta: cov.ungraded > 0 ? `${cov.ungraded.toLocaleString()} not graded` : s.total === 0 ? "Nothing imported yet" : "All graded",
     },
     {
       href: "/messaging/training/rated",
@@ -78,7 +78,7 @@ export default async function TrainingPage() {
       href: "/messaging/training/import",
       title: "Import from Hatch",
       blurb: "Paste an export. Personal details are removed in your browser before anything is sent.",
-      meta: s.total > 0 ? `${s.total} imported` : "Nothing yet",
+      meta: s.total > 0 ? `${s.total.toLocaleString()} imported` : "Nothing yet",
     },
     {
       href: "/messaging/training/repair",
@@ -122,16 +122,16 @@ export default async function TrainingPage() {
       {needsWork > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {[
-            cov.ungraded > 0 && { n: cov.ungraded, label: "to judge", href: "/messaging/training/grade" },
-            cov.gradedNoReason > 0 && { n: cov.gradedNoReason, label: "need a reason", href: "/messaging/training/grade" },
+            cov.ungraded > 0 && { n: cov.ungraded, label: "not graded", href: "/messaging/training/grade" },
+            cov.gradedNoReason > 0 && { n: cov.gradedNoReason, label: "graded, no rule picked", href: "/messaging/training/grade" },
             s.needsScrub > 0 && { n: s.needsScrub, label: "still hold personal details", href: "/messaging/training/import" },
             s.needsReview > 0 && { n: s.needsReview, label: "await sign-off", href: "/messaging/training/grade" },
           ].filter(Boolean).map((x) => {
             const item = x as { n: number; label: string; href: string };
             return (
               <Link key={item.label} href={item.href}
-                className="inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-full border border-ppp-charcoal-200 bg-white text-[12px] text-ppp-charcoal-600 touch-manipulation">
-                <span className="font-semibold text-ppp-charcoal tabular-nums">{item.n}</span>
+                className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-full border border-ppp-charcoal-200 bg-white text-[12px] text-ppp-charcoal-600 touch-manipulation">
+                <span className="font-semibold text-ppp-charcoal tabular-nums">{item.n.toLocaleString()}</span>
                 {item.label}
               </Link>
             );
@@ -174,7 +174,7 @@ export default async function TrainingPage() {
             ["Not usable yet", Math.max(0, s.total - s.usable), "Still need cleaning, judging or signing off."],
           ] as const).map(([label, n, why]) => (
             <div key={label}>
-              <div className="text-[20px] font-bold text-ppp-charcoal tabular-nums leading-none">{n}</div>
+              <div className="text-[20px] font-bold text-ppp-charcoal tabular-nums leading-none">{n.toLocaleString()}</div>
               <div className="mt-1 text-[11.5px] font-medium text-ppp-charcoal-600">{label}</div>
               <div className="mt-0.5 text-[11px] text-ppp-charcoal-400 leading-snug">{why}</div>
             </div>

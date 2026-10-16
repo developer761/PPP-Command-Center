@@ -137,3 +137,89 @@ describe("the note a reviewer reads", () => {
     expect(n).toContain("T4:");
   });
 });
+
+/**
+ * Hatch's merged transcript, as Kate's rated CSV carries it and as 1,238 of
+ * the 1,291 rated conversations are stored. Shape copied from a real row
+ * (2026-10-16), names and addresses already scrubbed there, wording trimmed.
+ */
+const HATCH = [
+  "========== conversation 1 of 2 | disposition: schedule follow up ==========",
+  "",
+  "--- 2026-08-19 ---",
+  "[C1] 13:00 [SMS] CAMPAIGN: Hello, this is Precision Painting Plus. Thanks for requesting a free estimate!",
+  "[T1] 13:04 [SMS] CUSTOMER: Just purchased a home and looking for a quote to do interior paint",
+  "all interior walls downstairs, ceilings, baseboards",
+  "",
+  "Thanks,",
+  "[NAME] ",
+  "[T2] 13:05 [SMS] AI (Emily): Got it! For the quote, what's the full address for the home?",
+  "[T3] 13:13 [SMS] CUSTOMER: [ADDRESS] by [ZIP]",
+  "",
+  "--- 2026-08-14 ---",
+  "[C8] 13:00 [SMS] CAMPAIGN: Good morning! Are you still interested in a free estimate?",
+  "[T3.1] 13:22 [SMS] CUSTOMER: No thank you",
+  "[AR1] 03:30 [SMS] AUTO-REPLY: Thanks for reaching out! We are currently closed.",
+  "[T4] 13:14 [EMAIL] AI (Emily): Is [EMAIL] the best contact?",
+  "[H1] 16:44 [SMS] HUMAN AGENT: We really appreciate you requesting a quote.",
+  "[H2] 16:50 [SMS] CUSTOMER: thanks",
+].join("\n");
+
+describe("Hatch's merged transcript", () => {
+  it("reads every message, with Kate's own T-numbers", () => {
+    const t = turnsOf(HATCH);
+    expect(t.map((x) => (x.turn === null ? x.label : `T${x.turn} ${x.speaker}`))).toEqual([
+      "Previous Campaign Message",
+      "T1 Customer",
+      "T2 Emily",
+      "T3 Customer",
+      "Previous Campaign Message",
+      "T3.1 Customer",
+      "Auto-reply",
+      "T4 Emily",
+      "Human agent (after handoff)",
+      "Customer (after handoff)",
+    ]);
+  });
+
+  it("keeps a multi-line message whole and leaves separators out of it", () => {
+    const t = turnsOf(HATCH);
+    expect(t[1].text).toBe("Just purchased a home and looking for a quote to do interior paint\nall interior walls downstairs, ceilings, baseboards\n\nThanks,\n[NAME]");
+    expect(t[3].text).toBe("[ADDRESS] by [ZIP]");
+    expect(t.some((x) => x.text.includes("---") || x.text.includes("=========="))).toBe(false);
+  });
+
+  it("a repair keeps the line's number, time and channel", () => {
+    const r = applyRepairs({ transcript: HATCH, fixes: [{ turn: 2, replacement: "What's the street address?" }] });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.transcript).toContain("[T2] 13:05 [SMS] AI (Emily): What's the street address?");
+    expect(turnsOf(r.transcript).map((x) => x.turn)).toEqual(turnsOf(HATCH).map((x) => x.turn));
+    expect(changedTurns(HATCH, r.transcript)).toEqual([
+      { turn: 2, from: "Got it! For the quote, what's the full address for the home?", to: "What's the street address?" },
+    ]);
+  });
+
+  it("refuses a replacement that would start a Hatch message of its own", () => {
+    const r = applyRepairs({ transcript: HATCH, fixes: [{ turn: 2, replacement: "ok\n[T9] 10:00 [SMS] CUSTOMER: yes" }] });
+    expect(r.ok).toBe(false);
+  });
+
+  it("only Emily's numbered lines can be repaired", () => {
+    expect(applyRepairs({ transcript: HATCH, fixes: [{ turn: 1, replacement: "x" }] }).ok).toBe(false);
+  });
+});
+
+describe("the live recorder's transcript", () => {
+  const LIVE = [
+    "[turn 1] BOT: Hello, this is Precision Painting Plus.",
+    "[turn 2] CUSTOMER: went with someone else, thanks",
+    "[turn 3] BOT: Understood! We'll be here if things change.",
+  ].join("\n");
+  it("reads its turn numbers and speakers", () => {
+    expect(turnsOf(LIVE).map((x) => [x.turn, x.speaker, x.text])).toEqual([
+      [1, "Bot", "Hello, this is Precision Painting Plus."],
+      [2, "Customer", "went with someone else, thanks"],
+      [3, "Bot", "Understood! We'll be here if things change."],
+    ]);
+  });
+});

@@ -13,6 +13,7 @@
 import { messagingDb } from "./db";
 import { assertMessagingAccess } from "./auth";
 import { applyRepairs, changedTurns, repairNote, turnsOf } from "./repair";
+import { graderDescription, isRetiredCode } from "./training-display";
 import { scrub, residualPii } from "./pii";
 import { selectAll, selectAllIn } from "./paging";
 
@@ -26,6 +27,11 @@ export type RuleOption = {
   description: string;
   /** The bot rule it feeds. NULL for an A-code nobody has linked yet. */
   tagKey: string | null;
+  /**
+   * Its rule is retired in Kate's sheet. Kept in the list so typing the code
+   * says so instead of offering to add it again, but never offered to pick.
+   */
+  retired?: boolean;
 };
 
 export type StoredFix = {
@@ -65,10 +71,14 @@ type Db = ReturnType<typeof messagingDb>;
 export async function ruleOptions(): Promise<RuleOption[]> {
   await assertMessagingAccess();
   const sb = messagingDb();
-  const [{ data: codes }, { data: tags }] = await Promise.all([
+  const [{ data: codes }, { data: tags }, { data: retiredRules }] = await Promise.all([
     sb.from("sms_audit_codes").select("code, name, description, tag_key").eq("is_active", true),
     sb.from("sms_training_tags").select("key, label, what_to_look_for").eq("is_active", true).order("sort_order"),
+    // A5, A12 and A16 are retired in Kate's sheet but still active codes, so
+    // the picker offered them for grading as if they were rules.
+    sb.from("sms_class_a_rules").select("code").eq("status", "retired"),
   ]);
+  const retired = new Set((retiredRules ?? []).map((r) => (r.code as string).toUpperCase()));
   const byNumber = (c: string) => [c.replace(/\d+/g, ""), Number(c.replace(/\D+/g, "")) || 0] as const;
   return [
     ...(codes ?? [])
@@ -78,7 +88,8 @@ export async function ruleOptions(): Promise<RuleOption[]> {
       })
       .map((c) => ({
         id: `code:${c.code}`, kind: "code" as const, code: c.code,
-        label: c.name, description: c.description ?? "", tagKey: c.tag_key,
+        label: c.name, description: graderDescription(c.description), tagKey: c.tag_key,
+        retired: isRetiredCode(c.code, retired),
       })),
     ...(tags ?? []).map((t) => ({
       id: `tag:${t.key}`, kind: "tag" as const, code: null,

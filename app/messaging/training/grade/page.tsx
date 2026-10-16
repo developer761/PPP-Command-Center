@@ -41,7 +41,7 @@ export default async function GradePage({
       <Grader
         key={picked?.id ?? "queue"}
         first={picked ?? queue.item}
-        remaining={queue.remaining}
+        backlog={{ ungraded: queue.ungraded, noRule: queue.noRule }}
         options={options}
       />
     </main>

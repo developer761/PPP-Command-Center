@@ -12,6 +12,7 @@
  */
 import { messagingDb, selectAll } from "./db";
 import { assertMessagingAccess } from "./auth";
+import { gradingBacklog } from "./training-display";
 
 
 export type GradeQueueItem = {
@@ -22,6 +23,12 @@ export type GradeQueueItem = {
   tags: string[];
   piiScrubbed: boolean;
   approved: boolean;
+  /**
+   * Whether a person graded it here. Imported rows carry Kate's sheet grade
+   * with no reviewer, and that grade is shown as hers rather than pre-selected,
+   * so "Save" is never one tap away from agreeing with something unread.
+   */
+  gradedHere: boolean;
 };
 
 /**
@@ -34,6 +41,8 @@ export type GradeQueueItem = {
 export async function nextToGrade(skipIds: string[] = []): Promise<{
   item: GradeQueueItem | null;
   remaining: number;
+  ungraded: number;
+  noRule: number;
 }> {
   await assertMessagingAccess();
   const sb = messagingDb();
@@ -43,14 +52,22 @@ export async function nextToGrade(skipIds: string[] = []): Promise<{
   // saying so and no way to reach them.
   const rows = await selectAll<{
     id: string; transcript: unknown; conduct: string | null;
-    outcome: string | null; pii_scrubbed: boolean; approved: boolean;
+    outcome: string | null; pii_scrubbed: boolean; approved: boolean; graded_by: string | null;
   }>(
+    // Repairs are excluded: gradeItem refuses them and Rated conversations
+    // does not list them, so counting them here made the three disagree.
     (a, b) => sb.from("sms_training_examples")
-      .select("id, transcript, conduct, outcome, pii_scrubbed, approved")
-      .order("created_at").range(a, b),
+      .select("id, transcript, conduct, outcome, pii_scrubbed, approved, graded_by")
+      .neq("source", "derived")
+      .order("created_at").order("id").range(a, b),
     "reading conversations to grade"
   );
-  const { data: links } = await sb.from("sms_training_example_tags").select("example_id, tag_key");
+  // Paged too. 159 rows today, and the day it passes 1,000 every conversation
+  // past the cap would silently count as having no rule.
+  const links = await selectAll<{ example_id: string; tag_key: string }>(
+    (a, b) => sb.from("sms_training_example_tags").select("example_id, tag_key").order("example_id").order("tag_key").range(a, b),
+    "reading tags to grade"
+  );
 
   const tagsOf = new Map<string, string[]>();
   for (const l of links ?? []) {
@@ -63,12 +80,15 @@ export async function nextToGrade(skipIds: string[] = []): Promise<{
     id: r.id, transcript: r.transcript,
     conduct: r.conduct as GradeQueueItem["conduct"],
     outcome: r.outcome, tags: tagsOf.get(r.id) ?? [],
-    piiScrubbed: r.pii_scrubbed, approved: r.approved,
+    piiScrubbed: r.pii_scrubbed, approved: r.approved, gradedHere: !!r.graded_by,
   }));
 
-  const needsWork = all.filter((r) => !r.conduct || r.tags.length === 0);
-  const queue = needsWork.filter((r) => !skipIds.includes(r.id));
-  return { item: queue[0] ?? null, remaining: needsWork.length };
+  const backlog = gradingBacklog(all);
+  const queue = backlog.queue.filter((r) => !skipIds.includes(r.id));
+  return {
+    item: queue[0] ?? null, remaining: backlog.queue.length,
+    ungraded: backlog.ungraded, noRule: backlog.noRule,
+  };
 }
 
 /** One conversation by id, opened from Rated conversations to change its grade. */
@@ -77,7 +97,7 @@ export async function gradeItem(id: string): Promise<GradeQueueItem | null> {
   const sb = messagingDb();
   const [{ data: r }, { data: links }] = await Promise.all([
     sb.from("sms_training_examples")
-      .select("id, transcript, conduct, outcome, pii_scrubbed, approved")
+      .select("id, transcript, conduct, outcome, pii_scrubbed, approved, graded_by")
       .eq("id", id).neq("source", "derived").maybeSingle(),
     sb.from("sms_training_example_tags").select("tag_key").eq("example_id", id),
   ]);
@@ -86,7 +106,7 @@ export async function gradeItem(id: string): Promise<GradeQueueItem | null> {
     id: r.id, transcript: r.transcript,
     conduct: r.conduct as GradeQueueItem["conduct"],
     outcome: r.outcome, tags: (links ?? []).map((l) => l.tag_key),
-    piiScrubbed: r.pii_scrubbed, approved: r.approved,
+    piiScrubbed: r.pii_scrubbed, approved: r.approved, gradedHere: !!r.graded_by,
   };
 }
 

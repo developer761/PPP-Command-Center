@@ -6,6 +6,16 @@ import type { RuleOption } from "@/lib/messaging/repair-write";
 import { turnsOf } from "@/lib/messaging/repair";
 import RulePicker from "./rule-picker";
 import { ContextRow } from "./repair-console";
+import { backlogLabel } from "@/lib/messaging/training-display";
+
+const GRADE_WORD = { good: "Well", mixed: "Mixed", bad: "Badly" } as const;
+
+/**
+ * The grade the buttons start on. Only one a person gave here: an imported
+ * row's grade is Kate's sheet, shown beside the buttons as hers, and leaving
+ * it pre-pressed meant "Well" was selected before anybody had read a word.
+ */
+const startingGrade = (i: GradeQueueItem | null) => (i?.gradedHere ? i.conduct : null);
 
 /**
  * Grade one conversation at a time.
@@ -20,18 +30,18 @@ import { ContextRow } from "./repair-console";
  */
 export default function Grader({
   first,
-  remaining: initialRemaining,
+  backlog: initialBacklog,
   options,
 }: {
   first: GradeQueueItem | null;
-  remaining: number;
+  backlog: { ungraded: number; noRule: number };
   options: RuleOption[];
 }) {
   const [item, setItem] = useState(first);
-  const [remaining, setRemaining] = useState(initialRemaining);
-  // Start from what is already stored, so re-grading shows the current answer
-  // rather than a blank form that would wipe it on save.
-  const [conduct, setConduct] = useState<"good" | "mixed" | "bad" | null>(first?.conduct ?? null);
+  const [backlog, setBacklog] = useState(initialBacklog);
+  // Re-grading shows the answer a person already gave, rather than a blank
+  // form; an imported grade is shown as Kate's instead (startingGrade).
+  const [conduct, setConduct] = useState<"good" | "mixed" | "bad" | null>(startingGrade(first));
   const [picked, setPicked] = useState<string[]>((first?.tags ?? []).map((k) => `tag:${k}`));
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,8 +72,8 @@ export default function Grader({
   const advance = async (skip: string[]) => {
     const next = await nextToGrade(skip);
     setItem(next.item);
-    setRemaining(next.remaining);
-    setConduct(next.item?.conduct ?? null);
+    setBacklog({ ungraded: next.ungraded, noRule: next.noRule });
+    setConduct(startingGrade(next.item));
     setPicked((next.item?.tags ?? []).map((k) => `tag:${k}`));
     setNote(""); setError(null);
   };
@@ -104,7 +114,7 @@ export default function Grader({
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[12px] text-ppp-charcoal-500">{remaining} still need a grade or a rule</span>
+        <span className="text-[12px] text-ppp-charcoal-500">Left to do: {backlogLabel(backlog)}</span>
         <button type="button" onClick={() => { const s = [...skipped, item.id]; setSkipped(s); void advance(s); }}
           className="min-h-[44px] px-3 rounded-lg text-[12.5px] font-medium text-ppp-charcoal-500 hover:bg-ppp-charcoal-50 touch-manipulation">
           Skip this one
@@ -167,6 +177,12 @@ export default function Grader({
               </button>
             ))}
           </div>
+          {item.conduct && !item.gradedHere && (
+            <p className="mt-2.5 text-[12px] text-ppp-charcoal-600 leading-relaxed">
+              Kate&apos;s sheet graded this <strong>{GRADE_WORD[item.conduct]}</strong>.
+              Pick it to agree, or another grade to change it.
+            </p>
+          )}
           <p className="mt-2.5 text-[12px] text-ppp-charcoal-500 leading-relaxed">
             This is about how it was HANDLED, not whether it booked. A good
             conversation can lose an unqualified lead.

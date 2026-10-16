@@ -49,11 +49,81 @@ export type Turn = {
   /** Stored line range, inclusive, so a repair replaces the whole message. */
   firstLine: number;
   lastLine: number;
+  /** The stored head of its first line ("Emily: ", "[T2] 13:05 [SMS] AI (Emily): "). */
+  prefix: string;
 };
 
 // Only these start a message. Anything else with a colon, like
 // "Availability:", is part of the message it sits in.
 const SPEAKER = /^(Campaign|Customer|Emily|Human agent|Auto-reply|Agent|AI[^:]{0,20}|Bot):\s?([\s\S]*)$/i;
+
+/**
+ * Hatch's merged transcript, which is what Kate's rated-conversations CSV
+ * carries and what import-rated-conversations.mjs stored as it came:
+ *
+ *   --- 2026-08-19 ---
+ *   [C1] 13:00 [SMS] CAMPAIGN: Hello, this is Precision Painting Plus. ...
+ *   [T1] 13:04 [SMS] CUSTOMER: Just purchased a home ...
+ *   [T2] 13:05 [SMS] AI (Emily): Got it! ...
+ *   [H1] 16:44 [SMS] HUMAN AGENT: ...
+ *   [AR1] 03:30 [SMS] AUTO-REPLY: ...
+ *
+ * 1,238 of 1,291 rated conversations are in this form, and SPEAKER alone
+ * matched none of their lines, so the rated list read them as "0 turns" and
+ * the detail page showed an empty conversation under notes about T8 and T10.
+ *
+ * Her T-number is IN the line, so it is read rather than counted: [T2.1] is
+ * her number too. C (campaign), H (after a person took over, customer lines
+ * included) and AR (after-hours reply) are context and stay unnumbered.
+ */
+const HATCH = /^\[(C|T|H|AR)(\d+(?:\.\d+)?)\]\s+(?:\d{1,2}:\d{2}\s+)?(?:\[(?:SMS|EMAIL|CALL)\]\s+)?(CAMPAIGN|CUSTOMER|HUMAN AGENT|AUTO-REPLY|AI(?: \([^)]*\))?|BOT):\s?([\s\S]*)$/;
+
+/** The live recorder's form: "[turn 3] BOT: ...". Its number is the turn. */
+const LIVE = /^\[turn (\d+)\]\s+(Customer|Bot|Emily|AI[^:]{0,20}|Human agent|Agent|Campaign|Auto-reply):\s?([\s\S]*)$/i;
+
+/** Day and conversation separators in Hatch's export. Not part of any message. */
+const SEPARATOR = /^(?:---\s*\d{4}-\d{2}-\d{2}\s*---|={3,}.*={3,})\s*$/;
+
+const HATCH_SPEAKER: Record<string, string> = {
+  CAMPAIGN: "Campaign", CUSTOMER: "Customer", "HUMAN AGENT": "Human agent",
+  "AUTO-REPLY": "Auto-reply", BOT: "Bot",
+};
+
+/** True when a line would start a new message in any stored form. */
+function startsMessage(line: string): boolean {
+  return SPEAKER.test(line) || HATCH.test(line) || LIVE.test(line);
+}
+
+type Head = { speaker: string; text: string; prefix: string; turn?: number | null };
+
+function headOf(line: string): Head | null {
+  const h = HATCH.exec(line);
+  if (h) {
+    const [, kind, num, who, text] = h;
+    const speaker = who.startsWith("AI") ? "Emily" : HATCH_SPEAKER[who];
+    return {
+      speaker, text,
+      prefix: line.slice(0, line.length - text.length),
+      turn: kind === "T" ? Number(num) : null,
+    };
+  }
+  const l = LIVE.exec(line);
+  if (l) {
+    const raw = l[2].trim();
+    const speaker = /^ai/i.test(raw) ? "Emily" : raw[0].toUpperCase() + raw.slice(1).toLowerCase();
+    return {
+      speaker, text: l[3],
+      prefix: line.slice(0, line.length - l[3].length),
+      turn: isUnnumbered(speaker) ? null : Number(l[1]),
+    };
+  }
+  const m = SPEAKER.exec(line);
+  if (m) {
+    const speaker = m[1].trim();
+    return { speaker, text: m[2], prefix: `${speaker}: ` };
+  }
+  return null;
+}
 
 /**
  * Messages that are context rather than part of the AI conversation.
@@ -72,14 +142,18 @@ export function isUnnumbered(speaker: string): boolean {
 
 /** The conversation as messages, numbered the way Kate numbers them. */
 export function turnsOf(transcript: string): Turn[] {
-  const turns: Turn[] = [];
+  const turns: (Turn & { prefix: string; given?: number | null })[] = [];
   transcript.split("\n").forEach((line, i) => {
-    const m = SPEAKER.exec(line);
-    if (m) {
-      const speaker = m[1].trim();
-      turns.push({ turn: null, position: turns.length + 1, speaker, label: speaker, text: m[2], firstLine: i, lastLine: i });
+    const head = headOf(line);
+    if (head) {
+      turns.push({
+        turn: null, position: turns.length + 1, speaker: head.speaker, label: head.speaker,
+        text: head.text, firstLine: i, lastLine: i, prefix: head.prefix, given: head.turn,
+      });
       return;
     }
+    // A separator closes nothing and opens nothing; it is not message text.
+    if (SEPARATOR.test(line)) return;
     const last = turns[turns.length - 1];
     if (last) {
       last.text += "\n" + line;
@@ -92,17 +166,30 @@ export function turnsOf(transcript: string): Turn[] {
   let n = 0;
   turns.forEach((t, i) => {
     t.text = t.text.replace(/\s+$/, "");
+    // A transcript that carries its own numbers is believed, unnumbered
+    // context included (a customer line under [H3] came after a person took
+    // over, and Kate did not number it).
+    if (t.given !== undefined) {
+      t.turn = t.given;
+      if (t.turn === null) t.label = contextLabel(t, turns[i + 1]);
+      return;
+    }
     if (!isUnnumbered(t.speaker)) { t.turn = ++n; return; }
-    // Kate: "include the message before the customer's reply even if it isn't
-    // numbered, so I know which message the customer is replying to."
-    const next = turns[i + 1];
-    const s = t.speaker.toLowerCase();
-    t.label = s === "campaign"
-      ? next?.speaker.toLowerCase() === "customer" ? "Previous Campaign Message" : "Campaign Message"
-      : s === "auto-reply" ? "Auto-reply"
-      : "Human agent (after handoff)";
+    t.label = contextLabel(t, turns[i + 1]);
   });
-  return turns;
+  return turns.map(({ given: _g, ...t }) => t);
+}
+
+function contextLabel(t: { speaker: string }, next: { speaker: string } | undefined): string {
+  // Kate: "include the message before the customer's reply even if it isn't
+  // numbered, so I know which message the customer is replying to."
+  const s = t.speaker.toLowerCase();
+  return s === "campaign"
+    ? next?.speaker.toLowerCase() === "customer" ? "Previous Campaign Message" : "Campaign Message"
+    : s === "auto-reply" ? "Auto-reply"
+    : s === "customer" ? "Customer (after handoff)"
+    : s === "emily" || s === "bot" ? "Emily (after handoff)"
+    : "Human agent (after handoff)";
 }
 
 /** Only the bot's own messages can be repaired. */
@@ -148,7 +235,7 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
     // A line inside the replacement that reads "Customer: ..." would become a
     // message of its own, invent something the customer never said, and move
     // every T-number after it.
-    if (to.split("\n").some((l) => SPEAKER.test(l))) {
+    if (to.split("\n").some((l) => startsMessage(l) || SEPARATOR.test(l))) {
       return { ok: false, error: `T${f.turn} contains a line that starts like a new speaker. Write only what Emily says.` };
     }
     planned.push({ t, turn: f.turn, to });
@@ -158,7 +245,9 @@ export function applyRepairs(input: { transcript: string; fixes: RepairFix[] }):
   // numbers of a message above it that is still to be replaced.
   const raw = input.transcript.split("\n");
   for (const { t, to } of [...planned].sort((a, b) => b.t.firstLine - a.t.firstLine)) {
-    raw.splice(t.firstLine, t.lastLine - t.firstLine + 1, `${t.speaker}: ${to}`);
+    // The line keeps its own head, so a repaired Hatch line still reads
+    // "[T4] 13:14 [SMS] AI (Emily): ..." and keeps its number and time.
+    raw.splice(t.firstLine, t.lastLine - t.firstLine + 1, `${t.prefix}${to}`);
   }
 
   return {
