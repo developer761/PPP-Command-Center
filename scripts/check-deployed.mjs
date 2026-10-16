@@ -64,10 +64,17 @@ const subject = run("git", ["log", "-1", "--format=%s"]);
  * a hard stop rather than a fallback to whatever was newest.
  */
 const PROJECT = "ppp-command-center";
+/**
+ * AND THE SCOPE IS NAMED TOO. The login also sees ryco-s-escape, and since
+ * Vercel CLI 64 a non-interactive `vercel ls` refuses to pick a team at all
+ * ("Provide --team or --scope explicitly") — so with no scope this script
+ * could never pass, however healthy the deploy.
+ */
+const SCOPE = "ppp-s-projects";
 
 let rows;
 try {
-  const raw = run("npx", ["vercel", "ls", PROJECT, "--prod", "--json"]);
+  const raw = run("npx", ["vercel", "ls", PROJECT, "--prod", "--json", "--scope", SCOPE]);
   const parsed = JSON.parse(raw);
   rows = Array.isArray(parsed) ? parsed : (parsed.deployments ?? []);
 } catch (e) {
