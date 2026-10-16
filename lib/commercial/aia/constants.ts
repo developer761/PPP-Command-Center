@@ -19,7 +19,69 @@ export const AIA_STATUS_META: Record<
 };
 
 /** AIA's common default retainage. */
+/**
+ * The percentage a new job withholds when nobody has said otherwise.
+ *
+ * Tomco's contracts are usually 5 or 10, set by the GC. This is only the
+ * fallback for the FIRST application on a job with no company default
+ * configured — see `pickRetainagePct`, which carries the rate forward from the
+ * job's own previous certificate so it is typed once, not once per month.
+ */
 export const DEFAULT_RETAINAGE_PCT = 5;
+
+/** A percentage that is a real number inside 0-100. */
+export function isUsableRetainagePct(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+}
+
+/**
+ * WHICH PERCENTAGE A NEW CERTIFICATE WITHHOLDS AT.
+ *
+ * Karan, 2026-10-16: "make sure there's an easy way for us to change from 5 to
+ * 10 percent." The rate is a contract term — this GC holds 10, that one holds
+ * 5 — so the unit that matters is the JOB, and the way to make it easy is to
+ * stop asking for it again on every certificate.
+ *
+ * Before this, every application fell back to a hardcoded 5 unless the
+ * operator retyped the rate. On a 10% job that is a trap with no feedback:
+ * miss it once and that certificate under-withholds by half, the G702 goes to
+ * the GC wrong, and line 5 disagrees with every earlier certificate on the
+ * same job. Nothing would have flagged it.
+ *
+ * The order, most specific first:
+ *
+ *   1. What the operator typed on this certificate — always wins.
+ *   2. The job's own previous certificate. One deliberate exclusion: a
+ *      RETAINAGE RELEASE runs at 0, and that zero is the release itself, not
+ *      the job's rate. Inheriting it would silently stop withholding on every
+ *      certificate after the first release — the most damaging version of
+ *      this bug, and the one the Cipla sequence would hit, since that job
+ *      bills, releases, bills again and releases again.
+ *   3. The company-wide default from Settings → Operating Company.
+ *   4. 5.
+ *
+ * `previous` may be passed unsorted and may include releases and drafts; a
+ * draft counts here, because the rate someone is preparing at is a better
+ * guess for the next one than a company default.
+ */
+export function pickRetainagePct(opts: {
+  requested?: number | null;
+  previous?: readonly { application_number: number; retainage_pct: number; is_retainage_release: boolean }[];
+  companyDefault?: number | null;
+}): number {
+  if (isUsableRetainagePct(opts.requested)) return opts.requested;
+
+  let latest: { application_number: number; retainage_pct: number } | null = null;
+  for (const p of opts.previous ?? []) {
+    if (p.is_retainage_release) continue;
+    if (!isUsableRetainagePct(p.retainage_pct)) continue;
+    if (!latest || p.application_number > latest.application_number) latest = p;
+  }
+  if (latest) return latest.retainage_pct;
+
+  if (isUsableRetainagePct(opts.companyDefault)) return opts.companyDefault;
+  return DEFAULT_RETAINAGE_PCT;
+}
 
 /** One G703 continuation-sheet line's inputs (all cents). */
 export type AiaLineInput = {

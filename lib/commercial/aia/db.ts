@@ -23,6 +23,8 @@ import {
   isAiaChangeOrderLine,
   isAiaTaxLine,
   DEFAULT_RETAINAGE_PCT,
+  isUsableRetainagePct,
+  pickRetainagePct,
   type AiaG702,
   type AiaApplicationStatus,
   contractProposalCents,
@@ -30,6 +32,7 @@ import {
   type ContractProposalRow,
 } from "./constants";
 import { DEFAULT_DUE_DAYS } from "@/lib/commercial/invoices/constants";
+import { getDefaultRetainagePct } from "@/lib/commercial/operating-company/db";
 
 export type AiaApplication = {
   id: string;
@@ -394,11 +397,43 @@ export async function createAiaApplication(
   // nothing, so line 6 becomes the full contract and line 8 comes out as
   // exactly the retainage that was held. A caller-supplied percentage here
   // would quietly hold some of it back again.
-  const retainage = isRelease
-    ? 0
-    : typeof input.retainage_pct === "number" && input.retainage_pct >= 0 && input.retainage_pct <= 100
-      ? input.retainage_pct
-      : DEFAULT_RETAINAGE_PCT;
+  /*
+   * THE RATE IS TYPED ONCE PER JOB, NOT ONCE PER CERTIFICATE.
+   *
+   * It used to fall back to a hardcoded 5 whenever the form came in blank. On
+   * a 10% job that is a trap with no feedback: miss it once and that
+   * certificate under-withholds by half, the G702 goes to the GC wrong, and
+   * line 5 disagrees with every earlier certificate on the same job.
+   *
+   * `pickRetainagePct` carries the rate forward from the job's own previous
+   * certificate instead, skipping releases — a release runs at 0, and
+   * inheriting that zero would stop withholding entirely from the first
+   * release onwards. Only read when the caller supplied nothing usable, so
+   * the common path costs no extra query.
+   */
+  let retainage = 0;
+  if (!isRelease) {
+    if (isUsableRetainagePct(input.retainage_pct)) {
+      retainage = input.retainage_pct;
+    } else {
+      const [{ data: priorRows }, companyDefault] = await Promise.all([
+        sb
+          .from("commercial_aia_applications")
+          .select("application_number, retainage_pct, is_retainage_release")
+          .eq("opportunity_id", input.opportunity_id)
+          .is("deleted_at", null),
+        getDefaultRetainagePct(),
+      ]);
+      retainage = pickRetainagePct({
+        previous: (priorRows ?? []) as {
+          application_number: number;
+          retainage_pct: number;
+          is_retainage_release: boolean;
+        }[],
+        companyDefault,
+      });
+    }
+  }
 
   /**
    * A RELEASE NEEDS SOMETHING TO RELEASE — and that, not "one per job", is the

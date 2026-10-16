@@ -3,7 +3,8 @@ import Link from "next/link";
 import { assertCommercialAccess } from "@/lib/commercial/auth";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { getOperatingCompany, updateOperatingCompany } from "@/lib/commercial/operating-company/db";
+import { getOperatingCompany, updateOperatingCompany, getDefaultRetainagePct } from "@/lib/commercial/operating-company/db";
+import { DEFAULT_RETAINAGE_PCT } from "@/lib/commercial/aia/constants";
 import { INPUT_CLS, LABEL_CLS } from "@/lib/commercial/form-classnames";
 import { PendingSubmitButton } from "@/components/commercial/pending-submit-button";
 import { BrandAssetUpload } from "@/components/commercial/brand-asset-upload";
@@ -77,6 +78,14 @@ async function saveAction(formData: FormData) {
       website: get("website"),
       signature_name: get("signature_name"),
       signature_title: get("signature_title"),
+      /*
+       * Blank means "unset", which is NOT 0 — a 0% default would stop every
+       * first certificate on every new job withholding anything, silently.
+       * `updateOperatingCompany` refuses anything outside 0-100 in words, so
+       * a typo lands in the rose banner rather than in a GC's certificate.
+       */
+      default_retainage_pct:
+        get("default_retainage_pct").trim() === "" ? null : Number(get("default_retainage_pct")),
     },
     user.id,
   );
@@ -107,7 +116,10 @@ export default async function OperatingCompanyPage({
 }) {
   await requireCommercialUser();
   const sp = await searchParams;
-  const c = await getOperatingCompany();
+  const [c, defaultRetainagePct] = await Promise.all([
+    getOperatingCompany(),
+    getDefaultRetainagePct(),
+  ]);
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-5">
@@ -170,6 +182,40 @@ export default async function OperatingCompanyPage({
             Save company identity
           </PendingSubmitButton>
         </div>
+
+        {/* Retainage lives here rather than on the AIA screen because it is a
+            company-wide STARTING POINT, not a per-certificate figure. Every
+            certificate after the first inherits the rate from the job's own
+            previous one, so this box is only ever read for a job's App 1. */}
+        <section className="bg-surface border border-ppp-charcoal-100 rounded-xl p-4 sm:p-5">
+          <h2 className="text-[13px] font-bold text-ppp-charcoal mb-3 flex items-center gap-2">
+            <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-cc-brand-600" /> AIA billing
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="default_retainage_pct" className={LABEL_CLS}>Default retainage %</label>
+              <input
+                id="default_retainage_pct"
+                name="default_retainage_pct"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                inputMode="decimal"
+                defaultValue={defaultRetainagePct ?? ""}
+                placeholder={String(DEFAULT_RETAINAGE_PCT)}
+                className={INPUT_CLS}
+                aria-describedby="default_retainage_pct_help"
+              />
+            </div>
+          </div>
+          <p id="default_retainage_pct_help" className="text-[12px] text-ppp-charcoal-500 mt-2">
+            What the GC withholds on a job&apos;s <strong>first</strong> payment application — usually 5% or 10%.
+            Every later application on that job carries the same rate forward automatically, so you only set it
+            once per job, and you can still override it on any individual application. A retainage release always
+            runs at 0%. Leave blank to use {DEFAULT_RETAINAGE_PCT}%.
+          </p>
+        </section>
       </form>
 
       {/* Branding assets — self-submitting uploaders (outside the identity form

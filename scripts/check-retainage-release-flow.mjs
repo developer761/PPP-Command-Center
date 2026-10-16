@@ -352,6 +352,56 @@ try {
         (await retainageHeldForOpportunity(oppId)) === 0,
         usd(await retainageHeldForOpportunity(oppId)),
       );
+
+      /*
+       * ══ THE RATE IS TYPED ONCE PER JOB ═══════════════════════════════════
+       *
+       * Karan, 2026-10-16: "make sure there's an easy way for us to change
+       * from 5 to 10 percent." Every application used to fall back to a
+       * hardcoded 5 when the form came in blank, so on a 10% job one missed
+       * box sent the GC a certificate withholding half what it should.
+       *
+       * TEN, deliberately. The job has been running at 5 and the constant
+       * fallback is also 5, so a 5 here would prove nothing — it is the one
+       * value that cannot distinguish "inherited" from "defaulted". Setting
+       * an explicit 10 and then asking for nothing makes the next
+       * certificate's rate provable: 10 can only have been carried forward.
+       */
+      const ten = await createAiaApplication({
+        opportunity_id: oppId,
+        period_to: "2026-12-31",
+        retainage_pct: 10,
+        created_by_user_id: ACTOR,
+      });
+      check("a certificate can be raised at 10%", ten.ok && ten.value.retainage_pct === 10,
+        ten.ok ? `retainage_pct ${ten.value.retainage_pct}` : ten.error);
+
+      const inherited = await createAiaApplication({
+        opportunity_id: oppId,
+        period_to: "2027-01-31",
+        // Nothing passed — exactly what a blank form sends.
+        created_by_user_id: ACTOR,
+      });
+      check(
+        "the NEXT one inherits 10% without anyone retyping it",
+        inherited.ok && inherited.value.retainage_pct === 10,
+        inherited.ok
+          ? `retainage_pct ${inherited.value.retainage_pct} (5 would mean it fell back to the constant)`
+          : inherited.error,
+      );
+
+      const afterRelease = await createAiaApplication({
+        opportunity_id: oppId,
+        period_to: "2027-02-28",
+        created_by_user_id: ACTOR,
+      });
+      check(
+        "and it does NOT inherit the 0% of the releases earlier on this job",
+        afterRelease.ok && afterRelease.value.retainage_pct === 10,
+        afterRelease.ok
+          ? `retainage_pct ${afterRelease.value.retainage_pct} (0 would mean releases stopped all withholding)`
+          : afterRelease.error,
+      );
     }
   }
 } catch (err) {
