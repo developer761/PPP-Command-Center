@@ -2828,7 +2828,9 @@ export async function proposalLineItemSumCents(
   const { data: items } = await sb
     .from("commercial_proposal_line_items")
     .select(
-      "quantity, unit_price_cents, is_alternate, customer_approved, customer_approved_at",
+      // `is_deduct` and `line_total_override_cents` are NOT optional here — see
+      // `lineValueCents` below for what omitting them cost.
+      "quantity, unit_price_cents, is_alternate, is_deduct, line_total_override_cents, customer_approved, customer_approved_at",
     )
     .eq("proposal_id", proposalId);
   const rows =
@@ -2836,6 +2838,8 @@ export async function proposalLineItemSumCents(
       quantity: number;
       unit_price_cents: number;
       is_alternate: boolean;
+      is_deduct?: boolean | null;
+      line_total_override_cents?: number | null;
       customer_approved?: boolean | null;
       customer_approved_at?: string | null;
     }> | null) ?? [];
@@ -2856,9 +2860,50 @@ export async function proposalLineItemSumCents(
   //
   // The cut-off is the WIN, per her rule: taken at or before it is contract,
   // taken after it is a genuine change order and stays out of this sum.
+  /*
+   * 🔴 A DEDUCT ALTERNATE COMES OFF THE CONTRACT. TICKING "TAKEN" WAS ADDING IT.
+   *
+   * This read only `quantity x unit_price_cents` and then did `acc + value`
+   * for any approved alternate, whatever its sign. The two other definitions
+   * of the same money both get it right — `lineTotalCents` in
+   * proposals/pdf.tsx honours the override and the renderer prints the deduct
+   * under its own heading with a minus, and `acceptAlternateAction` in the
+   * proposal page negates it before raising the change order. This one, which
+   * is the one that WRITES `commercial_proposals.total_cents`, did neither.
+   *
+   * `total_cents` is the single contract number the AIA ladder (G702 line 1),
+   * `accepted_contract_cents`, invoicing, tax and the KPIs all consume.
+   *
+   * Measured on the live book 2026-10-16: PROP-3109 (LMJ Management, 1000 New
+   * Horizon Blvd) is SENT and carries the only two deduct lines in the system
+   * — $112,093.00 and $59,659.76, both "paint walls in lieu of wallcovering
+   * installation", the most takeable kind of deduct there is. Nobody has
+   * answered yet. One click of "✓ Taken" on each would have written
+   * $479,761.09 where the contract is $136,255.57: wrong by $343,505.52, and
+   * then re-rendered onto the customer PDF, where the mismatch against the
+   * itemised lines would ALSO have suppressed the per-line prices that are the
+   * only evidence of it.
+   *
+   * The override matters for the same reason: an estimator who prices a line by
+   * hand expects that price to be the contract, and the PDF already agrees.
+   */
+  const lineValueCents = (r: {
+    quantity: number;
+    unit_price_cents: number;
+    is_deduct?: boolean | null;
+    line_total_override_cents?: number | null;
+  }): number => {
+    const ov = r.line_total_override_cents;
+    const magnitude =
+      ov !== null && ov !== undefined && Number.isFinite(Number(ov))
+        ? Math.round(Number(ov))
+        : Math.round(Number(r.quantity) * Number(r.unit_price_cents));
+    return r.is_deduct === true ? -Math.abs(magnitude) : magnitude;
+  };
+
   const wonAtMs = await dealWonAtMs(proposalId);
   return rows.reduce((acc, r) => {
-    const value = Math.round(Number(r.quantity) * Number(r.unit_price_cents));
+    const value = lineValueCents(r);
     if (!r.is_alternate) return acc + value;
     if (r.customer_approved !== true) return acc; // declined, or never answered
     return acceptedBeforeWin(r.customer_approved_at, wonAtMs)
