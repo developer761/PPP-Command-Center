@@ -102,9 +102,16 @@ export async function exportAccountsCsv(
   });
 
   const rows: string[] = [];
-  // UTF-8 BOM so Excel opens it as UTF-8 (without it, Cyrillic / em-dash
-  // / accented chars get mangled). Tiny size cost, big interop win.
-  rows.push("﻿" + HEADERS.map(csvEscape).join(","));
+  /*
+   * NO BOM HERE — `csvResponse` puts one at the front of the response.
+   *
+   * This builder used to add its own, and once a title block was prepended
+   * the two stopped being the same byte: the response BOM leads the file and
+   * THIS one ends up mid-file, immediately before the header row. The first
+   * column then parses as `\ufeff"Company name"` — the quotes become data
+   * and the header is wrong in every reader.
+   */
+  rows.push(HEADERS.map(csvEscape).join(","));
 
   for (const a of accounts) {
     const tags = tagsByAccount.get(a.id) ?? [];

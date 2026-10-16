@@ -149,8 +149,9 @@ export async function exportOpportunitiesCsv(
   }
 
   const rows: string[] = [];
-  // UTF-8 BOM + header row.
-  rows.push("﻿" + HEADERS.map(csvEscape).join(","));
+  // Header row only. The BOM belongs to `csvResponse`; a second one here
+  // lands after the title block, mid-file, and corrupts the first column.
+  rows.push(HEADERS.map(csvEscape).join(","));
 
   for (const o of opps) {
     const entered = statusEntered.get(o.id) ?? null;

@@ -6,6 +6,7 @@ import { etDateOf } from "@/lib/date-et";
 import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 import { vendorKey } from "@/lib/commercial/vendors/constants";
 import { vendorNamesByIds } from "@/lib/commercial/vendors/db";
+import { liveInvoiceIds } from "@/lib/commercial/change-orders/db";
 
 // The grouping rule now lives with the vendor directory, so "is this already a
 // vendor?" and "which row does this spend land in?" can never disagree.
@@ -182,20 +183,30 @@ export async function getChangeOrderVendorReport(range: {
 
   if (cos.length === 0 && purchases.length === 0) return EMPTY;
 
-  // Which invoices are still DRAFTS. A change order parked on a draft has not
-  // been billed to the customer, and treating the pointer alone as "billed"
-  // hid exactly the work this report exists to surface.
-  const pointedInvoiceIds = [...new Set(cos.map((c) => c.invoiced_invoice_id).filter(Boolean))] as string[];
-  const draftInvoiceIds = new Set<string>();
-  if (pointedInvoiceIds.length > 0) {
-    const { data: invRows } = await sb
-      .from("commercial_invoices")
-      .select("id, status")
-      .in("id", pointedInvoiceIds);
-    for (const r of (invRows ?? []) as { id: string; status: string }[]) {
-      if (r.status === "draft") draftInvoiceIds.add(r.id);
-    }
-  }
+  /*
+   * Which pointed-at invoices are still LIVE — the shared rule, not a fourth
+   * spelling of it.
+   *
+   * This asked only `status === "draft"`. The canonical `liveInvoiceIds` also
+   * disqualifies a soft-DELETED and a VOIDED invoice — and deleting or voiding
+   * the invoice is the platform's own documented way to un-bill a change
+   * order, which `change-orders/db.ts` tells the operator to do in as many
+   * words. So every change order un-billed the supported way vanished from
+   * "approved, never invoiced" permanently.
+   *
+   * Measured 2026-10-16: the report said 14 change orders / $61,967.79
+   * outstanding; the platform's own rule says 17 / $110,375.79. $48,408 of
+   * approved, genuinely unbilled work invisible — a 78% understatement, on a
+   * figure that reaches the amber banner, Accounting, the CSV, the report
+   * cards and Alex's daily digest.
+   *
+   * Three other copies of this rule agree with the canonical one. This was the
+   * only one that had drifted, which is why it is now imported rather than
+   * rewritten.
+   */
+  const liveInvoices = await liveInvoiceIds(
+    cos.map((c) => c.invoiced_invoice_id).filter(Boolean) as string[]
+  );
 
   // ── Change orders, keyed on when they were RAISED ──────────────────────
   const inWindow = cos.filter((c) => {
@@ -240,7 +251,7 @@ export async function getChangeOrderVendorReport(range: {
   for (const c of cos) {
     if (c.status !== "approved") continue;
     const amount = Number(c.amount_cents) || 0;
-    const billed = Boolean(c.invoiced_invoice_id) && !draftInvoiceIds.has(c.invoiced_invoice_id!);
+    const billed = Boolean(c.invoiced_invoice_id) && liveInvoices.has(c.invoiced_invoice_id!);
     if (billed) continue;
     if (amount > 0) {
       out.co.unbilledCount += 1;

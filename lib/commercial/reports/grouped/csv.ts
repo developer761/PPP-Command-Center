@@ -1,6 +1,5 @@
 import { csvEscape } from "@/lib/commercial/csv";
 import { buildGroups, grandTotals, type ReportSpec } from "@/lib/commercial/reports/grouped/spec";
-import { formatCentsFull } from "@/lib/commercial/invoices/format";
 
 /**
  * A grouped report as the CSV Mary sends on.
@@ -19,8 +18,30 @@ export function groupedReportCsv<R>(
   const tree = buildGroups(rows, groupings, spec.columns);
   const totals = grandTotals(rows, spec.columns);
 
+  /**
+   * MONEY GOES OUT AS A PLAIN NUMBER, NOT AS CURRENCY.
+   *
+   * It used to be `formatCentsFull`, which yields `-$114.69`. That is not a
+   * plain number, so `csvEscape`'s formula-injection guard prefixes it with an
+   * apostrophe, and Excel reads every negative as TEXT and skips it in a SUM.
+   *
+   * Measured on the Purchases report: Excel's own `=SUM()` over the Amount
+   * column returns $578,710.30 while the file's printed TOTAL says
+   * $575,898.45 — the 16 credits are silently missing, a $2,811.85 error in a
+   * file that goes to an accountant and looks perfectly fine.
+   *
+   * `transactions-export.ts` and `receivables-export.ts` have always emitted
+   * `(cents / 100).toFixed(2)` for exactly this reason. This is the one
+   * builder that did not, and the guard's own docblock describes this failure
+   * as the thing it was carefully written NOT to cause.
+   *
+   * The money formatting belongs on the page, which still has it; a CSV cell
+   * is data, and the spreadsheet formats it.
+   */
   const cell = (kind: string | undefined, n: number): string =>
-    kind === "money" ? formatCentsFull(n) : kind === "hours" ? `${Math.round(n * 100) / 100}` : `${Math.round(n * 100) / 100}`;
+    kind === "money"
+      ? (Math.round(n) / 100).toFixed(2)
+      : `${Math.round(n * 100) / 100}`;
 
   const out: string[] = [];
   // The totals strip, so the figure at the top of the page is the figure at the
