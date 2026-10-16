@@ -309,6 +309,50 @@ try {
       (await retainageHeldForOpportunity(oppId)) === 0,
       usd(await retainageHeldForOpportunity(oppId)),
     );
+
+    /*
+     * ══ A DRAFT HOLDS NOTHING ════════════════════════════════════════════
+     *
+     * Karan, 2026-10-16: the GC withholds a percentage of what it has been
+     * BILLED, and releases it when its own project closes out and it is paid
+     * in full. A draft certificate has not been sent, so there is nothing for
+     * anyone to be holding.
+     *
+     * This had drifted: `retainageHeldForOpportunity` and the Projects list
+     * took the latest application whatever its status, so the deal page chip,
+     * its KPI tile, the attention card, project home and deal analytics
+     * counted a draft while Receivables, Accounting, the GC statement and the
+     * dashboard did not. Two numbers for one phrase, inches apart.
+     *
+     * Raised with real billable work on it, which is what makes this able to
+     * fail: revert the filter and the figure moves off zero here.
+     */
+    const draft = await createAiaApplication({
+      opportunity_id: oppId,
+      period_to: "2026-11-30",
+      created_by_user_id: ACTOR,
+    });
+    check("a DRAFT application can be raised", draft.ok, draft.ok ? "" : draft.error);
+    if (draft.ok) {
+      const dl = await upsertAiaLineItem(draft.value.id, {
+        description: `${MARK} draft work`,
+        item_no: "99",
+        scheduled_value_cents: 100_00,
+        this_period_cents: 100_00,
+      });
+      check("the draft has real billable work on it", dl.ok, dl.ok ? "" : dl.error);
+      const dg = await resolveG702(draft.value.id);
+      check(
+        "the draft's own certificate does withhold retainage",
+        dg.retainageCents > 0,
+        `line 5 ${usd(dg.retainageCents)} — so a zero below is the STATUS filter, not an empty sheet`,
+      );
+      check(
+        "but the job still reports NOTHING held — a draft is not billed",
+        (await retainageHeldForOpportunity(oppId)) === 0,
+        usd(await retainageHeldForOpportunity(oppId)),
+      );
+    }
   }
 } catch (err) {
   failures++;

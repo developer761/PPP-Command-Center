@@ -532,7 +532,23 @@ export async function listProjects(opts: {
     });
     const contractToDate = base + co.netApproved;
     const completed = latest ? completedByApp.get(latest.id) ?? 0 : 0;
-    const retainageHeld = latest ? retainageByApp.get(latest.id) ?? 0 : 0;
+    /*
+     * RETAINAGE IS READ OFF THE LATEST ISSUED CERTIFICATE, NOT `latest`.
+     *
+     * Karan, 2026-10-16: the GC holds back a percentage — usually 10 — until
+     * their whole project is done and they are paid in full, and then releases
+     * it. They can only hold it against work they have been BILLED for, so a
+     * draft holds nothing: nobody has sent it.
+     *
+     * `latest` deliberately includes drafts because it also drives the
+     * contract base above, where an in-prep certificate legitimately carries
+     * the newest contract sum. Using it here too made this list and the deal
+     * page disagree with Receivables, Accounting, the GC statement and the
+     * dashboard, which all take the latest issued. $50.00 across the book on
+     * 2026-10-16 — Cipla's draft Application 6.
+     */
+    const latestIssued = latestIssuedByOpp.get(o.id) ?? null;
+    const retainageHeld = latestIssued ? retainageByApp.get(latestIssued.id) ?? 0 : 0;
     const pct = latest && contractToDate > 0 ? Math.round((completed / contractToDate) * 10000) : null;
     const inv = invByOpp.get(o.id) ?? { invoiced: 0, billedPreTax: 0, paid: 0, openBalance: 0, invoiceCount: 0, draftCount: 0, draftedCents: 0 };
     // Fold in AIA billing (separate ledger from invoices) so an AIA-billed job

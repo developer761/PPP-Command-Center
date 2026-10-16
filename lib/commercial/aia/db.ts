@@ -106,35 +106,40 @@ export async function listAiaApplications(opportunityId: string): Promise<AiaApp
 }
 
 /**
- * Retainage held on a job, as of its latest application.
+ * Retainage held on a job, as of its latest ISSUED application.
  *
- * AIA line 5 is cumulative, so "held" is whatever the newest application says
+ * AIA line 5 is cumulative, so "held" is whatever the newest certificate says
  * — not a sum across applications, which would count the same withholding
  * once per pay period.
  *
- * The number is built by `computeG702`, the same function the printed G702 and
- * the Projects list use, so the deal page, the list and the PDF a GC receives
- * cannot disagree. Latest = highest application_number regardless of status,
- * matching the Projects list exactly. (A draft therefore counts. That is
- * arguably generous — the GC hasn't seen it.)
+ * ISSUED, NOT LATEST — Karan, 2026-10-16.
  *
- * ⚠ IT IS NOT THE SAME BASIS AS `aiaBillingRollup`, which takes the latest
- * ISSUED application, and the old comment here claiming "one platform-wide
- * number beats two defensible ones" was simply wrong: there are two. This one
- * and the Projects list count drafts; the rollup, and therefore the retention
- * figure on Receivables, Accounting, the GC statement and the dashboard, do
- * not. Measured 2026-10-16 the whole gap is $50.00 across the book — Cipla's
- * draft Application 6 — and it closes the moment that draft is submitted.
+ * "Retainage held" is money the GC is holding back: a percentage, usually 10,
+ * withheld until their whole project is finished and they have been paid in
+ * full, at which point they release it. The GC can only hold back against work
+ * it has been BILLED for, so a draft certificate holds nothing — nobody has
+ * sent it. That makes submitted-or-paid the only correct basis, and it is the
+ * one every customer-facing document already uses.
  *
- * Both readings are defensible on their own surface (a deal page can
- * reasonably show what the next certificate will hold), so this is left as is
- * rather than quietly moved; but it is a divergence, not an identity, and
- * deciding which one "Retainage held" should mean is a question for Katie.
+ * This function used to take the highest application_number whatever its
+ * status, so the deal page's chip, its KPI tile, the attention card, project
+ * home and deal analytics counted drafts while `aiaBillingRollup` — and so
+ * Receivables, Accounting, the GC statement and the dashboard — did not. Two
+ * numbers for one phrase, a few inches apart on the same page. Measured
+ * 2026-10-16 the gap was $50.00 across the book, Cipla's draft Application 6.
+ *
+ * Two consequences of the same definition, already correct elsewhere and
+ * checked rather than assumed: retainage is not collectible like an overdue
+ * invoice, so `receivables.ts` leaves `daysOut` null ("retainage never ages")
+ * and reports `dueNowCents` as the total MINUS retention; and the AR sheet
+ * raises its retention line only against `isLatestIssued`.
  */
 export async function retainageHeldForOpportunity(opportunityId: string): Promise<number> {
   const apps = await listAiaApplications(opportunityId);
   if (apps.length === 0) return 0;
-  const latest = apps.reduce((a, b) => (b.application_number > a.application_number ? b : a));
+  const issued = apps.filter((a) => a.status === "submitted" || a.status === "paid");
+  if (issued.length === 0) return 0;
+  const latest = issued.reduce((a, b) => (b.application_number > a.application_number ? b : a));
   /*
    * WITH the release baseline. Going through `computeG702` is not enough on
    * its own: raw lines carry no `retainage_released_cents`, so the shared
