@@ -53,6 +53,12 @@ to work through in one sitting.
 | 25 | A Spanish conversation ends with an English list of what we cover | Low stakes, cheap to fix, easy to forget. |
 | 26 | **Do you want an after-hours auto-reply at all?** | You graded one as a negative once. It is off everywhere today. Only affects 8-9am and 8-9pm. |
 
+### Open since 2026-10-16
+
+**38.5** — keep or replace "Perfect, you're all set" on the Success close. One
+answer. Items 37 and 38.1 to 38.4 shipped with defaults and need nothing unless
+she disagrees.
+
 ### Ours to do, not hers
 
 | # | What | State |
@@ -2240,3 +2246,60 @@ earliest visit is usually 10 AM…"). They are now:
 Same standing as item 28's seven sentences. **→ Nothing is blocked.** If Mac or
 Jasmine would word them differently, it is two strings in
 `lib/messaging/appointment-time.ts`.
+
+---
+
+## 38. Four more defaults from the 2026-10-16 corpus sweep, and one question about "you're all set"
+
+**Raised 2026-10-16. The first four shipped with a default and block nothing.
+The fifth is a real question, and we have deliberately not changed it.**
+
+**1. Spanish opt-out words.** "ALTO", "PARAR", "BAJA", "CANCELAR" and
+"DETENER", sent as the whole message, now opt the customer out the way STOP
+does, as do "ya no quiero recibir mensajes", "remove me" and "lose my number".
+One reading this gets wrong: a customer answering "how high is the ceiling?"
+with the single word "Alto" is opted out. We chose that side because a missed
+opt-out costs far more than one lead. **→ Say if you would rather we did not.**
+
+**2. "Wrong number" ends the conversation as Bailout, silently.** Your
+END_STATES already put "Wrong person" under Bailout. It used to go to the bot,
+which could answer "Perfect, thanks." A customer correcting their own number
+("I gave you the wrong number, it's 516…") is not caught by this.
+
+**3. A light Spanish signal no longer locks a conversation into Spanish.** A
+single accent used to switch an English customer to Spanish for good ("Can you
+give me an estímate?", "fiancé"). Now a strong signal (ñ, ¿, ¡, or Spanish
+words outweighing English ones) still switches for good, as you wrote. A weak
+one, like a lone "Hola", switches back if the customer then writes plain
+English. That goes slightly past "do not switch back". **→ Say if a weak
+signal should stick too.**
+
+**4. The Spanish vocabulary in the matchers is ours.** Rooms, doors, fences
+and cabinets for routing (A6); declines (A17); "I'll get back to you" and
+"don't follow up" (A40); "texts only, don't call" and "call me" (A25); urgency
+and "call me about the estimate instead" (A7). Written by us, not taken from
+your sheet. **→ If Mac or Jasmine can glance down the lists in
+`lib/messaging/offsite.ts`, `parking.ts` and `channel-preference.ts`, any word
+they add is a one-line change.**
+
+**5. "Perfect, you're all set" — the Success close. NOT CHANGED, YOUR CALL.**
+
+A graded simulator conversation (2026-10-07) marks this exact sentence down at
+T10:
+
+> 'You're all set' tells them the Thursday 1 to 3 appointment is made.
+> Nothing is booked and the bot has no calendar, so this risks a no-show.
+> … Should have: Thanked the customer and indicated that we're checking the
+> schedule
+
+That is the live template, word for word (`lib/messaging/render.ts`), and your
+END_STATES describes Success as "Checking the schedule", which agrees with the
+note and not with the template. We have not changed it, because it is the one
+sentence every booked customer reads, and the note has no grader recorded on
+it, so we cannot tell it is yours.
+
+**→ One answer needed: keep "Perfect, you're all set", or replace it.** If
+replace, a default in the note's own terms would be: "Thanks so much! I'm
+checking the schedule now, and someone from the office will confirm a time
+with you." The nurture close ("I'll let the office know so they can get you
+booked in") already says what happens next and is not affected.
