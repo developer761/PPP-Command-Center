@@ -41,7 +41,13 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 /** Work whose disappearance is invisible: mail, notifications, alerts, audit. */
-const MUST_SURVIVE = /^\s*void\s+(send|notify|alert|log|report|dispatch|enqueue)[A-Z]\w*\s*\(/m;
+/**
+ * The verb need NOT be followed by a capital. The first version of this
+ * required `[A-Z]`, so it matched `void reportError(` but sailed past
+ * `void report(` — which is what lib/observability.ts actually had, in the
+ * three wrappers every webhook and cron uses to report a failure.
+ */
+const MUST_SURVIVE = /^\s*void\s+(send|notify|alert|log|report|dispatch|enqueue)\w*\s*\(/m;
 
 /**
  * Deliberately detached, each for a stated reason.
