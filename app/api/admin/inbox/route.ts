@@ -251,20 +251,32 @@ export async function GET(request: Request) {
           if (!emailId) return;
           const fetched = await fetchReceivedEmail(emailId);
           if (fetched && (fetched.text || fetched.html)) {
-            await sb
+            const { error: upErr } = await sb
               .from("inbox_messages")
               .update({ body_text: fetched.text, body_html: fetched.html })
               .eq("id", m.id);
+            if (upErr) {
+              console.error(`[inbox] healed body for ${m.id} but could not save it: ${upErr.message}`);
+            }
             return;
           }
           // Record the miss so this stops being free to retry.
           const attempts = (meta._ppp_body_heal?.attempts ?? 0) + 1;
-          await sb
+          // Supabase RETURNS { error }; it does not throw. The give-up
+          // depends entirely on this write landing — if it fails silently
+          // the counter never advances and the retry is unbounded again,
+          // which is the exact bug the counter was added to stop.
+          const { error: markErr } = await sb
             .from("inbox_messages")
             .update({
               raw_payload: { ...meta, _ppp_body_heal: { attempts, lastAt: new Date().toISOString() } },
             })
             .eq("id", m.id);
+          if (markErr) {
+            console.error(
+              `[inbox] could not record heal attempt ${attempts} for ${m.id} — it will be retried again: ${markErr.message}`
+            );
+          }
           if (attempts >= MAX_HEAL_ATTEMPTS) {
             console.warn(
               `[inbox] giving up on the body for message ${m.id} after ${attempts} attempts — it will read as unreadable, which is true`

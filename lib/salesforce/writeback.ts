@@ -342,7 +342,12 @@ async function logAudit(input: {
 }): Promise<void> {
   try {
     const sb = adminClient();
-    await sb.from("sf_writes_audit").insert({
+    // Supabase RETURNS { error } rather than throwing, so the catch below
+    // never saw a refused insert. This table is EVIDENCE: Settings → Health
+    // reports "N customer-form writes landed in Salesforce" by counting it,
+    // so a silent hole here does not just lose a row — it makes a
+    // monitoring surface quietly wrong in the reassuring direction.
+    const { error: auditErr } = await sb.from("sf_writes_audit").insert({
       triggered_by: input.source,
       triggered_by_user_id: input.triggeredByUserId,
       triggered_by_token: input.triggeredByToken,
@@ -356,6 +361,12 @@ async function logAudit(input: {
       retry_count: input.retryCount,
       duration_ms: input.durationMs,
     });
+    if (auditErr) {
+      console.error(
+        `[sf-writeback] audit row REFUSED for ${input.sObject} ${input.recordId} — ` +
+          `Health counts this table, so its figures are now short by one: ${auditErr.message}`
+      );
+    }
   } catch (err) {
     // Audit logging failure is non-fatal — log to console so we can spot it,
     // but don't block the actual write from returning.
