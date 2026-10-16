@@ -639,9 +639,15 @@ export async function runAgentTurn(
   // Derived ONCE and used for both the prompt and the render, so the language
   // the model is told to write in cannot disagree with the table the message
   // comes out of.
+  //
+  // inbound.text, NOT inbound.description, since 2026-10-16. The description
+  // is English narration written for the model — "The customer sent 1 photo
+  // and wrote: …", or a reaction quoting OUR sentence back — so it put
+  // English words around a Spanish caption, and our own Spanish around an
+  // English customer's thumbs-up. The language is the customer's own words.
   const language = conversationLanguage([
     ...history.filter((t) => t.role === "customer").map((t) => t.text),
-    inbound.description,
+    inbound.text,
   ]);
   /**
    * THE CUSTOMER'S OWN WORDS, FOR THE RULES THAT JUDGE WHAT THEY SAID.

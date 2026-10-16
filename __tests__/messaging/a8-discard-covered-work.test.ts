@@ -51,12 +51,24 @@ describe("A8 — the bot does not turn away work PPP does", () => {
   });
 
   /**
-   * A wrong number describes no work at all, so the first half of the test
-   * is false and discard stays available. Breaking this would leave junk
+   * Junk describes no work at all, so the first half of the test is false
+   * and discard stays available. Breaking this would leave junk
    * conversations with nowhere to go.
+   *
+   * "wrong number mate" WAS HERE, and since 2026-10-16 it ends as bailout
+   * instead — Kate's END_STATES give "Wrong person" to Bailout, and
+   * wrong-number-bailout.test.ts holds that. What this case protected is
+   * still true: the A8 check does not refuse a discard for it. The wrong
+   * number rule does, for a different reason, so it is asserted as THAT
+   * reason rather than dropped.
    */
-  it.each(["who is this?", "stop", "wrong number mate"])("still discards junk: %j", (t) => {
+  it.each(["who is this?", "stop", "Is this Joe's Pizza?"])("still discards junk: %j", (t) => {
     expect(discard(t).ok).toBe(true);
+  });
+
+  it("refuses discard on a wrong number for the wrong-number reason, not A8's", () => {
+    const v = discard("wrong number mate");
+    expect(v.ok === false && v.reason).toBe("wrong_number_not_bailout");
   });
 
   /**

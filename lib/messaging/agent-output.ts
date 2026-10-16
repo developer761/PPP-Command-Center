@@ -26,6 +26,7 @@ import { requestedTime, TIME_IS_ACKNOWLEDGED_BY } from "./appointment-time";
 import { statedChannelPreference } from "./channel-preference";
 import { declinesTheWork } from "./parking";
 import { scopeFromCustomer as scopeSaidNow } from "./scope";
+import { saidWrongNumber } from "./customer-asks";
 
 /** Emily's terminal states, verbatim. */
 export const END_INTENTS = [
@@ -267,9 +268,10 @@ export const INTENT_GUIDE: Record<string, string> = {
    * conversations are graded on. A mislabelled ending is a wrong row in every
    * report built on outcomes.
    */
-  bailout: "they have said they are not going ahead, or the conversation has turned abusive or vulgar",
+  bailout: "they have said they are not going ahead, the conversation has turned abusive or vulgar, "
+    + "or they say this is the WRONG NUMBER or the wrong person (END_STATES: Bailout is \"Wrong person\")",
   success: "everything is collected and the office can take it",
-  discard: "not a real lead",
+  discard: "not a real lead. A wrong number is NOT this: it is bailout",
   lost: "they have gone with somebody else",
   msg_liked_loved: "they reacted to a message rather than replying, and nothing needs saying",
 
@@ -342,7 +344,8 @@ export type RejectReason =
   | "reaction_ended_an_open_conversation" // a like is not a reason to stop asking
   | "availability_stand_off"      // they asked US for times twice; no calendar to answer with
   | "second_property_uncollected" // closing a two-property job having collected one
-  | "availability_already_given";  // asking a fourth time for what Kate says we have
+  | "availability_already_given"  // asking a fourth time for what Kate says we have
+  | "wrong_number_not_bailout";   // a stranger told us we have the wrong number
 
 /**
  * Phrases that mean the model has committed to something it has no authority
@@ -1866,6 +1869,31 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
   const all: readonly string[] = intentsForTrack(ctx.track ?? "new_lead");
   if (typeof a.intent !== "string" || !all.includes(a.intent)) {
     return { ok: false, reason: "unknown_intent", detail: `intent "${String(a.intent)}" is not one of the allowed set` };
+  }
+
+  /**
+   * A WRONG NUMBER ENDS AS BAILOUT, AND NOTHING ELSE.
+   *
+   * Found by the corpus audit 2026-10-16: "Wrong number" reached the model
+   * as an ordinary turn and could come back `acknowledge`, which renders
+   * "Perfect, thanks." — to a stranger — and leaves the follow-up cadence
+   * running, so the same stranger is chased three more times. Kate's
+   * END_STATES names the ending: Bailout, "Wrong person". Bailout is a
+   * PROPER_ENDING in stalled.ts, so the cadence stops with it.
+   *
+   * DISCARD IS REFUSED TOO, though it is also silent and also ends. The
+   * outcome label is graded ("Ended in the right state"), and Kate's list
+   * gives the wrong person to Bailout, not to Discard. Checked first, before
+   * every flow rule, because none of them has anything to say to somebody
+   * who is not our customer. The detector refuses a customer correcting
+   * their OWN number — see saidWrongNumber.
+   */
+  if (a.intent !== "bailout" && saidWrongNumber(ctx.customerText)) {
+    return {
+      ok: false, reason: "wrong_number_not_bailout",
+      detail: "they said this is the wrong number or the wrong person, so this is not our customer. "
+        + "End as bailout, which says nothing to them and stops the follow-ups",
+    };
   }
 
   // Asking the same thing again after somebody reacted badly to it.

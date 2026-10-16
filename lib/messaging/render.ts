@@ -30,7 +30,7 @@ import {
   SAYS_ES, ASK_ADDRESS_GAP_ES, ASK_CONTACT_GAP_ES, ASK_AVAILABILITY_GAP_ES, ASK_ADDRESS_REFUSED_ES,
   PHONE_PRICING_NO_ADDRESS_ES,
 } from "./render-es";
-import { ASKED_FOR_A_CALL } from "./customer-asks";
+import { ASKED_FOR_A_CALL, saidWrongNumber } from "./customer-asks";
 import { DISCLOSURE_IN_HOURS } from "./disclosure";
 import { phoneBranch, CALLBACK_WINDOW } from "./channel-preference";
 
@@ -146,6 +146,17 @@ export function isSilent(input: {
     // So: a project on file, OR the customer naming work we do not cover.
     return !input.known?.scope && !mentionsWorkWeDoNotDo(input.customerText);
   }
+  /**
+   * BAILOUT TO A WRONG NUMBER SAYS NOTHING, 2026-10-16.
+   *
+   * A wrong number now ends as bailout (Kate's "Wrong person" — see
+   * validateAction), and bailout's templates are written for a customer who
+   * declined: "reach out any time if things change" is a re-engagement line
+   * to a stranger. Silence is the answer the discard branch above already
+   * gave a wrong number, for the reason given there. Same detector as the
+   * validator, so the two cannot disagree and send the turn to a person.
+   */
+  if (input.intent === "bailout" && saidWrongNumber(input.customerText)) return true;
   return SILENT_INTENTS.has(input.intent);
 }
 

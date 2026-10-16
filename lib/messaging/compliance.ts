@@ -26,6 +26,23 @@
  */
 const OPT_OUT_KEYWORDS = [
   "stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "opt out",
+  /**
+   * THE SPANISH CARRIER KEYWORDS WERE NOT HERE, AND THE CORPUS HAS THEM.
+   *
+   * Found by the audit against Kate's real corpus, 2026-10-16: "ALTO",
+   * "PARAR" and "BAJA" each came back `normal`, so the number stayed
+   * textable and the bot answered somebody who had told us to stop in the
+   * words a Spanish-language carrier footer teaches them. STOP was honoured
+   * in either language; its Spanish equivalents were not.
+   *
+   * WHOLE-MESSAGE ONLY, like every keyword in this list, which is what makes
+   * these safe. "el techo es muy alto" and "quiero cancelar mi cita" are
+   * sentences and stay normal; only a message that IS the word counts. A
+   * bare "Alto" answering "how high is the ceiling?" is the one reading this
+   * gets wrong, and it gets it wrong in the direction that costs one lead
+   * rather than $500-$1,500 a message.
+   */
+  "alto", "parar", "baja", "cancelar", "detener",
 ] as const;
 
 /**
@@ -155,6 +172,15 @@ const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
     // bare "opt out", the phrase on every compliance footer.
     String.raw`\bopt\s*(?:me\s*)?out\b`,
     String.raw`\bno\s+more\s+(?:texts?|messages?|emails?|calls?)\b`,
+    /**
+     * ── "LOSE MY NUMBER", ADDED 2026-10-16 ────────────────────────────────
+     *
+     * In the corpus and unhonoured. "lose" is too common a verb to leave
+     * open, so it needs MY number — and it must not be the customer worried
+     * WE lost it: "did you lose my number?" and "don't lose my number" are a
+     * live lead chasing us, the exact opposite request.
+     */
+    String.raw`(?<!(?:n['’]?t|\bnot|\bnever|\byou|\bu)\s+)\blose\s+(?:my|this|our)\s+(?:phone\s+)?(?:number|contact)\b`,
     /*
       ── THE SAME RULE IN SPANISH ──────────────────────────────────────────
       A24 is about what the customer MEANT, not which language they meant it
@@ -175,6 +201,11 @@ const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
     String.raw`\bno\s+me\s+(?:vuelvan?\s+a\s+)?(?:mandar|enviar|escribir|llamar|contactar)\b`,
     // no more messages
     String.raw`\bno\s+(?:m[áa]s|quiero\s+m[áa]s)\s+(?:mensajes?|textos?|llamadas?|correos?)\b`,
+    // "Ya no quiero recibir mensajes" — in the corpus, and unhonoured until
+    // 2026-10-16. The noun has to follow recibir with nothing but a
+    // determiner between, so "no quiero recibir la cotización por correo"
+    // (a channel preference for the QUOTE) stays a normal message.
+    String.raw`\bno\s+(?:quiero|deseo|queremos|deseamos)\s+recibir\s+(?:m[áa]s\s+|sus\s+|estos\s+|los\s+|ning[úu]n\s+)*(?:mensaj\w*|textos?|sms)\b`,
     // take me off the list
     String.raw`\b(?:qu[íi]tenme|quitenme|qu[íi]teme|s[áa]quenme|saquenme|borrenme|b[óo]rrenme|elim[íi]nenme)\b`,
     String.raw`\b(?:qu[íi]ten\w*|saquen\w*|borren\w*|eliminen\w*)\s+mi\s+(?:n[úu]mero|contacto)\b`,
@@ -188,9 +219,27 @@ const PLAIN_LANGUAGE_OPT_OUT = new RegExp(
   "i",
 );
 
+/**
+ * "REMOVE ME" AND "REMOVE MY NUMBER", WHICH NOTHING ABOVE COULD MATCH.
+ *
+ * Found by the corpus audit 2026-10-16. Every list branch above needs a list
+ * or a direction — remove me FROM, take me OFF — and the customer typed
+ * neither: the whole message was "remove me". Unambiguous on its own, and
+ * dangerous anywhere else, because "can you remove the old wallpaper" and
+ * "remove the mirror first" are a customer talking about the job.
+ *
+ * So these match the WHOLE MESSAGE, read through normalizeKeyword so
+ * punctuation and case cannot defeat it, with nothing allowed around them
+ * but please / now / thanks.
+ */
+const SHORT_OPT_OUT = new RegExp(
+  String.raw`^(?:please\s+|pls\s+|plz\s+)?(?:remove|delete)\s+(?:me|my\s+(?:phone\s+)?(?:number|info))`
+  + String.raw`(?:\s+(?:please|pls|plz|now|thanks|thank\s+you|asap|immediately))*$`,
+);
+
 /** Did this opt out in words rather than by carrier keyword? */
 export function isPlainLanguageOptOut(body: string): boolean {
-  return PLAIN_LANGUAGE_OPT_OUT.test(body ?? "");
+  return PLAIN_LANGUAGE_OPT_OUT.test(body ?? "") || SHORT_OPT_OUT.test(normalizeKeyword(body ?? ""));
 }
 
 /**
@@ -210,7 +259,7 @@ export function classifyInbound(body: string): InboundIntent {
   if ((OPT_OUT_KEYWORDS as readonly string[]).includes(k)) return "opt_out";
   // "IT COUNTS EVEN WHEN THE CUSTOMER PACKS OTHER CONTENT INTO THE SAME
   // MESSAGE — the opt-out takes priority over anything else in that message."
-  if (PLAIN_LANGUAGE_OPT_OUT.test(body)) return "opt_out";
+  if (isPlainLanguageOptOut(body)) return "opt_out";
   if ((OPT_IN_KEYWORDS as readonly string[]).includes(k)) return "opt_in";
   if ((HELP_KEYWORDS as readonly string[]).includes(k)) return "help";
   return "normal";

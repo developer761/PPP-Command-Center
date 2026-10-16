@@ -50,6 +50,26 @@ const IPHONE_VERBS: { re: RegExp; verb: string; sentiment: ReactionSentiment }[]
   { re: /^questioned\s+/i,   verb: "questioned",   sentiment: "questioning" },
   { re: /^disliked\s+/i,     verb: "disliked",     sentiment: "negative" },
   { re: /^removed a (?:like|heart|reaction) from\s+/i, verb: "removed a reaction from", sentiment: "neutral" },
+  /**
+   * THE SAME TAPBACKS FROM A PHONE SET TO SPANISH, 2026-10-16.
+   *
+   * The corpus audit found `Le gustó “…”` arriving as ordinary text, which
+   * did two things wrong at once: the model was shown a "message" the
+   * customer never wrote, and language.ts read the ó and switched an ENGLISH
+   * customer to Spanish for the rest of the thread. The phone's locale is
+   * not the customer's language — the words they type are.
+   *
+   * The quoted-target requirement below still applies, so "Le gustó la
+   * cocina a mi esposa" stays a sentence. The verb is reported in English
+   * because the description is written for the model, as the others are.
+   * "No le gustó" comes first so it cannot be read as "le gustó".
+   */
+  { re: /^no\s+le\s+gust[óo]\s+/i,  verb: "disliked",   sentiment: "negative" },
+  { re: /^le\s+gust[óo]\s+/i,       verb: "liked",      sentiment: "positive" },
+  { re: /^le\s+encant[óo]\s+/i,     verb: "loved",      sentiment: "positive" },
+  { re: /^(?:se\s+ri[óo]\s+de|le\s+hizo\s+gracia|le\s+dio\s+risa)\s+/i, verb: "laughed at", sentiment: "neutral" },
+  { re: /^(?:enfatiz[óo]|destac[óo])\s+/i, verb: "emphasised", sentiment: "positive" },
+  { re: /^cuestion[óo]\s+/i,        verb: "questioned", sentiment: "questioning" },
 ];
 
 /** Emoji that carry a clear meaning when sent alone. */
