@@ -591,7 +591,11 @@ async function finishDeal(
   const failedChecks = r.checks.filter((c) => !c.ok);
   if (failedChecks.length > 0) {
     // See the change-order branch: the failed verification outlives the attempt.
-    const detail = `wrote it, but: ${failedChecks.map((c) => `${c.name} — ${c.detail}`).join("; ")}`;
+    // "wrote it, but" is a lie on the skip path, which explicitly writes
+    // nothing — and a skip is the state every successfully written deal
+    // settles into, so it is the message a person reads most often.
+    const did = r.action === "skipped" ? "left it alone, but" : "wrote it, but";
+    const detail = `${did}: ${failedChecks.map((c) => `${c.name} — ${c.detail}`).join("; ")}`;
     if (ctx.apply) {
       await markVerifyFailed(entry.id, detail);
       await markFailed(entry.id, entry.attempts, detail);

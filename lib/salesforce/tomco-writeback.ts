@@ -180,10 +180,34 @@ export async function updateExisting(
       steps: [`already Closed Won in Salesforce at ${canonical.toFixed(2)} — left alone${note}`],
       checks: [
         { name: "stage is Closed Won", ok: true, detail: opp.StageName },
+        /*
+         * 🔴 THIS CHECK USED TO ASSERT `canonicalAgrees || quoteLineAgrees`,
+         * WHICH IS FALSE IN EXACTLY THE STATE THE POLICY ABOVE CALLS CORRECT.
+         *
+         * Thirty lines up: "Those gaps are Salesforce knowing something we do
+         * not ... the difference is Salesforce's to keep." The `note` built
+         * just above literally writes that sentence out. Then the check failed
+         * on it — and `finishDeal` treats a failed check as markVerifyFailed +
+         * markFailed, so the deal burns an attempt every sweep, three times,
+         * then stalls red and blocks every future entry for that deal. The code
+         * verified the opposite of what it decided.
+         *
+         * It has never run: the check shipped at 2026-10-15T17:47Z and the last
+         * sale entry finished at 17:25Z. Four of 98 linked deals are armed —
+         * Amazon Waterproofing, 1 Rodeo Drive, 32 Ranick WH, Primrose/Avignone
+         * — none queued today, so it fires the moment one of them is edited.
+         *
+         * A SKIP WROTE NOTHING, so there is nothing to verify beyond having
+         * read the state correctly, which the first check does. The comparison
+         * is INFORMATION for the review screen — and it already reaches a human
+         * in words through `note` — not a pass/fail. Reported, never failed.
+         */
         {
-          name: "Salesforce's total matches ours",
-          ok: canonicalAgrees || quoteLineAgrees,
-          detail: `canonical ${canonical.toFixed(2)} · quote line ${quoteLine.toFixed(2)} · ours ${contract.toFixed(2)}`,
+          name: "Salesforce's figures read back",
+          ok: true,
+          detail:
+            `canonical ${canonical.toFixed(2)} · quote line ${quoteLine.toFixed(2)} · ours ${contract.toFixed(2)}` +
+            (canonicalAgrees || quoteLineAgrees ? " — agrees" : " — differs, and that difference is Salesforce's to keep"),
         },
       ],
     };
