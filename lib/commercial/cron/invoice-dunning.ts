@@ -36,6 +36,26 @@ const REDUN_DAYS = DUNNING_REDUN_DAYS;
 // backlog over subsequent days.
 const DUNNING_MAX_PER_RUN = 100;
 
+/**
+ * The query's `due_at <` bound — a WIDENING prefilter, never the rule.
+ *
+ * It was `now − 15 × 24h`, which is the rule stated in elapsed hours. Due
+ * dates are stored at noon ET (16:00Z) and the cron runs at 12:00Z, so on the
+ * 15th calendar day the invoice is 15 days minus four hours old and the bound
+ * excluded it: the first reminder went out on day 16. One day wider here, and
+ * `isInvoicePastDunningThreshold` below — Eastern calendar days, the same
+ * count the AIA reminder uses — makes the exact call.
+ */
+export function invoiceDunningPrefilterCutoffIso(nowMs: number): string {
+  return new Date(nowMs - (PAST_DUE_DAYS - 1) * 86_400_000).toISOString();
+}
+
+/** Due PAST_DUE_DAYS or more Eastern calendar days ago. The rule itself. */
+export function isInvoicePastDunningThreshold(dueAt: string | null | undefined): boolean {
+  const days = daysAgoEt(dueAt);
+  return days !== null && days >= PAST_DUE_DAYS;
+}
+
 /** Mask an email for the internal bell: "jane@gc.com" → "j***@gc.com". */
 function maskEmail(email: string): string {
   const [local, domain] = email.split("@");
@@ -72,7 +92,7 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
   try {
     const sb = commercialDb();
     const now = Date.now();
-    const pastDueCutoffIso = new Date(now - PAST_DUE_DAYS * 86_400_000).toISOString();
+    const pastDueCutoffIso = invoiceDunningPrefilterCutoffIso(now);
     const redunCutoffIso = new Date(now - REDUN_DAYS * 86_400_000).toISOString();
 
     const { data, error } = await sb
@@ -103,10 +123,13 @@ export async function runInvoiceDunningReminder(): Promise<Result> {
       account_id: string;
       opportunity_id: string;
     };
-    const rows = (data ?? []) as unknown as Row[];
+    // The prefilter is a day wide on purpose; this is the exact gate.
+    const rows = ((data ?? []) as unknown as Row[]).filter((r) =>
+      isInvoicePastDunningThreshold(r.due_at)
+    );
     out.found = rows.length;
     if (rows.length === 0) return out;
-    if (rows.length >= DUNNING_MAX_PER_RUN) {
+    if ((data ?? []).length >= DUNNING_MAX_PER_RUN) {
       console.warn(`[cron/invoice-dunning] hit the ${DUNNING_MAX_PER_RUN}-row cap — remaining reminders fire on later days.`);
     }
 

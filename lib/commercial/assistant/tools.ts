@@ -2,6 +2,7 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { etTodayIso, etDateOf } from "@/lib/date-et";
 import { derivedOppName } from "@/lib/commercial/opportunities/db";
 import { aiaBillingRollupBulk } from "@/lib/commercial/aia/db";import { formatCentsFull } from "@/lib/commercial/invoices/format";
 
@@ -221,7 +222,9 @@ export async function moneyOverview(): Promise<string> {
    */
   const { aiaDueAtFrom } = await import("@/lib/commercial/aia/constants");
   const { DEFAULT_DUE_DAYS } = await import("@/lib/commercial/invoices/constants");
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // The EASTERN day, for both books. The UTC day rolls over at 8pm ET, and
+  // from then on everything due today was counted as past due.
+  const todayIso = etTodayIso();
   let aiaOwed = 0;
   let aiaCollected = 0;
   let aiaOpenCount = 0;
@@ -233,7 +236,8 @@ export async function moneyOverview(): Promise<string> {
       aiaOwed += r.dueNowCents;
       aiaOpenCount += 1;
       const dueAt = aiaDueAtFrom(r.latestIssuedFrozenAt, r.latestIssuedPeriodTo, DEFAULT_DUE_DAYS);
-      if (dueAt && String(dueAt).slice(0, 10) < todayIso) {
+      const dueDay = etDateOf(dueAt);
+      if (dueDay && dueDay < todayIso) {
         aiaLateCents += r.dueNowCents;
         aiaLateCount += 1;
       }
@@ -264,12 +268,14 @@ export async function moneyOverview(): Promise<string> {
   const open = scored.map((x) => x.i);
   const owed = open.reduce((n, i) => n + Number(i.balance_cents), 0) + aiaOwed;
   const collected = payments.reduce((n, p) => n + Number(p.amount_cents), 0) + aiaCollected;
-  const today = new Date().toISOString().slice(0, 10);
   // Drafts are never aged — see the verdict above.
   const late = scored
     .filter((x) => x.verdict === "invoice")
     .map((x) => x.i)
-    .filter((i) => i.due_at && String(i.due_at).slice(0, 10) < today);
+    .filter((i) => {
+      const dueDay = etDateOf(i.due_at ? String(i.due_at) : null);
+      return !!dueDay && dueDay < todayIso;
+    });
   const byCat = new Map<string, number>();
   for (const p of purchases) byCat.set(p.category, (byCat.get(p.category) ?? 0) + Number(p.amount_cents));
 

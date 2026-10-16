@@ -81,17 +81,12 @@ import {
   OPEN_OPP_STATUSES,
   PRE_SALE_OPEN_STATUSES,
   STALE_OPP_DAYS,
-  HOT_DEAL_BID_CENTS,
   HOT_DEAL_DECISION_DAYS,
-  HOT_DEAL_ACTIVE_STATUSES,
   TERMINAL_STATUSES,
   IN_DELIVERY_STATUSES,
   isTerminalOpportunityStatus,
   isWon,
   wasWonInPeriod,
-  isOverdueProposal,
-  isColdRfp,
-  isFollowUpDue,
   isPostSaleProject,
   isLost,
   isFollowUp,
@@ -132,10 +127,10 @@ import { SubmitButton } from "@/components/commercial/submit-button";
 import { proposalTrailsDeal } from "@/lib/commercial/opportunities/auto-advance-targets";
 import {
   daysFromTodayEt,
-  etDateOf,
   relativeAgoEt,
   daysAgoEt,
 } from "@/lib/date-et";
+import { applyPipelineChipFilters } from "@/lib/commercial/opportunities/pipeline-filters";
 import {
   changeOpportunityStatus,
   listCurrentStatusEnteredAtByOpp,
@@ -889,55 +884,28 @@ export default async function CommercialOpportunitiesPage({
     weightedPipelineCents(o, proposalTotalByOpp.get(o.id));
 
   let opps = oppsRaw;
-  if (staleFilter) {
-    opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status))
-        return false;
-      const d = etDateOf(o.updated_at);
-      return d !== null && -daysFromTodayEt(d) >= STALE_OPP_DAYS;
-    });
-  }
-  if (hotFilter) {
-    opps = opps.filter((o) => {
-      if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status))
-        return false;
-      if (
-        !o.bid_value_high_cents ||
-        o.bid_value_high_cents < HOT_DEAL_BID_CENTS
-      )
-        return false;
-      if (!o.proposal_due_at) return false;
-      const daysUntilDue = daysFromTodayEt(o.proposal_due_at);
-      return daysUntilDue >= 0 && daysUntilDue <= HOT_DEAL_DECISION_DAYS;
-    });
-  }
-  // Dashboard "Needs attention" deep-link filters — mirror the exact
-  // subset logic on app/commercial/page.tsx so the pipeline count matches
-  // the card the user clicked.
-  // Shared predicates (see constants) so the pipeline list matches the
-  // dashboard card that linked here — these had drifted on BOTH the status set
-  // and the date comparison, so "3 overdue" could open a list of 4.
-  const attentionToday = todayEtIso; // computed above, ET calendar day
+  // Stale / hot / new / overdue / cold RFP / follow-up — the SHARED chip
+  // filters (lib/commercial/opportunities/pipeline-filters), so the CSV export
+  // applies the very same rules on the very same ET day. Overdue, cold RFP and
+  // follow-up are the dashboard's "Needs attention" predicates too, so the
+  // card, this list and the exported file describe one set.
+  opps = applyPipelineChipFilters(
+    opps,
+    {
+      stale: staleFilter,
+      hot: hotFilter,
+      newDays: newFilter,
+      overdue: overdueFilter,
+      coldRfp: coldRfpFilter,
+      followup: followupFilter,
+    },
+    todayEtIso,
+  );
   if (mineFilter && viewerUserId) {
     opps = opps.filter((o) => o.estimator_user_id === viewerUserId);
   }
   if (estimatorFilter) {
     opps = opps.filter((o) => o.estimator_user_id === estimatorFilter);
-  }
-  if (newFilter) {
-    // Calendar days in ET, matching every other elapsed-time figure on the
-    // platform — subtracting timestamps miscounts across the DST change.
-    const cutoff = new Date(
-      Date.UTC(
-        +todayEtIso.slice(0, 4),
-        +todayEtIso.slice(5, 7) - 1,
-        +todayEtIso.slice(8, 10),
-      ) -
-        newFilter * 86_400_000,
-    )
-      .toISOString()
-      .slice(0, 10);
-    opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
   }
   if (laneFilter === "under_contract") {
     // The SAME predicate the dashboard's money tiles count, so the tile and the
@@ -951,11 +919,6 @@ export default async function CommercialOpportunitiesPage({
       laneKeys.has(columnKeyForOpp(o.status, o.sub_status)),
     );
   }
-  if (overdueFilter)
-    opps = opps.filter((o) => isOverdueProposal(o, attentionToday));
-  if (coldRfpFilter) opps = opps.filter((o) => isColdRfp(o, attentionToday));
-  if (followupFilter)
-    opps = opps.filter((o) => isFollowUpDue(o, attentionToday));
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => o.source && sourceSet.has(o.source));
   }

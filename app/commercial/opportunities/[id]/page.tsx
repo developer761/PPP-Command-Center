@@ -5777,7 +5777,7 @@ async function InfoTab({
         {inlineRow("rfp_received_at", opp.rfp_received_at?.slice(0, 10) ?? "")}
         <Field
           label="Proposal submitted"
-          value={lifecycle.proposal_submitted_at?.slice(0, 10) ?? "—"}
+          value={etDateOf(lifecycle.proposal_submitted_at) ?? "—"}
           tooltip="First time a proposal was Sent (MIN sent_at across revisions). Auto-computed from proposals — no manual entry."
         />
         {inlineRow("proposal_due_at", opp.proposal_due_at?.slice(0, 10) ?? "")}

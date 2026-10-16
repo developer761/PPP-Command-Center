@@ -397,8 +397,18 @@ describe("jobDate", () => {
   });
 
   it("falls back to the created day, and says that is what it did", () => {
-    expect(jobDate({ decided_at: null, created_at: "2026-01-02T00:00:00Z" }))
+    expect(jobDate({ decided_at: null, created_at: "2026-01-02T17:00:00Z" }))
       .toEqual({ ymd: "2026-01-02", isDecided: false });
+  });
+
+  it("files a job by the EASTERN day it was created, not the UTC one", () => {
+    // 01:30 UTC on Feb 1 is 8:30pm on Jan 31 in New York — a January job.
+    // Slicing the timestamp filed it under February.
+    expect(jobDate({ decided_at: null, created_at: "2026-02-01T01:30:00Z" }))
+      .toEqual({ ymd: "2026-01-31", isDecided: false });
+    // A bare DATE is already the day somebody typed; nothing to convert.
+    expect(jobDate({ decided_at: "2026-02-01", created_at: "2026-01-01T12:00:00Z" }))
+      .toEqual({ ymd: "2026-02-01", isDecided: true });
   });
 
   it("returns null rather than an empty string when there is no date at all", () => {

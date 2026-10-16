@@ -96,6 +96,15 @@ function fmtDate(ymd: string | null): string {
   return `${months[parseInt(m[2]!, 10) - 1]} ${parseInt(m[3]!, 10)}, ${m[1]}`;
 }
 
+/**
+ * The Date in the work order's header block (`sent_at ?? created_at`, both
+ * TIMESTAMPTZ). The raw value goes to fmtDate — a `.slice(0, 10)` first takes
+ * the UTC day, so a work order sent at 9pm ET printed TOMORROW.
+ */
+export function workOrderDocumentDate(dateIso: string): string {
+  return fmtDate(dateIso);
+}
+
 function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer | null }) {
   const website = (company.website ?? "").replace(/^https?:\/\//, "").replace(/\/$/, "");
   const contact = [company.phone, website].filter(Boolean).join("   ·   ");
@@ -203,7 +212,7 @@ function WorkOrderDoc({ content, header, company, logo, signature, pageHeightSca
           </View>
           <View style={{ width: "35%", textAlign: "right" }}>
             <Text style={styles.label}>Date</Text>
-            <Text style={styles.bold}>{fmtDate(header.dateIso.slice(0, 10))}</Text>
+            <Text style={styles.bold}>{workOrderDocumentDate(header.dateIso)}</Text>
             {header.assignedTo ? (
               <>
                 <Text style={[styles.label, { marginTop: 8 }]}>Crew</Text>

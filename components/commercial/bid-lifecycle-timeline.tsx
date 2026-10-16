@@ -1,8 +1,10 @@
 import { absoluteDate } from "@/lib/commercial/dates";
 import {
   formatDurationDays,
+  proposalDueVerdict,
   type OpportunityLifecycleDates,
 } from "@/lib/commercial/opportunities/lifecycle";
+import { etTodayIso } from "@/lib/date-et";
 
 /**
  * Bid Lifecycle Timeline — Katie 2026-07-20's flagship "how fast are we
@@ -133,26 +135,28 @@ export function BidLifecycleTimeline({
   // Due-date on-time / late judgment (the only value-colored element).
   let dueMarker: React.ReactNode = null;
   if (proposal_due_at) {
-    const due = new Date(proposal_due_at).getTime();
-    let tone = "text-ppp-charcoal-500";
-    let note = "";
-    if (proposal_submitted_at) {
-      const sent = new Date(proposal_submitted_at).getTime();
-      if (Number.isFinite(due) && Number.isFinite(sent)) {
-        if (sent <= due) {
-          tone = "text-emerald-700";
-          note = " · on time";
-        } else {
-          tone = "text-amber-700";
-          note = " · late";
-        }
-      }
-    } else if (Number.isFinite(due) && due < Date.now() && !decided_at) {
-      // Only "overdue" while still open — a decided deal that never sent a
-      // formal proposal shouldn't read as overdue (re-audit, minor).
-      tone = "text-rose-700";
-      note = " · overdue";
-    }
+    // By ET calendar day — see proposalDueVerdict. Comparing the DATE's UTC
+    // midnight to the send instant called a proposal sent ON its due day late.
+    const verdict = proposalDueVerdict(
+      { proposal_due_at, proposal_submitted_at, decided_at },
+      etTodayIso()
+    );
+    const tone =
+      verdict === "on_time"
+        ? "text-emerald-700"
+        : verdict === "late"
+        ? "text-amber-700"
+        : verdict === "overdue"
+        ? "text-rose-700"
+        : "text-ppp-charcoal-500";
+    const note =
+      verdict === "on_time"
+        ? " · on time"
+        : verdict === "late"
+        ? " · late"
+        : verdict === "overdue"
+        ? " · overdue"
+        : "";
     dueMarker = (
       <div className={`mt-0.5 text-[10.5px] font-medium ${tone}`}>
         Due {absoluteDate(proposal_due_at)}

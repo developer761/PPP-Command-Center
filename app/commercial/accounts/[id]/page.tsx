@@ -51,7 +51,7 @@ import { listCommercialOpportunities, oppStatusDisplayLabel, formatBidRange, for
 import { createCommercialOpportunity, softDeleteCommercialOpportunity, updateCommercialOpportunity } from "@/lib/commercial/opportunities/mutations";
 import { updateCommercialAccount } from "@/lib/commercial/accounts/mutations";
 import { proposalDisplayId, getProposal, listCurrentProposalTotalByOpp } from "@/lib/commercial/proposals/db";
-import { relativeAgoEt } from "@/lib/date-et";
+import { relativeAgoEt, daysFromTodayEt } from "@/lib/date-et";
 // Inline delivery tools rendered under the deal's Project sub-tab (2026-08).
 import { revalidatePath } from "next/cache";
 import { listCurrentStatusEnteredAtByOpp, changeOpportunityStatus, statusMoveRaced, STATUS_MOVE_RACED_MESSAGE } from "@/lib/commercial/opportunities/status";
@@ -1005,8 +1005,10 @@ function PipelineDealBlock({ accountId, opp, proposalTotal }: { accountId: strin
   // `qualifying·rfp` charcoal here and blue there, on the same account.
   const tone = pipelineBlockTone(opp.status, opp.sub_status);
   // Bid-due urgency (proposal_due_at). Overdue → rose, ≤3 days → amber.
-  const dueMs = opp.proposal_due_at ? new Date(opp.proposal_due_at).getTime() - Date.now() : null;
-  const dueDays = dueMs != null ? Math.ceil(dueMs / 86_400_000) : null;
+  // Whole ET calendar days. `proposal_due_at` is a DATE: as an instant it is
+  // UTC midnight, so ceil(due − now) read "Bid due today" for TOMORROW's bid
+  // from 8pm ET on, and "1d overdue" for today's.
+  const dueDays = opp.proposal_due_at ? daysFromTodayEt(opp.proposal_due_at) : null;
   const dueTone = dueDays == null ? "" : dueDays < 0 ? "text-rose-700" : dueDays <= 3 ? "text-amber-700" : "text-ppp-charcoal-500";
   const dueLabel = dueDays == null ? null : dueDays < 0 ? `Bid ${Math.abs(dueDays)}d overdue` : dueDays === 0 ? "Bid due today" : `Bid due in ${dueDays}d`;
   return (
@@ -4343,9 +4345,10 @@ function AccountOpportunityRow({
                     when upcoming, so Katie's team can scan the pipeline
                     and know "which bids am I chasing today?" at a glance. */}
                 {opp.follow_up_at && !isTerminal && (() => {
-                  const due = new Date(opp.follow_up_at);
-                  const now = new Date();
-                  const days = Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  // ET calendar days. `follow_up_at` is a DATE — UTC midnight
+                  // as an instant — so rounding (due − now) called today's
+                  // follow-up "1d overdue" from about 8am ET onward.
+                  const days = daysFromTodayEt(opp.follow_up_at);
                   const overdue = days < 0;
                   const label = overdue
                     ? `Follow-up ${Math.abs(days)}d overdue`

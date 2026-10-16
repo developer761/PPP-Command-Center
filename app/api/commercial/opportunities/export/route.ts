@@ -14,13 +14,8 @@ import {
   exportOpportunitiesFilename,
   type OpportunitiesExportFilters,
 } from "@/lib/commercial/opportunities/export";
-import {
-  OPEN_OPP_STATUSES,
-  STALE_OPP_DAYS,
-  HOT_DEAL_BID_CENTS,
-  HOT_DEAL_DECISION_DAYS,
-  HOT_DEAL_ACTIVE_STATUSES,
-} from "@/lib/commercial/opportunities/constants";
+import { applyPipelineChipFilters } from "@/lib/commercial/opportunities/pipeline-filters";
+import { etTodayIso } from "@/lib/date-et";
 import {
   KANBAN_COLUMNS,
   PRE_CONTRACT_COLUMNS,
@@ -29,7 +24,6 @@ import {
   kanbanColumnLabel,
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { isUnderContract } from "@/lib/commercial/opportunities/attention";
-import { MS_PER_DAY } from "@/lib/commercial/accounts/constants";
 import { csvResponse } from "@/lib/commercial/reports/export-guard";
 
 /**
@@ -127,65 +121,23 @@ export async function GET(request: Request) {
     ? oppsRaw.filter((o) => columnKeyForOpp(o.status, o.sub_status) === validColumn)
     : oppsRaw;
 
-  if (stale) {
-    opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      const days = Math.floor((Date.now() - new Date(o.updated_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days >= STALE_OPP_DAYS;
-    });
-  }
-  if (hot) {
-    opps = opps.filter((o) => {
-      if (!(HOT_DEAL_ACTIVE_STATUSES as readonly string[]).includes(o.status)) return false;
-      if (!o.bid_value_high_cents || o.bid_value_high_cents < HOT_DEAL_BID_CENTS) return false;
-      if (!o.proposal_due_at) return false;
-      const days = Math.ceil((new Date(o.proposal_due_at).getTime() - Date.now()) / MS_PER_DAY);
-      return Number.isFinite(days) && days >= 0 && days <= HOT_DEAL_DECISION_DAYS;
-    });
-  }
-  if (overdue) {
-    const nowMs = Date.now();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.proposal_due_at != null &&
-        new Date(o.proposal_due_at).getTime() < nowMs
-    );
-  }
-  if (coldRfp) {
-    const nowMs = Date.now();
-    opps = opps.filter((o) => {
-      if (!(OPEN_OPP_STATUSES as readonly string[]).includes(o.status)) return false;
-      if (!o.rfp_received_at) return false;
-      const days = Math.floor((nowMs - new Date(o.rfp_received_at).getTime()) / MS_PER_DAY);
-      return Number.isFinite(days) && days > 7;
-    });
-  }
-  if (followup) {
-    const todayEtIso = new Date(
-      new Date().toLocaleString("en-US", { timeZone: "America/New_York" })
-    ).toISOString();
-    opps = opps.filter(
-      (o) =>
-        (OPEN_OPP_STATUSES as readonly string[]).includes(o.status) &&
-        o.follow_up_at != null &&
-        o.follow_up_at <= todayEtIso
-    );
-  }
+  // The board's own chip filters, not a copy of them. This file used to carry
+  // its own: DATE columns parsed as UTC midnight and compared to `Date.now()`,
+  // so a proposal due TODAY was "overdue" in the CSV and not on the board, the
+  // hot window ran a day short, cold RFPs tipped a day early, and the overdue /
+  // cold / follow-up sets used a wider status list than the board does.
+  opps = applyPipelineChipFilters(
+    opps,
+    { stale, hot, newDays, overdue, coldRfp, followup },
+    etTodayIso(),
+  );
   if (sourceSet.size > 0) {
     opps = opps.filter((o) => !!o.source && sourceSet.has(o.source));
   }
-  // mine / estimator / new / lane — mirror the page's post-fetch filters 1:1 so
+  // mine / estimator / lane — mirror the page's post-fetch filters 1:1 so
   // the CSV matches the visible set (audit D4).
   if (mine) opps = opps.filter((o) => o.estimator_user_id === auth.user.id);
   if (estimatorId) opps = opps.filter((o) => o.estimator_user_id === estimatorId);
-  if (newDays) {
-    const todayEt = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    const cutoff = new Date(Date.UTC(+todayEt.slice(0, 4), +todayEt.slice(5, 7) - 1, +todayEt.slice(8, 10)) - newDays * MS_PER_DAY)
-      .toISOString()
-      .slice(0, 10);
-    opps = opps.filter((o) => (o.created_at ?? "").slice(0, 10) >= cutoff);
-  }
   if (lane === "under_contract") {
     opps = opps.filter((o) => isUnderContract(o.status, o.sub_status));
   } else if (lane === "pre_contract") {

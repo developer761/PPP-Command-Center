@@ -20,6 +20,7 @@
  */
 
 import { marginFrom } from "@/lib/commercial/projects/financials";
+import { etDateOf } from "@/lib/date-et";
 import { dealPhase, type DealPhase } from "@/lib/commercial/opportunities/constants";
 import { purchaseCategoryLabel } from "@/lib/commercial/purchases/constants";
 
@@ -426,8 +427,10 @@ export function spendTotal(rows: readonly { cents: number }[]): number {
 
 /** The day a job belongs to: decided (won/lost), else created. */
 export function jobDate(o: { decided_at: string | null; created_at: string }): { ymd: string | null; isDecided: boolean } {
-  const decided = (o.decided_at ?? "").slice(0, 10);
+  // The EASTERN day. `created_at` is a timestamptz, and slicing it took the
+  // UTC day — a job entered at 9pm on the 31st filed under next month.
+  // etDateOf leaves a bare DATE (decided_at) exactly as typed.
+  const decided = etDateOf(o.decided_at);
   if (decided) return { ymd: decided, isDecided: true };
-  const created = (o.created_at ?? "").slice(0, 10);
-  return { ymd: created || null, isDecided: false };
+  return { ymd: etDateOf(o.created_at), isDecided: false };
 }

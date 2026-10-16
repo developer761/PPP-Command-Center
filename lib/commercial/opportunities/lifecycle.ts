@@ -1,6 +1,7 @@
 import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
+import { etDateOf } from "@/lib/date-et";
 
 /**
  * Bid-lifecycle helpers — Katie 2026-07-20 asks the platform to track
@@ -89,16 +90,56 @@ export function computeLifecycle(input: {
   };
 }
 
-/** Days between two ISO timestamps. Returns null on either side
- *  missing, unparseable, or when the second is before the first
- *  (bad data — display "—" instead of a negative duration). */
+/** Whole Eastern calendar days between two dates. Returns null on either
+ *  side missing, unparseable, or when the second is before the first
+ *  (bad data — display "—" instead of a negative duration).
+ *
+ *  The two ends are different KINDS of value: `rfp_received_at` and
+ *  `decided_at` are DATE columns, `sent_at` is a timestamptz. Subtracting
+ *  the raw instants put the DATE at UTC midnight (8pm the evening before, in
+ *  New York) against an afternoon send, then floored — so a deal sent and
+ *  won the same day read "—" and one won six days later read "5 days".
+ *  Measured 2026-10-16: wrong on all 4 live deals that have both dates.
+ *  Both ends go to their ET calendar day first; then it's date arithmetic. */
 function safeDayDiff(fromIso: string | null, toIso: string | null): number | null {
-  if (!fromIso || !toIso) return null;
-  const a = new Date(fromIso).getTime();
-  const b = new Date(toIso).getTime();
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  const diff = Math.floor((b - a) / 86_400_000);
+  const from = etDateOf(fromIso);
+  const to = etDateOf(toIso);
+  if (!from || !to) return null;
+  const diff = Math.round(
+    (Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000
+  );
+  if (!Number.isFinite(diff)) return null;
   return diff >= 0 ? diff : null;
+}
+
+/**
+ * The proposal Due marker on the bid timeline: sent on time, sent late, still
+ * unsent and overdue, or nothing to say.
+ *
+ * Judged by ET CALENDAR DAY. `proposal_due_at` is a DATE; comparing its UTC
+ * midnight instant to the send instant meant a proposal sent at 2pm ON its due
+ * day read "late", and an unsent one read "overdue" from 8pm the night before.
+ * Due today is on time — you still have the day.
+ */
+export function proposalDueVerdict(
+  input: {
+    proposal_due_at: string | null;
+    proposal_submitted_at: string | null;
+    decided_at: string | null;
+  },
+  todayEt: string
+): "on_time" | "late" | "overdue" | null {
+  const due = etDateOf(input.proposal_due_at);
+  if (!due) return null;
+  if (input.proposal_submitted_at) {
+    const sent = etDateOf(input.proposal_submitted_at);
+    if (!sent) return null;
+    return sent <= due ? "on_time" : "late";
+  }
+  // Only "overdue" while still open — a decided deal that never sent a
+  // formal proposal shouldn't read as overdue.
+  if (!input.decided_at && due < todayEt) return "overdue";
+  return null;
 }
 
 /** Human-friendly duration: "same day", "1 day", "12 days", "3 weeks",

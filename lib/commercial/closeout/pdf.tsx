@@ -73,6 +73,19 @@ function fmtDate(ymd: string | null): string {
   return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)}, ${m[1]}`;
 }
 
+/**
+ * The date printed at the top of the transmittal and the warranty letter.
+ *
+ * The RAW value goes to fmtDate — never `.slice(0, 10)` first. `sent_at` and
+ * `created_at` are TIMESTAMPTZ, and slicing one takes its UTC day: a package
+ * sent at 9pm ET was dated TOMORROW, because fmtDate's etDateOf then saw a
+ * bare date and (correctly) left it alone. fmtDate already handles both kinds
+ * of column; the slice is what defeated it.
+ */
+export function closeoutDocumentDate(pkg: { sent_at: string | null; created_at: string }): string {
+  return fmtDate(pkg.sent_at ?? pkg.created_at);
+}
+
 export type CompanyContact = {
   name: string;
   phone?: string | null;
@@ -113,7 +126,7 @@ function LogoBlock({ company, logo }: { company: CompanyContact; logo?: Buffer |
 function TransmittalDoc({ pkg, items, dealName, accountName, company, logo, signature, pageHeightScale = 1 }: { pkg: PkgInput; items: ItemInput[]; dealName: string; accountName?: string | null; company: CompanyContact; logo?: Buffer | null; signature?: Buffer | null; pageHeightScale?: number }) {
   const fromCompany = company.name;
   const included = items.filter((i) => i.included);
-  const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
+  const dateStr = closeoutDocumentDate(pkg);
   return (
     <Document>
       <Page size={pageHeightScale === 1 ? "LETTER" : { width: 612, height: 792 * pageHeightScale }} style={styles.page}>
@@ -231,7 +244,7 @@ function WarrantyDoc({ pkg, dealName, accountName, company, logo, signature, pag
   const fromCompany = company.legal_name || company.name;
   const start = pkg.substantial_completion_date;
   const end = computeWarrantyEndDate(start, pkg.warranty_years);
-  const dateStr = fmtDate((pkg.sent_at ?? pkg.created_at).slice(0, 10));
+  const dateStr = closeoutDocumentDate(pkg);
   const months = Math.round(pkg.warranty_years * 12);
   const contractor = pkg.to_company || accountName || "—";
   const job = pkg.re_subject || dealName;

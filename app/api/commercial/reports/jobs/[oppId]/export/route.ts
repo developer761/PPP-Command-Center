@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { csvEscape as csv } from "@/lib/commercial/csv";
+// Every date column below goes through etDateOf: slicing a timestamptz took
+// the UTC day, so anything sent, signed or noted after ~8pm ET was dated
+// tomorrow in the CSV and today on screen.
+import { etDateOf } from "@/lib/date-et";
 import { guardExport, csvResponse } from "@/lib/commercial/reports/export-guard";
 import { getReportAccess } from "@/lib/commercial/reports/access";
 import { roleAllowsReport } from "@/lib/commercial/reports/access-rule";
@@ -58,11 +62,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   row("Project no.", r.opp.project_number ?? "");
   row("Deal no.", r.opp.deal_number ?? "");
   row("Status", r.opp.status, r.opp.sub_status ?? "");
-  row("Created", (r.opp.created_at ?? "").slice(0, 10));
-  row("Decided (won/lost)", (r.opp.decided_at ?? "").slice(0, 10));
-  row("Planned start", (r.opp.proposed_start_at ?? "").slice(0, 10));
-  row("Planned finish", (r.opp.proposed_end_at ?? "").slice(0, 10));
-  row("Closed out", (r.opp.closed_out_at ?? "").slice(0, 10));
+  row("Created", (etDateOf(r.opp.created_at) ?? ""));
+  row("Decided (won/lost)", (etDateOf(r.opp.decided_at) ?? ""));
+  row("Planned start", (etDateOf(r.opp.proposed_start_at) ?? ""));
+  row("Planned finish", (etDateOf(r.opp.proposed_end_at) ?? ""));
+  row("Closed out", (etDateOf(r.opp.closed_out_at) ?? ""));
   row("Estimator", r.opp.estimator_name ?? "");
   if (r.failed.length > 0) row("INCOMPLETE", `These sections could not be loaded and are empty here: ${r.failed.join(", ")}`);
   blank();
@@ -100,7 +104,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   row(`INVOICES (${r.invoices.length})`);
   row("Invoice", "Status", "Issued", "Due", "Subtotal", "Total", "Paid", "Balance");
   for (const i of r.invoices) {
-    row(i.invoice_number, invoiceStatusLabel(deriveInvoiceStatus(i)), (i.issued_at ?? "").slice(0, 10), (i.due_at ?? "").slice(0, 10), d(i.subtotal_cents), d(i.total_cents), d(i.paid_cents), d(i.balance_cents));
+    row(i.invoice_number, invoiceStatusLabel(deriveInvoiceStatus(i)), (etDateOf(i.issued_at) ?? ""), (etDateOf(i.due_at) ?? ""), d(i.subtotal_cents), d(i.total_cents), d(i.paid_cents), d(i.balance_cents));
   }
   blank();
 
@@ -108,7 +112,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   row(`AIA APPLICATIONS (${r.aiaApps.length})`);
   row("App #", "Status", "Period from", "Period to", "Contract sum", "Retainage %");
   for (const a of r.aiaApps) {
-    row(a.application_number, a.status, (a.period_from ?? "").slice(0, 10), (a.period_to ?? "").slice(0, 10), d(a.contract_sum_frozen_cents ?? a.original_contract_cents), a.retainage_pct);
+    row(a.application_number, a.status, (etDateOf(a.period_from) ?? ""), (etDateOf(a.period_to) ?? ""), d(a.contract_sum_frozen_cents ?? a.original_contract_cents), a.retainage_pct);
   }
   blank();
 
@@ -116,7 +120,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   row(`CHANGE ORDERS (${r.changeOrders.length})`);
   row("CO", "Title", "Status", "Sent", "Decided", "Amount");
   for (const c of r.changeOrders) {
-    row(formatChangeOrderNumber(c.co_number), c.title, CHANGE_ORDER_STATUS_META[c.status]?.label ?? c.status, (c.sent_at ?? "").slice(0, 10), (c.decided_at ?? "").slice(0, 10), d(c.amount_cents));
+    row(formatChangeOrderNumber(c.co_number), c.title, CHANGE_ORDER_STATUS_META[c.status]?.label ?? c.status, (etDateOf(c.sent_at) ?? ""), (etDateOf(c.decided_at) ?? ""), d(c.amount_cents));
   }
   blank();
 
@@ -134,7 +138,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   row(`COSTS — EVERY PURCHASE (${r.purchases.length})`);
   row("Date", "Category", "Vendor", "Description", "Hours", "Amount");
   for (const p of r.purchases) {
-    row((p.purchased_at ?? "").slice(0, 10), purchaseCategoryLabel(p.category), p.vendor ?? "", p.description ?? "", p.hours ?? "", d(p.amount_cents));
+    row((etDateOf(p.purchased_at) ?? ""), purchaseCategoryLabel(p.category), p.vendor ?? "", p.description ?? "", p.hours ?? "", d(p.amount_cents));
   }
   blank();
 
@@ -178,10 +182,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   for (const { proposal, signatures } of r.proposals) {
     const total = d(proposal.final_price_override_cents ?? proposal.total_cents);
     if (signatures.length === 0) {
-      row(proposalDisplayId(proposal), proposalStatusLabel(proposal.status), (proposal.sent_at ?? "").slice(0, 10), total, "", "never sent for signature", "");
+      row(proposalDisplayId(proposal), proposalStatusLabel(proposal.status), (etDateOf(proposal.sent_at) ?? ""), total, "", "never sent for signature", "");
     } else {
       for (const s of signatures) {
-        row(proposalDisplayId(proposal), proposalStatusLabel(proposal.status), (proposal.sent_at ?? "").slice(0, 10), total, s.signer_name ?? s.signer_email, SIGNATURE_STATUS_LABEL[s.status], (s.customer_signed_at ?? "").slice(0, 10));
+        row(proposalDisplayId(proposal), proposalStatusLabel(proposal.status), (etDateOf(proposal.sent_at) ?? ""), total, s.signer_name ?? s.signer_email, SIGNATURE_STATUS_LABEL[s.status], (etDateOf(s.customer_signed_at) ?? ""));
       }
     }
   }
@@ -190,13 +194,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ oppI
   // ── Documents ──
   row(`DOCUMENTS (${r.documents.length})`);
   row("File", "Category", "Filed", "Size (bytes)");
-  for (const doc of r.documents) row(doc.file_name, String(doc.category), (doc.uploaded_at ?? "").slice(0, 10), doc.size_bytes);
+  for (const doc of r.documents) row(doc.file_name, String(doc.category), (etDateOf(doc.uploaded_at) ?? ""), doc.size_bytes);
   blank();
 
   // ── Notes ──
   row(`NOTES (${r.notes.length})`);
   row("When", "Who", "Kind", "Note");
-  for (const n of r.notes) row((n.created_at ?? "").slice(0, 10), n.author_full_name ?? n.author_email ?? "", n.kind, n.body);
+  for (const n of r.notes) row((etDateOf(n.created_at) ?? ""), n.author_full_name ?? n.author_email ?? "", n.kind, n.body);
 
   const slug = (r.opp.project_number || r.jobName).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "job";
   const stamp = range ? `${range.fromYmd}_to_${range.toYmd}` : "whole-job";
