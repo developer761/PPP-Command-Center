@@ -79,14 +79,14 @@ const TAKES_SNAPSHOT = /\bSalesforceSnapshot\b/;
  * Known remaining offender. MAY ONLY SHRINK — never add to this list to get
  * a build green.
  *
- *   materials-view.tsx  3,586 lines, and it passes `snapshot` on to child
- *                       components. Measured 4.5MB / 1.6s — by far the
- *                       mildest, because app/dashboard/materials reads the
- *                       pre-derived materials bundle rather than the full
- *                       snapshot, which is the same idea applied one layer
- *                       up. Not refactored on 2026-10-16 because it is the
- *                       hub Kate and Katie use daily and the change is too
- *                       large to land unverified alongside the other five.
+ *   materials-view.tsx  Still TYPED on the bundle, but no longer carrying a
+ *                       real snapshot: lib/materials/view-props.ts strips it
+ *                       to `accounts` + `paintColors`, the only two fields
+ *                       this component reads. The board comes from
+ *                       `openJobsSerialized`. Kept here because the type
+ *                       alone cannot distinguish "slimmed" from "full", so
+ *                       the slimming is pinned by its own assertions below
+ *                       rather than by this list.
  */
 const BASELINE = new Set<string>(["components/materials-view.tsx"]);
 
@@ -142,6 +142,37 @@ describe("the Salesforce snapshot does not cross into the browser", () => {
       expect(src, `${page} is passing the whole bundle to the client again`)
         .not.toMatch(/bundle=\{bundle\}/);
     }
+  });
+
+  it("the Materials hub ships a stripped snapshot, not a real one", () => {
+    // The type-level check above cannot see this — materials-view is still
+    // declared on LiveDashboardBundle. What matters is what the loader puts
+    // IN it. workOrders and woLineItems were the two largest arrays and
+    // their only remaining consumer was an admin-only diagnostic panel, so
+    // every user paid megabytes on every load for a box they cannot see.
+    const props = stripComments(readFileSync("lib/materials/view-props.ts", "utf8"));
+    const at = props.indexOf("const slimBundle");
+    expect(at, "slimBundle is gone — the snapshot is reaching the browser whole")
+      .toBeGreaterThan(-1);
+    const slim = props.slice(at, props.indexOf("openJobsSerialized =", at));
+    expect(slim.length).toBeGreaterThan(100); // the slice measured something
+    for (const field of [
+      "workOrders", "woLineItems", "opportunities", "quotes",
+      "transactions", "reviews", "cases", "quotas", "subQuotas", "reps",
+    ]) {
+      expect(slim, `${field} is no longer stripped from the materials payload`)
+        .toMatch(new RegExp(`${field}:\\s*\\[\\]`));
+    }
+
+    // And the client must not read the stripped fields — doing so would
+    // silently render an empty board rather than fail.
+    const view = stripComments(readFileSync("components/materials-view.tsx", "utf8"));
+    expect(view, "materials-view reads snapshot.workOrders, which is now always empty")
+      .not.toMatch(/snapshot[?.]?\.workOrders/);
+    expect(view, "materials-view reads snapshot.woLineItems, which is now always empty")
+      .not.toMatch(/snapshot[?.]?\.woLineItems/);
+    // The diagnostic it used to compute now arrives as a prop.
+    expect(view).toContain("snapshotDiagnostic");
   });
 
   it("DETECTS the shape that shipped — proves the check can fail", () => {

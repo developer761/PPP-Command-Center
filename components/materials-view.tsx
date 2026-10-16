@@ -14,8 +14,14 @@
  *   - WO list (left) + JobDetail panel (right) — 5-col grid on desktop
  *
  * DATA SOURCES (all already loaded server-side, passed as props):
- *   - bundle.snapshot — the thin SF snapshot (workOrders/woLineItems/accounts/
- *     paintColors). Loaded via loadDashboardData({thin:true}) in the page.
+ *   - bundle.snapshot — SLIMMED to `accounts` + `paintColors` only, which is
+ *     all this component reads off it (the lookup maps, and JobDetail's
+ *     color map / getSupplierName). workOrders and woLineItems were dropped
+ *     on 2026-10-16: their last consumer was the admin diagnostic panel, now
+ *     computed server-side, and they were the bulk of a 4.5MB payload every
+ *     user paid on every load. See lib/materials/view-props.ts.
+ *   - openJobsSerialized[] — the board itself, derived server-side.
+ *   - snapshotDiagnostic — the admin panel's six counts.
  *   - formStatuses[] — per-WO form status (sent/opened/submitted/expired).
  *     Built by lib/materials-page-data.ts. ALREADY filters kind='preview'.
  *   - woProgress[] — per-WO 5-stage timeline. Same loader, same filter.
@@ -60,7 +66,6 @@ import InfoDot from "@/components/info-dot";
 import { useEscClose } from "@/lib/hooks/use-esc-close";
 import { fmtMoneyK, fmtScheduleDate } from "@/lib/format";
 import {
-  deriveOpenMaterialsWorkOrders,
   deserializeOpenJobs,
   getSupplierName,
   type OpenWorkOrderForMaterials,
@@ -68,6 +73,7 @@ import {
   type SerializedOpenWorkOrderForMaterials,
 } from "@/lib/salesforce/materials";
 import type { LiveDashboardBundle } from "@/lib/data-source";
+import type { SnapshotDiagnostic } from "@/lib/materials/snapshot-diagnostic";
 import type { SnapshotAccount, SnapshotPaintColor } from "@/lib/salesforce/queries";
 import {
   estimateOrderGallons,
@@ -125,14 +131,18 @@ type Props = {
   /** Tuned coverage config (Settings → Coverage) so the WO-card paint estimate
    *  matches the order modal/email. Defaults to the code constants. */
   coverageConfig?: CoverageConfig;
-  /** Already-derived open-WO list serialized from the server. Same data
-   *  `deriveOpenMaterialsWorkOrders(snapshot)` would produce; passed as a
-   *  prop so the client doesn't re-derive on hydration (saves 150-400ms TTI
-   *  on a 300+ WO scope). Map field is shipped as Array<[key, count]> since
-   *  Maps don't survive RSC serialization. See lib/salesforce/materials.ts
-   *  `serializeOpenJobs` / `deserializeOpenJobs`. Optional for back-compat;
-   *  falls back to the old client-side derive when omitted. */
+  /** The open-WO board, derived server-side. Avoids a 150-400ms post-
+   *  hydration derive on a 300+ WO scope, and since 2026-10-16 it is the
+   *  ONLY source for the list — snapshot.workOrders no longer reaches the
+   *  browser, so there is nothing to fall back to. Map fields ship as
+   *  Array<[key, count]> since Maps don't survive RSC serialization. See
+   *  lib/salesforce/materials.ts `serializeOpenJobs` / `deserializeOpenJobs`. */
   openJobsSerialized?: SerializedOpenWorkOrderForMaterials[];
+  /** Admin-only diagnostic counts, computed on the server. Replaced a
+   *  client-side walk over snapshot.workOrders + snapshot.woLineItems —
+   *  which were the last two large arrays this page shipped to the
+   *  browser, for a panel only admins can see. */
+  snapshotDiagnostic?: SnapshotDiagnostic | null;
 };
 
 // Virtuoso list/item components — defined at module scope (not inside
@@ -166,7 +176,7 @@ const VIRTUOSO_COMPONENTS = {
   Item: VirtuosoLI,
 } as unknown as Components<OpenWorkOrderForMaterials>;
 
-export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides, retainedPicks = {} }: Props) {
+export default function MaterialsView({ bundle, formStatuses = [], woProgress = [], focusWoId = null, coverageConfig = COVERAGE_CONFIG, openJobsSerialized, sqftOverrides: initialSqftOverrides, retainedPicks = {}, snapshotDiagnostic = null }: Props) {
   const router = useRouter();
   const { snapshot, viewer } = bundle;
 
@@ -240,12 +250,15 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
   // future caller that hasn't pre-computed). The WeakMap memoization
   // inside deriveOpenMaterialsWorkOrders is server-only and can't cross
   // the RSC boundary, hence the prop pre-pass.
+  //
+  // The old `deriveOpenMaterialsWorkOrders(snapshot)` fallback is GONE as of
+  // 2026-10-16. snapshot.workOrders is no longer sent to the browser, so that
+  // branch would have derived an empty board and rendered "no open paint
+  // jobs" — a silent wrong answer rather than a crash. Both routes load this
+  // through loadMaterialsViewProps, which always supplies the prop.
   const openJobs = useMemo<OpenWorkOrderForMaterials[]>(
-    () => {
-      if (openJobsSerialized) return deserializeOpenJobs(openJobsSerialized);
-      return snapshot ? deriveOpenMaterialsWorkOrders(snapshot) : [];
-    },
-    [openJobsSerialized, snapshot]
+    () => (openJobsSerialized ? deserializeOpenJobs(openJobsSerialized) : []),
+    [openJobsSerialized]
   );
 
   // Per-WOLI sqft overrides — Karan 2026-06-13. When SF doesn't have
@@ -722,47 +735,11 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
     return { needsForm, awaitingCustomer, readyToOrder, orderedThisWeek, jobCriticalNotOrdered, jobSoonNotOrdered };
   }, [openJobs, progressByWO]);
 
-  // Admin diagnostic: surface the underlying snapshot counts so we can debug
-  // "why is it showing zero?" without crawling Vercel logs.
-  const debug = useMemo(() => {
-    if (!snapshot) return null;
-    const woIds = new Set(snapshot.workOrders.map((w) => w.id));
-    let openWoCount = 0;
-    let materialsRelevantWoCount = 0;
-    const skippedWorkTypes = new Map<string, number>();
-    for (const w of snapshot.workOrders) {
-      const s = (w.status ?? "").toLowerCase();
-      const isOpen =
-        !s.includes("paid in full") &&
-        !s.includes("complete") &&
-        !s.includes("cancel") &&
-        !s.includes("closed");
-      if (!isOpen) continue;
-      openWoCount++;
-      const wt = (w.workTypeName ?? "").toLowerCase();
-      const isPreQuote =
-        wt.includes("estimate") ||
-        wt.includes("appointment") ||
-        wt.includes("inspection") ||
-        wt.includes("consultation");
-      if (isPreQuote) {
-        const key = w.workTypeName ?? "(no work type)";
-        skippedWorkTypes.set(key, (skippedWorkTypes.get(key) ?? 0) + 1);
-      } else {
-        materialsRelevantWoCount++;
-      }
-    }
-    const woliWithMatchingWo = snapshot.woLineItems.filter((l) => woIds.has(l.workOrderId)).length;
-    return {
-      woCount: snapshot.workOrders.length,
-      openWoCount,
-      materialsRelevantWoCount,
-      skippedWorkTypes,
-      woliCount: snapshot.woLineItems.length,
-      woliMatchedToWo: woliWithMatchingWo,
-      paintColorCount: snapshot.paintColors.length,
-    };
-  }, [snapshot]);
+  // Admin diagnostic: the underlying snapshot counts, so we can debug "why is
+  // it showing zero?" without crawling Vercel logs. Computed on the SERVER —
+  // the walk this replaced was the only remaining consumer of
+  // snapshot.workOrders / snapshot.woLineItems in the browser.
+  const debug = snapshotDiagnostic;
 
   if (!snapshot) {
     return (
@@ -966,12 +943,10 @@ export default function MaterialsView({ bundle, formStatuses = [], woProgress = 
             <DebugStat label="WOLI matched to WO" value={debug.woliMatchedToWo} />
             <DebugStat label="Paint colors" value={debug.paintColorCount} />
           </div>
-          {debug.skippedWorkTypes.size > 0 && (
+          {debug.skippedWorkTypes.length > 0 && (
             <div className="mt-2 text-ppp-charcoal-500">
               Skipped pre-quote work types:{" "}
-              {Array.from(debug.skippedWorkTypes.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 6)
+              {debug.skippedWorkTypes
                 .map(([name, count]) => `${name} (${count.toLocaleString()})`)
                 .join(" · ")}
             </div>

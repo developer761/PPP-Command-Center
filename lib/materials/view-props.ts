@@ -14,6 +14,10 @@ import { loadCoverageConfig } from "@/lib/supplier-order/coverage-config";
 import type { CoverageConfig } from "@/lib/supplier-order/estimate-gallons";
 import type { FormStatus } from "@/lib/customer-form/wo-status";
 import type { WoProgress } from "@/components/work-order-progress-bar";
+import {
+  deriveSnapshotDiagnostic,
+  type SnapshotDiagnostic,
+} from "@/lib/materials/snapshot-diagnostic";
 
 /**
  * Shared loader for the Materials Ordering surfaces. Both the browse list
@@ -32,6 +36,10 @@ export type MaterialsViewProps = {
   sqftOverrides: Record<string, number>;
   /** R4.9/R4.10: WO id → line item id → the customer's own per-surface picks. */
   retainedPicks: Record<string, Record<string, RetainedPick[]>>;
+  /** Admin-only diagnostic counts. Computed here so the two biggest arrays
+   *  in the snapshot no longer have to reach the browser — see
+   *  lib/materials/snapshot-diagnostic.ts. Null on mock / no snapshot. */
+  snapshotDiagnostic: SnapshotDiagnostic | null;
 };
 
 /** Command Center follow-up dates (migration 146). Deploy-safe: returns {} if
@@ -153,6 +161,7 @@ export async function loadMaterialsViewProps(
       openJobsSerialized: [],
       sqftOverrides: {},
       retainedPicks: {},
+      snapshotDiagnostic: bundle.snapshot ? deriveSnapshotDiagnostic(bundle.snapshot) : null,
     };
   }
 
@@ -208,8 +217,16 @@ export async function loadMaterialsViewProps(
     retainedPicks[woId] = Object.fromEntries(byLine);
   }
 
-  // Slim the RSC payload — MaterialsView only reads workOrders / woLineItems /
-  // accounts / paintColors from the snapshot.
+  // Slim the RSC payload. MaterialsView reads exactly two things off the
+  // snapshot now: `accounts` (the name/id lookup maps, and getSupplierName)
+  // and `paintColors` (JobDetail's color map). The open-job list it renders
+  // comes from `openJobsSerialized`, derived above.
+  //
+  // workOrders and woLineItems went too, on 2026-10-16. They were the two
+  // largest arrays left and their ONLY remaining consumer was the admin
+  // "Snapshot diagnostic" panel — six counts, now computed server-side, so
+  // every user had been paying megabytes for a box only admins can see.
+  // This page measured 4.5MB that day; it was the last one on the pattern.
   const slimBundle: LiveDashboardBundle = bundle.snapshot
     ? {
         ...bundle,
@@ -223,6 +240,8 @@ export async function loadMaterialsViewProps(
           quotas: [],
           subQuotas: [],
           reps: [],
+          workOrders: [],
+          woLineItems: [],
         },
       }
     : bundle;
@@ -242,5 +261,8 @@ export async function loadMaterialsViewProps(
     openJobsSerialized,
     sqftOverrides,
     retainedPicks,
+    // From the FULL snapshot, before slimming — the counts are the whole
+    // point of the panel and must describe what Salesforce actually returned.
+    snapshotDiagnostic: bundle.snapshot ? deriveSnapshotDiagnostic(bundle.snapshot) : null,
   };
 }
