@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { capabilitiesFor, USER_ROLE_VALUES, type UserRole } from "@/lib/auth/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate 2026-09-01: "materials ordering should be available to all but Account
@@ -17,7 +18,7 @@ import { capabilitiesFor, USER_ROLE_VALUES, type UserRole } from "@/lib/auth/rol
  */
 
 const ROOT = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 /** Files that render or serve the materials gates. */
 const CONSUMERS = [

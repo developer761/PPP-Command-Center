@@ -6,6 +6,7 @@ import { getOpenInvoiceStatementForAccount } from "@/lib/commercial/invoices/sta
 import { createClient } from "@/lib/supabase/server";
 import { commercialDb } from "@/lib/commercial/db";
 import { UUID_RE } from "@/lib/commercial/uuid";
+import { addressLines, cityStateZipLine } from "@/lib/commercial/address-lines";
 
 /**
  * GET /api/commercial/accounts/[id]/statement
@@ -44,11 +45,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Same builder as the emailed copy — the two must not drift.
   const billTo = [
-    account.billing_street,
-    account.billing_street2,
-    [account.billing_city, account.billing_state, account.billing_zip].filter(Boolean).join(", ").replace(/, ([^,]+)$/, " $1"),
-  ].filter((l): l is string => !!l && l.trim().length > 0);
+    ...addressLines(account.billing_street, account.billing_street2),
+    cityStateZipLine(account.billing_city, account.billing_state, account.billing_zip),
+  ].filter((l): l is string => !!l);
 
   const statement = await getOpenInvoiceStatementForAccount(account_id);
 

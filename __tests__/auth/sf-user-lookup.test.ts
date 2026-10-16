@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pickBestUser, nameMatchesLocalPart, type SfUserCandidate } from "@/lib/auth/sf-user-lookup";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate, 2026-08-31: Amy Mariani could not sign in. Her ACTIVE Salesforce user
@@ -99,9 +100,9 @@ describe("choosing which Salesforce user answers for an address", () => {
 
 describe("the lookup searches both domains rather than stopping at one", () => {
   it("queries both addresses concurrently", async () => {
-    const src = (await import("node:fs")).readFileSync(
+    const src = stripComments((await import("node:fs")).readFileSync(
       (await import("node:path")).join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8"
-    );
+    ));
     // Sequential-with-early-return is the exact shape of the bug: it lets a
     // dead record on the first domain hide a live one on the second.
     expect(src).toMatch(/Promise\.all\(addresses\.map\(queryCandidates\)\)/);
@@ -159,7 +160,7 @@ describe("an admin-set link ranks against what the email search finds", () => {
   it("resolves the link by Id, never by trusting the stored name/email", () => {
     // A row that cached isActive would let a deactivated employee keep signing
     // in forever. The lookup must re-read Salesforce.
-    const src = readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8"));
     expect(src).toMatch(/FROM User WHERE Id = '\$\{sfUserId\}'/);
     expect(src).toMatch(/if \(linked\?\.isActive\) return linked;/);
     // and the Id is validated before it reaches SOQL
@@ -167,7 +168,7 @@ describe("an admin-set link ranks against what the email search finds", () => {
   });
 
   it("never fuzzy-matches the address", () => {
-    const src = readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/auth/sf-user-lookup.ts"), "utf8"));
     // No edit-distance / LIKE / startsWith matching may enter this file: one
     // character separates jason.eng from jason.ng, and also separates people
     // who are not each other.

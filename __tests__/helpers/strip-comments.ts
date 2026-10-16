@@ -1,3 +1,5 @@
+import * as ts from "typescript";
+
 /**
  * Strip comments from source before asserting anything about it.
  *
@@ -12,40 +14,137 @@
  * Use this on every `readFileSync` a test then greps. It is deliberately the
  * only copy — both spellings of the same regex drifting apart is the next
  * version of this bug.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A PARSER AND NOT A REGEX ANY MORE — 2026-10-16
+ * ---------------------------------------------------------------------------
+ *
+ * It used to be four `.replace()` calls. Both of its own bugs were the same
+ * bug: a regex cannot tell a comment from a piece of code that merely LOOKS
+ * like one, so it deleted code, and every test built on it was then asserting
+ * against source with pieces silently missing.
+ *
+ *   1. `JSX_COMMENT` ate 35% of components/dashboard-view.tsx — 18,608 of
+ *      53,770 characters, `export default function DashboardView` included —
+ *      because `/\{\s*\/\*[\s\S]*?\*\/\s*\}/` does not stop at the first
+ *      `*␀/`, it runs on to the next one followed by `}`.
+ *
+ *   2. The trailing-comment rule `/\/\/.*$/gm` deleted the rest of EVERY LINE
+ *      CONTAINING TWO ADJACENT SLASHES. Not comments — these:
+ *
+ *          const URL = "https://hub.precisionpaintingplus.net";  →  const URL = "https:
+ *          if (/^https?:\/\//.test(configured)) return configured;  →  if (/^https?:\/\
+ *          const t = `see https://x.y`;  →  const t = `see https:
+ *
+ *      Every URL literal, every protocol-matching regex, every `//` inside a
+ *      string. Found by routing 119 more test files through this helper and
+ *      watching `email-links-are-absolute` go red on
+ *      `APP_ORIGIN_FALLBACK = "https://…"` — an assertion about an absolute
+ *      origin, defeated by a stripper that had eaten the `//` that makes an
+ *      origin absolute.
+ *
+ * Knowing where a comment ends requires knowing whether you are inside a
+ * string, a template, a regex literal or JSX — which is what a lexer is. So
+ * this asks TypeScript's own parser, the one the compiler uses, instead of
+ * guessing a fourth time.
+ *
+ * A comment's characters are removed but its NEWLINES ARE KEPT, so the file
+ * keeps its line structure. Both halves matter:
+ *
+ *   - keeping the newlines is what lets the many multiline-anchored regexes
+ *     in this suite (`/^[ \t]*await sendEmail/m` and friends) still mean
+ *     "at the start of a line";
+ *   - removing the characters rather than blanking them is what keeps the
+ *     `src.slice(i, i + 400)` window idiom useful. Those windows are written
+ *     to span the next few hundred characters OF CODE; pad them with the
+ *     whitespace of a deleted docblock and the window reaches nothing.
  */
 export function stripComments(src: string): string {
-  return src
-    .replace(JSX_COMMENT, "") // JSX comment braces
-    .replace(/\/\*[\s\S]*?\*\//g, "") // block comments, docblocks included
-    .replace(/^\s*\/\/.*$/gm, "") // whole-line comments
-    .replace(/\/\/.*$/gm, ""); // trailing comments
+  const hit = CACHE.get(src);
+  if (hit !== undefined) return hit;
+
+  const out = excise(src, commentRanges(src));
+  // Clear wholesale when full rather than on every insert. Sized above the
+  // ~1,200 source files in the repo: at 600 this evicted on every call during
+  // the suites that walk all of app/ + lib/, so the cache cost a Map write
+  // per file and returned nothing — measured at 1,138 ms cached vs 1,133 ms
+  // cold, i.e. no cache at all.
+  if (CACHE.size > 4000) CACHE.clear();
+  CACHE.set(src, out);
+  return out;
 }
 
 /**
- * `{/* … *␀/}` and NOTHING else — the comment body may not contain `*␀/`.
- *
- * This was `/\{\s*\/\*[\s\S]*?\*\/\s*\}/`, which looks equivalent and is
- * not. Lazy only means "stop at the first match that completes the
- * pattern", and the pattern does not complete until a `*␀/` is followed by
- * `}`. So an ordinary opening brace with a docblock under it —
- *
- *     type Props = {
- *       /** the first field *␀/
- *       bundle: LiveDashboardBundle;
- *
- * — matched from that `{` all the way to the next `{/* … *␀/}` ANYWHERE
- * later in the file, deleting every line in between.
- *
- * Found on 2026-10-16 by mutation-testing a new check: the bug was put
- * back into components/dashboard-view.tsx, and the test still passed.
- * stripComments was removing 18,608 of that file's 53,770 characters —
- * 35% — including `export default function DashboardView`. Seventeen test
- * files use this helper, so each had been asserting against source with a
- * third of the code silently missing, and any `not.toContain` among them
- * could have been passing on text it never saw.
- *
- * The lesson is the one already in this file's docblock, one level up: a
- * helper that quietly removes too much turns every test built on it into a
- * check that cannot fail.
+ * Tests re-read the same handful of files many times over — several suites
+ * walk every file under app/ and lib/, and most read the same module in a
+ * dozen separate `it` blocks — and a parse is far dearer than a regex pass.
+ * Keyed on the content itself, so it can never serve a stale answer for
+ * changed source.
  */
-const JSX_COMMENT = /\{\s*\/\*(?:[^*]|\*(?!\/))*\*\/\s*\}/g;
+const CACHE = new Map<string, string>();
+
+function excise(src: string, ranges: ts.CommentRange[]): string {
+  if (!ranges.length) return src;
+
+  // Spliced rather than character-mapped: `[...src]` iterates CODE POINTS
+  // while every `indexOf` and `.length` a test runs counts UTF-16 units, so
+  // an emoji in a docblock — this repo's are full of them — shifted every
+  // position after it by one.
+  const sorted = [...ranges].sort((a, b) => a.pos - b.pos);
+  let out = "";
+  let cursor = 0;
+  for (const r of sorted) {
+    if (r.end <= cursor) continue; // nested inside one already removed
+    const pos = Math.max(r.pos, cursor);
+    out += src.slice(cursor, pos);
+    out += src.slice(pos, r.end).replace(/[^\n\r]/g, "");
+    cursor = r.end;
+  }
+  return out + src.slice(cursor);
+}
+
+/**
+ * Every comment in the file, found by walking the parsed token stream.
+ *
+ * Comments are trivia, and every comment is attached to some token — but to
+ * WHICH SIDE of it depends on line breaks, and both sides must be asked.
+ * TypeScript classifies a comment sharing a line with the code before it as
+ * TRAILING trivia of that code, and `getLeadingCommentRanges` deliberately
+ * returns nothing for it. Asking only for leading ranges therefore missed
+ * every `const a = 1; // why` in the codebase — the single commonest comment
+ * shape there is — and left `{/* … *␀/}` untouched for the same reason.
+ *
+ * Parsed as TSX so `{/* … *␀/}` inside JSX is understood as what it is. That
+ * leaves `{}` behind where a JSX comment was, which is correct and is the
+ * whole point: the parser removes the comment and nothing else.
+ */
+function commentRanges(src: string): ts.CommentRange[] {
+  const sf = ts.createSourceFile("source.tsx", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+
+  const out: ts.CommentRange[] = [];
+  const seen = new Set<number>();
+
+  const visit = (node: ts.Node): void => {
+    const children = node.getChildren(sf);
+    if (children.length > 0) {
+      for (const c of children) visit(c);
+      return;
+    }
+    // A token. JSX text carries no trivia — scanning it for comments would
+    // read a literal "//" in rendered copy as the start of one.
+    if (node.kind === ts.SyntaxKind.JsxText) return;
+
+    const ranges = [
+      ...(ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []),
+      ...(ts.getTrailingCommentRanges(src, node.getEnd()) ?? []),
+    ];
+    for (const r of ranges) {
+      if (seen.has(r.pos)) continue;
+      seen.add(r.pos);
+      out.push(r);
+    }
+  };
+  visit(sf);
+
+  return out;
+}

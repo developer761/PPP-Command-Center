@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The print stylesheet, read as the CSS it emits.
@@ -15,7 +16,7 @@ import { readFileSync } from "node:fs";
  * notice. Break either rule and this goes red.
  */
 
-const SRC = readFileSync("components/commercial/print-sheet.tsx", "utf8");
+const SRC = stripComments(readFileSync("components/commercial/print-sheet.tsx", "utf8"));
 
 /** The template body of PrintSheetStyles, with `${id}` resolved. */
 function css(id = "accounting-sheet"): string {

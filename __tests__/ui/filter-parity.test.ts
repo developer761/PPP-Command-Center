@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R4.4 — "Duplicate the same filter set onto the work-order list so a WO can be
@@ -11,7 +12,7 @@ import { join } from "node:path";
  * 44px mobile tap target or the focus ring — so both rows read their chrome
  * from one module, and this asserts neither has quietly re-inlined it.
  */
-const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
+const read = (rel: string) => stripComments(readFileSync(join(process.cwd(), rel), "utf8"));
 const materials = read("components/materials-view.tsx");
 const inbox = read("components/inbox-view.tsx");
 

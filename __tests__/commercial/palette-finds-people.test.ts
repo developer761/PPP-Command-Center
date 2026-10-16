@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * ⌘K finds PEOPLE, and answers the question in the row.
@@ -15,8 +16,8 @@ import { readFileSync } from "node:fs";
  * people were the one kind of thing you look up by name and it could not find.
  */
 
-const ROUTE = readFileSync("app/api/commercial/palette-search/route.ts", "utf8");
-const CLIENT = readFileSync("components/commercial/command-palette.tsx", "utf8");
+const ROUTE = stripComments(readFileSync("app/api/commercial/palette-search/route.ts", "utf8"));
+const CLIENT = stripComments(readFileSync("components/commercial/command-palette.tsx", "utf8"));
 
 describe("universal search covers people", () => {
   it("searches name, email AND phone", () => {

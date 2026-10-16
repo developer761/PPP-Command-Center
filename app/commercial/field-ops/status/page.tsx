@@ -108,7 +108,7 @@ export default async function FieldOpsStatusPage({
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px] font-semibold text-ppp-charcoal leading-snug flex items-center gap-1.5 min-w-0">
                     <span className="truncate">{j.name}</span>
-                    {j.prevailing_wage && <span className="shrink-0 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1 py-0.5">PW</span>}
+                    {j.prevailing_wage && <span className="shrink-0 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700 rounded px-1 py-0.5">PW</span>}
                   </div>
                   <div className="text-[11px] text-ppp-charcoal-500 truncate">
                     <span className="font-mono">{j.job_code}</span>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A CAPPED LIST SHOWN AS A TOTAL.
@@ -24,8 +25,9 @@ import { readFileSync } from "node:fs";
  * So this asserts the rule structurally: where a module caps a read AND
  * publishes a total, the total must come from the database's own count.
  */
-const stripComments = (src: string) =>
-  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+/* The local copy that stood here is gone: it missed JSX comment braces and a
+   trailing `//` inside a string, which is exactly the drift the one shared
+   helper exists to prevent. Imported above. */
 
 describe("a total comes from a count, never from a page of rows", () => {
   /**
@@ -80,7 +82,7 @@ describe("a total comes from a count, never from a page of rows", () => {
    * naming a bigger backlog, which is worse than either alone.
    */
   it("the held-leads screen says when it is showing a subset", () => {
-    const src = readFileSync("components/messaging/held-leads.tsx", "utf8");
+    const src = stripComments(readFileSync("components/messaging/held-leads.tsx", "utf8"));
     expect(src).toMatch(/summary\.scanned\s*<\s*summary\.total/);
   });
 });

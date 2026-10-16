@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { CONTACT_ROLES, roleLabel, isContactRole } from "@/lib/commercial/contacts/roles";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The contact-role list lives in three places, and only two of them are code.
@@ -78,7 +79,7 @@ describe("roles are importable by client components", () => {
     // The whole reason this file exists. If `server-only` ever lands here, the
     // client components go back to keeping private copies and the screen
     // starts disagreeing with the constants again.
-    const src = readFileSync(join(ROOT, "lib/commercial/contacts/roles.ts"), "utf8");
+    const src = stripComments(readFileSync(join(ROOT, "lib/commercial/contacts/roles.ts"), "utf8"));
     // Matched as a real import, not a substring — the phrase appears in this
     // module's own comment explaining why it must not be imported.
     expect(src).not.toMatch(/^\s*import\s+["']server-only["']/m);

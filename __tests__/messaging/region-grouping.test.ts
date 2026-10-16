@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Region grouping for the messaging rail, checked against PPP's REAL workspace
@@ -64,7 +65,7 @@ describe("region grouping, against real workspace names", () => {
     // and passed with the branches swapped — because the explanatory comment
     // sitting at the top of regionOf contains BOTH phrases, so it was reading
     // prose, not code. Verified by swapping them and watching it stay green.
-    const src = readFileSync(join(process.cwd(), "lib/messaging/db.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/messaging/db.ts"), "utf8"));
     const body = src
       .slice(src.indexOf("function regionOf("), src.indexOf("export async function sidebarWorkspaces"))
       .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -121,7 +122,7 @@ describe("region grouping, against real workspace names", () => {
   it("every region a name can produce has a slot in the display order", () => {
     // A region missing from `order` sorts to indexOf -1 and silently jumps to
     // the TOP of the rail, above New York.
-    const src = readFileSync(join(process.cwd(), "lib/messaging/db.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/messaging/db.ts"), "utf8"));
     const order = src.slice(src.indexOf("const order = ["));
     for (const r of ["Texas", "North Carolina", "Louisiana", "Account management", "Other"]) {
       expect(order.slice(0, order.indexOf("]")), r).toContain(`"${r}"`);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The Mail inbox sat empty for weeks printing "Once Resend inbound is
@@ -14,8 +15,8 @@ import { join } from "node:path";
  * branches on it — with the setup steps reachable ONLY when it is not.
  */
 const ROOT = join(__dirname, "..", "..");
-const api = readFileSync(join(ROOT, "app/api/admin/inbox/route.ts"), "utf8");
-const view = readFileSync(join(ROOT, "components/inbox-view.tsx"), "utf8");
+const api = stripComments(readFileSync(join(ROOT, "app/api/admin/inbox/route.ts"), "utf8"));
+const view = stripComments(readFileSync(join(ROOT, "components/inbox-view.tsx"), "utf8"));
 
 describe("the inbox empty state distinguishes 'not set up' from 'nothing yet'", () => {
   it("the API reports whether inbound is wired", () => {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { emptyFulfillmentState } from "@/lib/supplier-order/fulfillment-state";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Katie item 10: "marked off for delivery (default for delivery)."
@@ -18,10 +19,10 @@ import { emptyFulfillmentState } from "@/lib/supplier-order/fulfillment-state";
  * The lesson is in the check, not the fix: "a default exists somewhere in the
  * flow" is not "the screen opens on it".
  */
-const view = readFileSync(
+const view = stripComments(readFileSync(
   join(process.cwd(), "components/order-fulfillment-view.tsx"),
   "utf8"
-);
+));
 const code = view.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
 describe("fulfillment opens on delivery to the customer", () => {

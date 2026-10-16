@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { rankVendors } from "@/lib/supplier-order/vendor-ranking";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan 2026-10-05: everyone sets their own state from Account settings, so the
@@ -18,7 +19,7 @@ import { rankVendors } from "@/lib/supplier-order/vendor-ranking";
  */
 
 const root = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(root, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(root, p), "utf8"));
 
 /** Source with comments and string literals stripped, so a rule can never be
  *  satisfied by prose describing it. (See the repo's own note about a test that

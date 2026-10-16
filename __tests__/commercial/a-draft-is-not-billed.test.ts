@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { receivableVerdict } from "@/lib/commercial/reports/receivables";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A DRAFT IS NOT BILLED, AND A VOID IS NOT OWED.
@@ -31,9 +32,7 @@ import { receivableVerdict } from "@/lib/commercial/reports/receivables";
 
 const ROOT = process.cwd();
 const read = (p: string) =>
-  readFileSync(join(ROOT, p), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 describe("the rule itself", () => {
   it("skips a void, never bills a draft, counts everything else", () => {

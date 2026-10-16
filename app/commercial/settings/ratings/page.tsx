@@ -156,7 +156,7 @@ export default async function RatingSettingsPage({
 
           <SubmitButton
             pendingLabel="Saving…"
-            className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900"
+            className="inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-charcoal-900"
           >
             Save {code}
           </SubmitButton>

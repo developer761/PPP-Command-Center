@@ -25,6 +25,7 @@ import { DonutChart } from "@/components/commercial/charts";
 import { UUID_RE } from "@/lib/commercial/uuid";
 import { SubmitButton } from "@/components/commercial/submit-button";
 import { toolOriginQs } from "@/lib/commercial/tool-origin";
+import { addressLines, cityStateZipLine } from "@/lib/commercial/address-lines";
 
 type PP = Promise<{ id: string; dealId: string }>;
 type SP = Promise<{ error?: string; back?: string; from?: string }>;
@@ -68,8 +69,7 @@ async function createSubmittalAction(formData: FormData) {
   let to_address_lines: string[] | null = null;
   if (acct) {
     const lines: string[] = [];
-    if (acct.billing_street?.trim()) lines.push(acct.billing_street.trim());
-    if (acct.billing_street2?.trim()) lines.push(acct.billing_street2.trim());
+    lines.push(...addressLines(acct.billing_street, acct.billing_street2));
     const cityState = [acct.billing_city?.trim(), acct.billing_state?.trim()].filter(Boolean).join(", ");
     const csz = [cityState, acct.billing_zip?.trim()].filter(Boolean).join(" ");
     if (csz) lines.push(csz);

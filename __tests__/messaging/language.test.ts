@@ -6,6 +6,7 @@ import { renderMessage, SILENT_INTENTS } from "@/lib/messaging/render";
 import { SAYS_ES } from "@/lib/messaging/render-es";
 import { tooManyAsks } from "@/lib/messaging/one-ask";
 import { END_INTENTS, CONTINUE_INTENTS, type Intent } from "@/lib/messaging/agent-output";
+import { stripComments } from "../helpers/strip-comments";
 
 const ALL: Intent[] = [...END_INTENTS, ...CONTINUE_INTENTS];
 
@@ -264,7 +265,7 @@ describe("Spanish goes out without inverted punctuation", () => {
    * value is on the node, the spelling is gone.
    */
   it.each(OUTBOUND)("has none in any string that can be sent from %s", (path) => {
-    const src = readFileSync(path, "utf8");
+    const src = stripComments(readFileSync(path, "utf8"));
     const sf = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, true);
     const hits: string[] = [];
 
@@ -328,6 +329,6 @@ describe("Spanish goes out without inverted punctuation", () => {
 
   it("keeps the GSM charset allowlist intact", () => {
     // Not a sentence — the set of characters that fit one SMS segment.
-    expect(readFileSync("lib/messaging/first-message.ts", "utf8")).toContain("¿");
+    expect(stripComments(readFileSync("lib/messaging/first-message.ts", "utf8"))).toContain("¿");
   });
 });

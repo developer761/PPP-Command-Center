@@ -16,10 +16,20 @@ import "server-only";
  */
 
 import { commercialDb } from "@/lib/commercial/db";
+import { paginateAll } from "@/lib/commercial/paginate";
 import { aiaBillingRollup } from "@/lib/commercial/aia/db";
 import { contractValueCents } from "@/lib/commercial/projects/contract-value";
-import { costBreakdownForProject, type CostBreakdown } from "@/lib/commercial/purchases/db";
-import { fieldOpsLaborForOpp } from "@/lib/commercial/field-ops/labor-cost";
+import {
+  costBreakdownForProject,
+  laborByWorkerForProject,
+  type CostBreakdown,
+} from "@/lib/commercial/purchases/db";
+import { fieldOpsLaborForOpp, fieldOpsCrewDetailForOpp } from "@/lib/commercial/field-ops/labor-cost";
+import { findDoubleCounted } from "@/lib/commercial/field-ops/w2-readiness";
+import {
+  unratedHoursNote,
+  type UnratedPayoutCoverage,
+} from "@/lib/commercial/field-ops/unrated-hours-note";
 
 export type ProjectFinancials = {
   /** Pre-tax contract to date = base ladder + net-approved COs. */
@@ -53,9 +63,18 @@ export type ProjectFinancials = {
   /** Option A — burdened cost of in-house crew hours (approved time-entries ×
    *  effective cost rate), computed from Field Ops, NOT a purchase row. */
   fieldOpsLaborCents: number;
-  /** Approved crew hours with no cost rate on file → they cost $0 here, so a
-   *  value > 0 means labor cost (and margin) is understated until a rate is set. */
+  /** Approved crew hours with no cost rate on file → they cost $0 here. On its
+   *  own this says NOTHING about whether the margin is understated: on 79 of
+   *  81 live deals the same hours are already paid through a labor payout.
+   *  Use `laborUncostedHours` for that question. */
   laborUnratedHours: number;
+  /** The subset of `laborUnratedHours` that NO labor payout on this deal
+   *  covers — the hours that genuinely cost nothing yet. This is the number a
+   *  "margin reads high" caveat may be stated about. */
+  laborUncostedHours: number;
+  /** Σ labor already paid on this deal to the people whose hours read
+   *  unrated. > 0 is the evidence that those hours are not free. */
+  laborUnratedPayoutCents: number;
   /** Purchases + field-ops labor = the deal's total cost. */
   totalCostCents: number;
   /** Contract − total costs = projected gross profit. Negative = over budget. */
@@ -155,6 +174,8 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     aiaRetainageHeldCents = aia.retainageHeldCents;
   }
 
+  const coverage = await unratedCoverageForOpp(oppId, labor.unratedHours);
+
   const fieldOpsLaborCents = labor.cents;
   const totalCostCents = costs.total + fieldOpsLaborCents;
   const grossMarginCents = contractCents - totalCostCents;
@@ -174,10 +195,131 @@ export async function getProjectFinancials(oppId: string): Promise<ProjectFinanc
     costs,
     fieldOpsLaborCents,
     laborUnratedHours: labor.unratedHours,
+    laborUncostedHours: coverage.uncostedHours,
+    laborUnratedPayoutCents: coverage.coveredByPayoutCents,
     totalCostCents,
     grossMarginCents,
     grossMarginPct,
   };
+}
+
+// ── ARE THE UNRATED HOURS ACTUALLY UNPAID? ─────────────────────────────────
+
+/**
+ * Measured against production 2026-10-16: 14,637 hours read unrated across 81
+ * deals, and 14,589 of them (99.7%, on 79 of the 81) already carried
+ * `labor`/`employee_labor` purchases naming the same nine people —
+ * $510,469.42. Every one of those deals was telling its reader the margin read
+ * high and the hours needed costing, which is the double-charge the whole
+ * payroll build exists to prevent. Only 2 deals / 48h were genuinely uncosted.
+ *
+ * So "unrated" is the input to the question, not the answer. The answer is
+ * "unrated AND nobody has been paid for it", and `findDoubleCounted` already
+ * owns the hard half — matching a roster name against the vendor on a payout,
+ * trimmed and case-insensitive, because the money goes to "Tomco Labor - Greg"
+ * rather than to an employee id.
+ */
+
+/**
+ * Pure: which unrated hours survive the payout test.
+ *
+ * `laborPaidTo` is this deal's labor spend keyed by the vendor name on the
+ * payment. A person whose name matches a payee is costed — their hours drop
+ * out, and the payout is reported so a caller can say so.
+ */
+export function unratedCoverageFrom(
+  unratedPeople: { id: string; name: string; unratedHours: number }[],
+  laborPaidTo: Map<string, { cents: number; n: number }>
+): UnratedPayoutCoverage {
+  const covered = findDoubleCounted(
+    unratedPeople.map((p) => ({ id: p.id, name: p.name })),
+    laborPaidTo
+  );
+  const coveredIds = new Set(covered.map((c) => c.id));
+  const uncostedHours = unratedPeople
+    .filter((p) => !coveredIds.has(p.id))
+    .reduce((n, p) => n + p.unratedHours, 0);
+  return {
+    uncostedHours: Math.round(uncostedHours * 100) / 100,
+    coveredByPayoutCents: covered.reduce((n, c) => n + c.payoutCents, 0),
+  };
+}
+
+/** ONE deal, name-matched and exact. Two reads, and only when there is
+ *  something to decide — a deal with no unrated hours short-circuits. */
+async function unratedCoverageForOpp(
+  oppId: string,
+  unratedHours: number
+): Promise<UnratedPayoutCoverage> {
+  if (!(unratedHours > 0)) return { uncostedHours: 0, coveredByPayoutCents: 0 };
+  const [crew, paid] = await Promise.all([
+    fieldOpsCrewDetailForOpp(oppId),
+    laborByWorkerForProject(oppId),
+  ]);
+  const laborPaidTo = new Map(
+    paid.map((w) => [w.worker, { cents: w.cost_cents, n: w.count }] as const)
+  );
+  const people = crew.workers
+    .filter((w) => w.unratedHours > 0)
+    .map((w) => ({ id: w.employeeId, name: w.name, unratedHours: w.unratedHours }));
+  // The crew walk and `fieldOpsLaborForOpp` read the same entries under the
+  // same rules, but if they ever disagree, believe the aggregate the P&L is
+  // actually built from rather than silently shrinking the warning.
+  if (people.length === 0) return { uncostedHours: unratedHours, coveredByPayoutCents: 0 };
+  return unratedCoverageFrom(people, laborPaidTo);
+}
+
+/**
+ * MANY deals at once, for the aggregate surfaces (geography, the CEO digest,
+ * any report built on `listProjects`).
+ *
+ * DELIBERATELY COARSER than the per-deal version, and the reason is cost: the
+ * exact test needs each deal's per-person crew detail, which is a handful of
+ * queries per deal — 150+ deals on the geography report. This asks the
+ * deal-level question instead ("is anybody being paid for labor on this
+ * job?") in ONE query across the whole portfolio.
+ *
+ * What that trades away: a deal that pays person A while person B's hours read
+ * unrated would be cleared here and flagged by the per-deal test. On the live
+ * book today the two agree exactly — both say 79 of 81 deals covered, 2 deals
+ * / 48h uncosted — because the uncovered deals carry no labor purchases at
+ * all. It can only ever UNDER-report the warning, never invent one.
+ */
+export async function uncostedHoursByOpp(
+  rows: { oppId: string; unratedHours: number }[]
+): Promise<Map<string, UnratedPayoutCoverage>> {
+  const out = new Map<string, UnratedPayoutCoverage>();
+  const pending = rows.filter((r) => r.oppId && r.unratedHours > 0);
+  for (const r of rows) out.set(r.oppId, { uncostedHours: 0, coveredByPayoutCents: 0 });
+  if (pending.length === 0) return out;
+
+  const sb = commercialDb();
+  const purchases = await paginateAll<{ opportunity_id: string | null; amount_cents: number | null }>(() =>
+    sb
+      .from("commercial_project_purchases")
+      .select("opportunity_id, amount_cents")
+      // The same two categories `findDoubleCounted`'s caller feeds it: what
+      // goes to a labor company, and payroll's own posted rows.
+      .in("category", ["labor", "employee_labor"])
+      .is("deleted_at", null)
+      .order("id", { ascending: true })
+  );
+  const paidByOpp = new Map<string, number>();
+  for (const p of purchases) {
+    if (!p.opportunity_id) continue;
+    paidByOpp.set(p.opportunity_id, (paidByOpp.get(p.opportunity_id) ?? 0) + (Number(p.amount_cents) || 0));
+  }
+
+  for (const r of pending) {
+    const paid = paidByOpp.get(r.oppId) ?? 0;
+    out.set(
+      r.oppId,
+      paid > 0
+        ? { uncostedHours: 0, coveredByPayoutCents: paid }
+        : { uncostedHours: r.unratedHours, coveredByPayoutCents: 0 }
+    );
+  }
+  return out;
 }
 
 // ── ONE margin definition (2026-08) ────────────────────────────────────────
@@ -243,9 +385,23 @@ export type DealMargin = {
  * printed "100%" next to "no costs logged", which reads as a triumph and
  * actually means nobody has spent anything yet.
  */
+/**
+ * `uncostedHours` — crew hours on this slice that NO labor payout covers.
+ *
+ * It is the THIRD argument and not a required one, which is a compromise worth
+ * naming. The caveat belongs here so a caller cannot forget it, and the honest
+ * version of that is a required parameter; `marginFrom` has eight call sites
+ * across six files, several of which this change may not touch, and a required
+ * parameter would simply fail to build. So: optional, defaulting to "nothing
+ * uncosted", and the callers that know get it right. Surfaces still to be
+ * wired: `reports/job-costs.ts`, `reports/jobs-rows.ts`, `reports/jobs.ts`,
+ * `app/commercial/page.tsx`, `app/commercial/accounts/[id]/page.tsx`,
+ * `app/commercial/invoices/new/page.tsx`.
+ */
 export function marginFrom(
   billedCents: number,
-  costCents: number
+  costCents: number,
+  uncostedHours = 0
 ): {
   pct: number | null;
   cents: number;
@@ -280,7 +436,12 @@ export function marginFrom(
     pct,
     cents,
     label: "Margin",
-    caveat: null,
+    // The margin IS overstated when hours nobody has been paid for sit behind
+    // it. Three surfaces printed a bare percentage here — the geography
+    // report's per-city/zip/state rows and the CEO digest's "62% · healthy" —
+    // while the portfolio carried 14,637 unrated hours. Only the hours no
+    // payout covers earn the sentence; see unrated-hours-note.ts.
+    caveat: unratedHoursNote({ uncostedHours, coveredByPayoutCents: 0 }),
     provisional: false,
     overBudget: pct < -100,
   };
@@ -290,10 +451,20 @@ export function dealMargin(fin: {
   billedPreTaxCents: number;
   contractCents: number;
   hasContract: boolean;
-  totalCostCents: number;
   laborUnratedHours: number;
+  /**
+   * The unrated hours no labor payout covers. REQUIRED on
+   * `ProjectFinancials`, so every production caller supplies it; optional here
+   * only so a pure unit test can state a case in two fields instead of five.
+   * Omitted, it falls back to `laborUnratedHours` — the pre-2026-10-16
+   * behaviour, which is wrong on 79 of 81 live deals and is why this field
+   * exists.
+   */
+  laborUncostedHours?: number;
+  totalCostCents: number;
 }): DealMargin {
-  const core = marginFrom(fin.billedPreTaxCents, fin.totalCostCents);
+  const uncostedHours = fin.laborUncostedHours ?? fin.laborUnratedHours;
+  const core = marginFrom(fin.billedPreTaxCents, fin.totalCostCents, uncostedHours);
   const marginCents = core.cents;
 
   // The contract view, always separately labeled. Null when there's no contract
@@ -374,9 +545,23 @@ export function dealMargin(fin: {
    * cannot see. Naming it as a part is enough to stop it reading as a rival
    * total.
    */
+  /**
+   * 🔴 AND ONLY WHEN NOBODY HAS BEEN PAID FOR THEM (2026-10-16).
+   *
+   * This fired on `laborUnratedHours > 0` with no check that the labor was
+   * paid some other way, which on the live book meant 79 of 81 deals. LMJ
+   * Cipla read "Margin reads high — 1063 of the crew hours on this job are not
+   * costed yet, until that week is posted in Payroll" while carrying
+   * $37,416.22 of `employee_labor`/`labor` purchases naming those exact
+   * people. Greg alone: 250 unrated hours against $12,295.01 booked, $49.18/h.
+   *
+   * The sentence was false, and the action it names — go and cost those hours
+   * — is the double-charge. `laborUncostedHours` is the subset no payout
+   * covers; on the live book that is 2 deals and 48 hours.
+   */
   const caveat =
-    fin.laborUnratedHours > 0
-      ? `Margin reads high — ${fin.laborUnratedHours} of the crew hours on this job ${fin.laborUnratedHours === 1 ? "is" : "are"} not costed yet, until that week is posted in Payroll.`
+    uncostedHours > 0
+      ? `Margin reads high — ${uncostedHours} of the crew hours on this job ${uncostedHours === 1 ? "is" : "are"} not costed yet, until that week is posted in Payroll.`
       : null;
   return {
     pct,

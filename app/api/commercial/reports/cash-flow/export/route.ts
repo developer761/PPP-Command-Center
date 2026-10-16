@@ -31,7 +31,10 @@ export async function GET(req: NextRequest) {
   row("Billed", money(r.totals.billedCents));
   row("Payments", r.totals.paymentCount);
   row("Avg days to pay", r.totals.avgDaysToPay ?? "");
-  // Over 100% is normal — older invoices landing in the window, not an error.
+  // Both ledgers on both sides (see cash-flow.ts). Modestly over 100% means
+  // older bills landed in the window; a MULTIPLE of it means a basis mismatch.
+  // It read 642% for months because the numerator counted AIA cash and the
+  // denominator counted invoices only, and the caption explained it away.
   row("Collection rate %", r.totals.collectionRatePct ?? "");
   row("Open balance", money(r.totals.openCents));
   row("");

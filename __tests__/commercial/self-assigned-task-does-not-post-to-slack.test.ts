@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A task you assign to yourself is not a team announcement.
@@ -26,10 +27,10 @@ import { join } from "node:path";
  * money events too.
  */
 
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(process.cwd(), "lib/notifications/commercial-events.ts"),
   "utf8"
-);
+));
 
 /** Body of one exported notification function, by name. */
 function fnBody(name: string): string {

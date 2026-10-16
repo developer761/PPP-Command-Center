@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A notification fan-out is not left to finish after the response is sent.
@@ -43,9 +44,7 @@ describe("notification fan-out", () => {
   it("never detaches a notification insert with a bare `void`", () => {
     const offenders: string[] = [];
     for (const f of files) {
-      const src = readFileSync(join(process.cwd(), f), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(readFileSync(join(process.cwd(), f), "utf8"));
       // Two shapes, and the SECOND is the one that mattered — most of the
       // original defect was `void (async () => { … await insert… })()`, not a
       // bare `void insert…(`. A first version of this check only looked for the
@@ -69,7 +68,7 @@ describe("notification fan-out", () => {
     // Without this the assertion above passes trivially the day these move or
     // get renamed, and the check silently stops covering anything.
     const all = files
-      .map((f) => readFileSync(join(process.cwd(), f), "utf8"))
+      .map((f) => stripComments(readFileSync(join(process.cwd(), f), "utf8")))
       .join("\n");
     expect(all.split("insertCommercial").length - 1).toBeGreaterThan(20);
     expect(files.length).toBeGreaterThan(30);
@@ -77,7 +76,7 @@ describe("notification fan-out", () => {
 
   it("routes the deferred work through afterResponse", () => {
     const used = files.filter((f) =>
-      readFileSync(join(process.cwd(), f), "utf8").includes("afterResponse(")
+      stripComments(readFileSync(join(process.cwd(), f), "utf8")).includes("afterResponse(")
     );
     // The seven fan-out sites the audit found, plus the helper itself.
     expect(used.length).toBeGreaterThanOrEqual(7);
@@ -87,10 +86,10 @@ describe("notification fan-out", () => {
     // The migration scripts, the cron entry points and this suite all call these
     // same functions with no request scope. If the fallback is ever removed,
     // every script that touches a notification throws instead of sending one.
-    const src = readFileSync(
+    const src = stripComments(readFileSync(
       join(process.cwd(), "lib/notifications/after-response.ts"),
       "utf8"
-    );
+    ));
     expect(src).toContain("after(run)");
     expect(src).toMatch(/catch\s*\{[\s\S]*void run\(\)/);
     // And a failure is logged rather than becoming an unhandled rejection with

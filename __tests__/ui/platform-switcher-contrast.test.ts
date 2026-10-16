@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The platform-switch button is a GHOST row — transparent, hairline border,
@@ -77,7 +78,7 @@ describe("platform switcher — ghost row stays legible", () => {
   }
 
   it("the switcher paints with these exact roles", () => {
-    const src = readFileSync(join(process.cwd(), "components/platform-switcher.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/platform-switcher.tsx"), "utf8"));
     expect(src).toMatch(/border-ppp-charcoal-200/);
     expect(src).toMatch(/bg-transparent/);
     expect(src).toMatch(/text-ppp-charcoal-600/);

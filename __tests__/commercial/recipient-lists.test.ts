@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { parseRecipients, withoutVisible } from "@/lib/email/recipients";
+import { stripComments } from "../helpers/strip-comments";
 
 describe("parseRecipients does all four jobs", () => {
   it("splits on every separator these lists actually arrive with", () => {
@@ -141,9 +142,7 @@ describe("the work-order crew list is capped by whole addresses", () => {
   it("the real code caps by whole addresses, not by slicing the joined string", () => {
     // A copy of the logic can drift from the original, so pin the original's
     // SHAPE too: the old `.join(", ").slice(` is what must not come back.
-    const src = readFileSync("lib/commercial/work-orders/db.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("lib/commercial/work-orders/db.ts", "utf8"));
     expect(src).not.toMatch(/crew_email\s*=\s*uniq\.length[\s\S]{0,40}\.join\(", "\)\.slice\(/);
     expect(src).toContain("JOINED_LIMIT");
   });

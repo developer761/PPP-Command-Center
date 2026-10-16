@@ -9,6 +9,7 @@ import {
   isValidMaterialTypeValue,
   OTHER_PREFIX,
 } from "@/lib/customer-form/material-types";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Katie item 11, 2026-09-08: "Default paint line — Other should always let me
@@ -63,20 +64,20 @@ describe("Other captures the actual product", () => {
     // draft / build / send each validated separately; one missing the new rule
     // would refuse an order the other two accepted.
     for (const r of ["draft", "build", "send"]) {
-      const src = readFileSync(join(process.cwd(), `app/api/admin/supplier-order/${r}/route.ts`), "utf8");
+      const src = stripComments(readFileSync(join(process.cwd(), `app/api/admin/supplier-order/${r}/route.ts`), "utf8"));
       expect(src, r).toMatch(/isValidMaterialTypeValue/);
       expect(src, r).not.toMatch(/VALID_MATERIAL_TYPE_VALUES\.has/);
     }
   });
 
   it("the picker offers the free-text box", () => {
-    const src = readFileSync(join(process.cwd(), "components/material-type-picker.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/material-type-picker.tsx"), "utf8"));
     expect(src).toMatch(/isOtherValue\(value\) &&/);
     expect(src).toMatch(/makeOtherValue\(ev\.target\.value\)/);
   });
 
   it("the top-of-form default selector is gone (item 14)", () => {
-    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
     const code = src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
     expect(code).not.toMatch(/Default paint product line/);
     // ...but the per-line picker stays: that is where the product lives now.

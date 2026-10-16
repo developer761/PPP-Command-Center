@@ -14,6 +14,7 @@ import {
   COVERAGE_CONFIG,
   type RoomTakeoff,
 } from "@/lib/supplier-order/estimate-gallons";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The gallon calculator had NO test coverage. Not one file imported
@@ -422,7 +423,7 @@ describe("doors and accent walls", () => {
   it("both flags actually render on the order screen", () => {
     // They were computed and shown nowhere — the kitchen "please review" note
     // existed only in the data for four days.
-    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
     expect(src).toMatch(/e\.accentWallReview &&/);
     expect(src).toMatch(/\{e\.defaultedNote\}/);
   });
@@ -463,20 +464,20 @@ describe("buckets on custom color lines", () => {
 
   it("survives the round-trip through a stored override", () => {
     // build-state must accept "bucket" or a saved order silently reverts to gal.
-    const src = readFileSync(join(process.cwd(), "lib/supplier-order/build-state.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/supplier-order/build-state.ts"), "utf8"));
     expect(src).toMatch(/"gal", "qt", "bucket"/);
   });
 
   it("the vendor email says gallons, not the word bucket", () => {
     // "2 bucket — Behr 56" means nothing at a paint counter.
-    const src = readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8"));
     expect(src).toMatch(/raw === "bucket" \? `x \$\{GALLONS_PER_BUCKET\} gal` : raw/);
   });
 
   it("custom lines offer it outright", () => {
     // A hand-typed color has no computed quantity to reason about, so the
     // pail is just another container choice.
-    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
     expect(src).toMatch(/<option value="bucket">/);
   });
 
@@ -484,7 +485,7 @@ describe("buckets on custom color lines", () => {
     // This changed on 2026-09-09. Buckets used to be custom-lines-only because
     // the estimator rolled them up on its own; now it does not, so the choice
     // has to exist on an estimate line too — but only where a pail makes sense.
-    const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
     expect(src).toMatch(/\["gal", "qt", "bucket"\]/);
     expect(src).toMatch(/unit === "gal" && total >= 5/);
   });
@@ -497,7 +498,7 @@ describe("buckets on custom color lines", () => {
  *   "when I add like a gallon there's a small delay to it"
  */
 describe("buckets are chosen, not computed", () => {
-  const view = () => readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+  const view = () => stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
 
   it("the Bucket option appears only at five gallons and up", () => {
     // Below five it would let someone order a pail for two gallons of paint.
@@ -514,8 +515,19 @@ describe("buckets are chosen, not computed", () => {
     // consistent") — and the gate moved a few lines down into `bucketAllowed`.
     // The rule is unchanged; only its position was. The window now spans the
     // whole toggle so it checks the RULE rather than where it is written.
+    //
+    // 2026-10-16: the window's START was "Bucket appears once a line" — a
+    // comment. Comments are stripped before this file is grepped now, so
+    // `indexOf` returned -1, `slice(-1, …)` returned the empty string, and
+    // both assertions below ran against "". Neither could fail. A window
+    // bounded by prose is a window that disappears on a reword, so both
+    // edges are code now and both are checked.
     const v = view();
-    const gate = v.slice(v.indexOf("Bucket appears once a line"), v.indexOf('{u === "gal" ? "Gallon"'));
+    const from = v.indexOf("const bucketAllowed =");
+    const to = v.indexOf('{u === "gal" ? "Gallon"', from);
+    expect(from, "the bucketAllowed gate has moved — re-anchor this test").toBeGreaterThan(-1);
+    expect(to, "the unit toggle label has moved — re-anchor this test").toBeGreaterThan(from);
+    const gate = v.slice(from, to);
     expect(gate).toMatch(/unit === "gal" && total >= 5/);
     // And it is still what decides, not merely present somewhere nearby.
     expect(gate).toMatch(/disabled = u === "bucket" && !bucketAllowed/);

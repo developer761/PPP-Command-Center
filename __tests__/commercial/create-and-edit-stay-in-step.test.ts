@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A create form and its edit form must handle the same fields, the same way.
@@ -20,8 +21,8 @@ import { readFileSync } from "node:fs";
  * that silently stops saving.
  */
 
-const NEW = readFileSync("app/commercial/accounts/new/page.tsx", "utf8");
-const EDIT = readFileSync("app/commercial/accounts/[id]/edit/page.tsx", "utf8");
+const NEW = stripComments(readFileSync("app/commercial/accounts/new/page.tsx", "utf8"));
+const EDIT = stripComments(readFileSync("app/commercial/accounts/[id]/edit/page.tsx", "utf8"));
 
 /** The account fields a page writes, from the object it hands the mutation. */
 function writtenFields(src: string): Set<string> {

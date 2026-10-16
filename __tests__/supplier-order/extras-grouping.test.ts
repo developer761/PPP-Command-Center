@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { extraGroupOf, groupExtras, EXTRA_GROUPS } from "@/lib/supplier-order/extras-groups";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Two items from the raw materials-meeting notes that my summary had turned
@@ -77,7 +78,7 @@ describe("the sundries catalog groups", () => {
 });
 
 describe("caulk can be ordered by the case", () => {
-  const view = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+  const view = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
 
   it("changes the UNIT, not the quantity", () => {
     expect(view).toMatch(/setExtraUnit\(c\.id, ev\.target\.value\)/);

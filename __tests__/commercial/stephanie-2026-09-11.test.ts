@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 const strip = (p: string) =>
-  readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+  stripComments(readFileSync(p, "utf8"));
 
 /**
  * Stephanie's 2026-09-11 round.
@@ -20,7 +20,7 @@ describe("a discrete edit saves NOW, not in 2.5 seconds", () => {
   it("the save-now event has one definition, not a literal in two files", () => {
     // Same reason AUTOSAVE_FLAG is a constant: that one went missing from two
     // surfaces for a month because it was a bare string matched by eye.
-    const src = readFileSync("lib/commercial/save-now-event.ts", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/save-now-event.ts", "utf8"));
     expect(src).toMatch(/export const SAVE_NOW_EVENT/);
     for (const f of [
       "components/commercial/autosave-proposal-form.tsx",
@@ -105,9 +105,9 @@ describe("an approved change order reaches the draft certificate", () => {
 });
 
 describe("the proposal editor repeats its actions at the bottom", () => {
-  const src = readFileSync(
+  const src = stripComments(readFileSync(
     "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"
-  );
+  ));
 
   it("has Customer PDF, Plan report and Send for approval TWICE", () => {
     // "to avoid excessive scrolling" — a long page you work down, with the
@@ -128,9 +128,9 @@ describe("the proposal editor repeats its actions at the bottom", () => {
 });
 
 describe("the bid set date sits next to the sentence it prints in", () => {
-  const src = readFileSync(
+  const src = stripComments(readFileSync(
     "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"
-  );
+  ));
 
   it("lives in the Intro section, not the Header panel", () => {
     const intro = src.indexOf('title="Intro paragraph"');
@@ -157,7 +157,7 @@ describe("the AIA settings + delete are not hidden behind a closed disclosure", 
   // smoke harness returned the page shell without its AIA content, so this is
   // a source assertion and is labelled as one rather than described as
   // "checked in the browser".
-  const src = readFileSync("app/commercial/accounts/[id]/aia/[dealId]/aia-tool.tsx", "utf8");
+  const src = stripComments(readFileSync("app/commercial/accounts/[id]/aia/[dealId]/aia-tool.tsx", "utf8"));
 
   it("opens by default", () => {
     // Stephanie asked for a delete option that already existed, and reported

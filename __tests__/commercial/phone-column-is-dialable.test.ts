@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatUsPhone } from "@/lib/commercial/format-phone";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * THE TWO COLUMNS THE PIPELINE REPORT EXISTS FOR WERE PLAIN TEXT.
@@ -57,15 +58,15 @@ describe("formatUsPhone", () => {
 });
 
 const ROOT = process.cwd();
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(ROOT, "lib/commercial/reports/tomco/opportunities.ts"),
   "utf8",
-).replace(/\/\*[\s\S]*?\*\//g, "");
+));
 
-const balanceOwed = readFileSync(
+const balanceOwed = stripComments(readFileSync(
   join(ROOT, "lib/commercial/reports/tomco/balance-owed.ts"),
   "utf8",
-).replace(/\/\*[\s\S]*?\*\//g, "");
+));
 
 describe("the contact columns are clickable", () => {
   /**
@@ -106,10 +107,10 @@ describe("the contact columns are clickable", () => {
 });
 
 describe("a tel: link does not go through the router", () => {
-  const cell = readFileSync(
+  const cell = stripComments(readFileSync(
     join(ROOT, "components/commercial/grouped-report.tsx"),
     "utf8",
-  ).replace(/\/\/.*$/gm, "");
+  ));
 
   it("uses a plain anchor for anything that is not an in-app path", () => {
     // Next's Link is for routes. `tel:` and `mailto:` belong to the OS.

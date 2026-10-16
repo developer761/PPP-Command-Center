@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { AR_APPLICATIONS_SPEC, type ArApplicationRow } from "@/lib/commercial/reports/tomco/ar-applications";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Clicking a line on the AR sheet opens THAT certificate.
@@ -61,13 +64,48 @@ describe("the AR sheet's Application column", () => {
     expect(href).not.toContain(":retention");
   });
 
-  it("uses a tab key the job page actually understands", async () => {
-    // `?tab=aia` only works because the job page normalises it. Pin that, or a
-    // tidy-up of the tab keys turns every one of these links into Overview.
-    const src = await import("node:fs").then((fs) =>
-      fs.readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8")
+  it("uses a tab key the job page actually understands", () => {
+    // `?tab=…` only works because the job page normalises it. A tidy-up of
+    // the tab keys turns every one of these links into Overview, and nothing
+    // in the type system connects the two sides.
+    //
+    // Two things changed here on 2026-10-16. The read is stripped of
+    // comments — `resolveTabParam` is surrounded by prose quoting
+    // `?tab=submittals` and `?tab=changeorders`, so an unstripped grep for a
+    // tab key could match the documentation of a key the function no longer
+    // handles. And the key is no longer hard-coded in the assertion: it is
+    // READ OUT OF THE HREF THE SPEC ACTUALLY PRODUCES, so changing the spec
+    // to emit `?tab=applications` fails here instead of silently sending
+    // every AR line to Overview.
+    const href = hrefOf(base)!;
+    const key = new URLSearchParams(href.slice(href.indexOf("?"))).get("tab");
+    expect(key, "the AR link no longer carries a ?tab= at all").toBeTruthy();
+
+    const page = stripComments(
+      readFileSync(join(process.cwd(), "app/commercial/opportunities/[id]/page.tsx"), "utf8")
     );
-    expect(src).toContain(`if (raw === "aia") return { primary: "project", sub: "aia" };`);
+    const at = page.indexOf("function resolveTabParam");
+    expect(at, "resolveTabParam is gone — the whole tab-key contract has moved").toBeGreaterThan(-1);
+
+    // Bounded by the next top-level declaration, NOT by the first `\n}`.
+    // `resolveTabParam`'s return type is an inline object spanning three
+    // lines, so its closing brace is the first `\n}` in the file after the
+    // name — a body slice ending there is 97 characters long, contains the
+    // signature and nothing else, and every `raw === "…"` check lives
+    // outside it. That window could only ever fail.
+    const rest = page.slice(at + 1);
+    const nextDecl = rest.search(/^(?:export\s+)?(?:async\s+)?(?:function|const|type|interface)\s/m);
+    expect(nextDecl, "no declaration follows resolveTabParam — the slice would run to EOF").toBeGreaterThan(-1);
+    const body = page.slice(at, at + 1 + nextDecl);
+    expect(body, "the resolveTabParam body came out too short to contain its mapping").toMatch(
+      /raw === "overview"/
+    );
+
+    expect(
+      body,
+      `the AR sheet links to ?tab=${key}, which resolveTabParam does not handle — every ` +
+        `Application line would land on Overview`
+    ).toMatch(new RegExp(`raw === "${key}"`));
   });
 
   it("does not link a line Mary typed by hand", () => {

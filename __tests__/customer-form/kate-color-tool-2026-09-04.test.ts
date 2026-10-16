@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { colorDeadlineNotice } from "@/lib/customer-form/deadline-notice";
 import { DEFAULT_TEMPLATES, buildVars, render } from "@/lib/customer-form/templates";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate, 2026-09-04 — two asks on the color tool.
@@ -18,7 +19,7 @@ import { DEFAULT_TEMPLATES, buildVars, render } from "@/lib/customer-form/templa
  */
 
 const ROOT = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 describe("the deadline sentence", () => {
   it("names the sender's date when they set one", () => {

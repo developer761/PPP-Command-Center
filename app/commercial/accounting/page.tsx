@@ -1483,7 +1483,7 @@ export default async function AccountingPage({
               // Above 100% is normal, not a bug — older invoices landing inside
               // the window. Saying so stops it being reported as one. Below a
               // handful of payments it's an anecdote, and says that instead.
-              sub={thinSample ? "early days — too few payments to read" : "collected ÷ billed · over 100% means older invoices landed"}
+              sub={thinSample ? "early days — too few payments to read" : "collected ÷ billed · invoices + AIA on both sides"}
             />
           </div>
         </div>
@@ -2028,7 +2028,7 @@ export default async function AccountingPage({
                   ? "nothing billed in this window"
                   : thinSample
                     ? `${formatCentsCompact(cash.totals.collectedCents)} in against ${formatCentsCompact(cash.totals.billedCents)} billed — early days`
-                    : "collected ÷ billed · over 100% means older invoices landed"
+                    : "collected ÷ billed · invoices + AIA on both sides"
               }
             />
           </div>

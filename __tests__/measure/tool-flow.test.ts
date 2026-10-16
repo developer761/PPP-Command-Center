@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Two failures that would each make the tool look broken rather than wrong, and
@@ -8,7 +9,7 @@ import { join } from "node:path";
  * operations and in the stacking of overlays.
  */
 const ROOT = process.cwd();
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("the aim is judged AFTER snapping, not before", () => {

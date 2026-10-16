@@ -135,6 +135,25 @@ export type DigestData = {
   oldestName: string | null;
   /** "Are we making money?" — the whole company, every opportunity. */
   pnl: import("./company-pnl").CompanyPnl;
+  /**
+   * Crew hours behind that margin that nothing has paid for.
+   *
+   * `pnl.unratedHours` is computed and was never rendered: the Margin tile
+   * said "62% · healthy" while the portfolio carried 14,637 unrated hours.
+   * Printing that raw number would have been the opposite error — 14,589 of
+   * them are already covered by a labor payout naming the same people, so the
+   * figure here is the payout-gated one (48h on 2 deals, live 2026-10-16). A
+   * CEO's inbox is the last place to put either a silent overstatement or a
+   * scary number that is not true.
+   *
+   * `buildDigest` always sets it. Optional only so the existing fixtures in
+   * `__tests__/commercial/alex-digest.test.ts` and `accounting-edge-cases.test.ts`
+   * still compile; absent means "no caveat", which is the pre-fix rendering.
+   */
+  uncostedHours?: number;
+  /** How many deals those hours sit on — "48h" means something different
+   *  across one job and across forty. */
+  uncostedDeals?: number;
   /** The AR sheet Mary sends on: certified and waiting, retention on its own line. */
   ar: { jobName: string; label: string; openCents: number; isRetention: boolean }[];
   arTotalCents: number;
@@ -189,6 +208,13 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
   let purchaseCostCents = 0;
   for (const b of breakdown.values()) purchaseCostCents += b.total;
   const pnl = companyPnl({ projects: pnlProjects, purchaseCostCents });
+  // The honesty line under that margin. One query for the whole portfolio.
+  const { uncostedHoursByOpp } = await import("@/lib/commercial/projects/financials");
+  const uncostedByOpp = await uncostedHoursByOpp(
+    pnlProjects.map((p) => ({ oppId: p.opp.id, unratedHours: p.laborUnratedHours }))
+  );
+  const uncosted = [...uncostedByOpp.values()].filter((c) => c.uncostedHours > 0);
+  const uncostedHours = Math.round(uncosted.reduce((n, c) => n + c.uncostedHours, 0) * 100) / 100;
 
   // FOUR DIFFERENT FACTS, not one fact four times. The band printed
   // $1,369,044.37 as Outstanding, again as Collectible now (no retention is
@@ -222,6 +248,8 @@ export async function buildDigest(cadence: DigestCadence, todayYmd = etTodayIso(
     oldestDays: receivables.rows.reduce((n, r) => Math.max(n, r.daysOut ?? 0), 0),
     oldestName: oldestRow?.accountName ?? null,
     pnl,
+    uncostedHours,
+    uncostedDeals: uncosted.length,
     ar: arRows.map((r) => ({ jobName: r.jobName, label: r.label, openCents: r.openCents, isRetention: r.isRetention })),
     arTotalCents: arRows.reduce((n, r) => n + r.openCents, 0),
     arRetentionCents: arRows.filter((r) => r.isRetention).reduce((n, r) => n + r.openCents, 0),
@@ -274,9 +302,31 @@ const TITLE: Record<DigestCadence, string> = {
 export function renderDigestEmail(d: DigestData): { subject: string; text: string; html: string } {
   const subject = `${TITLE[d.cadence]} · ${money(d.outstandingCents)} outstanding${d.overdueCents > 0 ? `, ${money(d.overdueCents)} late` : ""}`;
 
+  /**
+   * THE LINE UNDER "62% · HEALTHY".
+   *
+   * `companyPnl` has always computed `unratedHours` and the email has never
+   * printed it, so the one figure in Alex's inbox with a word of reassurance
+   * attached was also the one with an un-stated overstatement behind it.
+   *
+   * It names the PAYOUT-GATED hours. The raw unrated total is 14,637 and
+   * 14,589 of those are already paid for — mailing the big number would swap a
+   * silent overstatement for a loud falsehood, and he would act on it.
+   */
+  const uncostedHours = d.uncostedHours ?? 0;
+  const uncostedDeals = d.uncostedDeals ?? 0;
+  const pnlCaveat =
+    uncostedHours > 0
+      ? `Margin reads high: ${uncostedHours.toLocaleString("en-US", { maximumFractionDigits: 2 })} crew hours${uncostedDeals > 0 ? ` on ${uncostedDeals} job${uncostedDeals === 1 ? "" : "s"}` : ""} have no cost against them yet. They get their cost when that week is posted in Payroll.`
+      : null;
+
   // Only the lines worth his attention. A digest that always says the same
   // eight things stops being read by the second week.
   const flags: string[] = [];
+  // The plain-text body carries no P&L band, so the caveat rides here —
+  // otherwise the honesty line exists only for readers whose client renders
+  // HTML, which is not a basis on which to decide who gets told.
+  if (pnlCaveat) flags.push(pnlCaveat);
   if (d.overdueCents > 0) flags.push(`${money(d.overdueCents)} is past due.`);
   if (d.undepositedCount > 0)
     flags.push(`${money(d.undepositedCents)} received but not deposited (${d.undepositedCount}).`);
@@ -383,6 +433,7 @@ export function renderDigestEmail(d: DigestData): { subject: string; text: strin
     ${tile("Gross revenue", money(d.pnl.grossRevenueCents), "billed to date")}
     ${tile("Job costs", money(d.pnl.totalCostCents), "materials \u00b7 crew \u00b7 subs")}
   </tr></table>
+  ${pnlCaveat ? `<p style="margin:-18px 0 26px;font-size:11.5px;color:#C2410C;">${escape(pnlCaveat)}</p>` : ""}
 
   <!-- FOUR DIFFERENT FACTS. This band used to print the same figure three
        times: outstanding, collectible now and past due are one number on a

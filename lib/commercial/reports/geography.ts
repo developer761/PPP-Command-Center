@@ -14,7 +14,7 @@ import "server-only";
  * All amounts are integer cents.
  */
 
-import { marginFrom } from "@/lib/commercial/projects/financials";
+import { marginFrom, uncostedHoursByOpp } from "@/lib/commercial/projects/financials";
 import { listProjects } from "@/lib/commercial/projects/db";
 
 export type GeoRow = {
@@ -27,6 +27,21 @@ export type GeoRow = {
   totalCostCents: number;
   marginCents: number;
   marginPct: number | null;
+  /**
+   * Crew hours inside this row that nothing has paid for — so the cost below
+   * is short by them and the margin reads high.
+   *
+   * The row carried no such field and the page printed a bare percentage,
+   * which made this the one margin surface with no honesty line at all. It is
+   * the PAYOUT-GATED count (`uncostedHoursByOpp`), not the raw unrated total:
+   * 14,637 hours read unrated on the live book and 14,589 of them are already
+   * paid.
+   */
+  uncostedHours: number;
+  /** The sentence `marginFrom` attaches for those hours, or null. Rendered
+   *  rather than re-derived, so a region cannot word it differently from the
+   *  deal inside it. */
+  marginCaveat: string | null;
 };
 
 export type GeographyReport = {
@@ -42,48 +57,81 @@ export type GeographyReport = {
     zipCount: number;
     stateCount: number;
     contractCents: number;
+    /** Payout-gated uncosted crew hours across every deal in the report. */
+    uncostedHours: number;
   };
 };
 
 const clean = (v: string | null | undefined): string => (v ?? "").trim();
 const titleCase = (s: string): string =>
   s.toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase());
-type Acc = { dealCount: number; contractCents: number; billedCents: number; totalCostCents: number; label: string; sub: string | null };
+type Acc = {
+  dealCount: number;
+  contractCents: number;
+  billedCents: number;
+  totalCostCents: number;
+  uncostedHours: number;
+  label: string;
+  sub: string | null;
+};
 
 // `billed` is carried so margin uses the platform basis (billed − cost, D2).
 // This aggregate used to sum a contract-based margin, so a region's margin
 // disagreed with the margin on every deal inside it.
-function bump(map: Map<string, Acc>, key: string, label: string, sub: string | null, contract: number, billed: number, cost: number): void {
-  const a = map.get(key) ?? { dealCount: 0, contractCents: 0, billedCents: 0, totalCostCents: 0, label, sub };
+function bump(
+  map: Map<string, Acc>,
+  key: string,
+  label: string,
+  sub: string | null,
+  contract: number,
+  billed: number,
+  cost: number,
+  uncostedHours: number
+): void {
+  const a = map.get(key) ?? { dealCount: 0, contractCents: 0, billedCents: 0, totalCostCents: 0, uncostedHours: 0, label, sub };
   a.dealCount += 1;
   a.contractCents += contract;
   a.billedCents += billed;
   a.totalCostCents += cost;
+  a.uncostedHours += uncostedHours;
   map.set(key, a);
 }
 
 function finalize(map: Map<string, Acc>): GeoRow[] {
   return [...map.values()]
-    .map((a) => ({
-      label: a.label,
-      sub: a.sub,
-      dealCount: a.dealCount,
-      contractCents: a.contractCents,
-      totalCostCents: a.totalCostCents,
-      marginCents: marginFrom(a.billedCents, a.totalCostCents).cents,
-      marginPct: marginFrom(a.billedCents, a.totalCostCents).pct,
-    }))
+    .map((a) => {
+      // ONE call, not two. Calling it twice for `.cents` and `.pct` also meant
+      // the third return value — the caveat — had nowhere to land, which is
+      // part of how this surface ended up the one with no honesty line.
+      const m = marginFrom(a.billedCents, a.totalCostCents, a.uncostedHours);
+      return {
+        label: a.label,
+        sub: a.sub,
+        dealCount: a.dealCount,
+        contractCents: a.contractCents,
+        totalCostCents: a.totalCostCents,
+        marginCents: m.cents,
+        marginPct: m.pct,
+        uncostedHours: Math.round(a.uncostedHours * 100) / 100,
+        marginCaveat: m.caveat,
+      };
+    })
     // Most jobs first, then biggest contract — "where most jobs are" up top.
     .sort((x, y) => y.dealCount - x.dealCount || y.contractCents - x.contractCents);
 }
 
 export async function getGeographyReport(): Promise<GeographyReport> {
   const rows = await listProjects({ includeClosed: true, allDeals: true });
+  // One query for the whole portfolio — see uncostedHoursByOpp on why the
+  // aggregate path asks the deal-level question rather than the per-person one.
+  const coverage = await uncostedHoursByOpp(
+    rows.map((p) => ({ oppId: p.opp.id, unratedHours: p.laborUnratedHours }))
+  );
 
   const byCity = new Map<string, Acc>();
   const byZip = new Map<string, Acc>();
   const byState = new Map<string, Acc>();
-  let dealCount = 0, located = 0, unspecified = 0, contractTotal = 0;
+  let dealCount = 0, located = 0, unspecified = 0, contractTotal = 0, uncostedTotal = 0;
 
   for (const p of rows) {
     const opp = p.opp as { property_city?: string | null; property_state?: string | null; property_zip?: string | null };
@@ -95,6 +143,8 @@ export async function getGeographyReport(): Promise<GeographyReport> {
 
     dealCount += 1;
     contractTotal += p.contractToDateCents;
+    const uncosted = coverage.get(p.opp.id)?.uncostedHours ?? 0;
+    uncostedTotal += uncosted;
     const hasLoc = !!(city || state || zip);
     if (hasLoc) located += 1; else unspecified += 1;
 
@@ -105,9 +155,9 @@ export async function getGeographyReport(): Promise<GeographyReport> {
     // state is blank and 6 whose state says NY — and counted the town twice in
     // "34 towns". A missing state is missing data, not a second place. The
     // state shown is whichever the town has on record.
-    if (city) bump(byCity, city, city, state || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
-    if (zip) bump(byZip, zip, zip, city || null, p.contractToDateCents, p.billedContractCents, p.costsCents);
-    if (state) bump(byState, state, state, null, p.contractToDateCents, p.billedContractCents, p.costsCents);
+    if (city) bump(byCity, city, city, state || null, p.contractToDateCents, p.billedContractCents, p.costsCents, uncosted);
+    if (zip) bump(byZip, zip, zip, city || null, p.contractToDateCents, p.billedContractCents, p.costsCents, uncosted);
+    if (state) bump(byState, state, state, null, p.contractToDateCents, p.billedContractCents, p.costsCents, uncosted);
   }
 
   return {
@@ -122,6 +172,7 @@ export async function getGeographyReport(): Promise<GeographyReport> {
       zipCount: byZip.size,
       stateCount: byState.size,
       contractCents: contractTotal,
+      uncostedHours: Math.round(uncostedTotal * 100) / 100,
     },
   };
 }
@@ -140,5 +191,6 @@ export const EMPTY_GEO: GeographyReport = {
     zipCount: 0,
     stateCount: 0,
     contractCents: 0,
+    uncostedHours: 0,
   },
 };

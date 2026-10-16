@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * WHY THIS FILE EXISTS.
@@ -19,14 +20,24 @@ import { readFileSync } from "node:fs";
  * exactly the class of thing that broke, and it is cheap to check.
  */
 
-const SRC = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+const SRC = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
-/** The customer document body — from the intro to the page footer. */
+/**
+ * The customer document body — from the intro to the page footer.
+ *
+ * Both ends are anchored on JSX that RENDERS. The end marker used to be the
+ * text "Footer fixed to bottom of every page", which is a `{/* … *␀/}`
+ * comment — so the window's length depended on a sentence nobody is obliged
+ * to keep, and rewording it would have moved `end` to -1 and handed every
+ * assertion below an empty body. `styles.footerRow` is the footer: if that
+ * moves, the document really has been restructured and this test should say
+ * so rather than quietly measure nothing.
+ */
 function customerBody(): string {
-  const start = SRC.indexOf("{mode !== \"internal\" && <Text style={styles.intro}>");
-  const end = SRC.indexOf("Footer fixed to bottom of every page", start);
+  const start = SRC.indexOf('{mode !== "internal" && <Text style={styles.intro}>');
   expect(start, "intro paragraph not found — did the document get restructured?").toBeGreaterThan(0);
-  expect(end, "footer marker not found").toBeGreaterThan(start);
+  const end = SRC.indexOf("<View style={styles.footerRow}", start);
+  expect(end, "the page footer not found after the intro").toBeGreaterThan(start);
   return SRC.slice(start, end);
 }
 
@@ -97,7 +108,7 @@ describe("one word for the scope section, across every generated document", () =
 
   it("every document heads the section 'Inclusions', never 'Scope of Work'", () => {
     for (const f of DOCS) {
-      const src = readFileSync(f, "utf8");
+      const src = stripComments(readFileSync(f, "utf8"));
       // Headings only — prose in comments may still explain the old name.
       const headings = src.match(/<Text style={styles\.(h2|sectionUnderlineHeader)}>([^<]+)<\/Text>/g) ?? [];
       const offending = headings.filter((h) => /Scope of Work/i.test(h));

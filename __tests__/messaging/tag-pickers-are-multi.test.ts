@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A rule picker that can only hold one rule.
@@ -35,10 +36,7 @@ const PICKERS = [
 
 /** Comments describe the bug; they must not be read as the bug. */
 function code(file: string): string {
-  return fs.readFileSync(file, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, "");
+  return stripComments(fs.readFileSync(file, "utf8"));
 }
 
 describe("every training-tag picker takes more than one rule", () => {

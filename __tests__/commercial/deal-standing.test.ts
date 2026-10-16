@@ -6,6 +6,7 @@ import {
   money,
   type DealStandingInput,
 } from "@/lib/commercial/opportunities/deal-standing";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Brendan 2026-08-26: "under 'this month' it should say things specific to the
@@ -133,9 +134,7 @@ describe("what else earns a line", () => {
    * the source, because reconciling the real figures needs a database.
    */
   it("is fed a retainage-free figure by the deal page", () => {
-    const page = readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const page = stripComments(readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8"));
     // The dealStanding object must take the folded open balance, not a fresh
     // billed-minus-collected subtraction.
     expect(page).toContain("outstandingCents: pathFin");

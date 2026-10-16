@@ -95,7 +95,7 @@ function Body({
         <Notice tone="green" title="Fully signed">
           {docTitle} was signed by {request.customer_name} on {formatSignedAt(request.customer_signed_at)} and countersigned by {companyName} on {formatSignedAt(request.countersigned_at)}.
           {request.signed_document_id ? (
-            <a href={`/api/sign/${token}/document?download=1`} className="mt-4 flex min-h-[44px] items-center justify-center rounded-lg bg-cc-brand-600 px-4 text-[14px] font-semibold text-white hover:bg-cc-brand-700">
+            <a href={`/api/sign/${token}/document?download=1`} className="mt-4 flex min-h-[44px] items-center justify-center rounded-lg bg-cc-solid-600 px-4 text-[14px] font-semibold text-white hover:bg-cc-solid-700">
               Download the signed copy
             </a>
           ) : null}

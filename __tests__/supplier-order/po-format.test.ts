@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Katie items 15 + 16, 2026-09-08: "list it under PO number only, not PPP-WO,
@@ -16,7 +17,7 @@ import { join } from "node:path";
  *     reply lands in the unmatched bucket and nobody is told.
  */
 const ROOT = join(__dirname, "..", "..");
-const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
+const read = (f: string) => stripComments(readFileSync(join(ROOT, f), "utf8"));
 
 /** The webhook's matcher, mirrored, then pinned to the shipped file below. */
 function findPo(subject: string): string | null {

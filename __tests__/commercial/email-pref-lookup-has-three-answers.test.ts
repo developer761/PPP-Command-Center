@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * FOUR answers, not three — and the fourth one was being mailed.
@@ -119,12 +120,8 @@ describe("getEnabledNotifyEmail answers four distinct questions", () => {
  * DECISION rather than an incidental line, and the opt-out one would have
  * failed before the fix.
  */
-const events = readFileSync(join(process.cwd(), "lib/notifications/commercial-events.ts"), "utf8")
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/^\s*\/\/.*$/gm, "");
-const prefs = readFileSync(join(process.cwd(), "lib/notifications/email-prefs.ts"), "utf8")
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .replace(/^\s*\/\/.*$/gm, "");
+const events = stripComments(readFileSync(join(process.cwd(), "lib/notifications/commercial-events.ts"), "utf8"));
+const prefs = stripComments(readFileSync(join(process.cwd(), "lib/notifications/email-prefs.ts"), "utf8"));
 
 describe("the dispatcher honours all four", () => {
   it("an opt-out beats alwaysEmail", () => {

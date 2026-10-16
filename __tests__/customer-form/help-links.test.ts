@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COLOR_BRANDS } from "@/lib/customer-form/color-brands";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The "Need help picking colors?" card on the customer form.
@@ -26,7 +27,7 @@ import { COLOR_BRANDS } from "@/lib/customer-form/color-brands";
  * which is strictly stronger, because it cannot be satisfied for one link
  * and missed for another.
  */
-const view = readFileSync(join(process.cwd(), "components/customer-form-view.tsx"), "utf-8");
+const view = stripComments(readFileSync(join(process.cwd(), "components/customer-form-view.tsx"), "utf-8"));
 
 /** The one anchor the brand links render through. */
 function brandLinkAnchor(): string {

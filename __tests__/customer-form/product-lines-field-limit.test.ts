@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PRODUCT_LINES_MAX, formatProductLines } from "@/lib/customer-form/product-lines";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Verified against PPP's org on 2026-08-27:
@@ -35,7 +36,7 @@ describe("the formatter's limit matches the field it writes to", () => {
   it("the live checker compares the two rather than printing both", () => {
     // The first version reported `length` and `formatterLimit` side by side and
     // left a human to notice they disagreed.
-    const route = readFileSync(join(process.cwd(), "app/api/admin/paint-line-check/route.ts"), "utf8");
+    const route = stripComments(readFileSync(join(process.cwd(), "app/api/admin/paint-line-check/route.ts"), "utf8"));
     expect(route).toMatch(/target\.length !== PRODUCT_LINES_MAX/);
   });
 });

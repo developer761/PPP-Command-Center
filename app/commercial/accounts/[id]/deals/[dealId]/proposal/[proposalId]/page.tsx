@@ -2625,7 +2625,7 @@ export default async function ProposalEditorPage({
               </div>
               <SubmitButton
                 pendingLabel="Saving…"
-                className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+                className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-charcoal-900"
               >
                 Save tax setting
               </SubmitButton>
@@ -3609,7 +3609,7 @@ function ReadOnlyLineItems({
           <li key={r.id} className="rounded-xl border border-ppp-charcoal-200 bg-surface p-4 flex items-start justify-between gap-3">
             <div className="min-w-0">
               {r.product_name && (
-                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-ppp-charcoal-100 text-ppp-navy mb-1">{r.product_name}</span>
+                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold bg-ppp-charcoal-100 text-ppp-navy-700 mb-1">{r.product_name}</span>
               )}
               {r.description && <p className="text-[13px] text-ppp-charcoal-700 whitespace-pre-wrap">{r.description}</p>}
               <p className="text-[11.5px] text-ppp-charcoal-500 mt-1 tabular-nums">

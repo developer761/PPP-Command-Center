@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_SUPPLIER_TEMPLATE, render } from "@/lib/supplier-order/templates";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A real order Kate sent went to the vendor as:
@@ -61,7 +62,7 @@ describe("a supplier email never advertises a missing customer", () => {
   it("the placeholder string is gone from the builder entirely", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const src = readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/supplier-order/builder.ts"), "utf8"));
     // Comments may describe the old behaviour; code must not produce it.
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
     expect(code).not.toMatch(/"\(unknown customer\)"/);

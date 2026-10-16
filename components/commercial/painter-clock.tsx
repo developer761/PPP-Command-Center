@@ -216,7 +216,7 @@ export function PainterClock({
             const pinRowOpen = pinOpenJob === a.assignment_id;
             return (
               <div key={a.assignment_id} className="rounded-2xl bg-surface border border-ppp-charcoal-100 p-4">
-                <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 align-middle inline-flex items-center rounded px-1 py-0.5 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy">PW</span>}</div>
+                <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 align-middle inline-flex items-center rounded px-1 py-0.5 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700">PW</span>}</div>
                 {a.site && <div className="text-[12.5px] text-ppp-charcoal-500 mt-0.5">{a.site}</div>}
                 <div className="text-[12px] text-ppp-charcoal-400 mt-0.5">
                   {a.scheduled_start_time ? `${L.start} ${a.scheduled_start_time.slice(0, 5)} · ` : ""}{fmtHm(a.scheduled_hours, es)} {L.scheduled}{clocked > 0 ? ` · ${fmtHm(clocked, es)} ${L.clockedToday}` : ""}
@@ -243,7 +243,7 @@ export function PainterClock({
                         <button
                           onClick={() => post({ action: "in", job_id: a.job_id, assignment_id: a.assignment_id, override_pin: (pinByJob[a.assignment_id] ?? "").trim() })}
                           disabled={busy || !(pinByJob[a.assignment_id] ?? "").trim()}
-                          className="shrink-0 inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[14px] font-bold px-4 min-h-[52px] hover:bg-cc-brand-700 disabled:opacity-60"
+                          className="shrink-0 inline-flex items-center justify-center rounded-xl bg-cc-solid-600 text-white text-[14px] font-bold px-4 min-h-[52px] hover:bg-cc-solid-700 disabled:opacity-60"
                         >
                           {busy ? "..." : L.clockInEarly}
                         </button>
@@ -261,7 +261,7 @@ export function PainterClock({
                   <button
                     onClick={() => post({ action: "in", job_id: a.job_id, assignment_id: a.assignment_id })}
                     disabled={busy}
-                    className="mt-3 w-full inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-brand-700 disabled:opacity-60"
+                    className="mt-3 w-full inline-flex items-center justify-center rounded-xl bg-cc-solid-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-solid-700 disabled:opacity-60"
                   >
                     {busy ? "..." : L.clockIn}
                   </button>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A screen must not announce what the carrier is doing from a constant.
@@ -37,9 +38,7 @@ const FILES = [...walk("components/messaging"), ...walk("app/messaging")];
 
 /** Comments describe the bug. They must not be read as the bug. */
 const code = (f: string) =>
-  fs.readFileSync(f, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  stripComments(fs.readFileSync(f, "utf8"));
 
 /** Phrases that assert the carrier's state to the reader. */
 const CLAIMS = [

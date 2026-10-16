@@ -9,6 +9,7 @@ import {
 } from "@/lib/messaging/twilio-webhook";
 import { decideInbound } from "@/lib/messaging/inbound";
 import type { E164 } from "@/lib/messaging/phone";
+import { stripComments } from "../helpers/strip-comments";
 
 const FULL = {
   SMS_LIVE_SENDING: "true",
@@ -254,7 +255,7 @@ describe("the Twilio adapter", () => {
     // A warn is dropped entirely inside the first 30 seconds of a cold start
     // and this transport is driven by a one-minute cron, so a warning about a
     // message nobody can confirm would usually reach nobody.
-    const src = readFileSync("lib/messaging/transports/twilio.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/transports/twilio.ts", "utf8"));
     for (const key of ["twilio_unreadable_accept", "twilio_accept_without_sid"]) {
       const at = src.indexOf(key);
       expect(at, key).toBeGreaterThan(-1);
@@ -272,8 +273,7 @@ describe("the Twilio adapter", () => {
     // Comments stripped first: this file explains at length why the number is
     // NOT passed, and a negative assertion that reads prose finds the thing it
     // is looking for in the explanation of its own absence.
-    const src = readFileSync("lib/messaging/transports/twilio.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const src = stripComments(readFileSync("lib/messaging/transports/twilio.ts", "utf8"));
     const contexts = [...src.matchAll(/context:\s*\{([^}]*)\}/g)].map((m) => m[1]);
     expect(contexts.length, "no alert context found at all").toBeGreaterThanOrEqual(2);
     for (const c of contexts) {

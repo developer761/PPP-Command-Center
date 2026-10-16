@@ -61,7 +61,13 @@ export function RowSaveButton() {
       // optimistic-lock round trip for nothing.
       className={
         dirty || pending
-          ? "inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-navy-900 touch-manipulation disabled:opacity-60"
+          // hover is charcoal-900, NOT navy-900. `--color-ppp-navy-900` is the
+          // one navy step the dark block deliberately leaves alone (it is the
+          // dark chip behind white toast text), so in dark it stays #0d1a30
+          // while `text-surface` becomes #1a1a1e — 1.00:1, a button that
+          // disappears completely the moment you hover it. charcoal-900 IS
+          // remapped both ways: 16.60 light / 16.62 dark.
+          ? "inline-flex items-center px-4 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[13px] font-semibold hover:bg-ppp-charcoal-900 touch-manipulation disabled:opacity-60"
           : "inline-flex items-center px-4 min-h-[44px] rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-500 text-[13px] font-semibold touch-manipulation"
       }
     >

@@ -6,6 +6,7 @@ import {
   ACCOUNTING_PRIMARY_LABELS,
   ACCOUNTING_VIEWS,
 } from "@/lib/commercial/accounting/tabs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The handbook's Accounting tab strip is the real tab strip.
@@ -109,10 +110,10 @@ describe("the handbook and the Accounting tab bar agree", () => {
    * like the obvious one.
    */
   it("labels Send with its scope everywhere except its own tab", () => {
-    const src = readFileSync(
+    const src = stripComments(readFileSync(
       join(process.cwd(), "app/commercial/accounting/page.tsx"),
       "utf8",
-    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    ));
     expect(src).toMatch(/view === "receivables" \? "Send" : "Send receivables"/);
   });
 

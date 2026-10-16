@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { postCommercialSlack, commercialSlackConfigured, slackEscape } from "@/lib/commercial/slack-notify";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Slack for team-visible events.
@@ -13,7 +14,7 @@ import { postCommercialSlack, commercialSlackConfigured, slackEscape } from "@/l
  * somebody wires a webhook.
  */
 
-const EVENTS = readFileSync("lib/notifications/commercial-events.ts", "utf8");
+const EVENTS = stripComments(readFileSync("lib/notifications/commercial-events.ts", "utf8"));
 
 afterEach(() => {
   delete process.env.COMMERCIAL_SLACK_WEBHOOK;
@@ -122,7 +123,7 @@ describe("one message per EVENT, never per recipient", () => {
     // the incident webhook to explain what it is NOT, and a blunt grep reads
     // that as a violation. (Third time this exact trap has cost a false
     // failure; strip comments first.)
-    const raw = readFileSync("lib/commercial/slack-notify.ts", "utf8");
+    const raw = stripComments(readFileSync("lib/commercial/slack-notify.ts", "utf8"));
     const code = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     expect(code).toContain("COMMERCIAL_SLACK_WEBHOOK");
     expect(code).not.toContain("COMMERCIAL_INCIDENT_SLACK_WEBHOOK");
@@ -183,7 +184,7 @@ describe("edge cases real data will actually produce", () => {
     // Two callers AWAIT their notification function — including the PUBLIC bid
     // form, where a hanging Slack would add latency to a GC's submission. The
     // timeout is what keeps that bounded.
-    const src = readFileSync("lib/commercial/slack-notify.ts", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/slack-notify.ts", "utf8"));
     expect(src).toContain("AbortSignal.timeout(");
   });
 });

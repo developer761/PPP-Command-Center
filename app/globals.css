@@ -93,6 +93,40 @@
   --color-cc-brand-800: #0f5978;
   --color-cc-brand-900: #0a3d52;
 
+  /* ─── cc-solid — the SOLID-FILL role, pinned in both themes ───
+     Karan 2026-10-16.
+
+     cc-brand is a RAMP, and in dark it inverts in the 600-900 range the same
+     way every other family here does: -700/-800 stop being fills and become
+     TEXT. So the ordinary primary-button spelling —
+     `bg-cc-brand-600 text-white hover:bg-cc-brand-700` — measures:
+
+         rest   white on #1e8fbf  3.66:1  LIGHT   ← fails AA at rest
+         hover  white on #74aecb  2.43:1  DARK    ← fails AA on hover
+
+     — on the majority of the primary buttons in Commercial. The live counts
+     are in __tests__/ui/button-contrast.test.ts (COMMERCIAL_BASELINE), which
+     ratchets them down; don't duplicate a number here that will rot.
+
+     i.e. the button is sub-AA in one theme or the other no matter which state
+     you look at, and no edit to the ramp can fix that without breaking the
+     text roles that depend on the inversion.
+
+     --color-ppp-forest-600/-700 already showed the way out: pin the value in
+     BOTH the @theme block and the dark block, so the token means "a solid dark
+     fill" rather than "step N of a ramp". These are that, for the commercial
+     accent:
+
+         white on cc-solid-600 (#15749c)  5.24:1  light AND dark
+         white on cc-solid-700 (#0f5978)  7.72:1  light AND dark
+
+     They are cc-brand-700 and -800's light-theme values — the same blue the
+     platform already ships, just held still across the theme flip. Use these
+     for any fill that carries white text. Keep cc-brand-600/-700 for borders,
+     rings, accents and text, where the inversion is correct and wanted. */
+  --color-cc-solid-600: #15749c;
+  --color-cc-solid-700: #0f5978;
+
   /* Karan 2026-07-09 Phase A: navy accent added per post-meeting rewrite.
      Not replacing cc-brand red; used sparingly for structural elements —
      sidebar section headings, platform-name tag, Project lifecycle status
@@ -369,6 +403,15 @@ body {
   --color-cc-brand-700: #74aecb;   /* active-nav text + button hover */
   --color-cc-brand-800: #9dc6db;
   --color-cc-brand-900: #c3ddea;   /* lightest — text on the dark -50 tint */
+
+  /* cc-solid does NOT flip. That is the whole point of the family: it is a
+     solid-fill ROLE, not a ramp step, so white stays readable on it in both
+     themes (5.24 / 7.72). Repeated here rather than omitted so that reading
+     only this block still tells you what dark does with it — an omission here
+     is indistinguishable from "nobody thought about dark", which is exactly
+     how ppp-navy-900 and ppp-navy ended up at 1.00:1 and 1.14:1. */
+  --color-cc-solid-600: #15749c;
+  --color-cc-solid-700: #0f5978;
 
   /* Per-customer color (opportunities/proposals group + kanban). Curated
      platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Winning a job carries the proposal's tax treatment onto the job.
@@ -16,7 +17,7 @@ import { readFileSync } from "node:fs";
  * A seam test: the tick lives in the proposal's header_json, the status lives
  * on the opportunity, and nothing in the type system connects them.
  */
-const SRC = readFileSync("lib/commercial/projects/accepted-contract.ts", "utf8");
+const SRC = stripComments(readFileSync("lib/commercial/projects/accepted-contract.ts", "utf8"));
 
 describe("the win carries the tax status", () => {
   it("reads the winning proposal's capital-improvement tick", () => {

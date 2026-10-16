@@ -36,10 +36,13 @@ import { assertSalesforceId, soqlString } from "@/lib/salesforce/soql";
  *     as an attempt — so it waits for the review screen indefinitely rather
  *     than being retried until it is abandoned. A machine must not resolve
  *     "is this the same sale?"; that is what double-counted $97,000 once.
- *  2. RETRIES ARE BOUNDED. Three attempts (`MAX_ATTEMPTS`), then the entry
- *     stops asking and `last_error` says why. A validation rule does not fix
- *     itself, and an entry retried every minute forever buries the real
- *     failures in the Slack channel.
+ *  2. RETRIES ARE BOUNDED — INCLUDING THE ONES THAT KILL THIS FUNCTION. Three
+ *     attempts (`MAX_ATTEMPTS`), then the entry stops asking and `last_error`
+ *     says why. The attempt is spent by `claimPending` as it takes the entry,
+ *     not by `markFailed` on the way out, precisely so that an entry which
+ *     overruns `maxDuration` or catches a deploy mid-flight still costs one:
+ *     a counter written only on the way out cannot bound a failure that stops
+ *     you getting there. A hold refunds it — see `markHeld`.
  *  3. IT RE-ATTEMPTS RATHER THAN FIRING ONCE. Nothing here is "the one chance"
  *     a sale had to reach Salesforce. An entry that fails is still pending, and
  *     the next tick picks it up.
@@ -157,16 +160,34 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
      * entries that already take seconds, and means a death mid-tick strands at
      * most one.
      */
+    /*
+     * 🔴 THE READ INSTANT, TAKEN BEFORE ANYTHING IS READ.
+     *
+     * This is what gets stamped into `done_at` (see `completionStamp`), not
+     * the moment the entry finishes. Everything below reads the deal, the
+     * change order and Salesforce AFTER this line, so an edit made here in the
+     * Command Center during the ten to twenty seconds the entry takes sorts
+     * after this timestamp and the nightly sweep re-queues it. Stamping the
+     * finish instead silently swallowed that edit: it was written with an
+     * `updated_at` below the `done_at`, and `needsRequeue` only looks for
+     * `updated_at > done_at`.
+     *
+     * Taken before the claim's own round trip, and deliberately a lower bound
+     * rather than the exact instant of each individual read: being early can
+     * only cause a redundant re-sync, which is idempotent and cheap. Being
+     * late loses the edit.
+     */
+    const readAt = new Date().toISOString();
     const entry = opts.apply ? (await claimPending(1))[0] : planned?.[i];
     if (!entry) break;
     out.claimed++;
     try {
       let o: TickOutcome;
       if (entry.kind === "change_order") {
-        o = await runChangeOrder(ctx, entry);
+        o = await runChangeOrder(ctx, entry, readAt);
       } else {
         const { candidates: c, resolved: r } = await pairingContext();
-        o = await runSale(ctx, entry, c, r);
+        o = await runSale(ctx, entry, c, r, readAt);
       }
       out.outcomes.push(o);
       if (o.result === "written") out.written++;
@@ -192,11 +213,12 @@ export async function runWriteBackTick(opts: { apply: boolean; limit?: number } 
 async function runChangeOrder(
   ctx: { conn: Awaited<ReturnType<typeof getSalesforceClient>>; actorUserId: string | null; apply: boolean },
   entry: QueueEntry,
+  readAt: string,
 ): Promise<TickOutcome> {
   if (!entry.changeOrderId) {
     // A change_order entry with no change order is a bug in whatever queued it,
     // not something to retry nine hundred times.
-    if (ctx.apply) await markDone(entry.id, "no change order id on the queue entry");
+    if (ctx.apply) await markDone(entry.id, "no change order id on the queue entry", { readAt });
     return { entryId: entry.id, kind: entry.kind, label: "?", result: "nothing", detail: "no change order id on the queue entry" };
   }
   const r = await syncChangeOrder(ctx, entry.changeOrderId);
@@ -218,7 +240,7 @@ async function runChangeOrder(
     return { ...base, result: "failed", detail: r.error ?? r.why };
   }
   if (r.action === "held") {
-    if (ctx.apply) await markHeld(entry.id, r.why);
+    if (ctx.apply) await markHeld(entry.id, r.why, { attemptsBeforeClaim: entry.attempts });
     return { ...base, result: "held", detail: r.why };
   }
   if (failedChecks.length > 0) {
@@ -245,7 +267,7 @@ async function runChangeOrder(
    * "nothing" produces no checks, so it clears nothing — a previously failed
    * verification stays on the record for a person to see.
    */
-  if (ctx.apply) await markDone(entry.id, `${r.action}: ${r.why}`, { verified: r.checks.length > 0 });
+  if (ctx.apply) await markDone(entry.id, `${r.action}: ${r.why}`, { verified: r.checks.length > 0, readAt });
   return { ...base, result: r.action === "nothing" ? "nothing" : "written", detail: r.why };
 }
 
@@ -254,10 +276,11 @@ async function runSale(
   entry: QueueEntry,
   candidates: SfCandidate[],
   resolved: Map<string, { decision: string }>,
+  readAt: string,
 ): Promise<TickOutcome> {
   const loaded = await loadSoldDeal(entry.opportunityId);
   if (!loaded) {
-    if (ctx.apply) await markDone(entry.id, "the deal was deleted here");
+    if (ctx.apply) await markDone(entry.id, "the deal was deleted here", { readAt });
     return { entryId: entry.id, kind: entry.kind, label: entry.opportunityId, result: "nothing", detail: "the deal was deleted here" };
   }
   const base = { entryId: entry.id, kind: entry.kind, label: loaded.deal.title };
@@ -281,14 +304,14 @@ async function runSale(
      */
     const pairedSfId = await pairedSfIdFor(entry.opportunityId);
     if (!pairedSfId) {
-      if (ctx.apply) await markDone(entry.id, "no longer a sold deal here, and Salesforce never had it");
+      if (ctx.apply) await markDone(entry.id, "no longer a sold deal here, and Salesforce never had it", { readAt });
       return { ...base, result: "nothing", detail: "no longer a sold deal here, and Salesforce never had it" };
     }
     const why =
       `This deal is no longer sold here, but Salesforce still holds it as a sale (${pairedSfId}). ` +
       `Reversing a Closed Won opportunity in Tomco's org is not something the sync will do on its own — ` +
       `somebody has to decide what should happen to it over there.`;
-    if (ctx.apply) await markHeld(entry.id, why);
+    if (ctx.apply) await markHeld(entry.id, why, { attemptsBeforeClaim: entry.attempts });
     return { ...base, result: "held", detail: why };
   }
 
@@ -308,14 +331,14 @@ async function runSale(
      * that turns a hold into an insert.
      */
     if (resolved.get(loaded.deal.id)?.decision !== "new") {
-      if (ctx.apply) await markHeld(entry.id, plan.why);
+      if (ctx.apply) await markHeld(entry.id, plan.why, { attemptsBeforeClaim: entry.attempts });
       return { ...base, result: "held", detail: plan.why };
     }
   }
 
   if (plan.action === "update") {
     const r = await updateExisting(ctx, loaded.deal, plan.sfId);
-    return finishDeal(ctx, entry, base, r);
+    return finishDeal(ctx, entry, base, r, readAt);
   }
 
   /*
@@ -335,7 +358,7 @@ async function runSale(
         r.records.length > 1
           ? `${r.records.length} Salesforce accounts are named "${loaded.deal.accountName}" — a person has to say which`
           : `no Salesforce account named "${loaded.deal.accountName}" — it has to exist there first`;
-      if (ctx.apply) await markHeld(entry.id, why);
+      if (ctx.apply) await markHeld(entry.id, why, { attemptsBeforeClaim: entry.attempts });
       return { ...base, result: "held", detail: why };
     }
   }
@@ -348,7 +371,7 @@ async function runSale(
    */
   const closeDate = (loaded.deal.decidedAt ?? new Date().toISOString()).slice(0, 10);
   const r = await createNew(ctx, loaded.deal, { accountId, closeDate });
-  return finishDeal(ctx, entry, base, r);
+  return finishDeal(ctx, entry, base, r, readAt);
 }
 
 /**
@@ -378,6 +401,15 @@ export function needsRequeue(
   if (!latestEntry.doneAt) return false;
   /*
    * Finished — so only if the thing has changed here since.
+   *
+   * 🔴 "SINCE" MEANS SINCE THE ENTRY READ IT, NOT SINCE IT STOPPED WRITING.
+   * `done_at` carries the read instant, stamped by `completionStamp` from the
+   * `readAt` the tick took before it looked at anything. The two are ten to
+   * twenty seconds apart — Salesforce round trips plus the six-second wait for
+   * the rollups — and an edit landing in that gap is written with an
+   * `updated_at` below the completion time, so comparing against the
+   * completion time left it invisible to this function for ever. Nothing else
+   * sweeps it; the figure in Salesforce would simply stay wrong.
    *
    * PARSED, not string-compared. `updated_at` comes from PostgREST with
    * microsecond precision and a "+00:00" offset; `done_at` is a JS
@@ -578,6 +610,7 @@ async function finishDeal(
   entry: QueueEntry,
   base: { entryId: string; kind: QueueEntry["kind"]; label: string },
   r: { action: string; error?: string; checks: Array<{ name: string; ok: boolean; detail: string }>; steps: string[] },
+  readAt: string,
 ): Promise<TickOutcome> {
   if (r.action === "failed") {
     // Same as the change-order branch: a failure that already wrote something
@@ -603,7 +636,7 @@ async function finishDeal(
     return { ...base, result: "failed", detail };
   }
   const detail = r.steps.length ? r.steps.join(" · ") : r.action;
-  if (ctx.apply) await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000), { verified: r.checks.length > 0 });
+  if (ctx.apply) await markDone(entry.id, `${r.action}: ${detail}`.slice(0, 2000), { verified: r.checks.length > 0, readAt });
   /*
    * `skipped` is what `updateExisting` returns for a deal Salesforce already
    * has as Closed Won at the right value — the 93-of-94 case. Finished, and

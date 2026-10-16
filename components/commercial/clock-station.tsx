@@ -147,7 +147,7 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
           className="w-40 mx-auto text-center text-3xl tracking-[0.5em] font-bold rounded-xl border-2 border-ppp-charcoal-200 py-3 outline-none focus:border-cc-brand-500"
         />
         {error && <div role="alert" className="text-[13px] text-rose-700 mt-2">{error}</div>}
-        <button onClick={enterPin} disabled={busy || pin.length !== 4} className="mt-4 w-full inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-brand-700 disabled:opacity-50">{busy ? "…" : "Enter"}</button>
+        <button onClick={enterPin} disabled={busy || pin.length !== 4} className="mt-4 w-full inline-flex items-center justify-center rounded-xl bg-cc-solid-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-solid-700 disabled:opacity-50">{busy ? "…" : "Enter"}</button>
       </div>
     );
   }
@@ -172,9 +172,9 @@ export function ClockStation({ employees }: { employees: Emp[] }) {
         <div className="space-y-3">
           {day.assignments.map((a) => (
             <div key={a.assignment_id} className="rounded-2xl bg-surface border border-ppp-charcoal-100 p-4">
-              <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</div>
+              <div className="text-[16px] font-bold text-ppp-charcoal">{a.job_name}{a.prevailing_wage && <span className="ml-1.5 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700 rounded px-1">PW</span>}</div>
               {a.site && <div className="text-[12.5px] text-ppp-charcoal-500">{a.site}</div>}
-              <button onClick={() => clockIn(a.job_id, a.assignment_id)} disabled={busy} className="mt-3 w-full inline-flex items-center justify-center rounded-xl bg-cc-brand-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-brand-700 disabled:opacity-60">{busy ? "…" : "Clock In"}</button>
+              <button onClick={() => clockIn(a.job_id, a.assignment_id)} disabled={busy} className="mt-3 w-full inline-flex items-center justify-center rounded-xl bg-cc-solid-600 text-white text-[16px] font-bold min-h-[56px] hover:bg-cc-solid-700 disabled:opacity-60">{busy ? "…" : "Clock In"}</button>
             </div>
           ))}
         </div>

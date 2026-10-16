@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate R6.1 asked to be told about "any and all failures and errors on the
@@ -12,7 +13,7 @@ import { join } from "node:path";
  * So each named failure path is pinned to its file here, with the reason.
  */
 const ROOT = process.cwd();
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 describe("every failure Kate named reaches Slack", () => {
   it("a bounced supplier order alerts — the order looks sent but the vendor has nothing", () => {

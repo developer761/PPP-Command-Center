@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R5.5 was reported on three surfaces. It was on five.
@@ -16,7 +17,7 @@ import { join } from "node:path";
  * cancellation. It is a state a reader can act on wrongly — chasing a vendor,
  * or assuming materials are coming.
  */
-const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
+const read = (rel: string) => stripComments(readFileSync(join(process.cwd(), rel), "utf8"));
 
 /** Every non-Commercial place that reads the supplier_orders table. */
 const READERS = [

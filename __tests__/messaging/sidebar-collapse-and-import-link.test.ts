@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan, 2026-09-08, on the Hatch messaging rail:
@@ -20,8 +21,8 @@ import { join } from "node:path";
  * collapse cannot swallow the active workspace.
  */
 const ROOT = join(__dirname, "..", "..");
-const sidebar = readFileSync(join(ROOT, "components/messaging/messaging-sidebar.tsx"), "utf8");
-const training = readFileSync(join(ROOT, "app/messaging/training/page.tsx"), "utf8");
+const sidebar = stripComments(readFileSync(join(ROOT, "components/messaging/messaging-sidebar.tsx"), "utf8"));
+const training = stripComments(readFileSync(join(ROOT, "app/messaging/training/page.tsx"), "utf8"));
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 
 describe("region groups collapse", () => {
@@ -110,7 +111,7 @@ describe("the Training page can reach the import screen", () => {
   });
 
   it("the import screen actually asks the conduct-vs-outcome question", () => {
-    const form = readFileSync(join(ROOT, "components/messaging/training-import-form.tsx"), "utf8");
+    const form = stripComments(readFileSync(join(ROOT, "components/messaging/training-import-form.tsx"), "utf8"));
     expect(form).toMatch(/How well it was handled/);
     expect(form).toMatch(/Whether it booked/);
   });

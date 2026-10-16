@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * "Sent" has to mean somebody received it.
@@ -32,9 +33,9 @@ import { join } from "node:path";
  * stop the recipient promise going back to hard-coded names.
  */
 
-const db = readFileSync(join(process.cwd(), "lib/commercial/invoices/db.ts"), "utf8");
-const email = readFileSync(join(process.cwd(), "lib/commercial/invoices/email.ts"), "utf8");
-const page = readFileSync(join(process.cwd(), "app/commercial/invoices/[id]/page.tsx"), "utf8");
+const db = stripComments(readFileSync(join(process.cwd(), "lib/commercial/invoices/db.ts"), "utf8"));
+const email = stripComments(readFileSync(join(process.cwd(), "lib/commercial/invoices/email.ts"), "utf8"));
+const page = stripComments(readFileSync(join(process.cwd(), "app/commercial/invoices/[id]/page.tsx"), "utf8"));
 
 describe("creating an invoice", () => {
   it("does NOT stamp sent_at", () => {
@@ -56,26 +57,51 @@ describe("creating an invoice", () => {
 });
 
 describe("emailing an invoice", () => {
+  /**
+   * The send-recording block, anchored on CODE.
+   *
+   * These three assertions used to navigate by `indexOf("RECORD THE SEND")`
+   * — a `//` comment. That is a landmark nobody is obliged to keep, and when
+   * it goes `indexOf` returns -1, `slice(-1)` returns THE LAST CHARACTER OF
+   * THE FILE, and all three assertions then run against a one-character
+   * string. Not one of them would have failed; they would simply have
+   * stopped checking the thing they were written for. Found 2026-10-16 when
+   * stripping comments removed the landmark and the tests went red while the
+   * behaviour they guard was untouched.
+   *
+   * So: anchor on the branch itself, and refuse to run if it has moved.
+   */
+  function recordSendBlock(): string {
+    const start = email.indexOf('if (invoice.status === "draft") {');
+    expect(
+      start,
+      "the draft/non-draft branch in emailInvoiceToGc has moved — re-anchor this test rather than deleting it"
+    ).toBeGreaterThan(-1);
+    const end = email.indexOf("addAccountNote", start);
+    expect(end, "the timeline note that ends the block has moved").toBeGreaterThan(start);
+    return email.slice(start, end);
+  }
+
   it("records the send even when the invoice was ALREADY live", () => {
     // The old code only stamped on a draft→sent flip. An invoice issued on
     // create is already `sent`, so that branch never ran for it — and once
     // create stopped stamping optimistically, a genuinely emailed invoice
     // would have shown no send date at all.
-    const tail = email.slice(email.indexOf("RECORD THE SEND"));
-    expect(tail, "the non-draft branch must exist").toMatch(/}\s*else\s*{/);
-    expect(tail).toMatch(/sent_at:\s*nowIso/);
+    const block = recordSendBlock();
+    expect(block, "the non-draft branch must exist").toMatch(/}\s*else\s*{/);
+    expect(block).toMatch(/sent_at:\s*nowIso/);
   });
 
   it("does not drag a part-paid invoice back to 'sent'", () => {
     // A re-send must not rewrite the status — only record that mail went out.
-    const tail = email.slice(email.indexOf("RECORD THE SEND"));
-    const elseBlock = tail.slice(tail.indexOf("} else {"));
-    expect(elseBlock).not.toMatch(/to_status:\s*"sent"/);
+    const block = recordSendBlock();
+    const at = block.indexOf("} else {");
+    expect(at, "no else branch to check").toBeGreaterThan(-1);
+    expect(block.slice(at)).not.toMatch(/to_status:\s*"sent"/);
   });
 
   it("backfills issued_at only when it is missing", () => {
-    const tail = email.slice(email.indexOf("RECORD THE SEND"));
-    expect(tail).toMatch(/invoice\.issued_at \? \{\} : \{ issued_at: nowIso \}/);
+    expect(recordSendBlock()).toMatch(/invoice\.issued_at \? \{\} : \{ issued_at: nowIso \}/);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   isTaxExempt,
   taxExemptionNote,
 } from "@/lib/commercial/tax/exemption";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Per-job tax exemption.
@@ -57,7 +58,7 @@ describe("resolveTaxExemption", () => {
 });
 
 describe("every tax path uses the shared rule", () => {
-  const read = (p: string) => readFileSync(join(__dirname, "..", "..", p), "utf8");
+  const read = (p: string) => stripComments(readFileSync(join(__dirname, "..", "..", p), "utf8"));
 
   it("no path reads tax_exempt off the account directly any more", () => {
     // The answer used to be computed in three places, and the comment in the
@@ -76,17 +77,38 @@ describe("every tax path uses the shared rule", () => {
   it("the invoice EDIT path selects the job's override too", () => {
     // Same trap, second location — missed on the first pass. Any select whose
     // result is read for opportunity_id must actually ask for it.
+    //
+    // Each select's "what is read from it" window ends where the NEXT QUERY
+    // begins, rather than after a fixed 700 characters.
+    //
+    // 700 was wrong twice over. `updateCommercialInvoice` runs two queries:
+    // a `select("deleted_at")` guard, then a `select("account_id,
+    // opportunity_id")`. The fixed window ran from the first straight over
+    // the second, so the guard was charged with reading an `opportunity_id`
+    // that belongs to the query below it. That only ever passed because the
+    // comments between them padded the gap past 700 characters — strip the
+    // comments and the same code fails. A window sized in characters is a
+    // window whose meaning depends on how chatty the comments are.
     const src = read("lib/commercial/invoices/db.ts");
+
+    let checked = 0;
     for (const m of src.matchAll(/\.from\("commercial_invoices"\)[\s\S]{0,400}?\.select\("([^"]+)"\)/g)) {
-      const after = src.slice(m.index! + m[0].length, m.index! + m[0].length + 700);
+      const from = m.index! + m[0].length;
+      const nextQuery = src.indexOf('.from("', from);
+      const after = src.slice(from, nextQuery > -1 ? nextQuery : src.length);
       if (!after.includes("opportunity_id")) continue;
       // `select("*")` returns every column, so it is fine.
       if (m[1].trim() === "*") continue;
+      checked++;
       expect(
         m[1],
         `a commercial_invoices select reads opportunity_id but does not select it: ${m[1]}`
       ).toContain("opportunity_id");
     }
+
+    // Without this the loop is free to check nothing — a regex drift in the
+    // matcher above would empty it and the test would still be green.
+    expect(checked, "no commercial_invoices select reads opportunity_id — the matcher has drifted").toBeGreaterThan(0);
   });
 
   it("the invoice create path actually SELECTS the job's override", () => {

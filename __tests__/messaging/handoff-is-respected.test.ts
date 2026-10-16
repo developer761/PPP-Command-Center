@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * When a person takes a conversation over, the bot goes quiet — on every path.
@@ -49,7 +50,7 @@ function libFiles(): string[] {
 
 describe("the handoff is respected on every path to the customer", () => {
   it("the set of carrier callers has not changed", () => {
-    const callers = libFiles().filter((f) => readFileSync(f, "utf8").includes("gatedSend"));
+    const callers = libFiles().filter((f) => stripComments(readFileSync(f, "utf8")).includes("gatedSend"));
     const unexpected = callers.filter(
       (f) => !(f in CARRIER_CALLERS) && !NOT_A_CALLER.has(f)
     );
@@ -63,7 +64,7 @@ describe("the handoff is respected on every path to the customer", () => {
   it("each caller checks who holds the conversation", () => {
     const missing: string[] = [];
     for (const [file, needle] of Object.entries(CARRIER_CALLERS)) {
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       if (!needle.test(src)) missing.push(`${file} (no ${needle})`);
     }
     expect(missing, `sends without knowing who holds it:\n${missing.join("\n")}`).toEqual([]);
@@ -72,7 +73,7 @@ describe("the handoff is respected on every path to the customer", () => {
   it("campaign steps defer rather than sending into a held conversation", () => {
     // This one lives in scheduler.ts rather than a carrier caller, because the
     // state arrives through resolve() before the send is attempted.
-    const src = readFileSync("lib/messaging/scheduler.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler.ts", "utf8"));
     expect(src).toMatch(/conversationState === "human_active"/);
     expect(src).toMatch(/reschedule/);
   });
@@ -81,7 +82,7 @@ describe("the handoff is respected on every path to the customer", () => {
     // A message that arrived during the hold had its turn cancelled. Without
     // this, releasing leaves ai_active with nothing scheduled and the customer
     // is answered by nobody, ever.
-    const src = readFileSync("lib/messaging/handoff-write.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/handoff-write.ts", "utf8"));
     expect(src).toMatch(/queueTurnIfUnanswered/);
   });
 
@@ -89,7 +90,7 @@ describe("the handoff is respected on every path to the customer", () => {
     // Every export of a "use server" module is a POST endpoint any signed-in
     // user can call. This one queues agent work without checking who asked, so
     // it must live outside that boundary.
-    const src = readFileSync("lib/messaging/turn-queue.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/turn-queue.ts", "utf8"));
     expect(src.trimStart().startsWith('"use server"')).toBe(false);
     expect(src).not.toMatch(/^["']use server["']/m);
   });

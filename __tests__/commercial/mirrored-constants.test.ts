@@ -27,7 +27,7 @@ import {
  */
 
 const ROOT = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 /** The literal in `const X = 100 * 1024 * 1024` or `= 52428800`. */
 function byteConstant(src: string, name: string): number | null {

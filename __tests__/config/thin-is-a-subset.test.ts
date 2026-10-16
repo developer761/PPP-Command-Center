@@ -24,11 +24,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { deriveThinFromFull } from "@/lib/salesforce/queries";
 import type { SalesforceSnapshot } from "@/lib/salesforce/queries";
+import { stripComments } from "../helpers/strip-comments";
 
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(__dirname, "..", "..", "lib/salesforce/queries.ts"),
   "utf8"
-);
+));
 
 /**
  * Snapshot fields the BUILDER drops when thin, read from the
@@ -119,10 +120,10 @@ describe("deriveThinFromFull covers everything the builder skips", () => {
 
 describe("the warm cron pulls Salesforce once", () => {
   it("uses the single-pull path", () => {
-    const cron = readFileSync(
+    const cron = stripComments(readFileSync(
       join(__dirname, "..", "..", "app/api/cron/warm-snapshot/route.ts"),
       "utf8"
-    ).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    ));
     expect(cron).toContain("warmAllSnapshots");
     // The two extra forced SF pulls are gone.
     expect(cron).not.toMatch(/thin: true, forceRebuild: true/);
@@ -148,10 +149,10 @@ describe("the warm actually finishes writing before it reports success", () => {
    *
    * A user request still must not wait on it. Only the cron awaits.
    */
-  const queries = readFileSync(
+  const queries = stripComments(readFileSync(
     join(__dirname, "..", "..", "lib/salesforce/queries.ts"),
     "utf8"
-  );
+  ));
 
   it("awaits the shared write when asked to", () => {
     expect(queries).toMatch(/if \(opts\?\.awaitSharedWrite\) \{\s*\n\s*await writeSharedSnapshot\(cacheKey, snapshot\);/);
@@ -169,10 +170,10 @@ describe("the warm actually finishes writing before it reports success", () => {
   it("the cron has time for the writes it now waits on", () => {
     // ~22s fetch + ~68s of uploads. 60s would kill it mid-write, which is
     // the exact failure this change exists to prevent.
-    const cron = readFileSync(
+    const cron = stripComments(readFileSync(
       join(__dirname, "..", "..", "app/api/cron/warm-snapshot/route.ts"),
       "utf8"
-    );
+    ));
     const m = /export const maxDuration = (\d+)/.exec(cron);
     expect(m).toBeTruthy();
     expect(Number(m![1])).toBeGreaterThanOrEqual(180);

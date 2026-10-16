@@ -5925,7 +5925,7 @@ async function InfoTab({
           </label>
           <SubmitButton
             pendingLabel="Saving…"
-            className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+            className="inline-flex items-center px-3 min-h-[40px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-charcoal-900"
           >
             Save tax setting
           </SubmitButton>
@@ -6077,7 +6077,7 @@ async function InfoTab({
               </label>
               <SubmitButton
                 pendingLabel="Adding…"
-                className="inline-flex items-center px-3 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-navy-900"
+                className="inline-flex items-center px-3 min-h-[44px] rounded-lg bg-ppp-charcoal-800 text-surface text-[12.5px] font-semibold hover:bg-ppp-charcoal-900"
               >
                 Add to job
               </SubmitButton>

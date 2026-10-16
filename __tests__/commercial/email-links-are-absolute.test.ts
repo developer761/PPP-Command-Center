@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A link in an email has an origin, or it is not a link.
@@ -28,10 +29,10 @@ import { join } from "node:path";
  * deliverability complaint it was added for.
  */
 
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(process.cwd(), "lib/notifications/commercial-events.ts"),
   "utf8"
-);
+));
 
 describe("email links", () => {
   it("never USES an unvalidated origin", () => {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { TwilioTransport } from "@/lib/messaging/transports/twilio";
 import type { E164 } from "@/lib/messaging/phone";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * THE ONE PROPERTY THAT MATTERS ON THE DAY SENDING IS SWITCHED ON.
@@ -69,7 +70,7 @@ describe("a message the carrier accepted is never sent again", () => {
  */
 describe("the writes that close a sent row are not discarded", () => {
   it("markSent checks the update that marks the action done", () => {
-    const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler-db.ts", "utf8"));
     const markSent = src.slice(src.indexOf("async markSent("), src.indexOf("async reschedule("));
     expect(markSent).toMatch(/state: "failed"/);
     expect(markSent).toMatch(/sms_sent_not_closed/);
@@ -78,7 +79,7 @@ describe("the writes that close a sent row are not discarded", () => {
   });
 
   it("sendDraft checks the update that marks the draft sent", () => {
-    const src = readFileSync("lib/messaging/drafts-write.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/drafts-write.ts", "utf8"));
     expect(src).toMatch(/sms_draft_sent_not_closed/);
     expect(src).toMatch(/closeErr/);
   });
@@ -86,7 +87,7 @@ describe("the writes that close a sent row are not discarded", () => {
   it("a refused reply that cannot be filed as a draft throws rather than vanishing", () => {
     // Returning "drafted" marks the action done, so a discarded insert error
     // means no message, no draft, and a closed action: answered by nobody.
-    const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler-db.ts", "utf8"));
     expect(src).toMatch(/could not write the refused reply as a draft/);
     expect(src).toMatch(/could not write the held reply as a draft/);
   });

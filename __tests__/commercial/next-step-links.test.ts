@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { nextStep, attentionFor } from "@/lib/commercial/opportunities/attention";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan, 2026-08-13: *"Mark won or lost here doesn't work... Start the job
@@ -17,7 +18,7 @@ import { nextStep, attentionFor } from "@/lib/commercial/opportunities/attention
  * only real proof that a link goes somewhere the page handles.
  */
 
-const PAGE = readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8");
+const PAGE = stripComments(readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8"));
 
 /** Every (status, sub_status) a deal can sit in, with a proposal state that
  *  reaches each branch of `nextStep`. */

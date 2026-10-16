@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * THE SANDBOX MUST BE GIVEN WHAT PRODUCTION IS GIVEN.
@@ -39,7 +40,7 @@ import { readFileSync } from "node:fs";
 
 /** Option keys at every `runAgentTurn(...)` call site in a file. */
 function optionKeys(path: string): string[] {
-  const src = readFileSync(path, "utf8");
+  const src = stripComments(readFileSync(path, "utf8"));
   const sf = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, true);
   const found: string[] = [];
   const walk = (n: ts.Node) => {
@@ -177,17 +178,28 @@ describe("the sandbox is given the same context as production", () => {
  * Opt-out is the genuine case of sending nothing, and stays that way.
  */
 describe("the sandbox answers HELP, because production does", () => {
-  const raw = () => readFileSync("lib/messaging/simulator.ts", "utf8");
   /**
-   * Comments stripped, the same way simulator-safety.test.ts does it and for
-   * the same reason: the comment explaining why "the carrier answers HELP"
-   * was WRONG has to quote it, and a raw match fails on the explanation. That
-   * is a false positive which teaches people to water down the comment
-   * instead of fixing the code.
+   * This describe block needs BOTH readings of the file, which is why it is
+   * the one place here that keeps an unstripped one.
+   *
+   *   code()  what the simulator does — comments removed, so the comment
+   *           explaining that "the carrier answers HELP" was WRONG cannot be
+   *           mistaken for the claim itself. A raw match there is a false
+   *           positive that teaches people to water down the comment instead
+   *           of fixing the code.
+   *   raw()   the file as written, used by exactly one assertion below whose
+   *           subject IS the comment.
+   *
+   * `code()` used to carry its own two-line comment stripper, with
+   * `(^|[^:])` bolted onto the `//` rule to stop it eating `https://`. That
+   * was a patch for one symptom of a general bug — the shared helper was
+   * truncating every URL, every protocol regex and every `//` inside a
+   * string — and it still mangled `` `${x}//y` ``. The helper parses now, so
+   * the private copy is gone; one stripper, one set of bugs, one place to
+   * fix them.
    */
-  const code = () => raw()
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const raw = () => readFileSync("lib/messaging/simulator.ts", "utf8");
+  const code = () => stripComments(raw());
 
   it("does not claim the carrier handles HELP", () => {
     expect(code()).not.toMatch(/carrier answers HELP/i);

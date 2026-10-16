@@ -17,6 +17,7 @@ import {
   type RuleForRating, type RatableTurn,
 } from "@/lib/messaging/rater";
 import { forPrompt, type ClassARule } from "@/lib/messaging/class-a-rules";
+import { stripComments } from "../helpers/strip-comments";
 
 const GUIDANCE = "RATER ONLY: a confirm from file counts as correct; only a retype is a defect.";
 
@@ -80,7 +81,7 @@ describe("and reaches NO bot prompt", () => {
     // The guarantee the header describes: class-a-rules-db reads
     // sms_class_a_rules and does not know sms_class_a_rule_notes exists.
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("lib/messaging/class-a-rules-db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/class-a-rules-db.ts", "utf8"));
     const code = src.replace(/\/\*\*[\s\S]*?\*\//g, "");   // strip the comments
     expect(code).not.toContain("sms_class_a_rule_notes");
     expect(code).not.toContain("rating_guidance");

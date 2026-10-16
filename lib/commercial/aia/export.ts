@@ -32,6 +32,7 @@ import {
   type AiaG702,
 } from "./constants";
 import { aiaTemplateBuffer } from "./template/template-b64";
+import { etDateOf } from "@/lib/date-et";
 
 const MONEY = '#,##0.00;(#,##0.00)';
 const d = (cents: number) => cents / 100;
@@ -81,6 +82,51 @@ export async function buildAiaWorkbookBuffer(input: {
   // diverge from G702 line 5 if the DB CHECK on retainage_pct is relaxed.
   const pct = Math.min(100, Math.max(0, Number(app.retainage_pct) || 0));
   const periodTo = app.period_to ? new Date(app.period_to) : null;
+
+  /*
+   * A DATE CELL NEVER KEEPS THE TEMPLATE'S =TODAY().
+   *
+   * Her workbook computes three dates for itself — G702!I7 "PERIOD TO",
+   * G703!I3 "APPLICATION DATE", G703!I4 "PERIOD TO" — and all three writes
+   * used to sit behind `if (periodTo)`. On an application with no period_to
+   * the formula therefore SURVIVED into the exported file, so the certificate
+   * re-dated itself to whatever day it was opened. Four live applications are
+   * affected and two of them are PAID: a paid certificate is a settled record,
+   * and one whose date moves every time a GC's AP department reopens it is
+   * evidence of nothing. (Measured 2026-10-16: three TODAY() formulas in the
+   * exported sheet XML of apps #1, #2, #3 and #5.)
+   *
+   * Setting the cell to null genuinely removes the formula — verified by
+   * reading the written sheet XML back, not by trusting exceljs's API. So the
+   * rule is: always write, and write null when there is nothing true to say.
+   *
+   * WHAT GOES IN WHEN THERE IS NO PERIOD, per cell, because they ask different
+   * questions:
+   *
+   *  · PERIOD TO is a claim about what was billed. With no period recorded,
+   *    any date put there invents a billing period — on a PAID certificate
+   *    that is a false statement, and a freeze date would read as one. So it
+   *    goes BLANK: a blank period on a certificate that has none is honest and
+   *    visibly incomplete, which is what it is.
+   *
+   *  · APPLICATION DATE is a claim about the DOCUMENT, and the document always
+   *    has one. `frozen_at` is the instant the certificate was issued and
+   *    stopped being editable — fixed, already recorded, and exactly what this
+   *    cell means. A draft that was never frozen falls back to `created_at`.
+   *    Either way it is a date that cannot move.
+   *
+   * Taken as the ET calendar day, matching every other date on the platform —
+   * a certificate frozen at 9pm ET must not print tomorrow's date.
+   */
+  const certIso = etDateOf(app.frozen_at) ?? etDateOf(app.created_at);
+  const certificateDate = certIso ? new Date(certIso) : null;
+
+  const dateCell = (sheet: ExcelJS.Worksheet, ref: string, value: Date | null) => {
+    const c = sheet.getCell(ref);
+    // Unconditional: assigning null is what clears the template's =TODAY().
+    c.value = value;
+    if (value) c.numFmt = "mm/dd/yyyy";
+  };
 
   const money = (cell: string, cents: number, sheet: ExcelJS.Worksheet = g) => {
     const c = sheet.getCell(cell);
@@ -141,8 +187,30 @@ export async function buildAiaWorkbookBuffer(input: {
    */
   const HER_BLUE = { argb: "FF0000FF" }; // palette index 12 in her sample
   const HER_RED = { argb: "FFFF0000" }; // palette index 10 in her sample
-  const fill = (lines: string[], cells: readonly string[], color: { argb: string }) => {
-    const parts = lines.filter((p) => p.trim() !== "");
+  /*
+   * TAKES THE WHOLE LABEL AND DOES ITS OWN SPLITTING.
+   *
+   * It used to be handed `label.split("\n")` by each call site, which could
+   * only ever see the separator header-labels joins WITH — so a line break
+   * living INSIDE one of the fields (20 live accounts keep the suite on a
+   * second line of `billing_street`, CRLF from the Salesforce import) came
+   * through as a bare "\r" riding on the end of a part. These cells are
+   * `wrapText: false`, so it drew as a control glyph on the certificate, and
+   * the extra part pushed a three-part block to four against three cells —
+   * the overflow branch below then merged the middles into
+   * "1998 Springdale Road⏎, Suite 101".
+   *
+   * header-labels normalises now, so in practice the label arrives clean. This
+   * splits on every line-break form and strips each part anyway: it is the
+   * last thing between a stored address and a document a GC signs, and the
+   * trailing-comma strip means the ", " the overflow branch inserts can never
+   * land next to one the data already had.
+   */
+  const fill = (label: string, cells: readonly string[], color: { argb: string }) => {
+    const parts = (label ?? "")
+      .split(/\r\n|\r|\n/)
+      .map((p) => p.replace(/\s+/g, " ").replace(/[\s,]+$/, "").trim())
+      .filter(Boolean);
     const laid =
       parts.length <= cells.length
         ? parts
@@ -157,17 +225,13 @@ export async function buildAiaWorkbookBuffer(input: {
       cell.font = { ...(cell.font ?? {}), color: color };
     });
   };
-  fill(input.ownerLabel.split("\n"), ["C5", "C6", "C7"], HER_BLUE);
-  fill(input.projectLabel.split("\n"), ["E5", "E6", "E7"], HER_RED);
-  fill(input.contractorLabel.split("\n"), ["C12", "C14", "C15"], HER_BLUE);
+  fill(input.ownerLabel, ["C5", "C6", "C7"], HER_BLUE);
+  fill(input.projectLabel, ["E5", "E6", "E7"], HER_RED);
+  fill(input.contractorLabel, ["C12", "C14", "C15"], HER_BLUE);
   // The cells the old layout used. Cleared, or the block appears twice.
   for (const ref of ["A4", "D4", "A11"]) g.getCell(ref).value = null;
   g.getCell("I4").value = app.application_number;
-  if (periodTo) {
-    const c = g.getCell("I7"); // overwrites the template's =TODAY()
-    c.value = periodTo;
-    c.numFmt = "mm/dd/yyyy";
-  }
+  dateCell(g, "I7", periodTo); // PERIOD TO:
 
   money("E24", g702.originalContractCents);
   money("E25", g702.netChangeOrdersCents);
@@ -286,13 +350,8 @@ export async function buildAiaWorkbookBuffer(input: {
 
   // ── Sheet 2 · G703 ──────────────────────────────────────────────────────
   s.getCell("I2").value = app.application_number;
-  if (periodTo) {
-    for (const cell of ["I3", "I4"]) {
-      const c = s.getCell(cell); // both are =TODAY() in the template
-      c.value = periodTo;
-      c.numFmt = "mm/dd/yyyy";
-    }
-  }
+  dateCell(s, "I3", periodTo ?? certificateDate); // APPLICATION DATE:
+  dateCell(s, "I4", periodTo); // PERIOD TO:
   s.getCell("J10").value = pct / 100;
 
   /*

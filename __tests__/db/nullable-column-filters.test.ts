@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Guard for the worst bug this codebase has shipped.
@@ -47,7 +48,7 @@ const FILES = [
 
 describe("no .neq() against a nullable column", () => {
   it.each(FILES)("%s", (rel) => {
-    const src = codeOnly(readFileSync(join(process.cwd(), rel), "utf8"));
+    const src = codeOnly(stripComments(readFileSync(join(process.cwd(), rel), "utf8")));
     for (const col of NULLABLE_COLUMNS) {
       const bad = new RegExp(`\\.neq\\(\\s*["'\`]${col}["'\`]`, "g");
       const hits = src.match(bad) ?? [];
@@ -62,7 +63,7 @@ describe("no .neq() against a nullable column", () => {
   });
 
   it("the loader that feeds the materials pages still excludes previews in JS", () => {
-    const src = readFileSync(join(process.cwd(), "lib/materials-page-data.ts"), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), "lib/materials-page-data.ts"), "utf8"));
     expect(
       /kind === "preview"/.test(src),
       "removing the DB filter is only safe while the JS guard exists — it doesn't"

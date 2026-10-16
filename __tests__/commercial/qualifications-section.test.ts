@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { EXCLUSION_KINDS, isExclusionKind } from "@/lib/commercial/exclusions/constants";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Stephanie 2026-08-17: "Qualifications should be its own section after
@@ -36,7 +37,7 @@ describe("exclusion kinds", () => {
 });
 
 describe("the proposal prints them as separate sections", () => {
-  const SRC = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const SRC = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("Qualifications comes after Exclusions", () => {
     const ex = SRC.indexOf("<ExclusionsBlock");
@@ -53,11 +54,11 @@ describe("the proposal prints them as separate sections", () => {
 });
 
 describe("only ONE thing is called Qualifications", () => {
-  const PDF = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
-  const EDITOR = readFileSync(
+  const PDF = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
+  const EDITOR = stripComments(readFileSync(
     "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
     "utf8"
-  );
+  ));
 
   /**
    * Migration 164 gave the exclusions library a `kind`, and the PDF a
@@ -96,11 +97,11 @@ describe("only ONE thing is called Qualifications", () => {
   it("the picker can tell an exclusion from a qualification", () => {
     // Without this the only way to learn where a library line prints was to
     // render the PDF and look.
-    const picker = readFileSync("components/commercial/exclusion-picker.tsx", "utf8");
+    const picker = stripComments(readFileSync("components/commercial/exclusion-picker.tsx", "utf8"));
     expect(picker).toContain("KindBadge");
     expect(picker).toContain('kind?: "exclusion" | "qualification"');
     // …and the search endpoint has to actually send it.
-    const api = readFileSync("app/api/commercial/exclusions/search/route.ts", "utf8");
+    const api = stripComments(readFileSync("app/api/commercial/exclusions/search/route.ts", "utf8"));
     expect(api).toContain("kind: r.kind");
   });
 });

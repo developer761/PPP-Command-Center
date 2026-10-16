@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * EVERY path that renders a proposal PDF fits it to one page.
@@ -38,11 +39,28 @@ const SITES: Array<[string, string, string]> = [
   ["closeout transmittal — auto-file", "app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool.tsx", "renderCloseoutTransmittalPdf"],
   ["warranty — download", "app/api/commercial/closeout/[id]/warranty/route.ts", "renderWarrantyLetterPdf"],
   ["warranty — auto-file", "app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool.tsx", "renderWarrantyLetterPdf"],
+
+  // The CHANGE ORDER, added 2026-10-16 — the same bug, on the one customer
+  // document this list had never been pointed at.
+  //
+  // The download route fitted it; `emailChangeOrderToGc` called
+  // `renderChangeOrderPdf(built.input)` raw. Both paths share ONE data builder
+  // (`buildChangeOrderPdfInput`, extracted precisely so the two could not
+  // disagree) and they still disagreed, because the builder resolves the DATA
+  // and the fit is LAYOUT — the seam this file exists for sat one line below
+  // the seam somebody had already closed.
+  //
+  // Measured across all 41 live change orders: the download route produced one
+  // page 41 times; the email produced TWO on five of them (Water Lilies CO-2
+  // $23,050 / CO-3 $11,570 / CO-4 $42,000, VCA West Islip CO-1 $2,250 / CO-2
+  // $20,375). Preview one page, GC's attachment two, exactly as before.
+  ["change order — download", "app/api/commercial/change-orders/[id]/pdf/route.ts", "renderChangeOrderPdf"],
+  ["change order — email to the GC", "lib/commercial/change-orders/email.ts", "renderChangeOrderPdf"],
 ];
 
 describe("every customer-facing PDF goes through the fit", () => {
   for (const [label, file, renderer] of SITES) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
 
     it(`${label} still renders that PDF (guards the check below)`, () => {
       // If the render moves out of this file, the assertion under it would pass
@@ -67,9 +85,9 @@ describe("every customer-facing PDF goes through the fit", () => {
 });
 
 describe("the Compact checkbox tells the truth", () => {
-  const src = readFileSync(
+  const src = stripComments(readFileSync(
     "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"
-  );
+  ));
 
   it("no longer claims it is what pulls a proposal onto one page", () => {
     // Brendan's "it does not add numbers to the pages like it's says it should"

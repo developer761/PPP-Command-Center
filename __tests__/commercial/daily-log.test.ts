@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { ABSENCE_TYPES } from "@/lib/commercial/field-ops/daily-log";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The Daily Log's rules. Karan's spec is explicit about WHY they matter:
@@ -96,7 +97,7 @@ describe("the Daily Log filters on a status the platform actually writes", () =>
     // painter. A status filter is only meaningful if something writes that
     // status — check the app, not just the schema.
     const root = join(__dirname, "..", "..");
-    const src = readFileSync(join(root, "lib/commercial/field-ops/daily-log.ts"), "utf8");
+    const src = stripComments(readFileSync(join(root, "lib/commercial/field-ops/daily-log.ts"), "utf8"));
     const eqStatus = [...src.matchAll(/\.eq\("status",\s*"([a-z_]+)"\)/g)].map((m) => m[1]);
     for (const status of eqStatus) {
       const writtenSomewhere = execSync(

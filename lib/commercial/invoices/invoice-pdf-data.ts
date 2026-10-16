@@ -1,4 +1,5 @@
 import "server-only";
+import { addressLines } from "@/lib/commercial/address-lines";
 
 import { getCommercialInvoice, listInvoiceLineItems } from "./db";
 import { listMilestonesForInvoice } from "./milestones";
@@ -75,7 +76,8 @@ export async function buildInvoicePdfInput(invoiceId: string): Promise<InvoicePd
 
   // Bill-to address lines from the account (skip empties).
   const billTo: string[] = [];
-  const street = [account?.billing_street, account?.billing_street2].map((s) => s?.trim()).filter(Boolean) as string[];
+  // addressLines, not trim: a street field can hold a CR and it reaches the paper.
+  const street = addressLines(account?.billing_street, account?.billing_street2);
   billTo.push(...street);
   const cityLine = [
     [account?.billing_city?.trim(), account?.billing_state?.trim()].filter(Boolean).join(", "),

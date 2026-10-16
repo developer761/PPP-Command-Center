@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The work-order list must never render NOTHING.
@@ -15,7 +16,7 @@ import { join } from "node:path";
  * An empty screen must say why.
  */
 
-const src = readFileSync(join(__dirname, "..", "..", "components/materials-view.tsx"), "utf8");
+const src = stripComments(readFileSync(join(__dirname, "..", "..", "components/materials-view.tsx"), "utf8"));
 
 /** The whole `visibleJobs.length === 0 ? … : …` arm, brace-matched rather than
  *  grepped, so this reads the real branch and not a lookalike elsewhere. */

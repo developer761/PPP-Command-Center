@@ -105,7 +105,35 @@ export async function emailChangeOrderToGc(
       return { ok: false, error: "That change order's deal or GC no longer exists." };
     }
     const { renderChangeOrderPdf } = await import("./pdf");
-    pdf = await renderChangeOrderPdf(built.input);
+    /*
+     * THROUGH THE FIT — the same wrapper the download route uses.
+     *
+     * This line rendered the PDF raw while
+     * app/api/commercial/change-orders/[id]/pdf/route.ts wrapped the identical
+     * input in `renderFitToOnePage`. So Preview was one page and the
+     * attachment the GC actually received was two — byte for byte the defect
+     * Brendan reported on the proposal on 2026-09-03 ("this splits into 2
+     * pages"), reappearing on a document type that was not in the seam test's
+     * list. Measured across all 41 live change orders on 2026-10-16: the
+     * download path produced one page 41 times, this path produced TWO on five
+     * of them (Water Lilies CO-2 $23,050 / CO-3 $11,570 / CO-4 $42,000, VCA
+     * West Islip CO-1 $2,250 / CO-2 $20,375).
+     *
+     * Both the change-order rows in
+     * __tests__/commercial/every-proposal-pdf-path-fits.test.ts and the
+     * page-count case in __tests__/commercial/customer-pdfs-are-one-page.test.ts
+     * exist to stop it coming back.
+     */
+    const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+    const fit = await renderFitToOnePage((pageHeightScale) =>
+      renderChangeOrderPdf({ ...built.input, pageHeightScale })
+    );
+    pdf = fit.bytes;
+    if (!fit.fitted) {
+      console.warn(
+        `[emailChangeOrderToGc] ${input.change_order_id} is too long to fit one readable page — sent at the most compressed render.`
+      );
+    }
     fileBase = built.fileBase;
   } catch (err) {
     console.error("[emailChangeOrderToGc] render failed:", err);

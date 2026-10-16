@@ -5,6 +5,7 @@ import {
   END_INTENTS, CONTINUE_INTENTS, NURTURE_END_INTENTS, NURTURE_CONTINUE_INTENTS,
   checkTone, type Intent,
 } from "@/lib/messaging/agent-output";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Just the SAYS object.
@@ -69,7 +70,7 @@ describe("the templates obey the tone rules they enforce", () => {
   });
 
   it('never says "Yep" or "Thanks for letting me know"', () => {
-    const src = readFileSync("lib/messaging/render.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/render.ts", "utf8"));
     // Source-level, so a variant that only appears at a turn number this test
     // does not reach is still caught.
     const templateArea = saysObject(src);
@@ -78,7 +79,7 @@ describe("the templates obey the tone rules they enforce", () => {
   });
 
   it("has no em dash in any template string, not just the ones rendered here", () => {
-    const src = readFileSync("lib/messaging/render.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/render.ts", "utf8"));
     const templateArea = saysObject(src);
     // Strip comments — an em dash in prose explaining the rule is not a
     // violation of it.

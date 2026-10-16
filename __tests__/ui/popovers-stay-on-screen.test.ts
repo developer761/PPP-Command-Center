@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(root, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(root, p), "utf8"));
 
 /**
  * Kate, 2026-10-07, with a photograph from her phone: *"When I click 'All

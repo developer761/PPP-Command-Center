@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan 2026-09-09: "who should the supplier call — it should be the person
@@ -17,7 +18,7 @@ import { join } from "node:path";
  * not the new file.
  */
 const ROOT = join(__dirname, "..", "..");
-const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
+const read = (f: string) => stripComments(readFileSync(join(ROOT, f), "utf8"));
 
 describe("the chain from account settings to the vendor email", () => {
   it("1. account settings offers the field", () => {

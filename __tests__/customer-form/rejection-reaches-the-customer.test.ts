@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
-const view = readFileSync(join(root, "components/customer-form-view.tsx"), "utf8");
-const builder = readFileSync(join(root, "lib/supplier-order/builder.ts"), "utf8");
+const view = stripComments(readFileSync(join(root, "components/customer-form-view.tsx"), "utf8"));
+const builder = stripComments(readFileSync(join(root, "lib/supplier-order/builder.ts"), "utf8"));
 
 /**
  * When the Salesforce write fails, the CUSTOMER saw nothing.

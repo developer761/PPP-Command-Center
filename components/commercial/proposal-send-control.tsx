@@ -199,7 +199,7 @@ export function ProposalSendControl({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-cc-brand-700 hover:underline min-h-[36px]"
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-cc-brand-700 hover:underline min-h-[44px] sm:min-h-[36px]"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
           Email again
@@ -208,7 +208,7 @@ export function ProposalSendControl({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 shadow-sm min-h-[40px]"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cc-solid-600 text-white text-[13px] font-semibold hover:bg-cc-solid-700 shadow-sm min-h-[44px] sm:min-h-[40px]"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <line x1="22" y1="2" x2="11" y2="13" />
@@ -241,7 +241,13 @@ export function ProposalSendControl({
             onClick={() => status !== "sending" && setOpen(false)}
             aria-hidden
           />
-          <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto bg-surface rounded-t-2xl sm:rounded-2xl shadow-2xl">
+          {/* `max-h-dvh-sheet` rather than `max-h-[92vh]`: this sheet is
+              bottom-anchored on a phone (rounded-t-2xl, full width), and iOS
+              sizes `vh` to the LAYOUT viewport — the one that includes the
+              area behind the address bar and bottom toolbar. 92vh therefore
+              pushes the footer, and "Send to GC" with it, below the visible
+              screen. The utility stacks vh → svh → dvh. */}
+          <div className="relative w-full sm:max-w-lg max-h-dvh-sheet overflow-y-auto bg-surface rounded-t-2xl sm:rounded-2xl shadow-2xl">
             {status === "success" ? (
               <div role="status" aria-live="polite" className="text-center py-12 px-6">
                 <div className="mx-auto mb-4 inline-flex items-center justify-center h-14 w-14 rounded-full bg-ppp-green-50 text-ppp-green-700">
@@ -386,7 +392,11 @@ export function ProposalSendControl({
                   )}
                 </div>
 
-                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 px-5 py-4 border-t border-ppp-charcoal-100">
+                {/* pb-safe: the home indicator on a notched iPhone overlays
+                    the bottom of an edge-to-edge sheet and EATS THE TAP on
+                    whatever sits there — here, the primary "Send to GC". The
+                    button looks fine and simply does nothing. */}
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 px-5 pt-4 pb-safe border-t border-ppp-charcoal-100">
                   {/* Escape hatch — hand-delivered / portal case. Hidden on re-send
                       (the proposal is already sent). */}
                   {resend ? (
@@ -403,7 +413,7 @@ export function ProposalSendControl({
                     type="button"
                     onClick={sendEmail}
                     disabled={status === "sending" || !email.trim()}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-brand-600 text-white text-[14px] font-semibold hover:bg-cc-brand-700 disabled:opacity-50 min-h-[48px] shadow-sm"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-lg bg-cc-solid-600 text-white text-[14px] font-semibold hover:bg-cc-solid-700 disabled:opacity-50 min-h-[48px] shadow-sm"
                   >
                     {status === "sending" ? "Sending…" : "Send to GC"}
                     {status !== "sending" && (

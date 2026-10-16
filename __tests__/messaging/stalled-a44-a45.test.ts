@@ -18,6 +18,7 @@ import {
 } from "@/lib/messaging/call-signals";
 import { sendingWindow } from "@/lib/messaging/sending-window";
 import { validateAction } from "@/lib/messaging/agent-output";
+import { stripComments } from "../helpers/strip-comments";
 
 const NY = "America/New_York";
 const LA = "America/Los_Angeles";
@@ -471,7 +472,7 @@ describe("the event-park cadence", () => {
  * unit test.
  */
 describe("the follow-up prompt names the scope", () => {
-  const src = readFileSync("lib/messaging/agent-run.ts", "utf8");
+  const src = stripComments(readFileSync("lib/messaging/agent-run.ts", "utf8"));
 
   it("tells the model which of the three it is writing", () => {
     expect(src).toMatch(/THIS IS FOLLOW-UP \$\{opts\.followUpStep\} OF \$\{FOLLOW_UP_COUNT\}/);

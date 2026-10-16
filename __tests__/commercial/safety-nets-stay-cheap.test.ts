@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A safety net that runs on every page load only touches what is broken.
@@ -22,7 +23,7 @@ import { join } from "node:path";
  * the missing ones rather than all of them.
  */
 
-const src = readFileSync(join(process.cwd(), "lib/commercial/field-ops/jobs.ts"), "utf8");
+const src = stripComments(readFileSync(join(process.cwd(), "lib/commercial/field-ops/jobs.ts"), "utf8"));
 
 /** The body of one exported function, up to the next top-level export. */
 function bodyOf(name: string): string {

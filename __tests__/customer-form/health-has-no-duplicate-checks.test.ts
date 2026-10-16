@@ -15,12 +15,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
 const src = () =>
-  readFileSync(join(root, "app/api/admin/health/route.ts"), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/^\s*\/\/.*$/gm, " ");
+  stripComments(readFileSync(join(root, "app/api/admin/health/route.ts"), "utf8"));
 
 describe("the endpoint notices its own duplicates", () => {
   it("counts ids and reports a repeat as a failing card", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { COPYABLE_SETTINGS, SETTING_LABELS } from "@/lib/messaging/settings-copy";
+import { stripComments } from "../helpers/strip-comments";
 
 const writes: Record<string, unknown>[] = [];
 // The access check is asserted structurally in server-action-auth.test.ts and
@@ -114,7 +115,7 @@ describe("workspace hours", () => {
  * missing is the one a unit test of either end would not have noticed.
  */
 describe("the holiday setting can actually be set", () => {
-  const hop = (path: string) => readFileSync(path, "utf8");
+  const hop = (path: string) => stripComments(readFileSync(path, "utf8"));
 
   it("the patch builder writes the column", () => {
     const src = hop("lib/messaging/workspace-settings.ts");

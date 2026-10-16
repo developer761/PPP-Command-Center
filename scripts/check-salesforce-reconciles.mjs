@@ -137,25 +137,61 @@ try {
 
   // ── Deals ────────────────────────────────────────────────────────────────
   let agree = 0;
+  let notYetSold = 0;
   const differ = [];
   for (const m of dealMap) {
     const d = dealById.get(m.row_id);
     const o = sfById.get(m.sf_id);
     if (!d || d.deleted_at || !o) continue;
+    /*
+     * ONLY A SOLD DEAL HAS A CONTRACT TO COMPARE.
+     *
+     * `accepted_contract_cents` is the signed contract and is correctly 0
+     * until a deal is won. Salesforce's canonical figure carries the ESTIMATE
+     * from the moment one is sent. Comparing the two on an unsold deal reports
+     * the estimate as a disagreement — which is how "CBD - IHOP Patchogue
+     * Railings" appeared as a $500 drift while sitting at stage "Estimate
+     * Sent". It is not a drift; it is a deal nobody has sold yet.
+     */
+    if (o.StageName !== "Closed Won") { notYetSold++; continue; }
     const ours = (Number(d.accepted_contract_cents ?? 0) + Number(coByOpp.get(d.id) ?? 0)) / 100;
     const theirs = Number(o.QuotedSubtotalWithChangeOrder__c ?? 0);
     if (Math.abs(ours - theirs) < 0.005) agree++;
     else differ.push({ ours, theirs, name: o.Name, stage: o.StageName });
   }
   const linked = agree + differ.length;
-  check("there are linked deals to compare", linked > 0, `${linked} live, linked deals`);
+  check(
+    "there are sold, linked deals to compare",
+    linked > 0,
+    `${linked} Closed Won · ${notYetSold} not sold yet (no contract to compare)`,
+  );
   /*
    * A BASELINE, not zero. Three deals differ today and all three are known:
    * VCA West Islip and AIREF #1 carry Salesforce-only money the write-back
    * deliberately leaves alone, and IHOP Patchogue is a $500 deal never billed
    * here. What must not happen is the number GROWING — that is a new drift.
    */
-  const KNOWN_DEAL_DIFFERENCES = 3;
+  /*
+   * TWO, and each is a real gap with an owner — not a difference to tolerate.
+   *
+   *  · VCA West Islip, $14,625. Salesforce holds THREE approved change orders
+   *    (CO-32409 $14,625, CO-32668 $2,250, CO-32669 $20,375 = $37,250). We hold
+   *    two, $22,625 — because the migrated rollup row that stood for the
+   *    $14,625 was deleted here on 2026-10-16 and the two real change orders
+   *    entered in its place. The write-back correctly refused to reverse it
+   *    ("a migrated rollup row, not a real change order"), so Salesforce still
+   *    has it and we no longer do. The amounts do not match, so this is not a
+   *    clean replacement: STEPHANIE has to say whether CO-32409 is separate
+   *    work or was superseded.
+   *
+   *  · AIREF Building #1, $3,613. Salesforce's QUOTE LINE agrees with us
+   *    exactly at $283,082, there is no ChangeOrder__c behind the difference,
+   *    and four certificates — two of them PAID — are frozen at $283,082. The
+   *    canonical field over there is simply stale. Ours is right.
+   *
+   * Lower this the moment either is settled. It must only SHRINK.
+   */
+  const KNOWN_DEAL_DIFFERENCES = 2;
   check(
     "no NEW deal has drifted from Salesforce",
     differ.length <= KNOWN_DEAL_DIFFERENCES,

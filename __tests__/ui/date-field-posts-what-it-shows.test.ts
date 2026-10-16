@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * THE DATE FIELD MUST POST THE DATE IT SHOWS.
@@ -25,10 +26,10 @@ import { join } from "node:path";
  * be exercised here — but the property that broke is visible in one line, and
  * a `defaultValue` creeping back onto that input is the whole bug returning.
  */
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(process.cwd(), "components/commercial/date-field.tsx"),
   "utf8",
-).replace(/\/\*[\s\S]*?\*\//g, "");
+));
 
 describe("the DateField's hidden input", () => {
   it("is React-controlled, never defaultValue", () => {

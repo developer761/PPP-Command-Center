@@ -2,6 +2,8 @@ import "server-only";
 
 import { commercialDb } from "@/lib/commercial/db";
 import { paginateAll } from "@/lib/commercial/paginate";
+import { aiaIssuedAtFrom } from "@/lib/commercial/aia/constants";
+import { loadPeriodBilling, type PeriodInvoice } from "./period-billing";
 import { etDateOf } from "@/lib/date-et";
 
 /**
@@ -66,8 +68,11 @@ export type CashFlowReport = {
     paymentCount: number;
     /** Amount-weighted mean days from invoice issued to payment received. */
     avgDaysToPay: number | null;
-    /** Collected ÷ billed over the same window, as a percent. Above 100 just
-     *  means older invoices landed in this window — it is not an error. */
+    /** Collected ÷ billed over the same window, as a percent. BOTH ledgers on
+     *  both sides — see the denominator note in getCashFlowReport. Modestly
+     *  above 100 means older bills landed in this window; a multiple of 100
+     *  means the two sides are not measuring the same book, which is the bug
+     *  this used to have. */
     collectionRatePct: number | null;
     openCents: number;
   };
@@ -103,6 +108,86 @@ function daysBetween(fromYmd: string, toYmd: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
+/** Last calendar day of a "YYYY-MM" key, as YYYY-MM-DD. */
+export function monthEnd(key: string): string {
+  const y = Number(key.slice(0, 4));
+  const m = Number(key.slice(5, 7));
+  const d = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${key}-${String(d).padStart(2, "0")}`;
+}
+
+/** Every "YYYY-MM" from `from` to `to`, inclusive. */
+function monthKeysBetween(from: string, to: string): string[] {
+  const idx = (k: string) => Number(k.slice(0, 4)) * 12 + Number(k.slice(5, 7)) - 1;
+  const out: string[] = [];
+  for (let i = idx(from); i <= idx(to); i++) {
+    out.push(`${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+/** Which months the range only partly covers. At most two, and with every
+ *  cash-flow preset (all of which start on the 1st) at most one. */
+function partialMonthsOf(range: { fromYmd: string; toYmd: string }): Set<string> {
+  const keys = new Set<string>();
+  const firstKey = range.fromYmd.slice(0, 7);
+  const lastKey = range.toYmd.slice(0, 7);
+  if (range.fromYmd.slice(8, 10) !== "01") keys.add(firstKey);
+  if (range.toYmd !== monthEnd(lastKey)) keys.add(lastKey);
+  return keys;
+}
+
+/**
+ * A range needs a SECOND fold only when both of its edge months are partial —
+ * then one residual has to be split between two unknowns. No cash-flow preset
+ * does this (they all start on the 1st); a hand-typed window can.
+ */
+export function needsHeadFold(range: { fromYmd: string; toYmd: string }): boolean {
+  return partialMonthsOf(range).size === 2;
+}
+
+/**
+ * The chart's billed line, month by month, clipped to the range.
+ *
+ * `monthly` from `period-billing` is deliberately NOT range-limited — the
+ * dashboard trend draws context around a short window — so a month the range
+ * only partly covers would contribute a WHOLE month of billing against a
+ * part-month of cash, and the two lines on this chart would stop answering the
+ * same question.
+ *
+ * Whole months inside the range are exact as they stand. The ≤2 edge months
+ * take the residual against `rangeTotalCents`, which IS range-exact, so the
+ * returned map always sums to it. `headTotalCents` — billing from
+ * `range.fromYmd` to the end of that first month — is required only when
+ * `needsHeadFold` says both edges are partial.
+ */
+export function billedMonthsInRange(
+  monthly: Map<string, number>,
+  rangeTotalCents: number,
+  range: { fromYmd: string; toYmd: string },
+  headTotalCents?: number
+): Map<string, number> {
+  const firstKey = range.fromYmd.slice(0, 7);
+  const lastKey = range.toYmd.slice(0, 7);
+  const partial = partialMonthsOf(range);
+  const out = new Map<string, number>();
+  let wholeSum = 0;
+  for (const key of monthKeysBetween(firstKey, lastKey)) {
+    if (partial.has(key)) continue;
+    const amt = monthly.get(key) ?? 0;
+    out.set(key, amt);
+    wholeSum += amt;
+  }
+  if (partial.size === 1) {
+    out.set([...partial][0], rangeTotalCents - wholeSum);
+  } else if (partial.size === 2) {
+    const head = headTotalCents ?? 0;
+    out.set(firstKey, head);
+    out.set(lastKey, rangeTotalCents - wholeSum - head);
+  }
+  return out;
+}
+
 function monthLabel(key: string): string {
   const [y, m] = key.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
@@ -121,8 +206,10 @@ export async function getCashFlowReport(range: {
   const invoices = await paginateAll<{
     id: string;
     account_id: string | null;
+    opportunity_id: string | null;
     status: string;
     issued_at: string | null;
+    created_at: string | null;
     subtotal_cents: number;
     total_cents: number;
     paid_cents: number;
@@ -130,12 +217,13 @@ export async function getCashFlowReport(range: {
   }>(() =>
     sb
       .from("commercial_invoices")
-      .select("id, account_id, status, issued_at, subtotal_cents, total_cents, paid_cents, balance_cents")
+      .select(
+        "id, account_id, opportunity_id, status, issued_at, created_at, subtotal_cents, total_cents, paid_cents, balance_cents"
+      )
       .neq("status", "void")
       .is("deleted_at", null)
       .order("id")
   );
-  if (invoices.length === 0) return EMPTY;
   const invById = new Map(invoices.map((i) => [i.id, i]));
 
   const payments = await paginateAll<{
@@ -170,9 +258,9 @@ export async function getCashFlowReport(range: {
    * is not an edge case, it is most of the money.
    *
    * They are mapped onto the same shape as an invoice payment so the loop
-   * below does not grow a second branch: `issuedAt` is the certificate's
-   * period end, which is the moment it went to the GC and therefore the right
-   * clock to measure collection lag from.
+   * below does not grow a second branch: `issuedAt` comes from the shared
+   * `aiaIssuedAtFrom` ladder — the same one AR aging and the chase list use —
+   * which is the clock to measure collection lag from.
    */
   const aiaCash = await aiaPaymentsAsCash(range);
   const cashRows: {
@@ -265,31 +353,70 @@ export async function getCashFlowReport(range: {
     }
   }
 
-  // Billed in the same window, so the two lines on the chart answer the same
-  // question: what went out vs what came in.
-  //
-  // TAX BASIS (review session 2026-08-13): this is a COLLECTIONS report, so
-  // both sides are with-tax. `collected` sums payments, which cover the invoice
-  // TOTAL (tax included — the customer owes the tax and pays it to us to remit).
-  // Billing it against pre-tax `subtotal_cents` reported ~108% collection on a
-  // fully-paid taxable job and put the collected bar above billed for the same
-  // money. Billed is the with-tax `total_cents` — the amount actually invoiced
-  // to the customer — so the rate is cash-in ÷ invoiced-to-customer and the two
-  // chart lines share a basis. (Same principle the deal analytics settled in
-  // 6d972cf: a with-tax figure is measured against the with-tax total.)
-  let billed = 0;
-  for (const inv of invoices) {
-    // A DRAFT isn't billed — and reverting a sent invoice to Draft does NOT
-    // clear its issued_at, so keying billed off issued_at alone counted that
-    // stale date as revenue while openCents/isReceivable (below) correctly
-    // excluded the draft. The two halves of the same report then disagreed
-    // (audit D2). Skip drafts here too, so "billed" == the receivable basis.
-    if (inv.status === "draft") continue;
-    const issued = etDateOf(inv.issued_at);
-    if (!issued || issued < range.fromYmd || issued > range.toYmd) continue;
-    const amt = Number(inv.total_cents) || 0;
-    billed += amt;
-    const mKey = issued.slice(0, 7);
+  /**
+   * BILLED MUST COVER BOTH LEDGERS, BECAUSE COLLECTED DOES.
+   *
+   * `collected` above folds in `aiaPaymentsAsCash`. This loop used to walk
+   * `commercial_invoices` alone, so the rate divided two-ledger cash by
+   * one-ledger billing. Measured 2026-10-16 over 2026-05-01 → 2026-10-16:
+   * $974,243.71 collected ($194,048.68 invoices + $780,195.03 AIA) over
+   * $151,722.86 invoiced = **642%**, under a sub-line explaining that "over
+   * 100% just means older invoices landed". A reassuring caption on a 6.4×
+   * error is why nobody reported it. Both ledgers: $1,386,221.66 billed, 70%.
+   *
+   * The definition is NOT rewritten here. `period-billing.ts` already folds
+   * issued invoices plus each AIA application's billing INCREMENT, dated by
+   * its billing period, and the dashboard's revenue trend runs on it — so a
+   * second fold would be a second answer to "what did we bill in May".
+   *
+   * TAX BASIS (review session 2026-08-13, preserved): this is a COLLECTIONS
+   * report, so both sides are with-tax. `collected` sums payments, which cover
+   * the invoice TOTAL. So the invoice side is handed to the shared fold as
+   * `total_cents`; measuring cash against pre-tax `subtotal_cents` reported
+   * ~108% on a fully-paid taxable job. AIA needs no such swap — a certificate
+   * carries the tax inside the contract price, with no separate tax line.
+   */
+  const periodInvoices: PeriodInvoice[] = invoices.map((i) => ({
+    status: i.status,
+    subtotal_cents: Number(i.total_cents) || 0,
+    issued_at: i.issued_at,
+    created_at: i.created_at,
+    opportunity_id: i.opportunity_id,
+  }));
+  // Every deal that can carry billing: one with an invoice, one with a
+  // certificate, or both. An AIA-only job has no invoice row at all, which is
+  // exactly the money the old denominator was missing.
+  const { data: aiaOppRows } = await sb
+    .from("commercial_aia_applications")
+    .select("opportunity_id")
+    .is("deleted_at", null);
+  const billingOppIds = [
+    ...new Set(
+      [
+        ...invoices.map((i) => i.opportunity_id),
+        ...((aiaOppRows ?? []) as { opportunity_id: string | null }[]).map((a) => a.opportunity_id),
+      ].filter((x): x is string => !!x)
+    ),
+  ];
+  const fullRange = { ...range, label: "cash flow" };
+  const billing = await loadPeriodBilling(billingOppIds, periodInvoices, fullRange);
+  const billed = billing.totalCents;
+
+  // The chart's billed line, clipped to the range — see billedMonthsInRange.
+  // The second fold is loaded only for a window whose BOTH edges are partial,
+  // which no preset produces.
+  const head = needsHeadFold(range)
+    ? (
+        await loadPeriodBilling(billingOppIds, periodInvoices, {
+          fromYmd: range.fromYmd,
+          toYmd: monthEnd(range.fromYmd.slice(0, 7)),
+          label: "cash flow (head)",
+        })
+      ).totalCents
+    : undefined;
+  const billedByMonth = billedMonthsInRange(billing.monthly, billed, range, head);
+  for (const [mKey, amt] of billedByMonth) {
+    if (amt === 0 && !months.has(mKey)) continue;
     const m = months.get(mKey) ?? { key: mKey, label: monthLabel(mKey), collectedCents: 0, billedCents: 0, paymentCount: 0 };
     m.billedCents += amt;
     months.set(mKey, m);
@@ -344,10 +471,10 @@ export async function getCashFlowReport(range: {
  * Recorded AIA payments, shaped like invoice payments so the collections maths
  * does not need a second branch.
  *
- * `issuedAt` is the certificate's period end — the moment it went to the GC —
- * which is the right clock to measure collection lag from. Tolerates the
- * payments table being absent (migration not yet applied): the report then
- * reads exactly as it did before AIA payments existed.
+ * `issuedAt` comes from the shared `aiaIssuedAtFrom` ladder, so a certificate
+ * ages the same way here as it does on AR aging. Tolerates the payments table
+ * being absent (migration not yet applied): the report then reads exactly as
+ * it did before AIA payments existed.
  */
 async function aiaPaymentsAsCash(range: { fromYmd: string; toYmd: string }): Promise<
   {
@@ -372,9 +499,18 @@ async function aiaPaymentsAsCash(range: { fromYmd: string; toYmd: string }): Pro
     method: string | null;
   }[];
 
+  // A PAYMENT ON A DELETED CERTIFICATE IS NOT CASH.
+  //
+  // `commercial_aia_payments` is filtered on its own `deleted_at`, but the
+  // APPLICATION was not — so soft-deleting a certificate left its payments
+  // counting as money in, exactly the way the invoice branch above refuses to
+  // (`if (!inv) continue` — "voided or deleted invoice"). $0 on the book today;
+  // it is one `.is()` away from being real the first time Mary deletes a
+  // certificate somebody had already recorded a cheque against.
   const { data: apps } = await sb
     .from("commercial_aia_applications")
     .select("id, account_id, period_to, frozen_at")
+    .is("deleted_at", null)
     .in("id", [...new Set(rows.map((r) => r.application_id))]);
   const appById = new Map(
     ((apps ?? []) as { id: string; account_id: string | null; period_to: string | null; frozen_at: string | null }[]).map(
@@ -383,14 +519,24 @@ async function aiaPaymentsAsCash(range: { fromYmd: string; toYmd: string }): Pro
   );
 
   void range; // filtered by the shared loop, same as invoice payments
-  return rows.map((r) => {
+  return rows.flatMap((r) => {
     const app = appById.get(r.application_id);
-    return {
-      amount_cents: Number(r.amount_cents) || 0,
-      paid_at: r.paid_at,
-      method: r.method,
-      issuedAt: app?.period_to ?? app?.frozen_at ?? null,
-      accountId: app?.account_id ?? null,
-    };
+    if (!app) return []; // deleted (or missing) certificate — same rule as a deleted invoice
+    return [
+      {
+        amount_cents: Number(r.amount_cents) || 0,
+        paid_at: r.paid_at,
+        method: r.method,
+        // THE SHARED AGING LADDER, not a local one. `period_to ?? frozen_at`
+        // was a third definition of "when did this certificate go out", and it
+        // disagreed with AR aging and the chase list on every normally-issued
+        // application (where the platform's own issue instant is the honest
+        // clock). `aiaIssuedAtFrom` keeps the back-entry rule that matters
+        // here — a frozen_at more than a month after the period is a typing
+        // date, so the period wins — without inventing a fourth answer.
+        issuedAt: aiaIssuedAtFrom(app.frozen_at, app.period_to),
+        accountId: app.account_id ?? null,
+      },
+    ];
   });
 }

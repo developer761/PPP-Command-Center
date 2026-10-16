@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { archiveBccFor, withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Everything we send a GC files itself into that job's archive.
@@ -118,12 +119,12 @@ describe("every GC-facing sender uses it", () => {
 
   for (const [path, what] of SENDERS) {
     it(`${what} archives itself`, () => {
-      const src = readFileSync(join(process.cwd(), path), "utf8");
+      const src = stripComments(readFileSync(join(process.cwd(), path), "utf8"));
       expect(src, `${path} does not archive`).toContain("withArchiveBcc(");
     });
 
     it(`${what} passes the visible recipients so it cannot double-send`, () => {
-      const src = readFileSync(join(process.cwd(), path), "utf8");
+      const src = stripComments(readFileSync(join(process.cwd(), path), "utf8"));
       const call = src.slice(src.indexOf("withArchiveBcc("));
       // Third argument is the to/cc list — without it the de-dupe in rule 3
       // only sees the BCC list and a pasted archive address slips through.
@@ -133,7 +134,7 @@ describe("every GC-facing sender uses it", () => {
 });
 
 describe("the Sent/Received split", () => {
-  const hubRaw = readFileSync(join(process.cwd(), "lib/commercial/email-archive/hub.ts"), "utf8");
+  const hubRaw = stripComments(readFileSync(join(process.cwd(), "lib/commercial/email-archive/hub.ts"), "utf8"));
   /** Comments stripped — the docblock explaining this bug NAMES the dead
    *  column, so asserting on raw source goes red against the fix. Fourth time
    *  today a check in this repo read its own explanation. Assert on code. */

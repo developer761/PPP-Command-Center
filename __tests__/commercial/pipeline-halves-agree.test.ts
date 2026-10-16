@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { bidMidCents } from "@/lib/commercial/reports/pipeline";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The two halves of the Pipeline page value a bid the same way.
@@ -77,9 +78,7 @@ describe("bidMidCents", () => {
  * column, this goes red and names the page it breaks.
  */
 describe("the deal-report rows use the shared derivation", () => {
-  const src = readFileSync("lib/commercial/reports/tomco/opportunities.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const src = stripComments(readFileSync("lib/commercial/reports/tomco/opportunities.ts", "utf8"));
 
   it("calls bidMidCents", () => {
     expect(src).toContain("bidMidCents(o, proposalTotalByOpp.get(o.id))");

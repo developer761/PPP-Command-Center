@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate, 2026-09-08: "The dropdown here collapses the entire line item instead
@@ -35,7 +36,7 @@ function strip(src: string): string {
 
 describe("the notes control is never inside another clickable", () => {
   it.each(CONSUMERS)("%s renders it outside any button or summary", (file) => {
-    const code = strip(readFileSync(join(ROOT, file), "utf8"));
+    const code = strip(stripComments(readFileSync(join(ROOT, file), "utf8")));
     let from = 0;
     let found = 0;
     for (;;) {
@@ -57,7 +58,7 @@ describe("the notes control is never inside another clickable", () => {
   });
 
   it("the control really does render a button — the reason placement matters", () => {
-    const c = readFileSync(join(ROOT, "components/line-item-notes.tsx"), "utf8");
+    const c = stripComments(readFileSync(join(ROOT, "components/line-item-notes.tsx"), "utf8"));
     expect(c).toMatch(/<button/);
     expect(c).toMatch(/onClick=\{\(\) => setOpen/);
   });
@@ -65,7 +66,7 @@ describe("the notes control is never inside another clickable", () => {
   it("reaches all three surfaces Kate asked for", () => {
     // color forms (internal + customer), Rooms & colors, and the order page.
     for (const f of CONSUMERS) {
-      expect(strip(readFileSync(join(ROOT, f), "utf8")), f).toContain("<LineItemNotes");
+      expect(strip(stripComments(readFileSync(join(ROOT, f), "utf8"))), f).toContain("<LineItemNotes");
     }
   });
 });

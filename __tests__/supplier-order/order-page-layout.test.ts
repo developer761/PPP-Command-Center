@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Katie item 9, 2026-09-08: "line items should be all the way at the top for
@@ -12,7 +13,7 @@ import { join } from "node:path";
  * the buy-list against, so it belongs before the numbers. Pinned here because a
  * future tidy-up would otherwise "restore" the collapse as an improvement.
  */
-const src = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+const src = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
 const code = src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
 
 describe("the order page opens on the Salesforce line items", () => {

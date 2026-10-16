@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The measure tool opens a live camera IN the page — no shutter, no camera
@@ -16,7 +17,7 @@ import { join } from "node:path";
  * pinned here with the reason attached. `(self)` does NOT grant access — the
  * browser still prompts. It only says we are allowed to prompt.
  */
-const src = readFileSync(join(process.cwd(), "next.config.ts"), "utf8");
+const src = stripComments(readFileSync(join(process.cwd(), "next.config.ts"), "utf8"));
 const header = src.match(/"Permissions-Policy",\s*value:\s*"([^"]+)"/)?.[1];
 
 describe("Permissions-Policy", () => {

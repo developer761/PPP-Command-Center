@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import ExcelJS from "exceljs";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Deduct alternates — an alternate that comes OFF the price.
@@ -18,9 +19,7 @@ import { readFileSync } from "node:fs";
 void ExcelJS;
 
 describe("the answer to what she actually asked", () => {
-  const dbSrc = readFileSync("lib/commercial/proposals/db.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const dbSrc = stripComments(readFileSync("lib/commercial/proposals/db.ts", "utf8"));
 
   it("still refuses a negative price, so a negative number is not the answer", () => {
     // Two guards — create and update. If either ever starts accepting one,
@@ -38,12 +37,10 @@ describe("the answer to what she actually asked", () => {
  * certificate and the invoice with nothing else needing to know.
  */
 describe("accepting a deduct books a negative change order", () => {
-  const pageSrc = readFileSync(
+  const pageSrc = stripComments(readFileSync(
     "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
     "utf8",
-  )
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  ));
 
   it("negates the amount for a deduct and leaves an add alone", () => {
     expect(pageSrc).toMatch(/is_deduct === true \? -Math\.abs\(magnitude\) : magnitude/);
@@ -57,19 +54,17 @@ describe("accepting a deduct books a negative change order", () => {
   });
 
   it("carries the flag onto a revision", () => {
-    const bump = readFileSync(
+    const bump = stripComments(readFileSync(
       "app/commercial/accounts/[id]/deals/[dealId]/proposal/new/page.tsx",
       "utf8",
-    );
+    ));
     // A deduct that revised into an add would flip the sign of real money.
     expect(bump).toMatch(/is_deduct: item\.is_deduct/);
   });
 });
 
 describe("the proposal prints adds and deducts apart", () => {
-  const pdfSrc = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const pdfSrc = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("has its own heading, so a deduct never prints under Add Alternate", () => {
     expect(pdfSrc).toMatch(/Deduct Alternate:/);
@@ -94,7 +89,7 @@ describe("the proposal prints adds and deducts apart", () => {
  * deduct on it and reading the PDF.
  */
 describe("a deduct reads as a deduct on the page", () => {
-  const pdfSrc = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const pdfSrc = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("uses an ASCII hyphen, because Times has no minus-sign glyph", () => {
     // U+2212 printed as nothing at all: "$3,200.00" under "Deduct Alternate:",

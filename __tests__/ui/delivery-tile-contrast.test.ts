@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The delivery tiles are readable — measured, not eyeballed.
@@ -25,7 +26,7 @@ import { join } from "node:path";
  */
 
 const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
-const src = readFileSync(join(process.cwd(), "components/commercial/delivery-tools-strip.tsx"), "utf8");
+const src = stripComments(readFileSync(join(process.cwd(), "components/commercial/delivery-tools-strip.tsx"), "utf8"));
 
 /** Token values, split at the dark block the same way globals.css is written. */
 function tokenAt(name: string, dark: boolean): string {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { deriveOrderStages, isCancelledOrder, type OrderStageRow } from "@/lib/wo-progress/order-stages";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * R5.5 — "A cancelled order still shows the work order as ordered."
@@ -118,7 +119,7 @@ describe("deriveOrderStages", () => {
  * round's complaint. The retreat has to come with a reason.
  */
 describe("a cancellation is explained, not just subtracted", () => {
-  const bar = readFileSync(join(process.cwd(), "components/work-order-progress-bar.tsx"), "utf8");
+  const bar = stripComments(readFileSync(join(process.cwd(), "components/work-order-progress-bar.tsx"), "utf8"));
 
   it("says the order was cancelled", () => {
     expect(bar).toContain("progress.supplierCancelledAt &&");
@@ -145,7 +146,7 @@ describe("a cancellation is explained, not just subtracted", () => {
 describe("both progress loaders share the derivation", () => {
   const LOADERS = ["lib/wo-progress/derive.ts", "lib/materials-page-data.ts"];
   it.each(LOADERS)("%s calls deriveOrderStages", (rel) => {
-    const src = readFileSync(join(process.cwd(), rel), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), rel), "utf8"));
     expect(src).toContain("deriveOrderStages(rows)");
     // And selects cancelled_at — deriving from a column you didn't fetch is
     // how this stays half-fixed.
@@ -154,7 +155,7 @@ describe("both progress loaders share the derivation", () => {
 
   it("neither re-implements the stage maths locally", () => {
     for (const rel of LOADERS) {
-      const src = readFileSync(join(process.cwd(), rel), "utf8");
+      const src = stripComments(readFileSync(join(process.cwd(), rel), "utf8"));
       expect(src, `${rel} still hand-rolls the ack rule`).not.toMatch(
         /rows\.every\(\(r\) => r\.acknowledged_at\)/
       );

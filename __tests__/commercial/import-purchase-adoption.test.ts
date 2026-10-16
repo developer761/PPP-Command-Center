@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { matchExistingPurchase, type ExistingPurchase } from "@/lib/commercial/import/mapping";
+import { stripComments } from "../helpers/strip-comments";
 
 function row(over: Partial<ExistingPurchase> & { id: string }): ExistingPurchase {
   return { vendor: "Sherwin Williams", amount_cents: 77_974, purchased_at: "2026-09-28T12:00:00Z", mapped: false, ...over };
@@ -168,9 +169,7 @@ describe("the importer is wired to it", () => {
     // NOW would make her row look untouched since the last sync, and the next
     // run would overwrite the category she chose with Salesforce's.
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("scripts/import-tomco.mjs", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("scripts/import-tomco.mjs", "utf8"));
     expect(src).toContain("matchExistingPurchase(");
     expect(src).toMatch(/adopt[\s\S]{0,400}remember\(\s*"purchase"/);
     expect(src).toMatch(/remember\(\s*"purchase"[\s\S]{0,200}new Date\(0\)/);

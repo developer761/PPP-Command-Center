@@ -6,6 +6,7 @@ import {
   FALLBACK_RATING_LABELS,
   isRatingCode,
 } from "@/lib/commercial/accounts/rating-codes";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Editable meanings for the A/B/C account rating.
@@ -18,7 +19,7 @@ import {
 
 const ROOT = join(__dirname, "..", "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 describe("the stored rating codes do not move", () => {
   it("is still exactly A, B, C", () => {

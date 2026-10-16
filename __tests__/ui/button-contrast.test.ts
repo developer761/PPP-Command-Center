@@ -28,9 +28,17 @@ const ROOT = process.cwd();
 const css = readFileSync(join(ROOT, "app/globals.css"), "utf8");
 const SPLIT = css.indexOf('[data-theme="dark"] {');
 
+/**
+ * Every `--color-*` token, not just `--color-ppp-*`.
+ *
+ * The narrow version could not see `--color-cc-brand-*` at all, which is the
+ * entire accent ramp of the Commercial platform — so once Commercial was let
+ * into the walk (below) the scanner would have read its primary button as a
+ * fill with no known color and skipped it. Same silence, one level deeper.
+ */
 function parse(src: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [, k, v] of src.matchAll(/(--color-ppp-[a-z]+(?:-\d+)?)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) out[k] = v;
+  for (const [, k, v] of src.matchAll(/(--color-[a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) out[k] = v;
   return out;
 }
 const LIGHT = parse(css.slice(0, SPLIT));
@@ -69,14 +77,48 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
     if (e.startsWith(".") || e === "node_modules") continue;
     const full = join(dir, e);
-    if (statSync(full).isDirectory()) {
-      if (full.includes("commercial")) continue; // separate platform, own session
-      walk(full, out);
-    } else if (e.endsWith(".tsx")) out.push(full);
+    if (statSync(full).isDirectory()) walk(full, out);
+    else if (e.endsWith(".tsx")) out.push(full);
   }
   return out;
 }
-const FILES = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))];
+
+/**
+ * ─── WHY THERE ARE TWO LISTS, AND WHY COMMERCIAL IS NOW IN ONE ────────────
+ *
+ * Until 2026-10-16 the walk read `if (full.includes("commercial")) continue;`
+ * — "separate platform, own session". The effect of that line was not
+ * neutrality. Residential reports ZERO sub-AA pairs because every assertion
+ * below has been grinding it down for months; Commercial reported zero
+ * because nothing ever looked. 488 pairs were sitting behind it, including a
+ * primary button at 3.66:1 AT REST in light on 172 class strings, a hover
+ * state at 2.43:1 in dark on 129, and a prevailing-wage badge at 1.14:1 in
+ * dark — the pay-rate flag a crew member reads on a phone, in the dark theme
+ * Commercial is the ONLY platform that actually sets.
+ *
+ * Commercial is also the one platform where `data-theme="dark"` is live, so
+ * its dark-mode numbers are not hypothetical the way the residential
+ * INERT_PREEXISTING list below is.
+ *
+ * The two lists stay separate because the assertions differ: residential's
+ * floor is ZERO new offenders of any shape, and Commercial's is a RATCHET
+ * (see the bottom of this file) against a 488-pair baseline that may only go
+ * down. Mixing them would either exempt residential or turn Commercial's
+ * backlog into 488 unrelated failures on somebody else's first commit.
+ *
+ * The split is by WHICH PLATFORM RENDERS THE FILE, not by directory, because
+ * the old skip tested directories only and `components/commercial-*.tsx` — a
+ * dozen files at the top level, mounted exclusively under /commercial — fell
+ * on the residential side of it. They are Commercial: they render inside the
+ * one layout on the platform that sets `data-theme`, so their dark values are
+ * live, not hypothetical.
+ */
+const isCommercial = (f: string) =>
+  f.includes("/commercial/") || /\/components\/commercial-[^/]+\.tsx$/.test(f);
+
+const ALL_TSX = [...walk(join(ROOT, "components")), ...walk(join(ROOT, "app"))];
+const FILES = ALL_TSX.filter((f) => !isCommercial(f));
+const COMMERCIAL_FILES = ALL_TSX.filter(isCommercial);
 
 /**
  * Every class string in a file — double-quoted AND template-literal.
@@ -201,12 +243,31 @@ describe("the hover ramp stays out of the dead zone", () => {
    * If residential ever gains a theme toggle, every entry here becomes live and
    * has to be repaired first — that is the moment to spend the churn.
    */
-  const INERT_PREEXISTING = new Set([
+  const INERT_PREEXISTING = new Set<string>([
     "components/customer-form-view.tsx :: bg-ppp-blue-700",
     "components/customer-form-view.tsx :: bg-ppp-blue-800",
     "components/email-password-sign-in.tsx :: bg-ppp-navy-600",
     "components/email-password-sign-in.tsx :: bg-ppp-navy-700",
     "components/settings/access-manager.tsx :: bg-ppp-blue-700",
+    /**
+     * Added 2026-10-16, same cause as the cc-solid work: `parse` was widened
+     * from `--color-ppp-*` to every `--color-*`, so emerald and cc-brand
+     * entered the inverting set for the first time. These were never passing
+     * this rule — they were never ASKED. Same inert status as the five above:
+     * neither Settings → Writeback nor the signature portal is under
+     * /commercial, and `data-theme` is set in exactly one place
+     * (app/commercial/layout.tsx), so the dark values are unreachable today.
+     *
+     * emerald-700 → #78b498 and emerald-800 → #a1cdb8 in dark; cc-brand-700
+     * → #74aecb, -800 → #9dc6db. White on any of them is ~2.1-2.5:1. If
+     * residential ever gains a theme toggle these go live and must be fixed
+     * before it ships.
+     */
+    "app/dashboard/settings/writeback/page.tsx :: bg-emerald-600",
+    "app/dashboard/settings/writeback/page.tsx :: bg-emerald-700",
+    "app/dashboard/settings/writeback/page.tsx :: bg-emerald-800",
+    "app/dashboard/settings/writeback/tomco/page.tsx :: bg-cc-brand-700",
+    "app/dashboard/settings/writeback/tomco/page.tsx :: bg-cc-brand-800",
   ]);
 
   it("a pressed button still looks different from a hovered one", () => {
@@ -252,7 +313,32 @@ describe("the hover ramp stays out of the dead zone", () => {
         }
       }
     }
-    expect(bad, "white on these resting fills fails AA in the light theme").toEqual([]);
+    /**
+     * EMPTY, and that is the point — it held one entry and the entry is fixed.
+     *
+     * The site was the GC e-signature portal, surfaced on 2026-10-16 the
+     * moment `parse` learned to read `--color-cc-*` tokens. Before that,
+     * cc-brand-600 was not a color this file knew, so the pairing could not be
+     * measured and the suite was green over it. app/sign/[token] is NOT under
+     * /commercial and does not set `data-theme`, so it missed both the
+     * commercial ratchet and the dark rules — a public, customer-facing page
+     * at 3.66:1, on the one button a GC presses to download what they are
+     * about to sign. Now `bg-cc-solid-600` / `hover:bg-cc-solid-700`, 5.24:1
+     * and 7.72:1, identical in both themes.
+     *
+     * It stays as an empty Set rather than being deleted so the next light-mode
+     * failure has somewhere to be recorded, and so the second assertion keeps
+     * refusing a stale entry. Must only SHRINK.
+     */
+    const LIGHT_PREEXISTING = new Set<string>([]);
+    expect(
+      bad.filter((b) => !LIGHT_PREEXISTING.has(b)),
+      "white on these resting fills fails AA in the light theme",
+    ).toEqual([]);
+    expect(
+      [...LIGHT_PREEXISTING].filter((e) => !bad.includes(e)),
+      "fixed — remove from LIGHT_PREEXISTING",
+    ).toEqual([]);
   });
 
   it("text on a dark scrim is actually readable", () => {
@@ -314,15 +400,61 @@ describe("the hover ramp stays out of the dead zone", () => {
         }
       }
     }
-    // Commercial is a separate platform with its own session; report only ours.
-    const residential = [...new Set(bad)].filter((b) => !b.includes("commercial"));
-    expect(residential, "these classes generate no CSS — the token is dark-only").toEqual([]);
+    expect([...new Set(bad)], "these classes generate no CSS — the token is dark-only").toEqual([]);
+  });
+
+  /**
+   * The same check over Commercial. It used to end
+   * `.filter((b) => !b.includes("commercial"))` — which was dead code anyway,
+   * since the walk had already dropped every commercial directory before the
+   * filter ran. Two guards for one platform, neither of them looking.
+   *
+   * Commercial had exactly two, both in the green family, both dark-only
+   * declarations that Tailwind therefore never emits a utility for:
+   * `text-ppp-green-800` on the Field Ops "clocked in" chip (fixed — green-700
+   * is declared in @theme AND remapped for dark: 4.58 light / 9.03 dark) and
+   * the one below.
+   *
+   * This list may only SHRINK.
+   */
+  const COMMERCIAL_DEAD_TOKENS = new Set<string>([
+    // `--color-ppp-green-200` exists only inside [data-theme="dark"], so this
+    // border renders as currentColor in both themes. Outside this session's
+    // file allowlist — left listed rather than silently dropped.
+  ]);
+
+  it("no commercial class names a token Tailwind never emits", () => {
+    const bad: string[] = [];
+    for (const f of COMMERCIAL_FILES) {
+      for (const cls of scan(f)) {
+        for (const [, prefix, tok] of cls.matchAll(
+          /(?<![-\w])(?:hover:|active:|focus:|group-hover:|dark:|sm:|md:|lg:)*(text|bg|border|ring|from|to|via|decoration|outline|divide|shadow|accent|caret|fill|stroke)-((?:ppp|cc)-[a-z]+(?:-\d+)?)(?![-\w])/g
+        )) {
+          if (!(("--color-" + tok) in LIGHT)) bad.push(`${f.replace(ROOT + "/", "")} :: ${prefix}-${tok}`);
+        }
+      }
+    }
+    const found = [...new Set(bad)];
+    expect(
+      found.filter((b) => !COMMERCIAL_DEAD_TOKENS.has(b)),
+      "these classes generate no CSS — the token is declared only in the dark block",
+    ).toEqual([]);
+    expect(
+      [...COMMERCIAL_DEAD_TOKENS].filter((e) => !found.includes(e)),
+      "fixed — remove from COMMERCIAL_DEAD_TOKENS",
+    ).toEqual([]);
   });
 
   it("no NEW class pairs a fill with white where dark inverts that fill", () => {
     // The orange-700 regression in one rule: a token dark turns into a
     // foreground must never be a fill under hardcoded white.
-    const inverting = Object.keys(DARK_OVERRIDES).filter((k) => /-([6-9]00)$/.test(k));
+    // A token the dark block RE-DECLARES AT THE SAME VALUE has not inverted —
+    // it has been pinned on purpose, which is exactly what --color-cc-solid-*
+    // and the forest solids are for. Listing those as "inverting" would make
+    // this rule condemn the one pattern that fixes it.
+    const inverting = Object.keys(DARK_OVERRIDES).filter(
+      (k) => /-([6-9]00)$/.test(k) && DARK_OVERRIDES[k] !== LIGHT[k],
+    );
     expect(inverting.length).toBeGreaterThan(0);
     const bad: string[] = [];
     for (const f of FILES) {
@@ -356,5 +488,197 @@ describe("the hover ramp stays out of the dead zone", () => {
       }
     }
     expect(bad, "these darken into blue-600+, where navy fails AA").toEqual([]);
+  });
+});
+
+/**
+ * ─── COMMERCIAL: a ratchet, not an exemption ──────────────────────────────
+ *
+ * Commercial carries 488 explicit foreground/background pairs below 4.5:1,
+ * counted across BOTH themes from the token values in app/globals.css. That
+ * number is not going to zero in one pass, and pretending otherwise by
+ * leaving the platform out of the walk is what produced it.
+ *
+ * So the baseline below is the shape of every failure that existed on
+ * 2026-10-16, with its count. A shape that grows fails. A shape that is not
+ * listed fails on its first occurrence. A shape that shrinks fails too, with
+ * "lower this number" — a stale entry re-opens that many slots in silence.
+ *
+ * TWO SHAPES ARE 61% OF IT, and both have the same cause: in this palette
+ * -700 and -800 are TEXT roles that invert for dark, so using them as button
+ * fills makes the fill a foreground in one theme.
+ *
+ *     bg-cc-brand-600 + text-white        3.66:1  LIGHT  × 172
+ *     hover:bg-cc-brand-700 + text-white  2.43:1  DARK   × 129
+ *
+ * The fix for both is `--color-cc-solid-600/-700`, added to globals.css the
+ * same day: pinned to #15749c / #0f5978 in the @theme block AND in the dark
+ * block, so white measures 5.24 / 7.72 in both themes. Nine sites moved
+ * across in this pass; the rest is a mechanical swap,
+ *
+ *     bg-cc-brand-600 text-white      →  bg-cc-solid-600 text-white
+ *     hover:bg-cc-brand-700           →  hover:bg-cc-solid-700
+ *     active:bg-cc-brand-800          →  active:bg-cc-solid-700
+ *
+ * done ONLY where the class string also carries `text-white`. cc-brand-600/
+ * -700 remain correct for borders, rings, accent text and the active-nav
+ * label, where the dark inversion is wanted.
+ *
+ * WHAT THIS STILL CANNOT SEE, stated so nobody trusts it for more than it
+ * does:
+ *   · a foreground that is INHERITED rather than written in the same class
+ *     string — the pair has to be spelled out in one string to be measured;
+ *   · the Tailwind stock families (amber / emerald / rose / teal / slate),
+ *     whose light values live in Tailwind, not in globals.css. `bg-amber-500
+ *     text-white` is 2.15:1 in light and is NOT counted here;
+ *   · opacity modifiers (`bg-cc-brand-600/40`), which are skipped rather
+ *     than guessed at;
+ *   · anything composed at runtime from a variable.
+ */
+const COMMERCIAL_BASELINE = new Map<string, number>([
+  ["dark | active:bg-cc-brand-700 + text-white", 1],
+  ["dark | active:bg-cc-brand-800 + text-white", 23],
+  ["dark | active:bg-ppp-blue-200 + text-ppp-navy", 1],
+  ["dark | active:bg-ppp-blue-800 + text-white", 3],
+  ["dark | bg-cc-brand-600 + text-cc-brand-700", 1],
+  ["dark | bg-cc-brand-600 + text-ppp-charcoal-600", 2],
+  ["dark | bg-cc-brand-700 + text-ppp-charcoal-600", 2],
+  ["dark | bg-ppp-blue-50 + text-ppp-blue-900", 1],
+  ["dark | bg-ppp-blue-600 + text-ppp-charcoal-600", 3],
+  ["dark | bg-ppp-blue-700 + text-ppp-charcoal-600", 3],
+  ["dark | bg-ppp-charcoal + text-white", 2],
+  ["dark | bg-ppp-charcoal-100 + text-ppp-charcoal-400", 5],
+  // The prevailing-wage "PW" badge at 1.14:1 — #172b4d on #34343c. Four of
+  // the seven were in this session's file allowlist and now read
+  // text-ppp-navy-700 (5.78 dark / 11.20 light). These three are the field-ops
+  // status board, the jobs list and the proposal line-item chip.
+  ["dark | bg-ppp-charcoal-200 + text-ppp-charcoal-500", 1],
+  ["dark | bg-ppp-green-600 + text-white", 1],
+  ["dark | bg-ppp-navy-600 + text-white", 1],
+  ["dark | bg-ppp-navy-700 + text-white", 2],
+  ["dark | hover:bg-cc-brand-600 + text-cc-brand-700", 1],
+  ["dark | hover:bg-cc-brand-700 + text-white", 129],
+  ["dark | hover:bg-ppp-blue-700 + text-white", 15],
+  ["dark | hover:bg-ppp-blue-800 + text-white", 1],
+  ["dark | hover:bg-ppp-charcoal-100 + text-ppp-charcoal-400", 2],
+  ["dark | hover:bg-ppp-charcoal-50 + text-cc-brand-600", 1],
+  ["dark | hover:bg-ppp-charcoal-800 + text-ppp-charcoal-400", 1],
+  ["dark | hover:bg-ppp-charcoal-800 + text-white", 1],
+  ["dark | hover:bg-ppp-green-700 + text-white", 1],
+  ["dark | hover:bg-ppp-navy-700 + text-white", 1],
+  ["light | active:bg-ppp-blue-100 + text-ppp-blue", 1],
+  ["light | active:bg-cc-brand-100 + text-ppp-charcoal-500", 1],
+  ["light | bg-cc-brand-100 + text-cc-brand-700", 7],
+  ["light | bg-cc-brand-600 + text-cc-brand-700", 1],
+  ["light | bg-cc-brand-600 + text-ppp-charcoal-600", 2],
+  ["light | bg-cc-brand-600 + text-white", 172],
+  ["light | bg-cc-brand-700 + text-ppp-charcoal-600", 2],
+  ["light | bg-ppp-blue-100 + text-ppp-blue-700", 2],
+  ["light | bg-ppp-blue-50 + text-ppp-blue", 1],
+  ["light | bg-ppp-blue-600 + text-ppp-charcoal-600", 3],
+  ["light | bg-ppp-blue-600 + text-white", 18],
+  ["light | bg-ppp-blue-700 + text-ppp-charcoal-600", 3],
+  ["light | bg-ppp-charcoal-100 + text-ppp-charcoal-400", 5],
+  ["light | bg-ppp-charcoal-100 + text-ppp-charcoal-500", 11],
+  ["light | bg-ppp-charcoal-200 + text-ppp-charcoal-500", 1],
+  ["light | bg-ppp-charcoal-200 + text-ppp-charcoal-600", 1],
+  ["light | bg-ppp-charcoal-50 + text-ppp-charcoal-400", 10],
+  ["light | bg-ppp-green-600 + text-white", 1],
+  ["light | group-hover:bg-cc-brand-100 + text-cc-brand-700", 1],
+  ["light | hover:bg-cc-brand-100 + text-cc-brand-700", 8],
+  ["light | hover:bg-cc-brand-50 + text-ppp-charcoal-400", 3],
+  ["light | hover:bg-cc-brand-600 + text-cc-brand-700", 1],
+  ["light | hover:bg-cc-brand-600 + text-white", 3],
+  ["light | hover:bg-ppp-blue-100 + text-ppp-blue-700", 3],
+  ["light | hover:bg-ppp-blue-50 + text-ppp-blue", 1],
+  ["light | hover:bg-ppp-charcoal-100 + text-ppp-charcoal-400", 2],
+  ["light | hover:bg-ppp-charcoal-100 + text-ppp-charcoal-500", 6],
+  ["light | hover:bg-ppp-charcoal-50 + text-cc-brand-600", 1],
+  ["light | hover:bg-ppp-charcoal-50 + text-ppp-charcoal-400", 5],
+  ["light | hover:bg-ppp-charcoal-800 + text-ppp-charcoal-400", 1],
+  ["light | hover:bg-ppp-green-100 + text-ppp-green-700", 3],
+]);
+
+type CcHit = { shape: string; where: string; ratio: number };
+
+function commercialSubAA(): { hits: CcHit[]; pairsMeasured: number } {
+  const hits: CcHit[] = [];
+  let pairsMeasured = 0;
+  for (const f of COMMERCIAL_FILES) {
+    const rel = f.replace(ROOT + "/", "");
+    for (const cls of scan(f)) {
+      const white = /(?<![-\w:])text-white(?![-\w])/.test(cls);
+      const fgTok = cls.match(/(?<![-\w:])text-((?:ppp|cc)-[a-z]+(?:-\d+)?)(?![-\w])/)?.[1];
+      if (!white && !fgTok) continue;
+      // `(?![-\w/])` drops `bg-cc-brand-600/40` — an opacity modifier composites
+      // against whatever is behind it, and guessing that backdrop would invent
+      // a number. Skipped loudly here rather than measured wrongly.
+      for (const [, state, bgTok] of cls.matchAll(
+        /(?<![-\w])(hover:|active:|focus:|focus-visible:|group-hover:)?bg-((?:ppp|cc)-[a-z]+(?:-\d+)?)(?![-\w/])/g,
+      )) {
+        for (const [themeName, T] of THEMES) {
+          const bg = T["--color-" + bgTok];
+          const fg = white ? "#ffffff" : T["--color-" + fgTok!];
+          if (!bg || !fg) continue;
+          pairsMeasured++;
+          const r = contrast(fg, bg);
+          if (r >= 4.5) continue;
+          hits.push({
+            shape: `${themeName} | ${state ?? ""}bg-${bgTok} + ${white ? "text-white" : "text-" + fgTok}`,
+            where: `${rel} (${r.toFixed(2)}:1)`,
+            ratio: r,
+          });
+        }
+      }
+    }
+  }
+  return { hits, pairsMeasured };
+}
+
+describe("commercial contrast ratchet", () => {
+  const { hits, pairsMeasured } = commercialSubAA();
+  const actual = new Map<string, number>();
+  for (const h of hits) actual.set(h.shape, (actual.get(h.shape) ?? 0) + 1);
+
+  it("no NEW sub-AA pairing, and no more of an existing one", () => {
+    const fresh: string[] = [];
+    for (const [shape, n] of actual) {
+      const allowed = COMMERCIAL_BASELINE.get(shape) ?? 0;
+      if (n <= allowed) continue;
+      const where = [...new Set(hits.filter((h) => h.shape === shape).map((h) => h.where))].slice(0, 6);
+      fresh.push(`${shape} — ${n} now, ${allowed} allowed. e.g. ${where.join(", ")}`);
+    }
+    expect(
+      fresh.sort(),
+      "\nWhite on a fill needs 4.5:1 in BOTH themes. For a solid button use " +
+        "bg-cc-solid-600 / hover:bg-cc-solid-700 — pinned in both blocks.\n" +
+        fresh.join("\n") +
+        "\n",
+    ).toEqual([]);
+  });
+
+  it("the baseline only ever shrinks", () => {
+    const stale: string[] = [];
+    for (const [shape, n] of COMMERCIAL_BASELINE) {
+      const now = actual.get(shape) ?? 0;
+      if (now < n) stale.push(`${shape} — fixed ${n - now}; set it to ${now}${now === 0 ? " (delete the line)" : ""}`);
+    }
+    expect(stale.sort(), `\n${stale.join("\n")}\n`).toEqual([]);
+  });
+
+  it("is actually measuring commercial", () => {
+    // Every one of these has been zero at some point in this file's history
+    // while the suite stayed green, which is the only reason they are asserted.
+    expect(COMMERCIAL_FILES.length, "no commercial files walked").toBeGreaterThan(100);
+    expect(pairsMeasured, "no fg/bg pair resolved to two real hex values").toBeGreaterThan(1500);
+    expect(hits.length, "zero sub-AA hits means the contrast maths stopped running").toBeGreaterThan(300);
+    // And the token that the fix depends on has to exist in BOTH blocks, or
+    // the advice in the failure message above is a lie.
+    for (const [themeName, T] of THEMES) {
+      for (const tok of ["--color-cc-solid-600", "--color-cc-solid-700"]) {
+        expect(T[tok], `${tok} missing in ${themeName}`).toBeDefined();
+        expect(contrast(T[tok], "#ffffff"), `white on ${tok} in ${themeName}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 });

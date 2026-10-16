@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A TOOL IS CALLED THE SAME THING AS THE TILE THAT OPENS IT.
@@ -27,7 +28,7 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 const read = (p: string) =>
-  readFileSync(join(ROOT, p), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  stripComments(readFileSync(join(ROOT, p), "utf8"));
 
 const DEAL_PAGE = "app/commercial/opportunities/[id]/page.tsx";
 

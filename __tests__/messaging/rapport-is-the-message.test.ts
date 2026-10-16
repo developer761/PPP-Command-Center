@@ -4,6 +4,7 @@ import {
   RAPPORT_IS_THE_MESSAGE, checkRapport, validateAction,
 } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A32 CUTS A REASON OFF AN ASK. Where there is no ask, it was cutting the
@@ -28,7 +29,7 @@ describe("the rule knows when rapport is the whole message", () => {
     // Pinned to render.ts rather than trusted: agent-output cannot import the
     // renderer, so the two lists would otherwise drift silently, and a third
     // empty template would bring the bug straight back.
-    const src = fs.readFileSync("lib/messaging/render.ts", "utf8");
+    const src = stripComments(fs.readFileSync("lib/messaging/render.ts", "utf8"));
     const empties = [...src.matchAll(/^\s{2}(\w+):\s*\[""\],/gm)].map((m) => m[1]);
     expect(empties.length).toBeGreaterThan(0);
     expect([...RAPPORT_IS_THE_MESSAGE].sort()).toEqual(empties.sort());

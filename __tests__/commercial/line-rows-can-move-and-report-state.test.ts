@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { stripComments } from "../helpers/strip-comments";
 
-const EDITOR = readFileSync(
+const EDITOR = stripComments(readFileSync(
   "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx",
   "utf8"
-);
-const BUTTON = readFileSync("components/commercial/row-save-button.tsx", "utf8");
+));
+const BUTTON = stripComments(readFileSync("components/commercial/row-save-button.tsx", "utf8"));
 
 /**
  * Two of Stephanie's line-item complaints, which turned out to be the same
@@ -60,7 +60,7 @@ describe(`"'save row' implied I can click and save and I can't"`, () => {
 });
 
 describe('"click off the items that were approved and not approved"', () => {
-  const DB = readFileSync("lib/commercial/proposals/db.ts", "utf8");
+  const DB = stripComments(readFileSync("lib/commercial/proposals/db.ts", "utf8"));
   const MIG = readFileSync("supabase/migrations/167_proposal_line_customer_approved.sql", "utf8");
 
   it("has three states, because 'nobody has said' is not 'declined'", () => {

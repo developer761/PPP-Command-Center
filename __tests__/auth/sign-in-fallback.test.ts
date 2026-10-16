@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
-const page = readFileSync(join(root, "app/page.tsx"), "utf8");
+const page = stripComments(readFileSync(join(root, "app/page.tsx"), "utf8"));
 
 /**
  * Every sign-in failure names a way IN, not just the way it failed.
@@ -36,7 +37,7 @@ describe("a refused sign-in points at the other route", () => {
   it("covers every failure the callback can redirect with", () => {
     for (const c of CODES) expect(copy, c).toContain(`${c}:`);
     // …and the callback does not emit a code this map has never heard of.
-    const callback = readFileSync(join(root, "app/auth/callback/route.ts"), "utf8");
+    const callback = stripComments(readFileSync(join(root, "app/auth/callback/route.ts"), "utf8"));
     for (const m of callback.matchAll(/\?error=([a-z_]+)/g)) {
       expect(copy, `callback emits ?error=${m[1]}`).toContain(`${m[1]}:`);
     }
@@ -102,7 +103,7 @@ describe("a refused sign-in points at the other route", () => {
  * And the bulk fallback, for if Google turns out not to work for a batch.
  */
 describe("the bulk provisioning fallback is safe by default", () => {
-  const script = readFileSync(join(root, "scripts/provision-field-reps.mjs"), "utf8");
+  const script = stripComments(readFileSync(join(root, "scripts/provision-field-reps.mjs"), "utf8"));
 
   it("writes nothing without --commit", () => {
     expect(script).toMatch(/const COMMIT = argv\.includes\("--commit"\)/);

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderMessage } from "@/lib/messaging/render";
 import { ASK_SUPERSEDED_BY } from "@/lib/messaging/agent-output";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * ASKING FOR THE HALF OF THE CONTACT WE ALREADY HOLD. A13.
@@ -79,7 +80,7 @@ describe("ask_contact asks only for the half we are missing", () => {
    * thread, not just the behaviour.
    */
   it("is handed the name by the agent, not just able to use it", () => {
-    const src = readFileSync("lib/messaging/agent-run.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/agent-run.ts", "utf8"));
     expect(src).toMatch(/name:\s*kf\.name/);
   });
 });

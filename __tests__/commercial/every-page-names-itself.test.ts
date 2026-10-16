@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * EVERY TAB READ "PPP Command Center".
@@ -55,7 +56,7 @@ describe("every commercial page names itself in the tab", () => {
   });
 
   it("the layout carries the template, so a page declares only its own name", () => {
-    const layout = readFileSync(join(COMMERCIAL, "layout.tsx"), "utf8");
+    const layout = stripComments(readFileSync(join(COMMERCIAL, "layout.tsx"), "utf8"));
     expect(layout).toMatch(/template:\s*"%s · Tomco Painting"/);
     expect(layout).toMatch(/default:/);
   });
@@ -63,7 +64,7 @@ describe("every commercial page names itself in the tab", () => {
   it("no rendering page is left without a title", () => {
     const missing: string[] = [];
     for (const f of ALL) {
-      const src = readFileSync(f, "utf8");
+      const src = stripComments(readFileSync(f, "utf8"));
       if (isRedirectOnly(src)) continue;
       if (/export (const metadata|async function generateMetadata)/.test(src)) continue;
       missing.push(relative(ROOT, f));
@@ -77,7 +78,7 @@ describe("every commercial page names itself in the tab", () => {
   it("checked that some pages were actually skipped as redirects, not all of them", () => {
     // The inverse of the above: if `isRedirectOnly` ever matched everything,
     // the test above would pass while covering nothing.
-    const skipped = ALL.filter((f) => isRedirectOnly(readFileSync(f, "utf8")));
+    const skipped = ALL.filter((f) => isRedirectOnly(stripComments(readFileSync(f, "utf8"))));
     expect(skipped.length).toBeGreaterThan(0);
     expect(skipped.length).toBeLessThan(ALL.length / 2);
   });
@@ -94,7 +95,7 @@ describe("every commercial page names itself in the tab", () => {
       "app/commercial/invoices/[id]/page.tsx": "invoice_number",
     };
     for (const [rel, token] of Object.entries(record)) {
-      const src = readFileSync(join(ROOT, rel), "utf8");
+      const src = stripComments(readFileSync(join(ROOT, rel), "utf8"));
       expect(src, `${rel} has no generateMetadata`).toMatch(
         /export async function generateMetadata/,
       );
@@ -111,7 +112,7 @@ describe("every commercial page names itself in the tab", () => {
       "app/commercial/accounts/[id]/page.tsx",
       "app/commercial/invoices/[id]/page.tsx",
     ]) {
-      const src = readFileSync(join(ROOT, rel), "utf8");
+      const src = stripComments(readFileSync(join(ROOT, rel), "utf8"));
       const fn = /export async function generateMetadata[\s\S]*?\n}/.exec(src)?.[0] ?? "";
       expect(fn, `${rel} has no catch around its lookup`).toMatch(/\bcatch\b/);
     }
@@ -122,7 +123,7 @@ describe("every commercial page names itself in the tab", () => {
     // to build the whole string itself.
     const doubled: string[] = [];
     for (const f of ALL) {
-      const src = readFileSync(f, "utf8");
+      const src = stripComments(readFileSync(f, "utf8"));
       if (/title:\s*[`"'][^`"']*Tomco Painting/.test(src)) doubled.push(relative(ROOT, f));
     }
     expect(doubled).toEqual([]);

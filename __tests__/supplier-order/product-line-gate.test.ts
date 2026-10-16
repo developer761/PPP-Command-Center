@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Kate, 2026-10-06: "when 'Use default no override' is selected it acts as if
@@ -23,7 +24,7 @@ import { join } from "node:path";
  */
 
 const root = join(__dirname, "..", "..");
-const read = (p: string) => readFileSync(join(root, p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(root, p), "utf8"));
 
 /** Comments stripped, so a rule can never be satisfied by prose describing it. */
 function code(path: string): string {

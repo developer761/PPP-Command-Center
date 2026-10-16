@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * One spelling, platform-wide: color and labor, never colour or labour.
@@ -150,7 +151,7 @@ describe("American spelling, everywhere a person can read it", () => {
     // The specific inconsistency that prompted this: the page said Labour, the
     // URL said labor. Assert the label, not just the absence of a spelling.
     const { readFileSync } = require("node:fs") as typeof import("node:fs");
-    const src = readFileSync("app/commercial/reports/labor/page.tsx", "utf8");
+    const src = stripComments(readFileSync("app/commercial/reports/labor/page.tsx", "utf8"));
     expect(src).toContain("Labor &amp; payroll");
   });
 });

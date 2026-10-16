@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { classifySurface } from "@/lib/supplier-order/estimate-gallons";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan 2026-09-09: "for each color we should have it here so we don't keep
@@ -14,7 +15,7 @@ import { classifySurface } from "@/lib/supplier-order/estimate-gallons";
  * governs it: showing floor area against a trim line is noise, because trim is
  * priced off the perimeter.
  */
-const view = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+const view = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
 
 describe("each surface shows the measure that governs it", () => {
   it("classifies the surfaces PPP actually writes", () => {
@@ -52,7 +53,7 @@ describe("each surface shows the measure that governs it", () => {
     // Without it, trim had nothing to show but floor area — the noise this
     // change exists to remove.
     expect(view).toMatch(/perimeterLf: number;/);
-    const data = readFileSync(join(process.cwd(), "lib/materials/order-page-data.ts"), "utf8");
+    const data = stripComments(readFileSync(join(process.cwd(), "lib/materials/order-page-data.ts"), "utf8"));
     expect(data).toMatch(/perimeterLf: li\.raw\.perimeter/);
   });
 

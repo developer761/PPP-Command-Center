@@ -458,7 +458,7 @@ export default async function FieldOpsJobsPage({
                       <div className="text-[13.5px] font-semibold text-ppp-charcoal truncate">
                         {j.name}{" "}
                         {j.prevailing_wage && (
-                          <span className="ml-1 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">
+                          <span className="ml-1 text-[10px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700 rounded px-1">
                             PW
                           </span>
                         )}

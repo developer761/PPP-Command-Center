@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The simulator must have no way to reach a person.
@@ -19,9 +20,7 @@ import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
  * the comment rather than fix the code.
  */
 function code(path: string): string {
-  return readFileSync(path, "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  return stripComments(readFileSync(path, "utf8"));
 }
 
 const SIM_FILES = [
@@ -32,7 +31,7 @@ const SIM_FILES = [
 
 describe("the simulator cannot text anybody", () => {
   it("scans the files it claims to scan", () => {
-    for (const f of SIM_FILES) expect(readFileSync(f, "utf8").length).toBeGreaterThan(100);
+    for (const f of SIM_FILES) expect(stripComments(readFileSync(f, "utf8")).length).toBeGreaterThan(100);
   });
 
   it("never imports the transport", () => {
@@ -60,7 +59,7 @@ describe("the simulator cannot text anybody", () => {
   });
 
   it("writes only to the scenario tables", () => {
-    const src = readFileSync("lib/messaging/simulator.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/simulator.ts", "utf8"));
     const writes = [...src.matchAll(/\.from\(["']([a-z_]+)["']\)[\s\S]{0,80}?\.insert/g)].map((m) => m[1]);
     expect(new Set(writes)).toEqual(new Set(["sms_scenarios", "sms_scenario_turns"]));
   });

@@ -5,6 +5,7 @@ import { getOperatingCompany } from "@/lib/commercial/operating-company/db";
 import { getOpenInvoiceStatementForAccount } from "./statement";
 import { formatCentsFull } from "./format";
 import { withArchiveBcc } from "@/lib/commercial/email-archive/auto-bcc";
+import { addressLines, cityStateZipLine } from "@/lib/commercial/address-lines";
 
 /**
  * Email the AR statement to a GC (Katie).
@@ -76,14 +77,13 @@ export async function emailStatementToGc(
     return { ok: false, error: "Nothing is outstanding for this GC — there's no statement to send." };
   }
 
+  /* One builder, shared. This hand-rolled `join(", ").replace(/, ([^,]+)$/)`
+     printed "Islip NY" where every other document prints "Islip, NY" when a
+     ZIP was missing — and it left an interior CR in the street untouched. */
   const billTo = [
-    account.billing_street,
-    account.billing_street2,
-    [account.billing_city, account.billing_state, account.billing_zip]
-      .filter(Boolean)
-      .join(", ")
-      .replace(/, ([^,]+)$/, " $1"),
-  ].filter((l): l is string => !!l && l.trim().length > 0);
+    ...addressLines(account.billing_street, account.billing_street2),
+    cityStateZipLine(account.billing_city, account.billing_state, account.billing_zip),
+  ].filter((l): l is string => !!l);
 
   const oc = await getOperatingCompany();
 

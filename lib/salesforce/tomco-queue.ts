@@ -120,6 +120,17 @@ export type QueueEntry = {
   kind: QueueKind;
   opportunityId: string;
   changeOrderId: string | null;
+  /**
+   * Attempts spent BEFORE this claim.
+   *
+   * 🔴 NOT what the row now holds. `claimPending` writes `attempts + 1` as part
+   * of taking the entry (see its docblock), so the database is already one
+   * ahead of this number. This is the pre-claim value because it is the only
+   * one the two callers can use: `markFailed` re-asserts `this + 1` — the same
+   * number the claim wrote, so a failure does not spend a second attempt — and
+   * `markHeld` writes `this` back, refunding the claim because a hold is not a
+   * failure.
+   */
   attempts: number;
   queuedAt: string;
 };
@@ -131,6 +142,13 @@ export type QueueEntry = {
  * missing work order — and retrying it every minute forever buries the real
  * failures in the Slack channel. Three attempts, then it waits for a person,
  * with `last_error` saying why.
+ *
+ * COUNTED FROM THE CLAIM, NOT FROM THE FAILURE. `attempts` is "times this entry
+ * has been STARTED", which is why it bounds a crash as well as a rejection —
+ * see `claimPending`. The visible consequence: an entry in flight already shows
+ * its attempt spent, and an entry on its third attempt reads as stalled for the
+ * ten to twenty seconds it is being worked on. That is the honest reading: if
+ * the tick dies in those seconds, stalled is exactly what it is.
  */
 export const MAX_ATTEMPTS = 3;
 
@@ -164,6 +182,33 @@ export const RETRY_AFTER_MS = 60 * 60 * 1000;
  * than the hour an entry waits between attempts anyway.
  */
 export const CLAIM_STALE_MS = 10 * 60 * 1000;
+
+/**
+ * The longest the cron route may be allowed to run.
+ *
+ * 🔴 THIS IS THE LINK BETWEEN TWO FILES THAT NOTHING USED TO STATE.
+ *
+ * The claim in `claimPending` is what stops two ticks working the same entry,
+ * and `CLAIM_STALE_MS` is what stops a dead tick's claim being honoured for
+ * ever. Those two only coexist while a LIVE tick cannot outlast its own claim.
+ * Today that holds for one reason and one reason only: the route declares
+ * `maxDuration = 300` and Vercel kills it there, which is under the ten-minute
+ * staleness window. Raise `maxDuration` past it — a plausible thing to do when
+ * the queue gets deep — and a tick is still mid-entry when its claim expires,
+ * a second tick claims the same row, and both reach `syncChangeOrder` with no
+ * link and no matching amount. That is the exact shape that creates two
+ * `ChangeOrder__c` records for one piece of work and doubles
+ * `TotalChangeOrder__c`; Salesforce has no unique external id on that object
+ * and will not refuse the second one.
+ *
+ * Half the window, not all of it: the other half is slack for the platform to
+ * actually stop the function, for clock skew between the two writers, and for
+ * the round trip that releases the claim. Asserted — a comment hoping somebody
+ * reads it is what we had.
+ *
+ * @see __tests__/commercial/a-tick-cannot-outlast-its-own-claim.test.ts
+ */
+export const MAX_TICK_SECONDS = CLAIM_STALE_MS / 2000;
 
 /**
  * The same set `claimPending` would take, WITHOUT claiming any of it.
@@ -219,6 +264,33 @@ export async function peekPending(limit = 20): Promise<QueueEntry[]> {
  * The claim is one conditional UPDATE per candidate: it applies only while
  * `claimed_at` is still what we read, so of two ticks racing for a row exactly
  * one gets it back and the other sees no row and moves on.
+ *
+ * 🔴 AND IT SPENDS THE ATTEMPT, HERE, RATHER THAN ON FAILURE.
+ *
+ * `attempts` used to be written only by `markFailed` — which runs only if the
+ * tick SURVIVES to call it. An entry that KILLS the tick spends nothing: a
+ * `maxDuration` overrun, an out-of-memory, a deploy landing mid-flight. The
+ * row keeps `claimed_at`, goes stale after `CLAIM_STALE_MS`, is re-claimed
+ * with `attempts` untouched, kills the next tick the same way, and does it
+ * again every ten minutes for ever — re-running real Salesforce writes each
+ * cycle. `MAX_ATTEMPTS` cannot bound a failure mode whose whole nature is that
+ * the counter never gets written.
+ *
+ * So the attempt is spent as part of TAKING the entry, in the same conditional
+ * UPDATE that claims it, which makes it unskippable: nothing that happens
+ * afterwards can prevent it. The two invariants that already existed are kept
+ * by making the other two writers absolute rather than relative —
+ *
+ *  - A FAILURE SPENDS EXACTLY ONE. `markFailed` writes `attemptsBeforeClaim +
+ *    1`, which is the number this claim already wrote. Same value, written
+ *    twice; the budget moves by one per claim-and-fail cycle, as before.
+ *  - A HOLD SPENDS NOTHING. `markHeld` writes `attemptsBeforeClaim` back,
+ *    refunding the claim. Without that refund a deal waiting on Katie would be
+ *    re-claimed hourly, run out of retries in three hours, and be abandoned
+ *    before anybody could clear it — the one thing the hold exists to prevent.
+ *
+ * Both are safe to write absolutely for the same reason `markFailed` already
+ * was: the claim is atomic, so exactly one tick owns the row.
  */
 export async function claimPending(limit = 20): Promise<QueueEntry[]> {
   const sb = adminClient();
@@ -259,9 +331,14 @@ export async function claimPending(limit = 20): Promise<QueueEntry[]> {
      * value we read means the update matches at most once — whoever gets the
      * row back owns it, and the loser gets an empty result rather than an error.
      */
+    const attemptsBeforeClaim = Number(row.attempts ?? 0);
     let q = sb
       .from(TABLE)
-      .update({ claimed_at: new Date().toISOString() })
+      .update({
+        claimed_at: new Date().toISOString(),
+        // Spent here, not on failure. See the docblock.
+        attempts: attemptsBeforeClaim + 1,
+      })
       .eq("id", row.id)
       .is("done_at", null);
     q = row.claimed_at === null ? q.is("claimed_at", null) : q.eq("claimed_at", row.claimed_at);
@@ -278,7 +355,8 @@ export async function claimPending(limit = 20): Promise<QueueEntry[]> {
       kind: row.kind as QueueKind,
       opportunityId: row.opportunity_id,
       changeOrderId: row.change_order_id ?? null,
-      attempts: Number(row.attempts ?? 0),
+      // Deliberately the PRE-claim number — see `QueueEntry.attempts`.
+      attempts: attemptsBeforeClaim,
       queuedAt: row.queued_at,
     });
   }
@@ -410,7 +488,45 @@ export async function listQueueForReview(
 }
 
 /**
+ * What `done_at` should say: the instant the data that was written was READ,
+ * never the instant the writing stopped.
+ *
+ * 🔴 A LOST-UPDATE WINDOW, CLOSED BY A TIMESTAMP.
+ *
+ * `done_at` has exactly one consumer that decides anything: `needsRequeue`,
+ * which asks the nightly sweep "has this thing changed HERE since the last
+ * entry finished?" and re-queues when `updated_at > done_at`. But the entry
+ * did not read the deal when it finished — it read it ten to twenty seconds
+ * earlier, before several Salesforce round trips and the six-second wait for
+ * the rollups. An edit landing inside that window is written to the database
+ * with an `updated_at` BELOW the `done_at` that is about to be stamped, so the
+ * sweep concludes nothing has changed since and the edit is never swept.
+ * Nothing retries it, nothing reports it, and Salesforce keeps the pre-edit
+ * figure for ever.
+ *
+ * So the stamp is the read instant. Everything the entry looked at was read at
+ * or after it, so any edit the write could have missed sorts after it and the
+ * sweep picks the thing up tomorrow night. The cost is that the review screen
+ * shows an entry finishing a few seconds before it did, which is the cheaper
+ * of the two lies by a wide margin.
+ *
+ * Clamped to now, and falling back to now, so a caller that passes a garbage
+ * or future timestamp cannot stamp a completion that has not happened — that
+ * would park the row ahead of every future edit and lose the sweep entirely.
+ */
+export function completionStamp(readAt?: string | null, now: Date = new Date()): string {
+  if (!readAt) return now.toISOString();
+  const t = Date.parse(readAt);
+  if (!Number.isFinite(t) || t > now.getTime()) return now.toISOString();
+  return new Date(t).toISOString();
+}
+
+/**
  * Finished — written, or decided that nothing was needed.
+ *
+ * `readAt` is the instant the tick started looking at this entry, and it is
+ * what lands in `done_at`. See `completionStamp` for why that is not the same
+ * as "when this call ran", and why the difference is a lost edit.
  *
  * `verified` says whether a read-back actually confirmed it. 🔴 THE DEFAULT IS
  * FALSE AND THAT MATTERS: a write whose read-back disagreed used to be marked
@@ -425,11 +541,11 @@ export async function listQueueForReview(
 export async function markDone(
   id: string,
   outcome: string,
-  opts: { verified?: boolean } = {},
+  opts: { verified?: boolean; readAt?: string | null } = {},
 ): Promise<void> {
   const sb = adminClient();
   const patch: Record<string, unknown> = {
-    done_at: new Date().toISOString(),
+    done_at: completionStamp(opts.readAt),
     outcome,
     last_error: null,
     held_reason: null,
@@ -466,14 +582,31 @@ export async function markVerifyFailed(id: string, reason: string): Promise<void
  * NOT counted as an attempt. A held deal is not a failure and must not burn
  * through the retry budget — it would then be abandoned before anybody had a
  * chance to clear it in the review screen.
+ *
+ * 🔴 WHICH NOW TAKES A REFUND, NOT JUST AN OMISSION. The claim spends the
+ * attempt (see `claimPending`), so "do not increment" is no longer the same
+ * thing as "do not spend". A hold sets `last_attempt_at`, the entry is
+ * re-claimable an hour later, and three hours of waiting on Katie would stall
+ * a deal nobody had failed to write. So `attemptsBeforeClaim` — the number the
+ * tick read when it took the entry — is written back.
+ *
+ * Optional only for the direct callers that never claimed anything; the tick
+ * always passes it.
  */
-export async function markHeld(id: string, reason: string): Promise<void> {
+export async function markHeld(
+  id: string,
+  reason: string,
+  opts: { attemptsBeforeClaim?: number } = {},
+): Promise<void> {
   const sb = adminClient();
-  const { error } = await sb
-    .from(TABLE)
+  const patch: Record<string, unknown> = {
+    held_reason: reason,
+    last_attempt_at: new Date().toISOString(),
     // The claim is released: a held entry is not being worked on.
-    .update({ held_reason: reason, last_attempt_at: new Date().toISOString(), claimed_at: null })
-    .eq("id", id);
+    claimed_at: null,
+  };
+  if (typeof opts.attemptsBeforeClaim === "number") patch.attempts = opts.attemptsBeforeClaim;
+  const { error } = await sb.from(TABLE).update(patch).eq("id", id);
   if (error) console.warn(`[tomco-queue] could not hold ${id}: ${error.message}`);
 }
 
@@ -532,13 +665,20 @@ export async function releaseHoldForChangeOrder(changeOrderId: string): Promise<
  * `attempts + 1` from the value read at claim time is safe now that the claim
  * is atomic — only one tick holds the entry, so there is no second writer to
  * lose an update to.
+ *
+ * 🔴 IT RE-ASSERTS THE CLAIM'S NUMBER; IT DOES NOT ADD A SECOND ONE. Since
+ * `claimPending` writes `attemptsBeforeClaim + 1` as it takes the entry, this
+ * writes the value the row already holds. That is deliberate rather than
+ * redundant: the two paths out of a claim — failed, or died before it could
+ * say so — must cost exactly the same one attempt, and making this absolute
+ * rather than `attempts + 1`-from-the-row is what guarantees it.
  */
-export async function markFailed(id: string, attempts: number, error: string): Promise<void> {
+export async function markFailed(id: string, attemptsBeforeClaim: number, error: string): Promise<void> {
   const sb = adminClient();
   const { error: err } = await sb
     .from(TABLE)
     .update({
-      attempts: attempts + 1,
+      attempts: attemptsBeforeClaim + 1,
       last_attempt_at: new Date().toISOString(),
       last_error: error.slice(0, 2000),
       claimed_at: null,

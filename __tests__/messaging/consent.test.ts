@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   readSmsConsent, mayEnrol, requireExpressConsent,
 } from "@/lib/messaging/consent";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The gap Twilio found on 2026-10-10: SMS_Opt_In__c was read only to STOP a
@@ -116,7 +117,7 @@ describe("the default is ON", () => {
  * at the top of a file and proved nothing.
  */
 describe("the consent check is actually wired into enrolment", () => {
-  const src = readFileSync("lib/messaging/enrol-core.ts", "utf8");
+  const src = stripComments(readFileSync("lib/messaging/enrol-core.ts", "utf8"));
   // Comments mention these names for good reasons; strip them before asserting.
   const code = src
     .replace(/\/\*[\s\S]*?\*\//g, "")

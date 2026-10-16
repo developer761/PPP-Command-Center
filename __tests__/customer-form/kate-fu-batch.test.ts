@@ -15,6 +15,7 @@ import { surfacesMissingFinish, missingFinishMessage } from "@/lib/customer-form
 import { COLOR_BRANDS, DEFAULT_COLOR_BRAND } from "@/lib/customer-form/color-brands";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /** Minimal real inputs for buildConfirmationEmail — the templates and the
  *  renderer are not what FU.8 is about. */
@@ -291,9 +292,7 @@ describe("FU.1 — a color with no finish blocks the save", () => {
 
 describe("FU.1 — the form actually refuses, in the browser", () => {
   const src = () =>
-    readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/^\s*\/\/.*$/gm, " ");
+    stripComments(readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8"));
 
   it("returns before sending when a finish is missing", () => {
     const s = src();
@@ -417,7 +416,7 @@ describe("FU.10 — the brand toggle", () => {
 
   it("shows the vinyl chart only under Benjamin Moore", () => {
     // It is a BM chart; Sherwin Williams has its own VinylSafe link.
-    const src = readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8");
+    const src = stripComments(readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8"));
     expect(src).toMatch(/brand\.id === "benjamin-moore" && \(/);
   });
 });
@@ -497,9 +496,7 @@ describe("a message the customer can act on is not a system failure", () => {
    * support email.
    */
   const src = () =>
-    readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/^\s*\/\/.*$/gm, " ");
+    stripComments(readFileSync(join(__dirname, "..", "..", "components/customer-form-view.tsx"), "utf8"));
 
   it("has a separate heading for something the customer must do", () => {
     const s = src();

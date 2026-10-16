@@ -291,7 +291,7 @@ export default async function FieldOpsEmployeesPage({
                     </ConfirmSubmitButton>
                   ) : (
                     <SubmitButton
-                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-ppp-green-200 text-[12px] font-semibold text-ppp-green-700 hover:bg-ppp-green-50 touch-manipulation"
+                      className="inline-flex items-center px-3 min-h-[44px] rounded-lg border border-ppp-green-100 text-[12px] font-semibold text-ppp-green-700 hover:bg-ppp-green-50 touch-manipulation"
                     >Reactivate</SubmitButton>
                   )}
                 </form>

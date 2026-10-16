@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { scopeBlockLines } from "@/lib/commercial/proposals/scope-blocks";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The Qualifications box takes a pasted LIST.
@@ -54,9 +55,7 @@ describe("the renderer prints those bullets", () => {
    * matched its own docblock and passed over broken code; the comment above
    * this branch quotes Stephanie and would satisfy a naive grep on its own.
    */
-  const src = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const src = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("bullets a multi-line note instead of printing one paragraph", () => {
     expect(src).toMatch(/noteLines\.length > 1/);

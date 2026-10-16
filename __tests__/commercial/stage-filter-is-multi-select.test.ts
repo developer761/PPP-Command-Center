@@ -5,6 +5,7 @@ import {
   columnKeyForOpp,
 } from "@/lib/commercial/opportunities/kanban-columns";
 import { OPPORTUNITY_STATUSES } from "@/lib/commercial/opportunities/constants";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * `?status=` takes a LIST of stages, and every old single-value link still works.
@@ -117,5 +118,5 @@ describe("the stage filter", () => {
 function readPage(): string {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
-  return readFileSync("app/commercial/opportunities/page.tsx", "utf8");
+  return stripComments(readFileSync("app/commercial/opportunities/page.tsx", "utf8"));
 }

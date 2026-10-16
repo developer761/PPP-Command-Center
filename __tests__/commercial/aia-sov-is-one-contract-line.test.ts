@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The G703 schedule of values is ONE contract line, plus change orders.
@@ -25,7 +26,7 @@ import { readFileSync } from "node:fs";
  * Source-level, because the seed only runs against a real database and the
  * thing being asserted is its SHAPE, not a computed value.
  */
-const SRC = readFileSync("lib/commercial/aia/db.ts", "utf8");
+const SRC = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
 
 describe("the schedule of values", () => {
   it("defaults to a single Original Contract line", () => {

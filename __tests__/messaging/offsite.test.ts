@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { jobRoute, roomCount, isCommercial, offsiteReasonFor } from "@/lib/messaging/offsite";
 import { validateAction } from "@/lib/messaging/agent-output";
 import { renderMessage } from "@/lib/messaging/render";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A6 and A7: 164 breaches between them, both critical, and both caused by one
@@ -438,8 +439,7 @@ describe("the Spanish photo qualifier needs the ask, not the photos", () => {
  */
 describe("every A7 qualifier has both languages on one object", () => {
   it("has no second index-paired list left to drift", () => {
-    const src = readFileSync("lib/messaging/offsite.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const src = stripComments(readFileSync("lib/messaging/offsite.ts", "utf8"));
     expect(src).not.toMatch(/A7_TRIGGERS_ES\s*\[/);
     expect(src).not.toMatch(/const\s+A7_TRIGGERS_ES\b/);
   });

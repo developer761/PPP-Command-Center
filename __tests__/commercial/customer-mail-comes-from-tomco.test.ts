@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Anything a CUSTOMER receives comes from a Tomco address.
@@ -48,7 +49,7 @@ const FILES: Array<[string, string, string]> = [
  * today a check in this repo matched its own explanation. Assert on code.
  */
 function codeOf(path: string): string {
-  const raw = readFileSync(join(process.cwd(), path), "utf8");
+  const raw = stripComments(readFileSync(join(process.cwd(), path), "utf8"));
   return raw
     .replace(/\/\*[\s\S]*?\*\//g, "")   // block comments
     .split("\n")
@@ -58,7 +59,7 @@ function codeOf(path: string): string {
 
 describe("customer-facing commercial email", () => {
   for (const [path, expected, what] of FILES) {
-    const src = readFileSync(join(process.cwd(), path), "utf8");
+    const src = stripComments(readFileSync(join(process.cwd(), path), "utf8"));
 
     it(`${what} prefers ${expected}`, () => {
       expect(src, `${path} must read ${expected}`).toContain(expected);
@@ -94,7 +95,7 @@ describe("customer-facing commercial email", () => {
     // older one, inheriting the pool and nothing else.
     const offenders: string[] = [];
     for (const [path] of FILES) {
-      const src = readFileSync(join(process.cwd(), path), "utf8");
+      const src = stripComments(readFileSync(join(process.cwd(), path), "utf8"));
       const hasPerType =
         src.includes("COMMERCIAL_INVOICE_FROM_ADDRESS") ||
         src.includes("COMMERCIAL_PROPOSAL_FROM_ADDRESS");
@@ -113,7 +114,7 @@ describe("customer-facing commercial email", () => {
  * received a Tomco work order from precisionpaintingplus.net.
  */
 describe("the commercial channel default", () => {
-  const resend = readFileSync(join(process.cwd(), "lib/email/resend.ts"), "utf8");
+  const resend = stripComments(readFileSync(join(process.cwd(), "lib/email/resend.ts"), "utf8"));
   const resendCode = codeOf("lib/email/resend.ts");
 
   it("is a Tomco address", () => {

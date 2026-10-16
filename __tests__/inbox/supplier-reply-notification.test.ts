@@ -11,8 +11,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { replyPreview } from "@/lib/notifications/supplier-reply";
+import { stripComments } from "../helpers/strip-comments";
 
-const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+const read = (p: string) => stripComments(readFileSync(join(process.cwd(), p), "utf8"));
 const strip = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
 
@@ -155,7 +156,7 @@ describe("the bell can render it", () => {
  * point of the notification.
  */
 describe("an unreadable body is not an empty one", () => {
-  const read2 = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+  const read2 = (p: string) => stripComments(readFileSync(join(process.cwd(), p), "utf8"));
   const strip2 = (s: string) =>
     s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
 

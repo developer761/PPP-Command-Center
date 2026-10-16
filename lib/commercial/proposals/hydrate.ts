@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { addressLines } from "@/lib/commercial/address-lines";
 import { commercialDb } from "@/lib/commercial/db";
 import { getCommercialAccount } from "@/lib/commercial/accounts/db";
 import {
@@ -38,10 +39,10 @@ export async function hydrateProposalContext(
   const account = await getCommercialAccount(opp.account_id);
 
   // Header — snapshotted from account + deal fields at create.
-  const gcAddressLines: string[] = [];
-  if (account?.billing_street) gcAddressLines.push(account.billing_street);
-  // Suite / floor prints on its own line, the way an envelope is addressed.
-  if (account?.billing_street2) gcAddressLines.push(account.billing_street2);
+  // addressLines, not a raw push: a street field can hold a CR, and it then
+  // prints as a glyph on the proposal. Suite / floor stays on its own line,
+  // the way an envelope is addressed — the helper preserves that.
+  const gcAddressLines: string[] = addressLines(account?.billing_street, account?.billing_street2);
   const cityLine = [account?.billing_city, account?.billing_state, account?.billing_zip]
     .filter((s): s is string => Boolean(s?.trim()))
     .join(", ");

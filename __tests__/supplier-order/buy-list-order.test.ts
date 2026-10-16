@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Karan 2026-09-09, reading a real order: "living room walls and accent walls
@@ -12,7 +13,7 @@ import { join } from "node:path";
  * was the ninth — the two lines you most need to read together, because the
  * accent is a second color over part of the wall the first line prices.
  */
-const view = readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8");
+const view = stripComments(readFileSync(join(process.cwd(), "components/order-builder-view.tsx"), "utf8"));
 
 /**
  * SURFACE_ORDER is READ OUT OF the shipped component, not mirrored here.

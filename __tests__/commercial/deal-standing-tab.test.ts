@@ -4,6 +4,7 @@ import {
   billedPct,
   type DealStandingInput,
 } from "@/lib/commercial/opportunities/deal-standing";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * "Where it stands" — the tab Brendan asked for, and what it says.
@@ -99,7 +100,7 @@ describe("the tab is wired, not just declared", () => {
     // A tab can be added to the list, type-check, and render nothing — the
     // label appears and the panel never mounts. Three separate seams.
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8");
+    const src = stripComments(readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8"));
 
     expect(src, "not in the tab bar").toContain('{ key: "standing", label: "Where it stands" }');
     expect(src, "?tab=standing would fall back to Overview").toContain('raw === "standing"');
@@ -113,7 +114,7 @@ describe("the tab is wired, not just declared", () => {
       "components/commercial/activity-rail.tsx",
       "components/commercial/deal-standing-panel.tsx",
     ]) {
-      expect(readFileSync(f, "utf8"), `${f} re-derives instead of sharing`).toContain(
+      expect(stripComments(readFileSync(f, "utf8")), `${f} re-derives instead of sharing`).toContain(
         "dealStandingLines"
       );
     }
@@ -121,9 +122,7 @@ describe("the tab is wired, not just declared", () => {
 
   it("the rail no longer gates on isWon a second time", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("components/commercial/activity-rail.tsx", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("components/commercial/activity-rail.tsx", "utf8"));
     expect(
       /showStanding\s*=[^;]*standing\.isWon/.test(src),
       "the rail re-gates on isWon, so a pre-sale deal shows a blank block"

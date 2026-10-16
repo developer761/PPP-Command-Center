@@ -5,6 +5,7 @@ import { taxChoiceToColumns, columnsToTaxChoice } from "@/lib/commercial/tax/exe
 import { tomcoDefaultIntro } from "@/lib/commercial/proposals/constants";
 import { CLOSEOUT_ITEM_STATUS_LABEL, computeWarrantyEndDate } from "@/lib/commercial/closeout/constants";
 import { computeG702 } from "@/lib/commercial/aia/constants";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * ONE GUARD FOR STEPHANIE'S WHOLE ROUND.
@@ -75,7 +76,7 @@ describe("her note: add Capital Improvement to the job's sales-tax options", () 
      * treatment, which is what she was reporting — so that is what this
      * asserts now, rather than the printing rule that has since changed.
      */
-    const hydrate = readFileSync("lib/commercial/proposals/hydrate.ts", "utf8");
+    const hydrate = stripComments(readFileSync("lib/commercial/proposals/hydrate.ts", "utf8"));
     expect(hydrate).toContain("show_capital_improvement_notice: true");
     // The charge still follows the job: taxable stays taxable, exempt exempt.
     expect(taxChoiceToColumns("capital_improvement").tax_exempt).toBe(true);
@@ -99,7 +100,7 @@ describe("her note: bid set date in the intro paragraph", () => {
 });
 
 describe("her note: it shows price per line whether or not that is chosen", () => {
-  const SRC = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const SRC = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("the customer table honours the per-line checkbox once it is in use", () => {
     expect(SRC).toContain("const hidePrice = priceOnly && respectShowPrice === true && it.show_price === false");
@@ -113,7 +114,7 @@ describe("her note: it shows price per line whether or not that is chosen", () =
 });
 
 describe("her note: make the sign off prettier", () => {
-  const SRC = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const SRC = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("the estimator's details print inside the sign-off", () => {
     const at = SRC.indexOf("function SignatureBlock");
@@ -129,7 +130,7 @@ describe("her note: make the sign off prettier", () => {
 });
 
 describe("her note: put it on one page, or let me change font size and spacing", () => {
-  const SRC = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+  const SRC = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
 
   it("compact tightens type and spacing", () => {
     const m = /const COMPACT_PAGE = \{([\s\S]*?)\} as const;/.exec(SRC);
@@ -179,7 +180,7 @@ describe("her note: warranty through — where do I enter this date?", () => {
 
   it("is empty only because its input is, and the form now says so", () => {
     expect(computeWarrantyEndDate(null, 1)).toBeNull();
-    const tool = readFileSync("app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool.tsx", "utf8");
+    const tool = stripComments(readFileSync("app/commercial/accounts/[id]/closeout/[dealId]/closeout-tool.tsx", "utf8"));
     expect(tool).toContain("set substantial completion below");
     expect(tool).toContain("The warranty runs from this date");
   });
@@ -246,13 +247,13 @@ describe("her note: we need to bill for the retainage, they pay it separately", 
    */
 
   it("the release forces 0% rather than trusting the caller", () => {
-    const db = readFileSync("lib/commercial/aia/db.ts", "utf8");
+    const db = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
     expect(db).toContain("const retainage = isRelease\n    ? 0");
   });
 });
 
 describe("her note: edit or delete an AIA after another was sent", () => {
-  const db = readFileSync("lib/commercial/aia/db.ts", "utf8");
+  const db = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
 
   it("names the blocking application instead of giving impossible advice", () => {
     // "delete the later drafts" is not something you can do when the later
@@ -267,7 +268,7 @@ describe("her note: edit or delete an AIA after another was sent", () => {
 
 describe("her note: add lien waiver option to AIA billing just as it is under invoicing", () => {
   it("stores against the application, and treats a deleted file as absent", () => {
-    const src = readFileSync("lib/commercial/aia/lien-waiver.ts", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/aia/lien-waiver.ts", "utf8"));
     expect(src).toContain('category: "lien_waiver"');
     expect(src).toContain("lien_waiver_document_id: uploaded.document.id");
     // A dangling link must read as "nothing on file", not a tick for a file
@@ -278,7 +279,7 @@ describe("her note: add lien waiver option to AIA billing just as it is under in
 
 // ── Alternates, estimating report ─────────────────────────────────────────
 describe("her note: how do I add alternates to the price when billing?", () => {
-  const page = readFileSync("app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8");
+  const page = stripComments(readFileSync("app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"));
 
   it("accepting one creates an approved change order, not a proposal edit", () => {
     expect(page).toContain("async function acceptAlternateAction");
@@ -291,7 +292,7 @@ describe("her note: how do I add alternates to the price when billing?", () => {
 });
 
 describe("her note: how do I access the estimating report after it is won?", () => {
-  const page = readFileSync("app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8");
+  const page = stripComments(readFileSync("app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"));
 
   it("the Plan report link is no longer gated to pre-send statuses", () => {
     // It used to vanish the moment the proposal was sent — exactly when the
@@ -303,7 +304,7 @@ describe("her note: how do I access the estimating report after it is won?", () 
   it("and can be filed against the deal under its own category", () => {
     expect(page).toContain("async function fileEstimateReportAction");
     expect(page).toContain('category: "estimate_report"');
-    const cats = readFileSync("lib/commercial/documents/categories.ts", "utf8");
+    const cats = stripComments(readFileSync("lib/commercial/documents/categories.ts", "utf8"));
     // Never "proposal": one is what the GC received, the other shows our
     // quantities and bid notes.
     expect(cats).toContain('"estimate_report"');
@@ -312,7 +313,7 @@ describe("her note: how do I access the estimating report after it is won?", () 
 
 // ── AIA grid keyboard ─────────────────────────────────────────────────────
 describe("her note: arrow keys to move between cells on the AIA", () => {
-  const src = readFileSync("components/commercial/aia-line-row.tsx", "utf8");
+  const src = stripComments(readFileSync("components/commercial/aia-line-row.tsx", "utf8"));
 
   it("up/down and Enter move down a column", () => {
     expect(src).toContain('const down = e.key === "ArrowDown" || e.key === "Enter"');
@@ -329,7 +330,7 @@ describe("her note: arrow keys to move between cells on the AIA", () => {
 
 // ── One number, one name ──────────────────────────────────────────────────
 describe("the deal's margin is called the same thing on every tab", () => {
-  const strip = readFileSync("lib/commercial/opportunities/stage-kpis.ts", "utf8");
+  const strip = stripComments(readFileSync("lib/commercial/opportunities/stage-kpis.ts", "utf8"));
 
   it("the stage strip uses the label the margin came with", () => {
     // It used to hardcode "Projected margin" in one block and "Margin so far" /

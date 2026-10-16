@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderProposalPdf } from "@/lib/commercial/proposals/pdf";
 import type { CommercialProposal, CommercialProposalLineItem } from "@/lib/commercial/proposals/db";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Render the document. Do not merely read the code that renders it.
@@ -117,7 +118,7 @@ describe("the proposal PDF renders", () => {
     // Cannot be seen from the bytes without a text extractor, so it is pinned
     // at the source: wrap={false} is what stops the contact details being
     // orphaned onto the next page away from the name.
-    const src = readFileSync("lib/commercial/proposals/pdf.tsx", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/proposals/pdf.tsx", "utf8"));
     const at = src.indexOf("function SignatureBlock");
     const block = src.slice(at, src.indexOf("\nfunction ", at + 10));
     expect(block).toContain("wrap={false}");

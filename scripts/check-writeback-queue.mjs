@@ -31,6 +31,14 @@
  * which are the two filters `claimPending` applies. Any block that needs those
  * cleared restores them in the same breath. The cron cannot see these rows at
  * all.
+ *
+ * AND, SINCE 2026-10-16, A SECOND DEFENCE THAT DOES NOT DEPEND ON TIMING AT
+ * ALL. Four blocks below deliberately clear those two fields to exercise the
+ * real `claimPending`, so "unclaimable" is true except for the seconds when it
+ * is the thing being tested — and spending the attempt at claim time made
+ * those seconds longer. The probe therefore names a deal the write path cannot
+ * reach Salesforce for: see `pickProbeDeal`. Both defences, because the first
+ * one has a hole and the second one is not realistic on its own.
  */
 import { readFileSync } from "node:fs";
 
@@ -120,17 +128,60 @@ try {
     process.exit(1);
   }
 
-  // Deterministic, so a failure is reproducible — `.limit(1)` with no order
-  // returns whatever Postgres feels like.
-  const { data: deal } = await sb
-    .from("commercial_opportunities")
-    .select("id, title")
-    .eq("status", "post_sale_closed")
-    .is("deleted_at", null)
-    .order("id")
-    .limit(1)
-    .maybeSingle();
-  check("there is a deal to probe with", !!deal, deal ? String(deal.title).slice(0, 40) : "none found");
+  /*
+   * 🔴 A DELETED DEAL, AND THAT IS THE POINT.
+   *
+   * This used to probe with a live `post_sale_closed` deal — the most
+   * realistic row, and the most dangerous one. `opportunity_id` carries a
+   * foreign key, so the probe must name a REAL deal; the question is what the
+   * production cron would do if it ever won the race for the probe row.
+   * Against a live sold deal the answer is `runSale` → `updateExisting` or
+   * `createNew` against Tomco's org: an unrecorded production write caused by
+   * a test. The file's own docblock says that is the fault this file was
+   * rewritten to stop making, and "unclaimable by construction" was the
+   * defence. That defence has a seam: four blocks here deliberately clear
+   * `attempts` and `last_attempt_at` to exercise the real `claimPending`, and
+   * for those moments the row IS claimable. Spending the attempt at claim time
+   * made those moments longer.
+   *
+   * A soft-deleted deal closes it. `loadSoldDeal` returns null the instant it
+   * sees `deleted_at`, so the worst the cron can do with this row is
+   * `markDone("the deal was deleted here")` — no Salesforce write exists on
+   * that path at all. The sweep ignores deleted deals too, so nothing
+   * re-queues it. Falls back to any not-sold deal, which reaches
+   * `markDone("no longer a sold deal here…")` and is equally inert.
+   *
+   * Ordered, so a failure is reproducible — `.limit(1)` with no order returns
+   * whatever Postgres feels like.
+   */
+  const pickProbeDeal = async () => {
+    const { data: deleted } = await sb
+      .from("commercial_opportunities")
+      .select("id, title")
+      .not("deleted_at", "is", null)
+      .order("id")
+      .limit(1)
+      .maybeSingle();
+    if (deleted) return { deal: deleted, why: "deleted here — the cron can only mark it done" };
+    // `SOLD_STATUSES` in lib/salesforce/tomco-pairing.ts. Anything outside it
+    // is not sold, so the write path returns before it reaches Salesforce.
+    const sold = ["pre_sale_closed", "pre_construction", "in_progress", "billing", "post_sale_closed"];
+    const { data: notSold } = await sb
+      .from("commercial_opportunities")
+      .select("id, title")
+      .not("status", "in", `(${sold.join(",")})`)
+      .is("deleted_at", null)
+      .order("id")
+      .limit(1)
+      .maybeSingle();
+    return { deal: notSold, why: "not sold here — the cron can only mark it done" };
+  };
+  const { deal, why: probeWhy } = await pickProbeDeal();
+  check(
+    "there is a deal to probe with that the cron could not write to Salesforce",
+    !!deal,
+    deal ? `${String(deal.title).slice(0, 40)} · ${probeWhy}` : "none found",
+  );
   if (!deal) process.exit(1);
 
   const insert = async (row) => {
@@ -171,6 +222,26 @@ try {
   const { claimPending, peekPending, markHeld, markFailed, markDone, markVerifyFailed, rearmStalled } = await import(
     "@/lib/salesforce/tomco-queue"
   );
+
+  /*
+   * 🔴 PUTTING BACK WHAT A CLAIM TOOK, FOR ROWS THAT ARE NOT OURS.
+   *
+   * `claimPending` now SPENDS AN ATTEMPT as it claims (see its docblock), so a
+   * stray real row swept up by one of these `claimPending(50)` calls would
+   * leave this script having quietly burned a third of somebody's retry budget
+   * — the kind of damage a test is never allowed to do. The entry it hands
+   * back carries the PRE-claim count, so restoring it is exact.
+   *
+   * Nothing should be claimable at all here; the first check refuses to run
+   * otherwise. This is the belt to that braces.
+   */
+  const release = async (entries) => {
+    for (const c of entries) {
+      if (c.id === probeId) continue;
+      await sb.from(TABLE).update({ claimed_at: null, attempts: c.attempts }).eq("id", c.id);
+    }
+  };
+
   await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, claimed_at: null }).eq("id", probeId);
   const [runA, runB] = await Promise.all([claimPending(50), claimPending(50)]);
   const gotA = runA.filter((r) => r.id === probeId).length;
@@ -180,7 +251,49 @@ try {
     gotA + gotB === 1,
     `A took it ${gotA}×, B took it ${gotB}×`,
   );
+  await release([...runA, ...runB]);
   // Park it again the moment the race is over.
+  await sb.from(TABLE).update({ claimed_at: null, ...PARKED() }).eq("id", probeId);
+
+  // ── the claim spends the attempt, so a tick that DIES still pays ──────────
+  //
+  // `attempts` used to be written only by `markFailed`, which runs only if the
+  // tick survives to call it. An entry that kills the tick — a maxDuration
+  // overrun, an OOM, a deploy mid-flight — left the counter untouched, went
+  // stale after CLAIM_STALE_MS, and was re-claimed with its full budget. For
+  // ever, re-running real Salesforce writes every cycle. MAX_ATTEMPTS cannot
+  // bound a failure whose nature is that the counter never gets written.
+  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, claimed_at: null, held_reason: null }).eq("id", probeId);
+  const firstClaim = await claimPending(50);
+  await release(firstClaim);
+  const claimedEntry = firstClaim.find((c) => c.id === probeId);
+  const { data: afterClaim } = await sb.from(TABLE).select("attempts").eq("id", probeId).maybeSingle();
+  check(
+    "claiming an entry spends an attempt, before anything can go wrong",
+    Number(afterClaim?.attempts ?? -1) === 1 && claimedEntry?.attempts === 0,
+    `row ${afterClaim?.attempts}, entry reports ${claimedEntry?.attempts} spent before the claim`,
+  );
+
+  /*
+   * And the consequence that is the whole point: an entry that kills the tick
+   * every time RUNS OUT. Each loop simulates a death — the claim happened, the
+   * tick never reached `markFailed`, and ten minutes later `claimed_at` is
+   * stale. Only `claimed_at` is cleared here; `attempts` is left exactly as the
+   * claim left it, which is the state a dead tick leaves behind.
+   */
+  let deaths = 1; // the claim above was the first
+  for (let i = 0; i < MAX_ATTEMPTS + 1; i++) {
+    await sb.from(TABLE).update({ claimed_at: null }).eq("id", probeId);
+    const again = await claimPending(50);
+    await release(again);
+    if (!again.some((c) => c.id === probeId)) break;
+    deaths++;
+  }
+  check(
+    "an entry that kills the tick every time stops being claimed",
+    deaths === MAX_ATTEMPTS,
+    `it was claimed ${deaths}× before the budget ran out (MAX_ATTEMPTS ${MAX_ATTEMPTS})`,
+  );
   await sb.from(TABLE).update({ claimed_at: null, ...PARKED() }).eq("id", probeId);
 
   // ── the back-off, and that BOTH filters apply ─────────────────────────────
@@ -191,25 +304,57 @@ try {
     !inBackoff.some((c) => c.id === probeId),
     "the two or() filters are ANDed, not replaced",
   );
-  for (const c of inBackoff) await sb.from(TABLE).update({ claimed_at: null }).eq("id", c.id);
+  await release(inBackoff);
+  await sb.from(TABLE).update({ claimed_at: null }).eq("id", probeId);
 
-  // ── a held entry keeps its retry budget, and loses its claim ──────────────
-  //
-  // The sentinel matters: `claimed_at` was already null in the first version,
-  // so "holding releases the claim" could not fail.
-  await sb.from(TABLE).update({ attempts: 0, claimed_at: new Date().toISOString(), ...PARKED() }).eq("id", probeId);
-  await sb.from(TABLE).update({ attempts: 0 }).eq("id", probeId);
-  await markHeld(probeId, "probe hold");
+  /*
+   * ── a held entry keeps its retry budget, and loses its claim ─────────────
+   *
+   * 🔴 RUN THROUGH A REAL CLAIM NOW, DELIBERATELY.
+   *
+   * This used to call `markHeld` on a row nothing had claimed, which proved
+   * only that `markHeld` does not increment. That was the whole invariant when
+   * `markFailed` was the only writer of `attempts`; it stopped being the whole
+   * invariant the moment the CLAIM began spending one. "Does not increment"
+   * and "does not spend" are now different statements, and only the second is
+   * the thing the review queue depends on — a deal waiting on Katie is
+   * re-claimed an hour later, and three of those would abandon it before
+   * anybody could clear it. So the sequence here is the production one: claim
+   * (which spends), then hold (which must refund).
+   */
+  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, claimed_at: null, held_reason: null }).eq("id", probeId);
+  const toHold = await claimPending(50);
+  await release(toHold);
+  const heldEntry = toHold.find((c) => c.id === probeId);
+  await markHeld(probeId, "probe hold", { attemptsBeforeClaim: heldEntry?.attempts ?? 0 });
   const { data: afterHold } = await sb.from(TABLE).select("attempts, claimed_at").eq("id", probeId).maybeSingle();
-  check("holding does not spend an attempt", Number(afterHold?.attempts ?? -1) === 0, `attempts ${afterHold?.attempts}`);
-  check("holding releases the claim", afterHold?.claimed_at === null, "it was set before the call");
+  check(
+    "holding does not spend an attempt",
+    !!heldEntry && Number(afterHold?.attempts ?? -1) === 0,
+    `claimed then held, attempts ${afterHold?.attempts}`,
+  );
+  check("holding releases the claim", afterHold?.claimed_at === null, "the claim set it moments before");
 
-  // ── a failure spends one, and releases the claim ──────────────────────────
-  await sb.from(TABLE).update({ claimed_at: new Date().toISOString() }).eq("id", probeId);
-  await markFailed(probeId, 0, "probe failure");
+  /*
+   * ── a failure spends one, and releases the claim ─────────────────────────
+   *
+   * Also through a real claim, for the mirror-image reason: the claim already
+   * wrote `attempts + 1`, and `markFailed` writes the same number again. One
+   * claim-and-fail cycle must still move the budget by exactly one — not two,
+   * which is what an increment-from-the-row would now do.
+   */
+  await sb.from(TABLE).update({ attempts: 0, last_attempt_at: null, claimed_at: null, held_reason: null }).eq("id", probeId);
+  const toFail = await claimPending(50);
+  await release(toFail);
+  const failedEntry = toFail.find((c) => c.id === probeId);
+  await markFailed(probeId, failedEntry?.attempts ?? 0, "probe failure");
   const { data: afterFail } = await sb.from(TABLE).select("attempts, claimed_at, last_error").eq("id", probeId).maybeSingle();
-  check("a failure spends exactly one attempt", Number(afterFail?.attempts ?? -1) === 1, `attempts ${afterFail?.attempts}`);
-  check("a failure releases the claim", afterFail?.claimed_at === null, "it was set before the call");
+  check(
+    "a failure spends exactly one attempt",
+    !!failedEntry && Number(afterFail?.attempts ?? -1) === 1,
+    `claimed then failed, attempts ${afterFail?.attempts}`,
+  );
+  check("a failure releases the claim", afterFail?.claimed_at === null, "the claim set it moments before");
 
   // ── an entry out of retries stops being claimed ───────────────────────────
   await sb.from(TABLE).update({ attempts: MAX_ATTEMPTS, last_attempt_at: null, held_reason: null }).eq("id", probeId);
@@ -219,7 +364,8 @@ try {
     !stalledClaim.some((c) => c.id === probeId),
     "it waits for a person",
   );
-  for (const c of stalledClaim) await sb.from(TABLE).update({ claimed_at: null }).eq("id", c.id);
+  await release(stalledClaim);
+  await sb.from(TABLE).update({ claimed_at: null }).eq("id", probeId);
 
   // ── and a person can put it back ──────────────────────────────────────────
   const rearmed = await rearmStalled(probeId);
@@ -253,6 +399,29 @@ try {
     "a verified write clears it, so the flag can go green again",
     afterVerified?.verify_failed_at === null,
     String(afterVerified?.verify_failed_at),
+  );
+
+  /*
+   * ── `done_at` holds the instant the entry READ, not when it finished ─────
+   *
+   * The nightly sweep re-queues a thing only when `updated_at > done_at`. The
+   * tick reads the deal and stamps the row ten to twenty seconds later —
+   * Salesforce round trips plus the six-second wait for the rollups — so an
+   * edit landing in that gap was written with an `updated_at` BELOW the
+   * completion time and was never swept. Not by the tick, which is finished;
+   * not by the sweep, which sees nothing newer. Salesforce would hold the
+   * pre-edit figure for ever with both systems reporting success.
+   *
+   * Asserted here because this is the column the sweep reads. The sweep's own
+   * decision is covered in __tests__/commercial/the-tick-stamps-when-it-read.
+   */
+  const readAt = new Date(Date.now() - 20_000).toISOString();
+  await markDone(probeId, "probe: stamped from the read", { readAt });
+  const { data: afterReadAt } = await sb.from(TABLE).select("done_at").eq("id", probeId).maybeSingle();
+  check(
+    "a finished entry is stamped when it read, not when it stopped writing",
+    Date.parse(afterReadAt?.done_at ?? "") === Date.parse(readAt),
+    `done_at ${afterReadAt?.done_at} for a read at ${readAt}`,
   );
 
   // ── a plan run must not claim ─────────────────────────────────────────────

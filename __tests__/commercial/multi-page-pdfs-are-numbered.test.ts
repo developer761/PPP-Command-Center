@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A document that runs to more than one page carries page numbers.
@@ -64,10 +65,7 @@ describe("the internal estimating report", () => {
     // `stampPageNumbers` would pass with the call in the wrong place — which
     // is exactly the state that shipped a numberless multi-page report.
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("app/api/commercial/proposals/[proposalId]/pdf/route.ts", "utf8")
-      // Comments discuss both by name; strip them or the positions are noise.
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("app/api/commercial/proposals/[proposalId]/pdf/route.ts", "utf8"));
 
     const append = src.indexOf("appendPdfAttachments(");
     const stamp = src.indexOf("stampPageNumbers(");
@@ -84,14 +82,14 @@ describe("the internal estimating report", () => {
 describe("the AR statement", () => {
   it("numbers its pages — it is the one customer document that runs long", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync("lib/commercial/invoices/statement-pdf.tsx", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/invoices/statement-pdf.tsx", "utf8"));
 
     // Safe as a react-pdf render callback here only because the statement does
     // NOT go through renderFitToOnePage. If that ever changes, totalPages
     // becomes 1 and this silently stops printing — same failure as the report.
     expect(src).toMatch(/render=\{\(\{ pageNumber, totalPages \}\)/);
     expect(
-      /renderFitToOnePage/.test(readFileSync("app/api/commercial/accounts/[id]/statement/route.ts", "utf8")),
+      /renderFitToOnePage/.test(stripComments(readFileSync("app/api/commercial/accounts/[id]/statement/route.ts", "utf8"))),
       "the statement now goes through the fit — its react-pdf page numbers will silently stop printing"
     ).toBe(false);
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Deleting a record must also retire the bells that point at it.
@@ -24,7 +25,7 @@ const CASCADES: Array<[string, string]> = [
 
 describe("soft-delete retires the notifications too", () => {
   for (const [file, fn] of CASCADES) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"));
 
     it(`${fn} still cascades`, () => {
       // Guards the assertion below: if the function is renamed or gone, the
@@ -45,7 +46,7 @@ describe("soft-delete retires the notifications too", () => {
   }
 
   it("the helper only ever marks read — it never deletes history", () => {
-    const src = readFileSync("lib/notifications/retire.ts", "utf8");
+    const src = stripComments(readFileSync("lib/notifications/retire.ts", "utf8"));
     expect(src).toContain("read_at");
     // A notification is a true record of something that happened; only its
     // actionability expires.
@@ -55,7 +56,7 @@ describe("soft-delete retires the notifications too", () => {
   it("it leaves already-read bells alone", () => {
     // Without the null filter it would re-stamp read_at on old rows, churning
     // timestamps and reordering anyone's history.
-    const src = readFileSync("lib/notifications/retire.ts", "utf8");
+    const src = stripComments(readFileSync("lib/notifications/retire.ts", "utf8"));
     expect(src).toContain('.is("read_at", null)');
   });
 });

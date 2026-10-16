@@ -23,18 +23,48 @@ import "server-only";
  * font these forms print at.
  */
 
+/*
+ * ONE LINE PER PART, and a field holding two lines counts as two.
+ *
+ * `.trim()` only strips the ENDS, so an interior line break inside a single
+ * field survived into the joined label. 20 live accounts store the suite on a
+ * second line inside `billing_street` — "194 Morris Avenue\r\nSuite 3",
+ * imported that way from Salesforce — and the stray CR travelled all the way
+ * onto the certificate: export.ts split this label on "\n", which left
+ * "194 Morris Avenue\r" as one part, and its cells are `wrapText: false`, so
+ * the GC's copy drew a control glyph mid-address. Worse than the character,
+ * the extra part pushed the block from three parts to four against three
+ * cells, and the overflow merge produced "1998 Springdale Road⏎, Suite 101".
+ *
+ * Splitting here means the label leaves this file already normalised: one
+ * address line per "\n"-separated part, no CR anywhere, so every consumer
+ * counting parts counts the real number of lines.
+ */
+const LINE_BREAK = /\r\n|\r|\n/;
+
 function block(...parts: Array<string | null | undefined>): string {
-  return parts.map((p) => p?.trim()).filter(Boolean).join("\n");
+  return parts
+    .flatMap((p) => (p ?? "").split(LINE_BREAK))
+    // Collapse runs of interior whitespace too: "555 Madison Ave " and
+    // "555  Madison   Ave" are the same address line, and tabs from a paste
+    // render as wide gaps in a fixed-width form cell.
+    .map((p) => p.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
-/** "Sunrise Highway, Bay Shore, NY 11706" from its parts, skipping the blanks. */
+/** "Sunrise Highway, Bay Shore, NY 11706" from its parts, skipping the blanks.
+ *
+ *  Deliberately ONE line: a break inside the city or state collapses to a
+ *  space here rather than splitting the town away from its state and ZIP. */
 function cityStateZip(
   city: string | null | undefined,
   state: string | null | undefined,
   zip: string | null | undefined
 ): string {
-  const left = [city?.trim(), state?.trim()].filter(Boolean).join(", ");
-  return [left, zip?.trim()].filter(Boolean).join(" ");
+  const flat = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+  const left = [flat(city), flat(state)].filter(Boolean).join(", ");
+  return [left, flat(zip)].filter(Boolean).join(" ");
 }
 
 /** TO OWNER — the GC or builder Tomco is billing. */
@@ -80,11 +110,22 @@ export function aiaProjectLabel(
   //
   // on the document a GC's AP department reads. Found by rendering the
   // workbook and looking at it, not by reading this function.
-  const street = opp.property_street?.trim();
-  const sameAsName = !!street && street.toLowerCase() === dealName.trim().toLowerCase();
+  //
+  // Compared against the FIRST line of the street, because three live jobs
+  // store the suite on a second line inside `property_street` ("7 Oser
+  // Avenue\r\nSuite B"). Comparing the whole field found no match, so the job
+  // name AND the street printed, and the duplicate this guard exists to stop
+  // came back with a line break in it. Only the duplicated line is dropped —
+  // the suite under it is part of the address and still belongs on the form.
+  const streetLines = (opp.property_street ?? "")
+    .split(LINE_BREAK)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const name = dealName.replace(/\s+/g, " ").trim().toLowerCase();
+  const rest = streetLines[0]?.toLowerCase() === name ? streetLines.slice(1) : streetLines;
   return block(
     dealName,
-    sameAsName ? null : street,
+    ...rest,
     cityStateZip(opp.property_city, opp.property_state, opp.property_zip)
   );
 }

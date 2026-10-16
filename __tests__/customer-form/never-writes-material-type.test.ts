@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * "The hub never writes MaterialType__c." — Kate, R6.2.
@@ -34,7 +35,7 @@ describe("MaterialType__c stays the estimator's answer", () => {
   it("no code path puts MaterialType__c in a Salesforce update payload", () => {
     const offenders: string[] = [];
     for (const f of FILES) {
-      const src = codeOnly(readFileSync(f, "utf8"));
+      const src = codeOnly(stripComments(readFileSync(f, "utf8")));
       // `fields: { MaterialType__c: ... }` is how every write in this codebase
       // is shaped — a batch attempt or a direct sObject update.
       // [\s\S] rather than the /s flag — the tsconfig target predates it.
@@ -48,7 +49,7 @@ describe("MaterialType__c stays the estimator's answer", () => {
   it("the submit route writes Product_Lines__c instead", () => {
     // Guards the guard: if the write moved or was removed entirely, the
     // assertion above would pass vacuously while nothing recorded the choice.
-    const route = readFileSync(join(ROOT, "app/api/customer-form/submit/[token]/route.ts"), "utf8");
+    const route = stripComments(readFileSync(join(ROOT, "app/api/customer-form/submit/[token]/route.ts"), "utf8"));
     expect(route).toMatch(/fields:\s*\{\s*Product_Lines__c:/);
     expect(route).toMatch(/formatProductLines/);
   });
@@ -56,7 +57,7 @@ describe("MaterialType__c stays the estimator's answer", () => {
   it("still READS MaterialType__c, because it seeds the AM's default", () => {
     // Kate: "The hub reads it as the starting default." Losing the read would
     // silently drop the estimator's suggestion from the picker.
-    const anyRead = FILES.some((f) => /MaterialType__c/.test(readFileSync(f, "utf8")));
+    const anyRead = FILES.some((f) => /MaterialType__c/.test(stripComments(readFileSync(f, "utf8"))));
     expect(anyRead, "the estimator's value is no longer read anywhere").toBe(true);
   });
 });

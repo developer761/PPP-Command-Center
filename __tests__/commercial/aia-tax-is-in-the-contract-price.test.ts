@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { hasLegacyTaxRow, taxReconcileMode } from "@/lib/commercial/aia/tax-inline";
 import { computeG702 } from "@/lib/commercial/aia/constants";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Sales tax rides INSIDE the contract price, not on a line of its own.
@@ -33,23 +34,35 @@ describe("an application uses EITHER the legacy row or inline tax", () => {
     // base to fold into, so without a row it carries no tax at all.
     //
     // So the insert may exist, but ONLY behind the itemized guard.
-    const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("lib/commercial/aia/sales-tax.ts", "utf8"));
 
+    // THE GUARD OWNS ITS OWN PRECONDITION.
+    //
+    // This whole block used to sit inside `if (insertIdx > -1) { … }`. Rename
+    // AIA_TAX_ITEM_NO — or move the insert, or spell the property differently
+    // — and `insertIdx` goes to -1, the branch never runs, and the test
+    // passes having checked NOTHING. Verified on 2026-10-16: renaming the
+    // marker left this file green with the double-charge check switched off.
+    //
+    // An `if` around an assertion is a silent skip. If the landmark is gone,
+    // that IS the failure.
     const insertIdx = src.indexOf("item_no: AIA_TAX_ITEM_NO");
-    if (insertIdx > -1) {
-      // The insert must sit AFTER the refold early-return, so a folded
-      // schedule can never reach it. Asserting on the ordering rather than on
-      // a guard's wording — the wording changed once already and took these
-      // assertions red with the behaviour unchanged.
-      const refoldReturn = src.indexOf('if (mode === "refold")');
-      expect(refoldReturn, "the refold early-return is gone").toBeGreaterThan(-1);
-      expect(
-        insertIdx > refoldReturn,
-        "a TAX row can be inserted before the folded shape returns — that schedule would be taxed twice"
-      ).toBe(true);
-    }
+    expect(
+      insertIdx,
+      "the TAX-row insert is gone from sales-tax.ts — an ITEMIZED schedule now carries no tax at all, " +
+        "or the marker was renamed and this ordering check needs re-anchoring. Either way it is not a pass."
+    ).toBeGreaterThan(-1);
+
+    // The insert must sit AFTER the refold early-return, so a folded
+    // schedule can never reach it. Asserting on the ordering rather than on
+    // a guard's wording — the wording changed once already and took these
+    // assertions red with the behaviour unchanged.
+    const refoldReturn = src.indexOf('if (mode === "refold")');
+    expect(refoldReturn, "the refold early-return is gone").toBeGreaterThan(-1);
+    expect(
+      insertIdx > refoldReturn,
+      "a TAX row can be inserted before the folded shape returns — that schedule would be taxed twice"
+    ).toBe(true);
 
     // It must still UPDATE one that already exists: a live application has
     // $437.50 billed against its tax row, and that is history on a certificate
@@ -64,7 +77,7 @@ describe("folded values are derived, never accumulated", () => {
     // hand, and the reconcile runs again on every change-order approval. If
     // the fold read the line's current (already-inclusive) value as its base,
     // every run would compound the tax.
-    const src = readFileSync("lib/commercial/aia/db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
     expect(src).toMatch(/taxInclusiveCents\(\{\s*opportunityId:[\s\S]{0,80}baseCents:\s*contractCents/);
     // Change-order lines derive from the CO's own amount, same reason.
     expect(src).toMatch(/baseCents:\s*Math\.round\(Number\(co\.amount_cents\)\)/);
@@ -74,9 +87,7 @@ describe("folded values are derived, never accumulated", () => {
     // The fold made these callbacks async. A mutable `pos` counter would be
     // read by every callback before any of them incremented it, landing N rows
     // on the same position — a schedule of values with no defined order.
-    const src = readFileSync("lib/commercial/aia/db.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
     expect(src).toMatch(/position:\s*basePos \+ i \* 1000/);
     expect(
       /let pos = lines\.reduce/.test(src),
@@ -99,10 +110,28 @@ describe("folded values are derived, never accumulated", () => {
  */
 describe("the known consequence", () => {
   it("is written down where the next person will find it", () => {
-    const src = readFileSync("lib/commercial/aia/tax-inline.ts", "utf8");
+    // DELIBERATELY READS THE RAW FILE, COMMENTS AND ALL.
+    //
+    // Everywhere else a source grep must be stripped first, because matching
+    // a comment instead of code is how a test passes while the behaviour is
+    // gone. This one is the exception that proves it: the thing being
+    // asserted IS the comment. Stephanie accepted a known trade-off, and the
+    // deliverable is that the next person reads why before "fixing" it.
+    //
+    // Named `raw` and justified here so it reads as a decision, not an
+    // oversight — and it is listed in the allowlist in
+    // __tests__/config/source-greps-strip-comments.test.ts for the same
+    // reason.
+    const raw = readFileSync("lib/commercial/aia/tax-inline.ts", "utf8");
+
+    // The note must be PROSE, not code that happens to contain the words:
+    // if this sentence ever survives only as a string literal, the
+    // explanation has stopped being an explanation.
+    expect(stripComments(raw)).not.toMatch(/restate the Original Contract Sum/);
+
     // Whitespace-tolerant: the sentence wraps across comment lines, and a
     // single-line regex would fail on a reflow rather than on a real deletion.
-    expect(src.replace(/\s*\n\s*\*?\s*/g, " ")).toMatch(/restate the Original Contract Sum/);
+    expect(raw.replace(/\s*\n\s*\*?\s*/g, " ")).toMatch(/restate the Original Contract Sum/);
   });
 });
 
@@ -154,8 +183,7 @@ describe("the two sheets add up to each other", () => {
   it("resolveG702 adds tax to line 1 ONLY when there is no legacy tax row", () => {
     // With a legacy row present, computeG702 already folds its value into line
     // 3 via salesTaxCents — adding tax to line 1 as well would bill it twice.
-    const src = readFileSync("lib/commercial/aia/db.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const src = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
     expect(src).toMatch(/if \(!lines\.some\(\(l\) => isAiaTaxLine\(l\)\)\)/);
     expect(src).toMatch(/originalContractCents: line1Cents/);
   });
@@ -174,8 +202,7 @@ describe("the two sheets add up to each other", () => {
  * had removed in the same batch that was meant to fix her other tax item.
  */
 describe("a certificate arriving mid-job still comes off", () => {
-  const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = stripComments(readFileSync("lib/commercial/aia/sales-tax.ts", "utf8"));
 
   it("the draft reconcile RE-DERIVES the folded values, it doesn't only seed them", () => {
     // The CALL, not the definition. `/refoldInlineTax\(/` matches
@@ -196,8 +223,7 @@ describe("a certificate arriving mid-job still comes off", () => {
 });
 
 describe("an ITEMIZED schedule is not left untaxed", () => {
-  const src = readFileSync("lib/commercial/aia/sales-tax.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = stripComments(readFileSync("lib/commercial/aia/sales-tax.ts", "utf8"));
 
   it("keeps the separate tax row for the breakdown case", () => {
     // The fold was added ONLY to the single-line branch while the row stopped
@@ -273,8 +299,7 @@ describe("taxReconcileMode", () => {
  * the two sheets up could.
  */
 describe("a change-order row is folded ONLY on a folded application", () => {
-  const src = readFileSync("lib/commercial/aia/db.ts", "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const src = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
 
   it("checks for a legacy TAX row before folding", () => {
     expect(src).toMatch(/const foldsInline = !lines\.some\(/);
@@ -301,7 +326,7 @@ describe("a change-order row is folded ONLY on a folded application", () => {
  * draft is generated", and it is not what I first diagnosed it as.
  */
 describe("the change-order insert survives a missing index", () => {
-  const src = readFileSync("lib/commercial/aia/db.ts", "utf8");
+  const src = stripComments(readFileSync("lib/commercial/aia/db.ts", "utf8"));
 
   it("falls back to a plain insert on 42P10", () => {
     // Migrations here are applied by hand, so the code must work before

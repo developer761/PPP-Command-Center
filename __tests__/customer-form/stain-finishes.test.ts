@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { finishOptionsFor, isStainProduct } from "@/lib/customer-form/material-types";
 import { recommendedFinishes } from "@/lib/customer-form/recommended-finish";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Katie item 19, 2026-09-08: "one of the items was rear deck and it defaulted as
@@ -58,7 +59,7 @@ describe("stain does not offer interior sheens", () => {
 });
 
 describe("a rear deck no longer defaults to eggshell", () => {
-  const view = readFileSync(join(process.cwd(), "components/customer-form-view.tsx"), "utf8");
+  const view = stripComments(readFileSync(join(process.cwd(), "components/customer-form-view.tsx"), "utf8"));
 
   it("exterior woodwork recommends nothing, so a person chooses", () => {
     // An empty box costs a tap. An order a supplier cannot fill costs a job.

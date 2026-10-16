@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The bar answers "what needs me today" — for everything that does.
@@ -15,8 +16,8 @@ import { readFileSync } from "node:fs";
  * thing the bar exists to compensate for.
  */
 
-const BAR = readFileSync("components/commercial/action-required-bar.tsx", "utf8");
-const EVENTS = readFileSync("lib/notifications/commercial-events.ts", "utf8");
+const BAR = stripComments(readFileSync("components/commercial/action-required-bar.tsx", "utf8"));
+const EVENTS = stripComments(readFileSync("lib/notifications/commercial-events.ts", "utf8"));
 
 const PERSONAL = [
   "commercial_proposal_approval_requested",

@@ -7,6 +7,7 @@ import {
 import type { GateResult, GateWorkspace } from "@/lib/messaging/gate";
 import type { E164 } from "@/lib/messaging/phone";
 import { CarrierUnsubscribedError } from "@/lib/messaging/transports/twilio";
+import { stripComments } from "../helpers/strip-comments";
 
 const WS: GateWorkspace = {
   id: "ws", name: "NY LI Nassau Leads", phone_e164: "+15163448418",
@@ -946,8 +947,7 @@ describe("the tick budget is spent against the lambda, not against itself", () =
   });
 
   it("the tick route measures from the start of the request", () => {
-    const src = readFileSync("app/api/cron/messaging-tick/route.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const src = stripComments(readFileSync("app/api/cron/messaging-tick/route.ts", "utf8"));
     // Taken before any Salesforce work, and handed to runDueActions.
     expect(src).toMatch(/const lambdaStartedAt = Date\.now\(\)/);
     expect(src, "runDueActions is not told when the lambda started")

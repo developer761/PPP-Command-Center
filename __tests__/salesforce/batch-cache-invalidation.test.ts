@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * clearSalesforceCache() costs four Supabase round-trips — three snapshot
@@ -17,7 +18,7 @@ import { join } from "node:path";
  * and the audit logger to observe a call count — a test that would break on
  * every unrelated refactor while proving less.
  */
-const src = readFileSync(join(process.cwd(), "lib/salesforce/writeback.ts"), "utf8");
+const src = stripComments(readFileSync(join(process.cwd(), "lib/salesforce/writeback.ts"), "utf8"));
 const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("batch writes invalidate the cache once", () => {

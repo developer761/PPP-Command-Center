@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * The scheduling form's time prefill describes the shift you are editing.
@@ -26,10 +27,10 @@ import { join } from "node:path";
  * DOM-free, and the defect is precisely a missing term in one lookup.
  */
 
-const src = readFileSync(
+const src = stripComments(readFileSync(
   join(process.cwd(), "components/commercial/field-ops-calendar.tsx"),
   "utf8"
-);
+));
 
 describe("the schedule form's time prefill", () => {
   it("matches on the job as well as the person", () => {

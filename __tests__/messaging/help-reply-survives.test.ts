@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { gatedSend, type GateWorkspace, type SendRequest } from "@/lib/messaging/gate";
 import { LoggingTransport } from "@/lib/messaging/transport";
 import type { E164 } from "@/lib/messaging/phone";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * HELP HAS TO GO OUT. CARRIERS TEST IT.
@@ -88,7 +89,7 @@ describe("the required reply survives PPP's own rails", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("suppressed");
     expect(d.transport.sent).toHaveLength(0);
-    expect(readFileSync("lib/messaging/gate.ts", "utf8"))
+    expect(stripComments(readFileSync("lib/messaging/gate.ts", "utf8")))
       .toMatch(/required_reply_refused_suppressed/);
   });
 });
@@ -110,13 +111,13 @@ describe("the required reply is not cancelled before it is sent", () => {
   const INTENT = /(?:HELP_INTENT|"help_response")/.source;
 
   it("a person claiming the thread does not drop it", () => {
-    const src = readFileSync("lib/messaging/scheduler.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler.ts", "utf8"));
     expect(src).toMatch(new RegExp(`const required = a\\.reply_intent === ${INTENT}`));
     expect(src).toMatch(/if \(!required && ctx\.conversationState === "human_active"\)/);
   });
 
   it("the customer texting again does not drop it", () => {
-    const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler-db.ts", "utf8"));
     // Both staleness paths: the one that cancels older held replies...
     expect(src).toMatch(new RegExp(`reply_intent !== ${INTENT}\\)\\s*\\n?\\s*\\.map\\(\\(h\\) => h\\.id\\)`));
     // ...and the one inside sendHeldReply.
@@ -124,7 +125,7 @@ describe("the required reply is not cancelled before it is sent", () => {
   });
 
   it("and the send marks it required, or none of the above matters", () => {
-    const src = readFileSync("lib/messaging/scheduler-db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/messaging/scheduler-db.ts", "utf8"));
     expect(src).toMatch(new RegExp(`required: a\\.reply_intent === ${INTENT}`));
   });
 
@@ -138,7 +139,7 @@ describe("the required reply is not cancelled before it is sent", () => {
    */
   it("is declared exactly once", () => {
     const files = ["compliance", "scheduler", "scheduler-db", "record-inbound"]
-      .map((f) => readFileSync(`lib/messaging/${f}.ts`, "utf8"));
+      .map((f) => stripComments(readFileSync(`lib/messaging/${f}.ts`, "utf8")));
     const declarations = files.flatMap((src) =>
       [...src.matchAll(/(?:const|let)\s+HELP_INTENT\s*=/g)]
     );

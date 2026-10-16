@@ -112,3 +112,96 @@ describe("closeout package", () => {
     await onePage(bytes, "warranty letter");
   }, 90_000);
 });
+
+/**
+ * THE CHANGE ORDER — the document that had the proposal's bug all along.
+ *
+ * `emailChangeOrderToGc` called `renderChangeOrderPdf(built.input)` raw while
+ * app/api/commercial/change-orders/[id]/pdf/route.ts wrapped the IDENTICAL
+ * input in `renderFitToOnePage`. Both paths already shared one data builder —
+ * `buildChangeOrderPdfInput`, extracted in August precisely so the two could
+ * not print different numbers — so the seam everybody had closed was the DATA
+ * seam, and the LAYOUT one a line below it stayed open.
+ *
+ * Measured across all 41 live change orders on 2026-10-16: the download route
+ * produced one page 41 times; the email produced TWO on five of them — Water
+ * Lilies CO-2 $23,050, CO-3 $11,570, CO-4 $42,000; VCA West Islip CO-1 $2,250,
+ * CO-2 $20,375. Preview one page, the GC's attachment two.
+ *
+ * What makes one long: the SCOPE DESCRIPTION. Those five carry 300-470
+ * characters over 8-14 lines, because that is how the office writes a
+ * multi-item change ("Touch-Ups: … Price: $5,750.00 ⏎ Wallcovering: …").
+ *
+ * The sizes below bracket that and then some. Measured 2026-10-16, scope lines
+ * → unfitted pages / the ladder rung that rescues it:
+ *
+ *       4 →  2p @ 1.18×    14 →  2p @ 1.55×    40 →  3p @ 2.45×
+ *       8 →  2p @ 1.18×    30 →  3p @ 2.15×    80 →  5p @ 4.00×
+ *
+ * 80 lines (7,483 characters) is the last rung of the ladder, and
+ * `createChangeOrder` truncates `description` at 4,000 characters — which
+ * lands around 42 lines — so nothing that can be STORED can outrun the fit.
+ * That is the headroom these cases are here to keep.
+ */
+describe("change order", () => {
+  const scope = (lines: number) =>
+    lines === 0
+      ? null
+      : Array.from(
+          { length: lines },
+          (_, i) =>
+            `Item ${i + 1}: prep, prime and paint the affected area; patch and skim as needed.\nPrice: $${(1_250 + i * 325).toLocaleString("en-US")}.00`
+        ).join("\n");
+
+  const changeOrder = (lines: number) => ({
+    coNumber: "CO-002",
+    title: "Additional scope — touch-ups, wallcovering and sprinkler room",
+    description: scope(lines),
+    amountCents: 2_305_000,
+    isDeduct: false,
+    status: "Pending",
+    dateIso: "2026-10-16",
+    accountName: "Water Lillies Food., LLC",
+    // Two street lines, as 20 live accounts store them.
+    billTo: ["1724 5th Avenue", "Unit#3", "Bay Shore, NY 11706"],
+    dealName: "Water Lilies-250 Creative Drive",
+    priorContractCents: 12_157_500,
+    revisedContractCents: 14_462_500,
+    company: {
+      name: "Tomco Painting", phone: "631-582-2770", website: "https://www.tomcopainting.com",
+      signature_name: "Brendan Dwyer", signature_title: "VP",
+    },
+    logo: null,
+    signature: null,
+  });
+
+  for (const n of [0, 8, 14, 40, 80]) {
+    it(`${n}-line scope → one Letter page`, async () => {
+      const { renderChangeOrderPdf } = await import("@/lib/commercial/change-orders/pdf");
+      const { renderFitToOnePage } = await import("@/lib/commercial/proposals/fit-one-page");
+      const { bytes, fitted } = await renderFitToOnePage((pageHeightScale) =>
+        renderChangeOrderPdf({ ...changeOrder(n), pageHeightScale } as never)
+      );
+      expect(fitted, "the ladder ran out and fell back to the most compressed render").toBe(true);
+      await onePage(bytes, `change order with a ${n}-line scope`);
+    }, 90_000);
+  }
+
+  /**
+   * And the control that makes all of the above mean something.
+   *
+   * Without the fit, the ordinary 8-line scope really is TWO pages — so the
+   * assertions above are measuring the wrapper doing work, not a document that
+   * was always going to be short enough. Delete the `renderFitToOnePage` call
+   * from the send path and this is the attachment the GC receives.
+   */
+  it("is genuinely two pages WITHOUT the fit — that was the emailed copy", async () => {
+    const { renderChangeOrderPdf } = await import("@/lib/commercial/change-orders/pdf");
+    const { pdfPageCount } = await import("@/lib/commercial/proposals/fit-one-page");
+    const raw = await renderChangeOrderPdf(changeOrder(8) as never);
+    expect(
+      await pdfPageCount(raw),
+      "an 8-line scope now fits unaided — re-measure, the fixture no longer reproduces the bug"
+    ).toBeGreaterThan(1);
+  }, 90_000);
+});

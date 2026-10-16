@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * /dashboard/materials/[woId] is the canonical deep-link target — the Salesforce
@@ -16,9 +17,9 @@ import { join } from "node:path";
  * it would silently report "1 open WO" instead of 460 — a wrong number with no
  * error anywhere.
  */
-const view = readFileSync(join(process.cwd(), "components/materials-view.tsx"), "utf8");
-const props = readFileSync(join(process.cwd(), "lib/materials/view-props.ts"), "utf8");
-const page = readFileSync(join(process.cwd(), "app/dashboard/materials/[woId]/page.tsx"), "utf8");
+const view = stripComments(readFileSync(join(process.cwd(), "components/materials-view.tsx"), "utf8"));
+const props = stripComments(readFileSync(join(process.cwd(), "lib/materials/view-props.ts"), "utf8"));
+const page = stripComments(readFileSync(join(process.cwd(), "app/dashboard/materials/[woId]/page.tsx"), "utf8"));
 
 describe("materials focus-mode narrowing", () => {
   it("passes the focused id into the loader, not just the view", () => {

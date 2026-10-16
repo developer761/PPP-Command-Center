@@ -15,6 +15,7 @@
  *    restore whatever the env var still held — a setting that will not stay off.
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { stripComments } from "../helpers/strip-comments";
 
 const ENV_COPY = "COMMERCIAL_PROPOSAL_COPY_EMAILS";
 const ENV_NOTIFY = "COMMERCIAL_PROPOSAL_NOTIFY_EMAILS";
@@ -241,14 +242,10 @@ describe("nobody is both CC'd and BCC'd", () => {
     // docblock naming it cannot pass for using it.
     const { readFileSync } = await import("node:fs");
     for (const f of ["lib/commercial/proposals/email.ts", "lib/commercial/esign/workflow.ts"]) {
-      const src = readFileSync(f, "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*\/\/.*$/gm, "");
+      const src = stripComments(readFileSync(f, "utf8"));
       expect(src, `${f} should await the combined list`).toContain("await proposalBccList()");
     }
-    const proposalSrc = readFileSync("lib/commercial/proposals/email.ts", "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
+    const proposalSrc = stripComments(readFileSync("lib/commercial/proposals/email.ts", "utf8"));
     expect(proposalSrc).toContain("dropVisible(");
     // And the thing that actually broke: the joined display string must not be
     // what the BCC is filtered against.

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { proposalRevisionLabel } from "@/lib/commercial/proposals/constants";
 import { proposalRecordId } from "@/lib/commercial/record-ids";
 import { proposalProjectName } from "@/lib/commercial/proposals/project-name";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * Brendan's 2026-09-03 round.
@@ -100,7 +101,7 @@ describe("the nickname stays off customer documents", () => {
   it("is still reachable everywhere INTERNAL", () => {
     // The point is not to delete the nickname — the team uses it. Only the
     // customer's copy is formal. derivedOppName still appends it.
-    const src = readFileSync("lib/commercial/opportunities/db.ts", "utf8");
+    const src = stripComments(readFileSync("lib/commercial/opportunities/db.ts", "utf8"));
     expect(src).toContain("title_override_mode");
   });
 });
@@ -113,17 +114,17 @@ describe("money inputs group their digits", () => {
    * 250000 and 25000 are one glance apart in a bare input and an order of
    * magnitude apart on a proposal.
    */
-  const SRC = readFileSync("components/commercial/money-input.tsx", "utf8");
+  const SRC = stripComments(readFileSync("components/commercial/money-input.tsx", "utf8"));
 
   it("posts something the server parsers already accept", () => {
     // The formatter posts a grouped string. Both parsers behind these fields
     // strip $ , and whitespace — verified here rather than assumed, because a
     // formatter whose output the server silently reads as 0 is far worse than
     // no formatter.
-    const fmt = readFileSync("lib/commercial/invoices/format.ts", "utf8");
-    const editor = readFileSync(
+    const fmt = stripComments(readFileSync("lib/commercial/invoices/format.ts", "utf8"));
+    const editor = stripComments(readFileSync(
       "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"
-    );
+    ));
     expect(fmt).toMatch(/replace\(\/\[\$,\\s\]\/g, ""\)/);
     expect(editor).toMatch(/replace\(\/\[\$,\\s\]\/g, ""\)/);
   });
@@ -148,9 +149,9 @@ describe("money inputs group their digits", () => {
   });
 
   it("reaches the proposal editor Brendan was working in", () => {
-    const editor = readFileSync(
+    const editor = stripComments(readFileSync(
       "app/commercial/accounts/[id]/deals/[dealId]/proposal/[proposalId]/page.tsx", "utf8"
-    );
+    ));
     expect(editor).toContain("MoneyInput");
     expect(editor).not.toMatch(/inputMode="decimal"[^>]*name="unit_price"/);
   });
@@ -166,7 +167,7 @@ describe("the account page picks a named team", () => {
    * `setOwnerTeam` had supported accounts the whole time, so the plumbing was
    * there and the form simply never offered it.
    */
-  const SRC = readFileSync("app/commercial/accounts/new/page.tsx", "utf8");
+  const SRC = stripComments(readFileSync("app/commercial/accounts/new/page.tsx", "utf8"));
 
   it("offers the named teams", () => {
     expect(SRC).toContain("listTeams");
@@ -282,7 +283,7 @@ describe("money is entered with grouping, everywhere it is money", () => {
   for (const [label, file] of FIELDS) {
     it(`${label} uses MoneyInput, not a bare input`, async () => {
       const { readFileSync } = await import("node:fs");
-      const src = readFileSync(file, "utf8");
+      const src = stripComments(readFileSync(file, "utf8"));
       expect(src).toContain("MoneyInput");
       expect(
         /<input[^>]*name="amount"/.test(src),

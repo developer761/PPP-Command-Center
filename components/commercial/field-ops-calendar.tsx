@@ -562,14 +562,14 @@ export function FieldOpsCalendar({
           <button
             onClick={() => goMode("month")}
             aria-current={!isWeek ? "true" : undefined}
-            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[40px] ${!isWeek ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[40px] ${!isWeek ? "bg-cc-solid-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
           >
             Month
           </button>
           <button
             onClick={() => goMode("week")}
             aria-current={isWeek ? "true" : undefined}
-            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[40px] border-l border-ppp-charcoal-200 ${isWeek ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
+            className={`px-2.5 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[40px] border-l border-ppp-charcoal-200 ${isWeek ? "bg-cc-solid-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}
           >
             Week
           </button>
@@ -577,7 +577,7 @@ export function FieldOpsCalendar({
         {pending && <span className="text-[11px] text-ppp-charcoal-400">updating…</span>}
         <button
           onClick={() => { setCopyMsg(null); setCopyOpen(true); }}
-          className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12.5px] font-semibold hover:bg-ppp-charcoal-50 min-h-[40px]"
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ppp-charcoal-200 bg-surface text-ppp-charcoal-700 text-[12.5px] font-semibold hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]"
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
           Copy week
@@ -739,7 +739,14 @@ export function FieldOpsCalendar({
                 first.focus();
               }
             }}
-            className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-[88vh] sm:max-h-none focus:outline-none"
+            /* `max-h-dvh-sheet`, not `max-h-[88vh]`: on iOS Safari `vh` is the
+               LAYOUT viewport, which includes the strip behind the address bar
+               and the bottom toolbar, so 88vh of a bottom-anchored sheet runs
+               off the visible screen and "Schedule & email" / "Save time off"
+               sit under the toolbar. The utility (globals.css) stacks
+               vh → svh → dvh so the sheet tracks the chrome. Pair is `pb-safe`
+               on the scroll body below, for the home-indicator inset. */
+            className="absolute inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:w-[440px] bg-surface border-t sm:border-t-0 sm:border-l border-ppp-charcoal-100 rounded-t-2xl sm:rounded-none shadow-xl flex flex-col max-h-dvh-sheet sm:max-h-none focus:outline-none"
           >
             {person ? (
               <PersonPanel person={person} detail={detail} loading={detailLoading} error={detailError} msg={msg} nowMs={nowMs} saving={saving} onBack={() => setPerson(null)} onClose={closeAll} onRemove={handleRemove} onTimeOff={handleTimeOff} offInfo={dayOff(person.date).find((o) => o.employee_id === person.employeeId) ?? null} onClearOff={handleRemoveAbsence} />
@@ -827,7 +834,10 @@ function DayPanel({
         <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
       </div>
 
-      <div className="overflow-y-auto p-4 space-y-4">
+      {/* pb-safe, not p-4's bottom: the submit button of both forms below is
+          the last thing in this scroller, and on an edge-to-edge iOS sheet the
+          home indicator overlays that strip and swallows the tap. */}
+      <div className="overflow-y-auto px-4 pt-4 space-y-4 pb-safe">
         {msg && <div role={msg.tone === "err" ? "alert" : "status"} aria-live={msg.tone === "err" ? "assertive" : "polite"} className={`rounded-lg px-3 py-2 text-[12.5px] ${msg.tone === "err" ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700"}`}>{msg.text}</div>}
 
         {crew.length > 0 && (
@@ -843,7 +853,7 @@ function DayPanel({
                     <span className="text-[11px] text-ppp-charcoal-500 shrink-0">{c.start ? `${fmtTime12(c.start)}${c.end ? ` – ${fmtTime12(c.end)}` : ""}` : `${c.hours}h`}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[11.5px] text-ppp-charcoal-600 truncate min-w-0">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy rounded px-1">PW</span>}</span>
+                    <span className="text-[11.5px] text-ppp-charcoal-600 truncate min-w-0">{c.job_name}{c.prevailing_wage && <span className="ml-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700 rounded px-1">PW</span>}</span>
                     <StatusPill status={c.job_status} />
                   </div>
                 </button>
@@ -887,7 +897,7 @@ function DayPanel({
             you to press it and find out. */}
         <div className="border-t border-ppp-charcoal-50 pt-4">
           <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden mb-2">
-            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-brand-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Put someone on</button>
+            <button onClick={() => setMode("schedule")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] ${mode === "schedule" ? "bg-cc-solid-600 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Put someone on</button>
             <button onClick={() => setMode("off")} className={`px-3 py-1.5 text-[12px] font-semibold min-h-[44px] sm:min-h-[36px] border-l border-ppp-charcoal-200 ${mode === "off" ? "bg-amber-500 text-white" : "bg-surface text-ppp-charcoal-600 hover:bg-ppp-charcoal-50"}`}>Time off</button>
           </div>
           <p className="text-[11.5px] text-ppp-charcoal-500 mb-3 leading-snug">
@@ -953,7 +963,7 @@ function DayPanel({
                 </p>
                 <label className="block"><span className={LABEL_CLS}>Note for the crew (goes in their email)</span>
                   <textarea name="note" rows={2} placeholder="Gate code 1234, park in rear lot…" className={INPUT_CLS} /></label>
-                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{saving ? "Scheduling…" : "Schedule & email"}</button>
+                <button type="submit" disabled={saving} className="w-full inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-solid-600 text-white text-[13px] font-semibold hover:bg-cc-solid-700 disabled:opacity-60 min-h-[44px]">{saving ? "Scheduling…" : "Schedule & email"}</button>
               </form>
             )
           ) : (
@@ -1033,7 +1043,7 @@ function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose, confirm, onTogg
               ))}
             </ul>
             <div className="flex items-center gap-2">
-              <button onClick={onConfirm} disabled={busy} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Continue copy"}</button>
+              <button onClick={onConfirm} disabled={busy} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-solid-600 text-white text-[13px] font-semibold hover:bg-cc-solid-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Continue copy"}</button>
               <button onClick={onCancelConfirm} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Back</button>
             </div>
           </>
@@ -1051,7 +1061,7 @@ function CopyWeekModal({ monthStart, busy, msg, onCopy, onClose, confirm, onTogg
               <input type="date" value={srcDate} onChange={(e) => setSrcDate(e.target.value)} className={INPUT_CLS} />
             </label>
             <div className="flex items-center gap-2">
-              <button onClick={() => onCopy(srcDate)} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(srcDate)} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Copy to next week"}</button>
+              <button onClick={() => onCopy(srcDate)} disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(srcDate)} className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-cc-solid-600 text-white text-[13px] font-semibold hover:bg-cc-solid-700 disabled:opacity-60 min-h-[44px]">{busy ? "Copying…" : "Copy to next week"}</button>
               <button onClick={onClose} className="px-4 py-2 rounded-lg border border-ppp-charcoal-200 text-[13px] font-medium text-ppp-charcoal hover:bg-ppp-charcoal-50 min-h-[44px]">Close</button>
             </div>
           </>
@@ -1094,10 +1104,13 @@ function PersonPanel({
         <button onClick={onClose} className="text-ppp-charcoal-400 hover:text-ppp-charcoal text-xl leading-none px-1 min-h-[44px] inline-flex items-center" aria-label="Close">&times;</button>
       </div>
 
-      <div className="overflow-y-auto p-4 space-y-4">
+      {/* pb-safe, not p-4's bottom: the submit button of both forms below is
+          the last thing in this scroller, and on an edge-to-edge iOS sheet the
+          home indicator overlays that strip and swallows the tap. */}
+      <div className="overflow-y-auto px-4 pt-4 space-y-4 pb-safe">
         {msg && msg.tone === "err" && <div role="alert" className="rounded-lg px-3 py-2 text-[12.5px] bg-rose-50 border border-rose-200 text-rose-700">{msg.text}</div>}
         {clock && (
-          <div className={`rounded-lg px-3 py-2.5 text-[12.5px] flex items-center gap-2 ${clock.open ? "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-800" : "bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-ppp-charcoal-600"}`}>
+          <div className={`rounded-lg px-3 py-2.5 text-[12.5px] flex items-center gap-2 ${clock.open ? "bg-ppp-green-50 border border-ppp-green-100 text-ppp-green-700" : "bg-ppp-charcoal-50 border border-ppp-charcoal-100 text-ppp-charcoal-600"}`}>
             <span aria-hidden className={`h-2 w-2 rounded-full shrink-0 ${clock.open ? "bg-ppp-green-500" : "bg-ppp-charcoal-300"}`} />
             {clock.open && clock.since
               ? <span><strong>Clocked in</strong> · {fmtElapsed(clock.since, nowMs)} so far{clock.total_hours > 0 ? ` (${clock.total_hours}h logged today)` : ""}</span>
@@ -1118,7 +1131,7 @@ function PersonPanel({
               <li key={s.assignment_id} className="border border-ppp-charcoal-100 rounded-lg p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{s.job_name}{s.prevailing_wage && <span className="ml-1 align-middle inline-flex items-center rounded px-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy">PW</span>}</div>
+                    <div className="text-[13px] font-semibold text-ppp-charcoal truncate">{s.job_name}{s.prevailing_wage && <span className="ml-1 align-middle inline-flex items-center rounded px-1 text-[9px] font-bold bg-ppp-charcoal-100 text-ppp-navy-700">PW</span>}</div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[11px] font-mono text-ppp-charcoal-500 truncate">{s.job_code}</span>
                       <StatusPill status={s.job_status} />

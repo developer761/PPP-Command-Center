@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "../helpers/strip-comments";
 
 /**
  * A number you can see but not act on is the Salesforce complaint.
@@ -17,11 +18,11 @@ import { readFileSync } from "node:fs";
  * because a link that lands nowhere useful is worse than no link.
  */
 
-const SRC = readFileSync("lib/commercial/opportunities/stage-kpis.ts", "utf8");
-const STRIP = readFileSync("components/commercial/stage-kpi-strip.tsx", "utf8");
+const SRC = stripComments(readFileSync("lib/commercial/opportunities/stage-kpis.ts", "utf8"));
+const STRIP = stripComments(readFileSync("components/commercial/stage-kpi-strip.tsx", "utf8"));
 
 /** Every tab target the opportunity page's resolver accepts. */
-const RESOLVER = readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8");
+const RESOLVER = stripComments(readFileSync("app/commercial/opportunities/[id]/page.tsx", "utf8"));
 
 describe("stage KPI tiles", () => {
   it("the money tiles all lead to the tool that owns them", () => {

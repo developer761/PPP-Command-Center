@@ -1,11 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "../helpers/strip-comments";
 
 const root = join(__dirname, "..", "..");
-const route = readFileSync(join(root, "app/api/customer-form/submit/[token]/route.ts"), "utf8")
-  .replace(/\/\*[\s\S]*?\*\//g, " ")
-  .replace(/(^|[^:])\/\/.*$/gm, "$1 ");
+const route = stripComments(readFileSync(join(root, "app/api/customer-form/submit/[token]/route.ts"), "utf8"));
 
 /**
  * An empty submission used to look like a successful one.
