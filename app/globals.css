@@ -127,6 +127,20 @@
   --color-cc-solid-600: #15749c;
   --color-cc-solid-700: #0f5978;
 
+  /* amber-solid — the SOLID-FILL role for the warning family, DARK fix only.
+     In dark, `bg-amber-600 text-white` is 3.88:1 (the muted gold #9c7d3d)
+     and its hover `bg-amber-700` is a light TAN (#cfb375 — a text role in
+     that ramp), so the "Send it →" button on the Action-needed banner failed
+     AA at rest and all but vanished on hover. The dark block below pins
+     these dark enough for white (5.57 / 7.36).
+
+     LIGHT is deliberately Tailwind's own amber-600 / -700, byte for byte, so
+     the laptop renders exactly as it did (Karan 10-09: "the laptop should
+     stay exactly as is"). That value is 3.20:1 under white — still sub-AA in
+     light, left OPEN on purpose as a brand/color call, not fixed here. */
+  --color-amber-solid-600: oklch(66.6% 0.179 58.318);
+  --color-amber-solid-700: oklch(55.5% 0.163 48.998);
+
   /* Karan 2026-07-09 Phase A: navy accent added per post-meeting rewrite.
      Not replacing cc-brand red; used sparingly for structural elements —
      sidebar section headings, platform-name tag, Project lifecycle status
@@ -412,6 +426,11 @@ body {
      how ppp-navy-900 and ppp-navy ended up at 1.00:1 and 1.14:1. */
   --color-cc-solid-600: #15749c;
   --color-cc-solid-700: #0f5978;
+
+  /* amber-solid DOES flip, but only to stay a dark fill: the muted gold of
+     this theme's amber ramp, taken dark enough for white (5.57 / 7.36). */
+  --color-amber-solid-600: #7f6430;
+  --color-amber-solid-700: #6b521f;
 
   /* Per-customer color (opportunities/proposals group + kanban). Curated
      platform-harmonious hues (see NICE_HUES) at a MODERATE saturation — present

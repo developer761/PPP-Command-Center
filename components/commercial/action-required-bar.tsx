@@ -113,16 +113,21 @@ export default function ActionRequiredBar() {
           <span className="text-[12px] font-bold uppercase tracking-wide">Action needed</span>
         </span>
 
-        <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-semibold text-amber-900 truncate">{top.title}</p>
-          {top.body && <p className="text-[12px] text-amber-800 truncate">{top.body}</p>}
+        {/* Two lines, not one. `truncate` cut both to "Appro…" / "Stepha…"
+            at 375 — a banner that exists to say what needs doing, hiding what
+            it is. `basis-48` (not flex-1's basis 0) lets the buttons drop to
+            their own row on a phone instead of crushing this to a sliver. From
+            md and up it is the original flex-1 + truncate, untouched. */}
+        <div className="grow shrink basis-48 md:basis-0 min-w-0">
+          <p className="text-[13.5px] font-semibold text-amber-900 truncate max-md:whitespace-normal max-md:line-clamp-2 max-md:break-words">{top.title}</p>
+          {top.body && <p className="text-[12px] text-amber-800 truncate max-md:whitespace-normal max-md:line-clamp-2 max-md:break-words">{top.body}</p>}
         </div>
 
         {top.link && (
           <Link
             href={top.link}
             onClick={() => void acknowledge(top.id)}
-            className="shrink-0 inline-flex items-center px-3 rounded-lg bg-amber-600 text-white text-[12.5px] font-semibold hover:bg-amber-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
+            className="shrink-0 inline-flex items-center px-3 rounded-lg bg-amber-solid-600 text-white text-[12.5px] font-semibold hover:bg-amber-solid-700 min-h-[44px] sm:min-h-[36px] touch-manipulation"
           >
             {ctaFor(top.kind)} →
           </Link>

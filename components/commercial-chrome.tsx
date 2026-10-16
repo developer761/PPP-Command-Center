@@ -91,7 +91,15 @@ export default function CommercialChrome({ children, user, accessible, isAdmin, 
           {/* Sticky above the page content, inside the scroller so it pins as
               you scroll. Crew logins never see it — approvals aren't theirs. */}
           {!crewOnly && <ActionRequiredBar />}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
+          {/* The bottom padding is the "Ask" button's clearance. It floats at
+              bottom-4 and is 48px tall, so on a phone it sat over the last
+              right-hand number on the page — the dashboard's "Chase what they
+              owe" amount, the deal's Retainage held, an AIA "Submitted" badge
+              — with no way to scroll it clear. 16 + 48 + 16 of breathing room
+              (+ the home-indicator inset) lets the end of every page scroll out
+              from under it. Below md only - the laptop stays exactly as it was
+              (Karan 10-09), so py-6 sm:py-8 lg:py-10 is untouched from md up. */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 max-md:pb-[calc(5rem+env(safe-area-inset-bottom))]">
             {children}
           </div>
         </main>

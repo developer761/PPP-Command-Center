@@ -314,15 +314,19 @@ export default function CommercialSidebar({ accessible, isAdmin = false, canSeeF
     // Karan 2026-07-01: "do the same format as PPP command center just
     // like different colors, red and blue for the commercial side."
     <aside className="w-64 lg:w-64 h-full bg-surface border-r border-ppp-charcoal-100 flex flex-col shrink-0">
-      <div className="px-6 py-3 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
-        <Link href="/commercial" className="block" onClick={onNavigate}>
+      {/* Below lg the drawer's close button has to keep its 44px. The 180px
+          logo + px-6 + the button ran 24px past the 256px sidebar, and the
+          button was the flex item that gave way — 39x44. Now the button never
+          shrinks, the right padding tightens, and the logo scales to the room - below md only; md and up is untouched. */}
+      <div className="pl-6 pr-2 md:pr-6 py-3 lg:py-6 border-b border-ppp-charcoal-100 flex items-center justify-between gap-2">
+        <Link href="/commercial" className="block max-md:min-w-0" onClick={onNavigate}>
           <Image
             src="/brand/logo.svg"
             alt="Precision Painting Plus"
             width={180}
             height={60}
             priority
-            className="cc-dark-invert"
+            className="cc-dark-invert max-md:h-auto max-md:max-w-full"
           />
           <div className="mt-3 inline-flex items-center gap-1.5">
             <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-cc-brand-600" />
@@ -336,7 +340,7 @@ export default function CommercialSidebar({ accessible, isAdmin = false, canSeeF
             type="button"
             onClick={onNavigate}
             aria-label="Close menu"
-            className="lg:hidden flex items-center justify-center h-11 w-11 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
+            className="lg:hidden flex items-center justify-center h-11 w-11 max-md:shrink-0 rounded-lg text-ppp-charcoal-500 hover:text-ppp-charcoal hover:bg-ppp-charcoal-50 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M6 6l12 12 M18 6l-12 12" />

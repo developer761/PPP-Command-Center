@@ -3435,9 +3435,16 @@ export default async function OpportunityDetailPage({
             {jobDisplayName(opp, account?.company_name ?? null)}
           </span>
         </nav>
-        <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate">
+        {/* STACKED below md, side by side from md up.
+            The title block was `flex-1` (basis 0) beside an action cluster
+            that would not shrink, so on a phone the cluster took the row and
+            the title got what was left: a 23px-wide h1 reading "V..", the
+            OPP chip and GC link broken over three lines, and the stage
+            pickers squeezed to empty boxes. Under 768 the title now owns the
+            full width and the actions wrap beneath it. */}
+        <div className="mt-2 flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4 md:flex-wrap">
+          <div className="min-w-0 w-full md:w-auto md:flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-ppp-charcoal truncate max-md:whitespace-normal max-md:break-words">
               {jobDisplayName(opp, account?.company_name ?? null)}
             </h1>
             <div className="text-sm text-ppp-charcoal-500 mt-1 flex items-center gap-2 flex-wrap">
@@ -3532,7 +3539,7 @@ export default async function OpportunityDetailPage({
               />
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap md:shrink-0">
             {canSeeJobReport && (
               <Link
                 href={`/commercial/reports/jobs/${opp.id}`}
@@ -5781,7 +5788,7 @@ async function InfoTab({
             {effectiveTeam.inherited ? " · inherited from the customer" : ""}
             {" · "}
             {viewerIsAdmin ? (
-              <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+              <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] -my-3.5 sm:inline sm:min-h-0 sm:my-0 touch-manipulation">
                 Edit teams
               </Link>
             ) : (
@@ -5794,7 +5801,7 @@ async function InfoTab({
               <>
                 No teams yet — build one in{" "}
                 {viewerIsAdmin ? (
-                  <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline">
+                  <Link href="/commercial/settings/teams" className="font-semibold text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] -my-3.5 sm:inline sm:min-h-0 sm:my-0 touch-manipulation">
                     Settings → Teams
                   </Link>
                 ) : (
@@ -5807,7 +5814,7 @@ async function InfoTab({
               <>
                 Picking a team adds its people to this job with their roles.{" "}
                 {viewerIsAdmin ? (
-                  <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline">
+                  <Link href="/commercial/settings/teams" className="text-cc-brand-700 hover:underline inline-flex items-center min-h-[44px] -my-3.5 sm:inline sm:min-h-0 sm:my-0 touch-manipulation">
                     Manage teams
                   </Link>
                 ) : (
@@ -6991,20 +6998,23 @@ async function TeamTab({
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            {/* The LABEL is the tap target: it wraps the 16px box, so the whole
+                44px row toggles it. The box sat outside a sibling label before,
+                which left the box itself a 16x16 target on a phone. */}
+            <label
+              htmlFor="team_primary"
+              className="flex items-center gap-2 min-h-[44px] sm:min-h-0 touch-manipulation"
+            >
               <input
                 id="team_primary"
                 name="is_primary"
                 type="checkbox"
                 className="w-4 h-4 rounded border-ppp-charcoal-300 text-cc-brand-600 focus:ring-cc-brand-600/40"
               />
-              <label
-                htmlFor="team_primary"
-                className="text-[12px] text-ppp-charcoal-700 inline-flex items-center min-h-[44px] sm:min-h-0"
-              >
+              <span className="text-[12px] text-ppp-charcoal-700">
                 Mark as primary in this role
-              </label>
-            </div>
+              </span>
+            </label>
             <div>
               <label htmlFor="team_notes" className={LABEL_CLS}>
                 Notes

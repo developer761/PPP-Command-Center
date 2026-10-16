@@ -1099,7 +1099,10 @@ export default async function AccountingPage({
             (a send button whose target you have to guess is one nobody
             presses), so it moved into the hover title and the confirmation,
             where it is available without being shouted. */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Wraps, and is capped at the row. It was `shrink-0` with no wrap,
+            so at 375 Print + Export + Send receivables ran past the edge and
+            the Send button was clipped. */}
+        <div className="flex items-center gap-2 shrink-0 max-md:shrink max-md:flex-wrap max-md:max-w-full">
           {/* EXPORT THE TAB YOU ARE ON.
               This was hard-wired to the receivables sheet, so however deep into
               Purchases or the AR sheet Mary was, pressing Export downloaded
@@ -1161,7 +1164,7 @@ export default async function AccountingPage({
               <PendingSubmitButton
                 pendingLabel="Sending…"
                 title={`Emails the receivables sheet to ${recipients.join(", ")}${receivablesView?.filtered ? " — the whole book, not this filter" : ""}`}
-                className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
+                className="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[40px] px-3.5 rounded-lg bg-cc-brand-600 text-white text-[13px] font-semibold hover:bg-cc-brand-700 transition-colors"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />

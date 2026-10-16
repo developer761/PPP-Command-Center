@@ -108,8 +108,12 @@ export function MetricInfo({
         onPointerLeave={(e) => {
           if (e.pointerType === "mouse") setOpen(false);
         }}
-        // 32px visual, 44px hit area via the negative margin + padding.
-        className={`inline-flex items-center justify-center w-8 h-8 -m-1.5 p-1.5 rounded-full text-ppp-charcoal-400 hover:text-ppp-charcoal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cc-brand-500 touch-manipulation ${className}`}
+        // 44px hit area on a phone, 32px from sm up. The old comment claimed
+        // "32px visual, 44px hit area via the negative margin + padding", but
+        // with border-box sizing padding does not grow a w-8 h-8 box: it
+        // measured 32x32 at 375. The negative margin keeps the footprint at
+        // 20px either way, so nothing beside it moves.
+        className={`inline-flex items-center justify-center w-11 h-11 -m-3 sm:w-8 sm:h-8 sm:-m-1.5 rounded-full text-ppp-charcoal-400 hover:text-ppp-charcoal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cc-brand-500 touch-manipulation ${className}`}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
           <circle cx="12" cy="12" r="9.5" />

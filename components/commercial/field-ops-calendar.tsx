@@ -548,17 +548,21 @@ export function FieldOpsCalendar({
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 overflow-hidden">
-          <button onClick={() => goPeriod(prevStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label={isWeek ? "Previous week" : "Previous month"}>&larr;</button>
+      {/* Wraps on a phone, with the period title on its own line first. One
+          unwrapping row at 375 pushed Today to the edge, half-clipped the
+          Month/Week toggle and put the next-period arrow off screen. From md the
+          row is the original single line, untouched. */}
+      <div className="flex max-md:flex-wrap items-center gap-2 mb-3">
+        <div className="inline-flex items-center rounded-lg border border-ppp-charcoal-200 overflow-hidden max-md:shrink-0">
+          <button onClick={() => goPeriod(prevStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-0" aria-label={isWeek ? "Previous week" : "Previous month"}>&larr;</button>
           <button onClick={() => { closeAll(); router.push(isWeek ? "/commercial/field-ops/calendar?view=week" : "/commercial/field-ops/calendar", { scroll: false }); }} className="px-3 py-2 text-[12.5px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 border-x border-ppp-charcoal-200 min-h-[44px] sm:min-h-[40px]">Today</button>
-          <button onClick={() => goPeriod(nextStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] sm:min-h-[40px]" aria-label={isWeek ? "Next week" : "Next month"}>&rarr;</button>
+          <button onClick={() => goPeriod(nextStart)} className="px-3 py-2 text-[13px] font-semibold text-ppp-charcoal-600 hover:bg-ppp-charcoal-50 min-h-[44px] min-w-[44px] sm:min-h-[40px] sm:min-w-0" aria-label={isWeek ? "Next week" : "Next month"}>&rarr;</button>
         </div>
-        <h2 className="text-[15px] font-bold text-ppp-charcoal">
+        <h2 className="order-first basis-full sm:order-none sm:basis-auto text-[15px] font-bold text-ppp-charcoal">
           {isWeek ? weekLabel(monthStart) : monthLabel(monthStart)}
         </h2>
         {/* Month / week switcher. Karan 2026-09-17: "calendar week view." */}
-        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden">
+        <div className="inline-flex rounded-lg border border-ppp-charcoal-200 overflow-hidden max-md:shrink-0">
           <button
             onClick={() => goMode("month")}
             aria-current={!isWeek ? "true" : undefined}
@@ -677,7 +681,7 @@ export function FieldOpsCalendar({
           const offByEmpG = new Map(day.off.map((o) => [o.employee_id, o] as const));
           const offOnlyG = day.off.filter((o) => !day.crew.some((c) => c.employee_id === o.employee_id));
           return (
-          <button key={day.date} onClick={() => openDay(day.date)} className={`w-full text-left bg-surface border rounded-lg p-3 ${day.date === addDay ? "border-ppp-navy-500" : "border-ppp-charcoal-100"}`}>
+          <button key={day.date} onClick={() => openDay(day.date)} className={`w-full min-h-[44px] text-left bg-surface border rounded-lg p-3 touch-manipulation ${day.date === addDay ? "border-ppp-navy-500" : "border-ppp-charcoal-100"}`}>
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-bold text-ppp-charcoal">{new Date(day.date + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}{day.date === todayIso && <span className="ml-1.5 text-[9px] font-bold uppercase text-cc-brand-700">today</span>}</span>
               {day.headcount > 0

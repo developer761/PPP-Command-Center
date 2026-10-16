@@ -336,7 +336,7 @@ export function StatusSubStatusPicker({
           <button
             type="button"
             onClick={() => setFollowUpToggled((v) => !v)}
-            className="text-[12px] font-medium text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1"
+            className="text-[12px] font-medium text-cc-brand-700 hover:text-cc-brand-800 inline-flex items-center gap-1 min-h-[44px] sm:min-h-0 touch-manipulation"
           >
             <svg
               width="12"

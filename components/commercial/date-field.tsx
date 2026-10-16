@@ -367,7 +367,9 @@ export function DateField({
           aria-haspopup="dialog"
           aria-expanded={open}
           aria-label={ariaLabel ? `${ariaLabel} — open calendar` : "Open calendar"}
-          className="shrink-0 inline-flex items-center justify-center h-8 w-8 -ml-1.5 rounded text-cc-brand-600 hover:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 touch-manipulation"
+          // 44x44 on a phone (it measured 32x32). The negative margins cancel
+          // the wrapper's py-2 / pl-3 so the field does not grow taller.
+          className="shrink-0 inline-flex items-center justify-center h-11 w-11 -my-2 -ml-3 sm:h-8 sm:w-8 sm:my-0 sm:-ml-1.5 rounded text-cc-brand-600 hover:bg-ppp-charcoal-50 disabled:text-ppp-charcoal-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-cc-brand-400 touch-manipulation"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <rect x="3" y="4" width="18" height="18" rx="2" />

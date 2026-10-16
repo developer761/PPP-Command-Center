@@ -97,7 +97,12 @@ export function StageKpiStrip({
                 <span aria-hidden className={`w-[3px] shrink-0 rounded-full ${toneRailCls(k.tone)}`} />
                 <div className="min-w-0">
                   <div className="text-[9.5px] font-bold uppercase tracking-wider text-ppp-charcoal-500 flex items-center gap-1">
-                    <span className="truncate">{k.label}</span>
+                    {/* Wraps to two lines below md. A 120px phone tile has
+                        ~83px for the label, and "APPROVED COS" in 9.5px bold
+                        caps is a hair wider, so it read "APPROVED C…". From
+                        md the tiles are wide and this is the original one-
+                        line truncate, untouched. */}
+                    <span className="truncate max-md:whitespace-normal max-md:line-clamp-2 max-md:break-words">{k.label}</span>
                     {k.href && (
                       <span aria-hidden className="opacity-0 group-hover:opacity-100 transition-opacity text-cc-brand-600">
                         →

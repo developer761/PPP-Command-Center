@@ -1180,8 +1180,10 @@ function AccountRow({
   return (
     <li className="hover:bg-cc-brand-50/30 transition-colors group/row">
       <div className="flex items-stretch gap-0">
-        {/* Checkbox — big tap area, sits OUTSIDE the Link. */}
-        <label className="pl-3 sm:pl-4 pr-2 pt-5 cursor-pointer touch-manipulation shrink-0 min-h-[44px] flex items-start">
+        {/* Checkbox — big tap area, sits OUTSIDE the Link. The LABEL is the
+            target, not the 16px box: pl-4 + 16 + pr-3 = 44px wide, and the row
+            stretches it tall. It was 36px wide (pl-3 + pr-2) on a phone. sm and up: unchanged. */}
+        <label className="pl-4 pr-3 sm:pr-2 pt-5 cursor-pointer touch-manipulation shrink-0 min-h-[44px] min-w-[44px] sm:min-w-0 flex items-start">
           <input
             type="checkbox"
             name="account_id"

@@ -575,8 +575,12 @@ export default async function CommercialAccountDetailPage({
             Accounts
           </Link>
         </div>
-        <div className="relative flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0 flex-1">
+        {/* STACKED below md, side by side from md up (unchanged there). The name block was
+            `flex-1` (basis 0) beside a CTA cluster that would not shrink, so at
+            375 the cluster took the row and the name got ~130px — one word per
+            line, the ACC chip and the contact split apart. */}
+        <div className="relative flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:flex-wrap">
+          <div className="min-w-0 w-full md:w-auto md:flex-1">
             <div className="flex items-center gap-3 flex-wrap">
               {/* Karan 2026-07-11: colored initials avatar so the hero
                   immediately identifies this account by its platform-
@@ -669,7 +673,7 @@ export default async function CommercialAccountDetailPage({
               deal drill-in, where the deal view has its own New/Edit actions
               (no duplicate account-level CTAs stacked above one deal). */}
           {!inDealDrillIn && (
-          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap md:shrink-0">
             <Link
               href={`/commercial/accounts/${account.id}?tab=opportunities&new_deal=1#new-deal`}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-cc-brand-600 text-white text-sm font-semibold hover:bg-cc-brand-700 active:bg-cc-brand-800 transition-colors touch-manipulation shadow-sm shadow-cc-brand-600/30 min-h-[44px]"
