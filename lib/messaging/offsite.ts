@@ -45,9 +45,19 @@ export type RouteVerdict =
   | { route: JobRoute; why: string }
   | null;
 
-/** Interior rooms. A hallway is deliberately absent — see below. */
+/**
+ * Interior rooms. A hallway is deliberately absent — see below.
+ *
+ * SPANISH ROOMS, 2026-10-16. The list was English-only, so "una recamara"
+ * routed nowhere while "one bedroom" routed off-site. A null route lets
+ * neither A6 nor its converse fire, so a Spanish one-room job never got the
+ * quick quote it is owed and a Spanish three-room job could be offered one A6
+ * forbids. Recámara and cuarto are the Mexican and Caribbean words for a
+ * bedroom, habitación and dormitorio the rest; "sala" alone is the living
+ * room in all of them.
+ */
 const ROOM =
-  /\b(?:bed\s?rooms?|bath\s?rooms?|living\s?rooms?|dining\s?rooms?|family\s?rooms?|kitchens?|offices?|dens?|basements?|attics?|nurser(?:y|ies)|playrooms?|laundry\s?rooms?|rooms?)\b/gi;
+  /\b(?:bed\s?rooms?|bath\s?rooms?|living\s?rooms?|dining\s?rooms?|family\s?rooms?|kitchens?|offices?|dens?|basements?|attics?|nurser(?:y|ies)|playrooms?|laundry\s?rooms?|rooms?|rec[aá]maras?|cuartos?|habitaci(?:[oó]n|ones)|dormitorios?|salas?|comedor(?:es)?|cocinas?|ba[ñn]os?|oficinas?|s[oó]tanos?|lavander[ií]as?)\b/gi;
 
 /**
  * "A hallway is NOT a full room" — Kate, stated in the lookup itself.
@@ -56,11 +66,32 @@ const ROOM =
  * from ROOM: a job described only as a hallway is a legible interior job under
  * two full rooms, which routes offsite. Silence would make it unknown.
  */
-const NOT_A_ROOM = /\b(?:hall\s?ways?|halls?|stairwells?|staircases?|landings?|closets?|foyers?|entryways?|corridors?)\b/gi;
+const NOT_A_ROOM = /\b(?:hall\s?ways?|halls?|stairwells?|staircases?|landings?|closets?|foyers?|entryways?|corridors?|pasillos?|escaleras?|cl[oó]sets?|armarios?|vest[ií]bulos?|recibidor(?:es)?)\b/gi;
 
 /** Exterior items small and legible enough to quote from a photo. */
 const SMALL_EXTERIOR =
-  /\b(?:windows?|shutters?|doors?|garage\s?doors?|sheds?|railings?|fences?|columns?|posts?|mail\s?box(?:es)?|gutters?|downspouts?|trim)\b/i;
+  /\b(?:windows?|shutters?|doors?|garage\s?doors?|sheds?|railings?|fences?|columns?|posts?|mail\s?box(?:es)?|gutters?|downspouts?|trim|ventanas?|contraventanas?|persianas?|puertas?|port[oó]n(?:es)?|cobertizos?|barandal(?:es)?|barandas?|barandillas?|rejas?|cercas?|vallas?|columnas?|postes?|buz[oó]n(?:es)?|canaletas?|molduras?)\b/i;
+
+/**
+ * A NAMED EXTERIOR ITEM IS A DESCRIPTION OF WORK, 2026-10-16.
+ *
+ * "the front door" routed to null — no verb, no room, so the DESCRIBES_WORK
+ * gate refused it — while "paint the front door" routed off-site. As an
+ * inquiry scope the two are the same job. Two shapes only, so "I'll leave the
+ * door open for you" stays scheduling: the item qualified as an outside one
+ * ("front door", "garage door", "puerta principal", "cerca del patio"), or a
+ * scope that is nothing BUT a short noun phrase naming it ("our shutters").
+ */
+const NAMED_EXTERIOR_ITEM = new RegExp(
+  [
+    String.raw`\b(?:front|back|side|entry|storm|patio|porch|garage|exterior|outside|outdoor)\s+(?:doors?|windows?|railings?|steps|shutters?|trim|fences?|gates?)\b`,
+    String.raw`\b(?:puertas?|ventanas?|rejas?|port[oó]n(?:es)?)\s+(?:principal(?:es)?|de\s+(?:la\s+)?entrada|del?\s+(?:garaje|cochera|patio)|exterior(?:es)?|de\s+afuera)\b`,
+    String.raw`\b(?:cercas?|vallas?|barandal(?:es)?|rejas?)\s+del?\s+(?:patio|jard[ií]n|frente)\b`,
+  ].join("|"),
+  "i",
+);
+const BARE_ITEM_PHRASE =
+  /^(?:just\s+|only\s+|solo\s+|s[oó]lo\s+)?(?:the|my|our|a|an|el|la|los|las|mi|mis|nuestr[oa]s?|un|una)\s+(?:\S+\s+)?\S+[.!]?$/i;
 
 /**
  * The exterior job that always needs a visit, whatever its size.
@@ -87,6 +118,13 @@ const HOME_WALLS = new RegExp(
     // of a house — the same shape as "I'm home all day" that the comment
     // above already guards against, one word further on.
     String.raw`\b(?:re)?(?:paint|painting|stain)\w*\s+(?:the\s+|my\s+|our\s+)?(?:home|house)\b(?!\s*(?:office|gym|theat(?:er|re)|bar|library|studio|interior|inside))`,
+    // SPANISH, 2026-10-16, on the same discipline: "casa" never on its own
+    // ("estoy en casa todo el día" is scheduling) — only the exterior OF one,
+    // the whole of one from outside, or a cladding word that IS the wall.
+    String.raw`\b(?:estuco|revestimiento|fachada)\b`,
+    String.raw`\bexterior\s+de\s+(?:la|mi|nuestra)\s+casa\b`,
+    String.raw`\bparedes\s+exteriores\b`,
+    String.raw`\b(?:toda\s+la|la)\s+casa\s+(?:por\s+fuera|afuera)\b`,
   ].join("|"),
   "i"
 );
@@ -115,23 +153,26 @@ const DESCRIBES_WORK =
   // the simulator on 2026-09-27; see the room-count clause in jobRoute for the
   // other half of that failure. do\w* is deliberately NOT used — it would
   // swallow door, down, doubt and dog.
-  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\bre-?d(?:one|oing)\b|\b(?:refresh\w*|freshen\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b/i;
+  /\b(?:re)?(?:paint\w*|stain\w*|finish\w*|coat\w*|surfac\w*|do)\b|\bre-?d(?:one|oing)\b|\b(?:refresh\w*|freshen\w*)\b|\b(?:primer|priming|touch[\s-]?ups?|patch\w*|spackle|drywall|dry\s?wall|sheet\s?rock|wall\s?paper\w*|repair\w*|scrap\w*|replac\w*|hang\w*|water\s+damage|estimate|quote|project|job|redo|spray\w*)\b|\b(?:pint(?:ar|en|e|o|amos|ura)\w*|repint\w*|barniz\w*|resan\w*|parch\w*|repar\w*|arregl\w*|cotizaci[oó]n|presupuesto|proyecto|trabajo|estimado|tablaroca|papel\s+tapiz)/i;
 
 /** "the whole interior", "the entire place" — an area with a boundary on it. */
 const WHOLE_INTERIOR =
-  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|houses?|homes?|apartments?|condos?|places?)\b/i;
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|houses?|homes?|apartments?|condos?|places?)\b|\binterior\s+de\s+(?:la|mi|nuestra)\s+(?:casa|apartamento|departamento)\b|\btoda\s+la\s+casa\s+(?:por\s+dentro|adentro)\b|\btodo\s+el\s+(?:interior|apartamento|departamento)\b/i;
 /** The same, plus the exterior forms, for the gate. */
 const BOUNDED_AREA =
-  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|places?|propert(?:y|ies))\b/i;
+  /\b(?:whole|entire|full)\s+(?:\w+\s+){0,2}(?:interiors?|exteriors?|houses?|homes?|apartments?|condos?|units?|places?|propert(?:y|ies))\b|\b(?:interior|exterior)\s+de\s+(?:la|mi|nuestra)\s+casa\b|\btoda\s+la\s+casa\b/i;
 
-const EXTERIOR = /\b(?:exterior|outside|outdoor)\b/i;
-const INTERIOR = /\b(?:interior|inside|indoor)\b/i;
-const CABINETS = /\b(?:kitchen\s+cabinets?|cabinets?|cabinetry)\b/i;
+const EXTERIOR = /\b(?:exterior|outside|outdoor|afuera|por\s+fuera)\b/i;
+const INTERIOR = /\b(?:interior|inside|indoor|adentro|por\s+dentro)\b/i;
+const CABINETS = /\b(?:kitchen\s+cabinets?|cabinets?|cabinetry|gabinetes?|alacenas?)\b/i;
 
 /** Written numbers people actually use for room counts. */
 const WORD_NUMBER: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
   a: 1, an: 1, single: 1, couple: 2, few: 3, several: 3,
+  // Spanish, 2026-10-16. "un/una" are articles and count one, as "a" and
+  // "an" do above; "par" is "un par de cuartos".
+  un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, par: 2,
 };
 
 /**
@@ -162,7 +203,11 @@ export function roomCount(text: string): number | null {
   // No quantities: count distinct named rooms, ignoring the ones that are not
   // full rooms.
   const stripped = t.replace(NOT_A_ROOM, " ");
-  const named = new Set((stripped.match(ROOM) ?? []).map((r) => r.replace(/\s+/g, "").replace(/s$/, "")));
+  // Accents folded and the "-ones" plural stemmed, so "habitación" and
+  // "habitaciones" are one room name rather than two.
+  const named = new Set((stripped.match(ROOM) ?? []).map((r) =>
+    r.replace(/\s+/g, "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/ones$/, "on").replace(/(?<=dor)es$/, "").replace(/s$/, "")));
   if (named.size) return named.size;
 
   // Only non-rooms named: "just the hallway" is a real, legible job.
@@ -197,11 +242,20 @@ export function roomCount(text: string): number | null {
  * because A6 owns the gate and states its half as a never. Worth a line in
  * the sheet either way.
  */
+/**
+ * SPANISH, 2026-10-16. Adding Spanish rooms to the lookup made "la sala de
+ * espera del consultorio" — a dental waiting room — route OFF-SITE as one
+ * room, because the gate above the lookup only spoke English. The gate must
+ * speak every language the rows do, or the new rows route commercial work
+ * remotely. The never-commercial list gains its Spanish twins on the same
+ * reasoning: condominio, departamento and inquilino describe where somebody
+ * lives.
+ */
 const COMMERCIAL_SPACE =
-  /\b(?:lobb(?:y|ies)|common\s+areas?|corridors?|stair\s?wells?|the\s+whole\s+floor|entire\s+floor|suites?)\b/i;
+  /\b(?:lobb(?:y|ies)|common\s+areas?|corridors?|stair\s?wells?|the\s+whole\s+floor|entire\s+floor|suites?|[aá]reas?\s+comunes|todo\s+el\s+piso|sala\s+de\s+espera)\b/i;
 
 const COMMERCIAL_PROPERTY =
-  /\b(?:dentists?|dental|doctors?|medical|clinics?|law\s+(?:firm|office)|stores?|shops?|storefronts?|retail|restaurants?|cafes?|bars?|salons?|gyms?|warehouses?|hotels?|motels?|schools?|churches|church|offices?\s+building|commercial|business(?:es)?)\b/i;
+  /\b(?:dentists?|dental|doctors?|medical|clinics?|law\s+(?:firm|office)|stores?|shops?|storefronts?|retail|restaurants?|cafes?|bars?|salons?|gyms?|warehouses?|hotels?|motels?|schools?|churches|church|offices?\s+building|commercial|business(?:es)?|consultorios?|cl[ií]nicas?|dentistas?|tiendas?|locales?\s+comerciales?|local\s+comercial|comercial(?:es)?|negocios?|restaurantes?|cafeter[ií]as?|sal[oó]n\s+de\s+belleza|gimnasios?|bodegas?|almac[eé]n(?:es)?|hoteles?|escuelas?|iglesias?|edificio\s+de\s+oficinas)\b/i;
 
 /** "our building", "our facility" — the possessive is what makes it a business. */
 const COMMERCIAL_OURS = /\b(?:our|the)\s+(?:building|facility|premises|property\s+management)\b/i;
@@ -213,7 +267,7 @@ const COMMERCIAL_OURS = /\b(?:our|the)\s+(?:building|facility|premises|property\
  * and must never be treated as commercial signals — they describe where someone
  * lives."
  */
-const NOT_COMMERCIAL = /\b(?:co-?ops?|condos?|condominiums?|tenants?|apartments?|apt)\b/i;
+const NOT_COMMERCIAL = /\b(?:co-?ops?|condos?|condominiums?|tenants?|apartments?|apt|condominios?|apartamentos?|departamentos?|inquilin[oa]s?)\b/i;
 
 export function isCommercial(scope: string | null | undefined): boolean {
   const t = (scope ?? "").trim();
@@ -334,6 +388,8 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
     // with no painting verb in it. Same reasoning as scope.ts's WHOLE_AREA,
     // and the real draft that found it said exactly that.
     && !BOUNDED_AREA.test(t)
+    && !NAMED_EXTERIOR_ITEM.test(t)
+    && !(BARE_ITEM_PHRASE.test(t) && SMALL_EXTERIOR.test(t))
   ) return null;
 
   // THE GATE, ABOVE THE LOOKUP. Any scope, any size, no exceptions.
@@ -348,6 +404,10 @@ export function jobRoute(scope: string | null | undefined, area?: string | null)
   // says which cabinets. Removed before anything counts rooms.
   const withoutCabinetRooms = t.replace(
     /\b(?:kitchen|bath\s?room|bath|bed\s?room|laundry|garage|office)\s+(?:cabinets?|cabinetry)\b/gi,
+    " cabinets ",
+  ).replace(
+    // Spanish puts the room AFTER the cabinets: "los gabinetes de la cocina".
+    /\b(?:gabinetes?|alacenas?)\s+(?:de\s+(?:la\s+|el\s+|mi\s+)?)?(?:cocina|ba[ñn]o|lavander[ií]a|cochera|garaje|oficina)\b/gi,
     " cabinets ",
   );
 
@@ -537,8 +597,21 @@ const A7_TRIGGERS: { re: RegExp; reEs: RegExp; reason: string; reasonEs: string 
     reason: "you'd rather have the quote by text",
     reasonEs: "prefiere recibir la cotizacion por mensaje" },
   // "ASKS TO SPEAK WITH THE ESTIMATOR BY PHONE rather than meet"
-  { re: /\b(?:speak|talk)\s+(?:to|with)\s+(?:the\s+)?estimator\b[^.?!]{0,24}\b(?:phone|call)\b|\bestimator\s+call\s+me\b/i,
-    reEs: /\b(?:hablar|platicar)\s+con\s+(?:el\s+)?estimador\b[^.?!]{0,24}\b(?:tel[ée]fono|llamada|llamar)\b|\bque\s+(?:me\s+)?llame\s+el\s+estimador\b/i,
+  /**
+   * A CALL ABOUT THE ESTIMATE, IN THE WORDS PEOPLE USE, 2026-10-16.
+   *
+   * "can the estimator just call me about the estimate instead of coming out"
+   * matched nothing — `estimator call me` could not reach past "just", and a
+   * call request that names the estimate or turns down the visit never named
+   * the estimator at all. So offer_offsite_quote rendered "" and escalated
+   * on exactly the request Kate added to this list on 2026-09-18.
+   *
+   * Every new alternative is tied to the ESTIMATE or to declining the VISIT,
+   * never to the thread: "call me instead of texting" is A25 and must stay
+   * out of here, which is the boundary her card draws in its own words.
+   */
+  { re: /\b(?:speak|talk)\s+(?:to|with)\s+(?:the\s+)?estimator\b[^.?!]{0,24}\b(?:phone|call)\b|\bestimator\s+(?:just\s+|please\s+)?(?:call|phone|ring)\s+(?:me|us)\b|\b(?:call|phone|ring)\s+(?:me|us)\s+(?:about|with|for|regarding)\s+(?:the|an?|my|our)\s+(?:estimate|quote|price|pricing)\b|\b(?:call|phone)\s+(?:me|us)\b[^.?!]{0,40}\binstead\s+of\s+(?:coming|a\s+visit|visiting|meeting|an?\s+(?:appointment|in[-\s]person))|\b(?:estimate|quote)\s+(?:over|by)\s+(?:the\s+)?phone\s+instead\b/i,
+    reEs: /\b(?:hablar|platicar)\s+con\s+(?:el\s+)?estimador\b[^.?!]{0,24}\b(?:tel[ée]fono|llamada|llamar)\b|\bque\s+(?:me\s+)?llame\s+el\s+estimador\b|\bel\s+estimador\s+(?:me|nos)\s+(?:puede\s+)?llam\w*|\b(?:que\s+(?:el\s+estimador\s+)?(?:me|nos)\s+llamen?|ll[aá]m(?:e|en|a)(?:me|nos))\b[^.?!]{0,40}\ben\s+(?:vez|lugar)\s+de\s+(?:venir|visitar|la\s+visita|una\s+(?:visita|cita))|\b(?:cotizaci[oó]n|presupuesto|estimado)\s+por\s+tel[eé]fono\b/i,
     reason: "you'd rather speak with the estimator by phone",
     reasonEs: "prefiere hablar con el estimador por telefono" },
   // "wants only a price / rough estimate / ballpark"
@@ -551,6 +624,25 @@ const A7_TRIGGERS: { re: RegExp; reEs: RegExp; reason: string; reasonEs: string 
     reEs: /\bsolo\s+(?:estoy|puedo|tengo\s+tiempo)\b[^.?!]{0,24}\b(?:tardes?|noches?|fines?\s+de\s+semana)\b|\bdespu[ée]s\s+del?\s+(?:horario|trabajo)\b/i,
     reason: "you're only free outside our usual hours",
     reasonEs: "solo tiene tiempo fuera de nuestro horario" },
+  /**
+   * "WANTS THE QUOTE TODAY/TOMORROW" — the FIRST qualifier on Kate's list and
+   * the only one that had no pattern at all. 2026-10-16.
+   *
+   * "I need the quote today" rendered "" and escalated. The rater tag is
+   * `urgent`, so the reason is said as urgency rather than as a day: one
+   * sentence true of today, tomorrow and ASAP alike, and never a day the
+   * customer did not name.
+   *
+   * THE QUOTE MUST COME FIRST, AND NO VISIT MAY SIT BETWEEN. "can you come
+   * out tomorrow for an estimate" wants a VISIT tomorrow, which is the
+   * in-person flow working, not a reason to leave it — so the time word has
+   * to follow the quote word, with no appointment, visit or "come" between.
+   * Appended last so a text that already qualified keeps the reason it had.
+   */
+  { re: /\b(?:quote|estimate|price|pricing|number)\b(?:(?!\b(?:appointment|visit|come|coming|stop|meet|out)\b)[^.?!]){0,30}\b(?:today|tomorrow|tonight|asap|a\.s\.a\.p|as\s+soon\s+as\s+possible|right\s+away|by\s+(?:end\s+of\s+(?:the\s+)?day|eod))\b/i,
+    reEs: /\b(?:cotizaci[oó]n|presupuesto|precio|estimado)\b(?:(?!\b(?:cita|visita|venir|vengan?)\b)[^.?!]){0,30}(?:\bhoy\b|\bma[ñn]ana\b|\blo\s+antes\s+posible\b|\bcuanto\s+antes\b|\bya\s+mismo\b|\burgente\b)/i,
+    reason: "you need the quote right away",
+    reasonEs: "necesita la cotizacion cuanto antes" },
 ];
 
 /**

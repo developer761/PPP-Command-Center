@@ -53,14 +53,25 @@ export type ChannelPreference = "text_only" | "email_only" | "phone";
  * rule. Checked first and it wins, because "just email me the quote" contains
  * every word an email-only preference does.
  */
+/**
+ * ── SPANISH, 2026-10-16 ─────────────────────────────────────────────────
+ *
+ * Every word list below was English-only, so "solo mensajes por favor, no me
+ * llamen" returned null: no remove-from-cadence signal, and `transferred`
+ * ALLOWED for a Spanish text-only customer while the English twin was
+ * refused. A Spanish lead who asked to come off the phone stayed on the call
+ * cadence and could be handed to the one channel they had refused. The
+ * timidity rule above holds for Spanish exactly as for English: a channel
+ * word AND a sign it is wanted or refused, or nothing.
+ */
 const QUOTE_DELIVERY =
-  /\b(?:quote|estimate|price|pricing|bid|proposal|number|numbers|figure)\b/i;
+  /\b(?:quote|estimate|price|pricing|bid|proposal|number|numbers|figure|cotizaci[oó]n|presupuesto|precio|estimado)\b/i;
 
 /** Being asked to stop using a channel, rather than merely offered another. */
 const EXCLUSIVE = /\b(?:only|just|instead|rather|prefer|don['’]?t|do\s+not|no\s+more|stop)\b/i;
 
-const EMAIL_WORD = /\b(?:e-?mail(?:s|ed|ing)?)\b/i;
-const TEXT_WORD = /\b(?:text(?:s|ed|ing)?|sms|message\s+me)\b/i;
+const EMAIL_WORD = /\b(?:e-?mail(?:s|ed|ing)?|correos?)\b/i;
+const TEXT_WORD = /\b(?:text(?:s|ed|ing)?|sms|message\s+me|mensajes?|textos?|whatsapp)\b/i;
 
 /**
  * Asking to be phoned. Imported rather than rewritten — render.ts already
@@ -83,7 +94,7 @@ import { ASKED_FOR_A_CALL } from "./customer-asks";
  * them is exactly what broke this function: "just" and "don't" both signal
  * exclusivity, but one wants the channel and the other refuses it.
  */
-const REFUSAL = /\b(?:don['’]?t|do\s+not|no\s+more|never|stop|quit|cease|halt|discontinue)\b/i;
+const REFUSAL = /\b(?:don['’]?t|do\s+not|no\s+more|never|stop|quit|cease|halt|discontinue)\b|\bno\s+(?:me|nos|quiero|queremos|m[aá]s)\b|\bya\s+no\b|\bdejen\s+de\b|\bnunca\b/i;
 
 /**
  * "instead of texting" and "rather than email" REFUSE what follows them,
@@ -91,7 +102,7 @@ const REFUSAL = /\b(?:don['’]?t|do\s+not|no\s+more|never|stop|quit|cease|halt|
  * where the channel named is the one they want. Marked before splitting so
  * the distinction survives it.
  */
-const EXCLUSIVE_WORD = /\b(?:instead|rather|prefer(?:s|red)?)\b/i;
+const EXCLUSIVE_WORD = /\b(?:instead|rather|prefer(?:s|red)?|prefiero|preferimos|mejor)\b/i;
 
 /**
  * A request shape that is not an exclusivity word. "use email", "send it by
@@ -100,9 +111,12 @@ const EXCLUSIVE_WORD = /\b(?:instead|rather|prefer(?:s|red)?)\b/i;
  * Without this, "stop texting me, use email please" read as no preference at
  * all — the refusal landed and the request did not.
  */
-const REQUEST_SHAPE = /\b(?:use|send|switch\s+to|reach\s+me|contact\s+me|get\s+me)\b/i;
+// Spanish request shapes are imperatives aimed at US ("mándenme",
+// "escríbanme"). Deliberately not "por mensaje" on its own: "le mando las
+// fotos por mensaje" is the customer sending, the "I'll email YOU" case.
+const REQUEST_SHAPE = /\b(?:use|send|switch\s+to|reach\s+me|contact\s+me|get\s+me)\b|\b(?:m[aá]nd|env[ií]|escr[ií]b|cont[aá]ct)\w*(?:me|nos)\b/i;
 const CHANNEL_AT_ME = /\b(?:text\w*|sms|e-?mail\w*|call\w*|phone\w*)\s+(?:to\s+)?me\b/i;
-const REFUSED_AFTER = /\b(?:instead\s+of|rather\s+than)\b/gi;
+const REFUSED_AFTER = /\b(?:instead\s+of|rather\s+than|en\s+vez\s+de|en\s+lugar\s+de)\b/gi;
 const MARK = "\u0000";
 
 /**
@@ -131,8 +145,10 @@ const MARK = "\u0000";
 function clauses(text: string): { text: string; refused: boolean; exclusive: boolean }[] {
   const marked = text.replace(REFUSED_AFTER, MARK);
   // Capturing split, so each piece knows which delimiter sat on either side.
-  const pieces = marked.split(/([,;.!?]+|\b(?:and|but|please|just|only)\b)/i);
-  const isExclusiveDelim = (d: string | undefined) => !!d && /\b(?:just|only)\b/i.test(d);
+  // Spanish connectives beside the English ones (2026-10-16): "solo mensajes
+  // por favor no me llamen" has no comma to split on.
+  const pieces = marked.split(/([,;.!?]+|\b(?:and|but|please|just|only|y|pero|por\s+favor|solo|s[oó]lo|solamente|[uú]nicamente|nada\s+m[aá]s)\b)/i);
+  const isExclusiveDelim = (d: string | undefined) => !!d && /\b(?:just|only|solo|s[oó]lo|solamente|[uú]nicamente|nada\s+m[aá]s)\b/i.test(d);
 
   const out: { text: string; refused: boolean; exclusive: boolean }[] = [];
   for (let i = 0; i < pieces.length; i += 2) {
@@ -143,8 +159,26 @@ function clauses(text: string): { text: string; refused: boolean; exclusive: boo
      * it after, so both neighbours count. Without this, splitting on the very
      * word that signals exclusivity threw the signal away.
      */
+    /**
+     * …BUT ONLY WHEN THE CHANNEL IS WHAT "JUST" IS ATTACHED TO. 2026-10-16.
+     *
+     * "solo quería mandar un mensaje para preguntar algo" is "I only wanted
+     * to send a message to ask something" — "solo" qualifies the wanting,
+     * and the message is incidental. Read as a neighbour it became text_only,
+     * which raises a remove-from-cadence notification for somebody who said
+     * nothing about channels. "I just wanted to text to ask a question" did
+     * the same in English. So the marker counts only where the channel word
+     * sits right against it: at the start of the piece after ("just text
+     * me", "solo mensajes", "solo por correo") or the end of the piece
+     * before ("text only", "mensajes nada más").
+     */
+    const CHANNEL_HEAD =
+      /^\s*(?:(?:por|de|con|a|by|via|over)\s+)?(?:(?:el|la|los|las|un|una)\s+)?(?:text\w*|sms|message\s+me|e-?mail\w*|call\w*|phone\w*|mensajes?|textos?|whatsapp|correos?|ll[aá]m\w*)/i;
+    const CHANNEL_TAIL =
+      /(?:text\w*|sms|e-?mail\w*|call\w*|phone\w*|mensajes?|textos?|whatsapp|correos?|ll[aá]m\w*)(?:\s+(?:me|us))?\s*$/i;
     const neighbourExclusive =
-      isExclusiveDelim(pieces[i - 1]) || isExclusiveDelim(pieces[i + 1]);
+      (isExclusiveDelim(pieces[i - 1]) && CHANNEL_HEAD.test(piece))
+      || (isExclusiveDelim(pieces[i + 1]) && CHANNEL_TAIL.test(piece));
 
     const [before, ...after] = piece.split(MARK);
     if (before.trim()) {

@@ -14,9 +14,23 @@
  * Deliberately narrow: "call" has to be aimed at US calling THEM. "I'll call
  * you tomorrow" and "call it a day" are not requests, and "give us a call"
  * on our own literature is not either.
+ *
+ * TWO MISSES, 2026-10-16, both on A25's phone branch:
+ *
+ *   "mejor llámenme"   `llam\w*` cannot cross the accent — \w is ASCII, so
+ *                      "llá" stops it dead — and the enclitic "-me" is
+ *                      inside the word where \bme\b cannot see it. The
+ *                      imperative with its pronoun attached is how Spanish
+ *                      asks for a call, so it is matched whole.
+ *   "give me a call tomorrow at 3"
+ *                      "call" with nothing aimed at me after it, and no
+ *                      "can/could/please" before it. "give ME a call" only:
+ *                      "give us a call" is still our own literature. "a
+ *                      call" and not "a ring": the idioms stay the
+ *                      documented limit call-not-text-routing.test.ts pins.
  */
 export const ASKED_FOR_A_CALL =
-  /\b(?:call|llam\w*|telefone\w*)\b[^.?!]{0,24}\b(?:me|us|him|her|back|conmigo|me\s+llame)\b|\b(?:can|could|please|prefer|rather)\b[^.?!]{0,30}\b(?:call|speak|talk|phone)\b|\bhablar\s+por\s+tel[eé]fono\b|\bque\s+me\s+llamen\b/i;
+  /\b(?:call|llam\w*|telefone\w*)\b[^.?!]{0,24}\b(?:me|us|him|her|back|conmigo|me\s+llame)\b|\b(?:can|could|please|prefer|rather)\b[^.?!]{0,30}\b(?:call|speak|talk|phone)\b|\bhablar\s+por\s+tel[eé]fono\b|\bque\s+me\s+llamen\b|\b(?:ll[aá]m(?:e|en|a)|m[aá]rqu(?:e|en)|telefon[eé](?:e|en))(?:me|nos)\b|\bgive\s+me\s+a\s+call\b/i;
 
 /**
  * A WRONG NUMBER WENT TO THE AGENT AND GOT "PERFECT, THANKS."

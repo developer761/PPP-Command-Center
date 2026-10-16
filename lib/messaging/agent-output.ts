@@ -2463,7 +2463,20 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
    * The warm close stays open — `lost` and `bailout` are what this state is
    * for.
    */
-  if (a.intent === "accepted" && declinesTheWork(ctx.customerText)) {
+  /**
+   * WHICH SIDE OF A BOOKING WE ARE ON, 2026-10-16.
+   *
+   * Kate's decline list now includes "I'm all set, thank you", and the same
+   * sentence straight after the bot confirmed the appointment is thanks, not
+   * a decline. Without this, `accepted` after a confirmed booking would be
+   * refused as recording a decline. Only the "all set" reading turns on it —
+   * "not interested anymore" is a decline whenever it is said.
+   */
+  const afterBookingConfirmed = [ctx.lastIntent, ...(ctx.priorIntents ?? [])]
+    .some((i) => !!i && CLOSES.has(i));
+  const declined = declinesTheWork(ctx.customerText, { afterBookingConfirmed });
+
+  if (a.intent === "accepted" && declined) {
     return {
       ok: false, reason: "recorded_a_decline_as_acceptance",
       detail: "they said they are not going ahead, so this both answers as if they had "
@@ -2471,7 +2484,7 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
     };
   }
 
-  if (PURSUES_THE_JOB.has(a.intent) && declinesTheWork(ctx.customerText)) {
+  if (PURSUES_THE_JOB.has(a.intent) && declined) {
     return {
       ok: false, reason: "pursued_after_a_decline",
       detail: "they said they are not going ahead, so this keeps chasing them. Close "
