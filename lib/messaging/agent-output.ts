@@ -1140,7 +1140,30 @@ export const ANSWERS_A_QUESTION = new Set<string>([
   "present_offsite_quote", "offer_offsite_quote",
   "confirm_scope", "confirm_address", "confirm_contact",
   "phone_pricing", "offer_estimator_call", "acknowledge_negative",
-  "area_not_serviced", "transferred", "accepted", "success",
+  "area_not_serviced", "transferred",
+  /**
+   * THE TWO CLOSES CAME OUT — question 35, and it was not the rule question
+   * it was written up as.
+   *
+   * `success` and `accepted` were in here with the rest, and nothing in the
+   * comment above covers them, because nothing can: "Perfect, you're all
+   * set" is not an answer to "do you do ceilings as well?". It is the one
+   * thing in the set whose template says nothing about what was asked.
+   *
+   * The note raised it as a choice for Kate — leave the close exempt, or
+   * refuse it and risk stranding a finished booking. The fear was the
+   * second half, and it does not hold: an answer given on a close already
+   * reached the customer. Probed 2026-10-16 against the set BEFORE this
+   * change, rapport "Yes, we do ceilings." rendered as "Yes, we do ceilings.
+   * Perfect, you're all set. ..." on both closes. The renderer reads this set
+   * too (answerIsOwed, lib/messaging/render.ts), but the close's rapport
+   * survives either way, so nothing there moved.
+   *
+   * The whole bug was the validator's half: membership meant "A29 needs no
+   * rapport here", so the bare close went out with the question ignored.
+   * Out of the set, an answer is owed, the bare close is refused and the
+   * retry is told to carry one.
+   */
   // BOTH OF THESE USED TO SAY NOTHING, AND NOW THEY ANSWER.
   //
   // discard turns work down in words — "that isn't something we take on, we
@@ -1153,6 +1176,22 @@ export const ANSWERS_A_QUESTION = new Set<string>([
   // the correct move.
   "discard", "bot_suspected",
 ]);
+
+/**
+ * The two endings that complete the work rather than end the conversation.
+ *
+ * `success` closes a booking on the new-lead track, `accepted` an accepted
+ * quote on the nurture track. Named as a pair deliberately: question 35 was
+ * written up about `success` alone, and `accepted` is the same template doing
+ * the same job one track over — a fix that lands on one of them and not the
+ * other is this codebase's commonest miss.
+ *
+ * NOT the other endings. `lost`, `bailout`, `discard` and `transferred` end
+ * the conversation, and A29 already treats them correctly: three of them are
+ * refused outright with a question pending, and `transferred` answers by
+ * handing the question to somebody who can.
+ */
+export const CLOSES = new Set<string>(["success", "accepted"]);
 
 /**
  * Did the customer actually ask something?
@@ -3052,8 +3091,27 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
      * any price", and on the new-lead track it renders as the answer with its
      * trailing availability question stripped at this stage.
      */
-    const remedy =
-      " Rewording will not fix it: an answer cannot ride along on an ask."
+    /**
+     * EXCEPT ON A CLOSE, WHERE THAT ADVICE WOULD COST THE BOOKING.
+     *
+     * The remedy above is written for a turn that ASKS — the fix there is a
+     * different intent, because an answer cannot ride on an ask. A close is
+     * the opposite case: the intent is right, the booking is done, and
+     * switching to defer_to_estimator to answer about ceilings would throw
+     * away the close and reopen a finished conversation.
+     *
+     * So the close keeps its intent and carries the answer in its own
+     * sentence, which the renderer prepends — verified on the close itself,
+     * "Yes, we do ceilings. Perfect, you're all set. Someone from the office
+     * will confirm the details with you." A legal move exists, and naming it
+     * is the difference between one retry and a handover: the model gets one,
+     * and a remedy pointing at the wrong intent spends it.
+     */
+    const remedy = CLOSES.has(a.intent)
+      ? " Keep this intent — the booking is complete and a different one would"
+      + " undo it. Answer them in one short sentence of your own and the close"
+      + " follows it."
+      : " Rewording will not fix it: an answer cannot ride along on an ask."
       + " Choose the intent whose own template answers them — defer_to_estimator"
       + " covers anything only the estimator decides, including any price — and"
       + " leave the next question for the turn after.";
@@ -3061,6 +3119,10 @@ export function validateAction(raw: unknown, ctx: ValidateContext = {}): Validat
       ok: false, reason: "question_left_unanswered",
       detail: droppedRapport
         ? `the customer asked something and the answer was dropped because ${droppedRapport}.${remedy}`
+        // "only asks the next question back" is wrong for a close, which asks
+        // nothing. A grader reading the refusal needs the shape it actually is.
+        : CLOSES.has(a.intent)
+        ? `the customer asked something and this turn closes without answering it.${remedy}`
         : `the customer asked something and this turn only asks the next question back.${remedy}`,
     };
   }

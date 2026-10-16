@@ -35,7 +35,7 @@ shipped, chosen to be the safe or the conservative reading. Each entry says
 what we do today and what would change if she says otherwise, so she can
 answer fast and nothing has to wait on her.
 
-## What is actually left — updated 2026-10-06
+## What is actually left — updated 2026-10-16
 
 Her 2026-10-05 reply answered most of the batch. Those items are marked and
 built; **this list is only what still needs her**, so it should be short enough
@@ -49,8 +49,6 @@ to work through in one sitting.
 | 5 | **Two properties, one customer** — one visit or two? | She answered "TBD". Until it is settled the bot asks for availability twice and can hold only one answer. Also gates item 16. |
 | 17 | **Containment** — does a correctly-refused price that a person then rings about count as contained? | She answered the bot's BEHAVIOUR, not the measure. One yes/no. |
 | 20 | **Should a thread a person released go back into the follow-up cadence?** | Re-asked with the concrete case, since "need more context" was fair. |
-| 23 | One of the three "ask the estimator" lines stops making sense | Her wording. |
-| 22 | A6's shared-space list says "corridor" but not "hallway" | One word, but it decides a routing branch. |
 | 6 / 6b | Sign-off on the English bot-disclosure and the availability ask | She approved the SPANISH disclosure; this is confirming the English says the same. |
 | 25 | A Spanish conversation ends with an English list of what we cover | Low stakes, cheap to fix, easy to forget. |
 | 26 | **Do you want an after-hours auto-reply at all?** | You graded one as a negative once. It is off everywhere today. Only affects 8-9am and 8-9pm. |
@@ -62,6 +60,17 @@ to work through in one sitting.
 | 19 | Send her the 214 findings outside her pass | **Export is ready** — `npm run export:findings-outside-kates-pass`. Her assumption that they were "properly rated with the new rulings" does not hold: 192 of the 214 were rated BEFORE their rule last changed, and the sheet marks that per row. |
 | 14 | Route "stop texting, call me" to a person | She approved the routing; being built. The suppression half is Karan/Katie, not hers. |
 | 1 | Holiday suppression | Her event-park answer is conditional on it — "as long as we have a mechanism that keeps customers from being messaged on specific holidays and the msg would send the following open day". No calendar exists. **Karan's call whether it is in scope for launch.** |
+
+### Taken off her list since — we answered them from what we already had
+
+**15** (A25's callback echo — the rule texts settle it), **22** (the
+corridor/hallway premise was backwards; the corpus settles it), **23** (the
+deferral wording is right where she wrote it; the renderer stops reaching for
+it where it is not), **27** (she answered it five times in her own grading),
+**35** (A29's own "at any point, not only before closing" settles it, and a
+legal close-plus-answer exists, so refusing costs a retry not a handover).
+None of these needs a reply. Each item says what we concluded and from what,
+so she can overrule any of them on sight.
 
 ### Answered 2026-10-05 and built — no action
 
@@ -1434,7 +1443,8 @@ hallway commercial.
 
 ## 23. One of the three "ask the estimator" lines stops making sense when its question is removed
 
-**OPEN — your wording, so your call.** Found in the sandbox 2026-10-01.
+**ANSWERED OURSELVES 2026-10-16 — nothing needed from you, and your wording
+is unchanged.** Found in the sandbox 2026-10-01.
 
     customer  "do you guys use low voc paint? we have a baby.
                its 14 Beech St Hicksville NY 11801"
@@ -1464,12 +1474,20 @@ that in" sounds like something is being booked.
 
 Only the third one's first half exists to set up its second half.
 
-**→ Recommendation:** reword the third so its opening clause answers rather
-than sets up — the timing half can stay in the question that follows it.
-Something like "That's one the estimator will confirm with you. What sort of
-days are easiest for you?" We have NOT changed it: it is customer-facing
-wording and the last time we rewrote one of these from our own reading we got
-it backwards (item 4).
+**→ Resolved in code, not in copy.** The line is right where you wrote it —
+at the availability step, with its own question behind it. It is only wrong
+on the turns where that question is removed. So the renderer no longer
+*picks* it on those turns: it walks the rotation and takes the first wording
+that still reads as a reply once the question is gone, which is one of the
+two above. If none did, it leaves the original exactly as it is today rather
+than inventing anything.
+
+Checked across every intent, both languages, both tracks, turns 0-3 and all
+five flow stages: 18 outputs change and all 18 are this one. At the
+availability step, turn 2 still lands on your sentence, both languages.
+
+Nothing for you to rewrite. Flagging it only so you know the third wording
+now appears slightly less often early in a conversation.
 
 ## 24. Turning on a Texas workspace will tell Texas leads we do not serve Texas
 
@@ -2080,7 +2098,35 @@ flagged, the numbers change and we would build it.
 
 ---
 
-## 35. A29 lets the booking close with the customer's question unanswered
+## 35. ~~A29 lets the booking close with the customer's question unanswered~~ — **ANSWERED FROM YOUR OWN RULE 2026-10-16, FIXED**
+
+**Reading 1, and A29's own sentence is the whole argument: "at ANY point, not
+only before closing." The close was the one place it was not enforced.**
+Fixed; nothing needed from you, and overrule it on sight if you disagree.
+
+**Why we stopped holding it for you.** The note below worried that refusing
+the close would strand a finished booking. It does not, and that was the only
+thing making it your call. The close keeps its intent and carries the answer
+in front of it:
+
+> "Yes, we do ceilings. Perfect, you're all set. Someone from the office will
+> confirm the details with you."
+
+Checked against the other rules that could have blocked that sentence — the
+padding rule, the echo rule, the scope guard — on five real closing questions
+(ceilings, moving furniture, how long, low VOC, do I need to be home). Every
+one has at least one plain answer that passes all of them AND reaches the
+customer. So the cost is one retry, not a handover.
+
+**And it was a pair, not one item.** `accepted`, the nurture-track close,
+behaved identically and is not mentioned below. Both are fixed together.
+
+**One thing the note below got wrong, for the record:** it said the close was
+in that list "without being named in it", which is true, and implied `success`
+was the only unexplained entry. Several are. The two that could not be
+explained are the two closes, and those are the two that came out.
+
+<details><summary>the original write-up, kept because its reasoning is the record</summary>
 
 **Raised 2026-10-15. One decision, and we have deliberately not made it for
 you — the behaviour is in a hand-written list with a rationale, and `success`
@@ -2125,6 +2171,8 @@ defensible:
 whenever any question is pending, which risks stranding a finished booking —
 too blunt a consequence to impose on a rule that is yours. Say which reading
 you want and it is a one-line change either way.
+
+</details>
 
 ---
 
