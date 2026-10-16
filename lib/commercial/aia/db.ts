@@ -1324,7 +1324,12 @@ export async function updateAiaApplication(
   if (patch.retainage_pct !== undefined) {
     const p = Number(patch.retainage_pct);
     if (!Number.isFinite(p) || p < 0 || p > 100) return { ok: false, error: "Retainage must be between 0 and 100%." };
-    next.retainage_pct = p;
+    // A release withholds nothing — that 0 IS the release. createAiaApplication
+    // forces it, but the settings form autosaves the field afterwards, and a 5
+    // typed into release #5 on LMJ Cipla turned a $4,381.36 final payment into
+    // a certificate billing $0.00 while every later application still treated
+    // the retainage as released. So it is pinned here, on every write.
+    next.retainage_pct = before.is_retainage_release ? 0 : p;
   }
   if (patch.status !== undefined) next.status = patch.status;
   if (patch.notes !== undefined) next.notes = patch.notes?.slice(0, 4000) ?? null;

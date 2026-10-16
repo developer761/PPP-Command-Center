@@ -189,6 +189,18 @@ try {
     `line 5 ${usd(g2.retainageCents)} · line 8 ${usd(g2.currentPaymentDueCents)} · line 9 ${usd(g2.balanceToFinishCents)}`,
   );
 
+  // The settings form autosaves Retainage % on a release draft too. A 5 typed
+  // there used to turn the final payment into a certificate billing nothing.
+  const pinned = await updateAiaApplication(a2.value.id, { retainage_pct: 5 }, ACTOR);
+  const g2b = await resolveG702(a2.value.id);
+  check(
+    "a release keeps 0% when someone types a rate into it, and still pays out what is held",
+    pinned.ok && g2b.retainageCents === 0 && g2b.currentPaymentDueCents === 1_00,
+    pinned.ok
+      ? `line 5 ${usd(g2b.retainageCents)} · line 8 ${usd(g2b.currentPaymentDueCents)}`
+      : pinned.error,
+  );
+
   // One release in draft at a time — the backstop that replaced the old index.
   const dup = await createAiaApplication({
     opportunity_id: oppId,

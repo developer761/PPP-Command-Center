@@ -758,6 +758,7 @@ export async function AiaTool({
                   accountId={id}
                   dealId={dealId}
                   saveAction={saveSettingsAutosaveAction}
+                  isRelease={application.is_retainage_release}
                   initial={{
                     application_number: String(application.application_number),
                     period_from: application.period_from?.slice(0, 10) ?? "",

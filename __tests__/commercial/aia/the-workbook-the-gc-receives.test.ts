@@ -216,6 +216,33 @@ describe("the AIA workbook a general contractor receives", () => {
     expect(Number(v(g, "D32"))).toBeGreaterThanOrEqual(0);
   });
 
+  /*
+   * 5a ROUNDS THE WAY LINE 5 DOES — per line, then summed.
+   *
+   * 5a was once 5% of the TOTAL completed, so 5b (written as line 5 minus 5a)
+   * held the rounding difference: LMJ Cipla App 4, already paid, printed $0.01
+   * of retainage on stored materials with nothing stored. Three lines of
+   * $1,000.10 at 5% are $50.005 each — rounded per line that is $50.01 x 3 =
+   * $150.03; rounded on the $3,000.30 total it is $150.02, a cent short.
+   */
+  it("prints no stored-material retainage when nothing is stored, however the cents fall", async () => {
+    const lines = [
+      line(1, "1", 2_000_00, 1_000_10, 0),
+      line(2, "2", 2_000_00, 1_000_10, 0),
+      line(3, "3", 2_000_00, 0, 1_000_10),
+    ];
+    const { g, v } = await build(app(), lines, {
+      originalContractCents: 6_000_00,
+      netChangeOrdersCents: 0,
+      retainagePct: 5,
+      lines,
+      previousCertificatesCents: 0,
+    });
+    expect(v(g, "E35")).toBe(150.03); // line 5
+    expect(v(g, "D30")).toBe(150.03); // 5a — all of it is completed work
+    expect(v(g, "D32")).toBe(0); // 5b — nothing is stored
+  });
+
   it("explains the retainage column ONLY when a release is behind it", async () => {
     const withRelease = applyReleasedRetainage(
       [line(1, "1", 87_627_09, 87_627_09, 0), line(2, "CO-007", 1_000_00, 0, 1_000_00)],

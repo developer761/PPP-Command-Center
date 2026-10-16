@@ -33,6 +33,7 @@ export function AiaSettingsForm({
   dealId,
   initial,
   saveAction,
+  isRelease = false,
 }: {
   appId: string;
   accountId: string;
@@ -46,6 +47,8 @@ export function AiaSettingsForm({
     notes: string;
   };
   saveAction: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
+  /** A retainage release withholds nothing; the server pins its rate to 0. */
+  isRelease?: boolean;
 }) {
   const [vals, setVals] = useState(initial);
   const dirty = useRef(false);
@@ -202,7 +205,13 @@ export function AiaSettingsForm({
       </label>
       <label className="block">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Retainage (%)</span>
-        <input inputMode="decimal" value={vals.retainage_pct} onChange={(e) => set("retainage_pct", e.target.value)} className={`${INPUT} ${retBad ? bad : ok}`} aria-invalid={retBad} />
+        {isRelease ? (
+          <span className="block min-h-[44px] py-2 text-[12px] text-ppp-charcoal-600">
+            0% — this is the retainage release, so it withholds nothing.
+          </span>
+        ) : (
+          <input inputMode="decimal" value={vals.retainage_pct} onChange={(e) => set("retainage_pct", e.target.value)} className={`${INPUT} ${retBad ? bad : ok}`} aria-invalid={retBad} />
+        )}
       </label>
       <label className="block sm:col-span-2">
         <span className="block text-[11px] font-semibold text-ppp-charcoal-600 mb-1">Notes</span>

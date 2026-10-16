@@ -244,8 +244,16 @@ export async function buildAiaWorkbookBuffer(input: {
   // Retainable, not completed: once a release application has gone out, the
   // work it released is not withheld again, and 5a has to come off the same
   // base G702 line 5 does or 5b (its remainder) goes NEGATIVE on the sheet.
-  const completedDE = lines.reduce((n, l) => n + lineRetainableCompletedCents(l), 0);
-  const ret5a = Math.round((completedDE * pct) / 100);
+  //
+  // Rounded PER LINE, the way line 5 is. Rounding the total instead left 5b
+  // holding the rounding difference: LMJ Cipla App 4 (paid) printed $0.01 of
+  // retainage on stored material with $0.00 stored, and 22 lines at 3.33%
+  // printed 5b as -$0.10. Summing the same roundings line 5 sums makes 5b
+  // exactly zero when nothing is stored.
+  const ret5a = lines.reduce(
+    (n, l) => n + Math.round((lineRetainableCompletedCents(l) * pct) / 100),
+    0
+  );
   money("D30", ret5a);
   money("D32", g702.retainageCents - ret5a);
   money("E35", g702.retainageCents);
