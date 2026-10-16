@@ -261,7 +261,10 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
   </tbody>
 </table>`;
 
-  await sendEmail({
+  // sendEmail RETURNS { ok: false } rather than throwing, so the try/catch
+  // around this function never saw a refused send: the AM was simply not
+  // told a customer had submitted, and no line anywhere said so.
+  const res = await sendEmail({
     to: adminEmail,
     subject,
     text,
@@ -271,4 +274,10 @@ export async function notifySenderOnSubmit(input: NotifyInput): Promise<void> {
       ...(input.workOrderNumber ? [{ name: "wo", value: input.workOrderNumber }] : []),
     ],
   });
+  if (!res?.ok) {
+    console.error(
+      `[notify-sender] submission notice NOT SENT to ${adminEmail} for WO ${input.workOrderNumber ?? "?"}: ` +
+        `${"error" in (res ?? {}) ? (res as { error?: string }).error : "unknown"}`
+    );
+  }
 }
